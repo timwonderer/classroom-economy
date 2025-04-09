@@ -44,11 +44,13 @@ python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 flask run
+```
 Default run environment is set for development. Use Gunicorn + NGINX in production.
 
-📅 Roadmap / Planned Features
-	•	📲 Mobile-friendly redesign
-	•	🪙 Stock trading module based on real school data
-🙌 Built with love for students by Tim Chang
+## 📅 Roadmap / Planned Features
+- 📲 Mobile-friendly redesign
+- 🪙 Stock trading module based on real school data
 
-“Creating systems that help students grow while having fun.”
+Made by Timothy Chang, a public science teacher who does too much for free.
+
+*"If it doesn't exist, make it"*
