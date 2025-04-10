@@ -46,7 +46,8 @@ class Student(db.Model):
 
     @property
     def total_earnings(self):
-        return round(sum(tx.amount for tx in self.transactions if tx.amount > 0 and not tx.is_void), 2)
+        return round(sum(tx.amount for tx in self.transactions if tx.amount > 0 and not tx.is_void and not tx.description.startswith("Transfer")), 2)
+
     @property
     def amount_needed_to_cover_bills(self):
         total_due = 0
@@ -62,7 +63,6 @@ class Student(db.Model):
     def next_pay_date(self):
         from datetime import timedelta
         return (self.last_tap_in or datetime.utcnow()) + timedelta(days=14)
-        return round(sum(tx.amount for tx in self.transactions if tx.amount > 0 and not tx.is_void), 2)
 
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -72,6 +72,8 @@ class Transaction(db.Model):
     account_type = db.Column(db.String(20), default='checking')
     description = db.Column(db.String(255))
     is_void = db.Column(db.Boolean, default=False)
+    type = db.Column(db.String(50))  # optional field to describe the transaction type
+    date_funds_available = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Purchase(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -81,25 +83,57 @@ class Purchase(db.Model):
     date_purchased = db.Column(db.DateTime, default=datetime.utcnow)
 
 # -------------------- AUTH HELPERS --------------------
+SESSION_TIMEOUT_MINUTES = 10
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'student_id' not in session:
             return redirect(url_for('student_login'))
+
+        now = datetime.utcnow()
+        last_activity = session.get('last_activity')
+
+        if last_activity:
+            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S")
+            if (now - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+                session.pop('student_id', None)
+                flash("Session expired. Please log in again.")
+                return redirect(url_for('student_login'))
+
+        session['last_activity'] = now.strftime("%Y-%m-%d %H:%M:%S")
         return f(*args, **kwargs)
     return decorated_function
 
 def get_logged_in_student():
     return Student.query.get(session['student_id']) if 'student_id' in session else None
+
 def admin_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get("is_admin"):
             flash("You must be an admin to view this page.")
             return redirect(url_for("admin_login"))
+
+        now = datetime.utcnow()
+        last_activity = session.get('last_activity')
+
+        if last_activity:
+            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S")
+            if (now - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+                session.pop("is_admin", None)
+                flash("Admin session expired. Please log in again.")
+                return redirect(url_for("admin_login"))
+
+        session['last_activity'] = now.strftime("%Y-%m-%d %H:%M:%S")
         return f(*args, **kwargs)
     return decorated_function
+
 # -------------------- STUDENT SETUP FLOW --------------------
+@app.route('/')
+def home():
+    return redirect(url_for('student_login'))  # Or wherever you want to go
+
 @app.route('/setup-complete')
 @login_required
 def setup_complete():
@@ -113,6 +147,11 @@ def setup_complete():
 def student_setup():
     student = get_logged_in_student()
     if request.method == 'POST':
+        # Clear unrelated flash messages
+        for category in ['setup']:
+            session.modified = True
+            flash("Setup completed successfully!", category)
+
         # Save the new PIN
         student.pin_hash = generate_password_hash(request.form.get("pin"))
 
@@ -121,23 +160,106 @@ def student_setup():
         if passphrase:
             student.second_factor_secret = passphrase
         else:
-            flash("Passphrase is required.", "danger")
+            flash("Passphrase is required.", "setup")
             return redirect(url_for('student_setup'))
 
         student.has_completed_setup = True
         db.session.commit()
-
+        flash("Setup completed successfully!", "setup")
         return redirect(url_for('setup_complete'))
 
     return render_template('student_setup.html', student=student)
+
 # -------------------- STUDENT DASHBOARD --------------------
 @app.route('/student/dashboard')
 @login_required
 def student_dashboard():
     student = get_logged_in_student()
+    apply_savings_interest(student)  # Apply savings interest if not already applied
     transactions = Transaction.query.filter_by(student_id=student.id).order_by(Transaction.timestamp.desc()).all()
     purchases = Purchase.query.filter_by(student_id=student.id).all()
-    return render_template('student_dashboard.html', student=student, transactions=transactions, purchases=purchases, now=datetime.now())
+    
+    checking_transactions = [tx for tx in transactions if tx.account_type == 'checking']
+    savings_transactions = [tx for tx in transactions if tx.account_type == 'savings']
+    
+    forecast_interest = round(student.savings_balance * (0.045 / 12), 2)
+
+    return render_template('student_dashboard.html', student=student,
+                           checking_transactions=checking_transactions,
+                           savings_transactions=savings_transactions,
+                           purchases=purchases, now=datetime.now(), forecast_interest=forecast_interest)
+
+# -------------------- TRANSFER ROUTE --------------------
+@app.route('/student/transfer', methods=['GET', 'POST'])
+@login_required
+def student_transfer():
+    student = get_logged_in_student()
+
+    if request.method == 'POST':
+        passphrase = request.form.get("passphrase")
+        if passphrase != student.second_factor_secret:
+            flash("Incorrect passphrase. Transfer canceled.", "transfer_error")
+            return redirect(url_for("student_transfer"))
+
+        from_account = request.form.get('from_account')
+        to_account = request.form.get('to_account')
+        amount = float(request.form.get('amount'))
+
+        if from_account == to_account:
+            flash("Cannot transfer to the same account.", "transfer_error")
+        elif amount <= 0:
+            flash("Amount must be greater than 0.", "transfer_error")
+        elif from_account == 'checking' and amount > student.checking_balance:
+            flash("Insufficient checking funds.", "transfer_error")
+        elif from_account == 'savings' and amount > student.savings_balance:
+            flash("Insufficient savings funds.", "transfer_error")
+        else:
+            db.session.add(Transaction(student_id=student.id, amount=-amount, account_type=from_account, description=f"Transfer to {to_account}"))
+            db.session.add(Transaction(student_id=student.id, amount=amount, account_type=to_account, description=f"Transfer from {from_account}"))
+            flash("Transfer completed successfully!", "transfer_success")
+            db.session.commit()
+            return redirect(url_for('student_dashboard'))
+
+    return render_template('student_transfer.html', student=student)
+
+# -------------------- TRANSFER ROUTE SUPPORT FUNCTIONS --------------------
+def apply_savings_interest(student, annual_rate=0.045):
+    now = datetime.utcnow()
+    this_month = now.month
+    this_year = now.year
+
+    # Check if interest was already applied this month
+    for tx in student.transactions:
+        if (
+            tx.account_type == 'savings'
+            and tx.description == "Monthly Savings Interest"
+            and tx.timestamp.month == this_month
+            and tx.timestamp.year == this_year
+        ):
+            return  # Interest already applied this month
+
+    if any(tx.account_type == 'savings' and "Transfer" in tx.description and tx.timestamp.date() == now.date() for tx in student.transactions):
+        return
+
+    eligible_balance = sum(
+        tx.amount for tx in student.transactions
+        if tx.account_type == 'savings' and
+           not tx.is_void and
+           tx.amount > 0 and
+           (now - tx.date_funds_available).days >= 30
+    )
+    monthly_rate = annual_rate / 12
+    interest = round(eligible_balance * monthly_rate, 2)
+
+    if interest > 0:
+        interest_tx = Transaction(
+            student_id=student.id,
+            amount=interest,
+            account_type='savings',
+            description="Monthly Savings Interest"
+        )
+        db.session.add(interest_tx)
+        db.session.commit()
 
 # -------------------- STUDENT LOGIN --------------------
 @app.route('/student/login', methods=['GET', 'POST'])
@@ -159,13 +281,33 @@ def student_login():
         return redirect(url_for('student_dashboard'))
 
     return render_template('student_login.html')
+
 # -------------------- ADMIN DASHBOARD --------------------
 @app.route('/admin')
 @admin_required
 def admin_dashboard():
     students = Student.query.order_by(Student.name).all()
     transactions = Transaction.query.order_by(Transaction.timestamp.desc()).limit(20).all()
-    return render_template('admin_dashboard.html', students=students, transactions=transactions)
+    student_lookup = {s.id: s for s in students}
+    logs = []  # Replace with actual attendance log query when available
+    return render_template('admin_dashboard.html', students=students, transactions=transactions, student_lookup=student_lookup, logs=logs)
+
+@app.route('/admin/bonuses', methods=['POST'])
+@admin_required
+def give_bonus_all():
+    title = request.form.get('title')
+    amount = float(request.form.get('amount'))
+    tx_type = request.form.get('type')
+
+    students = Student.query.all()
+    for student in students:
+        tx = Transaction(student_id=student.id, amount=amount, type=tx_type, description=title, account_type='checking')
+        db.session.add(tx)
+
+    db.session.commit()
+    flash("Bonus/Payroll posted successfully!")
+    return redirect(url_for('admin_dashboard'))
+
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
     if request.method == 'POST':
@@ -187,5 +329,36 @@ def admin_logout():
     session.pop("is_admin", None)
     flash("Logged out.")
     return redirect(url_for("admin_login"))
+
+@app.route('/admin/students')
+@admin_required
+def admin_students():
+    students = Student.query.order_by(Student.block, Student.name).all()
+    return render_template('admin_students.html', students=students)
+
+@app.route('/admin/students/<int:student_id>')
+@admin_required
+def student_detail(student_id):
+    student = Student.query.get_or_404(student_id)
+    transactions = Transaction.query.filter_by(student_id=student.id).order_by(Transaction.timestamp.desc()).all()
+    purchases = Purchase.query.filter_by(student_id=student.id).all()
+    return render_template('student_detail.html', student=student, transactions=transactions, purchases=purchases)
+
+@app.route('/admin/void-transaction/<int:transaction_id>', methods=['POST'])
+@admin_required
+def void_transaction(transaction_id):
+    tx = Transaction.query.get_or_404(transaction_id)
+    tx.is_void = True
+    db.session.commit()
+    flash("Transaction voided.")
+    return redirect(url_for('admin_dashboard'))
+
+@app.route('/student/logout')
+@login_required
+def student_logout():
+    session.pop('student_id', None)
+    flash("You’ve been logged out.")
+    return redirect(url_for('student_login'))
+
 if __name__ == '__main__':
     app.run(debug=True)

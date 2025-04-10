@@ -16,16 +16,26 @@
                 <th>Amount</th>
                 <th>Description</th>
                 <th>Timestamp</th>
+                <th>Action</th>
             </tr>
         </thead>
         <tbody>
             {% for tx in transactions %}
             <tr>
-                <td>{{ student_lookup[tx.student_id].name }}</td>
+                <td>{{ student_lookup.get(tx.student_id).name if student_lookup.get(tx.student_id) else "Unknown" }}</td>
                 <td>{{ tx.type }}</td>
                 <td>${{ "%.2f"|format(tx.amount) }}</td>
                 <td>{{ tx.description }}</td>
                 <td>{{ tx.timestamp }}</td>
+                <td>
+                    {% if not tx.is_void %}
+                    <form method="POST" action="{{ url_for('void_transaction', transaction_id=tx.id) }}">
+                        <button type="submit" class="btn btn-sm btn-danger">Void</button>
+                    </form>
+                    {% else %}
+                    <span class="text-muted">Voided</span>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
@@ -43,37 +53,37 @@
         <tbody>
             {% for log in logs %}
             <tr>
-<td>{{ student_lookup[log.student_id].name }}</td>
+                <td>{{ student_lookup.get(log.student_id).name if student_lookup.get(log.student_id) else "Unknown" }}</td>
                 <td>{{ log.action }}</td>
                 <td>{{ log.timestamp }}</td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
-<hr class="my-4">
-<h4>💵 Log Payroll or Bonus</h4>
-<form method="POST" action="/admin/bonuses">
-    <div class="row mb-2">
-        <div class="col-md-4">
-            <label class="form-label">Title</label>
-            <input type="text" name="title" class="form-control" required placeholder="e.g. April Bonus">
+    <hr class="my-4">
+    <h4>💵 Log Payroll or Bonus</h4>
+    <form method="POST" action="{{ url_for('give_bonus_all') }}">
+        <div class="row mb-2">
+            <div class="col-md-4">
+                <label class="form-label">Title</label>
+                <input type="text" name="title" class="form-control" required placeholder="e.g. April Bonus">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Amount</label>
+                <input type="number" name="amount" step="0.01" class="form-control" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Type</label>
+                <select name="type" class="form-select" required>
+                    <option value="bonus">Bonus</option>
+                    <option value="payroll">Payroll</option>
+                </select>
+            </div>
+            <div class="col-md-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-success w-100">💾 Post</button>
+            </div>
         </div>
-        <div class="col-md-3">
-            <label class="form-label">Amount</label>
-            <input type="number" name="amount" step="0.01" class="form-control" required>
-        </div>
-        <div class="col-md-3">
-            <label class="form-label">Type</label>
-            <select name="type" class="form-select" required>
-                <option value="bonus">Bonus</option>
-                <option value="payroll">Payroll</option>
-            </select>
-        </div>
-        <div class="col-md-2 d-flex align-items-end">
-            <button type="submit" class="btn btn-success w-100">💾 Post</button>
-        </div>
-    </div>
-</form>
-    <a class="btn btn-outline-primary mt-4" href="/admin/students">Go to Students Page →</a>
+    </form>
+    <a class="btn btn-outline-primary mt-4" href="{{ url_for('admin_students') }}">Go to Students Page →</a>
 </body>
 </html>

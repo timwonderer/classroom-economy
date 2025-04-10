@@ -8,8 +8,6 @@
     <h2>🧑‍🎓 {{ student.name }} (Block {{ student.block }})</h2>
 
     <!-- SECTION 1: STUDENT INFO -->
-    {% set checking_total = transactions | selectattr("account_type", "equalto", "checking") | rejectattr("is_void") | map(attribute="amount") | sum %}
-    {% set savings_total = transactions | selectattr("account_type", "equalto", "savings") | rejectattr("is_void") | map(attribute="amount") | sum %}
     <div class="card mb-4">
         <div class="card-header bg-info text-white">Student Information</div>
         <div class="card-body">
@@ -18,8 +16,8 @@
             <p><strong>Email:</strong> {{ student.email }}</p>
             <p><strong>QR Code ID:</strong> {{ student.qr_id }}</p>
             <p><strong>Owns Seat:</strong> {{ 'Yes' if student.owns_seat else 'No' }}</p>
-            <p><strong>Checking Balance:</strong> ${{ "%.2f"|format(checking_total) }}</p>
-            <p><strong>Savings Balance:</strong> ${{ "%.2f"|format(savings_total) }}</p>
+            <p><strong>Checking Balance:</strong> ${{ "%.2f"|format(student.checking_balance) }}</p>
+            <p><strong>Savings Balance:</strong> ${{ "%.2f"|format(student.savings_balance) }}</p>
             <hr>
             <h6>📅 Current Bill Status</h6>
             <ul>
@@ -73,26 +71,25 @@
                     <tr><th>Type</th><th>Amount</th><th>Description</th><th>Timestamp</th><th>Action</th></tr>
                 </thead>
                 <tbody>
-{% for tx in transactions %}
-<tr {% if tx.is_void %}class="text-muted text-decoration-line-through"{% endif %}>
-    <td>{{ tx.type }}</td>
-    <td>${{ "%.2f"|format(tx.amount) }}</td>
-    <td>{{ tx.description }}</td>
-    <td>{{ tx.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
-    <td>
-        {% if tx.is_void %}
-            <span class="badge bg-secondary">Voided</span>
-        {% elif tx.type == 'refund' %}
-<span class="badge bg-secondary">Refund</span>
-        {% else %}
-            <form method="POST" action="/admin/transactions/{{ tx.id }}/void" style="display:inline;" onsubmit="return confirm('Void this transaction?');">
-                <button type="submit" class="btn btn-sm btn-outline-danger">❌ Void</button>
-            </form>
-        {% endif %}
-    </td>
-</tr>
-{% endfor %}
+                    {% for tx in transactions %}
+                    <tr {% if tx.is_void %}class="text-muted text-decoration-line-through"{% endif %}>
+                        <td>{{ tx.type }}</td>
+                        <td>${{ "%.2f"|format(tx.amount) }}</td>
+                        <td>{{ tx.description }}</td>
+                        <td>{{ tx.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                            {% if tx.is_void %}
+                                <span class="badge bg-secondary">Voided</span>
+                            {% elif tx.type == 'refund' %}
+                                <span class="badge bg-secondary">Refund</span>
+                            {% else %}
+                                <form method="POST" action="{{ url_for('void_transaction', transaction_id=tx.id) }}" style="display:inline;" onsubmit="return confirm('Void this transaction?');">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger">❌ Void</button>
+                                </form>
+                            {% endif %}
+                        </td>
                     </tr>
+                    {% endfor %}
                 </tbody>
             </table>
             {% else %}
@@ -101,7 +98,22 @@
 
             <hr>
             <h6>🛒 Store Purchases</h6>
-            <p><em>Coming soon: Display of items bought and what they were used for.</em></p>
+            {% if purchases %}
+            <table class="table table-sm table-striped">
+                <thead><tr><th>Item</th><th>Date Purchased</th><th>Redeemed?</th></tr></thead>
+                <tbody>
+                  {% for purchase in purchases %}
+                  <tr>
+                    <td>{{ purchase.item_name }}</td>
+                    <td>{{ purchase.date_purchased.strftime('%Y-%m-%d') }}</td>
+                    <td>{{ 'Yes' if purchase.redeemed else 'No' }}</td>
+                  </tr>
+                  {% endfor %}
+                </tbody>
+            </table>
+            {% else %}
+            <p><em>No purchases yet.</em></p>
+            {% endif %}
         </div>
     </div>
 

@@ -88,7 +88,7 @@
         <h1>Hi, {{ student.name }}!</h1>
         <p class="description">Let’s finish setting up your account with a PIN and a secure passphrase.</p>
         <p class="description">You will need your PIN when you sign in to your account. You will need your passphrase when you conduct any purchases in your account.</p>
-        {% with messages = get_flashed_messages() %}
+{% with messages = get_flashed_messages(category_filter=['setup']) %}
           {% if messages %}
             <ul>
               {% for message in messages %}

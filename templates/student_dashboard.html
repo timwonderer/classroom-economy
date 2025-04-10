@@ -89,9 +89,31 @@
                 <div class="card-body">
                     <h5 class="card-title">🏦 Savings Balance</h5>
                     <p class="card-text">${{ '%.2f'|format(student.savings_balance) }}</p>
+                    <p class="card-text"><small>Forecasted Interest: ${{ '%.2f'|format(forecast_interest) }}</small></p>
                 </div>
             </div>
         </div>
+    </div>
+
+    <!-- Transaction Summary -->
+    <div class="mb-4">
+        <h4>📊 Transaction Summary</h4>
+        <table class="table table-bordered">
+            <tbody>
+                <tr>
+                    <th scope="row">Total Deposits</th>
+                    <td>${{ student.total_earnings }}</td>
+                </tr>
+                <tr>
+                    <th scope="row">Total Checking Transactions</th>
+                    <td>${{ '%.2f'|format(student.checking_balance) }}</td>
+                </tr>
+                <tr>
+                    <th scope="row">Total Savings Transactions</th>
+                    <td>${{ '%.2f'|format(student.savings_balance) }}</td>
+                </tr>
+            </tbody>
+        </table>
     </div>
 
     <!-- Account Summary -->
@@ -212,10 +234,77 @@
         </table>
     </div>
 
-    <!-- Actions -->
+    <!-- Checking Transaction History -->
     <div class="mb-4">
-        <h5>Actions</h5>
-        <a href="/student/logout" class="btn btn-outline-danger">Logout</a>
+        <h4>💳 Checking Transaction History</h4>
+        {% if checking_transactions %}
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in checking_transactions %}
+                    <tr class="{% if tx.is_void %}text-muted text-decoration-line-through{% endif %}">
+                        <td>{{ tx.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>{{ tx.description }}</td>
+                        <td>
+                            {% if tx.amount < 0 %}
+                                <span class="text-danger">-${{ '%.2f'|format(-tx.amount) }}</span>
+                            {% else %}
+                                <span class="text-success">${{ '%.2f'|format(tx.amount) }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>No checking transactions found.</p>
+        {% endif %}
     </div>
+
+    <!-- Savings Transaction History -->
+    <div class="mb-4">
+        <h4>🏦 Savings Transaction History</h4>
+        {% if savings_transactions %}
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Description</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for tx in savings_transactions %}
+                    <tr class="{% if tx.is_void %}text-muted text-decoration-line-through{% endif %}">
+                        <td>{{ tx.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>{{ tx.description }}</td>
+                        <td>
+                            {% if tx.amount < 0 %}
+                                <span class="text-danger">-${{ '%.2f'|format(-tx.amount) }}</span>
+                            {% else %}
+                                <span class="text-success">${{ '%.2f'|format(tx.amount) }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <p>No savings transactions found.</p>
+        {% endif %}
+    </div>
+
+    <!-- Actions -->
+<div class="mb-4">
+    <h5>Actions</h5>
+    <a href="/student/transfer" class="btn btn-outline-primary me-2">Transfer Funds</a>
+    <a href="/student/logout" class="btn btn-outline-danger">Logout</a>
+</div>
 </body>
 </html>
