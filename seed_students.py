@@ -1,12 +1,9 @@
-from app import app, db, Student
+from app_full import app, db, Student, TapSession
 from werkzeug.security import generate_password_hash
 from datetime import datetime, timedelta
 import random
 
 with app.app_context():
-    db.drop_all()
-    db.create_all()
-
     names_blocks = [
         ("Ana Morales", "A"),
         ("Brayan López", "B"),
@@ -46,6 +43,32 @@ with app.app_context():
 
     db.session.commit()
     print("✅ Seeded students successfully.")
+
+    # Seed tap sessions for testing attendance
+    for student in Student.query.all():
+        if student.block == "A":
+            session = TapSession(
+                student_id=student.id,
+                period='a',
+                tap_in_time=datetime.utcnow() - timedelta(minutes=40),
+                tap_out_time=datetime.utcnow() - timedelta(minutes=5),
+                reason='done',
+                is_done=True
+            )
+            db.session.add(session)
+        elif student.block == "B":
+            session = TapSession(
+                student_id=student.id,
+                period='b',
+                tap_in_time=datetime.utcnow() - timedelta(minutes=20),
+                tap_out_time=None,
+                reason=None,
+                is_done=False
+            )
+            db.session.add(session)
+
+    db.session.commit()
+    print("✅ Seeded tap sessions.")
 
     # Add first-time setup students for testing
     first_time_students = [

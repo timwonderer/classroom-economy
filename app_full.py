@@ -20,9 +20,13 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 
 db = SQLAlchemy(app)
+from flask_migrate import Migrate
+
+migrate = Migrate(app, db)
 
 # -------------------- MODELS --------------------
 class Student(db.Model):
+    __tablename__ = 'students'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100))
     email = db.Column(db.String(120))
@@ -44,6 +48,7 @@ class Student(db.Model):
 
     transactions = db.relationship('Transaction', backref='student', lazy=True)
     purchases = db.relationship('Purchase', backref='student', lazy=True)
+    tap_sessions = db.relationship('TapSession', back_populates='student', lazy='dynamic')
 
     @property
     def checking_balance(self):
@@ -56,6 +61,18 @@ class Student(db.Model):
     @property
     def total_earnings(self):
         return round(sum(tx.amount for tx in self.transactions if tx.amount > 0 and not tx.is_void and not tx.description.startswith("Transfer")), 2)
+
+    @property
+    def recent_deposits(self):
+        now = datetime.utcnow()
+        recent_timeframe = now - timedelta(days=2)
+        return [
+            tx for tx in self.transactions
+            if tx.amount > 0
+            and not tx.is_void
+            and tx.timestamp >= recent_timeframe
+            and not tx.description.lower().startswith("transfer")
+        ]
 
     @property
     def amount_needed_to_cover_bills(self):
@@ -75,7 +92,7 @@ class Student(db.Model):
 
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     account_type = db.Column(db.String(20), default='checking')
@@ -86,11 +103,24 @@ class Transaction(db.Model):
 
 class Purchase(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('student.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     item_name = db.Column(db.String(100))
     redeemed = db.Column(db.Boolean, default=False)
     date_purchased = db.Column(db.DateTime, default=datetime.utcnow)
 
+from datetime import datetime
+class TapSession(db.Model):
+    __tablename__ = 'tap_sessions'
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    period = db.Column(db.String(10), nullable=False)  # e.g., 'a', 'b'
+    tap_in_time = db.Column(db.DateTime, default=datetime.utcnow)
+    tap_out_time = db.Column(db.DateTime, nullable=True)
+    reason = db.Column(db.String(50), nullable=True)
+    is_done = db.Column(db.Boolean, default=False)
+
+    student = db.relationship("Student", back_populates="tap_sessions")
 # -------------------- AUTH HELPERS --------------------
 SESSION_TIMEOUT_MINUTES = 10
 
@@ -231,7 +261,95 @@ def student_transfer():
             db.session.commit()
             return redirect(url_for('student_dashboard'))
 
+#    return render_template('student_transfer.html', student=student)
     return render_template('student_transfer.html', student=student)
+
+# -------------------- INSURANCE ROUTE --------------------
+@app.route('/student/insurance', methods=['GET', 'POST'])
+@login_required
+def student_insurance():
+    student = get_logged_in_student()
+    cooldown_message = None
+    error_message = None
+    plans = {
+        "paycheck_protection": 90,
+        "personal_responsibility": 60,
+        "bundled": 125
+    }
+
+    if request.method == 'POST':
+        selected_plan = request.form.get('plan')
+        if selected_plan not in plans:
+            flash("Invalid insurance plan selected.", "insurance_error")
+            return redirect(url_for("student_insurance"))
+
+        now = datetime.utcnow()
+        recent_cancellation_tx = Transaction.query.filter(
+            Transaction.student_id == student.id,
+            Transaction.description == f"Cancelled {selected_plan.replace('_', ' ').title()} Insurance"
+        ).order_by(Transaction.timestamp.desc()).first()
+
+        if recent_cancellation_tx and (now - recent_cancellation_tx.timestamp).days < 30:
+            flash("You must wait 30 days after cancelling this insurance before purchasing again.", "insurance_error")
+            return redirect(url_for("student_insurance"))
+
+        premium = plans[selected_plan]
+
+        # Reject if student will go negative
+        if student.checking_balance < premium:
+            db.session.add(Transaction(
+                student_id=student.id,
+                amount=-15,
+                description="NSF Fee for Insurance Purchase",
+                account_type="checking",
+            ))
+            db.session.commit()
+            flash("Insufficient funds for insurance. NSF Fee charged.", "insurance_error")
+            return redirect(url_for("student_insurance"))
+
+        # Handle bundled upgrade with prorate logic
+        current_plan = student.insurance_plan
+        if current_plan != "none" and selected_plan != current_plan:
+            current_premium = plans.get(current_plan, 0)
+            days_since_paid = (now - (student.insurance_last_paid or now)).days
+            prorated_refund = round(current_premium * max(0, (30 - days_since_paid)) / 30, 2)
+            if prorated_refund > 0:
+                db.session.add(Transaction(
+                    student_id=student.id,
+                    amount=prorated_refund,
+                    description=f"Prorated Refund for {current_plan.replace('_', ' ').title()}",
+                    account_type="checking",
+                ))
+
+        # Charge new premium
+        db.session.add(Transaction(
+            student_id=student.id,
+            amount=-premium,
+            description=f"Insurance Premium for {selected_plan.replace('_', ' ').title()}",
+            account_type="checking",
+        ))
+
+        student.insurance_plan = selected_plan
+        student.insurance_last_paid = now
+        db.session.commit()
+        flash("Insurance purchased successfully!", "insurance_success")
+        return redirect(url_for("student_dashboard"))
+
+    current_plan_display = student.insurance_plan.replace('_', ' ').title() if student.insurance_plan != "none" else None
+    return render_template('student_insurance_market.html', student=student, cooldown_message=cooldown_message, error_message=error_message)
+
+@app.route('/student/insurance/change', methods=['GET', 'POST'])
+@login_required
+def student_insurance_change():
+    student = get_logged_in_student()
+
+    if request.method == 'POST':
+        flash("Insurance change feature coming soon!", "info")
+        return redirect(url_for("student_insurance"))
+
+    current_plan = student.insurance_plan if student.insurance_plan and student.insurance_plan != "none" else None
+    return render_template('student_insurance_change.html', student=student, current_plan=current_plan)
+# -------------------- TRANSFER ROUTE SUPPORT FUNCTIONS --------------------
 
 # -------------------- TRANSFER ROUTE SUPPORT FUNCTIONS --------------------
 def apply_savings_interest(student, annual_rate=0.045):
@@ -285,6 +403,7 @@ def student_login():
             return redirect(url_for('student_login'))
 
         session['student_id'] = student.id
+        session['last_activity'] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
         if not student.has_completed_setup:
             return redirect(url_for('student_setup'))

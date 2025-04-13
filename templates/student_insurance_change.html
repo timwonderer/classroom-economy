@@ -1,0 +1,51 @@
+{% extends "layout_student.html" %}
+{% block content %}
+  <div class="container mt-4">
+
+    <div class="card mb-4">
+      <div class="card-header bg-info text-white">
+        <h5 class="mb-0">Your Current Insurance</h5>
+      </div>
+      <div class="card-body">
+        {% if current_plan %}
+          <p>DEBUG: current_plan is {{ current_plan }}</p>
+          {% if current_plan == 'paycheck_protection' %}
+            <p class="text-success"><i class="bi bi-shield-check"></i> Paycheck Protection - $90/month</p>
+          {% elif current_plan == 'responsibility' %}
+            <p class="text-warning"><i class="bi bi-person-check"></i> Personal Responsibility - $60/month</p>
+          {% elif current_plan == 'bundle' %}
+            <p class="text-primary"><i class="bi bi-box-seam"></i> Bundled Plan - $125/month</p>
+          {% else %}
+            <p class="text-muted">DEBUG: Unknown plan type</p>
+          {% endif %}
+        {% else %}
+          <p class="text-danger"><i class="bi bi-exclamation-triangle"></i> You do not currently have insurance.</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h4>Change Your Insurance Plan</h4>
+      </div>
+      <div class="card-body">
+        <p>Select a new insurance option below. If you are upgrading to a bundled plan, we will calculate a prorated refund and adjust your monthly premium.</p>
+
+        <form method="POST" action="/student/insurance/change">
+          <div class="form-group mt-3">
+            <label for="insuranceType">Select Insurance Plan:</label>
+            <select class="form-control" id="insuranceType" name="insurance_type" required>
+              <option value="paycheck">Paycheck Protection - $90/month</option>
+              <option value="responsibility">Personal Responsibility - $60/month</option>
+              <option value="bundle">Bundled Plan - $125/month</option>
+            </select>
+          </div>
+
+          <button type="submit" class="btn btn-primary mt-3">Confirm Change</button>
+          <a href="/student" class="btn btn-secondary mt-3 ms-2">Cancel</a>
+        </form>
+      </div>
+    </div>
+
+  </div>
+{% endblock %}
