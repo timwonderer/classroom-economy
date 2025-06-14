@@ -88,12 +88,12 @@
         "a": {
           "active": is_tapped_in_a | default(false),
           "done": is_done_a | default(false),
-          "seconds": seconds_logged_a | default(0) | int
+          "duration": duration_seconds_a | default(0) | int
         },
         "b": {
           "active": is_tapped_in_b | default(false),
           "done": is_done_b | default(false),
-          "seconds": seconds_logged_b | default(0) | int
+          "duration": duration_seconds_b | default(0) | int
         }
       } | tojson }}
     </script>
@@ -102,59 +102,11 @@
       let serverStateRaw = document.getElementById("serverState").textContent;
       let serverPeriodState = JSON.parse(serverStateRaw);
 
-      const savedState = localStorage.getItem("studentPeriodState");
-      if (savedState) {
-        const saved = JSON.parse(savedState);
-        for (const p in saved) {
-          if (serverPeriodState[p] && saved[p].active) {
-            serverPeriodState[p].active = true;
-            serverPeriodState[p].seconds = saved[p].seconds || serverPeriodState[p].seconds;
-          }
-        }
-      }
 
       const periodState = serverPeriodState;
 
-      // Save state every second if tapped in
-      setInterval(() => {
-        const snapshot = {};
-        for (const p in periodState) {
-          snapshot[p] = {
-            active: periodState[p].active,
-            seconds: periodState[p].seconds
-          };
-        }
-        localStorage.setItem("studentPeriodState", JSON.stringify(snapshot));
-      }, 1000);
     </script>
 
-    <script>
-    // Resume any active timers on page load
-    for (const period in periodState) {
-      if (periodState[period].active && !periodState[period].interval) {
-        periodState[period].interval = setInterval(() => {
-          if (periodState[period].seconds < 4500) {
-            periodState[period].seconds++;
-            updateTimerDisplay(period);
-            syncStateToServer(period, 'tap_in');
-          } else {
-            clearInterval(periodState[period].interval);
-            periodState[period].interval = null;
-            alert(`Period ${period.toUpperCase()} time cap reached.`);
-          }
-        }, 1000);
-        document.getElementById(`status-${period}`).textContent = 'Active';
-        document.getElementById(`tapIn-${period}`).disabled = true;
-        document.getElementById(`tapOut-${period}`).disabled = false;
-        highlightStatus(period, true);
-        updateTimerDisplay(period);
-      }
-
-      if (periodState[period].done) {
-        document.getElementById(`tapIn-${period}`).disabled = true;
-      }
-    }
-    </script>
 
     {% set current_hour = now.hour %}
     {% if current_hour < 12 %}
@@ -301,13 +253,13 @@
         }
 
         function syncStateToServer(period, action) {
-          const seconds = periodState[period].seconds;
+          const duration = periodState[period].duration;
           fetch('/api/tap', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ period, action, seconds })
+            body: JSON.stringify({ period, action, duration })
           });
         }
 
@@ -320,20 +272,6 @@
           const pin = document.getElementById('tapInPin').value.trim();
           if (!pin) return alert("PIN required.");
           bootstrap.Modal.getInstance(document.getElementById('tapInModal')).hide();
-
-          if (!periodState[period].interval) {
-            periodState[period].interval = setInterval(() => {
-              if (periodState[period].seconds < 4500) {
-                periodState[period].seconds++;
-                updateTimerDisplay(period);
-                syncStateToServer(period, 'tap_in');
-              } else {
-                clearInterval(periodState[period].interval);
-                periodState[period].interval = null;
-                alert(`Period ${period.toUpperCase()} time cap reached.`);
-              }
-            }, 1000);
-          }
 
           periodState[period].active = true;
           document.getElementById(`status-${period}`).textContent = 'Active';
@@ -351,18 +289,14 @@
           if (!pin) return alert("PIN required.");
           bootstrap.Modal.getInstance(document.getElementById('tapOutModal')).hide();
 
-          if (periodState[period].interval) {
-            clearInterval(periodState[period].interval);
-            periodState[period].interval = null;
-          }
-
           periodState[period].active = false;
           document.getElementById(`status-${period}`).textContent = 'Inactive';
-          document.getElementById(`tapIn-${period}`).disabled = reason !== 'done';
+          document.getElementById(`tapIn-${period}`).disabled = false;
           document.getElementById(`tapOut-${period}`).disabled = true;
           highlightStatus(period, false);
           if (reason === 'done') {
             periodState[period].done = true;
+            document.getElementById(`tapIn-${period}`).disabled = true;
             showToast(`✅ Period ${period.toUpperCase()} closed for the day.`);
           } else {
             showToast(`🕒 You're out for: ${reason}`);
@@ -388,11 +322,35 @@
         }
 
         function updateTimerDisplay(period) {
-          const seconds = periodState[period].seconds;
+          const seconds = periodState[period].duration;
           const m = Math.floor(seconds / 60).toString().padStart(2, '0');
           const s = (seconds % 60).toString().padStart(2, '0');
           document.getElementById(`timer-${period}`).textContent = `${m}:${s}`;
         }
+
+        function syncUiWithPeriodState() {
+          for (const period in periodState) {
+            const state = periodState[period];
+            updateTimerDisplay(period);
+
+            if (state.active && !state.done) {
+              document.getElementById(`status-${period}`).textContent = 'Active';
+              document.getElementById(`tapIn-${period}`).disabled = true;
+              document.getElementById(`tapOut-${period}`).disabled = false;
+              highlightStatus(period, true);
+            } else {
+              document.getElementById(`status-${period}`).textContent = 'Inactive';
+              document.getElementById(`tapIn-${period}`).disabled = state.done;
+              document.getElementById(`tapOut-${period}`).disabled = true;
+              highlightStatus(period, false);
+            }
+          }
+        }
+    </script>
+    <script>
+      window.addEventListener("DOMContentLoaded", () => {
+        syncUiWithPeriodState();
+      });
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/attendance.js"></script>

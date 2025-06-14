@@ -6,9 +6,14 @@ from functools import wraps
 import pytz
 import pyotp
 import urllib.parse
+import os
 
 app = Flask(__name__)
-app.secret_key = '1%Inspiration&99%Effort'
+app.config.update(
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SAMESITE="None"
+)
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "1%Inspiration&99%Effort")
 
 def url_encode_filter(s):
     return urllib.parse.quote_plus(s)
@@ -119,6 +124,7 @@ class TapSession(db.Model):
     tap_out_time = db.Column(db.DateTime, nullable=True)
     reason = db.Column(db.String(50), nullable=True)
     is_done = db.Column(db.Boolean, default=False)
+    duration_seconds = db.Column(db.Integer, default=0)
 
     student = db.relationship("Student", back_populates="tap_sessions")
 # -------------------- AUTH HELPERS --------------------
@@ -223,12 +229,40 @@ def student_dashboard():
     
     forecast_interest = round(student.savings_balance * (0.045 / 12), 2)
 
+    # Updated tap session status logic for periods a and b
+    def get_session_status(student_id, period):
+        from datetime import datetime
+        today = datetime.utcnow().date()
+        completed = TapSession.query.filter_by(student_id=student_id, period=period, is_done=True).all()
+        seconds_logged = sum(s.duration_seconds or 0 for s in completed)
+        latest_session = max(completed, key=lambda s: s.tap_out_time, default=None)
+        locked_out = latest_session and latest_session.tap_out_time.date() == today
+
+        active_session = TapSession.query.filter_by(student_id=student_id, period=period, is_done=False).first()
+        is_tapped_in = active_session is not None
+        is_done = not is_tapped_in and locked_out
+
+        duration_seconds = seconds_logged
+        if active_session:
+            duration_seconds += int((datetime.utcnow() - active_session.tap_in_time).total_seconds())
+
+        return is_tapped_in, is_done, duration_seconds
+
+    is_tapped_in_a, is_done_a, duration_seconds_a = get_session_status(student.id, 'a')
+    is_tapped_in_b, is_done_b, duration_seconds_b = get_session_status(student.id, 'b')
+
     tz = pytz.timezone('America/Los_Angeles')
     local_now = datetime.now(tz)
     return render_template('student_dashboard.html', student=student,
                            checking_transactions=checking_transactions,
                            savings_transactions=savings_transactions,
-                           purchases=purchases, now=local_now, forecast_interest=forecast_interest)
+                           purchases=purchases, now=local_now, forecast_interest=forecast_interest,
+                           is_tapped_in_a=is_tapped_in_a,
+                           is_done_a=is_done_a,
+                           duration_seconds_a=duration_seconds_a,
+                           is_tapped_in_b=is_tapped_in_b,
+                           is_done_b=is_done_b,
+                           duration_seconds_b=duration_seconds_b)
 
 # -------------------- TRANSFER ROUTE --------------------
 @app.route('/student/transfer', methods=['GET', 'POST'])
@@ -419,7 +453,7 @@ def admin_dashboard():
     students = Student.query.order_by(Student.name).all()
     transactions = Transaction.query.order_by(Transaction.timestamp.desc()).limit(20).all()
     student_lookup = {s.id: s for s in students}
-    logs = []  # Replace with actual attendance log query when available
+    logs = TapSession.query.order_by(TapSession.tap_in_time.desc()).limit(20).all()
     return render_template('admin_dashboard.html', students=students, transactions=transactions, student_lookup=student_lookup, logs=logs)
 
 @app.route('/admin/bonuses', methods=['POST'])
@@ -510,6 +544,26 @@ def admin_add_student():
         return redirect(url_for('admin_students'))
     return render_template('admin_add_student.html')
 
+# -------------------- ADMIN FULL ATTENDANCE LOG --------------------
+@app.route('/admin/attendance-log')
+@admin_required
+def admin_attendance_log():
+    try:
+        logs = TapSession.query.order_by(TapSession.tap_in_time.desc()).all()
+        students = {s.id: s for s in Student.query.all()}
+        app.logger.info(f"Loaded {len(logs)} attendance logs for display.")
+        if logs:
+            app.logger.info(f"Sample log: {logs[0].tap_in_time}")
+        else:
+            app.logger.info("No logs found.")
+        app.logger.info(f"Student count loaded: {len(students)}")
+        # Pass logs (which include .reason) and students to template
+        return render_template('admin_attendance_log.html', logs=logs, students=students)
+    except Exception as e:
+        app.logger.error(f"Failed to load attendance log: {e}")
+        flash("An error occurred while loading the attendance log.", "admin_error")
+        return redirect(url_for('admin_dashboard'))
+
 @app.route('/admin/upload-students', methods=['GET', 'POST'])
 @admin_required
 def admin_upload_students():
@@ -559,7 +613,6 @@ def handle_tap():
     data = request.get_json()
     period = data.get("period")
     action = data.get("action")
-    seconds = data.get("seconds", 0)
 
     if period not in ["a", "b"] or action not in ["tap_in", "tap_out"]:
         return jsonify({"error": "Invalid input"}), 400
@@ -586,6 +639,9 @@ def handle_tap():
         if session_entry:
             session_entry.tap_out_time = now
             session_entry.is_done = True
+            # Calculate the session duration in seconds
+            if session_entry.tap_in_time and session_entry.tap_out_time:
+                session_entry.duration_seconds = int((now - session_entry.tap_in_time).total_seconds())
 
     db.session.commit()
     return jsonify({"status": "ok"})

@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Full Attendance Log</h2>
+
+<p>Total logs: {{ logs|length }}</p>
+<p>Total students: {{ students|length }}</p>
+
+<table>
+    <thead>
+        <tr>
+            <th>Student</th>
+            <th>Block</th>
+            <th>Period</th>
+            <th>Tap In</th>
+            <th>Tap Out</th>
+            <th>Duration</th>
+            <th>Reason</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for log in logs %}
+            <tr>
+                <td>{{ students[log.student_id].name if log.student_id in students else 'Unknown' }}</td>
+                <td>{{ students[log.student_id].block if log.student_id in students else '—' }}</td>
+                <td>{{ log.period }}</td>
+                <td>{{ log.tap_in_time.strftime("%Y-%m-%d %H:%M:%S") if log.tap_in_time else '—' }}</td>
+                <td>{{ log.tap_out_time.strftime("%Y-%m-%d %H:%M:%S") if log.tap_out_time else '—' }}</td>
+                <td>
+                    {% if log.duration_seconds %}
+                        {{ (log.duration_seconds // 60)|int }}m {{ (log.duration_seconds % 60)|int }}s
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td>{{ log.reason or '—' }}</td>
+            </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

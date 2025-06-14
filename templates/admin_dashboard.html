@@ -6,6 +6,7 @@
 </head>
 <body class="p-4">
     <h2>📊 Admin Dashboard - Overview</h2>
+    <a class="btn btn-outline-secondary mb-3" href="{{ url_for('admin_attendance_log') }}" target="_blank">📄 View Full Attendance Log</a>
 
     <h4 class="mt-4">🧾 Most Recent 20 Account Actions</h4>
     <table class="table table-striped">
@@ -45,17 +46,29 @@
     <table class="table table-bordered">
         <thead>
             <tr>
-                <th>Student ID</th>
-                <th>Action</th>
-                <th>Timestamp</th>
+                <th>Student</th>
+                <th>Period</th>
+                <th>Tap In</th>
+                <th>Tap Out</th>
+                <th>Duration</th>
+                <th>Reason</th>
             </tr>
         </thead>
         <tbody>
             {% for log in logs %}
             <tr>
                 <td>{{ student_lookup.get(log.student_id).name if student_lookup.get(log.student_id) else "Unknown" }}</td>
-                <td>{{ log.action }}</td>
-                <td>{{ log.timestamp }}</td>
+                <td>{{ log.period|upper }}</td>
+                <td>{{ log.tap_in_time.strftime("%Y-%m-%d %H:%M:%S") if log.tap_in_time else "—" }}</td>
+                <td>{{ log.tap_out_time.strftime("%Y-%m-%d %H:%M:%S") if log.tap_out_time else "—" }}</td>
+                <td>
+                    {% if log.duration_seconds %}
+                        {{ (log.duration_seconds // 60)|int }}m {{ (log.duration_seconds % 60)|int }}s
+                    {% else %}
+                        —
+                    {% endif %}
+                </td>
+                <td>{{ log.reason or "—" }}</td>
             </tr>
             {% endfor %}
         </tbody>
