@@ -545,7 +545,7 @@ def admin_add_student():
     return render_template('admin_add_student.html')
 
 # -------------------- ADMIN FULL ATTENDANCE LOG --------------------
-@app.route('/admin/attendance-log')
+@app.route('/admin/attendance-log', endpoint='admin_attendance_log')
 @admin_required
 def admin_attendance_log():
     try:
@@ -639,6 +639,7 @@ def handle_tap():
         if session_entry:
             session_entry.tap_out_time = now
             session_entry.is_done = True
+            session_entry.reason = data.get("reason", session_entry.reason)
             # Calculate the session duration in seconds
             if session_entry.tap_in_time and session_entry.tap_out_time:
                 session_entry.duration_seconds = int((now - session_entry.tap_in_time).total_seconds())
