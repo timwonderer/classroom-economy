@@ -1,0 +1,89 @@
+{% extends "layout_admin.html" %}
+{% set page_title = "Payroll Overview" %}
+{% block title %}Payroll Overview{% endblock %}
+{% block content %}
+<div class="container mt-4">
+
+    <hr>
+
+    <!-- Next Payroll Date -->
+    <div class="card mb-4">
+        <div class="card-header">
+            Next Scheduled Payroll
+        </div>
+        <div class="card-body">
+            <p><strong>Date:</strong> {{ next_payroll_date or "N/A" }}</p>
+            <p><strong>Estimated Payout:</strong> ${{ total_payroll_estimate or "0.00" }}</p>
+            <form action="{{ url_for('run_payroll') }}" method="POST">
+                <button type="submit" class="btn btn-primary">Run Payroll Now</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Recent Payroll Activity -->
+    <div class="card mb-4">
+        <div class="card-header">
+            Recent Payroll Activity
+        </div>
+        <div class="card-body">
+            {% if recent_payrolls %}
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Student Name</th>
+                            <th>Student ID</th>
+                            <th>Block</th>
+                            <th>Amount</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for record in recent_payrolls %}
+                        <tr>
+                            <td>{{ record.timestamp or "N/A" }}</td>
+                            <td>
+                                {% if record.student_id and record.student_name %}
+                                    <a href="{{ url_for('student_detail', student_id=record.student_id) }}">
+                                        {{ record.student_name }}
+                                    </a>
+                                {% elif record.student_name %}
+                                    {{ record.student_name }}
+                                {% else %}
+                                    <em>Unknown</em>
+                                {% endif %}
+                            </td>
+                            <td>{{ record.student_id or "N/A" }}</td>
+                            <td>{{ record.student_block or "N/A" }}</td>
+                            <td>${{ "%.2f"|format(record.amount) }}</td>
+                            <td>
+                                {% if record.id %}
+                                    <form action="{{ url_for('void_transaction', transaction_id=record.id) }}" method="POST" style="display:inline-block;">
+                                        <button type="submit" class="btn btn-danger btn-sm">Void</button>
+                                    </form>
+                                {% else %}
+                                    <em>N/A</em>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            {% else %}
+                <p>No recent payrolls found.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Payroll History Placeholder -->
+    <div class="card">
+        <div class="card-header">
+            Full Payroll History
+        </div>
+        <div class="card-body">
+            <p>View detailed payroll history by block or student.</p>
+            <a href="{{ url_for('admin_payroll_history') }}" class="btn btn-secondary">View Payroll History</a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -3,7 +3,7 @@
 {% block title %}Attendance Log{% endblock %}
 {% block content %}
 
-<a href="{{ url_for('admin_dashboard') }}" class="btn btn-outline-primary mb-3">← Back to Dashboard</a>
+
 
 <p>Total logs: {{ logs|length }}</p>
 <p>Total students: {{ students|length }}</p>
@@ -14,7 +14,7 @@
       <tr>
         <th>Student</th>
         <th>Block</th>
-        <th>Period</th>
+
         <th>Tap In</th>
         <th>Tap Out</th>
         <th>Duration</th>
@@ -26,7 +26,7 @@
       <tr>
         <td>{{ students.get(log.student_id, {}).get('name', 'Unknown') }}</td>
         <td>{{ students.get(log.student_id, {}).get('block', '—') }}</td>
-        <td>{{ log.period }}</td>
+ 
         <td>{{ log.tap_in_time.strftime("%Y-%m-%d %H:%M:%S") if log.tap_in_time else '—' }}</td>
         <td>{{ log.tap_out_time.strftime("%Y-%m-%d %H:%M:%S") if log.tap_out_time else '—' }}</td>
         <td>

@@ -125,6 +125,7 @@ class TapSession(db.Model):
     reason = db.Column(db.String(50), nullable=True)
     is_done = db.Column(db.Boolean, default=False)
     duration_seconds = db.Column(db.Integer, default=0)
+    is_paid = db.Column(db.Boolean, default=False)
 
     student = db.relationship("Student", back_populates="tap_sessions")
 # -------------------- AUTH HELPERS --------------------
@@ -524,14 +525,166 @@ def student_detail(student_id):
     purchases = Purchase.query.filter_by(student_id=student.id).all()
     return render_template('student_detail.html', student=student, transactions=transactions, purchases=purchases)
 
+
 @app.route('/admin/void-transaction/<int:transaction_id>', methods=['POST'])
 @admin_required
 def void_transaction(transaction_id):
     tx = Transaction.query.get_or_404(transaction_id)
     tx.is_void = True
     db.session.commit()
-    flash("Transaction voided.")
+    flash("✅ Transaction voided.", "success")
+    return redirect(url_for('admin_payroll'))
+
+
+# -------------------- ADMIN PAYROLL HISTORY --------------------
+@app.route('/admin/payroll-history')
+@admin_required
+def admin_payroll_history():
+    app.logger.info("🧭 Entered admin_payroll_history route")
+    from sqlalchemy import desc
+    from datetime import datetime, timedelta
+
+    block = request.args.get("block")
+    app.logger.info(f"📊 Block filter: {block}")
+    start_date_str = request.args.get("start_date")
+    end_date_str = request.args.get("end_date")
+    app.logger.info(f"📅 Date filters: start={start_date_str}, end={end_date_str}")
+
+    query = Transaction.query.filter_by(type="payroll")
+
+    if block:
+        student_ids = [s.id for s in Student.query.filter_by(block=block).all()]
+        app.logger.info(f"👥 Student IDs in block '{block}': {student_ids}")
+        query = query.filter(Transaction.student_id.in_(student_ids))
+
+    if start_date_str:
+        start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+        query = query.filter(Transaction.timestamp >= start_date)
+
+    if end_date_str:
+        end_date = datetime.strptime(end_date_str, "%Y-%m-%d") + timedelta(days=1)
+        query = query.filter(Transaction.timestamp < end_date)
+
+    payroll_transactions = query.order_by(desc(Transaction.timestamp)).all()
+    app.logger.info(f"🔎 Payroll transactions found: {len(payroll_transactions)}")
+
+    student_lookup = {s.id: s for s in Student.query.all()}
+
+    payroll_records = []
+    for tx in payroll_transactions:
+        student = student_lookup.get(tx.student_id)
+        # Convert to Pacific time and format once
+        local_ts = tx.timestamp.astimezone(pytz.timezone('America/Los_Angeles'))
+        payroll_records.append({
+            'formatted_date': local_ts.strftime("%Y-%m-%d %I:%M %p"),
+            'block': student.block if student else 'Unknown',
+            'student_id': student.id if student else tx.student_id,
+            'student_name': student.name if student else 'Unknown',
+            'amount': tx.amount,
+            'notes': tx.description,
+        })
+
+    app.logger.info(f"📄 Payroll records prepared: {len(payroll_records)}")
+
+    # Current timestamp for header (Pacific Time)
+    pacific = pytz.timezone('America/Los_Angeles')
+    current_time = datetime.now(pacific)
+
+    return render_template(
+        'admin_payroll_history.html',
+        payroll_history=payroll_records,
+        selected_page="payroll_history",
+        selected_block=block,
+        selected_start=start_date_str,
+        selected_end=end_date_str,
+        current_time=current_time
+    )
+
+
+# -------------------- ADMIN RUN PAYROLL MANUALLY --------------------
+@app.route('/admin/run-payroll', methods=['POST'])
+@admin_required
+def run_payroll():
+    try:
+        from sqlalchemy.sql import func
+        RATE_PER_SECOND = 0.25 / 60  # $0.25 per minute
+
+        unpaid_sessions = TapSession.query.filter_by(is_done=True, is_paid=False).all()
+        summary = {}
+
+        for session in unpaid_sessions:
+            if not session.duration_seconds or session.duration_seconds <= 0:
+                continue
+
+            amount = round(session.duration_seconds * RATE_PER_SECOND, 2)
+            if amount <= 0:
+                continue
+
+            tx = Transaction(
+                student_id=session.student_id,
+                amount=amount,
+                description="Payroll based on attendance",
+                account_type="checking",
+                type="payroll"
+            )
+            db.session.add(tx)
+            session.is_paid = True
+            summary.setdefault(session.student_id, 0)
+            summary[session.student_id] += amount
+
+        db.session.commit()
+        flash(f"✅ Payroll complete. Paid {len(summary)} students.", "admin_success")
+    except Exception as e:
+        app.logger.error(f"❌ Payroll error: {e}")
+        flash("Payroll error occurred. Check logs.", "admin_error")
     return redirect(url_for('admin_dashboard'))
+
+# -------------------- ADMIN PAYROLL PAGE --------------------
+@app.route('/admin/payroll')
+@admin_required
+def admin_payroll():
+    from sqlalchemy import desc
+    from datetime import datetime, timedelta
+    import pytz
+
+    # Next scheduled payroll: every other Friday from last payroll
+    last_payroll_tx = Transaction.query.filter_by(type="payroll").order_by(desc(Transaction.timestamp)).first()
+    pacific = pytz.timezone('America/Los_Angeles')
+    next_pay_date = (last_payroll_tx.timestamp + timedelta(days=14)) if last_payroll_tx else datetime.utcnow()
+    next_pay_date = next_pay_date.astimezone(pacific).strftime("%Y-%m-%d")
+
+    # Recent payroll activity: 20 most recent payroll transactions, joined with student info
+    recent_raw = (
+        db.session.query(
+            Transaction,
+            Student.name.label("student_name"),
+            Student.block.label("student_block")
+        )
+        .join(Student, Transaction.student_id == Student.id)
+        .filter(Transaction.type == 'payroll')
+        .order_by(Transaction.timestamp.desc())
+        .limit(20)
+        .all()
+    )
+
+    recent_payrolls = [
+        {
+            'student_id': tx.student_id,
+            'student_name': name,
+            'student_block': block,
+            'amount': tx.amount,
+            'timestamp': tx.timestamp.astimezone(pacific).strftime("%Y-%m-%d %I:%M %p")
+        }
+        for tx, name, block in recent_raw
+    ]
+
+    return render_template(
+        'admin_payroll.html',
+        recent_payrolls=recent_payrolls,
+        next_pay_date=next_pay_date,
+        selected_page="payroll",
+        now=datetime.now(pacific).strftime("%Y-%m-%d %I:%M %p")
+    )
 
 @app.route('/student/logout')
 @login_required

@@ -85,28 +85,5 @@
 </table>
 
 <hr class="my-4">
-<h4>💵 Log Payroll or Bonus</h4>
-<form method="POST" action="{{ url_for('give_bonus_all') }}">
-    <div class="row mb-2">
-        <div class="col-md-4">
-            <label class="form-label">Title</label>
-            <input type="text" name="title" class="form-control" required placeholder="e.g. April Bonus">
-        </div>
-        <div class="col-md-3">
-            <label class="form-label">Amount</label>
-            <input type="number" name="amount" step="0.01" class="form-control" required>
-        </div>
-        <div class="col-md-3">
-            <label class="form-label">Type</label>
-            <select name="type" class="form-select" required>
-                <option value="bonus">Bonus</option>
-                <option value="payroll">Payroll</option>
-            </select>
-        </div>
-        <div class="col-md-2 d-flex align-items-end">
-            <button type="submit" class="btn btn-success w-100">💾 Post</button>
-        </div>
-    </div>
-</form>
 
 {% endblock %}
