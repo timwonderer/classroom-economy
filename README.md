@@ -1,56 +1,49 @@
 # Classroom Economy System
 
-A custom-built, interactive classroom banking and behavior management platform built with Flask. Designed to simulate real-world financial systems in a school environment and help students learn financial literacy, responsibility, and decision-making.
+An interactive banking and classroom management platform for students. The application simulates real-world finances while letting teachers track attendance and run payroll based on student participation.
 
-## 🚀 Features
+## Features
 
-- ✅ **Student Attendance Tracking** (via QR codes or RFID)
-- 🚽 **Restroom Pass Management** with daily limits and refillable options
-- 🏦 **Classroom Banking System**
-  - Checking & Savings accounts
-  - Salary (auto-pay based on attendance)
-  - Rent, property taxes, insurance billing
-  - Store purchases and inventory
-  - Bonus and penalty system
-- 🔐 **Two-Factor Authentication (2FA)** options for secure purchases
-- 📊 **Admin Dashboard**
-  - Student summaries by block
-  - Real-time logs
-  - Payroll, bonuses, and monthly bills
-- 📈 **Future Stock Market Simulation** using school metrics and behavior data
+### Implemented & manually tested
+- Student login with QR ID and PIN
+- New user setup to create PIN and passphrase
+- Two-factor transfer between checking and savings accounts
+- Attendance tracking for Period A and B with tap in/out and automatic timers
+- Insurance market with multiple plans and cooldown logic
+- Admin portal with roster management, CSV upload, attendance logs, and payroll processing
 
-## 🛠️ Tech Stack
+### Implemented but not covered by automated tests
+- All features above currently rely on manual testing only
 
-- **Backend:** Flask, SQLAlchemy, Gunicorn
-- **Frontend:** HTML/CSS (Bootstrap), Jinja2 Templates
-- **Database:** SQLite (development) / PostgreSQL (production-ready)
-- **Deployment:** Ubuntu server on DigitalOcean with NGINX + Let's Encrypt
-- **Authentication:** Custom PIN + optional TOTP / passkeys
+### Backend implemented but no frontend
+- Rent and property tax tracking fields
+- Purchase model for future classroom store
+- Support for TOTP/passkey second factor
 
-## 💡 Educational Goals
+### Frontend only / not connected
+- Student "Shop" link and admin menu items for Hall Pass, Transactions, Store, and Audit
+- TOTP setup page template
 
-This system is built to support:
-- Financial literacy in a gamified format
-- Positive reinforcement through class economy incentives
-- Student agency in managing their own accounts
-- Real-world learning through simulated responsibilities
+## Tech Stack
+- **Backend:** Flask, SQLAlchemy (PostgreSQL or SQLite)
+- **Frontend:** Bootstrap & Jinja2 templates
+- **Deployment:** Gunicorn + NGINX on Ubuntu (sample configuration)
 
-## 📦 Setup (Dev Mode)
-
+## Setup
 ```bash
-git clone git@github.com:timwonderer/classroom-economy.git
-cd classroom-economy
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 flask run
 ```
-Default run environment is set for development. Use Gunicorn + NGINX in production.
+Seed data can be generated with `python seed_students.py`.
 
-## 📅 Roadmap / Planned Features
-- 📲 Mobile-friendly redesign
-- 🪙 Stock trading module based on real school data
+## Roadmap
+- Mobile‑friendly redesign
+- Classroom store & inventory system
+- Rent and property tax payment workflows
+- Optional TOTP or passkey authentication
+- Stock market mini-game using school data
 
-Made by Timothy Chang, a public science teacher who does too much for free.
-
-*"If it doesn't exist, make it"*
+## License
+Released under the MIT License.
