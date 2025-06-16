@@ -2,7 +2,7 @@
 {% set page_title = "Detailed Payroll History" %}
 {% block title %}Detailed Payroll History{% endblock %}
 {% block content %}
-<div class="container mt-4">
+<div class="mt-4">
 
 
 
@@ -10,7 +10,7 @@
     <form method="get" action="{{ url_for('admin_payroll_history') }}" class="form-inline mb-3">
         <div class="form-group mr-2">
             <label for="block">Block:</label>
-            <select name="block" id="block" class="form-control ml-2">
+            <select name="block" id="block" class="form-control ml-2" style="width: 150px;">
                 <option value="">All</option>
                 {% for b in blocks %}
                 <option value="{{ b }}" {% if request.args.get('block') == b %}selected{% endif %}>{{ b }}</option>
@@ -19,11 +19,11 @@
         </div>
         <div class="form-group mr-2">
             <label for="start">From:</label>
-            <input type="date" name="start_date" class="form-control ml-2" value="{{ request.args.get('start_date', '') }}">
+            <input type="date" name="start_date" class="form-control ml-2" style="width: 150px;" value="{{ request.args.get('start_date', '') }}">
         </div>
         <div class="form-group mr-2">
             <label for="end">To:</label>
-            <input type="date" name="end_date" class="form-control ml-2" value="{{ request.args.get('end_date', '') }}">
+            <input type="date" name="end_date" class="form-control ml-2" style="width: 150px;" value="{{ request.args.get('end_date', '') }}">
         </div>
         <button type="submit" class="btn btn-primary ml-2">Filter</button>
     </form>
@@ -36,31 +36,21 @@
                 <th>Student</th>
                 <th>Amount</th>
                 <th>Notes</th>
-                <th>Action</th>
             </tr>
         </thead>
         <tbody>
             {% if payroll_history %}
                 {% for entry in payroll_history %}
                 <tr>
-                    <td>{{ entry.formatted_date or "N/A" }}</td>
+                    <td>{{ entry.timestamp|format_datetime }}</td>
                     <td>{{ entry.block }}</td>
                     <td><a href="{{ url_for('student_detail', student_id=entry.student_id) }}">{{ entry.student_name }}</a></td>
                     <td>${{ "%.2f"|format(entry.amount) }}</td>
-                    <td>{{ entry.notes or '' }}</td>
-                    <td>
-                        {% if entry.id %}
-                            <form action="{{ url_for('void_transaction', transaction_id=entry.id) }}" method="POST" style="display:inline-block;">
-                                <button type="submit" class="btn btn-danger btn-sm">Void</button>
-                            </form>
-                        {% else %}
-                            <em>N/A</em>
-                        {% endif %}
-                    </td>
+                    <td>{{ entry.notes }}</td>
                 </tr>
                 {% endfor %}
             {% else %}
-                <tr><td colspan="6" class="text-center">No payroll records found.</td></tr>
+                <tr><td colspan="5" class="text-center">No payroll records found.</td></tr>
             {% endif %}
         </tbody>
     </table>

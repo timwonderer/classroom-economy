@@ -49,15 +49,15 @@
                 <td>{{ student.passes_left if student.passes_left is not none else '—' }}</td>
                 <td>${{ "%.2f"|format(student.checking_balance) }}</td>
                 <td>
-                    {% if student.latest_tap_in %}
-                        {{ student.latest_tap_in.strftime('%Y-%m-%d %H:%M') }}
+                    {% if student.last_tap_in %}
+                        {{ student.last_tap_in|format_datetime }}
                     {% else %}
                         —
                     {% endif %}
                 </td>
                 <td>
-                    {% if student.latest_tap_out %}
-                        {{ student.latest_tap_out.strftime('%Y-%m-%d %H:%M') }}
+                    {% if student.last_tap_out %}
+                        {{ student.last_tap_out|format_datetime }}
                     {% else %}
                         —
                     {% endif %}

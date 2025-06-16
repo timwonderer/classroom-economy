@@ -2,7 +2,7 @@
 {% set page_title = "Payroll Overview" %}
 {% block title %}Payroll Overview{% endblock %}
 {% block content %}
-<div class="container mt-4">
+<div class="mt-4">
 
     <hr>
 
@@ -12,7 +12,13 @@
             Next Scheduled Payroll
         </div>
         <div class="card-body">
-            <p><strong>Date:</strong> {{ next_payroll_date or "N/A" }}</p>
+            <p><strong>Date:</strong>
+                {% if next_payroll_date %}
+                    {{ next_payroll_date|format_datetime }}
+                {% else %}
+                    N/A
+                {% endif %}
+            </p>
             <p><strong>Estimated Payout:</strong> ${{ total_payroll_estimate or "0.00" }}</p>
             <form action="{{ url_for('run_payroll') }}" method="POST">
                 <button type="submit" class="btn btn-primary">Run Payroll Now</button>
@@ -35,13 +41,18 @@
                             <th>Student ID</th>
                             <th>Block</th>
                             <th>Amount</th>
-                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for record in recent_payrolls %}
                         <tr>
-                            <td>{{ record.timestamp or "N/A" }}</td>
+                            <td>
+                                {% if record.timestamp %}
+                                    {{ record.timestamp|format_datetime }}
+                                {% else %}
+                                    N/A
+                                {% endif %}
+                            </td>
                             <td>
                                 {% if record.student_id and record.student_name %}
                                     <a href="{{ url_for('student_detail', student_id=record.student_id) }}">
@@ -56,15 +67,6 @@
                             <td>{{ record.student_id or "N/A" }}</td>
                             <td>{{ record.student_block or "N/A" }}</td>
                             <td>${{ "%.2f"|format(record.amount) }}</td>
-                            <td>
-                                {% if record.id %}
-                                    <form action="{{ url_for('void_transaction', transaction_id=record.id) }}" method="POST" style="display:inline-block;">
-                                        <button type="submit" class="btn btn-danger btn-sm">Void</button>
-                                    </form>
-                                {% else %}
-                                    <em>N/A</em>
-                                {% endif %}
-                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>

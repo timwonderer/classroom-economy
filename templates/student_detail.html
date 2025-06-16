@@ -19,44 +19,69 @@
             <p><strong>Checking Balance:</strong> ${{ "%.2f"|format(student.checking_balance) }}</p>
             <p><strong>Savings Balance:</strong> ${{ "%.2f"|format(student.savings_balance) }}</p>
             <hr>
-            <h6>📅 Current Bill Status</h6>
-            <ul>
-                <li><strong>Rent Paid:</strong>
-                    {% if student.is_rent_enabled %}
-                        {% if student.owns_seat %}N/A{% else %}Yes{% endif %}
-                    {% else %}No{% endif %}
-                </li>
-                <li><strong>Property Tax Paid:</strong>
-                    {% if student.is_property_tax_enabled %}Yes{% else %}No{% endif %}
-                </li>
-                <li><strong>Insurance Plan:</strong>
-                    {% if student.insurance_plan != 'none' %}
-                        {{ student.insurance_plan.replace('_', ' ').title() }}
-                        (Last Paid: {{ student.insurance_last_paid.strftime('%Y-%m-%d') if student.insurance_last_paid else 'Never' }})
-                    {% else %}
-                        None
-                    {% endif %}
-                </li>
-            </ul>
+            <h6>⏱️ Recent Attendance</h6>
+            <p><strong>Most Recent Tap In:</strong>
+              {% if student.last_tap_in %}
+                {{ student.last_tap_in|format_datetime }}
+              {% else %}
+                —
+              {% endif %}
+            </p>
+            <p><strong>Most Recent Tap Out:</strong>
+              {% if student.last_tap_out %}
+                {{ student.last_tap_out|format_datetime }}
+              {% else %}
+                —
+              {% endif %}
+            </p>
+            <p><strong>Reason:</strong> {{ student.last_tap_out_reason or '—' }}</p>
         </div>
     </div>
 
     <!-- SECTION 2: SETTINGS -->
     <div class="card mb-4">
-        <div class="card-header bg-secondary text-white">Settings</div>
+        <div class="card-header bg-secondary text-white">Residency Information</div>
         <div class="card-body">
-            <form method="POST" action="/admin/students/{{ student.id }}/bills">
-                <h6>Update Monthly Bills</h6>
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="rent" {% if student.is_rent_enabled %}checked{% endif %}>
-                    <label class="form-check-label">Rent ($800/month)</label>
-                </div>
-                <div class="form-check">
-                    <input class="form-check-input" type="checkbox" name="property_tax" {% if student.is_property_tax_enabled %}checked{% endif %}>
-                    <label class="form-check-label">Property Tax ($120/month)</label>
-                </div>
-                <button type="submit" class="btn btn-outline-primary mt-3">💾 Update Bills</button>
-            </form>
+            <p><strong>Homeownership:</strong> {{ 'Yes' if student.owns_property else 'No' }}</p>
+            <p><strong>Renter:</strong> {{ 'Yes' if student.is_renter else 'No' }}</p>
+
+            {% if student.is_renter %}
+            <ul>
+              <li><strong>Most Recent Rent Payment:</strong>
+                {% if student.rent_last_paid %}
+                  {{ student.rent_last_paid|format_datetime('%Y-%m-%d') }}
+                {% else %}
+                  — 
+                {% endif %}
+              </li>
+              <li><strong>Overdue:</strong>
+                {% if student.rent_overdue %}
+                  Yes (Due Date: {{ student.rent_due_date|format_datetime('%Y-%m-%d') }})
+                {% else %}
+                  No
+                {% endif %}
+              </li>
+            </ul>
+            {% endif %}
+
+            {% if student.owns_property %}
+            <ul>
+              <li><strong>Most Recent Property Tax Payment:</strong>
+                {% if student.property_tax_last_paid %}
+                  {{ student.property_tax_last_paid|format_datetime('%Y-%m-%d') }}
+                {% else %}
+                  — 
+                {% endif %}
+              </li>
+              <li><strong>Overdue:</strong>
+                {% if student.property_tax_overdue %}
+                  Yes (Due Date: {{ student.property_tax_due_date|format_datetime('%Y-%m-%d') }})
+                {% else %}
+                  No
+                {% endif %}
+              </li>
+            </ul>
+            {% endif %}
         </div>
     </div>
 
@@ -76,7 +101,13 @@
                         <td>{{ tx.type }}</td>
                         <td>${{ "%.2f"|format(tx.amount) }}</td>
                         <td>{{ tx.description }}</td>
-                        <td>{{ tx.timestamp.strftime('%Y-%m-%d %H:%M') }}</td>
+                        <td>
+                          {% if tx.timestamp %}
+                            {{ tx.timestamp|format_datetime }}
+                          {% else %}
+                            —
+                          {% endif %}
+                        </td>
                         <td>
                             {% if tx.is_void %}
                                 <span class="badge bg-secondary">Voided</span>
@@ -105,7 +136,13 @@
                   {% for purchase in purchases %}
                   <tr>
                     <td>{{ purchase.item_name }}</td>
-                    <td>{{ purchase.date_purchased.strftime('%Y-%m-%d') }}</td>
+                    <td>
+                      {% if purchase.date_purchased %}
+                        {{ purchase.date_purchased|format_datetime('%Y-%m-%d') }}
+                      {% else %}
+                        —
+                      {% endif %}
+                    </td>
                     <td>{{ 'Yes' if purchase.redeemed else 'No' }}</td>
                   </tr>
                   {% endfor %}

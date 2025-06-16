@@ -4,6 +4,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
 from functools import wraps
 import pytz
+PACIFIC = pytz.timezone('America/Los_Angeles')
 import pyotp
 import urllib.parse
 import os
@@ -19,6 +20,23 @@ def url_encode_filter(s):
     return urllib.parse.quote_plus(s)
 
 app.jinja_env.filters['url_encode'] = url_encode_filter
+
+# ---- Jinja2 filter: Format UTC datetime to Pacific Time ----
+import pytz
+def format_datetime(value, fmt='%Y-%m-%d %I:%M %p', tz_name='America/Los_Angeles'):
+    """
+    Convert a UTC datetime to the specified timezone and format it.
+    """
+    if not value:
+        return ''
+    utc = pytz.utc
+    target_tz = pytz.timezone(tz_name)
+    # Localize naive datetimes as UTC
+    dt = value if getattr(value, 'tzinfo', None) else utc.localize(value)
+    local_dt = dt.astimezone(target_tz)
+    return local_dt.strftime(fmt)
+
+app.jinja_env.filters['format_datetime'] = format_datetime
 
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://timwonderer:Deduce-Python5-Customize@localhost/classroom_economy'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -120,7 +138,7 @@ class TapSession(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     period = db.Column(db.String(10), nullable=False)  # e.g., 'a', 'b'
-    tap_in_time = db.Column(db.DateTime, default=datetime.utcnow)
+    tap_in_time = db.Column(db.DateTime, default=lambda: datetime.now(PACIFIC))
     tap_out_time = db.Column(db.DateTime, nullable=True)
     reason = db.Column(db.String(50), nullable=True)
     is_done = db.Column(db.Boolean, default=False)
@@ -501,6 +519,23 @@ def admin_logout():
 @admin_required
 def admin_students():
     students = Student.query.order_by(Student.block, Student.name).all()
+    from datetime import datetime
+    # Ensure TapSession is imported
+    # Already imported above, but for safety:
+    # from .models import TapSession
+    for student in students:
+        # fetch latest completed session tap_out_time
+        latest_session = TapSession.query.filter_by(student_id=student.id, is_done=True).order_by(TapSession.tap_out_time.desc()).first()
+        if latest_session:
+            student.last_tap_out = latest_session.tap_out_time
+        else:
+            student.last_tap_out = None
+        # fetch latest session tap_in_time
+        latest_in = TapSession.query.filter_by(student_id=student.id).order_by(TapSession.tap_in_time.desc()).first()
+        if latest_in:
+            student.last_tap_in = latest_in.tap_in_time
+        else:
+            student.last_tap_in = None
     return render_template('admin_students.html', students=students, selected_page="students")
 
 # -------------------- ADMIN HALL PASS MANAGEMENT PLACEHOLDER --------------------
@@ -521,6 +556,38 @@ def admin_transaction_log():
 @admin_required
 def student_detail(student_id):
     student = Student.query.get_or_404(student_id)
+    # Fetch latest tap session for additional info
+    latest_session = TapSession.query.filter_by(student_id=student.id).order_by(TapSession.tap_in_time.desc()).first()
+    if latest_session:
+        student.last_tap_in = latest_session.tap_in_time
+        student.last_tap_out = latest_session.tap_out_time
+        student.last_tap_out_reason = latest_session.reason
+    else:
+        student.last_tap_in = None
+        student.last_tap_out = None
+        student.last_tap_out_reason = None
+
+    # Fetch last rent payment
+    latest_rent = Transaction.query.filter_by(student_id=student.id, type="rent").order_by(Transaction.timestamp.desc()).first()
+    student.rent_last_paid = latest_rent.timestamp if latest_rent else None
+
+    # Fetch last property tax payment
+    latest_tax = Transaction.query.filter_by(student_id=student.id, type="property_tax").order_by(Transaction.timestamp.desc()).first()
+    student.property_tax_last_paid = latest_tax.timestamp if latest_tax else None
+
+    # Compute due dates and overdue status
+    from datetime import date
+    today = datetime.now(PACIFIC).date()
+    # Rent due on 5th, overdue after 6th
+    rent_due = date(today.year, today.month, 5)
+    student.rent_due_date = rent_due
+    student.rent_overdue = today > rent_due and (not student.rent_last_paid or student.rent_last_paid.astimezone(PACIFIC).date() <= rent_due)
+
+    # Property tax due on 5th, overdue after 6th
+    tax_due = date(today.year, today.month, 5)
+    student.property_tax_due_date = tax_due
+    student.property_tax_overdue = today > tax_due and (not student.property_tax_last_paid or student.property_tax_last_paid.astimezone(PACIFIC).date() <= tax_due)
+
     transactions = Transaction.query.filter_by(student_id=student.id).order_by(Transaction.timestamp.desc()).all()
     purchases = Purchase.query.filter_by(student_id=student.id).all()
     return render_template('student_detail.html', student=student, transactions=transactions, purchases=purchases)
@@ -569,14 +636,15 @@ def admin_payroll_history():
     app.logger.info(f"🔎 Payroll transactions found: {len(payroll_transactions)}")
 
     student_lookup = {s.id: s for s in Student.query.all()}
+    # Gather distinct block names for the dropdown
+    blocks = sorted({s.block for s in student_lookup.values() if s.block})
 
     payroll_records = []
     for tx in payroll_transactions:
         student = student_lookup.get(tx.student_id)
-        # Convert to Pacific time and format once
-        local_ts = tx.timestamp.astimezone(pytz.timezone('America/Los_Angeles'))
         payroll_records.append({
-            'formatted_date': local_ts.strftime("%Y-%m-%d %I:%M %p"),
+            'id': tx.id,
+            'timestamp': tx.timestamp,
             'block': student.block if student else 'Unknown',
             'student_id': student.id if student else tx.student_id,
             'student_name': student.name if student else 'Unknown',
@@ -593,6 +661,7 @@ def admin_payroll_history():
     return render_template(
         'admin_payroll_history.html',
         payroll_history=payroll_records,
+        blocks=blocks,
         selected_page="payroll_history",
         selected_block=block,
         selected_start=start_date_str,
@@ -651,7 +720,7 @@ def admin_payroll():
     last_payroll_tx = Transaction.query.filter_by(type="payroll").order_by(desc(Transaction.timestamp)).first()
     pacific = pytz.timezone('America/Los_Angeles')
     next_pay_date = (last_payroll_tx.timestamp + timedelta(days=14)) if last_payroll_tx else datetime.utcnow()
-    next_pay_date = next_pay_date.astimezone(pacific).strftime("%Y-%m-%d")
+    next_pay_date = next_pay_date.astimezone(pacific)  # raw datetime for template filter
 
     # Recent payroll activity: 20 most recent payroll transactions, joined with student info
     recent_raw = (
@@ -673,7 +742,7 @@ def admin_payroll():
             'student_name': name,
             'student_block': block,
             'amount': tx.amount,
-            'timestamp': tx.timestamp.astimezone(pacific).strftime("%Y-%m-%d %I:%M %p")
+            'timestamp': tx.timestamp  # raw datetime for filter to format
         }
         for tx, name, block in recent_raw
     ]
@@ -788,7 +857,7 @@ def handle_tap():
     if period not in ["a", "b"] or action not in ["tap_in", "tap_out"]:
         return jsonify({"error": "Invalid input"}), 400
 
-    now = datetime.utcnow()
+    now = datetime.now(PACIFIC)
     student = get_logged_in_student()
 
     session_entry = TapSession.query.filter_by(
