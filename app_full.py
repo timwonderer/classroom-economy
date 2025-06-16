@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from functools import wraps
 import pytz
 PACIFIC = pytz.timezone('America/Los_Angeles')
+utc = pytz.utc
 import pyotp
 import urllib.parse
 import os
@@ -20,6 +21,13 @@ def url_encode_filter(s):
     return urllib.parse.quote_plus(s)
 
 app.jinja_env.filters['url_encode'] = url_encode_filter
+
+import logging
+# Ensure our app.logger emits INFO and DEBUG (not just WARNING+)
+handler = logging.StreamHandler()
+handler.setLevel(logging.DEBUG)
+app.logger.addHandler(handler)
+app.logger.setLevel(logging.DEBUG)
 
 # ---- Jinja2 filter: Format UTC datetime to Pacific Time ----
 import pytz
@@ -251,20 +259,60 @@ def student_dashboard():
 
     # Updated tap session status logic for periods a and b
     def get_session_status(student_id, period):
-        from datetime import datetime
-        today = datetime.utcnow().date()
-        completed = TapSession.query.filter_by(student_id=student_id, period=period, is_done=True).all()
-        seconds_logged = sum(s.duration_seconds or 0 for s in completed)
-        latest_session = max(completed, key=lambda s: s.tap_out_time, default=None)
-        locked_out = latest_session and latest_session.tap_out_time.date() == today
+        utc = pytz.utc
+        now_utc = datetime.utcnow().replace(tzinfo=utc)
+        now = now_utc.astimezone(PACIFIC)
+        # Find the most recent active session (no tap_out_time)
+        active_session = TapSession.query.filter_by(
+            student_id=student_id,
+            period=period,
+            tap_out_time=None
+        ).first()
 
-        active_session = TapSession.query.filter_by(student_id=student_id, period=period, is_done=False).first()
-        is_tapped_in = active_session is not None
-        is_done = not is_tapped_in and locked_out
-
-        duration_seconds = seconds_logged
         if active_session:
-            duration_seconds += int((datetime.utcnow() - active_session.tap_in_time).total_seconds())
+            # User is currently tapped in
+            is_tapped_in = True
+            is_done = False
+            # Duration is time since tap_in
+            t_in = active_session.tap_in_time
+            if getattr(t_in, 'tzinfo', None) is None:
+                t_in = utc.localize(t_in)
+            t_in = t_in.astimezone(PACIFIC)
+            duration_seconds = int((now - t_in).total_seconds())
+        else:
+            # No active session: check if last session ended today
+            last_done = TapSession.query.filter_by(
+                student_id=student_id,
+                period=period,
+                is_done=True
+            ).order_by(TapSession.tap_out_time.desc()).first()
+            if last_done:
+                out_date = last_done.tap_out_time
+                if getattr(out_date, 'tzinfo', None) is None:
+                    out_date = utc.localize(out_date)
+                out_date = out_date.astimezone(PACIFIC).date()
+                # Only consider period done when the reason was explicitly 'done'
+                is_done = (
+                    out_date == now.date()
+                    and last_done.reason
+                    and last_done.reason.lower() == 'done'
+                )
+            else:
+                is_done = False
+            is_tapped_in = False
+            # Show last session duration if done, else zero
+            if last_done:
+                t_in = last_done.tap_in_time
+                t_out = last_done.tap_out_time
+                if getattr(t_in, 'tzinfo', None) is None:
+                    t_in = utc.localize(t_in)
+                t_in = t_in.astimezone(PACIFIC)
+                if getattr(t_out, 'tzinfo', None) is None:
+                    t_out = utc.localize(t_out)
+                t_out = t_out.astimezone(PACIFIC)
+                duration_seconds = int((t_out - t_in).total_seconds())
+            else:
+                duration_seconds = 0
 
         return is_tapped_in, is_done, duration_seconds
 
@@ -473,7 +521,30 @@ def admin_dashboard():
     students = Student.query.order_by(Student.name).all()
     transactions = Transaction.query.order_by(Transaction.timestamp.desc()).limit(20).all()
     student_lookup = {s.id: s for s in students}
-    logs = TapSession.query.order_by(TapSession.tap_in_time.desc()).limit(20).all()
+    raw_logs = TapSession.query.order_by(TapSession.tap_in_time.desc()).limit(20).all()
+    logs = []
+    for log in raw_logs:
+        dur = log.duration_seconds or 0
+        # Recalculate if negative and both timestamps present
+        if dur < 0 and log.tap_in_time and log.tap_out_time:
+            t_in = log.tap_in_time
+            if getattr(t_in, 'tzinfo', None) is None:
+                t_in = utc.localize(t_in)
+            t_out = log.tap_out_time
+            if getattr(t_out, 'tzinfo', None) is None:
+                t_out = utc.localize(t_out)
+            dur = int((t_out - t_in).total_seconds())
+        logs.append({
+            'student_id': log.student_id,
+            'period': log.period,
+            'tap_in_time': log.tap_in_time,
+            'tap_out_time': log.tap_out_time,
+            'duration_seconds': dur,
+            'reason': log.reason
+        })
+    app.logger.info(f"📝 Dashboard logs data: {logs}")
+    for entry in logs:
+        app.logger.debug(f"Log entry - student_id: {entry['student_id']}, reason: {entry.get('reason')}")
     return render_template('admin_dashboard.html', students=students, transactions=transactions, student_lookup=student_lookup, logs=logs)
 
 @app.route('/admin/bonuses', methods=['POST'])
@@ -520,9 +591,6 @@ def admin_logout():
 def admin_students():
     students = Student.query.order_by(Student.block, Student.name).all()
     from datetime import datetime
-    # Ensure TapSession is imported
-    # Already imported above, but for safety:
-    # from .models import TapSession
     for student in students:
         # fetch latest completed session tap_out_time
         latest_session = TapSession.query.filter_by(student_id=student.id, is_done=True).order_by(TapSession.tap_out_time.desc()).first()
@@ -530,6 +598,8 @@ def admin_students():
             student.last_tap_out = latest_session.tap_out_time
         else:
             student.last_tap_out = None
+        # Attach tap-out reason
+        student.last_tap_out_reason = latest_session.reason if latest_session else None
         # fetch latest session tap_in_time
         latest_in = TapSession.query.filter_by(student_id=student.id).order_by(TapSession.tap_in_time.desc()).first()
         if latest_in:
@@ -786,23 +856,36 @@ def admin_add_student():
 @app.route('/admin/attendance-log')
 @admin_required
 def admin_attendance_log():
-    try:
-        app.logger.info("🔄 Entered admin_attendance_log route")
-        logs = TapSession.query.order_by(TapSession.tap_in_time.desc()).all()
-        students = {
-            s.id: {"name": s.name, "block": s.block} for s in Student.query.all()
-        }
-        app.logger.info("✔️ Successfully fetched logs and students")
-        return render_template(
-            'admin_attendance_log.html',
-            logs=logs,
-            students=students,
-            selected_page="attendance"
-        )
-    except Exception as e:
-        app.logger.error(f"❌ Exception in admin_attendance_log: {e}")
-        flash("An error occurred while loading the attendance log.", "admin_error")
-        return redirect(url_for('admin_dashboard'))
+    # Build student lookup for names and blocks
+    students = {s.id: {'name': s.name, 'block': s.block} for s in Student.query.all()}
+    # Fetch attendance sessions
+    raw_logs = TapSession.query.order_by(TapSession.tap_in_time.desc()).all()
+    # Format logs as dicts, normalizing negative durations
+    attendance_logs = []
+    for log in raw_logs:
+        # Compute a positive duration if the stored one is negative or missing
+        dur = log.duration_seconds or 0
+        if dur < 0 and log.tap_in_time and log.tap_out_time:
+            t_in = log.tap_in_time
+            if getattr(t_in, 'tzinfo', None) is None:
+                t_in = utc.localize(t_in)
+            t_out = log.tap_out_time
+            if getattr(t_out, 'tzinfo', None) is None:
+                t_out = utc.localize(t_out)
+            dur = int((t_out - t_in).total_seconds())
+        attendance_logs.append({
+            'student_id': log.student_id,
+            'tap_in_time': log.tap_in_time,
+            'tap_out_time': log.tap_out_time,
+            'duration_seconds': dur,
+            'reason': log.reason
+        })
+    return render_template(
+        'admin_attendance_log.html',
+        logs=attendance_logs,
+        students=students,
+        selected_page="attendance"
+    )
 
 @app.route('/admin/upload-students', methods=['GET', 'POST'])
 @admin_required
@@ -863,7 +946,8 @@ def handle_tap():
     session_entry = TapSession.query.filter_by(
         student_id=student.id,
         period=period,
-        is_done=False
+        is_done=False,
+        tap_out_time=None
     ).first()
 
     if action == "tap_in":
@@ -877,12 +961,23 @@ def handle_tap():
             db.session.add(session_entry)
     elif action == "tap_out":
         if session_entry:
+            # Record tap-out time and reason
             session_entry.tap_out_time = now
-            session_entry.is_done = True
             session_entry.reason = data.get("reason", session_entry.reason)
+            # Only mark session done if reason indicates final exit
+            if session_entry.reason and session_entry.reason.lower() == 'done':
+                session_entry.is_done = True
             # Calculate the session duration in seconds
             if session_entry.tap_in_time and session_entry.tap_out_time:
-                session_entry.duration_seconds = int((now - session_entry.tap_in_time).total_seconds())
+                # Ensure tap_in_time is timezone-aware in Pacific
+                t_in = session_entry.tap_in_time
+                if getattr(t_in, 'tzinfo', None) is None:
+                    t_in = PACIFIC.localize(t_in)
+                # Ensure tap_out_time is timezone-aware in Pacific (if needed)
+                t_out = session_entry.tap_out_time
+                if getattr(t_out, 'tzinfo', None) is None:
+                    t_out = PACIFIC.localize(t_out)
+                session_entry.duration_seconds = int((t_out - t_in).total_seconds())
 
     db.session.commit()
     return jsonify({"status": "ok"})

@@ -34,6 +34,7 @@
                 <th>Checking Balance</th>
                 <th>Last Tap In</th>
                 <th>Last Tap Out</th>
+                <th>Reason</th>
             </tr>
         </thead>
         <tbody>
@@ -61,6 +62,13 @@
                     {% else %}
                         —
                     {% endif %}
+                </td>
+                <td>
+                  {% if student.last_tap_out_reason %}
+                    {{ student.last_tap_out_reason }}
+                  {% else %}
+                    —
+                  {% endif %}
                 </td>
             </tr>
             {% endfor %}

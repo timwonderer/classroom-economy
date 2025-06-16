@@ -15,7 +15,6 @@
             <p><strong>PIN:</strong> ****</p>
             <p><strong>Email:</strong> {{ student.email }}</p>
             <p><strong>QR Code ID:</strong> {{ student.qr_id }}</p>
-            <p><strong>Owns Seat:</strong> {{ 'Yes' if student.owns_seat else 'No' }}</p>
             <p><strong>Checking Balance:</strong> ${{ "%.2f"|format(student.checking_balance) }}</p>
             <p><strong>Savings Balance:</strong> ${{ "%.2f"|format(student.savings_balance) }}</p>
             <hr>
@@ -34,7 +33,13 @@
                 —
               {% endif %}
             </p>
-            <p><strong>Reason:</strong> {{ student.last_tap_out_reason or '—' }}</p>
+            <p><strong>Reason:</strong>
+  {% if student.last_tap_out_reason %}
+    {{ student.last_tap_out_reason }}
+  {% else %}
+    —
+  {% endif %}
+</p>
         </div>
     </div>
 

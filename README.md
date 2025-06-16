@@ -55,7 +55,7 @@ This project is licensed under the [PolyForm Noncommercial License 1.0.0](https:
 > - Share it with students or other educators
 > - Use it for research or academic presentations (as long as they are not sold)
 > 
-> **This license prohibits you to:**
+> **This license prohibits you from:**
 > - Use it as part of a commercial product or SaaS platform
 > - Host a paid service or subscription that includes this software
 > - Incorporate it into any offering that generates revenue (e.g., paid courses, tutoring platforms)

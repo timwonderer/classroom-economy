@@ -159,13 +159,13 @@
           <div class="tab-pane fade show active" id="period-a" role="tabpanel">
             <p><strong>Status:</strong> <span id="status-a">{{ 'Active' if is_tapped_in_a else 'Inactive' }}</span></p>
             <p><strong>Time Logged:</strong> <span id="timer-a">00:00</span></p>
-            <button id="tapIn-a" class="btn btn-success me-2" onclick="openTapIn('a')" {% if is_tapped_in_a %}disabled{% endif %}>Tap In</button>
+            <button id="tapIn-a" class="btn btn-success me-2" onclick="openTapIn('a')" {% if is_done_a %}disabled{% endif %}>Tap In</button>
             <button id="tapOut-a" class="btn btn-danger" onclick="openTapOut('a')" {% if not is_tapped_in_a %}disabled{% endif %}>Tap Out</button>
           </div>
           <div class="tab-pane fade" id="period-b" role="tabpanel">
             <p><strong>Status:</strong> <span id="status-b">{{ 'Active' if is_tapped_in_b else 'Inactive' }}</span></p>
             <p><strong>Time Logged:</strong> <span id="timer-b">00:00</span></p>
-            <button id="tapIn-b" class="btn btn-success me-2" onclick="openTapIn('b')" {% if is_tapped_in_b %}disabled{% endif %}>Tap In</button>
+            <button id="tapIn-b" class="btn btn-success me-2" onclick="openTapIn('b')" {% if is_done_b %}disabled{% endif %}>Tap In</button>
             <button id="tapOut-b" class="btn btn-danger" onclick="openTapOut('b')" {% if not is_tapped_in_b %}disabled{% endif %}>Tap Out</button>
           </div>
         </div>
@@ -252,14 +252,11 @@
           new bootstrap.Modal(document.getElementById('tapOutModal')).show();
         }
 
-        function syncStateToServer(period, action) {
-          const duration = periodState[period].duration;
+        function syncStateToServer(data) {
           fetch('/api/tap', {
             method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({ period, action, duration })
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
           });
         }
 
@@ -279,7 +276,12 @@
           document.getElementById(`tapOut-${period}`).disabled = false;
           highlightStatus(period, true);
           showToast(`✔️ You're tapped in for Period ${period.toUpperCase()}!`);
-          syncStateToServer(period, 'tap_in');
+          syncStateToServer({ 
+            period, 
+            action: 'tap_in', 
+            duration: periodState[period].duration, 
+            pin 
+          });
         }
 
         function confirmTapOut() {
@@ -301,7 +303,13 @@
           } else {
             showToast(`🕒 You're out for: ${reason}`);
           }
-          syncStateToServer(period, 'tap_out');
+          syncStateToServer({ 
+            period, 
+            action: 'tap_out', 
+            duration: periodState[period].duration, 
+            reason, 
+            pin 
+          });
         }
 
         function showToast(message) {

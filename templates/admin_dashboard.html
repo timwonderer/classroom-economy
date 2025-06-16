@@ -7,6 +7,7 @@
 <time id="current-time"></time>
 
 <h4 class="mt-4">🧾 Most Recent 20 Account Actions</h4>
+<div style="max-height:300px; overflow-y:auto; margin-bottom:1rem;">
 <table class="table table-striped">
     <thead>
         <tr>
@@ -51,8 +52,10 @@
         {% endfor %}
     </tbody>
 </table>
+</div>
 
 <h4 class="mt-5">🕒 Most Recent 20 Attendance Logs</h4>
+<div style="max-height:300px; overflow-y:auto; margin-bottom:1rem;">
 <table class="table table-bordered">
     <thead>
         <tr>
@@ -91,7 +94,13 @@
                         —
                     {% endif %}
                 </td>
-                <td>{{ log.reason or "—" }}</td>
+                <td>
+  {% if log.reason %}
+    {{ log.reason }}
+  {% else %}
+    —
+  {% endif %}
+</td>
             </tr>
             {% endfor %}
         {% else %}
@@ -101,6 +110,7 @@
         {% endif %}
     </tbody>
 </table>
+</div>
 
 <hr class="my-4">
 
