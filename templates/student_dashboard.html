@@ -20,17 +20,17 @@
 <body class="container mt-4">
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
   <div class="container-fluid">
-    <a class="navbar-brand" href="/student/dashboard">Student Portal</a>
+    <a class="navbar-brand" href="{{ url_for('student_dashboard') }}">Student Portal</a>
     <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#studentNavbar" aria-controls="studentNavbar" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
     </button>
     <div class="collapse navbar-collapse" id="studentNavbar">
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-        <li class="nav-item"><a class="nav-link" href="/student/dashboard">Dashboard</a></li>
-        <li class="nav-item"><a class="nav-link" href="/student/transfer">Accounts</a></li>
-        <li class="nav-item"><a class="nav-link" href="/student/insurance">Insurance</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('student_dashboard') }}">Dashboard</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('student_transfer') }}">Accounts</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('student_insurance') }}">Insurance</a></li>
         <li class="nav-item"><a class="nav-link" href="/student/shop">Shop</a></li>
-        <li class="nav-item"><a class="nav-link text-danger" href="/student/logout">Logout</a></li>
+        <li class="nav-item"><a class="nav-link text-danger" href="{{ url_for('student_logout') }}">Logout</a></li>
       </ul>
     </div>
   </div>
@@ -78,7 +78,7 @@
                 clearInterval(interval);
                 const modal = new bootstrap.Modal(document.getElementById('timeoutModal'));
                 modal.show();
-                setTimeout(() => window.location.href = "/student/logout", 5000);
+                setTimeout(() => window.location.href = "{{ url_for('student_logout') }}", 5000);
             }
         }, 1000);
     </script>

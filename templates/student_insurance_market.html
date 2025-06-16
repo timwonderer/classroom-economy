@@ -1,4 +1,4 @@
-{% extends "base_student.html" %}
+{% extends "layout_student.html" %}
 {% block content %}
 <h2>Select an Insurance Plan</h2>
 <p>Please choose a plan below. Premiums are charged monthly. Bundled includes both protections.</p>
@@ -13,17 +13,17 @@
 
 {% if student.insurance_type %}
   <p>You currently have <strong>{{ student.insurance_type }}</strong> insurance.</p>
-  <form action="{{ url_for('use_insurance') }}" method="POST">
+  <form action="#" method="POST">
     <button type="submit" class="btn btn-primary">Use Insurance</button>
   </form>
-  <form action="{{ url_for('change_insurance') }}" method="GET">
+  <form action="#" method="GET">
     <button type="submit" class="btn btn-secondary">Change Insurance</button>
   </form>
-  <form action="{{ url_for('cancel_insurance') }}" method="POST">
+  <form action="#" method="POST">
     <button type="submit" class="btn btn-danger">Cancel Insurance</button>
   </form>
 {% else %}
-  <form action="{{ url_for('buy_insurance') }}" method="POST">
+  <form action="#" method="POST">
     <div class="form-check">
       <input class="form-check-input" type="radio" name="insurance_type" id="paycheck" value="Paycheck Protection" required>
       <label class="form-check-label" for="paycheck">Paycheck Protection ($90/month)</label>
