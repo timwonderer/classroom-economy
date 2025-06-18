@@ -13,6 +13,8 @@ import urllib.parse
 import os
 
 app = Flask(__name__)
+app.config['DEBUG']=False
+app.config['ENV']='production'
 app.config.update(
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_SAMESITE="None"
@@ -1119,4 +1121,4 @@ def debug_filters():
     return jsonify(list(app.jinja_env.filters.keys()))
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False, use_reloader=False)
