@@ -38,6 +38,16 @@ flask run
 ```
 Seed data can be generated with `python seed_students.py`.
 
+## Deployment
+The included `Procfile` launches the app with:
+
+```bash
+gunicorn --bind=0.0.0.0 --timeout 600 app:app
+```
+
+`startup.txt` mirrors this command for platforms that read from it. Use this
+entrypoint when deploying to ensure the Flask application starts correctly.
+
 ## Roadmap
 - Mobile‑friendly redesign
 - Classroom store & inventory system
