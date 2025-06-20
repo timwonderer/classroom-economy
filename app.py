@@ -12,15 +12,22 @@ import pyotp
 import urllib.parse
 import os
 
+required_env_vars = ["SECRET_KEY", "DATABASE_URL", "FLASK_ENV"]
+missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+if missing_vars:
+    raise RuntimeError(
+        "Missing required environment variables: " + ", ".join(missing_vars)
+    )
+
 app = Flask(__name__)
-app.config['DEBUG']=False
-app.config['ENV']='production'
-app.config.update(
+app.config.from_mapping(
+    DEBUG=False,
+    ENV=os.environ["FLASK_ENV"],
+    SECRET_KEY=os.environ["SECRET_KEY"],
+    SQLALCHEMY_DATABASE_URI=os.environ["DATABASE_URL"],
     SESSION_COOKIE_SECURE=True,
-    SESSION_COOKIE_SAMESITE="None"
+    SESSION_COOKIE_SAMESITE="None",
 )
-app.secret_key = os.environ.get("FLASK_SECRET_KEY", "1%Inspiration&99%Effort")
-app.config["SQLALCHEMY_DATABASE_URI"] = os.environ["DATABASE_URL"]
 
 def url_encode_filter(s):
     return urllib.parse.quote_plus(s)
