@@ -43,6 +43,16 @@ Run `flask ensure-admin` to create the default admin account using the
 After deploying to a new environment, run `flask db upgrade` to apply the
 latest migrations, including the admin table.
 
+## Deployment
+The included `Procfile` launches the app with:
+
+```bash
+gunicorn --bind=0.0.0.0 --timeout 600 app:app
+```
+
+`startup.txt` mirrors this command for platforms that read from it. Use this
+entrypoint when deploying to ensure the Flask application starts correctly.
+
 ## Roadmap
 - Mobile‑friendly redesign
 - Classroom store & inventory system
