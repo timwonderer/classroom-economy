@@ -28,11 +28,29 @@ def url_encode_filter(s):
 app.jinja_env.filters['url_encode'] = url_encode_filter
 
 import logging
-# Ensure our app.logger emits INFO and DEBUG (not just WARNING+)
-handler = logging.StreamHandler()
-handler.setLevel(logging.DEBUG)
-app.logger.addHandler(handler)
-app.logger.setLevel(logging.DEBUG)
+from logging.handlers import RotatingFileHandler
+
+# ----- Logging Configuration -----
+log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+log_level = getattr(logging, log_level_name, logging.INFO)
+log_format = os.getenv(
+    "LOG_FORMAT",
+    "[%(asctime)s] %(levelname)s in %(module)s: %(message)s",
+)
+
+stream_handler = logging.StreamHandler()
+stream_handler.setLevel(log_level)
+stream_handler.setFormatter(logging.Formatter(log_format))
+
+app.logger.setLevel(log_level)
+app.logger.addHandler(stream_handler)
+
+if os.getenv("FLASK_ENV", app.config.get("ENV")) == "production":
+    log_file = os.getenv("LOG_FILE", "app.log")
+    file_handler = RotatingFileHandler(log_file, maxBytes=1_000_000, backupCount=5)
+    file_handler.setLevel(log_level)
+    file_handler.setFormatter(logging.Formatter(log_format))
+    app.logger.addHandler(file_handler)
 
 # ---- Jinja2 filter: Format UTC datetime to Pacific Time ----
 import pytz

@@ -38,6 +38,13 @@ flask run
 ```
 Seed data can be generated with `python seed_students.py`.
 
+### Environment variables
+The application respects several optional variables:
+
+- `LOG_LEVEL` – logging level (defaults to `INFO`).
+- `LOG_FORMAT` – format for log messages.
+- `LOG_FILE` – file used for rotating logs when `FLASK_ENV=production`.
+
 ## Roadmap
 - Mobile‑friendly redesign
 - Classroom store & inventory system
