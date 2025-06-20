@@ -38,6 +38,11 @@ flask run
 ```
 Seed data can be generated with `python seed_students.py`.
 
+## Deployment & Monitoring
+Deploy behind a production web server such as Gunicorn and NGINX.
+For uptime checks, call the `/health` endpoint which returns HTTP 200 if the
+database is reachable.
+
 ## Roadmap
 - Mobile‑friendly redesign
 - Classroom store & inventory system
