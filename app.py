@@ -144,6 +144,7 @@ class Purchase(db.Model):
     redeemed = db.Column(db.Boolean, default=False)
     date_purchased = db.Column(db.DateTime, default=datetime.utcnow)
 
+# ---- TapSession Model ----
 from datetime import datetime
 class TapSession(db.Model):
     __tablename__ = 'tap_sessions'
@@ -159,6 +160,38 @@ class TapSession(db.Model):
     is_paid = db.Column(db.Boolean, default=False)
 
     student = db.relationship("Student", back_populates="tap_sessions")
+
+# ---- Admin Model ----
+class Admin(db.Model):
+    __tablename__ = 'admins'
+    id             = db.Column(db.Integer, primary_key=True)
+    username       = db.Column(db.String(80), unique=True, nullable=False)
+    password_hash  = db.Column(db.String(128), nullable=False)
+
+    @staticmethod
+    def hash_password(pw: str) -> str:
+        from werkzeug.security import generate_password_hash
+        return generate_password_hash(pw)
+
+    def check_password(self, pw: str) -> bool:
+        from werkzeug.security import check_password_hash
+        return check_password_hash(self.password_hash, pw)
+
+# after your models are defined but before you start serving requests
+from app import db, Admin
+import os
+
+def ensure_default_admin():
+    user = os.environ.get("ADMIN_USERNAME")
+    pw   = os.environ.get("ADMIN_PASSWORD")
+    if user and pw and not Admin.query.filter_by(username=user).first():
+        a = Admin(username=user,
+                  password_hash=Admin.hash_password(pw))
+        db.session.add(a)
+        db.session.commit()
+        app.logger.info(f"🚀 Created default admin '{user}'")
+
+ensure_default_admin()
 # -------------------- AUTH HELPERS --------------------
 SESSION_TIMEOUT_MINUTES = 10
 
@@ -168,7 +201,7 @@ def login_required(f):
         if 'student_id' not in session:
             return redirect(url_for('student_login'))
 
-        now = datetime.utcnow()
+        now = datetime.now(utc)
         last_activity = session.get('last_activity')
 
         if last_activity:
@@ -193,7 +226,7 @@ def admin_required(f):
             flash("You must be an admin to view this page.")
             return redirect(url_for("admin_login"))
 
-        now = datetime.utcnow()
+        now = datetime.now(utc)
         last_activity = session.get('last_activity')
 
         if last_activity:
@@ -605,8 +638,9 @@ def admin_login():
         username = request.form.get("username")
         password = request.form.get("password")
 
-        # Replace with something more secure later!
-        if username == "admin" and password == "bhu87ygv":
+        from app import Admin  # Ensure Admin is imported for lookup
+        admin = Admin.query.filter_by(username=username).first()
+        if admin and admin.check_password(password):
             session["is_admin"] = True
             if is_json:
                 return jsonify(status="success", message="Login successful")
