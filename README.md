@@ -38,6 +38,9 @@ flask run
 ```
 Seed data can be generated with `python seed_students.py`.
 
+After deploying to a new environment, run `flask db upgrade` to apply the
+latest migrations, including the admin table.
+
 ## Roadmap
 - Mobile‑friendly redesign
 - Classroom store & inventory system
