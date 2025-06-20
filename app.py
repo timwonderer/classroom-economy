@@ -177,6 +177,8 @@ class Admin(db.Model):
         from werkzeug.security import check_password_hash
         return check_password_hash(self.password_hash, pw)
 
+    with app.app_context():
+        ensure_default_admin()
 # after your models are defined but before you start serving requests
 from app import db, Admin
 import os
@@ -191,7 +193,7 @@ def ensure_default_admin():
         db.session.commit()
         app.logger.info(f"🚀 Created default admin '{user}'")
 
-ensure_default_admin()
+
 # -------------------- AUTH HELPERS --------------------
 SESSION_TIMEOUT_MINUTES = 10
 
