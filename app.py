@@ -1211,6 +1211,17 @@ def handle_tap():
     return jsonify({"status": "ok"})
 
 
+@app.route('/health')
+def health_check():
+    """Simple health check endpoint for uptime monitoring."""
+    try:
+        db.session.execute(text('SELECT 1'))
+        return 'ok', 200
+    except Exception:
+        app.logger.exception('Health check failed')
+        return 'db error', 500
+
+
 @app.route('/debug/filters')
 def debug_filters():
     return jsonify(list(app.jinja_env.filters.keys()))

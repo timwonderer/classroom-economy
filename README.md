@@ -53,6 +53,11 @@ gunicorn --bind=0.0.0.0 --timeout 600 app:app
 `startup.txt` mirrors this command for platforms that read from it. Use this
 entrypoint when deploying to ensure the Flask application starts correctly.
 
+## Deployment & Monitoring
+Deploy behind a production web server such as Gunicorn and NGINX.
+For uptime checks, call the `/health` endpoint which returns HTTP 200 if the
+database is reachable.
+
 ## Roadmap
 - Mobile‑friendly redesign
 - Classroom store & inventory system
