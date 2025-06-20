@@ -88,3 +88,18 @@ This project is licensed under the [PolyForm Noncommercial License 1.0.0](https:
 > - Incorporate it into any offering that generates revenue (e.g., paid courses, tutoring platforms)
 > - Use it internally within a for-profit business, even if not publicly distributed
 
+## Deployment on Azure
+Add `flask db upgrade` before launching Gunicorn so the database schema is up to date:
+
+```
+web: bash -c 'flask db upgrade && gunicorn --bind=0.0.0.0 --timeout 600 app:app'
+```
+Configure your Azure App Service startup command or Procfile with this line.
+
+## Deployment on DigitalOcean
+When deploying on DigitalOcean, run migrations before starting Gunicorn:
+
+```bash
+FLASK_APP=app flask db upgrade
+gunicorn --bind=0.0.0.0 --timeout 600 app:app
+```
