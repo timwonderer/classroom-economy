@@ -204,7 +204,7 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'student_id' not in session:
-            return redirect(url_for('student_login'))
+            return redirect(url_for('student_login', next=request.url))
 
         now = datetime.now(utc)
         last_activity = session.get('last_activity')
@@ -214,7 +214,7 @@ def login_required(f):
             if (now - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                 session.pop('student_id', None)
                 flash("Session expired. Please log in again.")
-                return redirect(url_for('student_login'))
+                return redirect(url_for('student_login', next=request.url))
 
         session['last_activity'] = now.strftime("%Y-%m-%d %H:%M:%S")
         return f(*args, **kwargs)
@@ -229,7 +229,7 @@ def admin_required(f):
         app.logger.info(f"🧪 Admin access attempt: session = {dict(session)}")
         if not session.get("is_admin"):
             flash("You must be an admin to view this page.")
-            return redirect(url_for("admin_login"))
+            return redirect(url_for("admin_login", next=request.url))
 
         now = datetime.now(utc)
         last_activity = session.get('last_activity')
@@ -239,7 +239,7 @@ def admin_required(f):
             if (now - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                 session.pop("is_admin", None)
                 flash("Admin session expired. Please log in again.")
-                return redirect(url_for("admin_login"))
+                return redirect(url_for("admin_login", next=request.url))
 
         session['last_activity'] = now.strftime("%Y-%m-%d %H:%M:%S")
         return f(*args, **kwargs)
@@ -570,7 +570,7 @@ def student_login():
             if is_json:
                 return jsonify(status="error", message="Invalid credentials"), 401
             flash("Invalid credentials", "error")
-            return redirect(url_for('student_login'))
+            return redirect(url_for('student_login', next=request.args.get('next')))
 
         session['student_id'] = student.id
         session['last_activity'] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
@@ -582,6 +582,10 @@ def student_login():
 
         if is_json:
             return jsonify(status="success", message="Login successful")
+
+        next_url = request.args.get('next')
+        if next_url:
+            return redirect(next_url)
         return redirect(url_for('student_dashboard'))
 
     return render_template('student_login.html')
@@ -650,12 +654,15 @@ def admin_login():
             if is_json:
                 return jsonify(status="success", message="Login successful")
             flash("Admin login successful.")
+            next_url = request.args.get("next")
+            if next_url:
+                return redirect(next_url)
             return redirect(url_for("admin_dashboard"))
         else:
             if is_json:
                 return jsonify(status="error", message="Invalid credentials"), 401
             flash("Invalid credentials.", "error")
-            return redirect(url_for("admin_login"))
+            return redirect(url_for("admin_login", next=request.args.get("next")))
     return render_template("admin_login.html")
 
 @app.route('/admin/logout')
