@@ -30,7 +30,7 @@ jobs:
         run: zip -r release.zip .   # this now includes your venv-installed packages
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: python-app
           path: release.zip
