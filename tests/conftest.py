@@ -1,5 +1,9 @@
 import os
 import sys
+# Set required environment variables for tests before importing the app
+os.environ.setdefault("SECRET_KEY", "test-secret")
+os.environ.setdefault("DATABASE_URL", "sqlite:///:memory:")
+os.environ.setdefault("FLASK_ENV", "testing")
 # Add the project root to PYTHONPATH so tests can import application modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import pytest

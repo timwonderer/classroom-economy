@@ -37,6 +37,33 @@ pip install -r requirements.txt
 flask run
 ```
 Seed data can be generated with `python seed_students.py`.
+Run `flask ensure-admin` to create the default admin account using the
+`ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables.
+
+After deploying to a new environment, run `flask db upgrade` to apply the
+latest migrations, including the admin table.
+
+## Deployment
+The included `Procfile` launches the app with:
+
+```bash
+gunicorn --bind=0.0.0.0 --timeout 600 app:app
+```
+
+`startup.txt` mirrors this command for platforms that read from it. Use this
+entrypoint when deploying to ensure the Flask application starts correctly.
+
+## Deployment & Monitoring
+Deploy behind a production web server such as Gunicorn and NGINX.
+For uptime checks, call the `/health` endpoint which returns HTTP 200 if the
+database is reachable.
+
+### Environment variables
+The application respects several optional variables:
+
+- `LOG_LEVEL` – logging level (defaults to `INFO`).
+- `LOG_FORMAT` – format for log messages.
+- `LOG_FILE` – file used for rotating logs when `FLASK_ENV=production`.
 
 ## Roadmap
 - Mobile‑friendly redesign
@@ -60,4 +87,28 @@ This project is licensed under the [PolyForm Noncommercial License 1.0.0](https:
 > - Host a paid service or subscription that includes this software
 > - Incorporate it into any offering that generates revenue (e.g., paid courses, tutoring platforms)
 > - Use it internally within a for-profit business, even if not publicly distributed
+
+## Deployment on Azure
+Add `flask db upgrade` before launching Gunicorn so the database schema is up to date:
+
+```
+web: bash -c 'flask db upgrade && gunicorn --bind=0.0.0.0 --timeout 600 app:app'
+```
+Configure your Azure App Service startup command or Procfile with this line.
+
+## Deployment on DigitalOcean
+When deploying on DigitalOcean, run migrations before starting Gunicorn:
+
+```bash
+FLASK_APP=app flask db upgrade
+gunicorn --bind=0.0.0.0 --timeout 600 app:app
+```
+
+## Maintaining Dependencies
+To keep dependencies current, review upgrades once a month:
+
+1. Activate your virtual environment.
+2. Run `./scripts/update_packages.sh`.
+   This script upgrades outdated packages, updates `requirements.txt`, and runs the tests.
+3. Commit the updated `requirements.txt` if everything passes.
 
