@@ -206,7 +206,6 @@ class Admin(db.Model):
 
 # after your models are defined but before you start serving requests
 from flask.cli import with_appcontext
-from app import db, Admin
 import os
 
 def ensure_default_admin():
@@ -694,7 +693,6 @@ def admin_login():
         username = request.form.get("username")
         password = request.form.get("password")
 
-        from app import Admin  # Ensure Admin is imported for lookup
         admin = Admin.query.filter_by(username=username).first()
         if admin and admin.check_password(password):
             session["is_admin"] = True
