@@ -239,7 +239,7 @@ def login_required(f):
         if 'student_id' not in session:
             return redirect(url_for('student_login', next=request.url))
 
-        now = datetime.now(utc)
+        now = datetime.utcnow()
         last_activity = session.get('last_activity')
 
         if last_activity:
@@ -264,7 +264,7 @@ def admin_required(f):
             flash("You must be an admin to view this page.")
             return redirect(url_for("admin_login", next=request.url))
 
-        now = datetime.now(utc)
+        now = datetime.utcnow()
         last_activity = session.get('last_activity')
 
         if last_activity:
