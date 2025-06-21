@@ -1139,7 +1139,9 @@ def admin_upload_students():
                 )
                 db.session.add(new_student)
                 added_count += 1
-            except Exception as e:
+            except (ValueError, SQLAlchemyError) as e:
+                db.session.rollback()
+                app.logger.error(f"Error processing row {row}: {e}", exc_info=True)
                 flash(f"Error processing row: {e}", "admin_error")
         db.session.commit()
         flash(f"Uploaded {added_count} students successfully!", "admin_success")
