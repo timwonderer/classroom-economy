@@ -987,8 +987,9 @@ def run_payroll():
         if is_json:
             return jsonify(status="success", message=f"Payroll complete. Paid {len(summary)} students.")
         flash(f"✅ Payroll complete. Paid {len(summary)} students.", "admin_success")
-    except Exception as e:
-        app.logger.error(f"❌ Payroll error: {e}")
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        app.logger.error(f"❌ Payroll error: {e}", exc_info=True)
         if is_json:
             return jsonify(status="error", message="Payroll error occurred. Check logs."), 500
         flash("Payroll error occurred. Check logs.", "admin_error")
