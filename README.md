@@ -103,3 +103,12 @@ When deploying on DigitalOcean, run migrations before starting Gunicorn:
 FLASK_APP=app flask db upgrade
 gunicorn --bind=0.0.0.0 --timeout 600 app:app
 ```
+
+## Maintaining Dependencies
+To keep dependencies current, review upgrades once a month:
+
+1. Activate your virtual environment.
+2. Run `./scripts/update_packages.sh`.
+   This script upgrades outdated packages, updates `requirements.txt`, and runs the tests.
+3. Commit the updated `requirements.txt` if everything passes.
+
