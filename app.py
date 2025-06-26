@@ -265,9 +265,11 @@ def ensure_admin_command():
     ensure_default_admin()
 
 
-# Automatically create the default admin on first request in case
-# migrations ran but the CLI command was not executed (e.g. on Azure).
-@app.before_first_request
+# Automatically create the default admin before the application starts serving
+# requests in case migrations ran but the CLI command was not executed
+# (e.g. on Azure). Flask 3 removed the ``before_first_request`` hook so we now
+# use ``before_serving`` which runs once when the server starts.
+@app.before_serving
 def create_default_admin_if_needed():
     ensure_default_admin()
 
