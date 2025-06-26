@@ -48,8 +48,16 @@ def test_dynamic_blocks_and_tap_flow(client):
     assert '"A":[false,true' in dash_state2
 
 def test_invalid_period_and_action(client):
-    # Set up student
-    stu = Student.query.filter_by(qr_id='T1').first()
+    # Set up student and log in
+    stu = Student(
+        name="Test Student",
+        email="t@t.com",
+        qr_id="T1",
+        pin_hash=generate_password_hash("0000"),
+        block="A"
+    )
+    db.session.add(stu); db.session.commit()
+    login(client, "T1", "0000")
     # Invalid period
     resp = client.post('/api/tap', json={'period': 'Z', 'action': 'tap_in'})
     assert resp.status_code == 400
@@ -62,6 +70,17 @@ def test_invalid_period_and_action(client):
 
 def test_server_state_json(client):
     # Ensure serverState JSON matches interactions
+    # Create and log in student
+    stu = Student(
+        name="Test Student",
+        email="t@t.com",
+        qr_id="T1",
+        pin_hash=generate_password_hash("0000"),
+        block="A"
+    )
+    db.session.add(stu); db.session.commit()
+    login(client, "T1", "0000")
+
     # Tap in to block A
     client.post('/api/tap', json={'period': 'A', 'action': 'tap_in'})
     dash_html = client.get('/student/dashboard').data.decode()
