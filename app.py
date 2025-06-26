@@ -1322,4 +1322,6 @@ def debug_filters():
     return jsonify(list(app.jinja_env.filters.keys()))
 
 if __name__ == '__main__':
+    with app.app_context():
+        ensure_default_admin()
     app.run(debug=False, use_reloader=False)
