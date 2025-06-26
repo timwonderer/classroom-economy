@@ -272,6 +272,7 @@ def ensure_admin_command():
 # requests in case migrations ran but the CLI command was not executed
 # (e.g. on Azure). Use ``before_serving`` when available (Flask >=2.3),
 # otherwise fall back to ``before_first_request`` for older Flask versions.
+
 _admin_checked = False
 
 def _run_admin_check():
@@ -293,6 +294,7 @@ else:
     @app.before_request
     def create_default_admin_if_needed():
         _run_admin_check()
+
 
 
 
