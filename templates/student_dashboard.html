@@ -78,7 +78,7 @@
     </script>
 
     <script type="application/json" id="serverState">
-      {{ period_states | tojson }}
+      {{ period_states_json | safe }}
     </script>
 
     <script>

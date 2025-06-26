@@ -5,16 +5,19 @@ from datetime import datetime, timedelta
 from functools import wraps
 import pytz
 from sqlalchemy import or_, func, text
-from sqlalchemy.exc import SQLAlchemyError
+# Standard library imports
+import json
 import math
+import os
+import urllib.parse
+
+from sqlalchemy.exc import SQLAlchemyError
 # --- Encryption dependencies ---
 from sqlalchemy.types import TypeDecorator, LargeBinary
 from cryptography.fernet import Fernet
 PACIFIC = pytz.timezone('America/Los_Angeles')
 utc = pytz.utc
 import pyotp
-import urllib.parse
-import os
 
 required_env_vars = ["SECRET_KEY", "DATABASE_URL", "FLASK_ENV"]
 missing_vars = [var for var in required_env_vars if not os.getenv(var)]
@@ -241,7 +244,6 @@ class Admin(db.Model):
 
 # after your models are defined but before you start serving requests
 from flask.cli import with_appcontext
-import os
 
 def ensure_default_admin():
     """Create the default admin account if env vars are set and no account exists."""
@@ -270,17 +272,29 @@ def ensure_admin_command():
 # requests in case migrations ran but the CLI command was not executed
 # (e.g. on Azure). Use ``before_serving`` when available (Flask >=2.3),
 # otherwise fall back to ``before_first_request`` for older Flask versions.
+
+_admin_checked = False
+
+def _run_admin_check():
+    """Ensure the default admin exists but only run once."""
+    global _admin_checked
+    if not _admin_checked:
+        ensure_default_admin()
+        _admin_checked = True
+
 if hasattr(app, "before_serving"):
     @app.before_serving
     def create_default_admin_if_needed():
-        ensure_default_admin()
+        _run_admin_check()
 elif hasattr(app, "before_first_request"):
     @app.before_first_request
     def create_default_admin_if_needed():
-        ensure_default_admin()
+        _run_admin_check()
 else:
-    # Fall back to running immediately if neither hook is available
-    ensure_default_admin()
+    @app.before_request
+    def create_default_admin_if_needed():
+        _run_admin_check()
+
 
 
 
@@ -293,7 +307,8 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'student_id' not in session:
-            return redirect(url_for('student_login', next=request.url))
+            encoded_next = urllib.parse.quote(request.path, safe="")
+            return redirect(f"{url_for('student_login')}?next={encoded_next}")
 
         now = datetime.utcnow()
         last_activity = session.get('last_activity')
@@ -303,7 +318,8 @@ def login_required(f):
             if (now - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                 session.pop('student_id', None)
                 flash("Session expired. Please log in again.")
-                return redirect(url_for('student_login', next=request.url))
+                encoded_next = urllib.parse.quote(request.path, safe="")
+                return redirect(f"{url_for('student_login')}?next={encoded_next}")
 
         session['last_activity'] = now.strftime("%Y-%m-%d %H:%M:%S")
         return f(*args, **kwargs)
@@ -318,7 +334,8 @@ def admin_required(f):
         app.logger.info(f"🧪 Admin access attempt: session = {dict(session)}")
         if not session.get("is_admin"):
             flash("You must be an admin to view this page.")
-            return redirect(url_for("admin_login", next=request.url))
+            encoded_next = urllib.parse.quote(request.path, safe="")
+            return redirect(f"{url_for('admin_login')}?next={encoded_next}")
 
         now = datetime.utcnow()
         last_activity = session.get('last_activity')
@@ -328,7 +345,8 @@ def admin_required(f):
             if (now - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                 session.pop("is_admin", None)
                 flash("Admin session expired. Please log in again.")
-                return redirect(url_for("admin_login", next=request.url))
+                encoded_next = urllib.parse.quote(request.path, safe="")
+                return redirect(f"{url_for('admin_login')}?next={encoded_next}")
 
         session['last_activity'] = now.strftime("%Y-%m-%d %H:%M:%S")
         return f(*args, **kwargs)
@@ -432,6 +450,7 @@ def student_dashboard():
     # Determine all blocks for this student dynamically
     student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
     period_states = {blk: get_session_status(student.id, blk) for blk in student_blocks}
+    period_states_json = json.dumps(period_states, separators=(',', ':'))
 
     # Compute most recent deposit and insurance paid flag
     recent_deposit = student.recent_deposits[0] if student.recent_deposits else None
@@ -444,6 +463,7 @@ def student_dashboard():
         student=student,
         student_blocks=student_blocks,
         period_states=period_states,
+        period_states_json=period_states_json,
         checking_transactions=checking_transactions,
         savings_transactions=savings_transactions,
         purchases=purchases,
@@ -1222,8 +1242,8 @@ def download_csv_template():
 def handle_tap():
     data = request.get_json()
     student = get_logged_in_student()
-    # Derive valid blocks (uppercase) from the student's block field
-    if isinstance(student.block, str):
+    # Derive valid blocks from the logged-in student if available
+    if student and isinstance(student.block, str):
         valid_periods = [b.strip().upper() for b in student.block.split(',') if b.strip()]
     else:
         valid_periods = []
