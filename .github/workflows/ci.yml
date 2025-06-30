@@ -19,5 +19,5 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run tests
         run: pytest --maxfail=1 --disable-warnings -q
-      - name: Lint (optional)
+      - name: Lint
         run: flake8 .
