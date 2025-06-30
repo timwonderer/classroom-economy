@@ -6,3 +6,4 @@ instance/
 *.sqlite3
 *.log
 .DS_Store
+GPT_instruction.md
