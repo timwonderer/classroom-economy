@@ -1,10 +1,11 @@
 from app import db, Student, TapSession
 from werkzeug.security import generate_password_hash
+from hash_utils import hash_username, get_random_salt
 from bs4 import BeautifulSoup
 import json
 
-def login(client, qr_id, pin):
-    return client.post('/student/login', data={'qr_id': qr_id, 'pin': pin})
+def login(client, username, pin):
+    return client.post('/student/login', data={'username': username, 'pin': pin})
 
 def parse_server_state(html):
     soup = BeautifulSoup(html, 'html.parser')
@@ -13,17 +14,20 @@ def parse_server_state(html):
 
 def test_dynamic_blocks_and_tap_flow(client):
     # 1. Create a two-block student
+    salt = get_random_salt()
+    username = "t1"
     stu = Student(
-        name="Test Student",
-        email="t@t.com",
-        qr_id="T1",
-        pin_hash=generate_password_hash("0000"),
-        block="A,C"
+        first_name="Test",
+        last_initial="S",
+        block="A,C",
+        salt=salt,
+        username_hash=hash_username(username, salt),
+        pin_hash=generate_password_hash("0000")
     )
     db.session.add(stu); db.session.commit()
 
     # 2. Log in
-    resp = login(client, "T1", "0000")
+    resp = login(client, username, "0000")
     assert resp.status_code == 302
 
     # 3. Dashboard must include both “Block A” and “Block C”
@@ -49,15 +53,18 @@ def test_dynamic_blocks_and_tap_flow(client):
 
 def test_invalid_period_and_action(client):
     # Set up student and log in
+    salt = get_random_salt()
+    username = "t2"
     stu = Student(
-        name="Test Student",
-        email="t@t.com",
-        qr_id="T1",
-        pin_hash=generate_password_hash("0000"),
-        block="A"
+        first_name="Test",
+        last_initial="S",
+        block="A",
+        salt=salt,
+        username_hash=hash_username(username, salt),
+        pin_hash=generate_password_hash("0000")
     )
     db.session.add(stu); db.session.commit()
-    login(client, "T1", "0000")
+    login(client, username, "0000")
     # Invalid period
     resp = client.post('/api/tap', json={'period': 'Z', 'action': 'tap_in'})
     assert resp.status_code == 400
@@ -71,15 +78,18 @@ def test_invalid_period_and_action(client):
 def test_server_state_json(client):
     # Ensure serverState JSON matches interactions
     # Create and log in student
+    salt = get_random_salt()
+    username = "t3"
     stu = Student(
-        name="Test Student",
-        email="t@t.com",
-        qr_id="T1",
-        pin_hash=generate_password_hash("0000"),
-        block="A"
+        first_name="Test",
+        last_initial="S",
+        block="A",
+        salt=salt,
+        username_hash=hash_username(username, salt),
+        pin_hash=generate_password_hash("0000")
     )
     db.session.add(stu); db.session.commit()
-    login(client, "T1", "0000")
+    login(client, username, "0000")
 
     # Tap in to block A
     client.post('/api/tap', json={'period': 'A', 'action': 'tap_in'})

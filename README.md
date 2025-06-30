@@ -5,7 +5,7 @@ An interactive banking and classroom management platform for students. The appli
 ## Features
 
 ### Implemented & manually tested
-- Student login with QR ID and PIN
+- Student login with username and PIN
 - New user setup to create PIN and passphrase
 - Two-factor transfer between checking and savings accounts
 - Attendance tracking for Period A and B with tap in/out and automatic timers

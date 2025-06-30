@@ -28,8 +28,6 @@
         <thead class="table-dark">
             <tr>
                 <th>Name</th>
-                <th>Email</th>
-                <th>QR ID</th>
                 <th>Passes Left</th>
                 <th>Checking Balance</th>
                 <th>Last Tap In</th>
@@ -42,11 +40,9 @@
             <tr>
                 <td>
                     <a href="{{ url_for('student_detail', student_id=student.id) }}">
-                        {{ student.name }}
+                        {{ student.full_name }}
                     </a>
                 </td>
-                <td>{{ student.email or '—' }}</td>
-                <td>{{ student.qr_id or '—' }}</td>
                 <td>{{ student.passes_left if student.passes_left is not none else '—' }}</td>
                 <td>${{ "%.2f"|format(student.checking_balance) }}</td>
                 <td>

@@ -6,7 +6,7 @@
 </head>
 <body class="p-4">
     <div id="flashToastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index:1050;"></div>
-    <h2>🧑‍🎓 {{ student.name }} (Block {{ student.block }})</h2>
+    <h2>🧑‍🎓 {{ student.full_name }} (Block {{ student.block }})</h2>
 
     <!-- SECTION 1: STUDENT INFO -->
     <div class="card mb-4">
@@ -14,8 +14,6 @@
         <div class="card-body">
             <p><strong>ID:</strong> {{ student.id }}</p>
             <p><strong>PIN:</strong> ****</p>
-            <p><strong>Email:</strong> {{ student.email }}</p>
-            <p><strong>QR Code ID:</strong> {{ student.qr_id }}</p>
             <p><strong>Checking Balance:</strong> ${{ "%.2f"|format(student.checking_balance) }}</p>
             <p><strong>Savings Balance:</strong> ${{ "%.2f"|format(student.savings_balance) }}</p>
             <hr>

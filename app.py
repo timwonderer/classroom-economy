@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 from functools import wraps
 import pytz
 from sqlalchemy import or_, func, text
+# local security helpers
+from hash_utils import hash_username
 # Standard library imports
 import json
 import math
@@ -129,13 +131,19 @@ migrate = Migrate(app, db)
 class Student(db.Model):
     __tablename__ = 'students'
     id = db.Column(db.Integer, primary_key=True)
-    name = db.Column(PIIEncryptedType("ENCRYPTION_KEY"), nullable=False)
-    email = db.Column(PIIEncryptedType("ENCRYPTION_KEY"), nullable=False)
-    dob = db.Column(PIIEncryptedType("ENCRYPTION_KEY"), nullable=True)
-    dob_sum = db.Column(db.String(8), nullable=True)
-    qr_id = db.Column(db.String(100), unique=True, nullable=False)
-    pin_hash = db.Column(db.String(256), nullable=False)
-    block = db.Column(db.String(1), nullable=False)
+    first_name = db.Column(db.String(50), nullable=False)
+    last_initial = db.Column(db.String(1), nullable=False)
+    block = db.Column(db.String(10), nullable=False)
+
+    # Hash and credential fields
+    salt = db.Column(db.LargeBinary(16), nullable=False)
+    first_half_hash = db.Column(db.String(64), unique=True, nullable=True)
+    second_half_hash = db.Column(db.String(64), unique=True, nullable=True)
+    username_hash = db.Column(db.String(64), unique=True, nullable=True)
+
+    pin_hash = db.Column(db.Text, nullable=True)
+    passphrase_hash = db.Column(db.Text, nullable=True)
+
     passes_left = db.Column(db.Integer, default=3)
     last_tap_in = db.Column(db.DateTime)
     last_tap_out = db.Column(db.DateTime)
@@ -148,6 +156,10 @@ class Student(db.Model):
     second_factor_secret = db.Column(db.String, nullable=True)
     second_factor_enabled = db.Column(db.Boolean, default=False)
     has_completed_setup = db.Column(db.Boolean, default=False)
+
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.last_initial}."
 
     transactions = db.relationship('Transaction', backref='student', lazy=True)
     purchases = db.relationship('Purchase', backref='student', lazy=True)
@@ -697,11 +709,15 @@ def apply_savings_interest(student, annual_rate=0.045):
 def student_login():
     if request.method == 'POST':
         is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
-        qr_id = request.form.get('qr_id')
+        username = request.form.get('username')
         pin = request.form.get('pin')
-        student = Student.query.filter_by(qr_id=qr_id).first()
+        student = None
+        for s in Student.query.all():
+            if s.username_hash and hash_username(username, s.salt) == s.username_hash:
+                student = s
+                break
 
-        if not student or not check_password_hash(student.pin_hash, pin):
+        if not student or not check_password_hash(student.pin_hash or '', pin):
             if is_json:
                 return jsonify(status="error", message="Invalid credentials"), 401
             flash("Invalid credentials", "error")
@@ -729,7 +745,7 @@ def student_login():
 @app.route('/admin')
 @admin_required
 def admin_dashboard():
-    students = Student.query.order_by(Student.name).all()
+    students = Student.query.order_by(Student.first_name).all()
     transactions = Transaction.query.order_by(Transaction.timestamp.desc()).limit(20).all()
     student_lookup = {s.id: s for s in students}
     raw_logs = TapSession.query.order_by(TapSession.tap_in_time.desc()).limit(20).all()
@@ -812,7 +828,7 @@ def admin_logout():
 @app.route('/admin/students')
 @admin_required
 def admin_students():
-    students = Student.query.order_by(Student.block, Student.name).all()
+    students = Student.query.order_by(Student.block, Student.first_name).all()
     from datetime import datetime
     for student in students:
         # fetch latest session with tap_out_time (regardless of is_done)
@@ -860,7 +876,7 @@ def admin_transactions():
     # Base query joining Transaction with Student
     query = db.session.query(
         Transaction,
-        Student.name.label('student_name'),
+        Student.first_name.label('student_name'),
         Student.block.label('student_block')
     ).join(Student, Transaction.student_id == Student.id)
 
@@ -868,7 +884,7 @@ def admin_transactions():
     if student_q:
         query = query.filter(
             or_(
-                Student.name.ilike(f"%{student_q}%"),
+                Student.first_name.ilike(f"%{student_q}%"),
                 func.cast(Student.id, db.String).ilike(f"%{student_q}%")
             )
         )
@@ -1020,7 +1036,7 @@ def admin_payroll_history():
             'timestamp': tx.timestamp,
             'block': student.block if student else 'Unknown',
             'student_id': student.id if student else tx.student_id,
-            'student_name': student.name if student else 'Unknown',
+            'student_name': student.full_name if student else 'Unknown',
             'amount': tx.amount,
             'notes': tx.description,
         })
@@ -1105,7 +1121,7 @@ def admin_payroll():
     recent_raw = (
         db.session.query(
             Transaction,
-            Student.name.label("student_name"),
+            Student.first_name.label("student_name"),
             Student.block.label("student_block")
         )
         .join(Student, Transaction.student_id == Student.id)
@@ -1165,8 +1181,17 @@ def admin_add_student():
         if not (name and email and qr_id and pin and block):
             flash("Please fill in all required fields.", "admin_error")
             return redirect(url_for('admin_add_student'))
-        new_student = Student(name=name, email=email, qr_id=qr_id, block=block,
-                              pin_hash=generate_password_hash(pin))
+        first_name = name.split()[0]
+        last_initial = name.split()[1][0] if len(name.split()) > 1 else ""
+        salt = b'0'*16
+        new_student = Student(
+            first_name=first_name,
+            last_initial=last_initial,
+            block=block,
+            salt=salt,
+            username_hash=None,
+            pin_hash=generate_password_hash(pin)
+        )
         db.session.add(new_student)
         db.session.commit()
         flash("Student added successfully!", "admin_success")
@@ -1178,7 +1203,7 @@ def admin_add_student():
 @admin_required
 def admin_attendance_log():
     # Build student lookup for names and blocks, streaming in batches
-    students = {s.id: {'name': s.name, 'block': s.block} for s in Student.query.yield_per(50)}
+    students = {s.id: {'name': s.full_name, 'block': s.block} for s in Student.query.yield_per(50)}
     # Fetch attendance sessions, streaming in batches
     raw_logs = TapSession.query.order_by(TapSession.tap_in_time.desc()).yield_per(100)
     # Format logs as dicts, normalizing negative durations
@@ -1338,9 +1363,8 @@ def debug_filters():
     return jsonify(list(app.jinja_env.filters.keys()))
 
 
+
 # --- Ensure admin creation on startup, even on platforms like Azure ---
-with app.app_context():
-    ensure_default_admin()
 
 if __name__ == '__main__':
     app.run(debug=False, use_reloader=False)
