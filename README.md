@@ -3,6 +3,7 @@
 An interactive banking and classroom management platform for teaching students about money while tracking classroom participation.
 
 ## Table of Contents
+
 - [Classroom Economy System](#classroom-economy-system)
   - [Table of Contents](#table-of-contents)
   - [Features](#features)
@@ -19,7 +20,9 @@ An interactive banking and classroom management platform for teaching students a
   - [License](#license)
 
 ## Features
+
 ### Current
+
 - Student login with username and PIN
 - New user setup with PIN and passphrase creation
 - Two‑factor transfers between checking and savings
@@ -28,12 +31,14 @@ An interactive banking and classroom management platform for teaching students a
 - Admin portal for roster management, CSV upload, attendance logs and payroll
 
 ### Planned / Partial
+
 - Rent and property tax tracking fields
 - Classroom store purchases
 - Optional TOTP or passkey second factor
 - Student "Shop" link and admin items for hall passes and audits
 
 ## Getting Started
+
 ```bash
 python3 -m venv venv
 source venv/bin/activate
@@ -46,32 +51,42 @@ Set `ADMIN_USERNAME` and `ADMIN_PASSWORD` to seed an admin user automatically, o
 After deployment run `flask db upgrade` to apply migrations.
 
 ## Configuration
+
 The application recognises these optional variables:
+
 - `LOG_LEVEL` – logging level (default `INFO`)
 - `LOG_FORMAT` – log message format
 - `LOG_FILE` – file used for rotating logs when `FLASK_ENV=production`
 
 ## Deployment
+
 The `Procfile` starts the server with:
+
 ```bash
 gunicorn --bind=0.0.0.0 --timeout 600 app:app
 ```
+
 `startup.txt` contains the same command for platforms that read from it.
 
 ### Azure
+
 Add a database migration before starting:
+
 ```bash
 web: bash -c 'flask db upgrade && gunicorn --bind=0.0.0.0 --timeout 600 app:app'
 ```
 
 ### DigitalOcean
+
 Run migrations then launch Gunicorn:
+
 ```bash
 FLASK_APP=app flask db upgrade
 gunicorn --bind=0.0.0.0 --timeout 600 app:app
 ```
 
 ## Monitoring
+
 Deploy behind a production web server such as NGINX. Call `/health` for a 200 response when the database is reachable.
 
 ## Roadmap
@@ -83,7 +98,9 @@ Deploy behind a production web server such as NGINX. Call `/health` for a 200 re
 - Stock market mini‑game using school data
 
 ## Maintaining Dependencies
+
 Review upgrades monthly:
+
 1. Activate your virtual environment.
 2. Run `./scripts/update_packages.sh` to upgrade and run the tests.
 3. Commit the updated `requirements.txt` if tests pass.
