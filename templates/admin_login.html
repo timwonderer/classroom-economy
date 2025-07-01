@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <title>Admin Login | Classroom Economy</title>
@@ -12,9 +13,10 @@
             justify-content: center;
             align-items: center;
             height: 100vh;
+            margin: 0;
         }
         .login-container {
-            background-color: white;
+            background: #ffffff;
             padding: 2rem;
             border-radius: 10px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.1);
@@ -22,20 +24,23 @@
             max-width: 400px;
         }
         .login-container h2 {
-            margin-bottom: 1.5rem;
+            margin-bottom: 1rem;
             font-weight: 600;
+            color: #333;
+            text-align: center;
         }
     </style>
 </head>
+
 <body>
     <div class="login-container">
-        <h2>Admin Login</h2>
+        <h2>Classroom Token Hub<sup> BETA v0.1</sup></h2>
+        <h3 class="mb-4">Teacher Login</h3>
+
         {% with messages = get_flashed_messages() %}
           {% if messages %}
             <div class="alert alert-warning">
-              {% for message in messages %}
-                <div>{{ message }}</div>
-              {% endfor %}
+              {{ messages[0] }}
             </div>
           {% endif %}
         {% endwith %}
@@ -43,14 +48,34 @@
         <form method="POST">
             <div class="mb-3">
                 <label for="username" class="form-label">Username</label>
-                <input class="form-control" type="text" name="username" id="username" required>
+                <input type="text" class="form-control" id="username" name="username" required>
             </div>
             <div class="mb-3">
                 <label for="password" class="form-label">Password</label>
-                <input class="form-control" type="password" name="password" id="password" required>
+                <input type="password" class="form-control" id="password" name="password" required>
             </div>
             <button class="btn btn-primary w-100" type="submit">Log In</button>
         </form>
+
+        <div class="mt-3 text-center">
+            <p class="mt-3"><a class="text-decoration-none fw-bold text-secondary" href="{{ url_for('student_login') }}">Students? Log in here.</a></p>
+        </div>
+
+        <p class="mt-4 text-danger fw-bold">
+            This web app is currently under active development. Some features may be unstable or crash unexpectedly.
+        </p>
+        <p class="mt-2 text-muted small">
+            This tool was created by Timothy Chang to support student engagement, digital citizenship, and financial literacy.
+            No personally identifiable information (PII) is stored beyond what is strictly necessary for classroom operations.
+        </p>
+        <p class="mt-1 text-muted small">
+            For questions or concerns, contact the developer at
+            <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a>.
+        </p>
+        <p class="mt-3">By signing in, you agree to the following policies:</p>
+        <p class="mt-3"><a href="{{ url_for('privacy') }}">Privacy & Data Handling Policy</a></p>
+        <p class="mt-3"><a href="{{ url_for('terms') }}">Terms of Service</a></p>
     </div>
 </body>
+
 </html>
