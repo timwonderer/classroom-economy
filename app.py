@@ -7,19 +7,20 @@ import pytz
 from sqlalchemy import or_, func, text
 # local security helpers
 from hash_utils import hash_username
-# Standard library imports
 import json
 import math
 import os
 import urllib.parse
 
 from sqlalchemy.exc import SQLAlchemyError
-# --- Encryption dependencies ---
 from sqlalchemy.types import TypeDecorator, LargeBinary
 from cryptography.fernet import Fernet
 PACIFIC = pytz.timezone('America/Los_Angeles')
 utc = pytz.utc
 import pyotp
+
+# --- CSRF Protection ---
+from flask_wtf import CSRFProtect
 
 required_env_vars = ["SECRET_KEY", "DATABASE_URL", "FLASK_ENV"]
 missing_vars = [var for var in required_env_vars if not os.getenv(var)]
@@ -66,6 +67,9 @@ app.config.from_mapping(
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_SAMESITE="None",
 )
+
+# --- Enable CSRF protection ---
+csrf = CSRFProtect(app)
 
 
 def url_encode_filter(s):
@@ -156,6 +160,8 @@ class Student(db.Model):
     second_factor_secret = db.Column(db.String, nullable=True)
     second_factor_enabled = db.Column(db.Boolean, default=False)
     has_completed_setup = db.Column(db.Boolean, default=False)
+    # --- dob_sum for privacy-aligned username/claim logic ---
+    dob_sum = db.Column(db.Integer, nullable=True)
 
     @property
     def full_name(self):
@@ -1233,49 +1239,83 @@ def admin_attendance_log():
         current_page="attendance"
     )
 
-@app.route('/admin/upload-students', methods=['GET', 'POST'])
+@app.route('/admin/upload-students', methods=['POST'])
 @admin_required
 def admin_upload_students():
-    if request.method == 'POST':
-        file = request.files.get('csv_file')
-        if not file:
-            flash("No file provided", "admin_error")
-            return redirect(url_for('admin_upload_students'))
-        import csv, io
-        stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
-        csv_input = csv.DictReader(stream)
-        added_count = 0
-        for row in csv_input:
-            try:
-                new_student = Student(
-                    name=row.get('name'),
-                    email=row.get('email'),
-                    qr_id=row.get('qr_id'),
-                    block=row.get('block'),
-                    pin_hash=generate_password_hash(row.get('pin')) if row.get('pin') else None,
-                )
-                db.session.add(new_student)
-                added_count += 1
-            except (ValueError, SQLAlchemyError) as e:
-                db.session.rollback()
-                app.logger.error(f"Error processing row {row}: {e}", exc_info=True)
-                flash(f"Error processing row: {e}", "admin_error")
-        db.session.commit()
-        flash(f"Uploaded {added_count} students successfully!", "admin_success")
+    file = request.files.get('csv_file')
+    if not file:
+        flash("No file provided", "admin_error")
         return redirect(url_for('admin_students'))
-    return render_template('admin_upload_students.html', current_page="upload_students")
+
+    import csv, io, os, hashlib
+    from datetime import datetime
+
+    stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+    csv_input = csv.DictReader(stream)
+    added_count = 0
+    errors = 0
+
+    for row in csv_input:
+        try:
+            first_name = row.get('first_name', '').strip()
+            last_name = row.get('last_name', '').strip()
+            dob_str = row.get('date_of_birth', '').strip()
+            block = row.get('block', '').strip().upper()
+
+            if not all([first_name, last_name, dob_str, block]):
+                raise ValueError("Missing required fields.")
+
+            last_initial = last_name[0].upper()
+            dob = datetime.strptime(dob_str, "%m/%d/%Y").date()
+            # Compute dob_sum for privacy-aligned retrieval
+            dob_sum = dob.year + dob.month + dob.day
+
+            salt = os.urandom(16)
+            first_half = first_name[:len(first_name)//2].lower()
+            second_half = first_name[len(first_name)//2:].lower()
+            first_half_hash = hashlib.sha256(first_half.encode() + salt).hexdigest()
+            second_half_hash = hashlib.sha256(second_half.encode() + salt).hexdigest()
+
+            student = Student(
+                first_name=first_name,
+                last_initial=last_initial,
+                dob=dob,
+                block=block,
+                salt=salt,
+                first_half_hash=first_half_hash,
+                second_half_hash=second_half_hash,
+                has_completed_setup=False,
+                dob_sum=dob_sum,
+            )
+            db.session.add(student)
+            added_count += 1
+
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"Error processing row {row}: {e}", exc_info=True)
+            errors += 1
+
+    try:
+        db.session.commit()
+        flash(f"Uploaded {added_count} students successfully with {errors} errors.", "admin_success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Upload failed: {e}", "admin_error")
+        app.logger.error(f"Upload commit failed: {e}", exc_info=True)
+
+    return redirect(url_for('admin_students'))
 
 @app.route('/admin/download-csv-template')
 @admin_required
 def download_csv_template():
     """
-    Provides a pre-formatted CSV template for student information.
-    Columns: name, email, qr_id, block, pin
+    Serves the updated student_upload_template.csv from the project root.
     """
-    csv_content = "name,email,qr_id,block,pin\nSample Name,sample@example.com,QR12345,1,YourPINHere\n"
-    return Response(csv_content,
-                    mimetype='text/csv',
-                    headers={"Content-disposition": "attachment; filename=student_template.csv"})
+    from flask import send_file
+    import os
+
+    template_path = os.path.join(os.getcwd(), "student_upload_template.csv")
+    return send_file(template_path, as_attachment=True, download_name="student_upload_template.csv", mimetype='text/csv')
 
 
 @app.route('/api/tap', methods=['POST'])
