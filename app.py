@@ -11,6 +11,8 @@ import json
 import math
 import os
 import urllib.parse
+from dotenv import load_dotenv
+load_dotenv()
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.types import TypeDecorator, LargeBinary
