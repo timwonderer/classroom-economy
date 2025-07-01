@@ -7,3 +7,5 @@ instance/
 *.log
 .DS_Store
 GPT_instruction.md
+*.db
+instance/
