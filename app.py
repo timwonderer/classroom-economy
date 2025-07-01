@@ -160,7 +160,7 @@ class Student(db.Model):
     second_factor_secret = db.Column(db.String, nullable=True)
     second_factor_enabled = db.Column(db.Boolean, default=False)
     has_completed_setup = db.Column(db.Boolean, default=False)
-    # --- dob_sum for privacy-aligned username/claim logic ---
+    # Privacy-aligned DOB sum for username generation (non-reversible)
     dob_sum = db.Column(db.Integer, nullable=True)
 
     @property
@@ -1242,13 +1242,14 @@ def admin_attendance_log():
 @app.route('/admin/upload-students', methods=['POST'])
 @admin_required
 def admin_upload_students():
+    import csv, io, os, hashlib, hmac, re
+    from datetime import datetime
+
+    pepper = os.getenv('PEPPER_KEY', 'default_pepper').encode()  # Replace with your actual environment config
     file = request.files.get('csv_file')
     if not file:
         flash("No file provided", "admin_error")
         return redirect(url_for('admin_students'))
-
-    import csv, io, os, hashlib
-    from datetime import datetime
 
     stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
     csv_input = csv.DictReader(stream)
@@ -1265,27 +1266,34 @@ def admin_upload_students():
             if not all([first_name, last_name, dob_str, block]):
                 raise ValueError("Missing required fields.")
 
+            # Generate last_initial
             last_initial = last_name[0].upper()
-            dob = datetime.strptime(dob_str, "%m/%d/%Y").date()
-            # Compute dob_sum for privacy-aligned retrieval
-            dob_sum = dob.year + dob.month + dob.day
 
+            # Generate name_code (vowels from first_name + consonants from last_name)
+            vowels = re.findall(r'[AEIOUaeiou]', first_name)
+            consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
+            name_code = ''.join(vowels + consonants).lower()
+
+            # Generate dob_sum
+            mm, dd, yyyy = map(int, dob_str.split('/'))
+            dob_sum = mm + dd + yyyy
+
+            # Generate salt
             salt = os.urandom(16)
-            first_half = first_name[:len(first_name)//2].lower()
-            second_half = first_name[len(first_name)//2:].lower()
-            first_half_hash = hashlib.sha256(first_half.encode() + salt).hexdigest()
-            second_half_hash = hashlib.sha256(second_half.encode() + salt).hexdigest()
+
+            # Compute first_half_hash and second_half_hash using HMAC with pepper
+            first_half_hash = hmac.new(pepper, salt + name_code.encode(), hashlib.sha256).hexdigest()
+            second_half_hash = hmac.new(pepper, salt + str(dob_sum).encode(), hashlib.sha256).hexdigest()
 
             student = Student(
                 first_name=first_name,
                 last_initial=last_initial,
-                dob=dob,
                 block=block,
                 salt=salt,
                 first_half_hash=first_half_hash,
                 second_half_hash=second_half_hash,
-                has_completed_setup=False,
                 dob_sum=dob_sum,
+                has_completed_setup=False
             )
             db.session.add(student)
             added_count += 1
