@@ -96,6 +96,8 @@ stream_handler.setLevel(log_level)
 stream_handler.setFormatter(logging.Formatter(log_format))
 
 app.logger.setLevel(log_level)
+# Prevent duplicate log entries by clearing handlers first
+app.logger.handlers.clear()
 app.logger.addHandler(stream_handler)
 
 if os.getenv("FLASK_ENV", app.config.get("ENV")) == "production":
@@ -1257,6 +1259,7 @@ def admin_upload_students():
     csv_input = csv.DictReader(stream)
     added_count = 0
     errors = 0
+    duplicated = 0
 
     for row in csv_input:
         try:
@@ -1270,6 +1273,18 @@ def admin_upload_students():
 
             # Generate last_initial
             last_initial = last_name[0].upper()
+
+            # Check for existing student with the same first_name, last_initial, and block
+            existing_student = Student.query.filter_by(
+                first_name=first_name,
+                last_initial=last_initial,
+                block=block
+            ).first()
+
+            if existing_student:
+                app.logger.info(f"Duplicate detected: {first_name} {last_initial} in block {block}, skipping.")
+                duplicated += 1
+                continue  # skip this duplicate
 
             # Generate name_code (vowels from first_name + consonants from last_name)
             vowels = re.findall(r'[AEIOUaeiou]', first_name)
@@ -1307,7 +1322,7 @@ def admin_upload_students():
 
     try:
         db.session.commit()
-        flash(f"Uploaded {added_count} students successfully with {errors} errors.", "admin_success")
+        flash(f"{added_count} students added successfully<br>{errors} students cannot be added<br>{duplicated} duplicated students skipped.", "admin_success")
     except Exception as e:
         db.session.rollback()
         flash(f"Upload failed: {e}", "admin_error")
