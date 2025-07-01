@@ -1357,6 +1357,17 @@ def health_check():
         app.logger.exception('Health check failed')
         return jsonify(error='Database error'), 500
 
+# ---- DO TOS and Privacy routes ----
+@app.route('/privacy')
+def privacy():
+    """Render the Privacy & Data Handling Policy page."""
+    return render_template('privacy.html')
+
+@app.route('/terms')
+def terms():
+    """Render the Terms of Service page."""
+    return render_template('tos.html')
+
 
 @app.route('/debug/filters')
 def debug_filters():
