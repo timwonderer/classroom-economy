@@ -3,13 +3,14 @@
 {% block title %}Student Overview by Block{% endblock %}
 {% block content %}
     <div class="mb-3">
-        <h1>Student Overview by Block</h1>
+        
         <p class="text-muted">View all students in a specific block, including their passes left, checking balance, and last tap in/out times.</p>
     </div>
 
     <div class="card mb-4 p-3 bg-light">
         <h5 class="mb-3">Bulk Student Upload</h5>
-        <div class="d-flex flex-wrap align-items-center">
+        <p class="text-muted mb-3">You can upload a CSV file to add or update students in the system. Please click Download CSV Template to use the custom template.</p>
+        <p class="text-muted mb-3">If you are using your own CSV file, please ensure it includes the following columns: First Name, Last Name, Date of Birth (DD/MM/YYYY), and Period/Block</p>
             <a href="{{ url_for('download_csv_template') }}" class="btn btn-secondary me-3 mb-2">
                 Download CSV Template
             </a>
