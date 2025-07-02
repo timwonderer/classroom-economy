@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Privacy & Data Handling | Classroom Economy App</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background-color: #02301b;
+      font-family: 'Inter', sans-serif;
+      padding: 2rem;
+    }
+    .container {
+      background-color: white;
+      padding: 2rem;
+      border-radius: 10px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      max-width: 800px;
+      margin: auto;
+    }
+    h2 {
+      margin-bottom: 1.5rem;
+    }
+    h4 {
+      margin-top: 1.5rem;
+    }
+    h5 {
+      margin-top: 1rem;
+    }
+    ul {
+      margin-bottom: 1rem;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2 class="mb-4">Privacy & Data Handling Policy</h2>
+    <h4>Data We Collect</h4>
+
+    <h5>Personal Identifiers</h5>
+    <ul>
+      <li><strong>First Name &amp; Last Initial</strong>: For friendly identification in the user interface.</li>
+      <li><strong>Class Block</strong>: To group students by class period and apply block-specific configurations.</li>
+    </ul>
+
+    <h5>Authentication &amp; Setup Data</h5>
+    <ul>
+      <li><strong>Student District ID (hashed)</strong>: Provided by teachers during roster upload, hashed immediately using per-record salts and a global pepper; used to verify identity at login and reset.</li>
+      <li><strong>DOB Sum (hashed)</strong>: Month + Day + Year sum, hashed at upload; used for self-service credential resets.</li>
+      <li><strong>Username (hashed)</strong>: Derived from challenge word, DOB sum, and initials; one-way hashed and used as the student login handle.</li>
+      <li><strong>PIN (hashed)</strong>: Four- to six-digit code for login, stored only as a secure hash.</li>
+      <li><strong>Passphrase (hashed)</strong>: Secret phrase for multi-factor authentication and high-stakes actions, stored only as a secure hash.</li>
+    </ul>
+
+    <h5>Educational Activity Data</h5>
+    <p class="mb-2 text-muted"><em>These records are not personal identifiers—they exist solely to power the in-class simulation and will never be used for external profiling.</em></p>
+    <ul>
+      <li><strong>Attendance Records</strong>: Tap-in/out timestamps and calculated active/inactive minutes; necessary to compute base pay and track participation.</li>
+      <li><strong>Account Balances</strong>: Checking and savings balances, updated dynamically from transaction history.</li>
+      <li><strong>Transaction History</strong>: Detailed records of bonuses, payroll, rent, property tax, insurance premiums, non-sufficient funds fees, and store purchases; required to maintain accurate account states and enforce rules.</li>
+      <li><strong>Monthly Billing Settings</strong>: Configured recurring charges (rent, taxes, insurance) for each student; used to automate billing processes.</li>
+    </ul>
+
+    <h4>How We Use Data</h4>
+    <ul>
+      <li>Support the simulation of real-world banking, employment, and budgeting to teach financial literacy.</li>
+      <li>Analyze usage patterns and generate reports to improve educational outcomes and app functionality.</li>
+      <li>Communicate important updates and notifications to students and educators.</li>
+    </ul>
+
+    <h4>Data Minimization & Retention</h4>
+    <p>We collect only the data necessary to support classroom activities and educational objectives. All PII is either hashed or stored minimalistically. Data is retained only for as long as required by educational standards and district policies, then securely deleted.</p>
+
+    <h4>Security Measures</h4>
+    <ul>
+      <li>All sensitive data is encrypted at rest.</li>
+      <li>Authentication credentials are hashed using industry-standard algorithms with per-record salts and a global pepper.</li>
+      <li>All communications use HTTPS/TLS to encrypt data in transit.</li>
+      <li>Session management includes idle timeouts and no persistent cookies to prevent unauthorized access.</li>
+      <li>All hashed data is one-way; no party, including administrators, can reverse the hashes to recover original values.</li>
+    </ul>
+
+    <h4>Student Rights & Access</h4>
+    <p>Students have the right to view and request corrections to their own data. Username recovery requires a new account-generation flow. PIN and passphrase resets are conducted through self-service with appropriate verification steps.</p>
+
+    <h4>Data Breach Notification</h4>
+    <p>In the event of a data breach, we will notify affected users and authorities within 72 hours and provide guidance on mitigation steps.</p>
+
+    <h4>Compliance</h4>
+    <p>This application adheres to FERPA, COPPA, and relevant data privacy policies.</p>
+
+    <h4>Contact Information</h4>
+    <p>For questions or concerns, contact:<br>
+       Timothy Chang: <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a><br>
+
+    </p>
+
+    <a href="{{ url_for('student_login') }}" class="btn btn-secondary mt-4">← Back to Login</a>
+  </div>
+</body>
+</html>
