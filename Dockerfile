@@ -1,9 +1,9 @@
-FROM python:3.10-slim
+# Dockerfile for Fly staging deployment with proper setup
+FROM python:3.10.14-slim
 
 WORKDIR /app
 
 COPY requirements.txt requirements.txt
-# Pin versions in requirements.txt for consistent builds and reliability
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
@@ -11,5 +11,5 @@ COPY . .
 ENV FLASK_APP=app.py
 ENV FLASK_ENV=production
 
-# Run migrations on start
-CMD ["flask", "db", "upgrade"]
+# Use gunicorn to run the app in production, using Fly.io's release_command for migrations separately
+CMD ["gunicorn", "-b", "0.0.0.0:8080", "app:app"]
