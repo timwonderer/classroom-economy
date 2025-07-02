@@ -1,19 +1,19 @@
 {% extends "layout_admin.html" %}
-{% set page_title = "Student Overview by Block" %}
-{% block title %}Student Overview by Block{% endblock %}
+{% set page_title = "Student Management" %}
+{% block title %}Student Management{% endblock %}
 {% block content %}
 
     <div class="mb-3">
         
-        <p class="text-muted">View all students in a specific block, including their passes left, checking balance, and last tap in/out times.</p>
+
     </div>
 
     <div class="row mb-4">
         <div class="col-md-6 mb-2">
             <div class="card p-3 bg-light h-100">
                 
-                <h5>Bulk Student Upload</h5>
-                <hr>
+                <h4 style="margin-bottom:10px">Bulk Student Upload</h4>
+                
                 <p> You can upload a spreadsheet containing multiple students at once to save time. </p>
                 <p>In order for the system to recognize student information, you must use the custom template by clicking the download button below.</p>
                 
@@ -38,27 +38,27 @@
         <div class="col-md-6 mb-2">
             <div class="card p-3 bg-light h-100">
                 
-                <h5>Add Students Manually</h5>
-                <hr>
+                <h4 style="margin-bottom:10px">Add Students Manually</h4>
+            
                 <form action="{{ url_for('admin_add_student_manual') }}" method="post" enctype="multipart/form-data">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="row">
             <div class="col-md-6 mb-2">
-                <label for="first_name" class="form-label">First Name</label>
+                <label for="first_name" class="form-label fw-bold">First Name</label>
                 <input type="text" class="form-control" name="first_name" id="first_name" required>
             </div>
             <div class="col-md-6 mb-2">
-                <label for="last_name" class="form-label">Last Name</label>
+                <label for="last_name" class="form-label fw-bold">Last Name</label>
                 <input type="text" class="form-control" name="last_name" id="last_name" required>
             </div>
         </div>
         <div class="row">
             <div class="col-md-6 mb-2">
-                <label for="dob" class="form-label">Date of Birth</label>
+                <label for="dob" class="form-label fw-bold">Date of Birth</label>
                 <input type="date" class="form-control" name="dob" id="dob" required>
             </div>
             <div class="col-md-6 mb-2">
-                <label for="block" class="form-label">Block</label>
+                <label for="block" class="form-label fw-bold">Period/Block</label>
                 <input type="text" class="form-control" name="block" id="block" required>
             </div>
         </div>
