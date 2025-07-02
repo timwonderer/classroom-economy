@@ -8,63 +8,92 @@
         <p class="text-muted">View all students in a specific block, including their passes left, checking balance, and last tap in/out times.</p>
     </div>
 
-    <div class="d-flex  mb-4">
-        <div class="card p-3 bg-light" style="max-width: 600px; width: 100%;">
-            <h5 class="mb-3">Bulk Student Upload</h5>
-            <p>You can upload a CSV file to add or update students in the system. Please click Download CSV Template to use the custom template.</p>
-            <p>If you are using your own CSV file, please ensure it includes the following columns: First Name, Last Name, Date of Birth (DD/MM/YYYY), and Period/Block</p>
-            <a href="{{ url_for('download_csv_template') }}" class="btn btn-secondary me-3 mb-2">
-                Download CSV Template
-            </a>
-            <button class="btn btn-primary mb-2" data-bs-toggle="modal" data-bs-target="#uploadModal">
-                Upload Students CSV
-            </button>
+    <div class="row mb-4">
+        <div class="col-md-6 mb-2">
+            <div class="card p-3 bg-light h-100">
+                
+                <h5>Bulk Student Upload</h5>
+                <hr>
+                <p> You can upload a spreadsheet containing multiple students at once to save time. </p>
+                <p>In order for the system to recognize student information, you must use the custom template by clicking the download button below.</p>
+                
+                
+                       
+                
+                
+                    <a href="{{ url_for('download_csv_template') }}" class="btn mb-3" style="background-color: rgb(219, 66, 0); color:white; border-style:outset">
+                        Download Bulk Student Template
+                    </a>
+               
+               
+                    <button class="btn mb-3" style="background-color: green; color:white; border-style:outset"data-bs-toggle="modal" data-bs-target="#uploadModal">
+                        Upload Bulk Student Template
+                    </button>
+                
+            
+            
+                    
+            </div>
         </div>
-        <div class="card p-3 bg-light ms-4" style="max-width: 600px; width: 100%;">
-            <h5 class="mb-3">Add Student Manually</h5>
-            <form action="{{ url_for('admin_add_student') }}" method="post">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="mb-2">
-                    <label for="first_name" class="form-label">First Name</label>
-                    <input type="text" class="form-control" name="first_name" id="first_name" required>
-                </div>
-                <div class="mb-2">
-                    <label for="last_name" class="form-label">Last Name</label>
-                    <input type="text" class="form-control" name="last_name" id="last_name" required>
-                </div>
-                <div class="mb-2">
-                    <label for="dob" class="form-label">Date of Birth</label>
-                    <input type="date" class="form-control" name="dob" id="dob" required>
-                </div>
-                <div class="mb-3">
-                    <label for="block" class="form-label">Block</label>
-                    <select class="form-select" name="block" id="block" required>
-                        {% for block in blocks %}
-                        <option value="{{ block }}">Block {{ block }}</option>
-                        {% endfor %}
-                    </select>
-                </div>
-                <button type="submit" class="btn btn-primary">Add Student</button>
-            </form>
+        <div class="col-md-6 mb-2">
+            <div class="card p-3 bg-light h-100">
+                
+                <h5>Add Students Manually</h5>
+                <hr>
+                <form action="{{ url_for('admin_add_student_manual') }}" method="post" enctype="multipart/form-data">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="row">
+            <div class="col-md-6 mb-2">
+                <label for="first_name" class="form-label">First Name</label>
+                <input type="text" class="form-control" name="first_name" id="first_name" required>
+            </div>
+            <div class="col-md-6 mb-2">
+                <label for="last_name" class="form-label">Last Name</label>
+                <input type="text" class="form-control" name="last_name" id="last_name" required>
+            </div>
+        </div>
+        <div class="row">
+            <div class="col-md-6 mb-2">
+                <label for="dob" class="form-label">Date of Birth</label>
+                <input type="date" class="form-control" name="dob" id="dob" required>
+            </div>
+            <div class="col-md-6 mb-2">
+                <label for="block" class="form-label">Block</label>
+                <input type="text" class="form-control" name="block" id="block" required>
+            </div>
+        </div>
+        <div class="mt-3 text-end">
+            <button type="submit" class="btn btn-primary">Add Student</button>
+        </div>
+    </form>
+            </div>
         </div>
     </div>
+
 
 <!-- Upload Modal -->
 <div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
   <div class="modal-dialog">
     <form action="{{ url_for('admin_upload_students') }}" method="post" enctype="multipart/form-data">
       <div class="modal-content">
-        <div class="modal-header">
+        <div class="modal-header" style="background-color:rgb(2, 62, 121);color:white;">
           <h5 class="modal-title" id="uploadModalLabel">Upload Students CSV</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          <button type="button"   class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <div class="mb-3">
+            <p style="font-weight:bold;">You must use the provided template to fill out student information.</p>           
             <label for="csv_file" class="form-label">Select CSV file:</label>
             <input class="form-control" type="file" name="csv_file" id="csv_file" accept=".csv" required onchange="document.getElementById('file-chosen').textContent = this.files[0]?.name || 'No file chosen';">
             <div id="file-chosen" class="form-text mt-1">No file chosen</div>
           </div>
+           <p style="font-weight:bold;"> Please check your file before uploading:</p>
+            <ul>
+                    <li> Make sure the header row is unchanged.</li>
+                    <li> Make sure the Date of Birth is in MM/DD/YYYY format.</li>
+                    <li> Make sure the file is in CSV format.</li>
+                </ul>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
