@@ -1,0 +1,18 @@
+# flyctl launch added from .gitignore
+**/venv
+**/__pycache__
+**/*.pyc
+**/instance
+**/.env
+**/*.sqlite3
+**/*.log
+**/.DS_Store
+**/GPT_instruction.md
+**/*.db
+**/instance
+**/local.db
+
+
+# flyctl launch added from .venv/.gitignore
+.venv/**/*
+fly.toml
