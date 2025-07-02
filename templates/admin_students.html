@@ -20,6 +20,33 @@
                 Upload Students CSV
             </button>
         </div>
+        <div class="card p-3 bg-light ms-4" style="max-width: 600px; width: 100%;">
+            <h5 class="mb-3">Add Student Manually</h5>
+            <form action="{{ url_for('admin_add_student') }}" method="post">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="mb-2">
+                    <label for="first_name" class="form-label">First Name</label>
+                    <input type="text" class="form-control" name="first_name" id="first_name" required>
+                </div>
+                <div class="mb-2">
+                    <label for="last_name" class="form-label">Last Name</label>
+                    <input type="text" class="form-control" name="last_name" id="last_name" required>
+                </div>
+                <div class="mb-2">
+                    <label for="dob" class="form-label">Date of Birth</label>
+                    <input type="date" class="form-control" name="dob" id="dob" required>
+                </div>
+                <div class="mb-3">
+                    <label for="block" class="form-label">Block</label>
+                    <select class="form-select" name="block" id="block" required>
+                        {% for block in blocks %}
+                        <option value="{{ block }}">Block {{ block }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-primary">Add Student</button>
+            </form>
+        </div>
     </div>
 
 <!-- Upload Modal -->
