@@ -1,3 +1,56 @@
+@app.route('/admin/add-student-manual', methods=['POST'])
+@admin_required
+def admin_add_student_manual():
+    import os, hashlib, hmac, re
+    from datetime import datetime
+
+    pepper = os.getenv('PEPPER_KEY', 'default_pepper').encode()
+    first_name = request.form.get('first_name', '').strip()
+    last_name = request.form.get('last_name', '').strip()
+    dob_str = request.form.get('dob', '').strip()
+    block = request.form.get('block', '').strip().upper()
+
+    if not all([first_name, last_name, dob_str, block]):
+        flash("All fields are required.", "admin_error")
+        return redirect(url_for('admin_students'))
+
+    # Generate last_initial
+    last_initial = last_name[0].upper()
+
+    # Check for duplicates
+    existing = Student.query.filter_by(first_name=first_name, last_initial=last_initial, block=block).first()
+    if existing:
+        flash(f"Student {first_name} {last_initial} in Block {block} already exists.", "admin_error")
+        return redirect(url_for('admin_students'))
+
+    # Generate name_code (vowels from first_name + consonants from last_name)
+    vowels = re.findall(r'[AEIOUaeiou]', first_name)
+    consonants = re.findall(r'[^AEIOUaeiou\\W\\d_]', last_name)
+    name_code = ''.join(vowels + consonants).lower()
+
+    # Generate dob_sum
+    yyyy, mm, dd = map(int, dob_str.split('-'))  # using yyyy-mm-dd from <input type='date'>
+    dob_sum = mm + dd + yyyy
+
+    # Generate salt and hashes
+    salt = os.urandom(16)
+    first_half_hash = hmac.new(pepper, salt + name_code.encode(), hashlib.sha256).hexdigest()
+    second_half_hash = hmac.new(pepper, salt + str(dob_sum).encode(), hashlib.sha256).hexdigest()
+
+    student = Student(
+        first_name=first_name,
+        last_initial=last_initial,
+        block=block,
+        salt=salt,
+        first_half_hash=first_half_hash,
+        second_half_hash=second_half_hash,
+        dob_sum=dob_sum,
+        has_completed_setup=False
+    )
+    db.session.add(student)
+    db.session.commit()
+    flash(f"✅ Student {first_name} {last_initial} added successfully.", "admin_success")
+    return redirect(url_for('admin_students'))
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -69,6 +122,10 @@ app.config.from_mapping(
     SESSION_COOKIE_SECURE=True,
     SESSION_COOKIE_SAMESITE="None",
 )
+
+# Enable Jinja2 template hot reloading without server restart
+app.jinja_env.auto_reload = True
+app.config['TEMPLATES_AUTO_RELOAD'] = True
 
 # --- Enable CSRF protection ---
 csrf = CSRFProtect(app)
