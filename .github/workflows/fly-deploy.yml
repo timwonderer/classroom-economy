@@ -4,7 +4,10 @@ name: Fly Deploy
 on:
   push:
     branches:
+
+
       - staging
+
 jobs:
   deploy:
     name: Deploy app
