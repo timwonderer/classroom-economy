@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Admin TOTP Login | Classroom Economy{% endblock %}
+{% block title %}Teacher Login | Classroom Token Hub{% endblock %}
 
 {% block content %}
     <div class="login-container">
         <h2>Classroom Token Hub </h2>
         
-        <h3>Admin TOTP Login</h3>
+        <h3>Teacher Login</h3>
 
         {% with messages = get_flashed_messages() %}
           {% if messages %}
@@ -23,7 +23,7 @@
                 <input type="text" class="form-control" id="username" name="username" required>
             </div>
             <div class="mb-3">
-                <label for="totp" class="form-label">TOTP Code</label>
+                <label for="totp" class="form-label">6-digit Authenticator Code</label>
                 <input type="text" inputmode="numeric" pattern="\d{6}" maxlength="6" class="form-control" id="totp" name="totp_code" placeholder="Enter 6-digit code" required>
             </div>
             <button class="btn btn-primary w-100" type="submit">Log In</button>
@@ -49,6 +49,6 @@
         
         <small class="text-muted  mb-4"><a href="{{ url_for('privacy') }}">Read about how Classroom Token Hub uses your information</a></small><br>
         <small class="text-muted  mb-4"><a href="{{ url_for('terms') }}">Read our terms of service here</a></small>
-        <small style="color: #999; text-align: center; display: block;margin-top: 1rem;">BETA v0.1</small>
+        <small style="color: #999; text-align: center; display: block;margin-top: 1rem;">BETA Stable Release v0.9.0</small>
     </div>
 {% endblock %}

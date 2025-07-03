@@ -3,7 +3,14 @@
 
 {% block content %}
 <div class="container mt-5" style="max-width: 480px;">
-    <h1 class="mb-4 text-center">Admin Signup</h1>
+    <h2 style="color:rgb(2, 70, 55)">Classroom Token Hub</h1>
+    <h3>New Teacher Sign Up</h2>
+      <div style="border-style:solid;border-color:rgb(14, 134, 126); padding: 5px 15px; border-radius: 5px; margin-bottom: 20px; margin-top:20px">
+    <p style="margin-top:20px"> Classroom Token Hub is an currently under development with limited capacity.
+    <span style="color:red"> To ensure the stability of our server, this app is currently only open to small number of teacher testers</span></p>
+    <p>Once we are ready for more teachers to join, we will open up the app to the general public.</p>
+    </div>
+   
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="mb-3">
@@ -26,15 +33,26 @@
     {% endwith %}
     <form method="POST" action="{{ url_for('admin_signup') }}">
         {{ form.csrf_token if form and form.csrf_token }}
-        <div class="mb-3">
-            <label for="username" class="form-label">Username</label>
-            <input id="username" name="username" type="text" required autocomplete="username" class="form-control">
-        </div>
         <div class="mb-4">
-            <label for="invite_code" class="form-label">Invite Code</label>
+            <label for="invite_code" class="form-label">If you have received an <b>invite code</b>, enter it exactly as shown. The invite code is case-sensitive and one-time use only.</label>
             <input id="invite_code" name="invite_code" type="text" required autocomplete="off" class="form-control">
         </div>
+        
+        <div class="mb-3">
+            <label for="username" class="form-label">Create a unique <b>username</b> that you will use to log in</label>
+            <input id="username" name="username" type="text" required autocomplete="username" class="form-control">
+        </div>
+        
         <button type="submit" class="btn btn-primary w-100">Sign Up</button>
     </form>
+    <p style="color:red;margin-top: 2rem;text-align: center;">
+            This web app is currently under active development. <br>Some features may be unstable or crash unexpectedly.
+        </p>
+        
+        <p class="mt-1 text-muted small">
+            For questions or concerns, contact the developer at
+            <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a>.
+        </p>
+        <small style="color: #999; text-align: center; display: block;margin-top: 1rem;">BETA Stable Release v0.9.0</small
 </div>
 {% endblock %}
