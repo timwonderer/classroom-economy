@@ -232,6 +232,32 @@ class AdminInviteCode(db.Model):
     used = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+# -------------------- SYSTEM ADMIN MODEL --------------------
+class SystemAdmin(db.Model):
+    __tablename__ = 'system_admins'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    totp_secret = db.Column(db.String(32), nullable=False)
+# -------------------- SYSTEM ADMIN AUTH HELPERS --------------------
+def system_admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("is_system_admin"):
+            flash("System administrator access required.")
+            return redirect(url_for('system_admin_login', next=request.path))
+        last_activity = session.get('last_activity')
+        now = datetime.utcnow()
+        if last_activity:
+            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S")
+            if now - last_activity > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+                session.pop("is_system_admin", None)
+                flash("Session expired. Please log in again.")
+                return redirect(url_for('system_admin_login', next=request.path))
+        session['last_activity'] = now.strftime("%Y-%m-%d %H:%M:%S")
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
@@ -1641,3 +1667,41 @@ def debug_admin_db_test():
 
 if __name__ == '__main__':
     app.run(debug=False, use_reloader=False)
+
+# -------------------- SYSTEM ADMIN LOGIN --------------------
+@app.route('/sysadmin/login', methods=['GET', 'POST'])
+def system_admin_login():
+    session.pop("is_system_admin", None)
+    session.pop("last_activity", None)
+    if request.method == 'POST':
+        username = request.form.get("username", "").strip()
+        totp_code = request.form.get("totp_code", "").strip()
+        admin = SystemAdmin.query.filter_by(username=username).first()
+        if admin:
+            totp = pyotp.TOTP(admin.totp_secret)
+            if totp.verify(totp_code, valid_window=1):
+                session["is_system_admin"] = True
+                session["last_activity"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                flash("System admin login successful.")
+                next_url = request.args.get("next")
+                return redirect(next_url or url_for("system_admin_invites"))
+        flash("Invalid credentials or TOTP.", "error")
+        return redirect(url_for("system_admin_login"))
+    return render_template("system_admin_login.html")
+
+# -------------------- SYSTEM ADMIN INVITE CODE MANAGEMENT --------------------
+@app.route('/sysadmin/invites', methods=['GET', 'POST'])
+@system_admin_required
+def system_admin_invites():
+    if request.method == 'POST':
+        import secrets
+        code = request.form.get("code") or secrets.token_urlsafe(8)
+        expires_at_str = request.form.get("expires_at")
+        expires_at = datetime.strptime(expires_at_str, "%Y-%m-%d") if expires_at_str else None
+        invite = AdminInviteCode(code=code, expires_at=expires_at)
+        db.session.add(invite)
+        db.session.commit()
+        flash(f"Invite code {code} created successfully.", "success")
+        return redirect(url_for("system_admin_invites"))
+    invites = AdminInviteCode.query.order_by(AdminInviteCode.created_at.desc()).all()
+    return render_template("system_admin_invites.html", invites=invites)
