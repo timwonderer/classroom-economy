@@ -1689,10 +1689,10 @@ def system_admin_login():
         return redirect(url_for("system_admin_login"))
     return render_template("system_admin_login.html")
 
-# -------------------- SYSTEM ADMIN INVITE CODE MANAGEMENT --------------------
-@app.route('/sysadmin/invites', methods=['GET', 'POST'])
+# -------------------- SYSTEM ADMIN DASHBOARD (UNIFIED INVITE MANAGEMENT) --------------------
+@app.route('/sysadmin/dashboard', methods=['GET', 'POST'])
 @system_admin_required
-def system_admin_invites():
+def system_admin_dashboard():
     if request.method == 'POST':
         import secrets
         code = request.form.get("code") or secrets.token_urlsafe(8)
@@ -1701,7 +1701,11 @@ def system_admin_invites():
         invite = AdminInviteCode(code=code, expires_at=expires_at)
         db.session.add(invite)
         db.session.commit()
-        flash(f"Invite code {code} created successfully.", "success")
-        return redirect(url_for("system_admin_invites"))
+        flash(f"✅ Invite code {code} created successfully.", "success")
+        return redirect(url_for("system_admin_dashboard"))
     invites = AdminInviteCode.query.order_by(AdminInviteCode.created_at.desc()).all()
-    return render_template("system_admin_invites.html", invites=invites)
+    return render_template(
+        "system_admin_dashboard.html",
+        invites=invites,
+        current_page="sysadmin_dashboard"
+    )
