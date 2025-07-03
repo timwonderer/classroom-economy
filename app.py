@@ -15,7 +15,9 @@ import os
 import urllib.parse
 from dotenv import load_dotenv
 load_dotenv()
+
 from forms import AdminTOTPConfirmForm
+
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.types import TypeDecorator, LargeBinary
@@ -278,8 +280,10 @@ from flask.cli import with_appcontext
 
 # Future-proof: No default admin with password for TOTP-only flow.
 def ensure_default_admin():
+
     """Placeholder: No default admin created for TOTP-only auth."""
     app.logger.info("🛡️ ensure_default_admin: TOTP-only mode, no default admin created.")
+
 
 
 # ---- Flask CLI command to manually ensure default admin ----
