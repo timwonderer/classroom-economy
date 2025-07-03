@@ -10,4 +10,5 @@ GPT_instruction.md
 *.db
 instance/
 local.db
-
+classroom-economy-deploy-key
+classroom-economy-deploy-key.pub
