@@ -1,0 +1,56 @@
+
+
+{% extends "base.html" %}
+{% block title %}Admin TOTP Setup{% endblock %}
+{% block content %}
+<div class="container d-flex justify-content-center align-items-center" style="min-height: 90vh;">
+  <div class="card shadow-sm p-4" style="max-width: 420px; width: 100%;">
+    <h1 class="h3 text-center mb-4 fw-bold">Admin TOTP Setup</h1>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="alert alert-{{ 'success' if category == 'success' else 'danger' if category == 'error' else 'info' }} alert-dismissible fade show mb-3 text-center py-2" role="alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+          </div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+    <p class="mb-4 text-center text-muted">
+      Scan the QR code below with your Authenticator app, then enter the 6-digit code to complete signup.
+    </p>
+    <div class="d-flex justify-content-center mb-4">
+      <img src="data:image/png;base64,{{ qr_b64 }}" alt="TOTP QR Code" class="rounded border shadow-sm" />
+    </div>
+    <div class="mb-4 text-center">
+      <span class="text-secondary small">Can't scan? Enter this secret manually:</span>
+      <div class="mt-1 bg-light border rounded d-inline-block px-3 py-1 fw-monospace fs-5 user-select-all">
+        {{ totp_secret }}
+      </div>
+    </div>
+    <form method="POST" autocomplete="off">
+      {{ form.hidden_tag() }}
+      <input type="hidden" name="username" value="{{ username }}">
+      <input type="hidden" name="invite_code" value="{{ invite_code }}">
+      <div class="mb-3">
+        <label for="totp_code" class="form-label fw-medium">TOTP Code</label>
+        <input
+          type="text"
+          id="totp_code"
+          name="totp_code"
+          inputmode="numeric"
+          pattern="[0-9]{6}"
+          maxlength="6"
+          required
+          autocomplete="one-time-code"
+          class="form-control text-center fs-5"
+          placeholder="123456"
+        >
+      </div>
+      <button type="submit" class="btn btn-primary w-100 fw-semibold">
+        Verify and Complete Signup
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}
