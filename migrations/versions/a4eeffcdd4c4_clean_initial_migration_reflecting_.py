@@ -1,8 +1,8 @@
-"""Initial clean migration
+"""Clean initial migration reflecting current schema
 
-Revision ID: 9297b7e933f1
+Revision ID: a4eeffcdd4c4
 Revises: 
-Create Date: 2025-06-30 17:36:00.621052
+Create Date: 2025-07-03 11:44:07.186069
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '9297b7e933f1'
+revision = 'a4eeffcdd4c4'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -48,6 +48,7 @@ def upgrade():
     sa.Column('second_factor_secret', sa.String(), nullable=True),
     sa.Column('second_factor_enabled', sa.Boolean(), nullable=True),
     sa.Column('has_completed_setup', sa.Boolean(), nullable=True),
+    sa.Column('dob_sum', sa.Integer(), nullable=True),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('first_half_hash'),
     sa.UniqueConstraint('second_half_hash'),
