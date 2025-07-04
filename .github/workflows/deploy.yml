@@ -18,6 +18,7 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.DO_DEPLOY_KEY }}
 
+
     - name: Deploy to DO Production Server
       run: |
         # Connect to the production server and deploy
@@ -47,4 +48,5 @@ jobs:
           sudo systemctl restart gunicorn
 
           echo 'Deployment completed successfully.'
+
         "

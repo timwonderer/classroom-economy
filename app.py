@@ -1,6 +1,8 @@
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, Response
+
 from forms import AdminSignupForm, SystemAdminInviteForm
+
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -232,6 +234,7 @@ class AdminInviteCode(db.Model):
     used = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+
 # -------------------- SYSTEM ADMIN MODEL --------------------
 class SystemAdmin(db.Model):
     __tablename__ = 'system_admins'
@@ -256,6 +259,7 @@ def system_admin_required(f):
         session['last_activity'] = now.strftime("%Y-%m-%d %H:%M:%S")
         return f(*args, **kwargs)
     return decorated_function
+
 
 
 class Transaction(db.Model):
