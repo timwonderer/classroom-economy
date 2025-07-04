@@ -1,6 +1,8 @@
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, Response
-from forms import AdminSignupForm
+
+from forms import AdminSignupForm, SystemAdminInviteForm
+
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -231,6 +233,34 @@ class AdminInviteCode(db.Model):
     expires_at = db.Column(db.DateTime, nullable=True)
     used = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# -------------------- SYSTEM ADMIN MODEL --------------------
+class SystemAdmin(db.Model):
+    __tablename__ = 'system_admins'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    totp_secret = db.Column(db.String(32), nullable=False)
+# -------------------- SYSTEM ADMIN AUTH HELPERS --------------------
+def system_admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("is_system_admin"):
+            flash("System administrator access required.")
+            return redirect(url_for('system_admin_login', next=request.path))
+        last_activity = session.get('last_activity')
+        now = datetime.utcnow()
+        if last_activity:
+            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S")
+            if now - last_activity > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+                session.pop("is_system_admin", None)
+                flash("Session expired. Please log in again.")
+                return redirect(url_for('system_admin_login', next=request.path))
+        session['last_activity'] = now.strftime("%Y-%m-%d %H:%M:%S")
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -1641,3 +1671,124 @@ def debug_admin_db_test():
 
 if __name__ == '__main__':
     app.run(debug=False, use_reloader=False)
+
+# -------------------- SYSTEM ADMIN LOGIN --------------------
+from forms import SystemAdminLoginForm
+
+@app.route('/sysadmin/login', methods=['GET', 'POST'])
+def system_admin_login():
+    session.pop("is_system_admin", None)
+    session.pop("last_activity", None)
+    form = SystemAdminLoginForm()
+    if form.validate_on_submit():
+        username = form.username.data.strip()
+        totp_code = form.totp_code.data.strip()
+        admin = SystemAdmin.query.filter_by(username=username).first()
+        if admin:
+            totp = pyotp.TOTP(admin.totp_secret)
+            if totp.verify(totp_code, valid_window=1):
+                session["is_system_admin"] = True
+                session["last_activity"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                flash("System admin login successful.")
+                next_url = request.args.get("next")
+                return redirect(next_url or url_for("system_admin_dashboard"))
+        flash("Invalid credentials or TOTP.", "error")
+        return redirect(url_for("system_admin_login"))
+    return render_template("system_admin_login.html", form=form)
+
+# -------------------- SYSTEM ADMIN DASHBOARD (UNIFIED INVITE MANAGEMENT) --------------------
+@app.route('/sysadmin/dashboard', methods=['GET', 'POST'])
+@system_admin_required
+def system_admin_dashboard():
+    import secrets
+    invites = AdminInviteCode.query.order_by(AdminInviteCode.created_at.desc()).all()
+    form = SystemAdminInviteForm()
+    if form.validate_on_submit():
+        code = form.code.data or secrets.token_urlsafe(8)
+        expires_at = form.expires_at.data
+        invite = AdminInviteCode(code=code, expires_at=expires_at)
+        db.session.add(invite)
+        db.session.commit()
+        flash(f"✅ Invite code {code} created successfully.", "success")
+        return redirect(url_for("system_admin_dashboard"))
+    system_admins = SystemAdmin.query.order_by(SystemAdmin.username.asc()).all()
+    logs_url = url_for("system_admin_logs")
+    return render_template(
+        "system_admin_dashboard.html",
+        invites=invites,
+        form=form,
+        system_admins=system_admins,
+        current_page="sysadmin_dashboard",
+        logs_url=logs_url
+    )
+
+
+
+@app.route('/sysadmin/logout')
+def system_admin_logout():
+    session.pop("is_system_admin", None)
+    flash("Logged out.")
+    return redirect(url_for("system_admin_login"))
+
+# -------------------- SYSTEM ADMIN SEED COMMAND --------------------
+@app.cli.command("create-sysadmin")
+@with_appcontext
+def create_sysadmin():
+    """Create initial system admin account interactively."""
+    import getpass
+    import pyotp
+    username = input("Enter system admin username: ").strip()
+    if not username:
+        print("Username is required.")
+        return
+    existing = SystemAdmin.query.filter_by(username=username).first()
+    if existing:
+        print(f"System admin '{username}' already exists.")
+        return
+    totp_secret = pyotp.random_base32()
+    sysadmin = SystemAdmin(username=username, totp_secret=totp_secret)
+    db.session.add(sysadmin)
+    db.session.commit()
+    print(f"✅ System admin '{username}' created successfully.")
+    print(f"🔑 TOTP secret for authenticator app: {totp_secret}")
+    uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy SysAdmin")
+    print(f"📱 QR Code URI: {uri}")
+@app.route('/sysadmin/logs')
+@system_admin_required
+def system_admin_logs():
+    import os, re
+    log_file = os.getenv("LOG_FILE", "app.log")
+    structured_logs = []
+    try:
+        with open(log_file, "r") as f:
+            lines = f.readlines()[-200:]
+        log_pattern = re.compile(r'\[(.*?)\]\s+(\w+)\s+in\s+(\w+):\s+(.*)')
+        current_log = None
+        for line in lines:
+            match = log_pattern.match(line)
+            if match:
+                # Start a new log entry
+                timestamp, level, module, message = match.groups()
+                current_log = {
+                    "timestamp": timestamp,
+                    "level": level,
+                    "module": module,
+                    "message": message.strip()
+                }
+                structured_logs.append(current_log)
+            else:
+                # Continuation of the previous log entry (stack trace, etc.)
+                if current_log:
+                    current_log["message"] += "<br>" + line.strip()
+                else:
+                    # Orphan line with no preceding log; treat as its own entry
+                    current_log = {
+                        "timestamp": "",
+                        "level": "",
+                        "module": "",
+                        "message": line.strip()
+                    }
+                    structured_logs.append(current_log)
+    except Exception as e:
+        structured_logs = [{"timestamp": "", "level": "ERROR", "module": "logs", "message": f"Error reading log file: {e}"}]
+    return render_template("system_admin_logs.html", logs=structured_logs, current_page="sysadmin_logs")
