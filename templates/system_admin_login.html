@@ -1,23 +1,47 @@
-
-
 {% extends "base.html" %}
 
 {% block title %}System Admin Login{% endblock %}
 
 {% block content %}
-<h2>System Administrator Login</h2>
-<form method="POST" class="mt-4">
-    <div class="mb-3">
-        <label for="username" class="form-label">Username</label>
-        <input type="text" class="form-control" id="username" name="username" required autofocus>
-    </div>
-    <div class="mb-3">
-        <label for="totp_code" class="form-label">TOTP Code</label>
-        <input type="text" class="form-control" id="totp_code" name="totp_code" required placeholder="123456">
-    </div>
-    <button type="submit" class="btn btn-primary w-100">Login</button>
-</form>
-<p class="mt-3 text-center">
-    <a href="{{ url_for('student_login') }}">Back to Student Login</a>
-</p>
+<h4 class="mb-1 text-center" style="font-family:noto sans mono;">🤫 Super Secret Backstage Access 🤫</h4>
+<p class="fst-italic text-center mb-4" style="noto sans mono">Authorized System Administrators Only</p>
+<div class="card bg-dark text-light p-4 rounded shadow-sm" style="max-width: 400px; margin: auto;">
+    {% if form %}
+    <form method="POST">
+        {{ form.hidden_tag() }}
+        <div class="mb-3">
+            {{ form.username.label(class="form-label") }}
+            {{ form.username(class="form-control", autofocus=True, style="font-family: monospace;") }}
+        </div>
+        <div class="mb-3">
+            {{ form.totp_code.label(class="form-label") }}
+            {{ form.totp_code(class="form-control", placeholder="", style="font-family: monospace;") }}
+        </div>
+        <div class="d-flex flex-column align-items-center mt-2">
+            {{ form.submit(class="btn btn-primary w-100 d-flex justify-content-center align-items-center") }}
+            <span class="pulse-lock mt-2">🔒</span>
+        </div>
+        <style>
+            .form-label {
+                font-family: monospace;
+            }
+            @keyframes pulse-lock {
+                0% { transform: scale(1); }
+                50% { transform: scale(1.1); }
+                100% { transform: scale(1); }
+            }
+            .pulse-lock {
+                display: inline-block;
+                animation: pulse-lock 2s infinite;
+                font-size: 1.5rem;
+            }
+        </style>
+    </form>
+    {% endif %}
+</div>
+<div class="mt-4 text-center">
+    <p><a class="text-decoration-none fw-bold btn-secondary btn" href="{{ url_for('student_login') }}">Return to Student Login</a></p>
+    <p><a href="{{ url_for('admin_login') }}" class="btn text-decoration-none fw-bold btn-secondary">Return to Teacher Login</a></p>
+    <p class="fst-italic text-secondary small mt-2">*You didn't see this page.*</p>
+</div>
 {% endblock %}
