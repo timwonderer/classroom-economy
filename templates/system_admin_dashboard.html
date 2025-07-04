@@ -1,79 +1,92 @@
-
-
 {% extends "base.html" %}
 
 {% block title %}System Admin Dashboard{% endblock %}
 
 {% block content %}
-<h2 class="mb-4 fw-bold" style="margin-bottom: 2rem !important;">System Administrator Dashboard</h2>
-
-<div class="row g-4">
-
+<div class="container py-5">
+  <h2 class="mb-4 fw-bold text-center">System Dashboard</h2>
+  <small class="text-muted mb-4 d-block text-center">Generate invite code and view system logs</small>
+  {% with messages = get_flashed_messages() %}
+    {% if messages %}
+      <div class="alert alert-info text-center" role="alert">
+        {{ messages[0] }}
+      </div>
+    {% endif %}
+  {% endwith %}
+  <div class="mx-auto d-flex flex-column align-items-center" style="max-width: 900px;">
     <!-- Invite Codes Management Card -->
-    <div class="col-12 col-md-6 mb-4">
-        <div class="card shadow mb-0">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0 fw-semibold" style="margin-bottom:0;">Manage Invite Codes</h5>
-            </div>
-            <div class="card-body">
-                <form method="POST" action="{{ url_for('generate_invite') }}">
-                    <div class="form-floating mb-3">
-                        <input type="text" class="form-control" id="code" name="code" placeholder="New Invite Code">
-                        <label for="code">New Invite Code (leave blank for auto-generate)</label>
-                    </div>
-                    <div class="form-floating mb-3">
-                        <input type="number" class="form-control" id="expiry_days" name="expiry_days" value="30" min="1" placeholder="Expiry Days">
-                        <label for="expiry_days">Expiry Days (default 30)</label>
-                    </div>
-                    <button type="submit" class="btn btn-success w-100">Generate Invite Code</button>
-                </form>
-                <hr>
-                <h5 class="fw-semibold mb-3 mt-3" style="margin-top:1rem;margin-bottom:1rem;">Existing Invite Codes</h5>
-                <ul class="list-group">
-                    {% for invite in invites %}
-                        <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap">
-                            <span>{{ invite.code }}</span>
-                            {% if invite.used %}
-                                <span class="badge bg-secondary rounded-pill px-3 py-1" style="font-size:1em;">Used</span>
-                            {% else %}
-                                <span class="badge bg-success rounded-pill px-3 py-1" style="font-size:1em;">Active</span>
-                            {% endif %}
-                        </li>
-                    {% else %}
-                        <li class="list-group-item text-muted">No invite codes found.</li>
-                    {% endfor %}
-                </ul>
-            </div>
+    <div class="w-100 d-flex mb-4" style="max-width: 700px;">
+      <div class="card shadow flex-fill" style="min-width:0;">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0 fw-semibold">Manage Invite Codes</h5>
         </div>
+        <div class="card-body d-flex flex-column">
+          <form method="POST" action="{{ url_for('system_admin_dashboard') }}">
+            {{ form.hidden_tag() }}
+            <div class="form-floating mb-3">
+              <input type="text" class="form-control" id="code" name="code" placeholder="New Invite Code" autocomplete="off">
+              <label for="code">New Invite Code (leave blank for auto-generate)</label>
+            </div>
+            <div class="form-floating mb-3">
+              <input type="number" class="form-control" id="expiry_days" name="expiry_days" value="30" min="1" placeholder="Expiry Days" required>
+              <label for="expiry_days">Expiry Days (default 30)</label>
+            </div>
+            <div class="d-flex justify-content-center">
+              <button type="submit" class="btn btn-success w-100" style="max-width: 240px;">Generate Invite Code</button>
+            </div>
+          </form>
+          <hr>
+          <small class="text-muted mb-2">Distribute these codes to teachers to allow them to sign up.</small>
+          <h5 class="fw-semibold mb-3 mt-3">Existing Invite Codes</h5>
+          <ul class="list-group">
+            {% for invite in invites %}
+              <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap">
+                <span class="d-flex align-items-center">
+                  <code class="me-2" id="invite-{{ loop.index }}">{{ invite.code }}</code>
+                  <button class="btn btn-sm btn-outline-secondary" aria-label="Copy invite code" onclick="navigator.clipboard.writeText('{{ invite.code }}')">Copy</button>
+                </span>
+                {% if invite.used %}
+                  <span class="badge bg-secondary rounded-pill px-3 py-1">Used</span>
+                {% else %}
+                  <span class="badge bg-success rounded-pill px-3 py-1">Active</span>
+                {% endif %}
+              </li>
+            {% else %}
+              <li class="list-group-item text-muted">No invite codes found.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
     </div>
-
     <!-- System Admins Management Card -->
-    <div class="col-12 col-md-6 mb-4">
-        <div class="card shadow mb-0">
-            <div class="card-header bg-primary text-white">
-                <h5 class="mb-0 fw-semibold" style="margin-bottom:0;">Current System Admins</h5>
-            </div>
-            <div class="card-body">
-                <ul class="list-group">
-                    {% for admin in system_admins %}
-                        <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap">
-                            <span>{{ admin.username }}</span>
-                            <span class="badge bg-info rounded-pill px-3 py-1" style="font-size:1em;">Active</span>
-                        </li>
-                    {% else %}
-                        <li class="list-group-item text-muted">No system admins found.</li>
-                    {% endfor %}
-                </ul>
-            </div>
+    <div class="w-100 d-flex" style="max-width: 700px;">
+      <div class="card shadow flex-fill" style="min-width:0;">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0 fw-semibold">Current System Admins</h5>
         </div>
+        <div class="card-body d-flex flex-column">
+          <ul class="list-group">
+            {% for admin in system_admins %}
+              <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap">
+                <span>{{ admin.username }}</span>
+                <span class="badge bg-info rounded-pill px-3 py-1">Active</span>
+              </li>
+            {% else %}
+              <li class="list-group-item text-muted">No system admins found.</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
     </div>
-
-</div>
-
-<div class="row">
-    <div class="col-12 d-flex justify-content-center mt-4">
-        <a href="{{ url_for('system_admin_logout') }}" class="btn btn-danger w-100 w-md-auto" style="max-width: 300px;">Logout</a>
+  </div>
+  
+  <div class="row">
+    <div class="col-12 
+     justify-content-center mt-4">
+        <a href="{{ logs_url }}" class="d-block btn btn-secondary mt-2" style="margin-bottom:10px">View System Logs</a>
+      <a href="{{ url_for('system_admin_logout') }}" class="btn d-block btn-danger" >Logout</a>
     </div>
+  </div>
 </div>
 
 {% endblock %}
