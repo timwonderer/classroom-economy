@@ -11,6 +11,7 @@ jobs:
   deploy:
     name: Deploy app
     runs-on: ubuntu-latest
+    enviornment: staging
     concurrency: deploy-group
     steps:
       - uses: actions/checkout@v4
