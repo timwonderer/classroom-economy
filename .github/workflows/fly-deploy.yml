@@ -32,6 +32,9 @@ jobs:
           DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
           FLASK_ENV: ${{ vars.FLASK_ENV }}
           SECRET_KEY: ${{ secrets.SECRET_KEY }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          PEPPER_KEY: ${{ secrets.PEPPER_KEY }}
+          CSRF_SECRET_KEY: ${{ secrets.CSRF_SECRET_KEY }}
 
       - uses: superfly/flyctl-actions/setup-flyctl@master
 
