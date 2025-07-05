@@ -1,5 +1,8 @@
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, Response
+
+from forms import AdminSignupForm, SystemAdminInviteForm
+
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta
@@ -14,6 +17,10 @@ import os
 import urllib.parse
 from dotenv import load_dotenv
 load_dotenv()
+
+
+from forms import AdminTOTPConfirmForm
+
 
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.types import TypeDecorator, LargeBinary
@@ -220,6 +227,42 @@ class Student(db.Model):
         from datetime import timedelta
         return (self.last_tap_in or datetime.utcnow()) + timedelta(days=14)
 
+class AdminInviteCode(db.Model):
+    __tablename__ = 'admin_invite_codes'
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(255), unique=True, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=True)
+    used = db.Column(db.Boolean, default=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+# -------------------- SYSTEM ADMIN MODEL --------------------
+class SystemAdmin(db.Model):
+    __tablename__ = 'system_admins'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    totp_secret = db.Column(db.String(32), nullable=False)
+# -------------------- SYSTEM ADMIN AUTH HELPERS --------------------
+def system_admin_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("is_system_admin"):
+            flash("System administrator access required.")
+            return redirect(url_for('system_admin_login', next=request.path))
+        last_activity = session.get('last_activity')
+        now = datetime.utcnow()
+        if last_activity:
+            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S")
+            if now - last_activity > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+                session.pop("is_system_admin", None)
+                flash("Session expired. Please log in again.")
+                return redirect(url_for('system_admin_login', next=request.path))
+        session['last_activity'] = now.strftime("%Y-%m-%d %H:%M:%S")
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
@@ -258,46 +301,22 @@ class TapSession(db.Model):
 # ---- Admin Model ----
 class Admin(db.Model):
     __tablename__ = 'admins'
-    id             = db.Column(db.Integer, primary_key=True)
-    username       = db.Column(db.String(80), unique=True, nullable=False)
-    password_hash  = db.Column(db.Text, nullable=False)
-
-    @staticmethod
-    def hash_password(pw: str) -> str:
-        from werkzeug.security import generate_password_hash
-        return generate_password_hash(pw)
-
-    def check_password(self, pw: str) -> bool:
-        from werkzeug.security import check_password_hash
-        return check_password_hash(self.password_hash, pw)
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    # TOTP-only: store secret, remove password_hash
+    totp_secret = db.Column(db.String(32), nullable=False)
 
 # after your models are defined but before you start serving requests
 from flask.cli import with_appcontext
 
+# Future-proof: No default admin with password for TOTP-only flow.
 def ensure_default_admin():
-    """Create or reset the default admin account if env vars are set."""
-    user = os.environ.get("ADMIN_USERNAME")
-    pw = os.environ.get("ADMIN_PASSWORD")
 
-    if not user or not pw:
-        app.logger.warning("⚠️ Default admin credentials not configured")
-        return
 
-    app.logger.info(f"🛠 ensure_default_admin called. USER: {user} | PW: {'set' if pw else 'missing'}")
+    """Placeholder: No default admin created for TOTP-only auth."""
+    app.logger.info("🛡️ ensure_default_admin: TOTP-only mode, no default admin created.")
 
-    admin = Admin.query.filter_by(username=user).first()
-    if admin:
-        if os.environ.get("RESET_ADMIN_ON_BOOT") == "1":
-            admin.password_hash = Admin.hash_password(pw)
-            db.session.commit()
-            app.logger.warning(f"🔁 Reset password for admin '{user}'")
-        else:
-            app.logger.info(f"✅ Admin '{user}' already exists. Skipping password reset.")
-    else:
-        a = Admin(username=user, password_hash=Admin.hash_password(pw))
-        db.session.add(a)
-        db.session.commit()
-        app.logger.warning(f"🚀 Created default admin '{user}'")
+
 
 
 # ---- Flask CLI command to manually ensure default admin ----
@@ -861,19 +880,34 @@ def give_bonus_all():
     flash("Bonus/Payroll posted successfully!")
     return redirect(url_for('admin_dashboard'))
 
+# -------------------- ADMIN LOGIN (TOTP-ONLY) --------------------
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
-    # Clear previous admin session and reset session timer on page load
+    # Clear admin session and timer on page load
     session.pop("is_admin", None)
     session.pop("last_activity", None)
     if request.method == 'POST':
         is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
-        username = request.form.get("username")
-        password = request.form.get("password")
-
+        username = request.form.get("username", "").strip()
+        totp_code = request.form.get("totp_code", "").strip()
         admin = Admin.query.filter_by(username=username).first()
-        if admin and admin.check_password(password):
+        if not admin:
+            app.logger.warning(f"🔑 Admin login failed: username {username} not found")
+            if is_json:
+                return jsonify(status="error", message="Invalid credentials"), 401
+            flash("Invalid credentials.", "error")
+            return redirect(url_for("admin_login", next=request.args.get("next")))
+        # Log the TOTP secret being used for verification
+        app.logger.info(f"🔍 Admin login: verifying TOTP for {username} using secret: {admin.totp_secret}")
+        # Verify TOTP code with explicit debug logging for drift
+        import time
+        current_time = int(time.time())
+        app.logger.info(f"🕒 Verifying TOTP with current_time={current_time}, code={totp_code}, valid_window=1")
+        totp = pyotp.TOTP(admin.totp_secret)
+        if totp.verify(totp_code, valid_window=1):
             session["is_admin"] = True
+            session["last_activity"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+            app.logger.info(f"✅ Admin login success for {username}")
             if is_json:
                 return jsonify(status="success", message="Login successful")
             flash("Admin login successful.")
@@ -882,11 +916,132 @@ def admin_login():
                 return redirect(next_url)
             return redirect(url_for("admin_dashboard"))
         else:
+            app.logger.warning(f"🔑 Admin login failed: invalid TOTP for {username}")
             if is_json:
-                return jsonify(status="error", message="Invalid credentials"), 401
-            flash("Invalid credentials.", "error")
+                return jsonify(status="error", message="Invalid TOTP code"), 401
+            flash("Invalid TOTP code.", "error")
             return redirect(url_for("admin_login", next=request.args.get("next")))
     return render_template("admin_login.html")
+
+# -------------------- ADMIN SIGNUP (TOTP-ONLY) --------------------
+@app.route('/admin/signup', methods=['GET', 'POST'])
+def admin_signup():
+    """
+    TOTP-only admin registration. Requires valid invite code.
+    Uses AdminSignupForm for CSRF and validation.
+    """
+    import io, base64, qrcode
+    from sqlalchemy import text
+    is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    form = AdminSignupForm()
+    if form.validate_on_submit():
+        username = form.username.data.strip()
+        invite_code = form.invite_code.data.strip()
+        totp_code = request.form.get("totp_code", "").strip()
+        # Step 1: Validate invite code
+        code_row = db.session.execute(
+            text("SELECT * FROM admin_invite_codes WHERE code = :code"),
+            {"code": invite_code}
+        ).fetchone()
+        if not code_row:
+            app.logger.warning(f"🛑 Admin signup failed: invalid invite code {invite_code}")
+            msg = "Invalid invite code."
+            if is_json:
+                return jsonify(status="error", message=msg), 400
+            flash(msg, "error")
+            return redirect(url_for('admin_signup'))
+        if code_row.used:
+            app.logger.warning(f"🛑 Admin signup failed: invite code {invite_code} already used")
+            msg = "Invite code already used."
+            if is_json:
+                return jsonify(status="error", message=msg), 400
+            flash(msg, "error")
+            return redirect(url_for('admin_signup'))
+        if code_row.expires_at and code_row.expires_at < datetime.utcnow():
+            app.logger.warning(f"🛑 Admin signup failed: invite code {invite_code} expired")
+            msg = "Invite code expired."
+            if is_json:
+                return jsonify(status="error", message=msg), 400
+            flash(msg, "error")
+            return redirect(url_for('admin_signup'))
+        # Step 2: Check username uniqueness
+        if Admin.query.filter_by(username=username).first():
+            app.logger.warning(f"🛑 Admin signup failed: username {username} already exists")
+            msg = "Username already exists."
+            if is_json:
+                return jsonify(status="error", message=msg), 400
+            flash(msg, "error")
+            return redirect(url_for('admin_signup'))
+        # Step 3: Generate TOTP secret and show QR code (if not already in session)
+        if "admin_totp_secret" not in session or session.get("admin_totp_username") != username:
+            totp_secret = pyotp.random_base32()
+            session["admin_totp_secret"] = totp_secret
+            session["admin_totp_username"] = username
+        else:
+            totp_secret = session["admin_totp_secret"]
+        totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
+        # Step 4: If no TOTP code submitted yet, show QR
+        if not totp_code:
+            # Generate QR code in-memory
+            img = qrcode.make(totp_uri)
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            buf.seek(0)
+            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
+            app.logger.info(f"🔐 Admin signup: showing QR for {username}")
+            form = AdminTOTPConfirmForm()
+            return render_template(
+                "admin_signup_totp.html",
+                form=form,
+                username=username,
+                invite_code=invite_code,
+                qr_b64=img_b64,
+                totp_secret=totp_secret
+            )
+        # Step 5: Validate entered TOTP code
+        totp = pyotp.TOTP(totp_secret)
+        if not totp.verify(totp_code):
+            app.logger.warning(f"🛑 Admin signup failed: invalid TOTP code for {username}")
+            msg = "Invalid TOTP code. Please try again."
+            if is_json:
+                return jsonify(status="error", message=msg), 400
+            flash(msg, "error")
+            # Show QR again for retry
+            totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
+            img = qrcode.make(totp_uri)
+            buf = io.BytesIO()
+            img.save(buf, format='PNG')
+            buf.seek(0)
+            img_b64 = base64.b64encode(buf.read()).decode('utf-8')
+            return render_template(
+                "admin_signup_totp.html",
+                form=form,
+                username=username,
+                invite_code=invite_code,
+                qr_b64=img_b64,
+                totp_secret=totp_secret
+            )
+        # Step 6: Create admin account and mark invite as used
+        # Log the TOTP secret being saved for debug
+        app.logger.info(f"🎯 Admin signup: TOTP secret being saved for {username}: {totp_secret}")
+        new_admin = Admin(username=username, totp_secret=totp_secret)
+        db.session.add(new_admin)
+        db.session.execute(
+            text("UPDATE admin_invite_codes SET used = TRUE WHERE code = :code"),
+            {"code": invite_code}
+        )
+        db.session.commit()
+        # Clear session
+        session.pop("admin_totp_secret", None)
+        session.pop("admin_totp_username", None)
+        app.logger.info(f"🎉 Admin signup: {username} created successfully via invite {invite_code}")
+        msg = "Admin account created successfully! Please log in using your authenticator app."
+        if is_json:
+            return jsonify(status="success", message=msg)
+        flash(msg, "success")
+        return redirect(url_for("admin_login"))
+    # GET or invalid POST: render signup form with form instance (for CSRF)
+    return render_template("admin_signup.html", form=form)
 
 @app.route('/admin/logout')
 def admin_logout():
@@ -1499,8 +1654,144 @@ def debug_filters():
     return jsonify(list(app.jinja_env.filters.keys()))
 
 
+# -------------------- DEBUG: ADMIN DB TEST ROUTE --------------------
+# Temporary route to confirm admin and invite codes tables are accessible.
+@app.route('/debug/admin-db-test')
+def debug_admin_db_test():
+    try:
+        admins = Admin.query.all()
+        invite_codes_count = db.session.execute(text('SELECT COUNT(*) FROM admin_invite_codes')).scalar()
+        return jsonify({
+            "admin_count": len(admins),
+            "invite_codes_count": invite_codes_count,
+            "status": "success"
+        }), 200
+    except Exception as e:
+        app.logger.exception("Admin DB test failed")
+        return jsonify({"status": "error", "error": str(e)}), 500
 
 # --- Ensure admin creation on startup, even on platforms like Azure ---
 
 if __name__ == '__main__':
     app.run(debug=False, use_reloader=False)
+
+# -------------------- SYSTEM ADMIN LOGIN --------------------
+from forms import SystemAdminLoginForm
+
+@app.route('/sysadmin/login', methods=['GET', 'POST'])
+def system_admin_login():
+    session.pop("is_system_admin", None)
+    session.pop("last_activity", None)
+    form = SystemAdminLoginForm()
+    if form.validate_on_submit():
+        username = form.username.data.strip()
+        totp_code = form.totp_code.data.strip()
+        admin = SystemAdmin.query.filter_by(username=username).first()
+        if admin:
+            totp = pyotp.TOTP(admin.totp_secret)
+            if totp.verify(totp_code, valid_window=1):
+                session["is_system_admin"] = True
+                session["last_activity"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                flash("System admin login successful.")
+                next_url = request.args.get("next")
+                return redirect(next_url or url_for("system_admin_dashboard"))
+        flash("Invalid credentials or TOTP.", "error")
+        return redirect(url_for("system_admin_login"))
+    return render_template("system_admin_login.html", form=form)
+
+# -------------------- SYSTEM ADMIN DASHBOARD (UNIFIED INVITE MANAGEMENT) --------------------
+@app.route('/sysadmin/dashboard', methods=['GET', 'POST'])
+@system_admin_required
+def system_admin_dashboard():
+    import secrets
+    invites = AdminInviteCode.query.order_by(AdminInviteCode.created_at.desc()).all()
+    form = SystemAdminInviteForm()
+    if form.validate_on_submit():
+        code = form.code.data or secrets.token_urlsafe(8)
+        expires_at = form.expires_at.data
+        invite = AdminInviteCode(code=code, expires_at=expires_at)
+        db.session.add(invite)
+        db.session.commit()
+        flash(f"✅ Invite code {code} created successfully.", "success")
+        return redirect(url_for("system_admin_dashboard"))
+    system_admins = SystemAdmin.query.order_by(SystemAdmin.username.asc()).all()
+    logs_url = url_for("system_admin_logs")
+    return render_template(
+        "system_admin_dashboard.html",
+        invites=invites,
+        form=form,
+        system_admins=system_admins,
+        current_page="sysadmin_dashboard",
+        logs_url=logs_url
+    )
+
+
+
+@app.route('/sysadmin/logout')
+def system_admin_logout():
+    session.pop("is_system_admin", None)
+    flash("Logged out.")
+    return redirect(url_for("system_admin_login"))
+
+# -------------------- SYSTEM ADMIN SEED COMMAND --------------------
+@app.cli.command("create-sysadmin")
+@with_appcontext
+def create_sysadmin():
+    """Create initial system admin account interactively."""
+    import getpass
+    import pyotp
+    username = input("Enter system admin username: ").strip()
+    if not username:
+        print("Username is required.")
+        return
+    existing = SystemAdmin.query.filter_by(username=username).first()
+    if existing:
+        print(f"System admin '{username}' already exists.")
+        return
+    totp_secret = pyotp.random_base32()
+    sysadmin = SystemAdmin(username=username, totp_secret=totp_secret)
+    db.session.add(sysadmin)
+    db.session.commit()
+    print(f"✅ System admin '{username}' created successfully.")
+    print(f"🔑 TOTP secret for authenticator app: {totp_secret}")
+    uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy SysAdmin")
+    print(f"📱 QR Code URI: {uri}")
+@app.route('/sysadmin/logs')
+@system_admin_required
+def system_admin_logs():
+    import os, re
+    log_file = os.getenv("LOG_FILE", "app.log")
+    structured_logs = []
+    try:
+        with open(log_file, "r") as f:
+            lines = f.readlines()[-200:]
+        log_pattern = re.compile(r'\[(.*?)\]\s+(\w+)\s+in\s+(\w+):\s+(.*)')
+        current_log = None
+        for line in lines:
+            match = log_pattern.match(line)
+            if match:
+                # Start a new log entry
+                timestamp, level, module, message = match.groups()
+                current_log = {
+                    "timestamp": timestamp,
+                    "level": level,
+                    "module": module,
+                    "message": message.strip()
+                }
+                structured_logs.append(current_log)
+            else:
+                # Continuation of the previous log entry (stack trace, etc.)
+                if current_log:
+                    current_log["message"] += "<br>" + line.strip()
+                else:
+                    # Orphan line with no preceding log; treat as its own entry
+                    current_log = {
+                        "timestamp": "",
+                        "level": "",
+                        "module": "",
+                        "message": line.strip()
+                    }
+                    structured_logs.append(current_log)
+    except Exception as e:
+        structured_logs = [{"timestamp": "", "level": "ERROR", "module": "logs", "message": f"Error reading log file: {e}"}]
+    return render_template("system_admin_logs.html", logs=structured_logs, current_page="sysadmin_logs")

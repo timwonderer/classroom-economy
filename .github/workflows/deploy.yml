@@ -8,7 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    environment: production
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -18,19 +18,35 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.DO_DEPLOY_KEY }}
 
-    - name: Deploy to DO
+
+
+    - name: Deploy to DO Production Server
       run: |
-
-
-
+        # Connect to the production server and deploy
         ssh -o StrictHostKeyChecking=no root@24.199.127.184 "
+          set -e  # Exit immediately if a command exits with a non-zero status
 
+          echo 'Navigating to project directory...'
+          cd ~/classroom-economy
 
+          echo 'Pulling latest changes from main...'
+          git pull origin main
 
-          cd ~/classroom-economy &&
-          git pull origin main &&
-          source venv/bin/activate &&
-          pip install -r requirements.txt &&
-          flask db upgrade &&
+          echo 'Activating virtual environment...'
+          source venv/bin/activate
+
+          echo 'Installing dependencies...'
+          pip install -r requirements.txt
+
+          # Ensure DATABASE_URL is set for migrations
+          echo 'Exporting DATABASE_URL for production migrations...'
+          export DATABASE_URL='${{ secrets.PRODUCTION_DATABASE_URL }}'
+
+          echo 'Running database migrations...'
+          flask db upgrade
+
+          echo 'Restarting Gunicorn...'
           sudo systemctl restart gunicorn
-        "
+
+          echo 'Deployment completed successfully.'
+
