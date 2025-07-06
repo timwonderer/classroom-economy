@@ -24,5 +24,7 @@ primary_region = 'lax'
   cpu_kind = 'shared'
   cpus = 1
 
+
+
 [deploy]
 release_command = "flask db upgrade"
