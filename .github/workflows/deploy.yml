@@ -8,7 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    environment: production
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -17,6 +17,7 @@ jobs:
       uses: webfactory/ssh-agent@v0.9.0
       with:
         ssh-private-key: ${{ secrets.DO_DEPLOY_KEY }}
+
 
 
     - name: Deploy to DO Production Server

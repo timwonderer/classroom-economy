@@ -1,5 +1,4 @@
 
-
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, Response
 
 from forms import AdminSignupForm, SystemAdminInviteForm
@@ -18,6 +17,7 @@ import os
 import urllib.parse
 from dotenv import load_dotenv
 load_dotenv()
+
 
 from forms import AdminTOTPConfirmForm
 
@@ -312,8 +312,10 @@ from flask.cli import with_appcontext
 # Future-proof: No default admin with password for TOTP-only flow.
 def ensure_default_admin():
 
+
     """Placeholder: No default admin created for TOTP-only auth."""
     app.logger.info("🛡️ ensure_default_admin: TOTP-only mode, no default admin created.")
+
 
 
 
