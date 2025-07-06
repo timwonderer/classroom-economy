@@ -22,7 +22,7 @@ jobs:
     - name: Deploy to DO Production Server
       run: |
         # Connect to the production server and deploy
-        ssh -o StrictHostKeyChecking=no root@24.199.127.184 "
+        ssh -o StrictHostKeyChecking=no root@24.199.127.184 << 'EOF'
           set -e  # Exit immediately if a command exits with a non-zero status
 
           echo 'Navigating to project directory...'
@@ -48,5 +48,4 @@ jobs:
           sudo systemctl restart gunicorn
 
           echo 'Deployment completed successfully.'
-
-        "
+        EOF
