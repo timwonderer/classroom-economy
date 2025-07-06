@@ -24,6 +24,7 @@ jobs:
       run: |
         # Connect to the production server and deploy
         ssh -o StrictHostKeyChecking=no root@24.199.127.184 << 'EOF'
+
           set -e  # Exit immediately if a command exits with a non-zero status
 
           echo 'Navigating to project directory...'
@@ -35,6 +36,7 @@ jobs:
           echo 'Activating virtual environment...'
           source venv/bin/activate
 
+
           echo 'Installing dependencies...'
           pip install -r requirements.txt
 
@@ -45,8 +47,11 @@ jobs:
           echo 'Running database migrations...'
           flask db upgrade
 
+
           echo 'Restarting Gunicorn...'
           sudo systemctl restart gunicorn
 
           echo 'Deployment completed successfully.'
+
         EOF
+
