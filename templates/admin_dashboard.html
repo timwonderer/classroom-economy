@@ -34,7 +34,7 @@
             <td>{{ tx.description }}</td>
             <td>
               {% if tx.timestamp %}
-                {{ tx.timestamp|format_datetime }}
+                <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
               {% else %}
                 —
               {% endif %}
@@ -60,52 +60,32 @@
     <thead>
         <tr>
             <th>Student</th>
+            <th>Timestamp</th>
             <th>Period</th>
-            <th>Tap In</th>
-            <th>Tap Out</th>
-            <th>Duration</th>
             <th>Reason</th>
+            <th>Status</th>
         </tr>
     </thead>
     <tbody>
         {% if logs %}
             {% for log in logs %}
             <tr>
-                <td>{{ student_lookup.get(log.student_id).name if student_lookup.get(log.student_id) else "Unknown" }}</td>
+                <td>{{ student_lookup.get(log.student_id).name if student_lookup.get(log.student_id) else log.student_id }}</td>
+                <td>
+                  {% if log.timestamp %}
+                    <span class="local-timestamp" data-timestamp="{{ log.timestamp.isoformat() }}Z"></span>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
                 <td>{{ log.period|upper }}</td>
-                <td>
-                  {% if log.tap_in_time %}
-                    {{ log.tap_in_time|format_datetime('%Y-%m-%d %I:%M:%S %p') }}
-                  {% else %}
-                    —
-                  {% endif %}
-                </td>
-                <td>
-                  {% if log.tap_out_time %}
-                    {{ log.tap_out_time|format_datetime('%Y-%m-%d %I:%M:%S %p') }}
-                  {% else %}
-                    —
-                  {% endif %}
-                </td>
-                <td>
-                    {% if log.duration_seconds %}
-                        {{ (log.duration_seconds // 60)|int }}m {{ (log.duration_seconds % 60)|int }}s
-                    {% else %}
-                        —
-                    {% endif %}
-                </td>
-                <td>
-  {% if log.reason %}
-    {{ log.reason }}
-  {% else %}
-    —
-  {% endif %}
-</td>
+                <td>{{ log.reason if log.reason else '—' }}</td>
+                <td>{{ log.status|capitalize }}</td>
             </tr>
             {% endfor %}
         {% else %}
             <tr>
-                <td colspan="6" class="text-center text-muted">No attendance records available.</td>
+                <td colspan="5" class="text-center text-muted">No attendance records available.</td>
             </tr>
         {% endif %}
     </tbody>
@@ -113,5 +93,27 @@
 </div>
 
 <hr class="my-4">
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll(".local-timestamp").forEach(el => {
+        const utcString = el.dataset.timestamp;
+        if (utcString) {
+            const date = new Date(utcString);
+            const options = {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: 'numeric',
+                hour12: true
+            };
+            el.textContent = date.toLocaleString(undefined, options);
+        } else {
+            el.textContent = '—';
+        }
+    });
+});
+</script>
 
 {% endblock %}
