@@ -25,3 +25,23 @@ class SystemAdminInviteForm(FlaskForm):
     expiry_days = StringField('Expiry Days')
     expires_at = StringField('Expires At')  # Added to match app.py usage
     submit = SubmitField('Generate Invite Code')
+
+class StudentClaimAccountForm(FlaskForm):
+    first_half = StringField('First Half', validators=[DataRequired()])
+    second_half = StringField('Second Half', validators=[DataRequired()])
+    dob_sum = StringField('DOB Sum', validators=[DataRequired()])
+    submit = SubmitField('Claim Account')
+
+class StudentCreateUsernameForm(FlaskForm):
+    write_in_word = StringField('Your Word', validators=[DataRequired()])
+    submit = SubmitField('Generate Username')
+
+class StudentPinPassphraseForm(FlaskForm):
+    pin = StringField('PIN', validators=[DataRequired()])
+    passphrase = StringField('Passphrase', validators=[DataRequired()])
+    submit = SubmitField('Finish Setup')
+
+class StudentLoginForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    pin = StringField('PIN', validators=[DataRequired()])
+    submit = SubmitField('Login')
