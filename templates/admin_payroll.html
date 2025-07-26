@@ -14,7 +14,7 @@
         <div class="card-body">
             <p><strong>Date:</strong>
                 {% if next_payroll_date %}
-                    {{ next_payroll_date|format_datetime }}
+                    <span class="local-timestamp" data-timestamp="{{ next_payroll_date.isoformat() }}Z"></span>
                 {% else %}
                     N/A
                 {% endif %}
@@ -46,7 +46,7 @@
                         <tr>
                             <td>
                                 {% if record.timestamp %}
-                                    {{ record.timestamp|format_datetime }}
+                                    <span class="local-timestamp" data-timestamp="{{ record.timestamp.isoformat() }}Z"></span>
                                 {% else %}
                                     N/A
                                 {% endif %}
