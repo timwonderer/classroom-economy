@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Student Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -152,8 +153,8 @@
                  role="tabpanel"
                  aria-labelledby="tab-{{ blk }}-tab">
               {% set state = period_states[blk] %}
-              <p><strong>Status:</strong> <span id="status-{{ blk }}">{{ 'Active' if state[0] and not state[1] else 'Inactive' }}</span></p>
-              <p><strong>Time Logged:</strong> <span id="timer-{{ blk }}">{{ (state[2]//3600)|string + 'h ' + ((state[2]%3600)//60)|string + 'm ' + (state[2]%60)|string + 's' }}</span></p>
+              <p><strong>Status:</strong> <span id="status-{{ blk }}">{{ 'Active' if state['active'] and not state['done'] else 'Inactive' }}</span></p>
+              <p><strong>Time Logged:</strong> <span id="timer-{{ blk }}">{{ (today_seconds_per_block[blk] // 3600)|string + 'h ' + ((today_seconds_per_block[blk] % 3600) // 60)|string + 'm ' + (today_seconds_per_block[blk] % 60)|string + 's' }}</span></p>
               <button class="btn btn-success me-2" id="tapIn-{{ blk }}" onclick="openTapIn('{{ blk }}')" {% if state[1] %}disabled{% endif %}>Tap In</button>
               <button class="btn btn-danger" id="tapOut-{{ blk }}" onclick="openTapOut('{{ blk }}')" {% if not state[0] %}disabled{% endif %}>Tap Out</button>
             </div>
@@ -243,15 +244,24 @@
         }
 
         function syncStateToServer(data) {
-          fetch('/api/tap', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify(data)
-          });
-        }
+  fetch('/api/tap', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    },
+    body: JSON.stringify(data)
+  })
+  .then(response => {
+    if (!response.ok) {
+      console.error(`❌ Tap failed with status ${response.status}`);
+      response.text().then(text => console.error(`Server response: ${text}`));
+    } else {
+      console.log('✅ Tap succeeded.');
+    }
+  })
+  .catch(error => console.error('❌ Fetch error:', error));
+}
 
         function confirmTapIn() {
           const period = document.getElementById('currentPeriod').value;
@@ -262,20 +272,22 @@
           const pin = document.getElementById('tapInPin').value.trim();
           if (!pin) return alert("PIN required.");
           bootstrap.Modal.getInstance(document.getElementById('tapInModal')).hide();
-
+          // UI updates: Only reflect server-calculated status after response, but keep immediate feedback for now
           periodState[period].active = true;
+          periodState[period].done = false;
           document.getElementById(`status-${period}`).textContent = 'Active';
           document.getElementById(`tapIn-${period}`).disabled = true;
           document.getElementById(`tapOut-${period}`).disabled = false;
           highlightStatus(period, true);
           showToast(`✔️ You're tapped in for Period ${period.toUpperCase()}!`);
-          // Use period from hidden input
+          // Send new payload (no duration, only status)
+          console.log("Sending tap in");
           syncStateToServer({
-            period: document.getElementById('currentPeriod').value,
-            action: 'tap_in',
-            duration: periodState[period].duration,
+            period: period,
+            status: 'in',
             pin
           });
+          syncUiWithPeriodState();
         }
 
         function confirmTapOut() {
@@ -284,27 +296,30 @@
           const pin = document.getElementById('tapOutPin').value.trim();
           if (!pin) return alert("PIN required.");
           bootstrap.Modal.getInstance(document.getElementById('tapOutModal')).hide();
-
+          // UI updates: Only reflect server-calculated status after response, but keep immediate feedback for now
           periodState[period].active = false;
+          if (reason === 'done') {
+            periodState[period].done = true;
+          }
           document.getElementById(`status-${period}`).textContent = 'Inactive';
-          document.getElementById(`tapIn-${period}`).disabled = false;
+          document.getElementById(`tapIn-${period}`).disabled = periodState[period].done;
           document.getElementById(`tapOut-${period}`).disabled = true;
           highlightStatus(period, false);
           if (reason === 'done') {
-            periodState[period].done = true;
             document.getElementById(`tapIn-${period}`).disabled = true;
             showToast(`✅ Period ${period.toUpperCase()} closed for the day.`);
           } else {
             showToast(`🕒 You're out for: ${reason}`);
           }
-          // Use period from hidden input
+          // Send new payload (no duration, only status/reason)
+          console.log("Sending tap out");
           syncStateToServer({
-            period: document.getElementById('tapOutPeriod').value,
-            action: 'tap_out',
-            duration: periodState[period].duration,
+            period: period,
+            status: 'out',
             reason,
             pin
           });
+          syncUiWithPeriodState();
         }
 
         function showToast(message) {
@@ -324,18 +339,12 @@
           }
         }
 
-        function updateTimerDisplay(period) {
-          const seconds = periodState[period].duration;
-          const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-          const s = (seconds % 60).toString().padStart(2, '0');
-          document.getElementById(`timer-${period}`).textContent = `${m}:${s}`;
-        }
+        // No duration tracking client-side
 
         function syncUiWithPeriodState() {
           for (const period in periodState) {
             const state = periodState[period];
-            updateTimerDisplay(period);
-
+            // No timer update (duration removed)
             if (state.active && !state.done) {
               document.getElementById(`status-${period}`).textContent = 'Active';
               document.getElementById(`tapIn-${period}`).disabled = true;
@@ -357,6 +366,27 @@
     </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/attendance.js"></script>
+
+    <!-- Debug Overlay for Frontend State (DEV ONLY) -->
+    <div id="debugOverlay" style="position: fixed; bottom: 0; left: 0; background: rgba(0,0,0,0.8); color: #0f0; font-family: monospace; font-size: 12px; padding: 6px; max-height: 30%; overflow-y: auto; z-index: 9999;">
+      <strong>Debug State:</strong>
+      <pre id="debugStateDisplay"></pre>
+    </div>
+    <script>
+    // Clean debug overlay: show only block states, no last action
+    function updateDebugOverlay() {
+        const debugLines = [];
+        for (const period in periodState) {
+            const state = periodState[period];
+            debugLines.push(`Block ${period}: Active=${state.active}, Done=${state.done}`);
+        }
+        document.getElementById('debugStateDisplay').textContent = debugLines.join('\n');
+    }
+    window.addEventListener("DOMContentLoaded", () => {
+        updateDebugOverlay();
+        setInterval(updateDebugOverlay, 2000);
+    });
+    </script>
 
     <!-- Toast Notification -->
     <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999">
