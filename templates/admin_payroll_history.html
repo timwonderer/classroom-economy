@@ -42,7 +42,13 @@
             {% if payroll_history %}
                 {% for entry in payroll_history %}
                 <tr>
-                    <td>{{ entry.timestamp|format_datetime }}</td>
+                    <td>
+                      {% if entry.timestamp %}
+                        <span class="local-timestamp" data-timestamp="{{ entry.timestamp.isoformat() }}Z"></span>
+                      {% else %}
+                        —
+                      {% endif %}
+                    </td>
                     <td>{{ entry.block }}</td>
                     <td><a href="{{ url_for('student_detail', student_id=entry.student_id) }}">{{ entry.student_name }}</a></td>
                     <td>${{ "%.2f"|format(entry.amount) }}</td>
