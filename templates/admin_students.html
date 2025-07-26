@@ -126,11 +126,10 @@
         <thead class="table-dark">
             <tr>
                 <th>Name</th>
-                <th>Passes Left</th>
-                <th>Checking Balance</th>
-                <th>Last Tap In</th>
-                <th>Last Tap Out</th>
-                <th>Reason</th>
+                <th>Status</th>
+                <th>Checking</th>
+                <th>Savings</th>
+                <th>Setup</th>
             </tr>
         </thead>
         <tbody>
@@ -141,29 +140,10 @@
                         {{ student.full_name }}
                     </a>
                 </td>
-                <td>{{ student.passes_left if student.passes_left is not none else '—' }}</td>
+                <td>{{ student.status }}</td>
                 <td>${{ "%.2f"|format(student.checking_balance) }}</td>
-                <td>
-                    {% if student.last_tap_in %}
-                        {{ student.last_tap_in|format_datetime }}
-                    {% else %}
-                        —
-                    {% endif %}
-                </td>
-                <td>
-                    {% if student.last_tap_out %}
-                        {{ student.last_tap_out|format_datetime }}
-                    {% else %}
-                        —
-                    {% endif %}
-                </td>
-                <td>
-                  {% if student.last_tap_out_reason %}
-                    {{ student.last_tap_out_reason }}
-                  {% else %}
-                    —
-                  {% endif %}
-                </td>
+                <td>${{ "%.2f"|format(student.savings_balance) }}</td>
+                <td>{{ 'Yes' if student.setup_status else 'No' }}</td>
             </tr>
             {% endfor %}
         </tbody>
