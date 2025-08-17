@@ -568,13 +568,18 @@ def calculate_period_attendance(student_id, period, date):
         func.date(TapEvent.timestamp) == date
     ).order_by(TapEvent.timestamp.asc()).all()
 
+    from datetime import timezone
     total_seconds = 0
     current_in = None
     for event in events:
+        event_time = event.timestamp
+        if event_time.tzinfo is None:
+            event_time = event_time.replace(tzinfo=timezone.utc)
+
         if event.status == "active":
-            current_in = event.timestamp
+            current_in = event_time
         elif event.status == "inactive" and current_in:
-            total_seconds += (event.timestamp - current_in).total_seconds()
+            total_seconds += (event_time - current_in).total_seconds()
             current_in = None
     # Handle case where still active without tap_out
     if current_in:
@@ -650,6 +655,13 @@ def student_dashboard():
     # Add today's seconds per block for display
     today_seconds_per_block = {blk: calculate_period_attendance(student.id, blk, datetime.now(PACIFIC).date()) for blk in student_blocks}
 
+    # Compute total seconds for today across all blocks and format as HH:MM:SS
+    total_today_seconds = sum(today_seconds_per_block.values())
+    hours, remainder = divmod(total_today_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    total_today_elapsed = f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
+    student_name = student.full_name
+
     # Compute most recent deposit and insurance paid flag
     recent_deposit = student.recent_deposits[0] if student.recent_deposits else None
     insurance_paid = bool(student.insurance_last_paid)
@@ -677,7 +689,9 @@ def student_dashboard():
         forecast_interest=forecast_interest,
         recent_deposit=recent_deposit,
         insurance_paid=insurance_paid,
-        today_seconds_per_block=today_seconds_per_block
+        today_seconds_per_block=today_seconds_per_block,
+        student_name=student_name,
+        total_today_elapsed=total_today_elapsed,
     )
 
 # -------------------- TRANSFER ROUTE --------------------
@@ -1786,6 +1800,21 @@ def handle_tap():
         status = "active" if action == "tap_in" else "inactive"
         reason = data.get("reason") if action == "tap_out" else None
 
+        # Prevent duplicate tap-in or tap-out
+        latest_event = (
+            TapEvent.query
+            .filter_by(student_id=student.id, period=period)
+            .order_by(TapEvent.timestamp.desc())
+            .first()
+        )
+        if latest_event and latest_event.status == status:
+            app.logger.info(f"Duplicate {action} ignored for student {student.id} in period {period}")
+            return jsonify({
+                "status": "ok",
+                "active": latest_event.status == "active",
+                "duration": calculate_period_attendance(student.id, period, datetime.now(PACIFIC).date())
+            })
+
         event = TapEvent(
             student_id=student.id,
             period=period,
@@ -1801,7 +1830,48 @@ def handle_tap():
         app.logger.error(f"TAP failed for student {student.id}: {e}", exc_info=True)
         return jsonify({"error": "Database error"}), 500
 
-    return jsonify({"status": "ok"})
+    # Fetch latest status and duration for the tapped period
+    latest_event = (
+        TapEvent.query
+        .filter_by(student_id=student.id, period=period)
+        .order_by(TapEvent.timestamp.desc())
+        .first()
+    )
+    is_active = latest_event.status == "active" if latest_event else False
+    today = datetime.now(PACIFIC).date()
+    duration = calculate_period_attendance(student.id, period, today)
+    return jsonify({
+        "status": "ok",
+        "active": is_active,
+        "duration": duration
+    })
+
+
+# --- Live student status API route ---
+@app.route('/api/student-status', methods=['GET'])
+@login_required
+def student_status():
+    student = get_logged_in_student()
+    today = datetime.now(PACIFIC).date()
+    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+    period_states = {}
+    for blk in student_blocks:
+        latest_event = (
+            TapEvent.query
+            .filter_by(student_id=student.id, period=blk)
+            .order_by(TapEvent.timestamp.desc())
+            .first()
+        )
+        is_active = latest_event.status == "active" if latest_event else False
+        done = TapEvent.query.filter(
+            TapEvent.student_id == student.id,
+            TapEvent.period == blk,
+            func.date(TapEvent.timestamp) == today,
+            TapEvent.reason != None
+        ).filter(func.lower(TapEvent.reason) == 'done').first() is not None
+        duration = calculate_period_attendance(student.id, blk, today)
+        period_states[blk] = {"active": is_active, "done": done, "duration": duration}
+    return jsonify(period_states)
 
 
 @app.route('/health')
