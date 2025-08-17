@@ -21,10 +21,12 @@
     <tbody>
       {% for log in logs %}
       <tr>
-        <td>{{ log.student_name }}</td>
+        <td>{{ log.student.full_name if log.student else log.student_name }}</td>
         <td>
           {% if log.timestamp %}
-            <span class="local-timestamp" data-timestamp="{{ log.timestamp.isoformat() }}Z"></span>
+            <span class="local-timestamp" data-timestamp="{{ log.timestamp.isoformat() }}Z">
+              {{ log.timestamp.strftime("%Y-%m-%d %I:%M %p") }}
+            </span>
           {% else %}
             —
           {% endif %}
