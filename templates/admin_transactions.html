@@ -63,7 +63,7 @@
                   —
                 {% endif %}
               </td>
-              <td>{{ tx.student_name }}</td>
+              <td>{{ tx.student.full_name if tx.student else tx.student_name }}</td>
               <td>{{ tx.student_block }}</td>
               <td>{{ tx.type }}</td>
               <td>{{ tx.amount }}</td>
