@@ -54,10 +54,10 @@
                             <td>
                                 {% if record.student_id and record.student_name %}
                                     <a href="{{ url_for('student_detail', student_id=record.student_id) }}">
-                                        {{ record.student_name }}
+                                        {{ record.student.full_name if record.student else record.student_name }}
                                     </a>
                                 {% elif record.student_name %}
-                                    {{ record.student_name }}
+                                    {{ record.student.full_name if record.student else record.student_name }}
                                 {% else %}
                                     <em>Unknown</em>
                                 {% endif %}
