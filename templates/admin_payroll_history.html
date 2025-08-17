@@ -50,7 +50,7 @@
                       {% endif %}
                     </td>
                     <td>{{ entry.block }}</td>
-                    <td><a href="{{ url_for('student_detail', student_id=entry.student_id) }}">{{ entry.student_name }}</a></td>
+                    <td><a href="{{ url_for('student_detail', student_id=entry.student_id) }}">{{ entry.student.full_name if entry.student else entry.student_name }}</a></td>
                     <td>${{ "%.2f"|format(entry.amount) }}</td>
                     <td>{{ entry.notes }}</td>
                 </tr>
