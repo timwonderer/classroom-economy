@@ -137,7 +137,7 @@
             <tr>
                 <td>
                     <a href="{{ url_for('student_detail', student_id=student.id) }}">
-                        {{ student.full_name }}
+                        {{ student.full_name if student else "Unknown" }}
                     </a>
                 </td>
                 <td>{{ student.status }}</td>
