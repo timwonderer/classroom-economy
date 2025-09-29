@@ -143,18 +143,29 @@ if os.getenv("FLASK_ENV", app.config.get("ENV")) == "production":
     file_handler.setFormatter(logging.Formatter(log_format))
     app.logger.addHandler(file_handler)
 
-# ---- Jinja2 filter: Format UTC datetime to Pacific Time ----
+# ---- Jinja2 filter: Format UTC datetime to user's local time ----
 import pytz
-def format_datetime(value, fmt='%Y-%m-%d %I:%M %p', tz_name='America/Los_Angeles'):
+def format_datetime(value, fmt='%Y-%m-%d %I:%M %p'):
     """
-    Convert a UTC datetime to the specified timezone and format it.
+    Convert a UTC datetime to the user's timezone (from session) and format it.
+    Defaults to Pacific Time if no timezone is set in the session.
     """
     if not value:
         return ''
+
+    # Get user's timezone from session, default to Los Angeles
+    tz_name = session.get('timezone', 'America/Los_Angeles')
+    try:
+        target_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        app.logger.warning(f"Invalid timezone '{tz_name}' in session, defaulting to LA.")
+        target_tz = pytz.timezone('America/Los_Angeles')
+
     utc = pytz.utc
-    target_tz = pytz.timezone(tz_name)
-    # Localize naive datetimes as UTC
+
+    # Localize naive datetimes as UTC before converting
     dt = value if getattr(value, 'tzinfo', None) else utc.localize(value)
+
     local_dt = dt.astimezone(target_tz)
     return local_dt.strftime(fmt)
 
@@ -1872,6 +1883,23 @@ def student_status():
         duration = calculate_period_attendance(student.id, blk, today)
         period_states[blk] = {"active": is_active, "done": done, "duration": duration}
     return jsonify(period_states)
+
+
+@app.route('/api/set-timezone', methods=['POST'])
+@csrf.exempt
+def set_timezone():
+    data = request.get_json()
+    if not data or 'timezone' not in data:
+        return jsonify(status="error", message="Timezone not provided"), 400
+
+    tz_name = data['timezone']
+    if tz_name not in pytz.all_timezones:
+        app.logger.warning(f"Invalid timezone submitted: {tz_name}")
+        return jsonify(status="error", message="Invalid timezone"), 400
+
+    session['timezone'] = tz_name
+    app.logger.info(f"🌐 Timezone set to {tz_name} for session")
+    return jsonify(status="success", message=f"Timezone set to {tz_name}")
 
 
 @app.route('/health')

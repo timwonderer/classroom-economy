@@ -51,6 +51,36 @@
         <a href="/sysadmin/login" class="text-muted" style="font-size: 0.9rem;">System Admin? Log in here</a>
     </div>
 
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Only run this once per session
+            if (!sessionStorage.getItem('timezone_sent')) {
+                const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+                if (userTimezone) {
+                    fetch('/api/set-timezone', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({ timezone: userTimezone }),
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            console.log('Timezone sent to server:', userTimezone);
+                            // Mark as sent for this browser session
+                            sessionStorage.setItem('timezone_sent', 'true');
+                        } else {
+                            console.error('Failed to send timezone:', data.message);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error sending timezone:', error);
+                    });
+                }
+            }
+        });
+    </script>
 </body>
 
 </html>
