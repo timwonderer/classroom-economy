@@ -1253,7 +1253,11 @@ def student_login():
             return redirect(url_for('student_login', next=request.args.get('next')))
 
         # --- Set session timeout ---
-        session.clear() # Start with a fresh session
+        # Clear old student-specific session keys without wiping the CSRF token
+        session.pop('student_id', None)
+        session.pop('login_time', None)
+        session.pop('last_activity', None)
+
         session['student_id'] = student.id
         session['login_time'] = datetime.now(timezone.utc).isoformat()
         session['last_activity'] = session['login_time']
