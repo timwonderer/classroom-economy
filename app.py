@@ -1791,9 +1791,11 @@ def handle_tap():
     student = get_logged_in_student()
     pin = data.get("pin", "").strip()
 
+
     if not check_password_hash(student.pin_hash or '', pin):
         app.logger.warning(f"TAP ERROR: Invalid PIN for student {student.id}")
         return jsonify({"error": "Invalid PIN"}), 403
+
 
     valid_periods = [b.strip().upper() for b in student.block.split(',') if b.strip()] if student and isinstance(student.block, str) else []
     period = data.get("period", "").upper()
@@ -1885,6 +1887,7 @@ def student_status():
     return jsonify(period_states)
 
 
+
 @app.route('/api/set-timezone', methods=['POST'])
 @csrf.exempt
 def set_timezone():
@@ -1900,6 +1903,7 @@ def set_timezone():
     session['timezone'] = tz_name
     app.logger.info(f"🌐 Timezone set to {tz_name} for session")
     return jsonify(status="success", message=f"Timezone set to {tz_name}")
+
 
 
 @app.route('/health')
