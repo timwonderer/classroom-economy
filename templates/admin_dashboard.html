@@ -92,10 +92,79 @@
 </table>
 </div>
 
+<h4 class="mt-5">🎁 Redemption Requests</h4>
+<div style="max-height:300px; overflow-y:auto; margin-bottom:1rem;">
+<table class="table table-bordered">
+    <thead>
+        <tr>
+            <th>Student</th>
+            <th>Item</th>
+            <th>Details</th>
+            <th>Date</th>
+            <th>Action</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% if redemption_requests %}
+            {% for req in redemption_requests %}
+            <tr>
+                <td>{{ student_lookup.get(req.student_id).full_name if student_lookup.get(req.student_id) else 'Unknown' }}</td>
+                <td>{{ req.store_item.name }}</td>
+                <td>{{ req.redemption_details }}</td>
+                <td>
+                  {% if req.redemption_date %}
+                    <span class="local-timestamp" data-timestamp="{{ req.redemption_date.isoformat() }}Z"></span>
+                  {% else %}
+                    —
+                  {% endif %}
+                </td>
+                <td>
+                    <button class="btn btn-sm btn-success approve-btn" data-student-item-id="{{ req.id }}">Approve</button>
+                </td>
+            </tr>
+            {% endfor %}
+        {% else %}
+            <tr>
+                <td colspan="5" class="text-center text-muted">No pending redemption requests.</td>
+            </tr>
+        {% endif %}
+    </tbody>
+</table>
+</div>
+
 <hr class="my-4">
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll(".approve-btn").forEach(button => {
+        button.addEventListener("click", () => {
+            const studentItemId = button.dataset.studentItemId;
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+            fetch('/api/approve-redemption', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ student_item_id: studentItemId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    // Remove the row from the table on success
+                    button.closest('tr').remove();
+                } else {
+                    alert('Approval failed: ' + data.message);
+                }
+            })
+            .catch(error => {
+                console.error('Approval error:', error);
+                alert('An unexpected error occurred.');
+            });
+        });
+    });
+
     document.querySelectorAll(".local-timestamp").forEach(el => {
         const utcString = el.dataset.timestamp;
         if (utcString) {

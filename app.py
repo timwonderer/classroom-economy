@@ -219,7 +219,6 @@ class Student(db.Model):
         return f"{self.first_name} {self.last_initial}."
 
     transactions = db.relationship('Transaction', backref='student', lazy=True)
-    purchases = db.relationship('Purchase', backref='student', lazy=True)
 
 
     @property
@@ -310,16 +309,6 @@ class Transaction(db.Model):
     # All times stored as UTC
     date_funds_available = db.Column(db.DateTime, default=datetime.utcnow)
 
-class Purchase(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
-    item_name = db.Column(db.String(100))
-    redeemed = db.Column(db.Boolean, default=False)
-    # All times stored as UTC
-    date_purchased = db.Column(db.DateTime, default=datetime.utcnow)
-
-
-
 # ---- TapEvent Model (append-only) ----
 class TapEvent(db.Model):
     __tablename__ = 'tap_events'
@@ -333,6 +322,41 @@ class TapEvent(db.Model):
     reason = db.Column(db.String(50), nullable=True)
 
     student = db.relationship("Student", backref="tap_events")
+
+
+# -------------------- STORE MODELS --------------------
+class StoreItem(db.Model):
+    __tablename__ = 'store_items'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    price = db.Column(db.Float, nullable=False)
+    item_type = db.Column(db.String(20), nullable=False, default='delayed') # immediate, delayed, collective
+    inventory = db.Column(db.Integer, nullable=True) # null for unlimited
+    limit_per_student = db.Column(db.Integer, nullable=True) # null for no limit
+    auto_delist_date = db.Column(db.DateTime, nullable=True)
+    auto_expiry_days = db.Column(db.Integer, nullable=True) # days student has to use the item
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Relationship to student items
+    student_items = db.relationship('StudentItem', backref='store_item', lazy=True)
+
+class StudentItem(db.Model):
+    __tablename__ = 'student_items'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    store_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id'), nullable=False)
+    purchase_date = db.Column(db.DateTime, default=datetime.utcnow)
+    expiry_date = db.Column(db.DateTime, nullable=True)
+    # purchased, pending (for collective), processing, completed, expired, redeemed
+    status = db.Column(db.String(20), default='purchased', nullable=False)
+    redemption_details = db.Column(db.Text, nullable=True) # For student notes on usage
+    redemption_date = db.Column(db.DateTime, nullable=True) # When student used it
+
+    # Relationships
+    student = db.relationship('Student', backref=db.backref('items', lazy='dynamic'))
+
+
 # ---- Admin Model ----
 class Admin(db.Model):
     __tablename__ = 'admins'
@@ -650,7 +674,9 @@ def student_dashboard():
     student = get_logged_in_student()
     apply_savings_interest(student)  # Apply savings interest if not already applied
     transactions = Transaction.query.filter_by(student_id=student.id).order_by(Transaction.timestamp.desc()).all()
-    purchases = Purchase.query.filter_by(student_id=student.id).all()
+    student_items = student.items.filter(
+        StudentItem.status.in_(['purchased', 'pending', 'processing'])
+    ).order_by(StudentItem.purchase_date.desc()).all()
 
     checking_transactions = [tx for tx in transactions if tx.account_type == 'checking']
     savings_transactions = [tx for tx in transactions if tx.account_type == 'savings']
@@ -758,7 +784,7 @@ def student_dashboard():
         period_states_json=period_states_json,
         checking_transactions=checking_transactions,
         savings_transactions=savings_transactions,
-        purchases=purchases,
+        student_items=student_items,
         now=local_now,
         forecast_interest=forecast_interest,
         recent_deposit=recent_deposit,
@@ -935,6 +961,179 @@ def student_insurance_change():
     current_plan = student.insurance_plan if student.insurance_plan and student.insurance_plan != "none" else None
     return render_template('student_insurance_change.html', student=student, current_plan=current_plan)
 
+
+# -------------------- STUDENT SHOP --------------------
+@app.route('/student/shop')
+@login_required
+def student_shop():
+    student = get_logged_in_student()
+    # Fetch active items that haven't passed their auto-delist date
+    now = datetime.now(timezone.utc)
+    items = StoreItem.query.filter(
+        StoreItem.is_active == True,
+        or_(StoreItem.auto_delist_date == None, StoreItem.auto_delist_date > now)
+    ).order_by(StoreItem.name).all()
+
+    return render_template('student_shop.html', student=student, items=items)
+
+
+# -------------------- PURCHASE & REDEMPTION API --------------------
+@app.route('/api/purchase-item', methods=['POST'])
+@login_required
+def purchase_item():
+    student = get_logged_in_student()
+    data = request.get_json()
+    item_id = data.get('item_id')
+    passphrase = data.get('passphrase')
+
+    if not all([item_id, passphrase]):
+        return jsonify({"status": "error", "message": "Missing item ID or passphrase."}), 400
+
+    # 1. Verify passphrase
+    if not check_password_hash(student.passphrase_hash or '', passphrase):
+        return jsonify({"status": "error", "message": "Incorrect passphrase."}), 403
+
+    item = StoreItem.query.get(item_id)
+
+    # 2. Validate item and purchase conditions
+    if not item or not item.is_active:
+        return jsonify({"status": "error", "message": "This item is not available."}), 404
+
+    if student.checking_balance < item.price:
+        return jsonify({"status": "error", "message": "Insufficient funds."}), 400
+
+    if item.inventory is not None and item.inventory <= 0:
+        return jsonify({"status": "error", "message": "This item is out of stock."}), 400
+
+    if item.limit_per_student is not None:
+        purchase_count = StudentItem.query.filter_by(student_id=student.id, store_item_id=item.id).count()
+        if purchase_count >= item.limit_per_student:
+            return jsonify({"status": "error", "message": "You have reached the purchase limit for this item."}), 400
+
+    # 3. Process the transaction
+    try:
+        # Deduct from checking account
+        purchase_tx = Transaction(
+            student_id=student.id,
+            amount=-item.price,
+            account_type='checking',
+            type='purchase',
+            description=f"Purchase: {item.name}"
+        )
+        db.session.add(purchase_tx)
+
+        # Handle inventory
+        if item.inventory is not None:
+            item.inventory -= 1
+
+        # Create the student's item
+        expiry_date = None
+        if item.item_type == 'delayed' and item.auto_expiry_days:
+            expiry_date = datetime.now(timezone.utc) + timedelta(days=item.auto_expiry_days)
+
+        student_item_status = 'purchased'
+        if item.item_type == 'immediate':
+            student_item_status = 'redeemed' # Immediate use items are redeemed instantly
+        elif item.item_type == 'collective':
+            student_item_status = 'pending'
+        else: # delayed
+            student_item_status = 'purchased'
+
+        new_student_item = StudentItem(
+            student_id=student.id,
+            store_item_id=item.id,
+            purchase_date=datetime.now(timezone.utc),
+            expiry_date=expiry_date,
+            status=student_item_status
+        )
+        db.session.add(new_student_item)
+        db.session.commit()
+
+        # --- Collective Item Logic ---
+        if item.item_type == 'collective':
+            # Check if all students in the same block have purchased this item
+            students_in_block = Student.query.filter_by(block=student.block).all()
+            student_ids_in_block = {s.id for s in students_in_block}
+
+            purchased_students_count = db.session.query(func.count(func.distinct(StudentItem.student_id))).filter(
+                StudentItem.store_item_id == item.id,
+                StudentItem.student_id.in_(student_ids_in_block)
+            ).scalar()
+
+            if purchased_students_count >= len(student_ids_in_block):
+                # Threshold met, update all pending items for this collective goal to processing
+                StudentItem.query.filter(
+                    StudentItem.store_item_id == item.id,
+                    StudentItem.status == 'pending'
+                ).update({"status": "processing"})
+                db.session.commit()
+                # This flash won't be seen by the user due to the JSON response,
+                # but it's good for logging/debugging. A more robust solution might use websockets.
+                app.logger.info(f"Collective goal '{item.name}' for block {student.block} has been met!")
+
+        return jsonify({"status": "success", "message": f"You purchased {item.name}!"})
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        app.logger.error(f"Purchase failed for student {student.id}: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "An error occurred during purchase. Please try again."}), 500
+
+
+@app.route('/api/use-item', methods=['POST'])
+@login_required
+def use_item():
+    student = get_logged_in_student()
+    data = request.get_json()
+    student_item_id = data.get('student_item_id')
+    details = data.get('redemption_details')
+
+    if not all([student_item_id, details]):
+        return jsonify({"status": "error", "message": "Missing item ID or usage details."}), 400
+
+    student_item = StudentItem.query.get(student_item_id)
+
+    # 1. Validate the item
+    if not student_item:
+        return jsonify({"status": "error", "message": "Item not found."}), 404
+
+    if student_item.student_id != student.id:
+        return jsonify({"status": "error", "message": "You do not own this item."}), 403
+
+    if student_item.store_item.item_type != 'delayed':
+         return jsonify({"status": "error", "message": "This item cannot be used this way."}), 400
+
+    if student_item.status != 'purchased':
+        return jsonify({"status": "error", "message": f"This item cannot be used (status: {student_item.status})."}), 400
+
+    if student_item.expiry_date and datetime.now(timezone.utc) > student_item.expiry_date:
+        student_item.status = 'expired'
+        db.session.commit()
+        return jsonify({"status": "error", "message": "This item has expired."}), 400
+
+    # 2. Process the redemption request
+    try:
+        student_item.status = 'processing'
+        student_item.redemption_details = details
+        student_item.redemption_date = datetime.now(timezone.utc)
+
+        redemption_tx = Transaction(
+            student_id=student.id,
+            amount=0,
+            account_type='checking',
+            type='redemption',
+            description=f"Used: {student_item.store_item.name}"
+        )
+        db.session.add(redemption_tx)
+
+        db.session.commit()
+        return jsonify({"status": "success", "message": f"Your request to use {student_item.store_item.name} has been submitted for approval."})
+
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        app.logger.error(f"Item use failed for student {student.id}: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "An error occurred. Please try again."}), 500
+
+
 # -------------------- TRANSFER ROUTE SUPPORT FUNCTIONS --------------------
 def apply_savings_interest(student, annual_rate=0.045):
     """
@@ -1106,7 +1305,42 @@ def admin_dashboard():
     app.logger.info(f"📝 Dashboard logs data: {logs}")
     for entry in logs:
         app.logger.debug(f"Log entry - student_id: {entry['student_id']}, reason: {entry.get('reason')}")
-    return render_template('admin_dashboard.html', students=students, transactions=transactions, student_lookup=student_lookup, logs=logs)
+
+    # Fetch pending redemption requests
+    redemption_requests = StudentItem.query.filter_by(status='processing').order_by(StudentItem.redemption_date.asc()).all()
+
+    return render_template('admin_dashboard.html', students=students, transactions=transactions, student_lookup=student_lookup, logs=logs, redemption_requests=redemption_requests, current_page="dashboard")
+
+@app.route('/api/approve-redemption', methods=['POST'])
+@admin_required
+def approve_redemption():
+    data = request.get_json()
+    student_item_id = data.get('student_item_id')
+
+    student_item = StudentItem.query.get(student_item_id)
+    if not student_item or student_item.status != 'processing':
+        return jsonify({"status": "error", "message": "Invalid or already processed item."}), 404
+
+    try:
+        student_item.status = 'completed'
+
+        # Find the corresponding 'redemption' transaction and update its description
+        redemption_tx = Transaction.query.filter_by(
+            student_id=student_item.student_id,
+            type='redemption',
+            description=f"Used: {student_item.store_item.name}"
+        ).order_by(Transaction.timestamp.desc()).first()
+
+        if redemption_tx:
+            redemption_tx.description = f"Redeemed: {student_item.store_item.name}"
+
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Redemption approved."})
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        app.logger.error(f"Redemption approval failed for student_item {student_item_id}: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": "An error occurred."}), 500
+
 
 @app.route('/admin/bonuses', methods=['POST'])
 @admin_required
@@ -1302,6 +1536,58 @@ def admin_students():
     # Remove deprecated last_tap_in/last_tap_out logic; templates should not reference them.
     return render_template('admin_students.html', students=students, current_page="students")
 
+
+# -------------------- ADMIN STORE MANAGEMENT --------------------
+from forms import StoreItemForm
+@app.route('/admin/store', methods=['GET', 'POST'])
+@admin_required
+def admin_store_management():
+    form = StoreItemForm()
+    if form.validate_on_submit():
+        new_item = StoreItem(
+            name=form.name.data,
+            description=form.description.data,
+            price=form.price.data,
+            item_type=form.item_type.data,
+            inventory=form.inventory.data,
+            limit_per_student=form.limit_per_student.data,
+            auto_delist_date=form.auto_delist_date.data,
+            auto_expiry_days=form.auto_expiry_days.data,
+            is_active=form.is_active.data
+        )
+        db.session.add(new_item)
+        db.session.commit()
+        flash(f"'{new_item.name}' has been added to the store.", "success")
+        return redirect(url_for('admin_store_management'))
+
+    items = StoreItem.query.order_by(StoreItem.name).all()
+    return render_template('admin_store.html', form=form, items=items, current_page="store")
+
+
+@app.route('/admin/store/edit/<int:item_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_edit_store_item(item_id):
+    item = StoreItem.query.get_or_404(item_id)
+    form = StoreItemForm(obj=item)
+    if form.validate_on_submit():
+        form.populate_obj(item)
+        db.session.commit()
+        flash(f"'{item.name}' has been updated.", "success")
+        return redirect(url_for('admin_store_management'))
+    return render_template('admin_edit_item.html', form=form, item=item, current_page="store")
+
+@app.route('/admin/store/delete/<int:item_id>', methods=['POST'])
+@admin_required
+def admin_delete_store_item(item_id):
+    item = StoreItem.query.get_or_404(item_id)
+    # To preserve history, we'll just deactivate it instead of a hard delete
+    # A hard delete would be: db.session.delete(item)
+    item.is_active = False
+    db.session.commit()
+    flash(f"'{item.name}' has been deactivated and removed from the store.", "success")
+    return redirect(url_for('admin_store_management'))
+
+
 # -------------------- ADMIN HALL PASS MANAGEMENT PLACEHOLDER --------------------
 @app.route('/admin/hall-pass-management')
 @admin_required
@@ -1404,10 +1690,10 @@ def student_detail(student_id):
     student.property_tax_overdue = today > tax_due and (not student.property_tax_last_paid or student.property_tax_last_paid.astimezone(PACIFIC).date() <= tax_due)
 
     transactions = Transaction.query.filter_by(student_id=student.id).order_by(Transaction.timestamp.desc()).all()
-    purchases = Purchase.query.filter_by(student_id=student.id).all()
+    student_items = student.items.order_by(StudentItem.purchase_date.desc()).all()
     # Fetch most recent TapEvent for this student
     latest_tap_event = TapEvent.query.filter_by(student_id=student.id).order_by(TapEvent.timestamp.desc()).first()
-    return render_template('student_detail.html', student=student, transactions=transactions, purchases=purchases, latest_tap_event=latest_tap_event)
+    return render_template('student_detail.html', student=student, transactions=transactions, student_items=student_items, latest_tap_event=latest_tap_event)
 
 
 @app.route('/admin/void-transaction/<int:transaction_id>', methods=['POST'])

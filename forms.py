@@ -1,9 +1,27 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField
 from wtforms.validators import DataRequired
-from wtforms import HiddenField
+from wtforms import HiddenField, TextAreaField, FloatField, SelectField, IntegerField, DateField, BooleanField
+from wtforms.validators import Optional
 
 from wtforms import SubmitField
+
+
+class StoreItemForm(FlaskForm):
+    name = StringField('Item Name', validators=[DataRequired()])
+    description = TextAreaField('Description')
+    price = FloatField('Price', validators=[DataRequired()])
+    item_type = SelectField('Item Type', choices=[
+        ('immediate', 'Immediate Use'),
+        ('delayed', 'Delayed Use'),
+        ('collective', 'Collective Goal')
+    ], validators=[DataRequired()])
+    inventory = IntegerField('Inventory (leave blank for unlimited)', validators=[Optional()])
+    limit_per_student = IntegerField('Purchase Limit per Student (leave blank for no limit)', validators=[Optional()])
+    auto_delist_date = DateField('Auto-Delist Date (optional)', format='%Y-%m-%d', validators=[Optional()])
+    auto_expiry_days = IntegerField('Item Expiry in Days (optional, for delayed-use items)', validators=[Optional()])
+    is_active = BooleanField('Item is Active', default=True)
+    submit = SubmitField('Save Item')
 
 
 class AdminSignupForm(FlaskForm):
