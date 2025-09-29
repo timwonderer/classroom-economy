@@ -56,8 +56,14 @@
           <tbody>
             {% for tx in transactions %}
             <tr>
-              <td>{{ tx.timestamp|format_datetime('%Y-%m-%d %I:%M:%S %p') }}</td>
-              <td>{{ tx.student_name }}</td>
+              <td>
+                {% if tx.timestamp %}
+                  <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>{{ tx.student.full_name if tx.student else tx.student_name }}</td>
               <td>{{ tx.student_block }}</td>
               <td>{{ tx.type }}</td>
               <td>{{ tx.amount }}</td>
@@ -128,6 +134,27 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     });
   });
+});
+
+// Convert UTC timestamps to local time display
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll(".local-timestamp").forEach(el => {
+        const utcString = el.dataset.timestamp;
+        if (utcString) {
+            const date = new Date(utcString);
+            const options = {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: 'numeric',
+                hour12: true
+            };
+            el.textContent = date.toLocaleString(undefined, options);
+        } else {
+            el.textContent = '—';
+        }
+    });
 });
 </script>
 {% endblock %}

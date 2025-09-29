@@ -85,10 +85,8 @@
 </head>
 <body>
     <div class="setup-container">
-        <h1>Hi, {{ student.full_name }}!</h1>
-        <p class="description">Let’s finish setting up your account with a PIN and a secure passphrase.</p>
-        <p class="description">PIN is required when you sign in to your Class Economy account. You also need it to tap in and out for attendance. It should not be something easy to guess and should never be your birthdate.</p>
-        <p class="description">Passphrase is required when you take actions involving spending or moving money. A passphrase should be long and easy to remember.</p> 
+        <h1>Set Your PIN & Passphrase</h1>
+        <p class="description">Your username is: <strong>{{ username }}</strong>. Please write it down if you haven’t already, as it will not be shown again after setup is complete.</p>
 {% with messages = get_flashed_messages(category_filter=['setup']) %}
           {% if messages %}
             <ul>
@@ -100,20 +98,26 @@
         {% endwith %}
 
         <form method="POST" onsubmit="return validateForm()">
-            <label for="pin">Choose a new 4-8 digit PIN</label>
-            <input type="password" id="pin" name="pin" pattern="\d{4,8}" placeholder="e.g. 938291" required>
+            {{ form.hidden_tag() }}
+            {{ form.pin.label(class="form-label") }}
+            {{ form.pin(class="form-control", placeholder="e.g. 938291") }}
+            {% for error in form.pin.errors %}
+                <div class="text-danger">{{ error }}</div>
+            {% endfor %}
             <div class="hint">Use 4-8 digits number that you will remember. You will sign in using this PIN</div>
 
-            <label for="passphrase">Create a secure passphrase.</label>
-            <input type="text" id="passphrase" name="second_factor_secret" placeholder="e.g. Surprised!Banana!2!You!" required>
+            {{ form.passphrase.label(class="form-label") }}
+            {{ form.passphrase(class="form-control", id="passphrase", placeholder="e.g. Surprised!Banana!2!You!") }}
+            {% for error in form.passphrase.errors %}
+                <div class="text-danger">{{ error }}</div>
+            {% endfor %}
             <div class="hint">A good passphrase is at least four words long with symbols and numbers within. It should be something easy for you to remember but hard for someone else to guess</div>
             <div class="strength-meter">
-            
                 <div class="strength-meter-fill" id="strength-bar"></div>
             </div>
             <div id="strength-feedback" class="hint"></div>
 
-            <button type="submit" id="submit-button" disabled>Continue</button>
+            {{ form.submit(class="btn btn-primary", id="submit-button", disabled=True) }}
         </form>
     </div>
 
@@ -147,6 +151,8 @@
             const pin = document.getElementById('pin').value;
             if (!/^\d{4,8}$/.test(pin)) {
                 alert("PIN must be between 4-8 digits.");
+                window.scrollTo(0,0);
+                document.getElementById('pin').focus();
                 return false;
             }
             return true;

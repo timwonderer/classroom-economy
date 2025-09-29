@@ -46,19 +46,29 @@
         {% endif %}
 
         <form method="POST">
+            {{ form.hidden_tag() }}
             <div class="mb-3">
-                <label for="username" class="form-label">Username</label>
-                <input type="text" class="form-control" id="username" name="username" required>
+                {{ form.username.label(class="form-label") }}
+                {{ form.username(class="form-control", id="username") }}
+                {% for error in form.username.errors %}
+                    <div class="text-danger">{{ error }}</div>
+                {% endfor %}
             </div>
             <div class="mb-3">
-                <label for="pin" class="form-label">PIN</label>
-                <input type="password" class="form-control" id="pin" name="pin" required>
+                {{ form.pin.label(class="form-label") }}
+                {{ form.pin(class="form-control", id="pin") }}
+                {% for error in form.pin.errors %}
+                    <div class="text-danger">{{ error }}</div>
+                {% endfor %}
             </div>
-            <button type="submit" class="btn btn-primary w-100">Login</button>
+            {{ form.submit(class="btn btn-primary w-100") }}
         </form>
 
         <div class="mt-3 text-center">
             <a href="{{ url_for('admin_login') }}" class="text-decoration-none fw-bold text-secondary">Teachers? Sign in here.</a>
+        </div>
+        <div class="mt-2 text-center">
+            <a href="{{ url_for('student_claim_account') }}" class="text-decoration-none fw-bold text-primary">First time? Create a student account here.</a>
         </div>
 
         <p style="color:red;margin-top: 1rem;text-align: center;">
@@ -77,3 +87,5 @@
        <small style="color: #999; text-align: center; display: block;margin-top: 1rem;">BETA Stable Release v0.9.0</small
 
 
+</body>
+</html>

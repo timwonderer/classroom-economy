@@ -14,7 +14,7 @@
         <div class="card-body">
             <p><strong>Date:</strong>
                 {% if next_payroll_date %}
-                    {{ next_payroll_date|format_datetime }}
+                    <span class="local-timestamp" data-timestamp="{{ next_payroll_date.isoformat() }}Z"></span>
                 {% else %}
                     N/A
                 {% endif %}
@@ -46,7 +46,7 @@
                         <tr>
                             <td>
                                 {% if record.timestamp %}
-                                    {{ record.timestamp|format_datetime }}
+                                    <span class="local-timestamp" data-timestamp="{{ record.timestamp.isoformat() }}Z"></span>
                                 {% else %}
                                     N/A
                                 {% endif %}
@@ -54,10 +54,10 @@
                             <td>
                                 {% if record.student_id and record.student_name %}
                                     <a href="{{ url_for('student_detail', student_id=record.student_id) }}">
-                                        {{ record.student_name }}
+                                        {{ record.student.full_name if record.student else record.student_name }}
                                     </a>
                                 {% elif record.student_name %}
-                                    {{ record.student_name }}
+                                    {{ record.student.full_name if record.student else record.student_name }}
                                 {% else %}
                                     <em>Unknown</em>
                                 {% endif %}

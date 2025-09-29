@@ -1,11 +1,25 @@
+THEME_PROMPTS = [
+    {"slug": "animal", "prompt": "Write in your favorite animal."},
+    {"slug": "color", "prompt": "Write in your favorite color."},
+    {"slug": "space", "prompt": "Write in something related to outer space."},
+    {"slug": "nature", "prompt": "Write in a nature word (tree, river, etc.)."},
+    {"slug": "food", "prompt": "Write in your favorite fruit or food."},
+    {"slug": "trait", "prompt": "Write in a positive character trait (bravery, kindness, etc.)."},
+    {"slug": "place", "prompt": "Write in a place you want to visit."},
+    {"slug": "science", "prompt": "Write in a science word you like."},
+    {"slug": "hobby", "prompt": "Write in your favorite hobby or sport."},
+    {"slug": "happy", "prompt": "Write in something that makes you happy."},
+]
 
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, Response
 
 from forms import AdminSignupForm, SystemAdminInviteForm
+from forms import StudentClaimAccountForm, StudentCreateUsernameForm, StudentPinPassphraseForm
+from forms import StudentLoginForm
 
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from functools import wraps
 import pytz
 from sqlalchemy import or_, func, text
@@ -38,6 +52,16 @@ if missing_vars:
     raise RuntimeError(
         "Missing required environment variables: " + ", ".join(missing_vars)
     )
+
+#
+# -----------------------------------------------------------------------------------------
+# NOTE: ALL BACKEND TIMES ARE CAPTURED AND STORED AS UTC.
+# - All datetime columns in the database are UTC (via default=datetime.utcnow).
+# - All backend logic uses timezone-aware UTC datetimes (`datetime.now(timezone.utc)`), unless explicitly noted.
+# - All timestamps for events, transactions, and sessions are UTC.
+# - When converting for display (e.g., Pacific time), always use pytz for conversion and formatting.
+# - Do NOT use naive `datetime.now()` in backend logic; always use UTC or convert/compare with timezone awareness.
+# -----------------------------------------------------------------------------------------
 
 # Encryption key for PII fields
 ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
@@ -165,19 +189,19 @@ class Student(db.Model):
     passphrase_hash = db.Column(db.Text, nullable=True)
 
     passes_left = db.Column(db.Integer, default=3)
-    last_tap_in = db.Column(db.DateTime)
-    last_tap_out = db.Column(db.DateTime)
+    
     is_rent_enabled = db.Column(db.Boolean, default=True)
     is_property_tax_enabled = db.Column(db.Boolean, default=False)
     owns_seat = db.Column(db.Boolean, default=False)
     insurance_plan = db.Column(db.String, default="none")
     insurance_last_paid = db.Column(db.DateTime, nullable=True)
     second_factor_type = db.Column(db.String, nullable=True)
-    second_factor_secret = db.Column(db.String, nullable=True)
     second_factor_enabled = db.Column(db.Boolean, default=False)
     has_completed_setup = db.Column(db.Boolean, default=False)
     # Privacy-aligned DOB sum for username generation (non-reversible)
     dob_sum = db.Column(db.Integer, nullable=True)
+    cumulative_daily_sec = db.Column(db.Integer, default=0, nullable=False)
+    cumulative_payroll_sec = db.Column(db.Integer, default=0, nullable=False)
 
     @property
     def full_name(self):
@@ -185,7 +209,7 @@ class Student(db.Model):
 
     transactions = db.relationship('Transaction', backref='student', lazy=True)
     purchases = db.relationship('Purchase', backref='student', lazy=True)
-    tap_sessions = db.relationship('TapSession', back_populates='student', lazy='dynamic')
+
 
     @property
     def checking_balance(self):
@@ -201,7 +225,8 @@ class Student(db.Model):
 
     @property
     def recent_deposits(self):
-        now = datetime.utcnow()
+        from datetime import timezone
+        now = datetime.now(timezone.utc)        
         recent_timeframe = now - timedelta(days=2)
         return [
             tx for tx in self.transactions
@@ -222,10 +247,7 @@ class Student(db.Model):
             total_due += 200  # Estimated insurance cost
         return max(0, total_due - self.checking_balance)
 
-    @property
-    def next_pay_date(self):
-        from datetime import timedelta
-        return (self.last_tap_in or datetime.utcnow()) + timedelta(days=14)
+    # Removed deprecated last_tap_in/last_tap_out properties; backend is source of truth.
 
 class AdminInviteCode(db.Model):
     __tablename__ = 'admin_invite_codes'
@@ -233,6 +255,7 @@ class AdminInviteCode(db.Model):
     code = db.Column(db.String(255), unique=True, nullable=False)
     expires_at = db.Column(db.DateTime, nullable=True)
     used = db.Column(db.Boolean, default=False)
+    # All times stored as UTC (see header note)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
@@ -250,9 +273,9 @@ def system_admin_required(f):
             flash("System administrator access required.")
             return redirect(url_for('system_admin_login', next=request.path))
         last_activity = session.get('last_activity')
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if last_activity:
-            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S")
+            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
             if now - last_activity > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                 session.pop("is_system_admin", None)
                 flash("Session expired. Please log in again.")
@@ -267,11 +290,13 @@ class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     amount = db.Column(db.Float, nullable=False)
+    # All times stored as UTC (see header note)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     account_type = db.Column(db.String(20), default='checking')
     description = db.Column(db.String(255))
     is_void = db.Column(db.Boolean, default=False)
     type = db.Column(db.String(50))  # optional field to describe the transaction type
+    # All times stored as UTC
     date_funds_available = db.Column(db.DateTime, default=datetime.utcnow)
 
 class Purchase(db.Model):
@@ -279,25 +304,24 @@ class Purchase(db.Model):
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     item_name = db.Column(db.String(100))
     redeemed = db.Column(db.Boolean, default=False)
+    # All times stored as UTC
     date_purchased = db.Column(db.DateTime, default=datetime.utcnow)
 
-# ---- TapSession Model ----
-from datetime import datetime
-class TapSession(db.Model):
-    __tablename__ = 'tap_sessions'
+
+
+# ---- TapEvent Model (append-only) ----
+class TapEvent(db.Model):
+    __tablename__ = 'tap_events'
 
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
-    period = db.Column(db.String(10), nullable=False)  # e.g., 'a', 'b'
-    tap_in_time = db.Column(db.DateTime, default=lambda: datetime.now(PACIFIC))
-    tap_out_time = db.Column(db.DateTime, nullable=True)
+    period = db.Column(db.String(10), nullable=False)
+    status = db.Column(db.String(10), nullable=False)  # 'active' or 'inactive'
+    # All times stored as UTC (see header note)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     reason = db.Column(db.String(50), nullable=True)
-    is_done = db.Column(db.Boolean, default=False)
-    duration_seconds = db.Column(db.Integer, default=0)
-    is_paid = db.Column(db.Boolean, default=False)
 
-    student = db.relationship("Student", back_populates="tap_sessions")
-
+    student = db.relationship("Student", backref="tap_events")
 # ---- Admin Model ----
 class Admin(db.Model):
     __tablename__ = 'admins'
@@ -370,11 +394,11 @@ def login_required(f):
             encoded_next = urllib.parse.quote(request.path, safe="")
             return redirect(f"{url_for('student_login')}?next={encoded_next}")
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         last_activity = session.get('last_activity')
 
         if last_activity:
-            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S")
+            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
             if (now - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                 session.pop('student_id', None)
                 flash("Session expired. Please log in again.")
@@ -397,11 +421,11 @@ def admin_required(f):
             encoded_next = urllib.parse.quote(request.path, safe="")
             return redirect(f"{url_for('admin_login')}?next={encoded_next}")
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         last_activity = session.get('last_activity')
 
         if last_activity:
-            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S")
+            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
             if (now - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                 session.pop("is_admin", None)
                 flash("Admin session expired. Please log in again.")
@@ -417,6 +441,118 @@ def admin_required(f):
 def home():
     return redirect(url_for('student_login'))  # Or wherever you want to go
 
+# --- PAGE 1: Claim Account ---
+@app.route('/student/claim-account', methods=['GET', 'POST'])
+def student_claim_account():
+    import os, hashlib, hmac
+    from hash_utils import hash_username
+
+    pepper = os.getenv('PEPPER_KEY', 'default_pepper').encode()
+    form = StudentClaimAccountForm()
+
+    if form.validate_on_submit():
+        first_half = form.first_half.data.strip().lower()
+        second_half = form.second_half.data.strip().lower()
+        dob_sum = form.dob_sum.data.strip()
+
+        if not dob_sum.isdigit():
+            flash("DOB sum must be a number.", "claim")
+            return redirect(url_for('student_claim_account'))
+
+        for s in Student.query.filter_by(has_completed_setup=False).all():
+            name_code = first_half
+            first_half_hash = hmac.new(pepper, s.salt + name_code.encode(), hashlib.sha256).hexdigest()
+            second_half_hash = hmac.new(pepper, s.salt + dob_sum.encode(), hashlib.sha256).hexdigest()
+
+            if s.first_half_hash == first_half_hash and s.second_half_hash == second_half_hash and str(s.dob_sum) == dob_sum:
+                session['claimed_student_id'] = s.id
+                session.pop('generated_username', None)
+                session.pop('theme_prompt', None)
+                session.pop('theme_slug', None)
+                return redirect(url_for('student_create_username'))
+
+        flash("No matching account found. Please check your info.", "claim")
+        return redirect(url_for('student_claim_account'))
+
+    return render_template('student_account_claim.html', form=form)
+
+# --- PAGE 2: Create Username ---
+@app.route('/student/create-username', methods=['GET', 'POST'])
+def student_create_username():
+    import random, re
+    from hash_utils import hash_username
+    # Only allow if claimed
+    student_id = session.get('claimed_student_id')
+    if not student_id:
+        flash("Please claim your account first.", "setup")
+        return redirect(url_for('student_claim_account'))
+    student = Student.query.get(student_id)
+    if not student or student.has_completed_setup:
+        flash("Invalid or already setup account.", "setup")
+        return redirect(url_for('student_login'))
+    # Assign a random theme prompt if not yet in session
+    if 'theme_prompt' not in session:
+        selected_theme = random.choice(THEME_PROMPTS)
+        session['theme_slug'] = selected_theme['slug']
+        session['theme_prompt'] = selected_theme['prompt']
+    form = StudentCreateUsernameForm()
+    if form.validate_on_submit():
+        write_in_word = form.write_in_word.data.strip().lower()
+        if not write_in_word.isalpha() or len(write_in_word) < 3 or len(write_in_word) > 12:
+            flash("Please enter a valid word (3-12 letters, no numbers or spaces).", "setup")
+            return redirect(url_for('student_create_username'))
+        adjectives = [
+            "brave", "clever", "curious", "daring", "eager", "fancy", "gentle", "honest", "jolly", "kind",
+            "lucky", "mighty", "noble", "quick", "proud", "silly", "witty", "zesty", "sunny", "chill"
+        ]
+        adjective = random.choice(adjectives)
+        dob_sum = student.dob_sum if student.dob_sum is not None else 0
+        initials = f"{student.first_name[0].upper()}{student.last_initial.upper()}"
+        username = f"{adjective}{write_in_word}{dob_sum}{initials}"
+        # Save username plaintext in session for display
+        session['generated_username'] = username
+        # Hash and store in DB
+        student.username_hash = hash_username(username, student.salt)
+        db.session.commit()
+        # Clear theme prompt from session
+        session.pop('theme_prompt', None)
+        session.pop('theme_slug', None)
+        return redirect(url_for('student_setup_pin_passphrase'))
+    return render_template('student_create_username.html', theme_prompt=session['theme_prompt'], form=form)
+
+# --- PAGE 3: Setup PIN & Passphrase ---
+@app.route('/student/setup-pin-passphrase', methods=['GET', 'POST'])
+def student_setup_pin_passphrase():
+    from werkzeug.security import generate_password_hash
+    # Only allow if claimed and username generated
+    student_id = session.get('claimed_student_id')
+    username = session.get('generated_username')
+    if not student_id or not username:
+        flash("Please complete previous steps.", "setup")
+        return redirect(url_for('student_claim_account'))
+    student = Student.query.get(student_id)
+    if not student or student.has_completed_setup:
+        flash("Invalid or already setup account.", "setup")
+        return redirect(url_for('student_login'))
+    form = StudentPinPassphraseForm()
+    if form.validate_on_submit():
+        pin = form.pin.data
+        passphrase = form.passphrase.data
+        if not pin or not passphrase:
+            flash("PIN and passphrase are required.", "setup")
+            return redirect(url_for('student_setup_pin_passphrase'))
+        # Save credentials (store passphrase as hash)
+        student.pin_hash = generate_password_hash(pin)
+        student.passphrase_hash = generate_password_hash(passphrase)
+        student.has_completed_setup = True
+        db.session.commit()
+        # Clear session onboarding keys
+        session.pop('claimed_student_id', None)
+        session.pop('generated_username', None)
+        flash("Setup completed successfully!", "setup")
+        return redirect(url_for('setup_complete'))
+    return render_template('student_pin_setup.html', username=username, form=form)
+
 @app.route('/setup-complete')
 @login_required
 def setup_complete():
@@ -425,35 +561,33 @@ def setup_complete():
     db.session.commit()
     return render_template('student_setup_complete.html')
 
-@app.route('/student/setup', methods=['GET', 'POST'])
-@login_required
-def student_setup():
-    student = get_logged_in_student()
-    if request.method == 'POST':
-        # Clear unrelated flash messages
-        for category in ['setup']:
-            session.modified = True
-            flash("Setup completed successfully!", category)
-
-        # Save the new PIN
-        student.pin_hash = generate_password_hash(request.form.get("pin"))
-
-        # Save the passphrase as the second factor secret
-        passphrase = request.form.get("second_factor_secret")
-        if passphrase:
-            student.second_factor_secret = passphrase
-        else:
-            flash("Passphrase is required.", "setup")
-            return redirect(url_for('student_setup'))
-
-        student.has_completed_setup = True
-        db.session.commit()
-        flash("Setup completed successfully!", "setup")
-        return redirect(url_for('setup_complete'))
-
-    return render_template('student_setup.html', student=student)
-
 # -------------------- STUDENT DASHBOARD --------------------
+# -------------------- HELPER: Calculate period attendance from TapEvent --------------------
+def calculate_period_attendance(student_id, period, date):
+    events = TapEvent.query.filter_by(student_id=student_id, period=period).filter(
+        func.date(TapEvent.timestamp) == date
+    ).order_by(TapEvent.timestamp.asc()).all()
+
+    from datetime import timezone
+    total_seconds = 0
+    current_in = None
+    for event in events:
+        event_time = event.timestamp
+        if event_time.tzinfo is None:
+            event_time = event_time.replace(tzinfo=timezone.utc)
+
+        if event.status == "active":
+            current_in = event_time
+        elif event.status == "inactive" and current_in:
+            total_seconds += (event_time - current_in).total_seconds()
+            current_in = None
+    # Handle case where still active without tap_out
+    if current_in:
+        now = datetime.now(timezone.utc)
+        total_seconds += (now - current_in).total_seconds()
+    return int(total_seconds)
+
+
 @app.route('/student/dashboard')
 @login_required
 def student_dashboard():
@@ -461,56 +595,72 @@ def student_dashboard():
     apply_savings_interest(student)  # Apply savings interest if not already applied
     transactions = Transaction.query.filter_by(student_id=student.id).order_by(Transaction.timestamp.desc()).all()
     purchases = Purchase.query.filter_by(student_id=student.id).all()
-    
+
     checking_transactions = [tx for tx in transactions if tx.account_type == 'checking']
     savings_transactions = [tx for tx in transactions if tx.account_type == 'savings']
-    
+
     forecast_interest = round(student.savings_balance * (0.045 / 12), 2)
 
-    # ---- Compute session status for each block based on real DB state ----
-    from datetime import date
-
+    # ---- Compute session status for each block based on TapSession single-action-per-row ----
     def get_session_status(student_id, blk):
-        today = date.today()
-        # Active session: no tap_out_time
-        active = TapSession.query.filter_by(
-            student_id=student_id,
-            period=blk,
-            tap_out_time=None
-        ).first()
-        if active:
-            # still tapped in
-            t_in = active.tap_in_time
-            if getattr(t_in, 'tzinfo', None) is None:
-                t_in = utc.localize(t_in)
-            seconds = int((datetime.now(PACIFIC) - t_in.astimezone(PACIFIC)).total_seconds())
-            return True, False, seconds
-
-        # Not active: sum all sessions today for this block
-        sessions = TapSession.query.filter(
-            TapSession.student_id==student_id,
-            TapSession.period==blk,
-            func.date(TapSession.tap_in_time)==today
-        ).all()
-        total = 0
-        done = False
-        for s in sessions:
-            t_in = s.tap_in_time
-            t_out = s.tap_out_time or datetime.now(PACIFIC)
-            if getattr(t_in, 'tzinfo', None) is None:
-                t_in = utc.localize(t_in)
-            if getattr(t_out, 'tzinfo', None) is None:
-                t_out = utc.localize(t_out)
-            total += (t_out.astimezone(PACIFIC) - t_in.astimezone(PACIFIC)).total_seconds()
-            # mark done if any session had reason 'done'
-            if s.reason and s.reason.lower() == 'done':
-                done = True
-        return False, done, int(total)
+        """
+        Determines active/inactive/done state for a block using the most recent TapEvent row.
+        - active: latest TapEvent.status == 'active'
+        - inactive: latest TapEvent.status == 'inactive'
+        - done: if any TapEvent today for this block has reason 'done'
+        - duration: total seconds for today (from calculate_period_attendance)
+        """
+        today = datetime.now(PACIFIC).date()
+        # Find the most recent TapEvent for this student/block
+        latest_event = (
+            TapEvent.query
+            .filter(
+                TapEvent.student_id == student_id,
+                TapEvent.period == blk,
+                func.date(TapEvent.timestamp) == today
+            )
+            .order_by(TapEvent.timestamp.desc())
+            .first()
+        )
+        is_active = False
+        is_inactive = False
+        if latest_event:
+            if latest_event.status == 'active':
+                is_active = True
+            elif latest_event.status == 'inactive':
+                is_inactive = True
+        # Determine done: any event today for this block with reason 'done'
+        done = TapEvent.query.filter(
+            TapEvent.student_id == student_id,
+            TapEvent.period == blk,
+            func.date(TapEvent.timestamp) == today,
+            TapEvent.reason != None
+        ).filter(func.lower(TapEvent.reason) == 'done').first() is not None
+        # Duration: sum of today's durations using calculate_period_attendance
+        duration = calculate_period_attendance(student_id, blk, today)
+        return is_active, done, duration
 
     # Determine all blocks for this student dynamically
     student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-    period_states = {blk: get_session_status(student.id, blk) for blk in student_blocks}
+    period_states = {
+        blk: {
+            "active": status[0],
+            "done": status[1],
+            "duration": status[2]
+        }
+        for blk, status in ((blk, get_session_status(student.id, blk)) for blk in student_blocks)
+    }
     period_states_json = json.dumps(period_states, separators=(',', ':'))
+
+    # Add today's seconds per block for display
+    today_seconds_per_block = {blk: calculate_period_attendance(student.id, blk, datetime.now(PACIFIC).date()) for blk in student_blocks}
+
+    # Compute total seconds for today across all blocks and format as HH:MM:SS
+    total_today_seconds = sum(today_seconds_per_block.values())
+    hours, remainder = divmod(total_today_seconds, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    total_today_elapsed = f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
+    student_name = student.full_name
 
     # Compute most recent deposit and insurance paid flag
     recent_deposit = student.recent_deposits[0] if student.recent_deposits else None
@@ -518,6 +668,14 @@ def student_dashboard():
 
     tz = pytz.timezone('America/Los_Angeles')
     local_now = datetime.now(tz)
+    # --- DASHBOARD DEBUG LOGGING: Compare backend DB state vs frontend computed state for tap in/out ---
+    app.logger.info(f"📊 DASHBOARD DEBUG: Student {student.id} - Block states:")
+    for blk in student_blocks:
+        blk_state = period_states[blk]
+        active = blk_state["active"]
+        done = blk_state["done"]
+        seconds = blk_state["duration"]
+        app.logger.info(f"Block {blk} => DB Active={active}, Done={done}, Seconds={seconds}, Today's Total Seconds={today_seconds_per_block[blk]}")
     return render_template(
         'student_dashboard.html',
         student=student,
@@ -530,7 +688,10 @@ def student_dashboard():
         now=local_now,
         forecast_interest=forecast_interest,
         recent_deposit=recent_deposit,
-        insurance_paid=insurance_paid
+        insurance_paid=insurance_paid,
+        today_seconds_per_block=today_seconds_per_block,
+        student_name=student_name,
+        total_today_elapsed=total_today_elapsed,
     )
 
 # -------------------- TRANSFER ROUTE --------------------
@@ -542,7 +703,7 @@ def student_transfer():
     if request.method == 'POST':
         is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
         passphrase = request.form.get("passphrase")
-        if passphrase != student.second_factor_secret:
+        if not check_password_hash(student.passphrase_hash or '', passphrase):
             if is_json:
                 return jsonify(status="error", message="Incorrect passphrase"), 400
             flash("Incorrect passphrase. Transfer canceled.", "transfer_error")
@@ -629,7 +790,7 @@ def student_insurance():
             flash("Invalid insurance plan selected.", "insurance_error")
             return redirect(url_for("student_insurance"))
 
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         recent_cancellation_tx = Transaction.query.filter(
             Transaction.student_id == student.id,
             Transaction.description == f"Cancelled {selected_plan.replace('_', ' ').title()} Insurance"
@@ -701,7 +862,11 @@ def student_insurance_change():
 
 # -------------------- TRANSFER ROUTE SUPPORT FUNCTIONS --------------------
 def apply_savings_interest(student, annual_rate=0.045):
-    now = datetime.utcnow()
+    """
+    Apply monthly savings interest for a student.
+    All time calculations are in UTC.
+    """
+    now = datetime.now(timezone.utc)
     this_month = now.month
     this_year = now.year
 
@@ -796,10 +961,11 @@ def admin_add_student_manual():
 # -------------------- STUDENT LOGIN --------------------
 @app.route('/student/login', methods=['GET', 'POST'])
 def student_login():
-    if request.method == 'POST':
+    form = StudentLoginForm()
+    if form.validate_on_submit():
         is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
-        username = request.form.get('username')
-        pin = request.form.get('pin')
+        username = form.username.data.strip()
+        pin = form.pin.data.strip()
         student = None
         for s in Student.query.all():
             if s.username_hash and hash_username(username, s.salt) == s.username_hash:
@@ -815,10 +981,7 @@ def student_login():
         session['student_id'] = student.id
         session['last_activity'] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
 
-        if not student.has_completed_setup:
-            if is_json:
-                return jsonify(status="success", message="Login successful")
-            return redirect(url_for('student_setup'))
+        # Removed redirect to student_setup for has_completed_setup; new onboarding flow uses claim → username → pin/passphrase.
 
         if is_json:
             return jsonify(status="success", message="Login successful")
@@ -828,7 +991,9 @@ def student_login():
             return redirect(next_url)
         return redirect(url_for('student_dashboard'))
 
-    return render_template('student_login.html')
+    # Always display CTA to claim/create account for first-time users
+    setup_cta = True
+    return render_template('student_login.html', setup_cta=setup_cta, form=form)
 
 # -------------------- ADMIN DASHBOARD --------------------
 @app.route('/admin')
@@ -837,26 +1002,27 @@ def admin_dashboard():
     students = Student.query.order_by(Student.first_name).all()
     transactions = Transaction.query.order_by(Transaction.timestamp.desc()).limit(20).all()
     student_lookup = {s.id: s for s in students}
-    raw_logs = TapSession.query.order_by(TapSession.tap_in_time.desc()).limit(20).all()
+    # Use TapEvent for logs (append-only) - fetch with student name
+    raw_logs = (
+        db.session.query(
+            TapEvent,
+            Student.first_name,
+            Student.last_initial
+        )
+        .join(Student, TapEvent.student_id == Student.id)
+        .order_by(TapEvent.timestamp.desc())
+        .limit(20)
+        .all()
+    )
     logs = []
-    for log in raw_logs:
-        dur = log.duration_seconds or 0
-        # Recalculate if negative and both timestamps present
-        if dur < 0 and log.tap_in_time and log.tap_out_time:
-            t_in = log.tap_in_time
-            if getattr(t_in, 'tzinfo', None) is None:
-                t_in = utc.localize(t_in)
-            t_out = log.tap_out_time
-            if getattr(t_out, 'tzinfo', None) is None:
-                t_out = utc.localize(t_out)
-            dur = int((t_out - t_in).total_seconds())
+    for log, first_name, last_initial in raw_logs:
         logs.append({
             'student_id': log.student_id,
+            'student_name': f"{first_name} {last_initial}.",
             'period': log.period,
-            'tap_in_time': log.tap_in_time,
-            'tap_out_time': log.tap_out_time,
-            'duration_seconds': dur,
-            'reason': log.reason
+            'timestamp': log.timestamp,
+            'reason': log.reason,
+            'status': log.status
         })
     app.logger.info(f"📝 Dashboard logs data: {logs}")
     for entry in logs:
@@ -898,11 +1064,11 @@ def admin_login():
             flash("Invalid credentials.", "error")
             return redirect(url_for("admin_login", next=request.args.get("next")))
         # Log the TOTP secret being used for verification
-        app.logger.info(f"🔍 Admin login: verifying TOTP for {username} using secret: {admin.totp_secret}")
+        app.logger.info(f"🔍 Admin login: verifying TOTP")
         # Verify TOTP code with explicit debug logging for drift
         import time
         current_time = int(time.time())
-        app.logger.info(f"🕒 Verifying TOTP with current_time={current_time}, code={totp_code}, valid_window=1")
+        
         totp = pyotp.TOTP(admin.totp_secret)
         if totp.verify(totp_code, valid_window=1):
             session["is_admin"] = True
@@ -944,21 +1110,21 @@ def admin_signup():
             {"code": invite_code}
         ).fetchone()
         if not code_row:
-            app.logger.warning(f"🛑 Admin signup failed: invalid invite code {invite_code}")
+            app.logger.warning(f"🛑 Admin signup failed: invalid invite code")
             msg = "Invalid invite code."
             if is_json:
                 return jsonify(status="error", message=msg), 400
             flash(msg, "error")
             return redirect(url_for('admin_signup'))
         if code_row.used:
-            app.logger.warning(f"🛑 Admin signup failed: invite code {invite_code} already used")
+            app.logger.warning(f"🛑 Admin signup failed: invite code already used")
             msg = "Invite code already used."
             if is_json:
                 return jsonify(status="error", message=msg), 400
             flash(msg, "error")
             return redirect(url_for('admin_signup'))
         if code_row.expires_at and code_row.expires_at < datetime.utcnow():
-            app.logger.warning(f"🛑 Admin signup failed: invite code {invite_code} expired")
+            app.logger.warning(f"🛑 Admin signup failed: invite code expired")
             msg = "Invite code expired."
             if is_json:
                 return jsonify(status="error", message=msg), 400
@@ -966,7 +1132,7 @@ def admin_signup():
             return redirect(url_for('admin_signup'))
         # Step 2: Check username uniqueness
         if Admin.query.filter_by(username=username).first():
-            app.logger.warning(f"🛑 Admin signup failed: username {username} already exists")
+            app.logger.warning(f"🛑 Admin signup failed: username already exists")
             msg = "Username already exists."
             if is_json:
                 return jsonify(status="error", message=msg), 400
@@ -1023,7 +1189,7 @@ def admin_signup():
             )
         # Step 6: Create admin account and mark invite as used
         # Log the TOTP secret being saved for debug
-        app.logger.info(f"🎯 Admin signup: TOTP secret being saved for {username}: {totp_secret}")
+        app.logger.info(f"🎯 Admin signup: TOTP secret being saved for {username}")
         new_admin = Admin(username=username, totp_secret=totp_secret)
         db.session.add(new_admin)
         db.session.execute(
@@ -1034,7 +1200,7 @@ def admin_signup():
         # Clear session
         session.pop("admin_totp_secret", None)
         session.pop("admin_totp_username", None)
-        app.logger.info(f"🎉 Admin signup: {username} created successfully via invite {invite_code}")
+        app.logger.info(f"🎉 Admin signup: {username} created successfully via invite")
         msg = "Admin account created successfully! Please log in using your authenticator app."
         if is_json:
             return jsonify(status="success", message=msg)
@@ -1054,27 +1220,7 @@ def admin_logout():
 @admin_required
 def admin_students():
     students = Student.query.order_by(Student.block, Student.first_name).all()
-    from datetime import datetime
-    for student in students:
-        # fetch latest session with tap_out_time (regardless of is_done)
-        latest_session = (
-            TapSession.query
-            .filter(TapSession.student_id == student.id, TapSession.tap_out_time != None)
-            .order_by(TapSession.tap_out_time.desc())
-            .first()
-        )
-        if latest_session:
-            student.last_tap_out = latest_session.tap_out_time
-        else:
-            student.last_tap_out = None
-        # Attach tap-out reason
-        student.last_tap_out_reason = latest_session.reason if latest_session else None
-        # fetch latest session tap_in_time
-        latest_in = TapSession.query.filter_by(student_id=student.id).order_by(TapSession.tap_in_time.desc()).first()
-        if latest_in:
-            student.last_tap_in = latest_in.tap_in_time
-        else:
-            student.last_tap_in = None
+    # Remove deprecated last_tap_in/last_tap_out logic; templates should not reference them.
     return render_template('admin_students.html', students=students, current_page="students")
 
 # -------------------- ADMIN HALL PASS MANAGEMENT PLACEHOLDER --------------------
@@ -1156,17 +1302,7 @@ def admin_transactions():
 @admin_required
 def student_detail(student_id):
     student = Student.query.get_or_404(student_id)
-    # Fetch latest tap session for additional info
-    latest_session = TapSession.query.filter_by(student_id=student.id).order_by(TapSession.tap_in_time.desc()).first()
-    if latest_session:
-        student.last_tap_in = latest_session.tap_in_time
-        student.last_tap_out = latest_session.tap_out_time
-        student.last_tap_out_reason = latest_session.reason
-    else:
-        student.last_tap_in = None
-        student.last_tap_out = None
-        student.last_tap_out_reason = None
-
+    # Remove deprecated last_tap_in/last_tap_out logic; rely on TapEvent backend.
     # Fetch last rent payment
     latest_rent = Transaction.query.filter_by(student_id=student.id, type="rent").order_by(Transaction.timestamp.desc()).first()
     student.rent_last_paid = latest_rent.timestamp if latest_rent else None
@@ -1190,7 +1326,9 @@ def student_detail(student_id):
 
     transactions = Transaction.query.filter_by(student_id=student.id).order_by(Transaction.timestamp.desc()).all()
     purchases = Purchase.query.filter_by(student_id=student.id).all()
-    return render_template('student_detail.html', student=student, transactions=transactions, purchases=purchases)
+    # Fetch most recent TapEvent for this student
+    latest_tap_event = TapEvent.query.filter_by(student_id=student.id).order_by(TapEvent.timestamp.desc()).first()
+    return render_template('student_detail.html', student=student, transactions=transactions, purchases=purchases, latest_tap_event=latest_tap_event)
 
 
 @app.route('/admin/void-transaction/<int:transaction_id>', methods=['POST'])
@@ -1288,35 +1426,78 @@ def admin_payroll_history():
 @app.route('/admin/run-payroll', methods=['POST'])
 @admin_required
 def run_payroll():
+    """
+    Run payroll by computing earned seconds from TapEvent append-only log.
+    For each student, for each block, match active/inactive pairs since last payroll,
+    sum total seconds, and post Transaction(s) of type 'payroll'.
+    """
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
     try:
         from sqlalchemy.sql import func
         RATE_PER_SECOND = 0.25 / 60  # $0.25 per minute
 
-        unpaid_sessions = TapSession.query.filter_by(is_done=True, is_paid=False).all()
+        # Find payroll cutoff: last payroll timestamp (UTC)
+        last_payroll_tx = Transaction.query.filter_by(type="payroll").order_by(Transaction.timestamp.desc()).first()
+        last_payroll_time = last_payroll_tx.timestamp if last_payroll_tx else None
+        app.logger.info(f"🧮 RUN PAYROLL: Last payroll at {last_payroll_time}")
+
+        students = Student.query.all()
         summary = {}
-
-        for session in unpaid_sessions:
-            if not session.duration_seconds or session.duration_seconds <= 0:
-                continue
-
-            amount = round(session.duration_seconds * RATE_PER_SECOND, 2)
-            if amount <= 0:
-                continue
-
-            tx = Transaction(
-                student_id=session.student_id,
-                amount=amount,
-                description="Payroll based on attendance",
-                account_type="checking",
-                type="payroll"
-            )
-            db.session.add(tx)
-            session.is_paid = True
-            summary.setdefault(session.student_id, 0)
-            summary[session.student_id] += amount
-
+        processed_events = 0
+        for student in students:
+            # Determine all blocks for this student
+            student_blocks = [b.strip().upper() for b in (student.block or "").split(',') if b.strip()]
+            for blk in student_blocks:
+                # Query all TapEvents for this student/block since last payroll
+                q = TapEvent.query.filter(
+                    TapEvent.student_id == student.id,
+                    TapEvent.period == blk
+                )
+                if last_payroll_time:
+                    q = q.filter(TapEvent.timestamp > last_payroll_time)
+                events = q.order_by(TapEvent.timestamp.asc()).all()
+                app.logger.debug(f"PAYROLL: Student {student.id} Block {blk}: {len(events)} events since last payroll")
+                # Pair active/inactive events
+                total_seconds = 0
+                in_time = None
+                for event in events:
+                    if event.status == "active":
+                        if in_time is None:
+                            in_time = event.timestamp
+                        # else: double tap-in, ignore
+                    elif event.status == "inactive":
+                        if in_time:
+                            delta = (event.timestamp - in_time).total_seconds()
+                            if delta > 0:
+                                total_seconds += delta
+                                processed_events += 1
+                                app.logger.debug(f"PAYROLL: Student {student.id} Block {blk}: +{delta} sec (from {in_time} to {event.timestamp})")
+                            in_time = None
+                        # else: unmatched inactive, ignore
+                # If there's a remaining unmatched active (never tapped out), pay up to now
+                if in_time:
+                    now = datetime.now(timezone.utc)
+                    delta = (now - in_time).total_seconds()
+                    if delta > 0:
+                        total_seconds += delta
+                        processed_events += 1
+                        app.logger.debug(f"PAYROLL: Student {student.id} Block {blk}: +{delta} sec (from {in_time} to now)")
+                if total_seconds > 0:
+                    amount = round(total_seconds * RATE_PER_SECOND, 2)
+                    if amount > 0:
+                        tx = Transaction(
+                            student_id=student.id,
+                            amount=amount,
+                            description=f"Payroll based on attendance (block {blk})",
+                            account_type="checking",
+                            type="payroll"
+                        )
+                        db.session.add(tx)
+                        summary.setdefault(student.id, 0)
+                        summary[student.id] += amount
+                        app.logger.info(f"PAYROLL: Student {student.id} Block {blk}: +${amount:.2f} ({total_seconds} sec)")
         db.session.commit()
+        app.logger.info(f"✅ Payroll complete. Paid {len(summary)} students. Events processed: {processed_events}")
         if is_json:
             return jsonify(status="success", message=f"Payroll complete. Paid {len(summary)} students.")
         flash(f"✅ Payroll complete. Paid {len(summary)} students.", "admin_success")
@@ -1333,6 +1514,10 @@ def run_payroll():
 @app.route('/admin/payroll')
 @admin_required
 def admin_payroll():
+    """
+    Payroll page: Show payroll estimate and recent payrolls.
+    Estimate is computed from TapEvent (append-only), not TapSession.
+    """
     from sqlalchemy import desc
     from datetime import datetime, timedelta
     import pytz
@@ -1355,7 +1540,6 @@ def admin_payroll():
         .limit(20)
         .all()
     )
-
     recent_payrolls = [
         {
             'student_id': tx.student_id,
@@ -1367,17 +1551,48 @@ def admin_payroll():
         for tx, name, block in recent_raw
     ]
 
-    # Compute total estimate from unpaid sessions
+    # Estimate payroll from TapEvent (since last payroll)
     RATE_PER_SECOND = 0.25 / 60  # $0.25 per minute, must match run_payroll
-    unpaid_sessions = TapSession.query.filter_by(is_done=True, is_paid=False).all()
-    total_payroll_estimate = round(sum(
-        session.duration_seconds * RATE_PER_SECOND
-        for session in unpaid_sessions
-        if session.duration_seconds and session.duration_seconds > 0
-    ), 2)
+    last_payroll_time = last_payroll_tx.timestamp if last_payroll_tx else None
+    students = Student.query.all()
+    total_payroll_estimate = 0
+    est_debug = []
+    for student in students:
+        student_blocks = [b.strip().upper() for b in (student.block or "").split(',') if b.strip()]
+        for blk in student_blocks:
+            q = TapEvent.query.filter(
+                TapEvent.student_id == student.id,
+                TapEvent.period == blk
+            )
+            if last_payroll_time:
+                q = q.filter(TapEvent.timestamp > last_payroll_time)
+            events = q.order_by(TapEvent.timestamp.asc()).all()
+            total_seconds = 0
+            in_time = None
+            for event in events:
+                if event.status == "active":
+                    if in_time is None:
+                        in_time = event.timestamp
+                elif event.status == "inactive":
+                    if in_time:
+                        delta = (event.timestamp - in_time).total_seconds()
+                        if delta > 0:
+                            total_seconds += delta
+                        in_time = None
+            # If there's a remaining unmatched active (never tapped out), pay up to now
+            if in_time:
+                now = datetime.now(timezone.utc)
+                delta = (now - in_time).total_seconds()
+                if delta > 0:
+                    total_seconds += delta
+            amount = round(total_seconds * RATE_PER_SECOND, 2)
+            if amount > 0:
+                total_payroll_estimate += amount
+                est_debug.append(f"Student {student.id} Block {blk}: {total_seconds}s = ${amount:.2f}")
+    total_payroll_estimate = round(total_payroll_estimate, 2)
+    app.logger.info(f"PAYROLL ESTIMATE DEBUG: {est_debug}")
 
     next_payroll_date = next_pay_date
-
     return render_template(
         'admin_payroll.html',
         recent_payrolls=recent_payrolls,
@@ -1429,26 +1644,18 @@ def admin_add_student():
 def admin_attendance_log():
     # Build student lookup for names and blocks, streaming in batches
     students = {s.id: {'name': s.full_name, 'block': s.block} for s in Student.query.yield_per(50)}
-    # Fetch attendance sessions, streaming in batches
-    raw_logs = TapSession.query.order_by(TapSession.tap_in_time.desc()).yield_per(100)
-    # Format logs as dicts, normalizing negative durations
+    # Fetch attendance events from TapEvent, streaming in batches
+    raw_logs = TapEvent.query.order_by(TapEvent.timestamp.desc()).yield_per(100)
     attendance_logs = []
     for log in raw_logs:
-        # Compute a positive duration if the stored one is negative or missing
-        dur = log.duration_seconds or 0
-        if dur < 0 and log.tap_in_time and log.tap_out_time:
-            t_in = log.tap_in_time
-            if getattr(t_in, 'tzinfo', None) is None:
-                t_in = utc.localize(t_in)
-            t_out = log.tap_out_time
-            if getattr(t_out, 'tzinfo', None) is None:
-                t_out = utc.localize(t_out)
-            dur = int((t_out - t_in).total_seconds())
+        student_info = students.get(log.student_id, {'name': 'Unknown', 'block': 'Unknown'})
         attendance_logs.append({
             'student_id': log.student_id,
-            'tap_in_time': log.tap_in_time,
-            'tap_out_time': log.tap_out_time,
-            'duration_seconds': dur,
+            'student_name': student_info['name'],
+            'student_block': student_info['block'],
+            'timestamp': log.timestamp,
+            'period': log.period,
+            'status': log.status,
             'reason': log.reason
         })
     return render_template(
@@ -1558,73 +1765,113 @@ def download_csv_template():
     return send_file(template_path, as_attachment=True, download_name="student_upload_template.csv", mimetype='text/csv')
 
 
-@app.route('/api/tap', methods=['POST'])
-def handle_tap():
-    data = request.get_json()
-    student = get_logged_in_student()
-    # Derive valid blocks from the logged-in student if available
-    if student and isinstance(student.block, str):
-        valid_periods = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-    else:
-        valid_periods = []
 
+
+
+# --- Append-only TapEvent API route ---
+@app.route('/api/tap', methods=['POST'])
+@csrf.exempt
+def handle_tap():
+    print("🛠️ TAP ROUTE HIT")
+    data = request.get_json()
+    safe_data = {k: ('***' if k == 'pin' else v) for k, v in data.items()}
+    app.logger.info(f"TAP DEBUG: Received data {safe_data}")
+
+    student = get_logged_in_student()
+    pin = data.get("pin", "").strip()
+
+    if not check_password_hash(student.pin_hash or '', pin):
+        app.logger.warning(f"TAP ERROR: Invalid PIN for student {student.id}")
+        return jsonify({"error": "Invalid PIN"}), 403
+
+    valid_periods = [b.strip().upper() for b in student.block.split(',') if b.strip()] if student and isinstance(student.block, str) else []
     period = data.get("period", "").upper()
     action = data.get("action")
 
+    app.logger.info(f"TAP DEBUG: student_id={getattr(student, 'id', None)}, valid_periods={valid_periods}, period={period}, action={action}")
+
     if period not in valid_periods or action not in ["tap_in", "tap_out"]:
+        app.logger.warning(f"TAP ERROR: Invalid period or action: period={period}, valid_periods={valid_periods}, action={action}")
         return jsonify({"error": "Invalid period or action"}), 400
 
-    now = datetime.now(PACIFIC)
-
-    session_entry = TapSession.query.filter_by(
-        student_id=student.id,
-        period=period,
-        is_done=False,
-        tap_out_time=None
-    ).first()
-
-    if action == "tap_in":
-        if not session_entry:
-            session_entry = TapSession(
-                student_id=student.id,
-                period=period,
-                tap_in_time=now,
-                is_done=False
-            )
-            db.session.add(session_entry)
-    elif action == "tap_out":
-        if session_entry:
-            # Record tap-out time and reason
-            session_entry.tap_out_time = now
-            session_entry.reason = data.get("reason", session_entry.reason)
-            # Only mark session done if reason indicates final exit
-            if session_entry.reason and session_entry.reason.lower() == 'done':
-                session_entry.is_done = True
-            # Calculate the session duration in seconds
-            if session_entry.tap_in_time and session_entry.tap_out_time:
-                # Ensure tap_in_time is timezone-aware in Pacific
-                t_in = session_entry.tap_in_time
-                if getattr(t_in, 'tzinfo', None) is None:
-                    t_in = PACIFIC.localize(t_in)
-                # Ensure tap_out_time is timezone-aware in Pacific (if needed)
-                t_out = session_entry.tap_out_time
-                if getattr(t_out, 'tzinfo', None) is None:
-                    t_out = PACIFIC.localize(t_out)
-                session_entry.duration_seconds = int((t_out - t_in).total_seconds())
+    now = datetime.now(timezone.utc)
 
     try:
-        db.session.commit()
-        app.logger.info(
-            f"TAP success - student {student.id} {period} {action}"
+        status = "active" if action == "tap_in" else "inactive"
+        reason = data.get("reason") if action == "tap_out" else None
+
+        # Prevent duplicate tap-in or tap-out
+        latest_event = (
+            TapEvent.query
+            .filter_by(student_id=student.id, period=period)
+            .order_by(TapEvent.timestamp.desc())
+            .first()
         )
+        if latest_event and latest_event.status == status:
+            app.logger.info(f"Duplicate {action} ignored for student {student.id} in period {period}")
+            return jsonify({
+                "status": "ok",
+                "active": latest_event.status == "active",
+                "duration": calculate_period_attendance(student.id, period, datetime.now(PACIFIC).date())
+            })
+
+        event = TapEvent(
+            student_id=student.id,
+            period=period,
+            status=status,
+            timestamp=now,  # UTC-aware
+            reason=reason
+        )
+        db.session.add(event)
+        db.session.commit()
+        app.logger.info(f"TAP success - student {student.id} {period} {action}")
     except SQLAlchemyError as e:
         db.session.rollback()
-        app.logger.error(
-            f"TAP failed for student {student.id}: {e}", exc_info=True
-        )
+        app.logger.error(f"TAP failed for student {student.id}: {e}", exc_info=True)
         return jsonify({"error": "Database error"}), 500
 
-    return jsonify({"status": "ok"})
+    # Fetch latest status and duration for the tapped period
+    latest_event = (
+        TapEvent.query
+        .filter_by(student_id=student.id, period=period)
+        .order_by(TapEvent.timestamp.desc())
+        .first()
+    )
+    is_active = latest_event.status == "active" if latest_event else False
+    today = datetime.now(PACIFIC).date()
+    duration = calculate_period_attendance(student.id, period, today)
+    return jsonify({
+        "status": "ok",
+        "active": is_active,
+        "duration": duration
+    })
+
+
+# --- Live student status API route ---
+@app.route('/api/student-status', methods=['GET'])
+@login_required
+def student_status():
+    student = get_logged_in_student()
+    today = datetime.now(PACIFIC).date()
+    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+    period_states = {}
+    for blk in student_blocks:
+        latest_event = (
+            TapEvent.query
+            .filter_by(student_id=student.id, period=blk)
+            .order_by(TapEvent.timestamp.desc())
+            .first()
+        )
+        is_active = latest_event.status == "active" if latest_event else False
+        done = TapEvent.query.filter(
+            TapEvent.student_id == student.id,
+            TapEvent.period == blk,
+            func.date(TapEvent.timestamp) == today,
+            TapEvent.reason != None
+        ).filter(func.lower(TapEvent.reason) == 'done').first() is not None
+        duration = calculate_period_attendance(student.id, blk, today)
+        period_states[blk] = {"active": is_active, "done": done, "duration": duration}
+    return jsonify(period_states)
 
 
 @app.route('/health')
@@ -1691,7 +1938,7 @@ def system_admin_login():
             totp = pyotp.TOTP(admin.totp_secret)
             if totp.verify(totp_code, valid_window=1):
                 session["is_system_admin"] = True
-                session["last_activity"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                session['last_activity'] = datetime.utcnow().isoformat() + "Z"
                 flash("System admin login successful.")
                 next_url = request.args.get("next")
                 return redirect(next_url or url_for("system_admin_dashboard"))

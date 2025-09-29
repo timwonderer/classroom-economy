@@ -6,54 +6,34 @@
 
 
 <p>Total logs: {{ logs|length }}</p>
-<p>Total students: {{ students|length }}</p>
 
 <div class="table-responsive">
   <table class="table table-bordered table-striped table-sm align-middle">
     <thead class="table-light">
       <tr>
         <th>Student</th>
-        <th>Block</th>
-        <th>Tap In</th>
-        <th>Tap Out</th>
-        <th>Duration</th>
+        <th>Timestamp</th>
+        <th>Period</th>
         <th>Reason</th>
+        <th>Status</th>
       </tr>
     </thead>
     <tbody>
       {% for log in logs %}
       <tr>
-        <td>{{ students.get(log.student_id, {}).get('name', 'Unknown') }}</td>
-        <td>{{ students.get(log.student_id, {}).get('block', '—') }}</td>
- 
+        <td>{{ log.student.full_name if log.student else log.student_name }}</td>
         <td>
-          {% if log.tap_in_time %}
-            {{ log.tap_in_time|format_datetime('%Y-%m-%d %I:%M:%S %p') }}
+          {% if log.timestamp %}
+            <span class="local-timestamp" data-timestamp="{{ log.timestamp.isoformat() }}Z">
+              {{ log.timestamp.strftime("%Y-%m-%d %I:%M %p") }}
+            </span>
           {% else %}
             —
           {% endif %}
         </td>
-        <td>
-          {% if log.tap_out_time %}
-            {{ log.tap_out_time|format_datetime('%Y-%m-%d %I:%M:%S %p') }}
-          {% else %}
-            —
-          {% endif %}
-        </td>
-        <td>
-          {% if log.duration_seconds %}
-            {{ (log.duration_seconds // 60)|int }}m {{ (log.duration_seconds % 60)|int }}s
-          {% else %}
-            —
-          {% endif %}
-        </td>
-        <td>
-  {% if log.reason %}
-    {{ log.reason }}
-  {% else %}
-    —
-  {% endif %}
-</td>
+        <td>{{ log.period }}</td>
+        <td>{{ log.reason if log.reason else '—' }}</td>
+        <td>{{ log.status|capitalize }}</td>
       </tr>
       {% endfor %}
     </tbody>

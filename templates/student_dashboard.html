@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <title>Student Dashboard</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
@@ -77,27 +78,13 @@
         }, 1000);
     </script>
 
-    <script type="application/json" id="serverState">
-      {{ period_states_json | safe }}
-    </script>
-
-    <script>
-      let serverStateRaw = document.getElementById("serverState").textContent;
-      let serverPeriodState = JSON.parse(serverStateRaw);
-
-
-      const periodState = serverPeriodState;
-
-    </script>
-
-
     {% set current_hour = now.hour %}
     {% if current_hour < 12 %}
-    <h1 class="mb-4 text-center">Good morning, {{ student.full_name }}!</h1>
+    <h1 class="mb-4 text-center">Good morning, {{ student_name }}!</h1>
     {% elif current_hour < 18 %}
-    <h1 class="mb-4 text-center">Good afternoon, {{ student.full_name }}!</h1>
+    <h1 class="mb-4 text-center">Good afternoon, {{ student_name }}!</h1>
     {% else %}
-    <h1 class="mb-4 text-center">Good evening, {{ student.full_name }}!</h1>
+    <h1 class="mb-4 text-center">Good evening, {{ student_name }}!</h1>
     {% endif %}
 
     <div class="mb-4">
@@ -150,12 +137,14 @@
             <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
                  id="tab-{{ blk }}"
                  role="tabpanel"
-                 aria-labelledby="tab-{{ blk }}-tab">
+                 aria-labelledby="tab-{{ blk }}-tab"
+                 data-block-row="{{ blk }}">
               {% set state = period_states[blk] %}
-              <p><strong>Status:</strong> <span id="status-{{ blk }}">{{ 'Active' if state[0] and not state[1] else 'Inactive' }}</span></p>
-              <p><strong>Time Logged:</strong> <span id="timer-{{ blk }}">{{ (state[2]//3600)|string + 'h ' + ((state[2]%3600)//60)|string + 'm ' + (state[2]%60)|string + 's' }}</span></p>
-              <button class="btn btn-success me-2" id="tapIn-{{ blk }}" onclick="openTapIn('{{ blk }}')" {% if state[1] %}disabled{% endif %}>Tap In</button>
-              <button class="btn btn-danger" id="tapOut-{{ blk }}" onclick="openTapOut('{{ blk }}')" {% if not state[0] %}disabled{% endif %}>Tap Out</button>
+              <p><strong>Status:</strong> <span id="status-{{ blk }}" class="block-status">{{ 'Active' if state['active'] and not state['done'] else 'Inactive' }}</span></p>
+              <p><strong>Time Logged Today:</strong> <span class="block-duration">{{ (today_seconds_per_block[blk] // 3600)|string + 'h ' + ((today_seconds_per_block[blk] % 3600) // 60)|string + 'm ' + (today_seconds_per_block[blk] % 60)|string + 's' }}</span></p>
+              <p><strong>Projected Paycheck Amount:</strong> ${{ '%.2f'|format(projected_pay_per_block[blk]) }}</p>
+              <button class="btn btn-success me-2 tap-btn" id="tapIn-{{ blk }}" data-period="{{ blk }}" data-action="tap_in" aria-label="Tap In for Block {{ blk }}" {% if state[1] %}disabled{% endif %}>Tap In</button>
+              <button class="btn btn-danger tap-btn" id="tapOut-{{ blk }}" data-period="{{ blk }}" data-action="tap_out" aria-label="Tap Out for Block {{ blk }}" {% if not state[0] %}disabled{% endif %}>Tap Out</button>
             </div>
           {% endfor %}
         </div>
@@ -181,193 +170,9 @@
         </div>
     </div>
 
-    <!-- Tap In Modal -->
-    <div class="modal fade" id="tapInModal" tabindex="-1" aria-labelledby="tapInModalLabel" aria-hidden="true">
-      <div class="modal-dialog">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">Tap In</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <input type="password" id="tapInPin" class="form-control" placeholder="Enter PIN">
-            <input type="hidden" id="currentPeriod">
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-primary" onclick="confirmTapIn()">Confirm</button>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Tap Out Modal -->
-    <div class="modal fade" id="tapOutModal" tabindex="-1" aria-labelledby="tapOutModalLabel" aria-hidden="true">
-      <div class="modal-dialog">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title">Tap Out</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <select class="form-select mb-3" id="tapOutReason">
-              <option value="office">Office</option>
-              <option value="locker">Locker</option>
-              <option value="restroom">Restroom</option>
-              <option value="done">Done for the Period</option>
-            </select>
-            <input type="password" id="tapOutPin" class="form-control" placeholder="Enter PIN">
-            <input type="hidden" id="tapOutPeriod">
-          </div>
-          <div class="modal-footer">
-            <button class="btn btn-danger" onclick="confirmTapOut()">Confirm</button>
-          </div>
-        </div>
-      </div>
-    </div>
-    <script>
-        function openTapIn(period) {
-          if (periodState[period].done) return alert("This period is already closed for the day.");
-          if (periodState[period].active) return alert("You are already tapped in for this period.");
-          document.getElementById('currentPeriod').value = period;
-          document.getElementById('tapInPin').value = '';
-          new bootstrap.Modal(document.getElementById('tapInModal')).show();
-        }
-
-        function openTapOut(period) {
-          if (periodState[period].done) return alert("This period is already closed for the day.");
-          if (!periodState[period].active) return alert("You are not currently tapped in for this period.");
-          document.getElementById('tapOutPeriod').value = period;
-          document.getElementById('tapOutPin').value = '';
-          document.getElementById('tapOutReason').value = 'restroom';
-          new bootstrap.Modal(document.getElementById('tapOutModal')).show();
-        }
-
-        function syncStateToServer(data) {
-          fetch('/api/tap', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify(data)
-          });
-        }
-
-        function confirmTapIn() {
-          const period = document.getElementById('currentPeriod').value;
-          if (periodState[period].active) {
-            alert("You're already tapped in for this period.");
-            return;
-          }
-          const pin = document.getElementById('tapInPin').value.trim();
-          if (!pin) return alert("PIN required.");
-          bootstrap.Modal.getInstance(document.getElementById('tapInModal')).hide();
-
-          periodState[period].active = true;
-          document.getElementById(`status-${period}`).textContent = 'Active';
-          document.getElementById(`tapIn-${period}`).disabled = true;
-          document.getElementById(`tapOut-${period}`).disabled = false;
-          highlightStatus(period, true);
-          showToast(`✔️ You're tapped in for Period ${period.toUpperCase()}!`);
-          // Use period from hidden input
-          syncStateToServer({
-            period: document.getElementById('currentPeriod').value,
-            action: 'tap_in',
-            duration: periodState[period].duration,
-            pin
-          });
-        }
-
-        function confirmTapOut() {
-          const period = document.getElementById('tapOutPeriod').value;
-          const reason = document.getElementById('tapOutReason').value;
-          const pin = document.getElementById('tapOutPin').value.trim();
-          if (!pin) return alert("PIN required.");
-          bootstrap.Modal.getInstance(document.getElementById('tapOutModal')).hide();
-
-          periodState[period].active = false;
-          document.getElementById(`status-${period}`).textContent = 'Inactive';
-          document.getElementById(`tapIn-${period}`).disabled = false;
-          document.getElementById(`tapOut-${period}`).disabled = true;
-          highlightStatus(period, false);
-          if (reason === 'done') {
-            periodState[period].done = true;
-            document.getElementById(`tapIn-${period}`).disabled = true;
-            showToast(`✅ Period ${period.toUpperCase()} closed for the day.`);
-          } else {
-            showToast(`🕒 You're out for: ${reason}`);
-          }
-          // Use period from hidden input
-          syncStateToServer({
-            period: document.getElementById('tapOutPeriod').value,
-            action: 'tap_out',
-            duration: periodState[period].duration,
-            reason,
-            pin
-          });
-        }
-
-        function showToast(message) {
-          document.getElementById('toastMessage').textContent = message;
-          const toast = new bootstrap.Toast(document.getElementById('statusToast'));
-          toast.show();
-        }
-
-        function highlightStatus(period, active) {
-          const statusSpan = document.getElementById(`status-${period}`);
-          if (active) {
-            statusSpan.classList.remove('text-muted');
-            statusSpan.classList.add('text-success', 'fw-bold');
-          } else {
-            statusSpan.classList.remove('text-success', 'fw-bold');
-            statusSpan.classList.add('text-muted');
-          }
-        }
-
-        function updateTimerDisplay(period) {
-          const seconds = periodState[period].duration;
-          const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-          const s = (seconds % 60).toString().padStart(2, '0');
-          document.getElementById(`timer-${period}`).textContent = `${m}:${s}`;
-        }
-
-        function syncUiWithPeriodState() {
-          for (const period in periodState) {
-            const state = periodState[period];
-            updateTimerDisplay(period);
-
-            if (state.active && !state.done) {
-              document.getElementById(`status-${period}`).textContent = 'Active';
-              document.getElementById(`tapIn-${period}`).disabled = true;
-              document.getElementById(`tapOut-${period}`).disabled = false;
-              highlightStatus(period, true);
-            } else {
-              document.getElementById(`status-${period}`).textContent = 'Inactive';
-              document.getElementById(`tapIn-${period}`).disabled = state.done;
-              document.getElementById(`tapOut-${period}`).disabled = true;
-              highlightStatus(period, false);
-            }
-          }
-        }
-    </script>
-    <script>
-      window.addEventListener("DOMContentLoaded", () => {
-        syncUiWithPeriodState();
-      });
-    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/attendance.js"></script>
 
-    <!-- Toast Notification -->
-    <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 9999">
-      <div id="statusToast" class="toast align-items-center text-bg-success border-0" role="alert" aria-live="assertive" aria-atomic="true">
-        <div class="d-flex">
-          <div class="toast-body" id="toastMessage">
-            <!-- Message goes here -->
-          </div>
-          <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-        </div>
-      </div>
-    </div>
+    <div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100"></div>
 </body>
 </html>

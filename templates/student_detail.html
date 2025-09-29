@@ -6,39 +6,25 @@
 </head>
 <body class="p-4">
     <div id="flashToastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index:1050;"></div>
-    <h2>🧑‍🎓 {{ student.full_name }} (Block {{ student.block }})</h2>
+    <h2>🧑‍🎓 {{ student_name }} (Block {{ student.block }})</h2>
 
     <!-- SECTION 1: STUDENT INFO -->
     <div class="card mb-4">
         <div class="card-header bg-info text-white">Student Information</div>
         <div class="card-body">
-            <p><strong>ID:</strong> {{ student.id }}</p>
-            <p><strong>PIN:</strong> ****</p>
+
             <p><strong>Checking Balance:</strong> ${{ "%.2f"|format(student.checking_balance) }}</p>
             <p><strong>Savings Balance:</strong> ${{ "%.2f"|format(student.savings_balance) }}</p>
             <hr>
             <h6>⏱️ Recent Attendance</h6>
-            <p><strong>Most Recent Tap In:</strong>
-              {% if student.last_tap_in %}
-                {{ student.last_tap_in|format_datetime }}
-              {% else %}
-                —
-              {% endif %}
-            </p>
-            <p><strong>Most Recent Tap Out:</strong>
-              {% if student.last_tap_out %}
-                {{ student.last_tap_out|format_datetime }}
-              {% else %}
-                —
-              {% endif %}
-            </p>
-            <p><strong>Reason:</strong>
-  {% if student.last_tap_out_reason %}
-    {{ student.last_tap_out_reason }}
-  {% else %}
-    —
-  {% endif %}
-</p>
+            {% if latest_tap_event %}
+              <p><strong>Timestamp:</strong> <span class="local-timestamp" data-timestamp="{{ latest_tap_event.timestamp.isoformat() }}Z"></span></p>
+              <p><strong>Status:</strong> {{ latest_tap_event.status|capitalize }}</p>
+              <p><strong>Period:</strong> {{ latest_tap_event.period|upper }}</p>
+              <p><strong>Reason:</strong> {{ latest_tap_event.reason if latest_tap_event.reason else '—' }}</p>
+            {% else %}
+              <p>—</p>
+            {% endif %}
         </div>
     </div>
 
@@ -104,7 +90,7 @@
                     <tr {% if tx.is_void %}class="text-muted text-decoration-line-through"{% endif %}>
                       <td>
                           {% if tx.timestamp %}
-                            {{ tx.timestamp|format_datetime }}
+                            <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
                           {% else %}
                             —
                           {% endif %}
@@ -229,5 +215,26 @@
     });
   });
 </script>
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+        document.querySelectorAll(".local-timestamp").forEach(el => {
+            const utcString = el.dataset.timestamp;
+            if (utcString) {
+                const date = new Date(utcString);
+                const options = {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: 'numeric',
+                    minute: 'numeric',
+                    hour12: true
+                };
+                el.textContent = date.toLocaleString(undefined, options);
+            } else {
+                el.textContent = '—';
+            }
+        });
+    });
+  </script>
 </body>
 </html>

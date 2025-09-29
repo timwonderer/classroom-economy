@@ -1,0 +1,53 @@
+
+
+{% extends "base.html" %}
+
+{% block content %}
+<div class="claim-container">
+    <h1>Claim Your Classroom Economy Account</h1>
+    <p>Please enter the required information below to claim your account.</p>
+
+    <form method="POST">
+
+        {{ form.hidden_tag() }}
+        <div class="form-group">
+            {{ form.first_half.label(class="form-label") }}
+            {{ form.first_half(class="form-control", placeholder="Vowels of first name + consonants of last name (no spaces)") }}
+            {% for error in form.first_half.errors %}
+                <div class="text-danger">{{ error }}</div>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            {{ form.second_half.label(class="form-label") }}
+            {{ form.second_half(class="form-control", placeholder="Your DOB Sum (MM + DD + YYYY)") }}
+            <small>Example: If your birthday is 05/14/2010, enter 5 + 14 + 2010 = 2029</small>
+            {% for error in form.second_half.errors %}
+                <div class="text-danger">{{ error }}</div>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            {{ form.dob_sum.label(class="form-label") }}
+            {{ form.dob_sum(class="form-control", placeholder="Re-enter your DOB Sum for verification") }}
+            {% for error in form.dob_sum.errors %}
+                <div class="text-danger">{{ error }}</div>
+            {% endfor %}
+        </div>
+
+        <div class="form-group">
+            {{ form.submit(class="btn btn-primary") }}
+        </div>
+    </form>
+
+    {% with messages = get_flashed_messages(category_filter=["claim"]) %}
+        {% if messages %}
+            <div class="flash-messages">
+                {% for message in messages %}
+                    <p class="flash">{{ message }}</p>
+                {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+</div>
+{% endblock %}
