@@ -405,18 +405,22 @@ def login_required(f):
             encoded_next = urllib.parse.quote(request.path, safe="")
             return redirect(f"{url_for('student_login')}?next={encoded_next}")
 
-        now = datetime.now(timezone.utc)
-        last_activity = session.get('last_activity')
+        # Enforce strict 10-minute timeout from login time
+        login_time_str = session.get('login_time')
+        if not login_time_str:
+            session.clear()
+            flash("Session is invalid. Please log in again.")
+            return redirect(url_for('student_login'))
 
-        if last_activity:
-            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
-            if (now - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-                session.pop('student_id', None)
-                flash("Session expired. Please log in again.")
-                encoded_next = urllib.parse.quote(request.path, safe="")
-                return redirect(f"{url_for('student_login')}?next={encoded_next}")
+        login_time = datetime.fromisoformat(login_time_str)
+        if (datetime.now(timezone.utc) - login_time) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+            session.clear()
+            flash("Session expired. Please log in again.")
+            encoded_next = urllib.parse.quote(request.path, safe="")
+            return redirect(f"{url_for('student_login')}?next={encoded_next}")
 
-        session['last_activity'] = now.strftime("%Y-%m-%d %H:%M:%S")
+        # Continue to update last_activity for other potential uses, but it no longer controls the timeout
+        session['last_activity'] = datetime.now(timezone.utc).isoformat()
         return f(*args, **kwargs)
     return decorated_function
 
@@ -740,9 +744,15 @@ def student_dashboard():
         seconds = blk_state["duration"]
         app.logger.info(f"Block {blk} => DB Active={active}, Done={done}, Seconds (today)={seconds}, Total Unpaid Seconds={unpaid_seconds_per_block.get(blk, 0)}")
 
+    # --- Calculate remaining session time for frontend timer ---
+    login_time = datetime.fromisoformat(session['login_time'])
+    expiry_time = login_time + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
+    session_remaining_seconds = max(0, int((expiry_time - datetime.now(timezone.utc)).total_seconds()))
+
     return render_template(
         'student_dashboard.html',
         student=student,
+        session_remaining_seconds=session_remaining_seconds,
         student_blocks=student_blocks,
         period_states=period_states,
         period_states_json=period_states_json,
@@ -1043,8 +1053,12 @@ def student_login():
             flash("Invalid credentials", "error")
             return redirect(url_for('student_login', next=request.args.get('next')))
 
+        # --- Set session timeout ---
+        session.clear() # Start with a fresh session
         session['student_id'] = student.id
-        session['last_activity'] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+        session['login_time'] = datetime.now(timezone.utc).isoformat()
+        session['last_activity'] = session['login_time']
+
 
         # Removed redirect to student_setup for has_completed_setup; new onboarding flow uses claim → username → pin/passphrase.
 
