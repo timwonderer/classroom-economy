@@ -432,13 +432,19 @@ def login_required(f):
         # Enforce strict 10-minute timeout from login time
         login_time_str = session.get('login_time')
         if not login_time_str:
-            session.clear()
+            # Clear student-specific keys but preserve CSRF token
+            session.pop('student_id', None)
+            session.pop('login_time', None)
+            session.pop('last_activity', None)
             flash("Session is invalid. Please log in again.")
             return redirect(url_for('student_login'))
 
         login_time = datetime.fromisoformat(login_time_str)
         if (datetime.now(timezone.utc) - login_time) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-            session.clear()
+            # Clear student-specific keys but preserve CSRF token
+            session.pop('student_id', None)
+            session.pop('login_time', None)
+            session.pop('last_activity', None)
             flash("Session expired. Please log in again.")
             encoded_next = urllib.parse.quote(request.path, safe="")
             return redirect(f"{url_for('student_login')}?next={encoded_next}")
