@@ -573,7 +573,48 @@ def setup_complete():
     return render_template('student_setup_complete.html')
 
 # -------------------- STUDENT DASHBOARD --------------------
-# -------------------- HELPER: Calculate period attendance from TapEvent --------------------
+# -------------------- HELPERS: Calculate attendance from TapEvent --------------------
+def get_last_payroll_time():
+    """Fetches the timestamp of the most recent global payroll transaction."""
+    last_payroll_tx = Transaction.query.filter_by(type="payroll").order_by(Transaction.timestamp.desc()).first()
+    return last_payroll_tx.timestamp if last_payroll_tx else None
+
+
+def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
+    """
+    Calculates total attendance seconds for a student in a specific period
+    since the last payroll run.
+    """
+    query = TapEvent.query.filter(
+        TapEvent.student_id == student_id,
+        TapEvent.period == period
+    )
+    if last_payroll_time:
+        query = query.filter(TapEvent.timestamp > last_payroll_time)
+
+    events = query.order_by(TapEvent.timestamp.asc()).all()
+
+    total_seconds = 0
+    in_time = None
+    for event in events:
+        event_time = event.timestamp
+        if event_time.tzinfo is None:
+            event_time = event_time.replace(tzinfo=timezone.utc)
+
+        if event.status == "active":
+            if in_time is None:  # First tap in of a pair
+                in_time = event_time
+        elif event.status == "inactive" and in_time:
+            total_seconds += (event_time - in_time).total_seconds()
+            in_time = None
+
+    # Handle case where student is still tapped in
+    if in_time:
+        now = datetime.now(timezone.utc)
+        total_seconds += (now - in_time).total_seconds()
+
+    return int(total_seconds)
+
 def calculate_period_attendance(student_id, period, date):
     events = TapEvent.query.filter_by(student_id=student_id, period=period).filter(
         func.date(TapEvent.timestamp) == date
@@ -663,14 +704,25 @@ def student_dashboard():
     }
     period_states_json = json.dumps(period_states, separators=(',', ':'))
 
-    # Add today's seconds per block for display
-    today_seconds_per_block = {blk: calculate_period_attendance(student.id, blk, datetime.now(PACIFIC).date()) for blk in student_blocks}
+    # --- Refactored logic to use unpaid seconds since last payroll ---
+    last_payroll_time = get_last_payroll_time()
+    unpaid_seconds_per_block = {
+        blk: calculate_unpaid_attendance_seconds(student.id, blk, last_payroll_time)
+        for blk in student_blocks
+    }
 
-    # Compute total seconds for today across all blocks and format as HH:MM:SS
-    total_today_seconds = sum(today_seconds_per_block.values())
-    hours, remainder = divmod(total_today_seconds, 3600)
+    # Calculate projected pay based on unpaid seconds
+    RATE_PER_SECOND = 0.25 / 60
+    projected_pay_per_block = {
+        blk: unpaid_seconds_per_block.get(blk, 0) * RATE_PER_SECOND
+        for blk in student_blocks
+    }
+
+    # Compute total unpaid seconds and format as HH:MM:SS for display
+    total_unpaid_seconds = sum(unpaid_seconds_per_block.values())
+    hours, remainder = divmod(total_unpaid_seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
-    total_today_elapsed = f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
+    total_unpaid_elapsed = f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
     student_name = student.full_name
 
     # Compute most recent deposit and insurance paid flag
@@ -679,14 +731,15 @@ def student_dashboard():
 
     tz = pytz.timezone('America/Los_Angeles')
     local_now = datetime.now(tz)
-    # --- DASHBOARD DEBUG LOGGING: Compare backend DB state vs frontend computed state for tap in/out ---
+    # --- DASHBOARD DEBUG LOGGING ---
     app.logger.info(f"📊 DASHBOARD DEBUG: Student {student.id} - Block states:")
     for blk in student_blocks:
         blk_state = period_states[blk]
         active = blk_state["active"]
         done = blk_state["done"]
         seconds = blk_state["duration"]
-        app.logger.info(f"Block {blk} => DB Active={active}, Done={done}, Seconds={seconds}, Today's Total Seconds={today_seconds_per_block[blk]}")
+        app.logger.info(f"Block {blk} => DB Active={active}, Done={done}, Seconds (today)={seconds}, Total Unpaid Seconds={unpaid_seconds_per_block.get(blk, 0)}")
+
     return render_template(
         'student_dashboard.html',
         student=student,
@@ -700,9 +753,10 @@ def student_dashboard():
         forecast_interest=forecast_interest,
         recent_deposit=recent_deposit,
         insurance_paid=insurance_paid,
-        today_seconds_per_block=today_seconds_per_block,
+        unpaid_seconds_per_block=unpaid_seconds_per_block,
+        projected_pay_per_block=projected_pay_per_block,
         student_name=student_name,
-        total_today_elapsed=total_today_elapsed,
+        total_unpaid_elapsed=total_unpaid_elapsed,
     )
 
 # -------------------- TRANSFER ROUTE --------------------
@@ -1822,10 +1876,12 @@ def handle_tap():
         )
         if latest_event and latest_event.status == status:
             app.logger.info(f"Duplicate {action} ignored for student {student.id} in period {period}")
+            last_payroll_time = get_last_payroll_time()
+            duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time)
             return jsonify({
                 "status": "ok",
                 "active": latest_event.status == "active",
-                "duration": calculate_period_attendance(student.id, period, datetime.now(PACIFIC).date())
+                "duration": duration
             })
 
         event = TapEvent(
@@ -1843,7 +1899,7 @@ def handle_tap():
         app.logger.error(f"TAP failed for student {student.id}: {e}", exc_info=True)
         return jsonify({"error": "Database error"}), 500
 
-    # Fetch latest status and duration for the tapped period
+    # Fetch latest status and unpaid duration for the tapped period
     latest_event = (
         TapEvent.query
         .filter_by(student_id=student.id, period=period)
@@ -1851,8 +1907,9 @@ def handle_tap():
         .first()
     )
     is_active = latest_event.status == "active" if latest_event else False
-    today = datetime.now(PACIFIC).date()
-    duration = calculate_period_attendance(student.id, period, today)
+    last_payroll_time = get_last_payroll_time()
+    duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time)
+
     return jsonify({
         "status": "ok",
         "active": is_active,
@@ -1868,6 +1925,9 @@ def student_status():
     today = datetime.now(PACIFIC).date()
     student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
     period_states = {}
+
+    last_payroll_time = get_last_payroll_time()
+
     for blk in student_blocks:
         latest_event = (
             TapEvent.query
@@ -1882,8 +1942,10 @@ def student_status():
             func.date(TapEvent.timestamp) == today,
             TapEvent.reason != None
         ).filter(func.lower(TapEvent.reason) == 'done').first() is not None
-        duration = calculate_period_attendance(student.id, blk, today)
+
+        duration = calculate_unpaid_attendance_seconds(student.id, blk, last_payroll_time)
         period_states[blk] = {"active": is_active, "done": done, "duration": duration}
+
     return jsonify(period_states)
 
 
