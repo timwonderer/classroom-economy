@@ -242,7 +242,7 @@ class Student(db.Model):
             tx for tx in self.transactions
             if tx.amount > 0
             and not tx.is_void
-            and tx.timestamp >= recent_timeframe
+            and tx.timestamp.replace(tzinfo=timezone.utc) >= recent_timeframe
             and not tx.description.lower().startswith("transfer")
         ]
 
@@ -1183,7 +1183,7 @@ def apply_savings_interest(student, annual_rate=0.045):
         if tx.account_type == 'savings' and
            not tx.is_void and
            tx.amount > 0 and
-           (now - tx.date_funds_available).days >= 30
+           (now - tx.date_funds_available.replace(tzinfo=timezone.utc)).days >= 30
     )
     monthly_rate = annual_rate / 12
     interest = round((eligible_balance or 0.0) * monthly_rate, 2)
@@ -1832,17 +1832,18 @@ def run_payroll():
                 total_seconds = 0
                 in_time = None
                 for event in events:
+                    event_time = event.timestamp.replace(tzinfo=timezone.utc)
                     if event.status == "active":
                         if in_time is None:
-                            in_time = event.timestamp
+                            in_time = event_time
                         # else: double tap-in, ignore
                     elif event.status == "inactive":
                         if in_time:
-                            delta = (event.timestamp - in_time).total_seconds()
+                            delta = (event_time - in_time).total_seconds()
                             if delta > 0:
                                 total_seconds += delta
                                 processed_events += 1
-                                app.logger.debug(f"PAYROLL: Student {student.id} Block {blk}: +{delta} sec (from {in_time} to {event.timestamp})")
+                                app.logger.debug(f"PAYROLL: Student {student.id} Block {blk}: +{delta} sec (from {in_time} to {event_time})")
                             in_time = None
                         # else: unmatched inactive, ignore
                 # If there's a remaining unmatched active (never tapped out), pay up to now
