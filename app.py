@@ -776,10 +776,12 @@ def student_dashboard():
         seconds = blk_state["duration"]
         app.logger.info(f"Block {blk} => DB Active={active}, Done={done}, Seconds (today)={seconds}, Total Unpaid Seconds={unpaid_seconds_per_block.get(blk, 0)}")
 
+
     # --- Calculate remaining session time for frontend timer ---
     login_time = datetime.fromisoformat(session['login_time'])
     expiry_time = login_time + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
     session_remaining_seconds = max(0, int((expiry_time - datetime.now(timezone.utc)).total_seconds()))
+
 
     return render_template(
         'student_dashboard.html',
