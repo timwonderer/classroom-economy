@@ -236,7 +236,7 @@ class Student(db.Model):
     @property
     def recent_deposits(self):
         from datetime import timezone
-        now = datetime.now(timezone.utc)        
+        now = datetime.utcnow()
         recent_timeframe = now - timedelta(days=2)
         return [
             tx for tx in self.transactions
@@ -698,7 +698,7 @@ def student_dashboard():
         - done: if any TapEvent today for this block has reason 'done'
         - duration: total seconds for today (from calculate_period_attendance)
         """
-        today = datetime.now(PACIFIC).date()
+        today = datetime.utcnow().date()
         # Find the most recent TapEvent for this student/block
         latest_event = (
             TapEvent.query
@@ -1148,7 +1148,7 @@ def apply_savings_interest(student, annual_rate=0.045):
     Apply monthly savings interest for a student.
     All time calculations are in UTC.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     this_month = now.month
     this_year = now.year
 
