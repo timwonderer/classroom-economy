@@ -15,7 +15,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 
 from forms import AdminSignupForm, SystemAdminInviteForm
 from forms import StudentClaimAccountForm, StudentCreateUsernameForm, StudentPinPassphraseForm
-from forms import StudentLoginForm
+from forms import StudentLoginForm, AdminLoginForm
 
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -236,7 +236,7 @@ class Student(db.Model):
     @property
     def recent_deposits(self):
         from datetime import timezone
-        now = datetime.now(timezone.utc)        
+        now = datetime.utcnow()
         recent_timeframe = now - timedelta(days=2)
         return [
             tx for tx in self.transactions
@@ -623,28 +623,41 @@ def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
         TapEvent.student_id == student_id,
         TapEvent.period == period
     )
+
+    in_time = None
+
+    # Check if the student was already tapped in *before* the last payroll.
+    if last_payroll_time:
+        last_event_before_payroll = TapEvent.query.filter(
+            TapEvent.student_id == student_id,
+            TapEvent.period == period,
+            TapEvent.timestamp <= last_payroll_time
+        ).order_by(TapEvent.timestamp.desc()).first()
+
+        if last_event_before_payroll and last_event_before_payroll.status == 'active':
+            in_time = last_payroll_time
+
+    # Get events since the last payroll
     if last_payroll_time:
         query = query.filter(TapEvent.timestamp > last_payroll_time)
 
     events = query.order_by(TapEvent.timestamp.asc()).all()
-
     total_seconds = 0
-    in_time = None
+
+    # Process events that occurred after the last payroll
     for event in events:
         event_time = event.timestamp
-        if event_time.tzinfo is None:
-            event_time = event_time.replace(tzinfo=timezone.utc)
 
         if event.status == "active":
-            if in_time is None:  # First tap in of a pair
+            if in_time is None:
                 in_time = event_time
         elif event.status == "inactive" and in_time:
             total_seconds += (event_time - in_time).total_seconds()
             in_time = None
 
-    # Handle case where student is still tapped in
+    # If the student is still tapped in, calculate duration up to now.
     if in_time:
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         total_seconds += (now - in_time).total_seconds()
 
     return int(total_seconds)
@@ -698,7 +711,7 @@ def student_dashboard():
         - done: if any TapEvent today for this block has reason 'done'
         - duration: total seconds for today (from calculate_period_attendance)
         """
-        today = datetime.now(PACIFIC).date()
+        today = datetime.utcnow().date()
         # Find the most recent TapEvent for this student/block
         latest_event = (
             TapEvent.query
@@ -1148,7 +1161,7 @@ def apply_savings_interest(student, annual_rate=0.045):
     Apply monthly savings interest for a student.
     All time calculations are in UTC.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     this_month = now.month
     this_year = now.year
 
@@ -1374,45 +1387,26 @@ def give_bonus_all():
 # -------------------- ADMIN LOGIN (TOTP-ONLY) --------------------
 @app.route('/admin/login', methods=['GET', 'POST'])
 def admin_login():
-    # Clear admin session and timer on page load
     session.pop("is_admin", None)
     session.pop("last_activity", None)
-    if request.method == 'POST':
-        is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
-        username = request.form.get("username", "").strip()
-        totp_code = request.form.get("totp_code", "").strip()
+    form = AdminLoginForm()
+    if form.validate_on_submit():
+        username = form.username.data.strip()
+        totp_code = form.totp_code.data.strip()
         admin = Admin.query.filter_by(username=username).first()
-        if not admin:
-            app.logger.warning(f"🔑 Admin login failed: username {username} not found")
-            if is_json:
-                return jsonify(status="error", message="Invalid credentials"), 401
-            flash("Invalid credentials.", "error")
-            return redirect(url_for("admin_login", next=request.args.get("next")))
-        # Log the TOTP secret being used for verification
-        app.logger.info(f"🔍 Admin login: verifying TOTP")
-        # Verify TOTP code with explicit debug logging for drift
-        import time
-        current_time = int(time.time())
-        
-        totp = pyotp.TOTP(admin.totp_secret)
-        if totp.verify(totp_code, valid_window=1):
-            session["is_admin"] = True
-            session["last_activity"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
-            app.logger.info(f"✅ Admin login success for {username}")
-            if is_json:
-                return jsonify(status="success", message="Login successful")
-            flash("Admin login successful.")
-            next_url = request.args.get("next")
-            if next_url:
-                return redirect(next_url)
-            return redirect(url_for("admin_dashboard"))
-        else:
-            app.logger.warning(f"🔑 Admin login failed: invalid TOTP for {username}")
-            if is_json:
-                return jsonify(status="error", message="Invalid TOTP code"), 401
-            flash("Invalid TOTP code.", "error")
-            return redirect(url_for("admin_login", next=request.args.get("next")))
-    return render_template("admin_login.html")
+        if admin:
+            totp = pyotp.TOTP(admin.totp_secret)
+            if totp.verify(totp_code, valid_window=1):
+                session["is_admin"] = True
+                session["last_activity"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                app.logger.info(f"✅ Admin login success for {username}")
+                flash("Admin login successful.")
+                next_url = request.args.get("next")
+                return redirect(next_url or url_for("admin_dashboard"))
+        app.logger.warning(f"🔑 Admin login failed for {username}")
+        flash("Invalid credentials or TOTP code.", "error")
+        return redirect(url_for("admin_login", next=request.args.get("next")))
+    return render_template("admin_login.html", form=form)
 
 # -------------------- ADMIN SIGNUP (TOTP-ONLY) --------------------
 @app.route('/admin/signup', methods=['GET', 'POST'])
@@ -1853,7 +1847,7 @@ def run_payroll():
                         # else: unmatched inactive, ignore
                 # If there's a remaining unmatched active (never tapped out), pay up to now
                 if in_time:
-                    now = datetime.now(timezone.utc)
+                    now = datetime.utcnow()
                     delta = (now - in_time).total_seconds()
                     if delta > 0:
                         total_seconds += delta
@@ -1958,7 +1952,7 @@ def admin_payroll():
                         in_time = None
             # If there's a remaining unmatched active (never tapped out), pay up to now
             if in_time:
-                now = datetime.now(timezone.utc)
+                now = datetime.utcnow()
                 delta = (now - in_time).total_seconds()
                 if delta > 0:
                     total_seconds += delta
