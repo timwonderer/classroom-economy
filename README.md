@@ -23,40 +23,71 @@ An interactive banking and classroom management platform for teaching students a
 
 ### Current
 
-* Teacher CSV roster upload and automatic block creation
-* Student account creation with block assignment
-* Admin portal for roster management, CSV upload, attendance logs, and payroll
-* Attendance tracking for Periods A and B with timed tap in/out
-* Reward and fee issuance with transaction logs
-* GitHub Actions auto-deploy pipeline for DigitalOcean
+*   **System Admin Portal**: Manage admin invites and view system logs.
+*   **Invite-Based Admin Signup**: New administrators can only sign up using a secure, single-use invite code.
+*   **TOTP-Only Admin Authentication**: All administrator accounts are secured with Time-Based One-Time Passwords (TOTP) for enhanced security.
+*   **Student Roster Management**: Upload student rosters via CSV or add students manually.
+*   **Student First-Time Setup**: Students complete a secure setup process to create a PIN and passphrase for account access.
+*   **Attendance Tracking**: Students can tap in and out for designated class periods, with session durations logged automatically.
+*   **Automated Payroll**: The system calculates and distributes payroll to students based on their attendance.
+*   **Transaction Logging**: All financial activities, including bonuses, fees, and transfers, are logged.
+*   **GitHub Actions CI/CD**: Automated deployment pipeline to DigitalOcean.
 
 ### Planned / Partial
 
-* Invite-based admin setup flow
-* Student first-time claim and login flow (PIN and passphrase)
-* Rent and property tax tracking fields
-* Classroom store purchases and reward management
-* Optional TOTP or passkey second factor
-* Student "Shop" interface and admin-managed store items
+*   Rent and property tax tracking fields
+*   Classroom store purchases and reward management
+*   Optional TOTP or passkey second factor for students
+*   Student "Shop" interface and admin-managed store items
 
 ## Getting Started
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-flask run
-```
+1.  **Set up the environment:**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    pip install -r requirements.txt
+    ```
 
-Seed data can be generated with `python seed_students.py`. After deployment, run `flask db upgrade` to apply migrations.
+2.  **Configure your environment variables:**
+    Create a `.env` file and populate it with the required variables listed in the [Configuration](#configuration) section.
+
+3.  **Apply database migrations:**
+    ```bash
+    flask db upgrade
+    ```
+
+4.  **Create the first System Admin:**
+    Run the following command and follow the prompts to create your initial administrator account. You will be given a TOTP secret to add to your authenticator app.
+    ```bash
+    flask create-sysadmin
+    ```
+
+5.  **Run the application:**
+    ```bash
+    flask run
+    ```
+
+To seed the database with sample student data for testing, you can run:
+```bash
+python seed_dummy_students.py
+```
 
 ## Configuration
 
-The application recognizes these optional variables:
+The application requires the following environment variables to be set:
 
-* `LOG_LEVEL` – logging level (default `INFO`)
-* `LOG_FORMAT` – log message format
-* `LOG_FILE` – file used for rotating logs when `FLASK_ENV=production`
+*   `SECRET_KEY`: A long, random string used to secure sessions and sign cookies.
+*   `DATABASE_URL`: The full connection string for your PostgreSQL database (e.g., `postgresql://user:password@host:port/dbname`).
+*   `FLASK_ENV`: The environment for Flask (e.g., `development` or `production`).
+*   `ENCRYPTION_KEY`: A 32-byte key for encrypting personally identifiable information (PII). You can generate one with `openssl rand -base64 32`.
+*   `PEPPER_KEY`: A secret key used to add an additional layer of security to student credentials.
+
+The application also recognizes these optional variables for logging:
+
+*   `LOG_LEVEL`: The logging level (default: `INFO`).
+*   `LOG_FORMAT`: The log message format.
+*   `LOG_FILE`: The file used for rotating logs when `FLASK_ENV=production`.
 
 ## Deployment
 
@@ -79,14 +110,12 @@ Deploy behind a production web server such as NGINX. Call `/health` for a 200 re
 
 ## Roadmap
 
-* Invite-based admin setup flow
-* Student first-time claim/login system
-* CSV export of student data and logs
-* Classroom store & inventory system
-* Rent and property tax payment workflows
-* Optional TOTP or passkey authentication
-* Mobile-friendly redesign
-* Stock market mini-game using school data
+*   CSV export of student data and logs
+*   Classroom store & inventory system
+*   Rent and property tax payment workflows
+*   Optional TOTP or passkey authentication for students
+*   Mobile-friendly redesign
+*   Stock market mini-game using school data
 
 ## Maintaining Dependencies
 
