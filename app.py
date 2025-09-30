@@ -236,7 +236,7 @@ class Student(db.Model):
     @property
     def recent_deposits(self):
         from datetime import timezone
-        now = datetime.now(timezone.utc)        
+        now = datetime.utcnow()
         recent_timeframe = now - timedelta(days=2)
         return [
             tx for tx in self.transactions
@@ -623,28 +623,41 @@ def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
         TapEvent.student_id == student_id,
         TapEvent.period == period
     )
+
+    in_time = None
+
+    # Check if the student was already tapped in *before* the last payroll.
+    if last_payroll_time:
+        last_event_before_payroll = TapEvent.query.filter(
+            TapEvent.student_id == student_id,
+            TapEvent.period == period,
+            TapEvent.timestamp <= last_payroll_time
+        ).order_by(TapEvent.timestamp.desc()).first()
+
+        if last_event_before_payroll and last_event_before_payroll.status == 'active':
+            in_time = last_payroll_time
+
+    # Get events since the last payroll
     if last_payroll_time:
         query = query.filter(TapEvent.timestamp > last_payroll_time)
 
     events = query.order_by(TapEvent.timestamp.asc()).all()
-
     total_seconds = 0
-    in_time = None
+
+    # Process events that occurred after the last payroll
     for event in events:
         event_time = event.timestamp
-        if event_time.tzinfo is None:
-            event_time = event_time.replace(tzinfo=timezone.utc)
 
         if event.status == "active":
-            if in_time is None:  # First tap in of a pair
+            if in_time is None:
                 in_time = event_time
         elif event.status == "inactive" and in_time:
             total_seconds += (event_time - in_time).total_seconds()
             in_time = None
 
-    # Handle case where student is still tapped in
+    # If the student is still tapped in, calculate duration up to now.
     if in_time:
-        now = datetime.now(timezone.utc)
+        now = datetime.utcnow()
         total_seconds += (now - in_time).total_seconds()
 
     return int(total_seconds)
@@ -1148,7 +1161,7 @@ def apply_savings_interest(student, annual_rate=0.045):
     Apply monthly savings interest for a student.
     All time calculations are in UTC.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.utcnow()
     this_month = now.month
     this_year = now.year
 
@@ -1835,7 +1848,7 @@ def run_payroll():
                         # else: unmatched inactive, ignore
                 # If there's a remaining unmatched active (never tapped out), pay up to now
                 if in_time:
-                    now = datetime.now(timezone.utc)
+                    now = datetime.utcnow()
                     delta = (now - in_time).total_seconds()
                     if delta > 0:
                         total_seconds += delta
@@ -1940,7 +1953,7 @@ def admin_payroll():
                         in_time = None
             # If there's a remaining unmatched active (never tapped out), pay up to now
             if in_time:
-                now = datetime.now(timezone.utc)
+                now = datetime.utcnow()
                 delta = (now - in_time).total_seconds()
                 if delta > 0:
                     total_seconds += delta
