@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Classroom Store</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="container mt-4">
+    <!-- Student Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
+      <div class="container-fluid">
+        <a class="navbar-brand" href="{{ url_for('student_dashboard') }}">Student Portal</a>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#studentNavbar" aria-controls="studentNavbar" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+        <div class="collapse navbar-collapse" id="studentNavbar">
+          <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('student_dashboard') }}">Dashboard</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('student_transfer') }}">Accounts</a></li>
+            <li class="nav-item"><a class="nav-link" href="{{ url_for('student_insurance') }}">Insurance</a></li>
+            <li class="nav-item"><a class="nav-link active" href="{{ url_for('student_shop') }}">Shop</a></li>
+            <li class="nav-item"><a class="nav-link text-danger" href="{{ url_for('student_logout') }}">Logout</a></li>
+          </ul>
+        </div>
+      </div>
+    </nav>
+
+    <h1 class="mb-4 text-center">Classroom Store</h1>
+
+    <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+        {% for item in items %}
+        <div class="col">
+            <div class="card h-100 shadow">
+                <div class="card-body d-flex flex-column">
+                    <h5 class="card-title">{{ item.name }}</h5>
+                    <h6 class="card-subtitle mb-2 text-muted">${{ "%.2f".format(item.price) }}</h6>
+                    <p class="card-text">{{ item.description or 'No description available.' }}</p>
+                    <div class="mt-auto">
+                        <button class="btn btn-primary w-100" data-bs-toggle="modal" data-bs-target="#buyItemModal" data-item-id="{{ item.id }}" data-item-name="{{ item.name }}">
+                            Buy
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Buy Item Modal -->
+    <div class="modal fade" id="buyItemModal" tabindex="-1" aria-labelledby="buyItemModalLabel" aria-hidden="true">
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="buyItemModalLabel">Confirm Purchase</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>You are about to purchase: <strong id="modalItemName"></strong></p>
+            <form id="buyItemForm">
+                <input type="hidden" id="modalItemId" name="item_id">
+                <div class="mb-3">
+                    <label for="passphrase" class="form-label">Enter your Passphrase to confirm:</label>
+                    <input type="password" class="form-control" id="passphrase" name="passphrase" required>
+                </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="confirmPurchaseBtn">Confirm Purchase</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100"></div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Helper function for Bootstrap toast messages
+        function createToast(message, isError = false) {
+            const toastContainer = document.getElementById("toast-container");
+            const toast = document.createElement("div");
+            toast.className = `toast align-items-center text-white ${isError ? "bg-danger" : "bg-success"} border-0`;
+            toast.role = "alert";
+            toast.innerHTML = `
+                <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                </div>`;
+            toastContainer.appendChild(toast);
+            const bsToast = new bootstrap.Toast(toast, { delay: 3000 });
+            bsToast.show();
+            toast.addEventListener("hidden.bs.toast", () => toast.remove());
+        }
+
+        const buyItemModal = document.getElementById('buyItemModal');
+        buyItemModal.addEventListener('show.bs.modal', event => {
+          const button = event.relatedTarget;
+          const itemName = button.getAttribute('data-item-name');
+          const itemId = button.getAttribute('data-item-id');
+
+          const modalItemName = buyItemModal.querySelector('#modalItemName');
+          const modalItemId = buyItemModal.querySelector('#modalItemId');
+
+          modalItemName.textContent = itemName;
+          modalItemId.value = itemId;
+        });
+
+        document.getElementById('confirmPurchaseBtn').addEventListener('click', () => {
+            const form = document.getElementById('buyItemForm');
+            const itemId = form.querySelector('#modalItemId').value;
+            const passphrase = form.querySelector('#passphrase').value;
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+            fetch('/api/purchase-item', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ item_id: itemId, passphrase: passphrase })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    createToast(data.message);
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    createToast(data.message, true);
+                }
+            })
+            .catch(error => {
+                console.error('Purchase error:', error);
+                createToast('An unexpected error occurred.', true);
+            });
+        });
+    </script>
+</body>
+</html>

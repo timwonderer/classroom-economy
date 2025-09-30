@@ -1,0 +1,61 @@
+{% extends "layout_admin.html" %}
+{% set page_title = "Edit Store Item" %}
+
+{% block content %}
+    <h1 class="mb-4">Edit: {{ item.name }}</h1>
+
+    <div class="card shadow mb-4">
+        <div class="card-header">
+            <h5 class="mb-0">Edit Item Details</h5>
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('admin_edit_store_item', item_id=item.id) }}">
+                {{ form.hidden_tag() }}
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        {{ form.name.label(class="form-label") }}
+                        {{ form.name(class="form-control") }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.price.label(class="form-label") }}
+                        {{ form.price(class="form-control") }}
+                    </div>
+                </div>
+                <div class="mb-3">
+                    {{ form.description.label(class="form-label") }}
+                    {{ form.description(class="form-control", rows=3) }}
+                </div>
+                <div class="row">
+                    <div class="col-md-6 mb-3">
+                        {{ form.item_type.label(class="form-label") }}
+                        {{ form.item_type(class="form-select") }}
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        {{ form.inventory.label(class="form-label") }}
+                        {{ form.inventory(class="form-control") }}
+                    </div>
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        {{ form.limit_per_student.label(class="form-label") }}
+                        {{ form.limit_per_student(class="form-control") }}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        {{ form.auto_delist_date.label(class="form-label") }}
+                        {{ form.auto_delist_date(class="form-control") }}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        {{ form.auto_expiry_days.label(class="form-label") }}
+                        {{ form.auto_expiry_days(class="form-control") }}
+                    </div>
+                </div>
+                <div class="form-check mb-3">
+                    {{ form.is_active(class="form-check-input") }}
+                    {{ form.is_active.label(class="form-check-label") }}
+                </div>
+                {{ form.submit(class="btn btn-primary") }}
+                <a href="{{ url_for('admin_store_management') }}" class="btn btn-secondary">Cancel</a>
+            </form>
+        </div>
+    </div>
+{% endblock %}

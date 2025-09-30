@@ -120,28 +120,36 @@
             {% endif %}
 
             <hr>
-            <h6>🛒 Store Purchases</h6>
-            {% if purchases %}
+            <h6>🛒 Owned Items</h6>
+            {% if student_items %}
             <table class="table table-sm table-striped">
-                <thead><tr><th>Item</th><th>Date Purchased</th><th>Redeemed?</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Status</th>
+                        <th>Purchased On</th>
+                        <th>Details</th>
+                    </tr>
+                </thead>
                 <tbody>
-                  {% for purchase in purchases %}
+                  {% for s_item in student_items %}
                   <tr>
-                    <td>{{ purchase.item_name }}</td>
+                    <td>{{ s_item.store_item.name }}</td>
+                    <td><span class="badge bg-info">{{ s_item.status|title }}</span></td>
                     <td>
-                      {% if purchase.date_purchased %}
-                        {{ purchase.date_purchased|format_datetime('%Y-%m-%d') }}
+                      {% if s_item.purchase_date %}
+                        <span class="local-timestamp" data-timestamp="{{ s_item.purchase_date.isoformat() }}Z"></span>
                       {% else %}
                         —
                       {% endif %}
                     </td>
-                    <td>{{ 'Yes' if purchase.redeemed else 'No' }}</td>
+                    <td>{{ s_item.redemption_details or 'N/A' }}</td>
                   </tr>
                   {% endfor %}
                 </tbody>
             </table>
             {% else %}
-            <p><em>No purchases yet.</em></p>
+            <p><em>This student owns no items.</em></p>
             {% endif %}
         </div>
     </div>
