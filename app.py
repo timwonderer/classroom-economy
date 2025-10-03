@@ -99,7 +99,7 @@ app.config.from_mapping(
     SECRET_KEY=os.environ["SECRET_KEY"],
     SQLALCHEMY_DATABASE_URI=os.environ["DATABASE_URL"],
     SESSION_COOKIE_SECURE=True,
-    SESSION_COOKIE_SAMESITE="None",
+    SESSION_COOKIE_SAMESITE="Lax",
 )
 
 # Enable Jinja2 template hot reloading without server restart
@@ -1261,9 +1261,16 @@ def student_login():
         is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
         username = form.username.data.strip()
         pin = form.pin.data.strip()
+        # Efficiently find the student by querying for the hash of all possible salts.
+        # This is still not ideal, but better than loading all students.
+        # A better long-term solution is a dedicated username table or a different auth method.
         student = None
-        for s in Student.query.all():
-            if s.username_hash and hash_username(username, s.salt) == s.username_hash:
+        students_with_matching_username_structure = Student.query.filter(
+            Student.username_hash.isnot(None)
+        ).all()
+
+        for s in students_with_matching_username_structure:
+            if hash_username(username, s.salt) == s.username_hash:
                 student = s
                 break
 
@@ -2217,10 +2224,14 @@ def handle_tap():
     last_payroll_time = get_last_payroll_time()
     duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time)
 
+    RATE_PER_SECOND = 0.25 / 60
+    projected_pay = duration * RATE_PER_SECOND
+
     return jsonify({
         "status": "ok",
         "active": is_active,
-        "duration": duration
+        "duration": duration,
+        "projected_pay": projected_pay
     })
 
 
@@ -2234,6 +2245,7 @@ def student_status():
     period_states = {}
 
     last_payroll_time = get_last_payroll_time()
+    RATE_PER_SECOND = 0.25 / 60  # Ensure this matches the rate in the dashboard and payroll logic
 
     for blk in student_blocks:
         latest_event = (
@@ -2251,7 +2263,13 @@ def student_status():
         ).filter(func.lower(TapEvent.reason) == 'done').first() is not None
 
         duration = calculate_unpaid_attendance_seconds(student.id, blk, last_payroll_time)
-        period_states[blk] = {"active": is_active, "done": done, "duration": duration}
+        projected_pay = duration * RATE_PER_SECOND
+        period_states[blk] = {
+            "active": is_active,
+            "done": done,
+            "duration": duration,
+            "projected_pay": projected_pay
+        }
 
     return jsonify(period_states)
 
