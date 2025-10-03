@@ -235,16 +235,27 @@ class Student(db.Model):
 
     @property
     def recent_deposits(self):
-        from datetime import timezone
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         recent_timeframe = now - timedelta(days=2)
-        return [
-            tx for tx in self.transactions
-            if tx.amount > 0
-            and not tx.is_void
-            and tx.timestamp.replace(tzinfo=timezone.utc) >= recent_timeframe
-            and not tx.description.lower().startswith("transfer")
-        ]
+
+        def _as_utc(dt):
+            if dt is None:
+                return None
+            if dt.tzinfo is None:
+                return dt.replace(tzinfo=timezone.utc)
+            return dt.astimezone(timezone.utc)
+
+        deposits = []
+        for tx in self.transactions:
+            if tx.amount <= 0 or tx.is_void:
+                continue
+            if (tx.description or "").lower().startswith("transfer"):
+                continue
+            tx_time = _as_utc(tx.timestamp)
+            if not tx_time or tx_time < recent_timeframe:
+                continue
+            deposits.append(tx)
+        return deposits
 
     @property
     def amount_needed_to_cover_bills(self):
@@ -1161,30 +1172,43 @@ def apply_savings_interest(student, annual_rate=0.045):
     Apply monthly savings interest for a student.
     All time calculations are in UTC.
     """
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     this_month = now.month
     this_year = now.year
 
+    def _as_utc(dt):
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
     # Check if interest was already applied this month
     for tx in student.transactions:
+        tx_timestamp = _as_utc(tx.timestamp)
         if (
             tx.account_type == 'savings'
             and tx.description == "Monthly Savings Interest"
-            and tx.timestamp.month == this_month
-            and tx.timestamp.year == this_year
+            and tx_timestamp
+            and tx_timestamp.month == this_month
+            and tx_timestamp.year == this_year
         ):
             return  # Interest already applied this month
 
-    if any(tx.account_type == 'savings' and "Transfer" in tx.description and tx.timestamp.date() == now.date() for tx in student.transactions):
-        return
+    for tx in student.transactions:
+        if tx.account_type != 'savings' or "Transfer" not in (tx.description or ""):
+            continue
+        tx_timestamp = _as_utc(tx.timestamp)
+        if tx_timestamp and tx_timestamp.date() == now.date():
+            return
 
-    eligible_balance = sum(
-        tx.amount for tx in student.transactions
-        if tx.account_type == 'savings' and
-           not tx.is_void and
-           tx.amount > 0 and
-           (now - tx.date_funds_available.replace(tzinfo=timezone.utc)).days >= 30
-    )
+    eligible_balance = 0
+    for tx in student.transactions:
+        if tx.account_type != 'savings' or tx.is_void or tx.amount <= 0:
+            continue
+        available_at = _as_utc(tx.date_funds_available)
+        if available_at and (now - available_at).days >= 30:
+            eligible_balance += tx.amount
     monthly_rate = annual_rate / 12
     interest = round((eligible_balance or 0.0) * monthly_rate, 2)
 
