@@ -1,56 +1,57 @@
-import pytest
-from app import app, db, Student, TapEvent, Transaction
-from payroll import calculate_payroll
 from datetime import datetime, timedelta, timezone
 
-@pytest.fixture
-def client():
-    app.config['TESTING'] = True
-    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
-    with app.test_client() as client:
-        with app.app_context():
-            db.create_all()
-            yield client
-            db.drop_all()
+from app import Transaction, TapEvent, db, Student
+from hash_utils import get_random_salt, hash_username
 
-def test_calculate_payroll(client):
-    # Create a student
+
+def test_payroll_handles_unmatched_active_tap(client, monkeypatch):
+    fixed_now = datetime(2024, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    class FixedDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is None:
+                return fixed_now.replace(tzinfo=None)
+            return fixed_now.astimezone(tz)
+
+        @classmethod
+        def utcnow(cls):
+            return fixed_now.replace(tzinfo=None)
+
+    monkeypatch.setattr("app.datetime", FixedDateTime)
+
+    salt = get_random_salt()
     student = Student(
         first_name="Test",
         last_initial="S",
         block="A",
-        salt=b'salt',
-        has_completed_setup=True
+        salt=salt,
+        username_hash=hash_username("payrolltester", salt),
+        pin_hash="fake-hash",
     )
     db.session.add(student)
     db.session.commit()
 
-    # Create TapEvents to simulate attendance
-    now = datetime.now(timezone.utc)
-    tap_in_time = now - timedelta(minutes=60)
-    tap_out_time = now - timedelta(minutes=30)
-
-    tap_in = TapEvent(student_id=student.id, period="A", status="active", timestamp=tap_in_time)
-    tap_out = TapEvent(student_id=student.id, period="A", status="inactive", timestamp=tap_out_time)
-    db.session.add_all([tap_in, tap_out])
+    unmatched_start = fixed_now - timedelta(minutes=3)
+    tap_event = TapEvent(
+        student_id=student.id,
+        period="A",
+        status="active",
+        timestamp=unmatched_start.replace(tzinfo=None),
+    )
+    db.session.add(tap_event)
     db.session.commit()
 
-    # Calculate payroll
-    students = [student]
-    last_payroll_time = now - timedelta(days=1)
-    payroll_summary = calculate_payroll(students, last_payroll_time)
+    with client.session_transaction() as session:
+        session["is_admin"] = True
+        session["last_activity"] = fixed_now.strftime("%Y-%m-%d %H:%M:%S")
 
-    # Assert the payroll amount is correct
-    # 30 minutes of attendance = 1800 seconds
-    # 1800 seconds * ($0.25 / 60 seconds) = $7.50
-    expected_payroll = 7.50
-    assert student.id in payroll_summary
-    assert payroll_summary[student.id] == expected_payroll
+    response = client.post("/admin/run-payroll")
+    assert response.status_code == 302
 
-    # Test case with no attendance
-    student2 = Student(first_name="Test2", last_initial="S", block="B", salt=b'salt2', has_completed_setup=True)
-    db.session.add(student2)
-    db.session.commit()
-    students2 = [student2]
-    payroll_summary2 = calculate_payroll(students2, last_payroll_time)
-    assert student2.id not in payroll_summary2
+    transactions = Transaction.query.filter_by(student_id=student.id, type="payroll").all()
+    assert len(transactions) == 1
+
+    expected_seconds = (fixed_now - unmatched_start).total_seconds()
+    expected_amount = round(expected_seconds * (0.25 / 60), 2)
+    assert transactions[0].amount == expected_amount
