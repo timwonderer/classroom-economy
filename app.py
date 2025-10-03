@@ -1879,7 +1879,7 @@ def run_payroll():
                         # else: unmatched inactive, ignore
                 # If there's a remaining unmatched active (never tapped out), pay up to now
                 if in_time:
-                    now = datetime.utcnow()
+                    now = datetime.now(timezone.utc)
                     delta = (now - in_time).total_seconds()
                     if delta > 0:
                         total_seconds += delta
