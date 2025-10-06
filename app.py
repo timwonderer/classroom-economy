@@ -1477,12 +1477,27 @@ def admin_transactions():
 
     # Apply filters
     if student_q:
-        query = query.filter(
-            or_(
-                Student.first_name.ilike(f"%{student_q}%"),
-                func.cast(Student.id, db.String).ilike(f"%{student_q}%")
-            )
-        )
+        # Since first_name is encrypted, we cannot use `ilike`.
+        # We must fetch students, decrypt names, and filter in Python.
+        matching_student_ids = []
+        # Handle if the query is a student ID
+        if student_q.isdigit():
+            matching_student_ids.append(int(student_q))
+
+        # Handle if the query is a name
+        all_students = Student.query.all()
+        for s in all_students:
+            # The full_name property will decrypt the first_name
+            if student_q.lower() in s.full_name.lower():
+                matching_student_ids.append(s.id)
+
+        # If there are any matches (by ID or name), filter the query
+        if matching_student_ids:
+            query = query.filter(Student.id.in_(matching_student_ids))
+        else:
+            # If no students match, return no results
+            query = query.filter(sa.false())
+
     if block_q:
         query = query.filter(Student.block == block_q)
     if type_q:
@@ -1492,6 +1507,7 @@ def admin_transactions():
     if end_date:
         # include entire end_date
         query = query.filter(Transaction.timestamp < text(f"'{end_date}'::date + interval '1 day'"))
+
     # Count and paginate
     total = query.count()
     total_pages = math.ceil(total / per_page) if total else 1
