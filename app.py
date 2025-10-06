@@ -23,6 +23,7 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 import pytz
 from sqlalchemy import or_, func, text
+import sqlalchemy as sa
 # local security helpers
 from hash_utils import hash_username
 import json
