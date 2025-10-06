@@ -1840,14 +1840,18 @@ def admin_upload_students():
             # Generate last_initial
             last_initial = last_name[0].upper()
 
-            # Check for existing student with the same first_name, last_initial, and block
-            existing_student = Student.query.filter_by(
-                first_name=first_name,
-                last_initial=last_initial,
-                block=block
-            ).first()
+            # Efficiently check for duplicates.
+            # 1. Filter by unencrypted fields (`last_initial`, `block`) to get a small candidate pool.
+            potential_matches = Student.query.filter_by(last_initial=last_initial, block=block).all()
 
-            if existing_student:
+            # 2. Iterate through the small pool and compare the decrypted first name.
+            is_duplicate = False
+            for student in potential_matches:
+                if student.first_name == first_name:
+                    is_duplicate = True
+                    break
+
+            if is_duplicate:
                 app.logger.info(f"Duplicate detected: {first_name} {last_initial} in block {block}, skipping.")
                 duplicated += 1
                 continue  # skip this duplicate
