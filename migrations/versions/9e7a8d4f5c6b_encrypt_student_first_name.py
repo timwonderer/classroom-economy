@@ -30,7 +30,7 @@ students_binary_table = sa.table('students',
 def upgrade():
     """
     Encrypts existing first_name data and changes the column type to LargeBinary.
-    Uses raw SQL with a USING clause for PostgreSQL compatibility.
+    Uses a temporary column and batch mode for SQLite compatibility.
     """
     key = os.getenv("ENCRYPTION_KEY")
     if not key:
@@ -39,28 +39,28 @@ def upgrade():
     fernet = Fernet(key.encode())
     bind = op.get_bind()
 
-    # 1. Fetch all existing plaintext names into memory BEFORE changing the type
+    # 1. Add a temporary column to hold the encrypted data
+    op.add_column('students', sa.Column('first_name_encrypted', sa.LargeBinary(), nullable=True))
+
+    # 2. Fetch plaintext names, encrypt them, and update the new column
     students_to_encrypt = bind.execute(sa.select(students_varchar_table.c.id, students_varchar_table.c.first_name)).fetchall()
-
-    # 2. Use raw SQL to alter the column type with the USING clause for PostgreSQL
-    op.execute('ALTER TABLE students ALTER COLUMN first_name TYPE BYTEA USING first_name::bytea')
-
-    # 3. Now, encrypt the plaintext data we have in memory and update the rows
-    for student in students_to_encrypt:
-        student_id, first_name = student
+    for student_id, first_name in students_to_encrypt:
         if first_name and isinstance(first_name, str):
             encrypted_name = fernet.encrypt(first_name.encode('utf-8'))
-            update_stmt = (
-                sa.update(students_binary_table)
-                .where(students_binary_table.c.id == student_id)
-                .values(first_name=encrypted_name)
-            )
-            bind.execute(update_stmt)
+            # Use text() for raw SQL update to avoid reflection issues
+            update_stmt = sa.text("UPDATE students SET first_name_encrypted = :encrypted_name WHERE id = :id")
+            bind.execute(update_stmt, {"encrypted_name": encrypted_name, "id": student_id})
+
+    # 3. Use batch mode to drop the old column and rename the new one, which is SQLite-safe
+    with op.batch_alter_table('students', schema=None) as batch_op:
+        batch_op.drop_column('first_name')
+        batch_op.alter_column('first_name_encrypted', new_column_name='first_name', nullable=False)
+
 
 def downgrade():
     """
     Decrypts existing first_name data and changes the column type back to VARCHAR.
-    Uses a temporary column to avoid type casting issues with encrypted data.
+    Uses a temporary column and batch mode for SQLite compatibility.
     """
     key = os.getenv("ENCRYPTION_KEY")
     if not key:
@@ -69,27 +69,23 @@ def downgrade():
     fernet = Fernet(key.encode())
     bind = op.get_bind()
 
-    # 1. Fetch all existing encrypted names into memory
+    # 1. Add a temporary column to hold the decrypted names
+    op.add_column('students', sa.Column('first_name_decrypted', sa.String(50), nullable=True))
+
+    # 2. Fetch encrypted names, decrypt them, and update the temporary column
     students_to_decrypt = bind.execute(sa.select(students_binary_table.c.id, students_binary_table.c.first_name)).fetchall()
-
-    # 2. Add a temporary column to hold the decrypted names
-    op.add_column('students', sa.Column('first_name_tmp', sa.String(50), nullable=True))
-
-    # 3. Decrypt and update the temporary column
-    for student in students_to_decrypt:
-        student_id, encrypted_name = student
+    for student_id, encrypted_name in students_to_decrypt:
         if encrypted_name and isinstance(encrypted_name, bytes):
             try:
                 decrypted_name = fernet.decrypt(encrypted_name).decode('utf-8')
             except Exception:
+                # In case of a decryption error, store a placeholder
                 decrypted_name = 'decryption_failed'
 
-            # Use text() for the update statement to avoid table reflection issues
-            update_stmt = sa.text("UPDATE students SET first_name_tmp = :name WHERE id = :id")
+            update_stmt = sa.text("UPDATE students SET first_name_decrypted = :name WHERE id = :id")
             bind.execute(update_stmt, {"name": decrypted_name, "id": student_id})
 
-    # 4. Drop the old encrypted column
-    op.drop_column('students', 'first_name')
-
-    # 5. Rename the temporary column to 'first_name' and make it non-nullable
-    op.alter_column('students', 'first_name_tmp', new_column_name='first_name', nullable=False, existing_type=sa.String(50))
+    # 3. Use batch mode to drop the old encrypted column and rename the temporary one
+    with op.batch_alter_table('students', schema=None) as batch_op:
+        batch_op.drop_column('first_name')
+        batch_op.alter_column('first_name_decrypted', new_column_name='first_name', nullable=False, existing_type=sa.String(50))
