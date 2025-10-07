@@ -30,6 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!pin) return;
 
       button.disabled = true;
+      let responseData; // Declare responseData to be accessible in .finally()
       fetch("/api/tap", {
         method: "POST",
         headers: { "Content-Type": "application/json", "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').getAttribute('content') },
@@ -37,6 +38,7 @@ document.addEventListener("DOMContentLoaded", () => {
       })
         .then(r => r.json())
         .then(data => {
+          responseData = data; // Store data for later
           if (data.status === "ok") {
             updateBlockUI(period, data.active, data.duration, data.projected_pay);
             createToast(`Tap ${action === "tap_in" ? "In" : "Out"} successful`);
@@ -49,11 +51,16 @@ document.addEventListener("DOMContentLoaded", () => {
           createToast("Network error. Try again.", true);
         })
         .finally(() => {
-          // Re-enable the correct button based on the new state
           const tapInBtn = document.querySelector(`#tapIn-${period}`);
           const tapOutBtn = document.querySelector(`#tapOut-${period}`);
-          if (tapInBtn) tapInBtn.disabled = data.active;
-          if (tapOutBtn) tapOutBtn.disabled = !data.active;
+          // Use responseData and check if it's valid
+          if (responseData && responseData.status === 'ok') {
+            if (tapInBtn) tapInBtn.disabled = responseData.active;
+            if (tapOutBtn) tapOutBtn.disabled = !responseData.active;
+          } else {
+            // On error or failure, re-enable the clicked button to prevent it getting stuck
+            button.disabled = false;
+          }
         });
     });
   });

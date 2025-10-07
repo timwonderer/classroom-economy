@@ -657,24 +657,33 @@ def student_dashboard():
 
     forecast_interest = round(student.savings_balance * (0.045 / 12), 2)
 
-    # Determine all blocks for this student dynamically
-    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-    period_states = {
-        blk: {
-            "active": status[0],
-            "done": status[1],
-            "duration": status[2]
-        }
-        for blk, status in ((blk, get_session_status(student.id, blk)) for blk in student_blocks)
-    }
-    period_states_json = json.dumps(period_states, separators=(',', ':'))
-
     # --- Refactored logic to use unpaid seconds since last payroll ---
     last_payroll_time = get_last_payroll_time()
+    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+
     unpaid_seconds_per_block = {
         blk: calculate_unpaid_attendance_seconds(student.id, blk, last_payroll_time)
         for blk in student_blocks
     }
+
+    # Simplified status logic, removing dependency on get_session_status
+    period_states = {}
+    for blk in student_blocks:
+        latest_event = TapEvent.query.filter_by(student_id=student.id, period=blk).order_by(TapEvent.timestamp.desc()).first()
+        is_active = latest_event.status == 'active' if latest_event else False
+
+        # Check if the student has finished for the day.
+        # This check should be against a reasonable window for "today" in the user's timezone.
+        # For simplicity, we'll just check if the last event has a reason.
+        is_done = latest_event.reason is not None if latest_event else False
+
+        period_states[blk] = {
+            "active": is_active,
+            "done": is_done,
+            "duration": unpaid_seconds_per_block.get(blk, 0) # Use the correct unpaid seconds
+        }
+
+    period_states_json = json.dumps(period_states, separators=(',', ':'))
 
     # Calculate projected pay based on unpaid seconds
     RATE_PER_SECOND = 0.25 / 60
@@ -1171,6 +1180,10 @@ def student_login():
         session.pop('student_id', None)
         session.pop('login_time', None)
         session.pop('last_activity', None)
+        # Explicitly clear other potential student-related session keys
+        session.pop('claimed_student_id', None)
+        session.pop('generated_username', None)
+
 
         session['student_id'] = student.id
         session['login_time'] = datetime.now(timezone.utc).isoformat()
