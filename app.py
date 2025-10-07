@@ -25,7 +25,13 @@ import pytz
 from sqlalchemy import or_, func, text
 import sqlalchemy as sa
 # local security helpers
-from hash_utils import hash_username
+from hash_utils import (
+    get_all_peppers,
+    get_primary_pepper,
+    hash_hmac,
+    hash_username,
+    iter_username_hashes,
+)
 import json
 import math
 import os
@@ -500,10 +506,7 @@ def home():
 # --- PAGE 1: Claim Account ---
 @app.route('/student/claim-account', methods=['GET', 'POST'])
 def student_claim_account():
-    import os, hashlib, hmac
-    from hash_utils import hash_username
-
-    pepper = os.getenv('PEPPER_KEY', 'default_pepper').encode()
+    pepper_candidates = get_all_peppers()
     form = StudentClaimAccountForm()
 
     if form.validate_on_submit():
@@ -517,14 +520,31 @@ def student_claim_account():
 
         for s in Student.query.filter_by(has_completed_setup=False).all():
             name_code = first_half
-            first_half_hash = hmac.new(pepper, s.salt + name_code.encode(), hashlib.sha256).hexdigest()
-            second_half_hash = hmac.new(pepper, s.salt + dob_sum.encode(), hashlib.sha256).hexdigest()
+            matched_pepper = None
 
-            if s.first_half_hash == first_half_hash and s.second_half_hash == second_half_hash and str(s.dob_sum) == dob_sum:
+            for pepper in pepper_candidates:
+                first_half_hash = hash_hmac(name_code.encode(), s.salt, pepper=pepper)
+                second_half_hash = hash_hmac(dob_sum.encode(), s.salt, pepper=pepper)
+
+                if (
+                    s.first_half_hash == first_half_hash
+                    and s.second_half_hash == second_half_hash
+                    and str(s.dob_sum) == dob_sum
+                ):
+                    matched_pepper = pepper
+                    break
+
+            if matched_pepper:
                 session['claimed_student_id'] = s.id
                 session.pop('generated_username', None)
                 session.pop('theme_prompt', None)
                 session.pop('theme_slug', None)
+
+                if matched_pepper != get_primary_pepper():
+                    s.first_half_hash = hash_hmac(name_code.encode(), s.salt)
+                    s.second_half_hash = hash_hmac(dob_sum.encode(), s.salt)
+                    db.session.commit()
+
                 return redirect(url_for('student_create_username'))
 
         flash("No matching account found. Please check your info.", "claim")
@@ -1120,13 +1140,18 @@ def student_login():
         # This is still not ideal, but better than loading all students.
         # A better long-term solution is a dedicated username table or a different auth method.
         student = None
+        matched_pepper = None
         students_with_matching_username_structure = Student.query.filter(
             Student.username_hash.isnot(None)
         ).all()
 
         for s in students_with_matching_username_structure:
-            if hash_username(username, s.salt) == s.username_hash:
-                student = s
+            for candidate_hash, pepper in iter_username_hashes(username, s.salt):
+                if candidate_hash == s.username_hash:
+                    student = s
+                    matched_pepper = pepper
+                    break
+            if student:
                 break
 
         if not student or not check_password_hash(student.pin_hash or '', pin):
@@ -1134,6 +1159,12 @@ def student_login():
                 return jsonify(status="error", message="Invalid credentials"), 401
             flash("Invalid credentials", "error")
             return redirect(url_for('student_login', next=request.args.get('next')))
+
+        # If the username hash was verified with a legacy pepper, migrate it to the
+        # current pepper now that we have the plaintext username.
+        if matched_pepper and matched_pepper != get_primary_pepper():
+            student.username_hash = hash_username(username, student.salt)
+            db.session.commit()
 
         # --- Set session timeout ---
         # Clear old student-specific session keys without wiping the CSRF token
@@ -1812,10 +1843,10 @@ def admin_attendance_log():
 @app.route('/admin/upload-students', methods=['POST'])
 @admin_required
 def admin_upload_students():
-    import csv, io, os, hashlib, hmac, re
+    import csv, io, os, re
     from datetime import datetime
 
-    pepper = os.getenv('PEPPER_KEY', 'default_pepper').encode()  # Replace with your actual environment config
+    pepper = get_primary_pepper()
     file = request.files.get('csv_file')
     if not file:
         flash("No file provided", "admin_error")
@@ -1869,8 +1900,8 @@ def admin_upload_students():
             salt = os.urandom(16)
 
             # Compute first_half_hash and second_half_hash using HMAC with pepper
-            first_half_hash = hmac.new(pepper, salt + name_code.encode(), hashlib.sha256).hexdigest()
-            second_half_hash = hmac.new(pepper, salt + str(dob_sum).encode(), hashlib.sha256).hexdigest()
+            first_half_hash = hash_hmac(name_code.encode(), salt, pepper=pepper)
+            second_half_hash = hash_hmac(str(dob_sum).encode(), salt, pepper=pepper)
 
             student = Student(
                 first_name=first_name,

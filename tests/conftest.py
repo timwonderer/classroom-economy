@@ -5,6 +5,9 @@ import sys
 os.environ["SECRET_KEY"] = "test-secret"
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["FLASK_ENV"] = "testing"
+os.environ["PEPPER_KEY"] = "test-primary-pepper"
+os.environ["PEPPER_LEGACY_KEYS"] = "legacy-pepper"
+os.environ.setdefault("PEPPER", "legacy-pepper")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
