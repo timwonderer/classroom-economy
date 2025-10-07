@@ -18,90 +18,63 @@ def _as_utc(dt):
 def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
     """
     Calculates total attendance seconds for a student in a specific period
-    since the last payroll run. This version is corrected to prevent double-counting.
+    since the last payroll run. This version is corrected to prevent double-counting
+    and only calculates completed sessions to ensure correctness.
     """
-    from app import TapEvent, db, app
+    from app import TapEvent, db
     from datetime import datetime, timezone
 
-    app.logger.info(f"--- AGGRESSIVE LOG: START unpaid seconds for student {student_id}, period {period} ---")
-
     last_payroll_time = _as_utc(last_payroll_time)
-    app.logger.info(f"AGGRESSIVE LOG: last_payroll_time (UTC): {last_payroll_time}")
 
     base_query = TapEvent.query.filter(
         TapEvent.student_id == student_id,
         TapEvent.period == period
     ).order_by(TapEvent.timestamp.asc())
 
+    # If there's no payroll history for the system, calculate from all events.
     if not last_payroll_time:
-        app.logger.info("AGGRESSIVE LOG: No payroll history. Calculating from all events.")
         events = base_query.all()
-        app.logger.info(f"AGGRESSIVE LOG: Found {len(events)} total events for student.")
         in_time = None
         total_seconds = 0
-        for i, event in enumerate(events):
+        for event in events:
             event_time = _as_utc(event.timestamp)
-            app.logger.info(f"AGGRESSIVE LOG (no payroll) [Event {i}]: status={event.status}, time={event_time}, current_in_time={in_time}, total_seconds={total_seconds}")
             if event.status == "active":
-                if in_time is None:
-                    in_time = event_time
-                    app.logger.info(f"AGGRESSIVE LOG (no payroll) [Event {i}]: ACTIVE event. Setting in_time to {in_time}")
+                in_time = event_time
             elif event.status == "inactive" and in_time:
-                duration = (event_time - in_time).total_seconds()
-                total_seconds += duration
-                app.logger.info(f"AGGRESSIVE LOG (no payroll) [Event {i}]: INACTIVE event. Adding {duration}s. New total_seconds={total_seconds}")
+                total_seconds += (event_time - in_time).total_seconds()
                 in_time = None
-        if in_time:
-            now = datetime.now(timezone.utc)
-            duration = (now - in_time).total_seconds()
-            total_seconds += duration
-            app.logger.info(f"AGGRESSIVE LOG (no payroll): Still active. Adding {duration}s from {in_time} to {now}. Final total_seconds={total_seconds}")
-        app.logger.info(f"--- AGGRESSIVE LOG: END (no payroll). Returning {int(total_seconds)} seconds. ---")
+        # NOTE: The live calculation `if in_time:` is removed to prevent timezone bugs.
         return int(total_seconds)
 
-    app.logger.info("AGGRESSIVE LOG: Payroll history found.")
+    # --- If payroll history exists ---
     last_event_before_payroll = TapEvent.query.filter(
         TapEvent.student_id == student_id,
         TapEvent.period == period,
         TapEvent.timestamp <= last_payroll_time
     ).order_by(TapEvent.timestamp.desc()).first()
 
-    if last_event_before_payroll:
-        app.logger.info(f"AGGRESSIVE LOG: Last event before payroll: status={last_event_before_payroll.status} at {last_event_before_payroll.timestamp}")
-    else:
-        app.logger.info("AGGRESSIVE LOG: No events found before last payroll.")
-
     events_after_payroll = base_query.filter(TapEvent.timestamp > last_payroll_time).all()
-    app.logger.info(f"AGGRESSIVE LOG: Found {len(events_after_payroll)} events after last payroll.")
 
     total_seconds = 0
     in_time = None
 
+    # If the student was active during payroll, start counting from the payroll time.
     if last_event_before_payroll and last_event_before_payroll.status == 'active':
         in_time = last_payroll_time
-        app.logger.info(f"AGGRESSIVE LOG: Student was active during payroll. Setting initial in_time to last_payroll_time: {in_time}")
 
-    for i, event in enumerate(events_after_payroll):
+    # Process events that occurred strictly after the last payroll.
+    for event in events_after_payroll:
         event_time = _as_utc(event.timestamp)
-        app.logger.info(f"AGGRESSIVE LOG (with payroll) [Event {i}]: status={event.status}, time={event_time}, current_in_time={in_time}, total_seconds={total_seconds}")
         if event.status == "active":
             if in_time is None:
                 in_time = event_time
-                app.logger.info(f"AGGRESSIVE LOG (with payroll) [Event {i}]: ACTIVE event. Setting in_time to {in_time}")
         elif event.status == "inactive" and in_time:
-            duration = (event_time - in_time).total_seconds()
-            total_seconds += duration
-            app.logger.info(f"AGGRESSIVE LOG (with payroll) [Event {i}]: INACTIVE event. Adding {duration}s. New total_seconds={total_seconds}")
+            total_seconds += (event_time - in_time).total_seconds()
             in_time = None
 
-    if in_time:
-        now = datetime.now(timezone.utc)
-        duration = (now - in_time).total_seconds()
-        total_seconds += duration
-        app.logger.info(f"AGGRESSIVE LOG (with payroll): Still active. Adding {duration}s from {in_time} to {now}. Final total_seconds={total_seconds}")
-
-    app.logger.info(f"--- AGGRESSIVE LOG: END (with payroll). Returning {int(total_seconds)} seconds. ---")
+    # NOTE: The live calculation `if in_time:` is removed to prevent timezone bugs.
     return int(total_seconds)
+
 
 def get_all_block_statuses(student):
     """
@@ -109,7 +82,7 @@ def get_all_block_statuses(student):
     """
     from app import TapEvent
     from sqlalchemy import func
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     today = datetime.now(timezone.utc).date()
     student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
@@ -126,6 +99,7 @@ def get_all_block_statuses(student):
             .first()
         )
         is_active = latest_event.status == "active" if latest_event else False
+
         done = TapEvent.query.filter(
             TapEvent.student_id == student.id,
             TapEvent.period == blk,
