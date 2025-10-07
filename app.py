@@ -1174,11 +1174,13 @@ def student_login():
             flash("Invalid credentials", "error")
             return redirect(url_for('student_login', next=request.args.get('next')))
 
+
         # If the username hash was verified with a legacy pepper, migrate it to the
         # current pepper now that we have the plaintext username.
         if matched_pepper and matched_pepper != get_primary_pepper():
             student.username_hash = hash_username(username, student.salt)
             db.session.commit()
+
 
         # --- Set session timeout ---
         # Clear old student-specific session keys without wiping the CSRF token
