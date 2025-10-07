@@ -30,15 +30,17 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!pin) return;
 
       button.disabled = true;
+      let responseData; // Declare responseData to be accessible in .finally()
       fetch("/api/tap", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').getAttribute('content') },
         body: JSON.stringify({ period, action, pin })
       })
         .then(r => r.json())
         .then(data => {
+          responseData = data; // Store data for later
           if (data.status === "ok") {
-            updateBlockUI(period, data.active, data.duration);
+            updateBlockUI(period, data.active, data.duration, data.projected_pay);
             createToast(`Tap ${action === "tap_in" ? "In" : "Out"} successful`);
           } else {
             createToast("Tap failed: " + (data.error || "Unknown error"), true);
@@ -49,30 +51,40 @@ document.addEventListener("DOMContentLoaded", () => {
           createToast("Network error. Try again.", true);
         })
         .finally(() => {
-          button.disabled = false;
+          const tapInBtn = document.querySelector(`#tapIn-${period}`);
+          const tapOutBtn = document.querySelector(`#tapOut-${period}`);
+          // Use responseData and check if it's valid
+          if (responseData && responseData.status === 'ok') {
+            if (tapInBtn) tapInBtn.disabled = responseData.active;
+            if (tapOutBtn) tapOutBtn.disabled = !responseData.active;
+          } else {
+            // On error or failure, re-enable the clicked button to prevent it getting stuck
+            button.disabled = false;
+          }
         });
     });
   });
 });
 
-// Poll the server every 15 seconds to refresh block status
+// Poll the server every 10 seconds to refresh block status
 setInterval(() => {
   fetch("/api/student-status")
     .then(r => r.json())
     .then(data => {
       Object.keys(data).forEach(period => {
-        updateBlockUI(period, data[period].active, data[period].duration);
+        updateBlockUI(period, data[period].active, data[period].duration, data[period].projected_pay);
       });
     })
     .catch(err => console.error("Status polling error:", err));
-}, 15000);
+}, 10000);
 
-function updateBlockUI(period, isActive, duration) {
+function updateBlockUI(period, isActive, duration, projectedPay) {
   const row = document.querySelector(`[data-block-row="${period}"]`);
   if (!row) return;
 
   const statusCell = row.querySelector(".block-status");
   const durationCell = row.querySelector(".block-duration");
+  const payCell = row.querySelector(`.block-pay[data-period="${period}"]`);
   const tapInBtn = row.querySelector(`#tapIn-${period}`);
   const tapOutBtn = row.querySelector(`#tapOut-${period}`);
 
@@ -82,6 +94,9 @@ function updateBlockUI(period, isActive, duration) {
   statusCell.classList.toggle("text-muted", !isActive);
 
   durationCell.textContent = formatDuration(duration);
+  if (payCell) {
+    payCell.textContent = projectedPay.toFixed(2);
+  }
 
   if (tapInBtn) tapInBtn.disabled = isActive;
   if (tapOutBtn) tapOutBtn.disabled = !isActive;

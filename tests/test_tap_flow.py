@@ -1,4 +1,4 @@
-from app import db, Student, TapSession
+from app import db, Student
 from werkzeug.security import generate_password_hash
 from hash_utils import hash_username, get_random_salt
 from bs4 import BeautifulSoup
@@ -36,20 +36,20 @@ def test_dynamic_blocks_and_tap_flow(client):
     assert "Block C" in dash_html
 
     # 4. Tap in to A
-    j = client.post('/api/tap', json={'period': 'A', 'action': 'tap_in'})
+    j = client.post('/api/tap', json={'period': 'A', 'action': 'tap_in', 'pin': '0000'})
     assert j.status_code == 200 and j.json['status'] == 'ok'
 
     # 5. On next dashboard load, A should be “active”
     dash_state = client.get('/student/dashboard').data.decode()
-    assert '"A":[true' in dash_state
+    assert '"A":{"active":true' in dash_state
 
     # 6. Tap out with “done”
-    j2 = client.post('/api/tap', json={'period': 'A', 'action': 'tap_out', 'reason': 'done'})
+    j2 = client.post('/api/tap', json={'period': 'A', 'action': 'tap_out', 'reason': 'done', 'pin': '0000'})
     assert j2.status_code == 200 and j2.json['status'] == 'ok'
 
     # 7. After refresh, “done” state must stick
-    dash_state2 = client.get('/student/dashboard').data.decode()
-    assert '"A":[false,true' in dash_state2
+    dash_html2 = client.get('/student/dashboard').data.decode()
+    assert '"A":{"active":false,"done":true' in dash_html2
 
 def test_invalid_period_and_action(client):
     # Set up student and log in
@@ -66,12 +66,12 @@ def test_invalid_period_and_action(client):
     db.session.add(stu); db.session.commit()
     login(client, username, "0000")
     # Invalid period
-    resp = client.post('/api/tap', json={'period': 'Z', 'action': 'tap_in'})
+    resp = client.post('/api/tap', json={'period': 'Z', 'action': 'tap_in', 'pin': '0000'})
     assert resp.status_code == 400
     assert 'error' in resp.json
 
     # Invalid action
-    resp = client.post('/api/tap', json={'period': 'A', 'action': 'jump'})
+    resp = client.post('/api/tap', json={'period': 'A', 'action': 'jump', 'pin': '0000'})
     assert resp.status_code == 400
     assert 'error' in resp.json
 
@@ -92,15 +92,15 @@ def test_server_state_json(client):
     login(client, username, "0000")
 
     # Tap in to block A
-    client.post('/api/tap', json={'period': 'A', 'action': 'tap_in'})
+    client.post('/api/tap', json={'period': 'A', 'action': 'tap_in', 'pin': '0000'})
     dash_html = client.get('/student/dashboard').data.decode()
     state = parse_server_state(dash_html)
     assert 'A' in state
-    assert state['A'][0] is True  # active
+    assert state['A']['active'] is True
 
     # Tap out with done
-    client.post('/api/tap', json={'period': 'A', 'action': 'tap_out', 'reason': 'done'})
+    client.post('/api/tap', json={'period': 'A', 'action': 'tap_out', 'reason': 'done', 'pin': '0000'})
     dash_html2 = client.get('/student/dashboard').data.decode()
     state2 = parse_server_state(dash_html2)
-    assert state2['A'][0] is False
-    assert state2['A'][1] is True  # done flag
+    assert state2['A']['active'] is False
+    assert state2['A']['done'] is True

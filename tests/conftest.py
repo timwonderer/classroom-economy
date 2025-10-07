@@ -5,11 +5,14 @@ import sys
 os.environ["SECRET_KEY"] = "test-secret"
 os.environ["DATABASE_URL"] = "sqlite:///:memory:"
 os.environ["FLASK_ENV"] = "testing"
+os.environ["PEPPER_KEY"] = "test-primary-pepper"
+os.environ["PEPPER_LEGACY_KEYS"] = "legacy-pepper"
+os.environ.setdefault("PEPPER", "legacy-pepper")
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
-from app import app, db
+from app import Student, app, db
 
 
 @pytest.fixture
@@ -32,7 +35,7 @@ def client():
 def test_student():
     from hash_utils import hash_username, get_random_salt
     salt = get_random_salt()
-    stu = app.Student(
+    stu = Student(
         first_name="Test",
         last_initial="S",
         block="A",

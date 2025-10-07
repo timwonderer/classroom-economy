@@ -142,7 +142,7 @@
               {% set state = period_states[blk] %}
               <p><strong>Status:</strong> <span id="status-{{ blk }}" class="block-status">{{ 'Active' if state['active'] and not state['done'] else 'Inactive' }}</span></p>
               <p><strong>Unpaid Time Logged:</strong> <span class="block-duration">{{ (unpaid_seconds_per_block[blk] // 3600)|string + 'h ' + ((unpaid_seconds_per_block[blk] % 3600) // 60)|string + 'm ' + (unpaid_seconds_per_block[blk] % 60)|string + 's' }}</span></p>
-              <p><strong>Projected Paycheck Amount:</strong> ${{ '%.2f'|format(projected_pay_per_block[blk]) }}</p>
+              <p><strong>Projected Paycheck Amount:</strong> $<span class="block-pay" data-period="{{ blk }}">{{ '%.2f'|format(projected_pay_per_block[blk]) }}</span></p>
               <button class="btn btn-success me-2 tap-btn" id="tapIn-{{ blk }}" data-period="{{ blk }}" data-action="tap_in" aria-label="Tap In for Block {{ blk }}" {% if state['active'] or state['done'] %}disabled{% endif %}>Tap In</button>
               <button class="btn btn-danger tap-btn" id="tapOut-{{ blk }}" data-period="{{ blk }}" data-action="tap_out" aria-label="Tap Out for Block {{ blk }}" {% if not state['active'] %}disabled{% endif %}>Tap Out</button>
             </div>
@@ -268,5 +268,9 @@
         }
     </script>
     <div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100"></div>
+
+    <script id="serverState" type="application/json">
+        {{ period_states_json | safe }}
+    </script>
 </body>
 </html>

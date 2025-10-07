@@ -63,3 +63,9 @@ class StudentLoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
     pin = StringField('PIN', validators=[DataRequired()])
     submit = SubmitField('Login')
+
+class AdminLoginForm(FlaskForm):
+    username = StringField('Username', validators=[DataRequired()])
+    totp_code = StringField('TOTP Code', validators=[DataRequired()])
+
+    submit = SubmitField('Log In')
