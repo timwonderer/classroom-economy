@@ -672,15 +672,20 @@ def student_dashboard():
         latest_event = TapEvent.query.filter_by(student_id=student.id, period=blk).order_by(TapEvent.timestamp.desc()).first()
         is_active = latest_event.status == 'active' if latest_event else False
 
-        # Check if the student has finished for the day.
-        # This check should be against a reasonable window for "today" in the user's timezone.
-        # For simplicity, we'll just check if the last event has a reason.
-        is_done = latest_event.reason is not None if latest_event else False
+        # Correctly check if the student has finished for *today* by looking for
+        # any tap-out event with a reason on the current date.
+        today = datetime.now(timezone.utc).date()
+        is_done = db.session.query(TapEvent.id).filter(
+            TapEvent.student_id == student.id,
+            TapEvent.period == blk,
+            func.date(TapEvent.timestamp) == today,
+            TapEvent.reason.isnot(None)
+        ).first() is not None
 
         period_states[blk] = {
             "active": is_active,
             "done": is_done,
-            "duration": unpaid_seconds_per_block.get(blk, 0) # Use the correct unpaid seconds
+            "duration": unpaid_seconds_per_block.get(blk, 0)  # Use the correct unpaid seconds
         }
 
     period_states_json = json.dumps(period_states, separators=(',', ':'))
