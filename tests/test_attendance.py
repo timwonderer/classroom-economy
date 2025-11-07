@@ -3,8 +3,6 @@ from app import app, db, Student, TapEvent, Transaction
 from attendance import (
     get_last_payroll_time,
     calculate_unpaid_attendance_seconds,
-    calculate_period_attendance,
-    get_session_status,
     get_all_block_statuses
 )
 from datetime import datetime, timedelta, timezone
@@ -50,41 +48,6 @@ def test_calculate_unpaid_attendance_seconds(client):
     # 15 minutes of attendance = 900 seconds
     assert unpaid_seconds == 900
 
-def test_calculate_period_attendance(client):
-    student = Student(first_name="Test", last_initial="S", block="A", salt=b'salt', has_completed_setup=True)
-    db.session.add(student)
-    db.session.commit()
-
-    now = datetime.now(timezone.utc)
-    today = now.date()
-    tap_in_time = now - timedelta(minutes=20)
-    tap_out_time = now - timedelta(minutes=10)
-
-    tap_in = TapEvent(student_id=student.id, period="A", status="active", timestamp=tap_in_time)
-    tap_out = TapEvent(student_id=student.id, period="A", status="inactive", timestamp=tap_out_time)
-    db.session.add_all([tap_in, tap_out])
-    db.session.commit()
-
-    period_attendance = calculate_period_attendance(student.id, "A", today)
-
-    # 10 minutes of attendance = 600 seconds
-    assert period_attendance == 600
-
-def test_get_session_status(client):
-    student = Student(first_name="Test", last_initial="S", block="A", salt=b'salt', has_completed_setup=True)
-    db.session.add(student)
-    db.session.commit()
-
-    now = datetime.now(timezone.utc)
-    tap_in_time = now - timedelta(minutes=5)
-    tap_in = TapEvent(student_id=student.id, period="A", status="active", timestamp=tap_in_time)
-    db.session.add(tap_in)
-    db.session.commit()
-
-    is_active, done, duration = get_session_status(student.id, "A")
-    assert is_active is True
-    assert done is False
-    assert duration > 0
 
 def test_get_all_block_statuses(client):
     student = Student(first_name="Test", last_initial="S", block="A,B", salt=b'salt', has_completed_setup=True)

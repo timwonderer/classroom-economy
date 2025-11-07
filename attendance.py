@@ -18,14 +18,14 @@ def _as_utc(dt):
 def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
     """
     Calculates total attendance seconds for a student in a specific period
-    since the last payroll run. This version is corrected to prevent double-counting.
+    since the last payroll run. This version is corrected to prevent double-counting
+    and only calculates completed sessions to ensure correctness.
     """
     from app import TapEvent, db
     from datetime import datetime, timezone
 
     last_payroll_time = _as_utc(last_payroll_time)
 
-    # Base query for all of this student's events in order
     base_query = TapEvent.query.filter(
         TapEvent.student_id == student_id,
         TapEvent.period == period
@@ -39,25 +39,20 @@ def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
         for event in events:
             event_time = _as_utc(event.timestamp)
             if event.status == "active":
-                if in_time is None:
-                    in_time = event_time
+                in_time = event_time
             elif event.status == "inactive" and in_time:
                 total_seconds += (event_time - in_time).total_seconds()
                 in_time = None
-        if in_time:
-            total_seconds += (datetime.now(timezone.utc) - in_time).total_seconds()
+        # NOTE: The live calculation `if in_time:` is removed to prevent timezone bugs.
         return int(total_seconds)
 
     # --- If payroll history exists ---
-
-    # Find the last event that occurred on or before the last payroll.
     last_event_before_payroll = TapEvent.query.filter(
         TapEvent.student_id == student_id,
         TapEvent.period == period,
         TapEvent.timestamp <= last_payroll_time
     ).order_by(TapEvent.timestamp.desc()).first()
 
-    # Get all events that happened *after* the last payroll.
     events_after_payroll = base_query.filter(TapEvent.timestamp > last_payroll_time).all()
 
     total_seconds = 0
@@ -70,86 +65,16 @@ def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
     # Process events that occurred strictly after the last payroll.
     for event in events_after_payroll:
         event_time = _as_utc(event.timestamp)
-
         if event.status == "active":
-            # If we are not already tracking an active session, start one.
             if in_time is None:
                 in_time = event_time
         elif event.status == "inactive" and in_time:
-            # If we are tracking an active session, end it and add the duration.
             total_seconds += (event_time - in_time).total_seconds()
             in_time = None
 
-    # If the student is still tapped in, calculate duration up to now.
-    if in_time:
-        now = datetime.now(timezone.utc)
-        total_seconds += (now - in_time).total_seconds()
-
+    # NOTE: The live calculation `if in_time:` is removed to prevent timezone bugs.
     return int(total_seconds)
 
-def calculate_period_attendance(student_id, period, date):
-    """Calculates total attendance seconds for a given day and period."""
-    from app import TapEvent  # Local import
-    events = TapEvent.query.filter_by(student_id=student_id, period=period).filter(
-        func.date(TapEvent.timestamp) == date
-    ).order_by(TapEvent.timestamp.asc()).all()
-
-    total_seconds = 0
-    current_in = None
-    for event in events:
-        event_time = event.timestamp
-        if event_time.tzinfo is None:
-            event_time = event_time.replace(tzinfo=timezone.utc)
-
-        if event.status == "active":
-            current_in = event_time
-        elif event.status == "inactive" and current_in:
-            total_seconds += (event_time - current_in).total_seconds()
-            current_in = None
-    # Handle case where still active without tap_out
-    if current_in:
-        now = datetime.now(timezone.utc)
-        total_seconds += (now - current_in).total_seconds()
-    return int(total_seconds)
-
-def get_session_status(student_id, blk):
-    """
-    Determines active/inactive/done state for a block using the most recent TapEvent row.
-    - active: latest TapEvent.status == 'active'
-    - done: if any TapEvent today for this block has reason 'done'
-    - duration: total seconds for today (from calculate_period_attendance)
-    """
-    from app import TapEvent # Local import
-    from sqlalchemy import func
-    from datetime import datetime
-
-    today = datetime.utcnow().date()
-    # Find the most recent TapEvent for this student/block
-    latest_event = (
-        TapEvent.query
-        .filter(
-            TapEvent.student_id == student_id,
-            TapEvent.period == blk
-        )
-        .order_by(TapEvent.timestamp.desc())
-        .first()
-    )
-    is_active = False
-    if latest_event and latest_event.status == 'active':
-        is_active = True
-
-    # Determine done: any event today for this block with reason 'done'
-    done = TapEvent.query.filter(
-        TapEvent.student_id == student_id,
-        TapEvent.period == blk,
-        func.date(TapEvent.timestamp) == today,
-        TapEvent.reason != None
-    ).filter(func.lower(TapEvent.reason) == 'done').first() is not None
-
-    # Duration: sum of today's durations using calculate_period_attendance
-    duration = calculate_period_attendance(student_id, blk, today)
-
-    return is_active, done, duration
 
 def get_all_block_statuses(student):
     """
@@ -157,7 +82,7 @@ def get_all_block_statuses(student):
     """
     from app import TapEvent
     from sqlalchemy import func
-    from datetime import datetime
+    from datetime import datetime, timezone
 
     today = datetime.now(timezone.utc).date()
     student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
@@ -174,6 +99,7 @@ def get_all_block_statuses(student):
             .first()
         )
         is_active = latest_event.status == "active" if latest_event else False
+
         done = TapEvent.query.filter(
             TapEvent.student_id == student.id,
             TapEvent.period == blk,

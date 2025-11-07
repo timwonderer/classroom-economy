@@ -156,44 +156,6 @@
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-    // Payroll Button
-    const runPayrollBtn = document.getElementById('runPayrollBtn');
-    if (runPayrollBtn) {
-        runPayrollBtn.addEventListener('click', async function() {
-            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-            try {
-                const resp = await fetch('{{ url_for("run_payroll") }}', {
-                    method: 'POST',
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken
-                    }
-                });
-                const payload = await resp.json();
-                if (!resp.ok) throw new Error(payload.message || 'Payroll failed');
-
-                // Using a generic toast function if available, otherwise alert
-                if (typeof showToast === 'function') {
-                    showToast(payload.message || 'Payroll complete.', 'success');
-                } else {
-                    alert(payload.message || 'Payroll complete.');
-                }
-
-                runPayrollBtn.disabled = true;
-                const estEl = document.getElementById('estimatedPayout');
-                if (estEl) estEl.textContent = '$0.00';
-            } catch (e) {
-                if (typeof showToast === 'function') {
-                    showToast(e.message, 'error');
-                } else {
-                    alert('Error: ' + e.message);
-                }
-            }
-        });
-    }
-
-
     document.querySelectorAll(".approve-btn").forEach(button => {
         button.addEventListener("click", () => {
             const studentItemId = button.dataset.studentItemId;

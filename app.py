@@ -217,8 +217,6 @@ class Student(db.Model):
     has_completed_setup = db.Column(db.Boolean, default=False)
     # Privacy-aligned DOB sum for username generation (non-reversible)
     dob_sum = db.Column(db.Integer, nullable=True)
-    cumulative_daily_sec = db.Column(db.Integer, default=0, nullable=False)
-    cumulative_payroll_sec = db.Column(db.Integer, default=0, nullable=False)
 
     @property
     def full_name(self):
@@ -640,7 +638,7 @@ def setup_complete():
 # -------------------- STUDENT DASHBOARD --------------------
 
 
-from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds, get_session_status
+from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
 
 @app.route('/student/dashboard')
 @login_required
@@ -1174,13 +1172,11 @@ def student_login():
             flash("Invalid credentials", "error")
             return redirect(url_for('student_login', next=request.args.get('next')))
 
-
         # If the username hash was verified with a legacy pepper, migrate it to the
         # current pepper now that we have the plaintext username.
         if matched_pepper and matched_pepper != get_primary_pepper():
             student.username_hash = hash_username(username, student.salt)
             db.session.commit()
-
 
         # --- Set session timeout ---
         # Clear old student-specific session keys without wiping the CSRF token
@@ -1267,17 +1263,7 @@ def admin_dashboard():
     # Fetch pending redemption requests
     redemption_requests = StudentItem.query.filter_by(status='processing').order_by(StudentItem.redemption_date.asc()).all()
 
-    return render_template(
-        'admin_dashboard.html',
-        students=students,
-        transactions=transactions,
-        student_lookup=student_lookup,
-        logs=logs,
-        redemption_requests=redemption_requests,
-        current_page="dashboard",
-        next_payroll_date=next_payroll_date,
-        total_payroll_estimate=total_payroll_estimate
-    )
+    return render_template('admin_dashboard.html', students=students, transactions=transactions, student_lookup=student_lookup, logs=logs, redemption_requests=redemption_requests, current_page="dashboard")
 
 @app.route('/api/approve-redemption', methods=['POST'])
 @admin_required
@@ -1809,12 +1795,7 @@ def admin_payroll():
     if last_payroll_time:
         next_pay_date_utc = last_payroll_time + timedelta(days=14)
     else:
-        # If no payroll has run, find the next upcoming Friday
-        now_utc = datetime.now(timezone.utc)
-        days_until_friday = (4 - now_utc.weekday() + 7) % 7
-        if days_until_friday == 0: # If today is Friday, schedule for next Friday
-            days_until_friday = 7
-        next_pay_date_utc = now_utc + timedelta(days=days_until_friday)
+        next_pay_date_utc = datetime.now(timezone.utc)
 
     next_pay_date = next_pay_date_utc.astimezone(pacific)
 
