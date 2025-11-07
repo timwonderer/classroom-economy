@@ -134,8 +134,66 @@
 
 <hr class="my-4">
 
+<!-- Payroll Summary Card -->
+<div class="card mb-4">
+    <div class="card-header">
+        Payroll
+    </div>
+    <div class="card-body">
+        <p><strong>Next Scheduled Payroll:</strong>
+            {% if next_payroll_date %}
+                <span class="local-timestamp" data-timestamp="{{ next_payroll_date.isoformat() }}Z"></span>
+            {% else %}
+                N/A
+            {% endif %}
+        </p>
+        <p><strong>Estimated Payout:</strong> <span id="estimatedPayout">${{ total_payroll_estimate|default(0)|round(2) }}</span></p>
+        <button id="runPayrollBtn" class="btn btn-primary">Run Payroll Now</button>
+        <a href="{{ url_for('admin_payroll') }}" class="btn btn-secondary">View Full Payroll Details</a>
+    </div>
+</div>
+
+
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+    // Payroll Button
+    const runPayrollBtn = document.getElementById('runPayrollBtn');
+    if (runPayrollBtn) {
+        runPayrollBtn.addEventListener('click', async function() {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            try {
+                const resp = await fetch('{{ url_for("run_payroll") }}', {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+                const payload = await resp.json();
+                if (!resp.ok) throw new Error(payload.message || 'Payroll failed');
+
+                // Using a generic toast function if available, otherwise alert
+                if (typeof showToast === 'function') {
+                    showToast(payload.message || 'Payroll complete.', 'success');
+                } else {
+                    alert(payload.message || 'Payroll complete.');
+                }
+
+                runPayrollBtn.disabled = true;
+                const estEl = document.getElementById('estimatedPayout');
+                if (estEl) estEl.textContent = '$0.00';
+            } catch (e) {
+                if (typeof showToast === 'function') {
+                    showToast(e.message, 'error');
+                } else {
+                    alert('Error: ' + e.message);
+                }
+            }
+        });
+    }
+
+
     document.querySelectorAll(".approve-btn").forEach(button => {
         button.addEventListener("click", () => {
             const studentItemId = button.dataset.studentItemId;
