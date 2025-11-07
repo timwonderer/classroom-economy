@@ -1211,9 +1211,29 @@ def student_login():
 @app.route('/admin')
 @admin_required
 def admin_dashboard():
+    from payroll import calculate_payroll
+    from attendance import get_last_payroll_time
     students = Student.query.order_by(Student.first_name).all()
     transactions = Transaction.query.order_by(Transaction.timestamp.desc()).limit(20).all()
     student_lookup = {s.id: s for s in students}
+
+    # --- Payroll Info ---
+    last_payroll_time = get_last_payroll_time()
+    payroll_summary = calculate_payroll(students, last_payroll_time)
+    total_payroll_estimate = sum(payroll_summary.values())
+
+    pacific = pytz.timezone('America/Los_Angeles')
+    if last_payroll_time:
+        next_pay_date_utc = last_payroll_time + timedelta(days=14)
+    else:
+        now_utc = datetime.now(timezone.utc)
+        days_until_friday = (4 - now_utc.weekday() + 7) % 7
+        if days_until_friday == 0:
+            days_until_friday = 7
+        next_pay_date_utc = now_utc + timedelta(days=days_until_friday)
+    next_payroll_date = next_pay_date_utc.astimezone(pacific)
+
+
     # Use TapEvent for logs (append-only) - fetch with student name
     raw_logs = (
         db.session.query(

@@ -88,12 +88,14 @@
 </div>
 <script>
 document.getElementById('runPayrollBtn').addEventListener('click', async function() {
+  const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
   try {
     const resp = await fetch('{{ url_for("run_payroll") }}', {
       method: 'POST',
       headers: {
         'X-Requested-With': 'XMLHttpRequest',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-CSRFToken': csrfToken
       }
     });
     const payload = await resp.json();

@@ -134,6 +134,26 @@
 
 <hr class="my-4">
 
+<!-- Payroll Summary Card -->
+<div class="card mb-4">
+    <div class="card-header">
+        Payroll
+    </div>
+    <div class="card-body">
+        <p><strong>Next Scheduled Payroll:</strong>
+            {% if next_payroll_date %}
+                <span class="local-timestamp" data-timestamp="{{ next_payroll_date.isoformat() }}Z"></span>
+            {% else %}
+                N/A
+            {% endif %}
+        </p>
+        <p><strong>Estimated Payout:</strong> <span id="estimatedPayout">${{ total_payroll_estimate|default(0)|round(2) }}</span></p>
+        <button id="runPayrollBtn" class="btn btn-primary">Run Payroll Now</button>
+        <a href="{{ url_for('admin_payroll') }}" class="btn btn-secondary">View Full Payroll Details</a>
+    </div>
+</div>
+
+
 <script>
 document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".approve-btn").forEach(button => {
