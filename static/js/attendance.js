@@ -21,43 +21,83 @@ function createToast(message, isError = false) {
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  document.querySelectorAll(".tap-btn").forEach(button => {
-    button.addEventListener("click", () => {
-      const period = button.dataset.period;
-      const action = button.dataset.action;
-      const pin = prompt("Enter your PIN to confirm:");
+    const hallPassModal = new bootstrap.Modal(document.getElementById('hallPassModal'));
 
-      if (!pin) return;
+    // Handle Tap In and Tap Out button clicks
+    document.querySelectorAll(".tap-btn").forEach(button => {
+        button.addEventListener("click", () => {
+            const period = button.dataset.period;
+            const action = button.dataset.action;
 
-      button.disabled = true;
-      fetch("/api/tap", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').getAttribute('content') },
-        body: JSON.stringify({ period, action, pin })
-      })
-        .then(r => r.json())
-        .then(data => {
-          if (data.status === "ok") {
-            updateBlockUI(period, data.active, data.duration, data.projected_pay);
-            createToast(`Tap ${action === "tap_in" ? "In" : "Out"} successful`);
-          } else {
-            createToast("Tap failed: " + (data.error || "Unknown error"), true);
-          }
-        })
-        .catch(err => {
-          console.error("Tap error:", err);
-          createToast("Network error. Try again.", true);
-        })
-        .finally(() => {
-          // Re-enable the correct button based on the new state
-          const tapInBtn = document.querySelector(`#tapIn-${period}`);
-          const tapOutBtn = document.querySelector(`#tapOut-${period}`);
-          if (tapInBtn) tapInBtn.disabled = data.active;
-          if (tapOutBtn) tapOutBtn.disabled = !data.active;
+            if (action === 'tap_out') {
+                // Show the modal for tap out
+                document.getElementById('hallPassPeriod').value = period;
+                document.getElementById('hallPassForm').reset(); // Clear previous entries
+                hallPassModal.show();
+            } else {
+                // Keep the simple PIN prompt for tap in
+                const pin = prompt("Enter your PIN to confirm:");
+                if (!pin) return;
+                performTap(period, action, pin);
+            }
         });
     });
-  });
+
+    // Handle the hall pass request from the modal
+    document.getElementById('confirmHallPassBtn').addEventListener('click', () => {
+        const period = document.getElementById('hallPassPeriod').value;
+        const reason = document.getElementById('hallPassReason').value;
+        const pin = document.getElementById('hallPassPin').value;
+        const action = 'tap_out';
+
+        if (!reason) {
+            createToast("Please select a reason.", true);
+            return;
+        }
+        if (!pin) {
+            createToast("Please enter your PIN.", true);
+            return;
+        }
+
+        performTap(period, action, pin, reason);
+        hallPassModal.hide();
+    });
 });
+
+function performTap(period, action, pin, reason = null) {
+    const tapButton = document.querySelector(`.tap-btn[data-period='${period}'][data-action='${action}']`);
+    if (tapButton) tapButton.disabled = true;
+
+    const payload = { period, action, pin };
+    if (reason) {
+        payload.reason = reason;
+    }
+
+    fetch("/api/tap", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').getAttribute('content') },
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.status === "ok") {
+            updateBlockUI(period, data.active, data.duration, data.projected_pay);
+            let message = `Tap ${action === "tap_in" ? "In" : "Out"} successful`;
+            if (action === 'tap_out') {
+              message = "Hall pass request submitted!";
+            }
+            createToast(message);
+        } else {
+            createToast("Request failed: " + (data.error || "Unknown error"), true);
+        }
+        // The UI update function will correctly set the button states.
+    })
+    .catch(err => {
+        console.error("Tap error:", err);
+        createToast("Network error. Try again.", true);
+        if (tapButton) tapButton.disabled = false; // Re-enable on error
+    });
+}
 
 // Poll the server every 10 seconds to refresh block status
 setInterval(() => {

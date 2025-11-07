@@ -60,31 +60,15 @@
 </div>
     
 
-    <div class="mb-4">
-        <label for="block-select">Filter by Block:</label>
-        <select id="block-select" onchange="changeBlock()" class="form-select mb-3" style="width: 200px;" aria-label="Select Block">
-            {% for block in blocks %}
-            <option value="{{ block }}" {% if block == selected_block %}selected{% endif %}>Block {{ block }}</option>
-            {% endfor %}
-        </select>
-    </div>
-
-    <script>
-        function changeBlock() {
-            
-            let block = document.getElementById("block-select").value;
-            window.location.href = "/admin/students?block=" + block;
-        }
-    </script>
-
     <table class="table table-bordered table-striped table-hover mt-4">
         <thead class="table-dark">
             <tr>
                 <th>Name</th>
-                <th>Status</th>
+                <th>Block</th>
                 <th>Checking</th>
                 <th>Savings</th>
-                <th>Setup</th>
+                <th>Hall Passes</th>
+                <th>Setup Complete</th>
             </tr>
         </thead>
         <tbody>
@@ -95,10 +79,11 @@
                         {{ student.full_name if student else "Unknown" }}
                     </a>
                 </td>
-                <td>{{ student.status }}</td>
+                <td>{{ student.block }}</td>
                 <td>${{ "%.2f"|format(student.checking_balance) }}</td>
                 <td>${{ "%.2f"|format(student.savings_balance) }}</td>
-                <td>{{ 'Yes' if student.setup_status else 'No' }}</td>
+                <td>{{ student.hall_passes }}</td>
+                <td>{{ 'Yes' if student.has_completed_setup else 'No' }}</td>
             </tr>
             {% endfor %}
         </tbody>

@@ -198,8 +198,8 @@ class Student(db.Model):
     pin_hash = db.Column(db.Text, nullable=True)
     passphrase_hash = db.Column(db.Text, nullable=True)
 
-    passes_left = db.Column(db.Integer, default=3)
-    
+    hall_passes = db.Column(db.Integer, default=3)
+
     is_rent_enabled = db.Column(db.Boolean, default=True)
     is_property_tax_enabled = db.Column(db.Boolean, default=False)
     owns_seat = db.Column(db.Boolean, default=False)
@@ -332,6 +332,20 @@ class TapEvent(db.Model):
     reason = db.Column(db.String(50), nullable=True)
 
     student = db.relationship("Student", backref="tap_events")
+
+# ---- Hall Pass Log Model ----
+class HallPassLog(db.Model):
+    __tablename__ = 'hall_pass_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    reason = db.Column(db.String(50), nullable=False)
+    status = db.Column(db.String(20), default='pending', nullable=False) # pending, approved, rejected, left_class, returned
+    request_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    decision_time = db.Column(db.DateTime, nullable=True)
+    left_time = db.Column(db.DateTime, nullable=True)
+    return_time = db.Column(db.DateTime, nullable=True)
+
+    student = db.relationship('Student', backref='hall_pass_logs')
 
 
 # -------------------- STORE MODELS --------------------
@@ -922,7 +936,16 @@ def purchase_item():
         return jsonify({"status": "error", "message": "This item is out of stock."}), 400
 
     if item.limit_per_student is not None:
-        purchase_count = StudentItem.query.filter_by(student_id=student.id, store_item_id=item.id).count()
+        if item.item_type == 'hall_pass':
+            # For hall passes, check transaction history since no StudentItem is created
+            purchase_count = Transaction.query.filter_by(
+                student_id=student.id,
+                type='purchase',
+                description=f"Purchase: {item.name}"
+            ).count()
+        else:
+            purchase_count = StudentItem.query.filter_by(student_id=student.id, store_item_id=item.id).count()
+
         if purchase_count >= item.limit_per_student:
             return jsonify({"status": "error", "message": "You have reached the purchase limit for this item."}), 400
 
@@ -942,14 +965,20 @@ def purchase_item():
         if item.inventory is not None:
             item.inventory -= 1
 
-        # Create the student's item
+        # --- Handle special item type: Hall Pass ---
+        if item.item_type == 'hall_pass':
+            student.hall_passes += 1
+            db.session.commit()
+            return jsonify({"status": "success", "message": f"You purchased a Hall Pass! Your new balance is {student.hall_passes}."})
+
+        # --- Standard Item Logic ---
         expiry_date = None
         if item.item_type == 'delayed' and item.auto_expiry_days:
             expiry_date = datetime.now(timezone.utc) + timedelta(days=item.auto_expiry_days)
 
         student_item_status = 'purchased'
         if item.item_type == 'immediate':
-            student_item_status = 'redeemed' # Immediate use items are redeemed instantly
+            student_item_status = 'redeemed'
         elif item.item_type == 'collective':
             student_item_status = 'pending'
         else: # delayed
@@ -967,7 +996,6 @@ def purchase_item():
 
         # --- Collective Item Logic ---
         if item.item_type == 'collective':
-            # Check if all students in the same block have purchased this item
             students_in_block = Student.query.filter_by(block=student.block).all()
             student_ids_in_block = {s.id for s in students_in_block}
 
@@ -977,14 +1005,11 @@ def purchase_item():
             ).scalar()
 
             if purchased_students_count >= len(student_ids_in_block):
-                # Threshold met, update all pending items for this collective goal to processing
                 StudentItem.query.filter(
                     StudentItem.store_item_id == item.id,
                     StudentItem.status == 'pending'
                 ).update({"status": "processing"})
                 db.session.commit()
-                # This flash won't be seen by the user due to the JSON response,
-                # but it's good for logging/debugging. A more robust solution might use websockets.
                 app.logger.info(f"Collective goal '{item.name}' for block {student.block} has been met!")
 
         return jsonify({"status": "success", "message": f"You purchased {item.name}!"})
@@ -1456,6 +1481,88 @@ def admin_delete_store_item(item_id):
     flash(f"'{item.name}' has been deactivated and removed from the store.", "success")
     return redirect(url_for('admin_store_management'))
 
+# -------------------- ADMIN HALL PASS MANAGEMENT --------------------
+@app.route('/admin/hall-pass')
+@admin_required
+def admin_hall_pass():
+    pending_requests = HallPassLog.query.filter_by(status='pending').order_by(HallPassLog.request_time.asc()).all()
+    approved_queue = HallPassLog.query.filter_by(status='approved').order_by(HallPassLog.decision_time.asc()).all()
+    out_of_class = HallPassLog.query.filter_by(status='left_class').order_by(HallPassLog.left_time.asc()).all()
+
+    return render_template(
+        'admin_hall_pass.html',
+        pending_requests=pending_requests,
+        approved_queue=approved_queue,
+        out_of_class=out_of_class,
+        current_page="hall_pass"
+    )
+
+@app.route('/api/hall-pass/<int:pass_id>/<string:action>', methods=['POST'])
+@admin_required
+def handle_hall_pass_action(pass_id, action):
+    log_entry = HallPassLog.query.get_or_404(pass_id)
+    student = log_entry.student
+    now = datetime.now(timezone.utc)
+
+    if action == 'approve':
+        if log_entry.status != 'pending':
+            return jsonify({"status": "error", "message": "Pass is not pending."}), 400
+        if student.hall_passes <= 0:
+            return jsonify({"status": "error", "message": "Student has no hall passes left."}), 400
+
+        log_entry.status = 'approved'
+        log_entry.decision_time = now
+        student.hall_passes -= 1
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Pass approved."})
+
+    elif action == 'reject':
+        if log_entry.status != 'pending':
+            return jsonify({"status": "error", "message": "Pass is not pending."}), 400
+
+        log_entry.status = 'rejected'
+        log_entry.decision_time = now
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Pass rejected."})
+
+    elif action == 'leave':
+        if log_entry.status != 'approved':
+            return jsonify({"status": "error", "message": "Pass is not approved."}), 400
+
+        # Create a tap-out event for attendance tracking
+        tap_out_event = TapEvent(
+            student_id=student.id,
+            period="HALLPASS", # Use a special period for hall pass events
+            status='inactive',
+            timestamp=now,
+            reason=log_entry.reason
+        )
+        log_entry.status = 'left_class'
+        log_entry.left_time = now
+        db.session.add(tap_out_event)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Student has left the class."})
+
+    elif action == 'return':
+        if log_entry.status != 'left_class':
+            return jsonify({"status": "error", "message": "Student is not out of class."}), 400
+
+        # Create a tap-in event to close the loop
+        tap_in_event = TapEvent(
+            student_id=student.id,
+            period="HALLPASS",
+            status='active',
+            timestamp=now,
+            reason="Return from hall pass"
+        )
+        log_entry.status = 'returned'
+        log_entry.return_time = now
+        db.session.add(tap_in_event)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Student has returned."})
+
+    return jsonify({"status": "error", "message": "Invalid action."}), 400
+
 @app.route('/admin/transactions')
 @admin_required
 def admin_transactions():
@@ -1553,6 +1660,21 @@ def student_detail(student_id):
     # Fetch most recent TapEvent for this student
     latest_tap_event = TapEvent.query.filter_by(student_id=student.id).order_by(TapEvent.timestamp.desc()).first()
     return render_template('student_detail.html', student=student, transactions=transactions, student_items=student_items, latest_tap_event=latest_tap_event)
+
+@app.route('/admin/student/<int:student_id>/set-hall-passes', methods=['POST'])
+@admin_required
+def set_hall_passes(student_id):
+    student = Student.query.get_or_404(student_id)
+    new_balance = request.form.get('hall_passes', type=int)
+
+    if new_balance is not None and new_balance >= 0:
+        student.hall_passes = new_balance
+        db.session.commit()
+        flash(f"Successfully updated {student.full_name}'s hall pass balance to {new_balance}.", "success")
+    else:
+        flash("Invalid hall pass balance provided.", "error")
+
+    return redirect(url_for('student_detail', student_id=student_id))
 
 
 @app.route('/admin/void-transaction/<int:transaction_id>', methods=['POST'])
@@ -1911,17 +2033,16 @@ def handle_tap():
 
     pin = data.get("pin", "").strip()
 
-
     if not check_password_hash(student.pin_hash or '', pin):
         app.logger.warning(f"TAP ERROR: Invalid PIN for student {student.id}")
         return jsonify({"error": "Invalid PIN"}), 403
 
-
     valid_periods = [b.strip().upper() for b in student.block.split(',') if b.strip()] if student and isinstance(student.block, str) else []
     period = data.get("period", "").upper()
     action = data.get("action")
+    reason = data.get("reason")
 
-    app.logger.info(f"TAP DEBUG: student_id={getattr(student, 'id', None)}, valid_periods={valid_periods}, period={period}, action={action}")
+    app.logger.info(f"TAP DEBUG: student_id={getattr(student, 'id', None)}, valid_periods={valid_periods}, period={period}, action={action}, reason={reason}")
 
     if period not in valid_periods or action not in ["tap_in", "tap_out"]:
         app.logger.warning(f"TAP ERROR: Invalid period or action: period={period}, valid_periods={valid_periods}, action={action}")
@@ -1929,9 +2050,49 @@ def handle_tap():
 
     now = datetime.now(timezone.utc)
 
+    # --- Hall Pass Logic for Tap Out ---
+    if action == 'tap_out':
+        if not reason:
+            return jsonify({"error": "A reason is required for a hall pass."}), 400
+
+        # Special case for "Done for the day" - this is the old "tap out" behavior
+        if reason.lower() in ['done', 'done for the day']:
+            # Fall through to the standard TapEvent creation logic below
+            pass
+        else:
+            # All other reasons go through the hall pass approval flow
+            if student.hall_passes <= 0:
+                return jsonify({"error": "Insufficient hall passes."}), 400
+
+            # Create a hall pass log entry
+            hall_pass_log = HallPassLog(
+                student_id=student.id,
+                reason=reason,
+                status='pending',
+                request_time=now
+            )
+            db.session.add(hall_pass_log)
+            db.session.commit()
+
+            # Since the student is just requesting, they are still 'active'.
+            # We need to return the current state to the UI.
+            is_active = True
+            last_payroll_time = get_last_payroll_time()
+            duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time)
+            RATE_PER_SECOND = 0.25 / 60
+            projected_pay = duration * RATE_PER_SECOND
+
+            return jsonify({
+                "status": "ok",
+                "message": "Hall pass requested.",
+                "active": is_active,
+                "duration": duration,
+                "projected_pay": projected_pay
+            })
+
+    # --- Standard Tap In/Out Logic ---
     try:
         status = "active" if action == "tap_in" else "inactive"
-        reason = data.get("reason") if action == "tap_out" else None
 
         # Prevent duplicate tap-in or tap-out
         latest_event = (
@@ -1955,7 +2116,7 @@ def handle_tap():
             period=period,
             status=status,
             timestamp=now,  # UTC-aware
-            reason=reason
+            reason=reason # This will be null for tap_in
         )
         db.session.add(event)
         db.session.commit()
