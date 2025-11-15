@@ -6,13 +6,12 @@
 </head>
 <body class="p-4">
     <div id="flashToastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index:1050;"></div>
-    <h2>🧑‍🎓 {{ student_name }} (Block {{ student.block }})</h2>
+    <h2>🧑‍🎓 {{ student.full_name }} (Block {{ student.block }})</h2>
 
     <!-- SECTION 1: STUDENT INFO -->
     <div class="card mb-4">
         <div class="card-header bg-info text-white">Student Information</div>
         <div class="card-body">
-
             <p><strong>Checking Balance:</strong> ${{ "%.2f"|format(student.checking_balance) }}</p>
             <p><strong>Savings Balance:</strong> ${{ "%.2f"|format(student.savings_balance) }}</p>
             <hr>
@@ -28,20 +27,40 @@
         </div>
     </div>
 
+    <!-- Hall Pass Management Section -->
+    <div class="card mb-4">
+        <div class="card-header bg-warning text-dark">Hall Pass Management</div>
+        <div class="card-body">
+            <p><strong>Current Hall Passes:</strong> {{ student.hall_passes }}</p>
+            <form action="{{ url_for('set_hall_passes', student_id=student.id) }}" method="post" class="row g-3 align-items-center">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <div class="col-auto">
+                    <label for="hall_passes" class="form-label">Set New Balance:</label>
+                </div>
+                <div class="col-auto">
+                    <input type="number" class="form-control" name="hall_passes" id="hall_passes" value="{{ student.hall_passes }}" min="0" required>
+                </div>
+                <div class="col-auto">
+                    <button type="submit" class="btn btn-primary">Update</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- SECTION 2: SETTINGS -->
     <div class="card mb-4">
         <div class="card-header bg-secondary text-white">Residency Information</div>
         <div class="card-body">
-            <p><strong>Homeownership:</strong> {{ 'Yes' if student.owns_property else 'No' }}</p>
-            <p><strong>Renter:</strong> {{ 'Yes' if student.is_renter else 'No' }}</p>
+            <p><strong>Homeownership:</strong> {{ 'Yes' if student.owns_seat else 'No' }}</p>
+            <p><strong>Renter:</strong> {{ 'Yes' if student.is_rent_enabled else 'No' }}</p>
 
-            {% if student.is_renter %}
+            {% if student.is_rent_enabled %}
             <ul>
               <li><strong>Most Recent Rent Payment:</strong>
                 {% if student.rent_last_paid %}
                   {{ student.rent_last_paid|format_datetime('%Y-%m-%d') }}
                 {% else %}
-                  — 
+                  —
                 {% endif %}
               </li>
               <li><strong>Overdue:</strong>
@@ -54,13 +73,13 @@
             </ul>
             {% endif %}
 
-            {% if student.owns_property %}
+            {% if student.owns_seat %}
             <ul>
               <li><strong>Most Recent Property Tax Payment:</strong>
                 {% if student.property_tax_last_paid %}
                   {{ student.property_tax_last_paid|format_datetime('%Y-%m-%d') }}
                 {% else %}
-                  — 
+                  —
                 {% endif %}
               </li>
               <li><strong>Overdue:</strong>
