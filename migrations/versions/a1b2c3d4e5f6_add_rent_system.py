@@ -47,7 +47,7 @@ def upgrade():
     # Insert default rent settings
     op.execute("""
         INSERT INTO rent_settings (rent_amount, due_day_of_month, late_fee, grace_period_days, is_enabled, updated_at)
-        VALUES (50.0, 1, 10.0, 3, 1, datetime('now'))
+        VALUES (50.0, 1, 10.0, 3, true, CURRENT_TIMESTAMP)
     """)
 
 
