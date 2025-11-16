@@ -20,6 +20,7 @@ from forms import StudentLoginForm, AdminLoginForm
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta, timezone
+from calendar import monthrange
 from functools import wraps
 import pytz
 from sqlalchemy import or_, func, text
@@ -382,6 +383,32 @@ class StudentItem(db.Model):
 
     # Relationships
     student = db.relationship('Student', backref=db.backref('items', lazy='dynamic'))
+
+
+# -------------------- RENT SETTINGS MODEL --------------------
+class RentSettings(db.Model):
+    __tablename__ = 'rent_settings'
+    id = db.Column(db.Integer, primary_key=True)
+    rent_amount = db.Column(db.Float, default=50.0)
+    due_day_of_month = db.Column(db.Integer, default=1)  # Day of month rent is due (1-31)
+    late_fee = db.Column(db.Float, default=10.0)
+    grace_period_days = db.Column(db.Integer, default=3)  # Days after due date before late fee
+    is_enabled = db.Column(db.Boolean, default=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class RentPayment(db.Model):
+    __tablename__ = 'rent_payments'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    period = db.Column(db.String(10), nullable=False)  # Block/Period (e.g., 'A', 'B', 'C')
+    amount_paid = db.Column(db.Float, nullable=False)
+    period_month = db.Column(db.Integer, nullable=False)  # Month (1-12)
+    period_year = db.Column(db.Integer, nullable=False)  # Year (e.g., 2025)
+    payment_date = db.Column(db.DateTime, default=datetime.utcnow)
+    was_late = db.Column(db.Boolean, default=False)
+    late_fee_charged = db.Column(db.Float, default=0.0)
+
+    student = db.relationship('Student', backref='rent_payments')
 
 
 # ---- Admin Model ----
@@ -1152,6 +1179,158 @@ def apply_savings_interest(student, annual_rate=0.045):
         db.session.add(interest_tx)
         db.session.commit()
 
+# -------------------- RENT HELPERS --------------------
+
+def _calculate_rent_deadlines(settings, reference_date=None):
+    """Return the due date and grace end date for the active month."""
+    reference_date = reference_date or datetime.now()
+    current_year = reference_date.year
+    current_month = reference_date.month
+    last_day_of_month = monthrange(current_year, current_month)[1]
+    due_day = min(settings.due_day_of_month, last_day_of_month)
+    due_date = datetime(current_year, current_month, due_day)
+    grace_end_date = due_date + timedelta(days=settings.grace_period_days)
+    return due_date, grace_end_date
+
+
+# -------------------- STUDENT RENT ROUTES --------------------
+@app.route('/student/rent')
+@login_required
+def student_rent():
+    """View rent status and payment history (per period)"""
+    student = get_logged_in_student()
+    settings = RentSettings.query.first()
+
+    if not settings or not settings.is_enabled:
+        flash("Rent system is currently disabled.", "info")
+        return redirect(url_for('student_dashboard'))
+
+    # Get student's periods
+    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+
+    # Calculate rent status for each period
+    now = datetime.now()
+    due_date, grace_end_date = _calculate_rent_deadlines(settings, now)
+    current_month = now.month
+    current_year = now.year
+
+    period_status = {}
+    for period in student_blocks:
+        # Check if already paid this month for this period
+        payment = RentPayment.query.filter_by(
+            student_id=student.id,
+            period=period,
+            period_month=current_month,
+            period_year=current_year
+        ).first()
+
+        is_paid = payment is not None
+        is_late = now > grace_end_date and not is_paid
+
+        period_status[period] = {
+            'is_paid': is_paid,
+            'is_late': is_late,
+            'payment': payment
+        }
+
+    # Get payment history (all periods)
+    payment_history = RentPayment.query.filter_by(student_id=student.id).order_by(
+        RentPayment.payment_date.desc()
+    ).limit(24).all()  # Increased to show more history with multiple periods
+
+    return render_template('student_rent.html',
+                          student=student,
+                          settings=settings,
+                          student_blocks=student_blocks,
+                          period_status=period_status,
+                          due_date=due_date,
+                          grace_end_date=grace_end_date,
+                          payment_history=payment_history)
+
+
+@app.route('/student/rent/pay/<period>', methods=['POST'])
+@login_required
+def student_rent_pay(period):
+    """Process rent payment for a specific period"""
+    student = get_logged_in_student()
+    settings = RentSettings.query.first()
+
+    if not settings or not settings.is_enabled:
+        flash("Rent system is currently disabled.", "error")
+        return redirect(url_for('student_dashboard'))
+
+    if not student.is_rent_enabled:
+        flash("Rent is not enabled for your account.", "error")
+        return redirect(url_for('student_dashboard'))
+
+    # Validate period
+    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+    period = period.upper()
+    if period not in student_blocks:
+        flash("Invalid period.", "error")
+        return redirect(url_for('student_rent'))
+
+    now = datetime.now()
+    current_month = now.month
+    current_year = now.year
+
+    # Check if already paid this month for this period
+    existing_payment = RentPayment.query.filter_by(
+        student_id=student.id,
+        period=period,
+        period_month=current_month,
+        period_year=current_year
+    ).first()
+
+    if existing_payment:
+        flash(f"You have already paid rent for Period {period} this month!", "info")
+        return redirect(url_for('student_rent'))
+
+    # Calculate if late and total amount
+    due_date, grace_end_date = _calculate_rent_deadlines(settings, now)
+    is_late = now > grace_end_date
+
+    total_amount = settings.rent_amount
+    late_fee = 0.0
+
+    if is_late:
+        late_fee = settings.late_fee
+        total_amount += late_fee
+
+    # Check if student has enough funds
+    if student.checking_balance < total_amount:
+        flash(f"Insufficient funds. You need ${total_amount:.2f} but only have ${student.checking_balance:.2f}.", "error")
+        return redirect(url_for('student_rent'))
+
+    # Process payment
+    # Deduct from checking account
+    transaction = Transaction(
+        student_id=student.id,
+        amount=-total_amount,
+        account_type='checking',
+        type='Rent Payment',
+        description=f'Rent for Period {period} - {now.strftime("%B %Y")}' + (f' (includes ${late_fee:.2f} late fee)' if is_late else '')
+    )
+    db.session.add(transaction)
+
+    # Record rent payment
+    payment = RentPayment(
+        student_id=student.id,
+        period=period,
+        amount_paid=total_amount,
+        period_month=current_month,
+        period_year=current_year,
+        was_late=is_late,
+        late_fee_charged=late_fee
+    )
+    db.session.add(payment)
+
+    db.session.commit()
+
+    flash(f"Rent payment for Period {period} (${total_amount:.2f}) successful!", "success")
+    return redirect(url_for('student_rent'))
+
+
 # -------------------- STUDENT LOGIN --------------------
 @app.route('/student/login', methods=['GET', 'POST'])
 def student_login():
@@ -1525,6 +1704,43 @@ def admin_delete_store_item(item_id):
     db.session.commit()
     flash(f"'{item.name}' has been deactivated and removed from the store.", "success")
     return redirect(url_for('admin_store_management'))
+
+# -------------------- RENT SETTINGS ROUTES --------------------
+@app.route('/admin/rent-settings', methods=['GET', 'POST'])
+@admin_required
+def admin_rent_settings():
+    """Configure rent settings"""
+    # Get or create rent settings (singleton)
+    settings = RentSettings.query.first()
+    if not settings:
+        settings = RentSettings()
+        db.session.add(settings)
+        db.session.commit()
+
+    if request.method == 'POST':
+        settings.rent_amount = float(request.form.get('rent_amount'))
+        settings.due_day_of_month = int(request.form.get('due_day_of_month'))
+        settings.late_fee = float(request.form.get('late_fee'))
+        settings.grace_period_days = int(request.form.get('grace_period_days'))
+        settings.is_enabled = request.form.get('is_enabled') == 'on'
+
+        db.session.commit()
+        flash("Rent settings updated successfully!", "success")
+        return redirect(url_for('admin_rent_settings'))
+
+    # Get statistics
+    total_students = Student.query.filter_by(is_rent_enabled=True).count()
+    current_month = datetime.now().month
+    current_year = datetime.now().year
+    paid_this_month = RentPayment.query.filter_by(
+        period_month=current_month,
+        period_year=current_year
+    ).count()
+
+    return render_template('admin_rent_settings.html',
+                          settings=settings,
+                          total_students=total_students,
+                          paid_this_month=paid_this_month)
 
 @app.route('/admin/transactions')
 @admin_required
@@ -2079,7 +2295,48 @@ def download_csv_template():
     return send_file(template_path, as_attachment=True, download_name="student_upload_template.csv", mimetype='text/csv')
 
 
+@app.route('/admin/export-students')
+@admin_required
+def export_students():
+    """Export all student data to CSV"""
+    import csv
+    import io
 
+    # Create CSV in memory
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # Write header
+    writer.writerow([
+        'First Name', 'Last Initial', 'Block', 'Checking Balance',
+        'Savings Balance', 'Total Earnings', 'Insurance Plan',
+        'Rent Enabled', 'Has Completed Setup'
+    ])
+
+    # Write student data
+    students = Student.query.order_by(Student.first_name, Student.last_initial).all()
+    for student in students:
+        writer.writerow([
+            student.first_name,
+            student.last_initial,
+            student.block,
+            f"{student.checking_balance:.2f}",
+            f"{student.savings_balance:.2f}",
+            f"{student.total_earnings:.2f}",
+            student.insurance_plan if student.insurance_plan != 'none' else 'None',
+            'Yes' if student.is_rent_enabled else 'No',
+            'Yes' if student.has_completed_setup else 'No'
+        ])
+
+    # Prepare response
+    output.seek(0)
+    filename = f"students_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+
+    return Response(
+        output.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename={filename}'}
+    )
 
 
 # --- Append-only TapEvent API route ---
