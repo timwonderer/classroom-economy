@@ -1027,7 +1027,7 @@ def student_purchase_insurance(policy_id):
                 return redirect(url_for('student_insurance_marketplace'))
 
     # Check sufficient funds
-    if student.balance_checking < policy.premium:
+    if student.checking_balance < policy.premium:
         flash("Insufficient funds to purchase this insurance policy.", "danger")
         return redirect(url_for('student_insurance_marketplace'))
 
@@ -1044,17 +1044,13 @@ def student_purchase_insurance(policy_id):
     )
     db.session.add(enrollment)
 
-    # Charge premium
-    student.balance_checking -= policy.premium
-
-    # Create transaction
+    # Create transaction to charge premium
     transaction = Transaction(
         student_id=student.id,
         amount=-policy.premium,
-        transaction_type='insurance_premium',
-        description=f"Insurance premium: {policy.title}",
-        block=student.block,
-        timestamp=datetime.utcnow()
+        account_type='checking',
+        type='insurance_premium',
+        description=f"Insurance premium: {policy.title}"
     )
     db.session.add(transaction)
 
@@ -1613,17 +1609,24 @@ def student_login():
             Student.username_hash.isnot(None)
         ).all()
 
-        for s in students_with_matching_username_structure:
-            candidate_hash = hash_username(username, s.salt)
-            if candidate_hash == s.username_hash:
-                student = s
-                break
+        try:
+            for s in students_with_matching_username_structure:
+                candidate_hash = hash_username(username, s.salt)
+                if candidate_hash == s.username_hash:
+                    student = s
+                    break
 
-        if not student or not check_password_hash(student.pin_hash or '', pin):
+            if not student or not check_password_hash(student.pin_hash or '', pin):
+                if is_json:
+                    return jsonify(status="error", message="Invalid credentials"), 401
+                flash("Invalid credentials", "error")
+                return redirect(url_for('student_login', next=request.args.get('next')))
+        except Exception as e:
+            app.logger.error(f"Error during student login authentication: {str(e)}")
             if is_json:
-                return jsonify(status="error", message="Invalid credentials"), 401
-            flash("Invalid credentials", "error")
-            return redirect(url_for('student_login', next=request.args.get('next')))
+                return jsonify(status="error", message="An error occurred during login. Please try again."), 500
+            flash("An error occurred during login. Please try again.", "error")
+            return redirect(url_for('student_login'))
 
         # --- Set session timeout ---
         # Clear old student-specific session keys without wiping the CSRF token
@@ -2168,18 +2171,16 @@ def admin_process_claim(claim_id):
             deposit_amount = form.approved_amount.data if form.approved_amount.data else claim.claim_amount
             claim.approved_amount = deposit_amount
 
-            # Auto-deposit to student's checking account
+            # Auto-deposit to student's checking account via transaction
             student = claim.student
-            student.balance_checking += deposit_amount
 
             # Create transaction record
             transaction = Transaction(
                 student_id=student.id,
                 amount=deposit_amount,
-                transaction_type='insurance_claim',
-                description=f"Insurance claim approved: {claim.policy.title}",
-                block=student.block,
-                timestamp=datetime.utcnow()
+                account_type='checking',
+                type='insurance_claim',
+                description=f"Insurance claim approved: {claim.policy.title}"
             )
             db.session.add(transaction)
 
