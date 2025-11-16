@@ -7,7 +7,6 @@ Create Date: 2025-11-16 06:00:00.000000
 """
 from alembic import op
 import sqlalchemy as sa
-from sqlalchemy import text
 
 
 # revision identifiers, used by Alembic.
@@ -47,19 +46,10 @@ def upgrade():
 
     # Insert default rent settings
     op.execute(
-        text(
-            """
-            INSERT INTO rent_settings (rent_amount, due_day_of_month, late_fee, grace_period_days, is_enabled, updated_at)
-            VALUES (:rent_amount, :due_day, :late_fee, :grace_period, :enabled, CURRENT_TIMESTAMP)
-            """
-        ),
-        {
-            "rent_amount": 50.0,
-            "due_day": 1,
-            "late_fee": 10.0,
-            "grace_period": 3,
-            "enabled": True,
-        },
+        """
+        INSERT INTO rent_settings (rent_amount, due_day_of_month, late_fee, grace_period_days, is_enabled, updated_at)
+        VALUES (50.0, 1, 10.0, 3, TRUE, CURRENT_TIMESTAMP)
+        """
     )
 
 
