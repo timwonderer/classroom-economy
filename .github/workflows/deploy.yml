@@ -30,8 +30,11 @@ jobs:
           echo 'Navigating to project directory...'
           cd ~/classroom-economy
 
-          echo 'Pulling latest changes from main...'
-          git pull origin main
+          echo 'Fetching latest changes from main...'
+          git fetch origin main
+
+          echo 'Resetting to match remote main branch...'
+          git reset --hard origin/main
 
           echo 'Activating virtual environment...'
           source venv/bin/activate
