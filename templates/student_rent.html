@@ -1,30 +1,34 @@
 {% extends 'layout_student.html' %}
-{% block title %}Rent Payment - Classroom Economy{% endblock %}
+
+{% block title %}Rent Payment{% endblock %}
 
 {% block content %}
-<h2 class="mb-4">🏠 Rent Payment</h2>
+<div class="page-header">
+    <h1>🏠 Rent Payment</h1>
+    <p class="subtitle">Manage your monthly rent for each period</p>
+</div>
 
 <div class="alert alert-info mb-4">
     <strong>💡 Multi-Period Rent:</strong> You are enrolled in <strong>{{ student_blocks|length }} period(s)</strong>.
     Rent must be paid separately for each period below.
 </div>
 
-<div class="row mb-4">
-    <div class="col-md-12">
-        <div class="card">
-            <div class="card-header bg-primary text-white">
-                <h4 class="mb-0">💰 Your Balance</h4>
+<div class="card mb-4">
+    <div class="card-header">
+        💰 Your Balance
+    </div>
+    <div class="card-body">
+        <div class="row text-center">
+            <div class="col-md-6">
+                <div class="p-3 bg-primary bg-opacity-10 rounded">
+                    <h6 class="text-muted mb-2">Checking</h6>
+                    <h3 class="text-primary mb-0">${{ "%.2f"|format(student.checking_balance) }}</h3>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="row text-center">
-                    <div class="col-md-6">
-                        <h5>Checking</h5>
-                        <h2 class="text-success">${{ "%.2f"|format(student.checking_balance) }}</h2>
-                    </div>
-                    <div class="col-md-6">
-                        <h5>Savings</h5>
-                        <h2 class="text-info">${{ "%.2f"|format(student.savings_balance) }}</h2>
-                    </div>
+            <div class="col-md-6">
+                <div class="p-3 bg-success bg-opacity-10 rounded">
+                    <h6 class="text-muted mb-2">Savings</h6>
+                    <h3 class="text-success mb-0">${{ "%.2f"|format(student.savings_balance) }}</h3>
                 </div>
             </div>
         </div>
@@ -38,8 +42,8 @@
     <div class="col-md-6 mb-4">
         <div class="card h-100 {% if status.is_paid %}border-success{% elif status.is_late %}border-danger{% else %}border-warning{% endif %}">
             <div class="card-header {% if status.is_paid %}bg-success text-white{% elif status.is_late %}bg-danger text-white{% else %}bg-warning{% endif %}">
-                <h4 class="mb-0">
-                    Period {{ period }}
+                <h5 class="mb-0">
+                    Period {{ period|upper }}
                     {% if status.is_paid %}
                     ✅ Paid
                     {% elif status.is_late %}
@@ -47,16 +51,16 @@
                     {% else %}
                     📅 Due
                     {% endif %}
-                </h4>
+                </h5>
             </div>
             <div class="card-body">
                 <div class="mb-3">
-                    <p class="mb-1"><strong>Monthly Rent:</strong></p>
-                    <h3 class="text-primary">${{ "%.2f"|format(settings.rent_amount) }}</h3>
+                    <p class="mb-1 text-muted"><strong>Monthly Rent:</strong></p>
+                    <h3 class="text-primary mb-0">${{ "%.2f"|format(settings.rent_amount) }}</h3>
                 </div>
 
                 <div class="mb-3">
-                    <p class="mb-1"><strong>Due Date:</strong></p>
+                    <p class="mb-1 text-muted"><strong>Due Date:</strong></p>
                     <p class="mb-0">{{ due_date.strftime('%B %d, %Y') }}</p>
                 </div>
 
@@ -64,7 +68,7 @@
 
                 {% if status.is_paid %}
                 <div class="alert alert-success mb-0">
-                    <strong>All set!</strong> Rent paid for Period {{ period }} this month.
+                    <strong>All set!</strong> Rent paid for Period {{ period|upper }} this month.
                     <br><small>Paid: {{ status.payment.payment_date.strftime('%b %d, %Y') }}</small>
                 </div>
                 {% elif status.is_late %}
@@ -73,8 +77,8 @@
                     <br>A late fee of <strong>${{ "%.2f"|format(settings.late_fee) }}</strong> will be added.
                 </div>
                 <div class="mb-3">
-                    <p><strong>Total Amount Due:</strong></p>
-                    <h4 class="text-danger">${{ "%.2f"|format(settings.rent_amount + settings.late_fee) }}</h4>
+                    <p class="text-muted"><strong>Total Amount Due:</strong></p>
+                    <h4 class="text-danger mb-1">${{ "%.2f"|format(settings.rent_amount + settings.late_fee) }}</h4>
                     <small class="text-muted">
                         (Rent: ${{ "%.2f"|format(settings.rent_amount) }} + Late Fee: ${{ "%.2f"|format(settings.late_fee) }})
                     </small>
@@ -91,15 +95,15 @@
                 <button class="btn btn-secondary w-100" disabled>
                     Insufficient Funds
                 </button>
-                <p class="text-danger mt-2 mb-0">
-                    <small>You need ${{ "%.2f"|format(total_due - student.checking_balance) }} more to pay rent for Period {{ period }}.</small>
+                <p class="text-danger mt-2 mb-0 small">
+                    You need ${{ "%.2f"|format(total_due - student.checking_balance) }} more to pay rent for Period {{ period|upper }}.
                 </p>
                 {% else %}
                 <form action="{{ url_for('student_rent_pay', period=period) }}" method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <button type="submit" class="btn btn-primary w-100"
-                            onclick="return confirm('Pay rent for Period {{ period }} - ${{ \"%.2f\"|format(total_due) }}?');">
-                        Pay Rent for Period {{ period }} (${{ "%.2f"|format(total_due) }})
+                            onclick="return confirm('Pay rent for Period {{ period|upper }} - ${{ \"%.2f\"|format(total_due) }}?');">
+                        Pay Rent (${{ "%.2f"|format(total_due) }})
                     </button>
                 </form>
                 {% endif %}
@@ -110,23 +114,28 @@
     {% endfor %}
 </div>
 
-<div class="row mt-4">
-    <div class="col-md-12">
-        <div class="card bg-light">
-            <div class="card-header">
-                <h5 class="mb-0">ℹ️ Rent Information</h5>
-            </div>
-            <div class="card-body">
+<div class="card bg-light mt-4">
+    <div class="card-header">
+        ℹ️ Rent Information
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-6">
                 <ul class="list-unstyled mb-0">
                     <li class="mb-2">
                         <strong>Monthly Amount (per period):</strong> ${{ "%.2f"|format(settings.rent_amount) }}
                     </li>
                     <li class="mb-2">
-                        <strong>Your Total Monthly Rent:</strong> ${{ "%.2f"|format(settings.rent_amount * student_blocks|length) }} ({{ student_blocks|length}} period{% if student_blocks|length > 1 %}s{% endif %})
+                        <strong>Your Total Monthly Rent:</strong> ${{ "%.2f"|format(settings.rent_amount * student_blocks|length) }}
+                        <small class="text-muted">({{ student_blocks|length}} period{% if student_blocks|length > 1 %}s{% endif %})</small>
                     </li>
                     <li class="mb-2">
                         <strong>Due Day:</strong> {{ settings.due_day_of_month }}{{ ['th', 'st', 'nd', 'rd', 'th', 'th', 'th', 'th', 'th', 'th'][settings.due_day_of_month % 10] if settings.due_day_of_month % 100 not in [11, 12, 13] else 'th' }} of each month
                     </li>
+                </ul>
+            </div>
+            <div class="col-md-6">
+                <ul class="list-unstyled mb-0">
                     <li class="mb-2">
                         <strong>Grace Period:</strong> {{ settings.grace_period_days }} days
                     </li>
@@ -145,39 +154,43 @@
     No payment history yet.
 </div>
 {% else %}
-<div class="table-responsive">
-    <table class="table table-striped">
-        <thead>
-            <tr>
-                <th>Period</th>
-                <th>Month/Year</th>
-                <th>Amount Paid</th>
-                <th>Payment Date</th>
-                <th>Status</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for payment in payment_history %}
-            <tr>
-                <td><strong>Period {{ payment.period }}</strong></td>
-                <td>
-                    {{ ['', 'January', 'February', 'March', 'April', 'May', 'June',
-                        'July', 'August', 'September', 'October', 'November', 'December'][payment.period_month] }}
-                    {{ payment.period_year }}
-                </td>
-                <td>${{ "%.2f"|format(payment.amount_paid) }}</td>
-                <td>{{ payment.payment_date.strftime('%b %d, %Y') }}</td>
-                <td>
-                    {% if payment.was_late %}
-                    <span class="badge bg-warning">Late (Fee: ${{ "%.2f"|format(payment.late_fee_charged) }})</span>
-                    {% else %}
-                    <span class="badge bg-success">On Time</span>
-                    {% endif %}
-                </td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-striped mb-0">
+                <thead>
+                    <tr>
+                        <th>Period</th>
+                        <th>Month/Year</th>
+                        <th>Amount Paid</th>
+                        <th>Payment Date</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for payment in payment_history %}
+                    <tr>
+                        <td><strong>Period {{ payment.period|upper }}</strong></td>
+                        <td>
+                            {{ ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                                'July', 'August', 'September', 'October', 'November', 'December'][payment.period_month] }}
+                            {{ payment.period_year }}
+                        </td>
+                        <td>${{ "%.2f"|format(payment.amount_paid) }}</td>
+                        <td>{{ payment.payment_date.strftime('%b %d, %Y') }}</td>
+                        <td>
+                            {% if payment.was_late %}
+                            <span class="badge bg-warning text-dark">Late (Fee: ${{ "%.2f"|format(payment.late_fee_charged) }})</span>
+                            {% else %}
+                            <span class="badge bg-success">On Time</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
 </div>
 {% endif %}
 

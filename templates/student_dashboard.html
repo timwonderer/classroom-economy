@@ -1,314 +1,344 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>Student Dashboard</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        body {
-            animation: fadein 0.6s ease-in;
-        }
-        @keyframes fadein {
-            from { opacity: 0; }
-            to   { opacity: 1; }
-        }
-        .overdue-row {
-            background-color: #ffe5e5 !important;
-        }
-    </style>
-</head>
-<body class="container mt-4">
-<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
-  <div class="container-fluid">
-    <a class="navbar-brand" href="{{ url_for('student_dashboard') }}">Student Portal</a>
-    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#studentNavbar" aria-controls="studentNavbar" aria-expanded="false" aria-label="Toggle navigation">
-      <span class="navbar-toggler-icon"></span>
-    </button>
-    <div class="collapse navbar-collapse" id="studentNavbar">
-      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-        <li class="nav-item"><a class="nav-link" href="{{ url_for('student_dashboard') }}">Dashboard</a></li>
-        <li class="nav-item"><a class="nav-link" href="{{ url_for('student_transfer') }}">Accounts</a></li>
-        <li class="nav-item"><a class="nav-link" href="{{ url_for('student_insurance') }}">Insurance</a></li>
-        <li class="nav-item"><a class="nav-link" href="/student/shop">Shop</a></li>
-        <li class="nav-item"><a class="nav-link text-danger" href="{{ url_for('student_logout') }}">Logout</a></li>
-      </ul>
-    </div>
-  </div>
-</nav>
-    <div class="alert alert-warning text-center fw-bold shadow-sm sticky-top" id="session-timer">
-        ⏳ You will be signed out in <span id="countdown">10:00</span>
-    </div>
-   
+{% extends "layout_student.html" %}
 
-    <!-- Session Timeout Modal -->
-    <div class="modal fade" id="timeoutModal" tabindex="-1" aria-labelledby="timeoutModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
+{% block title %}Dashboard{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .overdue-row {
+        background-color: #ffe5e5 !important;
+    }
+
+    .balance-card {
+        background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-light) 100%);
+        color: white;
+        border: none;
+    }
+
+    .balance-card.savings {
+        background: linear-gradient(135deg, var(--success-teal) 0%, var(--success-green) 100%);
+    }
+
+    .info-badge {
+        display: inline-block;
+        padding: 0.5rem 1rem;
+        background-color: var(--primary-blue);
+        color: white;
+        border-radius: 10px;
+        font-weight: 500;
+    }
+</style>
+{% endblock %}
+
+{% block session_timer %}
+<div class="alert alert-warning text-center fw-bold session-timer" id="session-timer">
+    ⏳ You will be signed out in <span id="countdown">10:00</span>
+</div>
+
+<!-- Session Timeout Modal -->
+<div class="modal fade" id="timeoutModal" tabindex="-1" aria-labelledby="timeoutModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="timeoutModalLabel">Session Expired</h5>
-          </div>
-          <div class="modal-body">
-            ⏰ Time's up! You are now being signed out.
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-danger" onclick="logoutNow()">Log Out</button>
-          </div>
+            <div class="modal-header">
+                <h5 class="modal-title" id="timeoutModalLabel">Session Expired</h5>
+            </div>
+            <div class="modal-body">
+                ⏰ Time's up! You are now being signed out.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-danger" onclick="window.location.href='{{ url_for('student_logout') }}'">Log Out</button>
+            </div>
         </div>
-      </div>
     </div>
+</div>
+{% endblock %}
 
-    <script>
-        let timeLeft = {{ session_remaining_seconds }};
-        const countdownEl = document.getElementById('countdown');
-        const formatTime = (seconds) => {
-            const m = Math.floor(seconds / 60).toString().padStart(2, '0');
-            const s = (seconds % 60).toString().padStart(2, '0');
-            return `${m}:${s}`;
-        };
-        const interval = setInterval(() => {
-            timeLeft--;
-            countdownEl.textContent = formatTime(timeLeft);
-            if (timeLeft <= 0) {
-                clearInterval(interval);
-                const modal = new bootstrap.Modal(document.getElementById('timeoutModal'));
-                modal.show();
-                setTimeout(() => window.location.href = "{{ url_for('student_logout') }}", 5000);
-            }
-        }, 1000);
-    </script>
-
+{% block content %}
+<!-- Greeting Header -->
+<div class="page-header">
     {% set current_hour = now.hour %}
     {% if current_hour < 12 %}
-    <h1 class="mb-4 text-center">Good morning, {{ student_name }}!</h1>
+        <h1>Good morning{% if student_name %}, {{ student_name }}{% endif %}! 🌅</h1>
     {% elif current_hour < 18 %}
-    <h1 class="mb-4 text-center">Good afternoon, {{ student_name }}!</h1>
+        <h1>Good afternoon{% if student_name %}, {{ student_name }}{% endif %}! ☀️</h1>
     {% else %}
-    <h1 class="mb-4 text-center">Good evening, {{ student_name }}!</h1>
+        <h1>Good evening{% if student_name %}, {{ student_name }}{% endif %}! 🌙</h1>
     {% endif %}
+    <p class="subtitle">Welcome to your dashboard</p>
+</div>
 
-    <div class="mb-4">
-        {% if not student.insurance_paid and student.insurance_plan != 'none' %}
-            <div class="alert alert-danger shadow-sm">
-                🚨 Your insurance payment is past due.
-            </div>
-        {% endif %}
-        {% if student.amount_needed_to_cover_bills > 0 %}
-            <div class="alert alert-warning shadow-sm">
-                💡 You're short ${{ '%.2f' | format(student.amount_needed_to_cover_bills) }} for next month's bills.
-            </div>
-        {% endif %}
-        {% if recent_deposit %}
-            <div class="alert alert-success shadow-sm">
-                ✅ You received a deposit of ${{ '%.2f'|format(recent_deposit.amount) }}.
-            </div>
-        {% endif %}
+<!-- Alerts -->
+{% if not student.insurance_paid and student.insurance_plan != 'none' %}
+    <div class="alert alert-danger">
+        🚨 Your insurance payment is past due.
     </div>
-
-    <!-- Basic Info -->
-    <div class="mb-4">
-        <p><strong>Block:</strong> {{ student.block }}</p>
-        <p><strong>Hall Passes:</strong> <span id="hall-pass-balance">{{ student.hall_passes }}</span></p>
+{% endif %}
+{% if student.amount_needed_to_cover_bills > 0 %}
+    <div class="alert alert-warning">
+        💡 You're short ${{ '%.2f' | format(student.amount_needed_to_cover_bills) }} for next month's bills.
     </div>
+{% endif %}
+{% if recent_deposit %}
+    <div class="alert alert-success">
+        ✅ You received a deposit of ${{ '%.2f'|format(recent_deposit.amount) }}.
+    </div>
+{% endif %}
 
-    <!-- Attendance & Productivity Section -->
-    <div class="card shadow mb-4">
-      <div class="card-header bg-info text-white fw-bold">
-        Attendance & Productivity
-      </div>
-      <div class="card-body">
+<!-- Quick Info -->
+<div class="row mb-4">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <h6 class="text-muted mb-3">Quick Info</h6>
+                <p class="mb-2"><strong>Block:</strong> <span class="info-badge">{{ student.block|upper }}</span></p>
+                <p class="mb-0"><strong>Hall Passes:</strong> <span class="badge bg-primary" id="hall-pass-balance">{{ student.hall_passes }}</span></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="row g-3">
+            <div class="col-6">
+                <div class="card balance-card">
+                    <div class="card-body text-center p-3">
+                        <h6 class="mb-2 opacity-75">Checking</h6>
+                        <h3 class="mb-0">${{ "%.2f"|format(student.checking_balance) }}</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-6">
+                <div class="card balance-card savings">
+                    <div class="card-body text-center p-3">
+                        <h6 class="mb-2 opacity-75">Savings</h6>
+                        <h3 class="mb-0">${{ "%.2f"|format(student.savings_balance) }}</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Attendance & Productivity Section -->
+<div class="card mb-4">
+    <div class="card-header">
+        ⏰ Attendance & Productivity
+    </div>
+    <div class="card-body">
         <ul class="nav nav-tabs mb-3" id="attendanceTabs" role="tablist">
-          {% for blk in student_blocks %}
+            {% for blk in student_blocks %}
             <li class="nav-item" role="presentation">
-              <button class="nav-link {% if loop.first %}active{% endif %}"
-                      id="tab-{{ blk }}-tab"
-                      data-bs-toggle="tab"
-                      data-bs-target="#tab-{{ blk }}"
-                      type="button"
-                      role="tab"
-                      aria-controls="tab-{{ blk }}"
-                      aria-selected="{{ 'true' if loop.first else 'false' }}">
-                Block {{ blk|upper }}
-              </button>
+                <button class="nav-link {% if loop.first %}active{% endif %}"
+                        id="tab-{{ blk }}-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#tab-{{ blk }}"
+                        type="button"
+                        role="tab"
+                        aria-controls="tab-{{ blk }}"
+                        aria-selected="{{ 'true' if loop.first else 'false' }}">
+                    Block {{ blk|upper }}
+                </button>
             </li>
-          {% endfor %}
+            {% endfor %}
         </ul>
         <div class="tab-content" id="attendanceTabContent">
-          {% for blk in student_blocks %}
+            {% for blk in student_blocks %}
             <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
                  id="tab-{{ blk }}"
                  role="tabpanel"
                  aria-labelledby="tab-{{ blk }}-tab"
                  data-block-row="{{ blk }}">
-              {% set state = period_states[blk] %}
-              <p><strong>Status:</strong> <span id="status-{{ blk }}" class="block-status">{{ 'Active' if state['active'] and not state['done'] else 'Inactive' }}</span></p>
-              <p><strong>Unpaid Time Logged:</strong> <span class="block-duration">{{ (unpaid_seconds_per_block[blk] // 3600)|string + 'h ' + ((unpaid_seconds_per_block[blk] % 3600) // 60)|string + 'm ' + (unpaid_seconds_per_block[blk] % 60)|string + 's' }}</span></p>
-              <p><strong>Projected Paycheck Amount:</strong> $<span class="block-pay" data-period="{{ blk }}">{{ '%.2f'|format(projected_pay_per_block[blk]) }}</span></p>
-              <button class="btn btn-success me-2 tap-btn" id="tapIn-{{ blk }}" data-period="{{ blk }}" data-action="tap_in" aria-label="Tap In for Block {{ blk }}" {% if state['active'] or state['done'] %}disabled{% endif %}>Tap In</button>
-              <button class="btn btn-danger tap-btn" id="tapOut-{{ blk }}" data-period="{{ blk }}" data-action="tap_out" aria-label="Tap Out for Block {{ blk }}" {% if not state['active'] %}disabled{% endif %}>Tap Out</button>
-            </div>
-          {% endfor %}
-        </div>
-      </div>
-    </div>
-
-    <!-- My Items Section -->
-    <div class="card shadow mb-4">
-        <div class="card-header bg-secondary text-white fw-bold">
-            My Items
-        </div>
-        <div class="card-body">
-            {% if student_items %}
-                <ul class="list-group">
-                    {% for s_item in student_items %}
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
-                            <div>
-                                <strong>{{ s_item.store_item.name }}</strong>
-                                <small class="d-block text-muted">Purchased: {{ s_item.purchase_date.strftime('%Y-%m-%d') }} | Status: <span class="badge bg-info">{{ s_item.status|title }}</span></small>
-                            </div>
-                            {% if s_item.store_item.item_type == 'delayed' and s_item.status == 'purchased' %}
-                                <button class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#useItemModal" data-student-item-id="{{ s_item.id }}" data-item-name="{{ s_item.store_item.name }}">
-                                    Use Item
-                                </button>
-                            {% endif %}
-                        </li>
-                    {% endfor %}
-                </ul>
-            {% else %}
-                <p class="text-muted text-center">You don't own any items yet. Visit the shop to buy some!</p>
-            {% endif %}
-        </div>
-    </div>
-
-    <div class="row mb-4">
-        <div class="col-md-6 mb-3">
-            <div class="card text-white bg-primary shadow">
-                <div class="card-body">
-                    <h5 class="card-title">Checking Account</h5>
-                    <p class="card-text display-6">${{ "%.2f"|format(student.checking_balance) }}</p>
+                {% set state = period_states[blk] %}
+                <div class="row">
+                    <div class="col-md-8">
+                        <p class="mb-2">
+                            <strong>Status:</strong>
+                            <span id="status-{{ blk }}" class="badge {% if state['active'] and not state['done'] %}bg-success{% else %}bg-secondary{% endif %} block-status">
+                                {{ 'Active' if state['active'] and not state['done'] else 'Inactive' }}
+                            </span>
+                        </p>
+                        <p class="mb-2"><strong>Unpaid Time Logged:</strong> <span class="block-duration">{{ (unpaid_seconds_per_block[blk] // 3600)|string + 'h ' + ((unpaid_seconds_per_block[blk] % 3600) // 60)|string + 'm ' + (unpaid_seconds_per_block[blk] % 60)|string + 's' }}</span></p>
+                        <p class="mb-3"><strong>Projected Paycheck:</strong> <span class="text-success fs-5">$<span class="block-pay" data-period="{{ blk }}">{{ '%.2f'|format(projected_pay_per_block[blk]) }}</span></span></p>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        <button class="btn btn-success me-2 mb-2 tap-btn" id="tapIn-{{ blk }}" data-period="{{ blk }}" data-action="tap_in" aria-label="Tap In for Block {{ blk }}" {% if state['active'] or state['done'] %}disabled{% endif %}>Tap In</button>
+                        <button class="btn btn-danger mb-2 tap-btn" id="tapOut-{{ blk }}" data-period="{{ blk }}" data-action="tap_out" aria-label="Tap Out for Block {{ blk }}" {% if not state['active'] %}disabled{% endif %}>Tap Out</button>
+                    </div>
                 </div>
             </div>
-        </div>
-        <div class="col-md-6 mb-3">
-            <div class="card text-white bg-success shadow">
-                <div class="card-body">
-                    <h5 class="card-title">Savings Account</h5>
-                    <p class="card-text display-6">${{ "%.2f"|format(student.savings_balance) }}</p>
-                </div>
-            </div>
+            {% endfor %}
         </div>
     </div>
+</div>
 
-    <!-- Use Item Modal -->
-    <div class="modal fade" id="useItemModal" tabindex="-1" aria-labelledby="useItemModalLabel" aria-hidden="true">
-      <div class="modal-dialog">
+<!-- My Items Section -->
+<div class="card mb-4">
+    <div class="card-header">
+        🎁 My Items
+    </div>
+    <div class="card-body">
+        {% if student_items %}
+            <div class="list-group">
+                {% for s_item in student_items %}
+                <div class="list-group-item d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">{{ s_item.store_item.name }}</h6>
+                        <small class="text-muted">
+                            Purchased: {{ s_item.purchase_date.strftime('%Y-%m-%d') }} |
+                            <span class="badge bg-info">{{ s_item.status|title }}</span>
+                        </small>
+                    </div>
+                    {% if s_item.store_item.item_type == 'delayed' and s_item.status == 'purchased' %}
+                    <button class="btn btn-sm btn-outline-success"
+                            data-bs-toggle="modal"
+                            data-bs-target="#useItemModal"
+                            data-student-item-id="{{ s_item.id }}"
+                            data-item-name="{{ s_item.store_item.name }}">
+                        Use Item
+                    </button>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-muted text-center mb-0">You don't own any items yet. <a href="{{ url_for('student_shop') }}">Visit the shop</a> to buy some!</p>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Use Item Modal -->
+<div class="modal fade" id="useItemModal" tabindex="-1" aria-labelledby="useItemModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="useItemModalLabel">Use Item</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <p>You are using: <strong id="modalUseItemName"></strong></p>
-            <form id="useItemForm">
-                <input type="hidden" id="modalStudentItemId">
-                <div class="mb-3">
-                    <label for="redemptionDetails" class="form-label">Reason for using this item (e.g., which assignment):</label>
-                    <textarea class="form-control" id="redemptionDetails" rows="3" required></textarea>
-                </div>
-            </form>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-primary" id="confirmUseBtn">Submit for Approval</button>
-          </div>
+            <div class="modal-header">
+                <h5 class="modal-title" id="useItemModalLabel">Use Item</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>You are using: <strong id="modalUseItemName"></strong></p>
+                <form id="useItemForm">
+                    <input type="hidden" id="modalStudentItemId">
+                    <div class="mb-3">
+                        <label for="redemptionDetails" class="form-label">Reason for using this item (e.g., which assignment):</label>
+                        <textarea class="form-control" id="redemptionDetails" rows="3" required></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmUseBtn">Submit for Approval</button>
+            </div>
         </div>
-      </div>
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="/static/js/attendance.js"></script>
-    <script>
-        const useItemModal = document.getElementById('useItemModal');
-        if (useItemModal) {
-            useItemModal.addEventListener('show.bs.modal', event => {
-                const button = event.relatedTarget;
-                const studentItemId = button.getAttribute('data-student-item-id');
-                const itemName = button.getAttribute('data-item-name');
+<!-- Hall Pass Request Modal -->
+<div class="modal fade" id="hallPassModal" tabindex="-1" aria-labelledby="hallPassModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="hallPassModalLabel">Request Hall Pass</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="hallPassForm">
+                    <input type="hidden" id="hallPassPeriod">
+                    <div class="mb-3">
+                        <label for="hallPassReason" class="form-label">Reason for leaving:</label>
+                        <select class="form-select" id="hallPassReason" required>
+                            <option value="" disabled selected>-- Select a reason --</option>
+                            <option value="Restroom">Restroom</option>
+                            <option value="Office">Office</option>
+                            <option value="Locker">Locker</option>
+                            <option value="Nurse">Nurse</option>
+                            <option value="Summons">Summons</option>
+                            <option value="Done for the day">Done for the day</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="hallPassPin" class="form-label">Enter your PIN to confirm:</label>
+                        <input type="password" class="form-control" id="hallPassPin" inputmode="numeric" pattern="[0-9]*" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmHallPassBtn">Request Pass</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
 
-                useItemModal.querySelector('#modalUseItemName').textContent = itemName;
-                useItemModal.querySelector('#modalStudentItemId').value = studentItemId;
-            });
-
-            document.getElementById('confirmUseBtn').addEventListener('click', () => {
-                const studentItemId = useItemModal.querySelector('#modalStudentItemId').value;
-                const redemptionDetails = useItemModal.querySelector('#redemptionDetails').value;
-                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-
-                fetch('/api/use-item', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: JSON.stringify({ student_item_id: studentItemId, redemption_details: redemptionDetails })
-                })
-                .then(response => response.json())
-                .then(data => {
-                    if (data.status === 'success') {
-                        createToast(data.message);
-                        setTimeout(() => window.location.reload(), 1500);
-                    } else {
-                        createToast(data.message, true);
-                    }
-                })
-                .catch(error => {
-                    console.error('Item use error:', error);
-                    createToast('An unexpected error occurred.', true);
-                });
-            });
+{% block extra_scripts %}
+<!-- Session Timer Script -->
+<script>
+    let timeLeft = {{ session_remaining_seconds }};
+    const countdownEl = document.getElementById('countdown');
+    const formatTime = (seconds) => {
+        const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+        const s = (seconds % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    };
+    const interval = setInterval(() => {
+        timeLeft--;
+        countdownEl.textContent = formatTime(timeLeft);
+        if (timeLeft <= 0) {
+            clearInterval(interval);
+            const modal = new bootstrap.Modal(document.getElementById('timeoutModal'));
+            modal.show();
+            setTimeout(() => window.location.href = "{{ url_for('student_logout') }}", 5000);
         }
-    </script>
-    <div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100"></div>
+    }, 1000);
+</script>
 
-    <script id="serverState" type="application/json">
-        {{ period_states_json | safe }}
-    </script>
+<!-- Attendance Script -->
+<script src="/static/js/attendance.js"></script>
 
-    <!-- Hall Pass Request Modal -->
-    <div class="modal fade" id="hallPassModal" tabindex="-1" aria-labelledby="hallPassModalLabel" aria-hidden="true">
-      <div class="modal-dialog">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="hallPassModalLabel">Request Hall Pass</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <form id="hallPassForm">
-                <input type="hidden" id="hallPassPeriod">
-                <div class="mb-3">
-                    <label for="hallPassReason" class="form-label">Reason for leaving:</label>
-                    <select class="form-select" id="hallPassReason" required>
-                        <option value="" disabled selected>-- Select a reason --</option>
-                        <option value="Restroom">Restroom</option>
-                        <option value="Office">Office</option>
-                        <option value="Locker">Locker</option>
-                        <option value="Nurse">Nurse</option>
-                        <option value="Summons">Summons</option>
-                        <option value="Done for the day">Done for the day</option>
-                    </select>
-                </div>
-                <div class="mb-3">
-                    <label for="hallPassPin" class="form-label">Enter your PIN to confirm:</label>
-                    <input type="password" class="form-control" id="hallPassPin" inputmode="numeric" pattern="[0-9]*" required>
-                </div>
-            </form>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-primary" id="confirmHallPassBtn">Request Pass</button>
-          </div>
-        </div>
-      </div>
-    </div>
-</body>
-</html>
+<!-- Server State -->
+<script id="serverState" type="application/json">
+    {{ period_states_json | safe }}
+</script>
+
+<!-- Use Item Modal Script -->
+<script>
+    const useItemModal = document.getElementById('useItemModal');
+    if (useItemModal) {
+        useItemModal.addEventListener('show.bs.modal', event => {
+            const button = event.relatedTarget;
+            const studentItemId = button.getAttribute('data-student-item-id');
+            const itemName = button.getAttribute('data-item-name');
+
+            useItemModal.querySelector('#modalUseItemName').textContent = itemName;
+            useItemModal.querySelector('#modalStudentItemId').value = studentItemId;
+        });
+
+        document.getElementById('confirmUseBtn').addEventListener('click', () => {
+            const studentItemId = useItemModal.querySelector('#modalStudentItemId').value;
+            const redemptionDetails = useItemModal.querySelector('#redemptionDetails').value;
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+            fetch('/api/use-item', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ student_item_id: studentItemId, redemption_details: redemptionDetails })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const modal = bootstrap.Modal.getInstance(useItemModal);
+                    modal.hide();
+                    createToast(data.message);
+                    setTimeout(() => window.location.reload(), 1500);
+                } else {
+                    createToast(data.message, true);
+                }
+            })
+            .catch(error => {
+                console.error('Item use error:', error);
+                createToast('An unexpected error occurred.', true);
+            });
+        });
+    }
+</script>
+{% endblock %}

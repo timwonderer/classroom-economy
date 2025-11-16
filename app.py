@@ -417,6 +417,90 @@ class RentPayment(db.Model):
     student = db.relationship('Student', backref='rent_payments')
 
 
+# -------------------- INSURANCE MODELS --------------------
+class InsurancePolicy(db.Model):
+    __tablename__ = 'insurance_policies'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    premium = db.Column(db.Float, nullable=False)  # Monthly cost
+    charge_frequency = db.Column(db.String(20), default='monthly')  # monthly, weekly, etc
+    autopay = db.Column(db.Boolean, default=True)
+    waiting_period_days = db.Column(db.Integer, default=7)  # Days before coverage starts
+    max_claims_count = db.Column(db.Integer, nullable=True)  # Max claims per period (null = unlimited)
+    max_claims_period = db.Column(db.String(20), default='month')  # month, semester, year
+    max_claim_amount = db.Column(db.Float, nullable=True)  # Max $ per claim (null = unlimited)
+
+    # Claim type
+    is_monetary = db.Column(db.Boolean, default=True)  # True = monetary claims, False = item/service claims
+
+    # Special rules
+    no_repurchase_after_cancel = db.Column(db.Boolean, default=False)
+    repurchase_wait_days = db.Column(db.Integer, default=30)  # Days to wait after cancel
+    auto_cancel_nonpay_days = db.Column(db.Integer, default=7)  # Days of non-payment before cancel
+    claim_time_limit_days = db.Column(db.Integer, default=30)  # Days from incident to file claim
+
+    # Bundle settings (JSON or separate table in future)
+    bundle_with_policy_ids = db.Column(db.Text, nullable=True)  # Comma-separated IDs
+    bundle_discount_percent = db.Column(db.Float, default=0)  # Discount % for bundle
+
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    student_policies = db.relationship('StudentInsurance', backref='policy', lazy='dynamic')
+    claims = db.relationship('InsuranceClaim', backref='policy', lazy='dynamic')
+
+
+class StudentInsurance(db.Model):
+    __tablename__ = 'student_insurance'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id'), nullable=False)
+
+    status = db.Column(db.String(20), default='active')  # active, cancelled, suspended
+    purchase_date = db.Column(db.DateTime, default=datetime.utcnow)
+    cancel_date = db.Column(db.DateTime, nullable=True)
+    last_payment_date = db.Column(db.DateTime, nullable=True)
+    next_payment_due = db.Column(db.DateTime, nullable=True)
+    coverage_start_date = db.Column(db.DateTime, nullable=True)  # After waiting period
+
+    # Track payment status
+    payment_current = db.Column(db.Boolean, default=True)
+    days_unpaid = db.Column(db.Integer, default=0)
+
+    # Relationships
+    student = db.relationship('Student', backref='insurance_policies')
+    claims = db.relationship('InsuranceClaim', backref='student_policy', lazy='dynamic')
+
+
+class InsuranceClaim(db.Model):
+    __tablename__ = 'insurance_claims'
+    id = db.Column(db.Integer, primary_key=True)
+    student_insurance_id = db.Column(db.Integer, db.ForeignKey('student_insurance.id'), nullable=False)
+    policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+
+    incident_date = db.Column(db.DateTime, nullable=False)  # When incident occurred
+    filed_date = db.Column(db.DateTime, default=datetime.utcnow)
+    description = db.Column(db.Text, nullable=False)
+    claim_amount = db.Column(db.Float, nullable=True)  # For monetary claims: requested amount
+    claim_item = db.Column(db.Text, nullable=True)  # For non-monetary claims: what they're claiming
+    comments = db.Column(db.Text, nullable=True)  # Optional comments from student
+
+    status = db.Column(db.String(20), default='pending')  # pending, approved, rejected, paid
+    rejection_reason = db.Column(db.Text, nullable=True)
+    admin_notes = db.Column(db.Text, nullable=True)
+    approved_amount = db.Column(db.Float, nullable=True)
+    processed_date = db.Column(db.DateTime, nullable=True)
+    processed_by_admin_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
+
+    # Relationships
+    student = db.relationship('Student', backref='insurance_claims')
+    processed_by = db.relationship('Admin', backref='processed_claims')
+
+
 # ---- Admin Model ----
 class Admin(db.Model):
     __tablename__ = 'admins'
@@ -851,93 +935,270 @@ def student_transfer():
     return render_template('student_transfer.html', student=student)
 
 # -------------------- INSURANCE ROUTE --------------------
-@app.route('/student/insurance', methods=['GET', 'POST'])
+@app.route('/student/insurance')
 @login_required
-def student_insurance():
+def student_insurance_marketplace():
+    """Insurance marketplace - browse and manage policies"""
     student = get_logged_in_student()
-    cooldown_message = None
-    error_message = None
-    plans = {
-        "paycheck_protection": 90,
-        "personal_responsibility": 60,
-        "bundled": 125
-    }
 
-    if request.method == 'POST':
-        selected_plan = request.form.get('plan')
-        if selected_plan not in plans:
-            flash("Invalid insurance plan selected.", "insurance_error")
-            return redirect(url_for("student_insurance"))
+    # Get student's active policies
+    my_policies = StudentInsurance.query.filter_by(
+        student_id=student.id,
+        status='active'
+    ).all()
 
-        now = datetime.now(timezone.utc)
-        recent_cancellation_tx = Transaction.query.filter(
-            Transaction.student_id == student.id,
-            Transaction.description == f"Cancelled {selected_plan.replace('_', ' ').title()} Insurance"
-        ).order_by(Transaction.timestamp.desc()).first()
+    # Get available policies
+    available_policies = InsurancePolicy.query.filter_by(is_active=True).all()
 
-        if recent_cancellation_tx and (now - recent_cancellation_tx.timestamp).days < 30:
-            flash("You must wait 30 days after cancelling this insurance before purchasing again.", "insurance_error")
-            return redirect(url_for("student_insurance"))
+    # Check which policies can be purchased
+    can_purchase = {}
+    repurchase_blocks = {}
 
-        premium = plans[selected_plan]
-
-        # Reject if student will go negative
-        if student.checking_balance < premium:
-            db.session.add(Transaction(
-                student_id=student.id,
-                amount=-15,
-                account_type="checking",
-                type='Fees',
-                description="NSF Fee for Insurance Purchase"
-            ))
-            db.session.commit()
-            flash("Insufficient funds for insurance. NSF Fee charged.", "insurance_error")
-            return redirect(url_for("student_insurance"))
-
-        # Handle bundled upgrade with prorate logic
-        current_plan = student.insurance_plan
-        if current_plan != "none" and selected_plan != current_plan:
-            current_premium = plans.get(current_plan, 0)
-            days_since_paid = (now - (student.insurance_last_paid or now)).days
-            prorated_refund = round(current_premium * max(0, (30 - days_since_paid)) / 30, 2)
-            if prorated_refund > 0:
-                db.session.add(Transaction(
-                    student_id=student.id,
-                    amount=prorated_refund,
-                    account_type="checking",
-                    type='Refund',
-                    description=f"Prorated Refund for {current_plan.replace('_', ' ').title()}"
-                ))
-
-        # Charge new premium
-        db.session.add(Transaction(
+    for policy in available_policies:
+        # Check if already enrolled
+        existing = StudentInsurance.query.filter_by(
             student_id=student.id,
-            amount=-premium,
-            account_type="checking",
-            type='Bill',
-            description=f"Insurance Premium for {selected_plan.replace('_', ' ').title()}"
-        ))
+            policy_id=policy.id,
+            status='active'
+        ).first()
 
-        student.insurance_plan = selected_plan
-        student.insurance_last_paid = now
-        db.session.commit()
-        flash("Insurance purchased successfully!", "insurance_success")
-        return redirect(url_for("student_dashboard"))
+        if existing:
+            can_purchase[policy.id] = False
+            continue
 
-    current_plan_display = student.insurance_plan.replace('_', ' ').title() if student.insurance_plan != "none" else None
-    return render_template('student_insurance_market.html', student=student, cooldown_message=cooldown_message, error_message=error_message)
+        # Check repurchase restrictions
+        if policy.no_repurchase_after_cancel:
+            cancelled = StudentInsurance.query.filter_by(
+                student_id=student.id,
+                policy_id=policy.id,
+                status='cancelled'
+            ).order_by(StudentInsurance.cancel_date.desc()).first()
 
-@app.route('/student/insurance/change', methods=['GET', 'POST'])
+            if cancelled and cancelled.cancel_date:
+                days_since_cancel = (datetime.utcnow() - cancelled.cancel_date).days
+                if days_since_cancel < policy.repurchase_wait_days:
+                    can_purchase[policy.id] = False
+                    repurchase_blocks[policy.id] = policy.repurchase_wait_days - days_since_cancel
+                    continue
+
+        can_purchase[policy.id] = True
+
+    # Get claims for my policies
+    my_claims = InsuranceClaim.query.filter_by(student_id=student.id).all()
+
+    return render_template('student_insurance_marketplace.html',
+                          student=student,
+                          my_policies=my_policies,
+                          available_policies=available_policies,
+                          can_purchase=can_purchase,
+                          repurchase_blocks=repurchase_blocks,
+                          my_claims=my_claims)
+
+@app.route('/student/insurance/purchase/<int:policy_id>', methods=['POST'])
 @login_required
-def student_insurance_change():
+def student_purchase_insurance(policy_id):
+    """Purchase insurance policy"""
+    student = get_logged_in_student()
+    policy = InsurancePolicy.query.get_or_404(policy_id)
+
+    # Check if already enrolled
+    existing = StudentInsurance.query.filter_by(
+        student_id=student.id,
+        policy_id=policy.id,
+        status='active'
+    ).first()
+
+    if existing:
+        flash("You are already enrolled in this policy.", "warning")
+        return redirect(url_for('student_insurance_marketplace'))
+
+    # Check repurchase restrictions
+    if policy.no_repurchase_after_cancel:
+        cancelled = StudentInsurance.query.filter_by(
+            student_id=student.id,
+            policy_id=policy.id,
+            status='cancelled'
+        ).order_by(StudentInsurance.cancel_date.desc()).first()
+
+        if cancelled and cancelled.cancel_date:
+            days_since_cancel = (datetime.utcnow() - cancelled.cancel_date).days
+            if days_since_cancel < policy.repurchase_wait_days:
+                flash(f"You must wait {policy.repurchase_wait_days - days_since_cancel} more days before repurchasing this policy.", "warning")
+                return redirect(url_for('student_insurance_marketplace'))
+
+    # Check sufficient funds
+    if student.balance_checking < policy.premium:
+        flash("Insufficient funds to purchase this insurance policy.", "danger")
+        return redirect(url_for('student_insurance_marketplace'))
+
+    # Create enrollment
+    enrollment = StudentInsurance(
+        student_id=student.id,
+        policy_id=policy.id,
+        status='active',
+        purchase_date=datetime.utcnow(),
+        last_payment_date=datetime.utcnow(),
+        next_payment_due=datetime.utcnow() + timedelta(days=30),  # Simplified
+        coverage_start_date=datetime.utcnow() + timedelta(days=policy.waiting_period_days),
+        payment_current=True
+    )
+    db.session.add(enrollment)
+
+    # Charge premium
+    student.balance_checking -= policy.premium
+
+    # Create transaction
+    transaction = Transaction(
+        student_id=student.id,
+        amount=-policy.premium,
+        transaction_type='insurance_premium',
+        description=f"Insurance premium: {policy.title}",
+        block=student.block,
+        timestamp=datetime.utcnow()
+    )
+    db.session.add(transaction)
+
+    db.session.commit()
+    flash(f"Successfully purchased {policy.title}! Coverage starts after {policy.waiting_period_days} day waiting period.", "success")
+    return redirect(url_for('student_insurance_marketplace'))
+
+@app.route('/student/insurance/cancel/<int:enrollment_id>', methods=['POST'])
+@login_required
+def student_cancel_insurance(enrollment_id):
+    """Cancel insurance policy"""
+    student = get_logged_in_student()
+    enrollment = StudentInsurance.query.get_or_404(enrollment_id)
+
+    # Verify ownership
+    if enrollment.student_id != student.id:
+        flash("Unauthorized access.", "danger")
+        return redirect(url_for('student_insurance_marketplace'))
+
+    enrollment.status = 'cancelled'
+    enrollment.cancel_date = datetime.utcnow()
+
+    db.session.commit()
+    flash(f"Insurance policy '{enrollment.policy.title}' has been cancelled.", "info")
+    return redirect(url_for('student_insurance_marketplace'))
+
+@app.route('/student/insurance/claim/<int:policy_id>', methods=['GET', 'POST'])
+@login_required
+def student_file_claim(policy_id):
+    """File insurance claim"""
+    from forms import InsuranceClaimForm
+
     student = get_logged_in_student()
 
-    if request.method == 'POST':
-        flash("Insurance change feature coming soon!", "info")
-        return redirect(url_for("student_insurance"))
+    # Get student's enrollment for this policy
+    enrollment = StudentInsurance.query.filter_by(
+        student_id=student.id,
+        policy_id=policy_id,
+        status='active'
+    ).first()
 
-    current_plan = student.insurance_plan if student.insurance_plan and student.insurance_plan != "none" else None
-    return render_template('student_insurance_change.html', student=student, current_plan=current_plan)
+    if not enrollment:
+        flash("You are not enrolled in this policy.", "danger")
+        return redirect(url_for('student_insurance_marketplace'))
+
+    policy = enrollment.policy
+    form = InsuranceClaimForm()
+
+    # Validation errors
+    errors = []
+
+    # Check if coverage has started
+    if not enrollment.coverage_start_date or enrollment.coverage_start_date > datetime.utcnow():
+        errors.append(f"Coverage has not started yet. Please wait until {enrollment.coverage_start_date.strftime('%B %d, %Y') if enrollment.coverage_start_date else 'coverage starts'}.")
+
+    # Check if payment is current
+    if not enrollment.payment_current:
+        errors.append("Your premium payments are not current. Please contact the teacher.")
+
+    # Check max claims
+    if policy.max_claims_count:
+        claims_count = InsuranceClaim.query.filter(
+            InsuranceClaim.student_insurance_id == enrollment.id,
+            InsuranceClaim.status.in_(['approved', 'paid'])
+        ).count()
+
+        if claims_count >= policy.max_claims_count:
+            errors.append(f"You have reached the maximum number of claims ({policy.max_claims_count}) for this {policy.max_claims_period}.")
+
+    if request.method == 'POST' and form.validate_on_submit():
+        # Additional validation for monetary vs non-monetary
+        if policy.is_monetary:
+            if not form.claim_amount.data:
+                flash("Claim amount is required for monetary policies.", "danger")
+                return redirect(url_for('student_file_claim', policy_id=policy_id))
+
+            # Check max claim amount
+            if policy.max_claim_amount and form.claim_amount.data > policy.max_claim_amount:
+                flash(f"Claim amount cannot exceed ${policy.max_claim_amount:.2f}.", "danger")
+                return redirect(url_for('student_file_claim', policy_id=policy_id))
+        else:
+            if not form.claim_item.data:
+                flash("Claim item is required for non-monetary policies.", "danger")
+                return redirect(url_for('student_file_claim', policy_id=policy_id))
+
+        # Check claim time limit
+        days_since_incident = (datetime.utcnow() - form.incident_date.data).days
+        if days_since_incident > policy.claim_time_limit_days:
+            flash(f"Claims must be filed within {policy.claim_time_limit_days} days of the incident.", "danger")
+            return redirect(url_for('student_file_claim', policy_id=policy_id))
+
+        # Create claim
+        claim = InsuranceClaim(
+            student_insurance_id=enrollment.id,
+            policy_id=policy.id,
+            student_id=student.id,
+            incident_date=form.incident_date.data,
+            description=form.description.data,
+            claim_amount=form.claim_amount.data if policy.is_monetary else None,
+            claim_item=form.claim_item.data if not policy.is_monetary else None,
+            comments=form.comments.data,
+            status='pending'
+        )
+        db.session.add(claim)
+        db.session.commit()
+
+        flash("Claim submitted successfully! It will be reviewed by your teacher.", "success")
+        return redirect(url_for('student_insurance_marketplace'))
+
+    # Get claims for this period
+    claims_this_period = InsuranceClaim.query.filter_by(
+        student_insurance_id=enrollment.id
+    ).all()
+
+    return render_template('student_file_claim.html',
+                          student=student,
+                          policy=policy,
+                          enrollment=enrollment,
+                          form=form,
+                          errors=errors,
+                          claims_this_period=claims_this_period)
+
+@app.route('/student/insurance/policy/<int:enrollment_id>')
+@login_required
+def student_view_policy(enrollment_id):
+    """View policy details and claims history"""
+    student = get_logged_in_student()
+    enrollment = StudentInsurance.query.get_or_404(enrollment_id)
+
+    # Verify ownership
+    if enrollment.student_id != student.id:
+        flash("Unauthorized access.", "danger")
+        return redirect(url_for('student_insurance_marketplace'))
+
+    # Get claims for this policy
+    claims = InsuranceClaim.query.filter_by(student_insurance_id=enrollment.id).order_by(
+        InsuranceClaim.filed_date.desc()
+    ).all()
+
+    return render_template('student_view_policy.html',
+                          student=student,
+                          enrollment=enrollment,
+                          policy=enrollment.policy,
+                          claims=claims)
 
 
 # -------------------- STUDENT SHOP --------------------
@@ -1746,6 +2007,198 @@ def admin_rent_settings():
                           settings=settings,
                           total_students=total_students,
                           paid_this_month=paid_this_month)
+
+# -------------------- INSURANCE ROUTES --------------------
+
+@app.route('/admin/insurance', methods=['GET', 'POST'])
+@admin_required
+def admin_insurance_management():
+    """Main insurance management dashboard"""
+    from forms import InsurancePolicyForm
+
+    form = InsurancePolicyForm()
+
+    if request.method == 'POST' and form.validate_on_submit():
+        # Create new insurance policy
+        policy = InsurancePolicy(
+            title=form.title.data,
+            description=form.description.data,
+            premium=form.premium.data,
+            charge_frequency=form.charge_frequency.data,
+            autopay=form.autopay.data,
+            waiting_period_days=form.waiting_period_days.data,
+            max_claims_count=form.max_claims_count.data,
+            max_claims_period=form.max_claims_period.data,
+            max_claim_amount=form.max_claim_amount.data,
+            is_monetary=form.is_monetary.data,
+            no_repurchase_after_cancel=form.no_repurchase_after_cancel.data,
+            repurchase_wait_days=form.repurchase_wait_days.data,
+            auto_cancel_nonpay_days=form.auto_cancel_nonpay_days.data,
+            claim_time_limit_days=form.claim_time_limit_days.data,
+            bundle_discount_percent=form.bundle_discount_percent.data,
+            is_active=form.is_active.data
+        )
+        db.session.add(policy)
+        db.session.commit()
+        flash(f"Insurance policy '{policy.title}' created successfully!", "success")
+        return redirect(url_for('admin_insurance_management'))
+
+    # Get all policies
+    policies = InsurancePolicy.query.all()
+
+    # Get all student enrollments
+    active_enrollments = StudentInsurance.query.filter_by(status='active').all()
+    cancelled_enrollments = StudentInsurance.query.filter_by(status='cancelled').all()
+
+    # Get all claims
+    claims = InsuranceClaim.query.order_by(InsuranceClaim.filed_date.desc()).all()
+    pending_claims_count = InsuranceClaim.query.filter_by(status='pending').count()
+
+    return render_template('admin_insurance.html',
+                          form=form,
+                          policies=policies,
+                          active_enrollments=active_enrollments,
+                          cancelled_enrollments=cancelled_enrollments,
+                          claims=claims,
+                          pending_claims_count=pending_claims_count)
+
+@app.route('/admin/insurance/edit/<int:policy_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_edit_insurance_policy(policy_id):
+    """Edit existing insurance policy"""
+    from forms import InsurancePolicyForm
+
+    policy = InsurancePolicy.query.get_or_404(policy_id)
+    form = InsurancePolicyForm(obj=policy)
+
+    if request.method == 'POST' and form.validate_on_submit():
+        policy.title = form.title.data
+        policy.description = form.description.data
+        policy.premium = form.premium.data
+        policy.charge_frequency = form.charge_frequency.data
+        policy.autopay = form.autopay.data
+        policy.waiting_period_days = form.waiting_period_days.data
+        policy.max_claims_count = form.max_claims_count.data
+        policy.max_claims_period = form.max_claims_period.data
+        policy.max_claim_amount = form.max_claim_amount.data
+        policy.is_monetary = form.is_monetary.data
+        policy.no_repurchase_after_cancel = form.no_repurchase_after_cancel.data
+        policy.repurchase_wait_days = form.repurchase_wait_days.data
+        policy.auto_cancel_nonpay_days = form.auto_cancel_nonpay_days.data
+        policy.claim_time_limit_days = form.claim_time_limit_days.data
+        policy.bundle_discount_percent = form.bundle_discount_percent.data
+        policy.is_active = form.is_active.data
+
+        db.session.commit()
+        flash(f"Insurance policy '{policy.title}' updated successfully!", "success")
+        return redirect(url_for('admin_insurance_management'))
+
+    return render_template('admin_edit_insurance_policy.html', form=form, policy=policy)
+
+@app.route('/admin/insurance/deactivate/<int:policy_id>', methods=['POST'])
+@admin_required
+def admin_deactivate_insurance_policy(policy_id):
+    """Deactivate an insurance policy"""
+    policy = InsurancePolicy.query.get_or_404(policy_id)
+    policy.is_active = False
+    db.session.commit()
+    flash(f"Insurance policy '{policy.title}' has been deactivated.", "success")
+    return redirect(url_for('admin_insurance_management'))
+
+@app.route('/admin/insurance/claim/<int:claim_id>', methods=['GET', 'POST'])
+@admin_required
+def admin_process_claim(claim_id):
+    """Process insurance claim with auto-deposit for monetary claims"""
+    from forms import AdminClaimProcessForm
+
+    claim = InsuranceClaim.query.get_or_404(claim_id)
+    form = AdminClaimProcessForm(obj=claim)
+
+    # Get enrollment details
+    enrollment = StudentInsurance.query.get(claim.student_insurance_id)
+
+    # Validate claim
+    validation_errors = []
+
+    # Check if coverage has started (past waiting period)
+    if not enrollment.coverage_start_date or enrollment.coverage_start_date > datetime.utcnow():
+        validation_errors.append("Coverage has not started yet (still in waiting period)")
+
+    # Check if payment is current
+    if not enrollment.payment_current:
+        validation_errors.append("Premium payments are not current")
+
+    # Check claim time limit
+    days_since_incident = (datetime.utcnow() - claim.incident_date).days
+    if days_since_incident > claim.policy.claim_time_limit_days:
+        validation_errors.append(f"Claim filed too late ({days_since_incident} days after incident, limit is {claim.policy.claim_time_limit_days} days)")
+
+    # Check max claims count
+    if claim.policy.max_claims_count:
+        # Count approved/paid claims in current period
+        # Simplified: count all approved/paid claims for this enrollment
+        approved_claims = InsuranceClaim.query.filter(
+            InsuranceClaim.student_insurance_id == enrollment.id,
+            InsuranceClaim.status.in_(['approved', 'paid'])
+        ).count()
+        if approved_claims >= claim.policy.max_claims_count:
+            validation_errors.append(f"Maximum claims limit reached ({claim.policy.max_claims_count} per {claim.policy.max_claims_period})")
+
+    # Get claims statistics
+    claims_stats = {
+        'pending': InsuranceClaim.query.filter_by(student_insurance_id=enrollment.id, status='pending').count(),
+        'approved': InsuranceClaim.query.filter_by(student_insurance_id=enrollment.id, status='approved').count(),
+        'rejected': InsuranceClaim.query.filter_by(student_insurance_id=enrollment.id, status='rejected').count(),
+        'paid': InsuranceClaim.query.filter_by(student_insurance_id=enrollment.id, status='paid').count(),
+    }
+
+    if request.method == 'POST' and form.validate_on_submit():
+        old_status = claim.status
+        new_status = form.status.data
+
+        claim.status = new_status
+        claim.admin_notes = form.admin_notes.data
+        claim.rejection_reason = form.rejection_reason.data if new_status == 'rejected' else None
+        claim.processed_date = datetime.utcnow()
+        claim.processed_by_admin_id = session.get('admin_id')
+
+        # Handle monetary claims - auto-deposit when approved
+        if claim.policy.is_monetary and new_status == 'approved' and old_status != 'approved':
+            # Use approved amount or requested amount
+            deposit_amount = form.approved_amount.data if form.approved_amount.data else claim.claim_amount
+            claim.approved_amount = deposit_amount
+
+            # Auto-deposit to student's checking account
+            student = claim.student
+            student.balance_checking += deposit_amount
+
+            # Create transaction record
+            transaction = Transaction(
+                student_id=student.id,
+                amount=deposit_amount,
+                transaction_type='insurance_claim',
+                description=f"Insurance claim approved: {claim.policy.title}",
+                block=student.block,
+                timestamp=datetime.utcnow()
+            )
+            db.session.add(transaction)
+
+            flash(f"Monetary claim approved! ${deposit_amount:.2f} deposited to {student.full_name}'s checking account.", "success")
+        elif not claim.policy.is_monetary and new_status == 'approved':
+            # Non-monetary claim - just mark as approved
+            flash(f"Non-monetary claim approved for {claim.claim_item}. Item/service will be provided offline.", "success")
+        elif new_status == 'rejected':
+            flash("Claim has been rejected.", "warning")
+
+        db.session.commit()
+        return redirect(url_for('admin_insurance_management'))
+
+    return render_template('admin_process_claim.html',
+                          claim=claim,
+                          form=form,
+                          enrollment=enrollment,
+                          validation_errors=validation_errors,
+                          claims_stats=claims_stats)
 
 @app.route('/admin/transactions')
 @admin_required

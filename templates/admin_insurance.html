@@ -1,0 +1,452 @@
+{% extends "layout_admin.html" %}
+{% set page_title = "Insurance Management" %}
+{% block title %}Insurance Management{% endblock %}
+{% block content %}
+
+<!-- Nav Tabs -->
+<ul class="nav nav-tabs mb-4" id="insuranceTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="policies-tab" data-bs-toggle="tab" data-bs-target="#policies" type="button" role="tab">
+      Insurance Policies
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="student-policies-tab" data-bs-toggle="tab" data-bs-target="#student-policies" type="button" role="tab">
+      Active Student Policies
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="cancelled-policies-tab" data-bs-toggle="tab" data-bs-target="#cancelled-policies" type="button" role="tab">
+      Cancelled Policies
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="claims-tab" data-bs-toggle="tab" data-bs-target="#claims" type="button" role="tab">
+      Claims <span class="badge bg-warning text-dark">{{ pending_claims_count }}</span>
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content" id="insuranceTabContent">
+  <!-- POLICIES TAB -->
+  <div class="tab-pane fade show active" id="policies" role="tabpanel">
+    <!-- Add/Edit Policy Form -->
+    <div class="card shadow mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">Add New Insurance Policy</h5>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('admin_insurance_management') }}">
+          {{ form.hidden_tag() }}
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              {{ form.title.label(class="form-label") }}
+              {{ form.title(class="form-control") }}
+            </div>
+            <div class="col-md-3 mb-3">
+              {{ form.premium.label(class="form-label") }}
+              <div class="input-group">
+                <span class="input-group-text">$</span>
+                {{ form.premium(class="form-control") }}
+              </div>
+            </div>
+            <div class="col-md-3 mb-3">
+              {{ form.charge_frequency.label(class="form-label") }}
+              {{ form.charge_frequency(class="form-select") }}
+            </div>
+          </div>
+
+          <div class="mb-3">
+            {{ form.description.label(class="form-label") }}
+            {{ form.description(class="form-control", rows=2) }}
+          </div>
+
+          <div class="row">
+            <div class="col-md-3 mb-3">
+              {{ form.waiting_period_days.label(class="form-label") }}
+              {{ form.waiting_period_days(class="form-control") }}
+            </div>
+            <div class="col-md-3 mb-3">
+              {{ form.claim_time_limit_days.label(class="form-label") }}
+              {{ form.claim_time_limit_days(class="form-control") }}
+            </div>
+            <div class="col-md-3 mb-3">
+              {{ form.max_claims_count.label(class="form-label") }}
+              {{ form.max_claims_count(class="form-control") }}
+            </div>
+            <div class="col-md-3 mb-3">
+              {{ form.max_claims_period.label(class="form-label") }}
+              {{ form.max_claims_period(class="form-select") }}
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-4 mb-3">
+              {{ form.max_claim_amount.label(class="form-label") }}
+              <div class="input-group">
+                <span class="input-group-text">$</span>
+                {{ form.max_claim_amount(class="form-control") }}
+              </div>
+            </div>
+            <div class="col-md-4 mb-3">
+              {{ form.auto_cancel_nonpay_days.label(class="form-label") }}
+              {{ form.auto_cancel_nonpay_days(class="form-control") }}
+            </div>
+            <div class="col-md-4 mb-3">
+              {{ form.bundle_discount_percent.label(class="form-label") }}
+              <div class="input-group">
+                {{ form.bundle_discount_percent(class="form-control") }}
+                <span class="input-group-text">%</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-4 mb-3">
+              <div class="form-check">
+                {{ form.is_monetary(class="form-check-input") }}
+                {{ form.is_monetary.label(class="form-check-label") }}
+              </div>
+              <small class="text-muted">If unchecked, students will specify what item/service they're claiming.</small>
+            </div>
+            <div class="col-md-4 mb-3">
+              <div class="form-check">
+                {{ form.autopay(class="form-check-input") }}
+                {{ form.autopay.label(class="form-check-label") }}
+              </div>
+            </div>
+            <div class="col-md-4 mb-3">
+              <div class="form-check">
+                {{ form.is_active(class="form-check-input") }}
+                {{ form.is_active.label(class="form-check-label") }}
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
+              <div class="form-check">
+                {{ form.no_repurchase_after_cancel(class="form-check-input") }}
+                {{ form.no_repurchase_after_cancel.label(class="form-check-label") }}
+              </div>
+              {% if form.no_repurchase_after_cancel.data %}
+              <div class="mt-2">
+                {{ form.repurchase_wait_days.label(class="form-label small") }}
+                {{ form.repurchase_wait_days(class="form-control form-control-sm") }}
+              </div>
+              {% endif %}
+            </div>
+          </div>
+
+          {{ form.submit(class="btn btn-primary") }}
+        </form>
+      </div>
+    </div>
+
+    <!-- Existing Policies -->
+    <div class="card shadow">
+      <div class="card-header">
+        <h5 class="mb-0">Existing Insurance Policies</h5>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Premium</th>
+                <th>Frequency</th>
+                <th>Claim Type</th>
+                <th>Waiting Period</th>
+                <th>Max Claims</th>
+                <th>Status</th>
+                <th>Enrolled</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for policy in policies %}
+              <tr>
+                <td><strong>{{ policy.title }}</strong></td>
+                <td>${{ "%.2f".format(policy.premium) }}</td>
+                <td>{{ policy.charge_frequency|title }}</td>
+                <td>
+                  <span class="badge {{ 'bg-info' if policy.is_monetary else 'bg-warning' }}">
+                    {{ 'Monetary' if policy.is_monetary else 'Item/Service' }}
+                  </span>
+                </td>
+                <td>{{ policy.waiting_period_days }} days</td>
+                <td>
+                  {% if policy.max_claims_count %}
+                    {{ policy.max_claims_count }}/{{ policy.max_claims_period }}
+                  {% else %}
+                    Unlimited
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="badge {{ 'bg-success' if policy.is_active else 'bg-secondary' }}">
+                    {{ 'Active' if policy.is_active else 'Inactive' }}
+                  </span>
+                </td>
+                <td>{{ policy.student_policies.filter_by(status='active').count() }} students</td>
+                <td>
+                  <a href="{{ url_for('admin_edit_insurance_policy', policy_id=policy.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                  <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deactivatePolicyModal" data-policy-id="{{ policy.id }}" data-policy-title="{{ policy.title }}">
+                    Deactivate
+                  </button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ACTIVE STUDENT POLICIES TAB -->
+  <div class="tab-pane fade" id="student-policies" role="tabpanel">
+    <div class="card shadow">
+      <div class="card-header">
+        <h5 class="mb-0">Active Student Policies</h5>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Policy</th>
+                <th>Purchase Date</th>
+                <th>Coverage Start</th>
+                <th>Premium</th>
+                <th>Next Payment</th>
+                <th>Payment Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for enrollment in active_enrollments %}
+              <tr>
+                <td>{{ enrollment.student.full_name }}</td>
+                <td>{{ enrollment.policy.title }}</td>
+                <td>{{ enrollment.purchase_date.strftime('%Y-%m-%d') }}</td>
+                <td>
+                  {% if enrollment.coverage_start_date %}
+                    {{ enrollment.coverage_start_date.strftime('%Y-%m-%d') }}
+                  {% else %}
+                    Waiting Period
+                  {% endif %}
+                </td>
+                <td>${{ "%.2f".format(enrollment.policy.premium) }}</td>
+                <td>
+                  {% if enrollment.next_payment_due %}
+                    {{ enrollment.next_payment_due.strftime('%Y-%m-%d') }}
+                  {% else %}
+                    N/A
+                  {% endif %}
+                </td>
+                <td>
+                  {% if enrollment.payment_current %}
+                    <span class="badge bg-success">Current</span>
+                  {% else %}
+                    <span class="badge bg-danger">Overdue {{ enrollment.days_unpaid }} days</span>
+                  {% endif %}
+                </td>
+                <td>
+                  <a href="{{ url_for('admin_view_student_policy', enrollment_id=enrollment.id) }}" class="btn btn-sm btn-outline-info">View</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CANCELLED POLICIES TAB -->
+  <div class="tab-pane fade" id="cancelled-policies" role="tabpanel">
+    <div class="card shadow">
+      <div class="card-header">
+        <h5 class="mb-0">Cancelled/Inactive Policies</h5>
+      </div>
+      <div class="card-body">
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Policy</th>
+                <th>Purchase Date</th>
+                <th>Cancel Date</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for enrollment in cancelled_enrollments %}
+              <tr>
+                <td>{{ enrollment.student.full_name }}</td>
+                <td>{{ enrollment.policy.title }}</td>
+                <td>{{ enrollment.purchase_date.strftime('%Y-%m-%d') }}</td>
+                <td>
+                  {% if enrollment.cancel_date %}
+                    {{ enrollment.cancel_date.strftime('%Y-%m-%d') }}
+                  {% else %}
+                    N/A
+                  {% endif %}
+                </td>
+                <td><span class="badge bg-secondary">{{ enrollment.status|title }}</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CLAIMS TAB -->
+  <div class="tab-pane fade" id="claims" role="tabpanel">
+    <div class="card shadow">
+      <div class="card-header">
+        <h5 class="mb-0">Insurance Claims</h5>
+      </div>
+      <div class="card-body">
+        <!-- Filter by status -->
+        <ul class="nav nav-pills mb-3">
+          <li class="nav-item">
+            <a class="nav-link active" href="#" data-status="pending">Pending ({{ pending_claims_count }})</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" data-status="approved">Approved</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" data-status="rejected">Rejected</a>
+          </li>
+          <li class="nav-item">
+            <a class="nav-link" href="#" data-status="paid">Paid</a>
+          </li>
+        </ul>
+
+        <div class="table-responsive">
+          <table class="table table-striped">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Policy</th>
+                <th>Incident Date</th>
+                <th>Filed Date</th>
+                <th>Claim</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for claim in claims %}
+              <tr class="claim-row" data-status="{{ claim.status }}">
+                <td>{{ claim.student.full_name }}</td>
+                <td>{{ claim.policy.title }}</td>
+                <td>{{ claim.incident_date.strftime('%Y-%m-%d') }}</td>
+                <td>{{ claim.filed_date.strftime('%Y-%m-%d') }}</td>
+                <td>
+                  {% if claim.claim_amount %}
+                    <span class="badge bg-success">${{ "%.2f".format(claim.claim_amount) }}</span>
+                  {% elif claim.claim_item %}
+                    <span class="badge bg-warning text-dark">{{ claim.claim_item }}</span>
+                  {% else %}
+                    N/A
+                  {% endif %}
+                </td>
+                <td>
+                  <span class="badge
+                    {% if claim.status == 'pending' %}bg-warning text-dark
+                    {% elif claim.status == 'approved' %}bg-success
+                    {% elif claim.status == 'rejected' %}bg-danger
+                    {% elif claim.status == 'paid' %}bg-info
+                    {% endif %}">
+                    {{ claim.status|title }}
+                  </span>
+                </td>
+                <td>
+                  <a href="{{ url_for('admin_process_claim', claim_id=claim.id) }}" class="btn btn-sm btn-outline-primary">Process</a>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Deactivate Policy Modal -->
+<div class="modal fade" id="deactivatePolicyModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Deactivate Policy</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Are you sure you want to deactivate <strong id="modalPolicyTitle"></strong>?</p>
+        <p class="text-muted">This will prevent new enrollments but won't affect existing policies.</p>
+      </div>
+      <div class="modal-footer">
+        <form id="deactivatePolicyForm" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">Deactivate</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Deactivate policy modal
+const deactivatePolicyModal = document.getElementById('deactivatePolicyModal');
+if (deactivatePolicyModal) {
+  deactivatePolicyModal.addEventListener('show.bs.modal', event => {
+    const button = event.relatedTarget;
+    const policyTitle = button.getAttribute('data-policy-title');
+    const policyId = button.getAttribute('data-policy-id');
+
+    document.getElementById('modalPolicyTitle').textContent = policyTitle;
+    document.getElementById('deactivatePolicyForm').action = `/admin/insurance/deactivate/${policyId}`;
+  });
+}
+
+// Claims filter
+document.querySelectorAll('.nav-pills .nav-link').forEach(link => {
+  link.addEventListener('click', function(e) {
+    e.preventDefault();
+    const status = this.getAttribute('data-status');
+
+    // Update active state
+    document.querySelectorAll('.nav-pills .nav-link').forEach(l => l.classList.remove('active'));
+    this.classList.add('active');
+
+    // Filter claims
+    document.querySelectorAll('.claim-row').forEach(row => {
+      if (status === 'all' || row.getAttribute('data-status') === status) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  });
+});
+
+// Initialize with pending claims shown
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.claim-row').forEach(row => {
+    if (row.getAttribute('data-status') !== 'pending') {
+      row.style.display = 'none';
+    }
+  });
+});
+</script>
+
+{% endblock %}

@@ -1,0 +1,232 @@
+{% extends "layout_student.html" %}
+
+{% block title %}My Policy Details{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ enrollment.policy.title }}</h1>
+    <p class="subtitle">Policy Details and History</p>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <!-- Policy Overview -->
+        <div class="card mb-4">
+            <div class="card-header">
+                Policy Overview
+            </div>
+            <div class="card-body">
+                <h5>{{ enrollment.policy.title }}</h5>
+                <p class="text-muted">{{ enrollment.policy.description }}</p>
+
+                <hr>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Premium:</strong> ${{ "%.2f".format(enrollment.policy.premium) }} / {{ enrollment.policy.charge_frequency }}</p>
+                        <p><strong>Autopay:</strong> {{ 'Enabled' if enrollment.policy.autopay else 'Disabled' }}</p>
+                        <p><strong>Status:</strong>
+                            <span class="badge {% if enrollment.status == 'active' %}bg-success{% else %}bg-secondary{% endif %}">
+                                {{ enrollment.status|title }}
+                            </span>
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Purchase Date:</strong> {{ enrollment.purchase_date.strftime('%B %d, %Y') }}</p>
+                        <p><strong>Coverage Start:</strong>
+                            {% if enrollment.coverage_start_date %}
+                                {{ enrollment.coverage_start_date.strftime('%B %d, %Y') }}
+                            {% else %}
+                                <span class="text-warning">In waiting period ({{ enrollment.policy.waiting_period_days }} days)</span>
+                            {% endif %}
+                        </p>
+                        <p><strong>Payment Status:</strong>
+                            {% if enrollment.payment_current %}
+                                <span class="badge bg-success">Current</span>
+                            {% else %}
+                                <span class="badge bg-danger">Overdue {{ enrollment.days_unpaid }} days</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Coverage Details -->
+        <div class="card mb-4">
+            <div class="card-header">
+                Coverage Details
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Claim Limits</h6>
+                        <ul>
+                            <li>Waiting period: {{ enrollment.policy.waiting_period_days }} days</li>
+                            <li>Claim deadline: {{ enrollment.policy.claim_time_limit_days }} days from incident</li>
+                            {% if enrollment.policy.max_claim_amount %}
+                                <li>Max per claim: ${{ "%.2f".format(enrollment.policy.max_claim_amount) }}</li>
+                            {% else %}
+                                <li>Max per claim: Unlimited</li>
+                            {% endif %}
+                            {% if enrollment.policy.max_claims_count %}
+                                <li>Max claims: {{ enrollment.policy.max_claims_count }} per {{ enrollment.policy.max_claims_period }}</li>
+                            {% else %}
+                                <li>Max claims: Unlimited</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Payment Terms</h6>
+                        <ul>
+                            <li>Frequency: {{ enrollment.policy.charge_frequency|title }}</li>
+                            <li>Autopay: {{ 'Yes' if enrollment.policy.autopay else 'No' }}</li>
+                            {% if enrollment.next_payment_due %}
+                                <li>Next payment: {{ enrollment.next_payment_due.strftime('%B %d, %Y') }}</li>
+                            {% endif %}
+                            <li>Auto-cancel after {{ enrollment.policy.auto_cancel_nonpay_days }} days of non-payment</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Claims History -->
+        <div class="card mb-4">
+            <div class="card-header">
+                My Claims for This Policy
+            </div>
+            <div class="card-body">
+                {% if claims %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Incident Date</th>
+                                    <th>Filed Date</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for claim in claims %}
+                                <tr>
+                                    <td>{{ claim.incident_date.strftime('%Y-%m-%d') }}</td>
+                                    <td>{{ claim.filed_date.strftime('%Y-%m-%d') }}</td>
+                                    <td>
+                                        {% if claim.approved_amount %}
+                                            ${{ "%.2f".format(claim.approved_amount) }}
+                                        {% elif claim.claim_amount %}
+                                            ${{ "%.2f".format(claim.claim_amount) }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge
+                                            {% if claim.status == 'pending' %}bg-warning text-dark
+                                            {% elif claim.status == 'approved' %}bg-success
+                                            {% elif claim.status == 'rejected' %}bg-danger
+                                            {% elif claim.status == 'paid' %}bg-info
+                                            {% endif %}">
+                                            {{ claim.status|title }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#claimModal{{ claim.id }}">
+                                            View
+                                        </button>
+                                    </td>
+                                </tr>
+
+                                <!-- Claim Details Modal -->
+                                <div class="modal fade" id="claimModal{{ claim.id }}" tabindex="-1">
+                                    <div class="modal-dialog">
+                                        <div class="modal-content">
+                                            <div class="modal-header">
+                                                <h5 class="modal-title">Claim Details</h5>
+                                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                            </div>
+                                            <div class="modal-body">
+                                                <p><strong>Incident Date:</strong> {{ claim.incident_date.strftime('%B %d, %Y') }}</p>
+                                                <p><strong>Description:</strong></p>
+                                                <p class="bg-light p-3 rounded">{{ claim.description }}</p>
+
+                                                {% if claim.status == 'rejected' and claim.rejection_reason %}
+                                                    <p><strong>Rejection Reason:</strong></p>
+                                                    <p class="bg-danger bg-opacity-10 p-3 rounded text-danger">{{ claim.rejection_reason }}</p>
+                                                {% endif %}
+
+                                                {% if claim.admin_notes %}
+                                                    <p><strong>Admin Notes:</strong></p>
+                                                    <p class="bg-info bg-opacity-10 p-3 rounded">{{ claim.admin_notes }}</p>
+                                                {% endif %}
+                                            </div>
+                                            <div class="modal-footer">
+                                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted mb-0">No claims filed yet.</p>
+                {% endif %}
+
+                <div class="mt-3">
+                    <a href="{{ url_for('student_file_claim', policy_id=enrollment.policy.id) }}" class="btn btn-primary">File New Claim</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <!-- Quick Actions -->
+        <div class="card mb-4">
+            <div class="card-header">
+                Quick Actions
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('student_file_claim', policy_id=enrollment.policy.id) }}" class="btn btn-primary">
+                        File a Claim
+                    </a>
+                    <a href="{{ url_for('student_insurance_marketplace') }}" class="btn btn-outline-secondary">
+                        Back to Insurance
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Cancel Policy -->
+        {% if enrollment.status == 'active' %}
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">
+                Cancel Policy
+            </div>
+            <div class="card-body">
+                <p class="small text-muted">
+                    {% if enrollment.policy.no_repurchase_after_cancel %}
+                        ⚠️ <strong>Warning:</strong> If you cancel this policy, you must wait {{ enrollment.policy.repurchase_wait_days }} days before you can repurchase it.
+                    {% else %}
+                        You can cancel your policy at any time.
+                    {% endif %}
+                </p>
+
+                <form action="{{ url_for('student_cancel_insurance', enrollment_id=enrollment.id) }}" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger w-100" onclick="return confirm('Are you sure you want to cancel this insurance policy?')">
+                        Cancel This Policy
+                    </button>
+                </form>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
