@@ -1,7 +1,7 @@
 """Add rent system with per-period tracking
 
 Revision ID: a1b2c3d4e5f6
-Revises: f5a1e3e4d7c8
+Revises: merge_001
 Create Date: 2025-11-16 06:00:00.000000
 
 """
@@ -12,7 +12,7 @@ from sqlalchemy import text
 
 # revision identifiers, used by Alembic.
 revision = 'a1b2c3d4e5f6'
-down_revision = 'f5a1e3e4d7c8'
+down_revision = 'merge_001'
 branch_labels = None
 depends_on = None
 
