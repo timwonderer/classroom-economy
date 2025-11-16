@@ -417,6 +417,85 @@ class RentPayment(db.Model):
     student = db.relationship('Student', backref='rent_payments')
 
 
+# -------------------- INSURANCE MODELS --------------------
+class InsurancePolicy(db.Model):
+    __tablename__ = 'insurance_policies'
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    premium = db.Column(db.Float, nullable=False)  # Monthly cost
+    charge_frequency = db.Column(db.String(20), default='monthly')  # monthly, weekly, etc
+    autopay = db.Column(db.Boolean, default=True)
+    waiting_period_days = db.Column(db.Integer, default=7)  # Days before coverage starts
+    max_claims_count = db.Column(db.Integer, nullable=True)  # Max claims per period (null = unlimited)
+    max_claims_period = db.Column(db.String(20), default='month')  # month, semester, year
+    max_claim_amount = db.Column(db.Float, nullable=True)  # Max $ per claim (null = unlimited)
+
+    # Special rules
+    no_repurchase_after_cancel = db.Column(db.Boolean, default=False)
+    repurchase_wait_days = db.Column(db.Integer, default=30)  # Days to wait after cancel
+    auto_cancel_nonpay_days = db.Column(db.Integer, default=7)  # Days of non-payment before cancel
+    claim_time_limit_days = db.Column(db.Integer, default=30)  # Days from incident to file claim
+
+    # Bundle settings (JSON or separate table in future)
+    bundle_with_policy_ids = db.Column(db.Text, nullable=True)  # Comma-separated IDs
+    bundle_discount_percent = db.Column(db.Float, default=0)  # Discount % for bundle
+
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    student_policies = db.relationship('StudentInsurance', backref='policy', lazy='dynamic')
+    claims = db.relationship('InsuranceClaim', backref='policy', lazy='dynamic')
+
+
+class StudentInsurance(db.Model):
+    __tablename__ = 'student_insurance'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id'), nullable=False)
+
+    status = db.Column(db.String(20), default='active')  # active, cancelled, suspended
+    purchase_date = db.Column(db.DateTime, default=datetime.utcnow)
+    cancel_date = db.Column(db.DateTime, nullable=True)
+    last_payment_date = db.Column(db.DateTime, nullable=True)
+    next_payment_due = db.Column(db.DateTime, nullable=True)
+    coverage_start_date = db.Column(db.DateTime, nullable=True)  # After waiting period
+
+    # Track payment status
+    payment_current = db.Column(db.Boolean, default=True)
+    days_unpaid = db.Column(db.Integer, default=0)
+
+    # Relationships
+    student = db.relationship('Student', backref='insurance_policies')
+    claims = db.relationship('InsuranceClaim', backref='student_policy', lazy='dynamic')
+
+
+class InsuranceClaim(db.Model):
+    __tablename__ = 'insurance_claims'
+    id = db.Column(db.Integer, primary_key=True)
+    student_insurance_id = db.Column(db.Integer, db.ForeignKey('student_insurance.id'), nullable=False)
+    policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+
+    incident_date = db.Column(db.DateTime, nullable=False)  # When incident occurred
+    filed_date = db.Column(db.DateTime, default=datetime.utcnow)
+    description = db.Column(db.Text, nullable=False)
+    claim_amount = db.Column(db.Float, nullable=True)  # Optional: requested amount
+
+    status = db.Column(db.String(20), default='pending')  # pending, approved, rejected, paid
+    rejection_reason = db.Column(db.Text, nullable=True)
+    admin_notes = db.Column(db.Text, nullable=True)
+    approved_amount = db.Column(db.Float, nullable=True)
+    processed_date = db.Column(db.DateTime, nullable=True)
+    processed_by_admin_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
+
+    # Relationships
+    student = db.relationship('Student', backref='insurance_claims')
+    processed_by = db.relationship('Admin', backref='processed_claims')
+
+
 # ---- Admin Model ----
 class Admin(db.Model):
     __tablename__ = 'admins'

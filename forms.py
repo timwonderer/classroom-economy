@@ -67,5 +67,58 @@ class StudentLoginForm(FlaskForm):
 class AdminLoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
     totp_code = StringField('TOTP Code', validators=[DataRequired()])
-
     submit = SubmitField('Log In')
+
+
+# -------------------- INSURANCE FORMS --------------------
+class InsurancePolicyForm(FlaskForm):
+    title = StringField('Policy Title', validators=[DataRequired()])
+    description = TextAreaField('Description')
+    premium = FloatField('Monthly Premium ($)', validators=[DataRequired()])
+    charge_frequency = SelectField('Charge Frequency', choices=[
+        ('monthly', 'Monthly'),
+        ('weekly', 'Weekly'),
+        ('semester', 'Per Semester')
+    ], default='monthly')
+    autopay = BooleanField('Enable Autopay', default=True)
+    waiting_period_days = IntegerField('Waiting Period (days)', default=7, validators=[DataRequired()])
+    max_claims_count = IntegerField('Max Claims per Period (leave blank for unlimited)', validators=[Optional()])
+    max_claims_period = SelectField('Claims Period', choices=[
+        ('month', 'Per Month'),
+        ('semester', 'Per Semester'),
+        ('year', 'Per Year')
+    ], default='month')
+    max_claim_amount = FloatField('Max Claim Amount $ (leave blank for unlimited)', validators=[Optional()])
+
+    # Special rules
+    no_repurchase_after_cancel = BooleanField('Prevent repurchase after cancellation', default=False)
+    repurchase_wait_days = IntegerField('Days to wait before repurchase', default=30)
+    auto_cancel_nonpay_days = IntegerField('Auto-cancel after days of non-payment', default=7)
+    claim_time_limit_days = IntegerField('Time limit to file claim (days from incident)', default=30)
+
+    # Bundle settings
+    bundle_discount_percent = FloatField('Bundle Discount %', default=0, validators=[Optional()])
+
+    is_active = BooleanField('Policy is Active', default=True)
+    submit = SubmitField('Save Policy')
+
+
+class InsuranceClaimForm(FlaskForm):
+    policy_id = SelectField('Insurance Policy', coerce=int, validators=[DataRequired()])
+    incident_date = DateField('Date of Incident', format='%Y-%m-%d', validators=[DataRequired()])
+    description = TextAreaField('Claim Description', validators=[DataRequired()])
+    claim_amount = FloatField('Claim Amount (if applicable)', validators=[Optional()])
+    submit = SubmitField('Submit Claim')
+
+
+class AdminClaimProcessForm(FlaskForm):
+    status = SelectField('Status', choices=[
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+        ('paid', 'Paid')
+    ], validators=[DataRequired()])
+    approved_amount = FloatField('Approved Amount', validators=[Optional()])
+    rejection_reason = TextAreaField('Rejection Reason (if rejected)')
+    admin_notes = TextAreaField('Admin Notes')
+    submit = SubmitField('Update Claim')
