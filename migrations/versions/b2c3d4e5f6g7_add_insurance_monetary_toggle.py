@@ -20,7 +20,7 @@ def upgrade():
     # Add is_monetary field to insurance_policies table
     # This determines if students claim dollar amounts (monetary) or items/services (non-monetary)
     op.add_column('insurance_policies',
-        sa.Column('is_monetary', sa.Boolean(), nullable=True, server_default='true'))
+        sa.Column('is_monetary', sa.Boolean(), nullable=True))
 
     # Add claim_item field to insurance_claims table
     # For non-monetary claims: what item or service the student is claiming
@@ -33,7 +33,7 @@ def upgrade():
         sa.Column('comments', sa.Text(), nullable=True))
 
     # Update existing policies to be monetary (default behavior)
-    op.execute("UPDATE insurance_policies SET is_monetary = true WHERE is_monetary IS NULL")
+    op.execute("UPDATE insurance_policies SET is_monetary = 1 WHERE is_monetary IS NULL")
 
     # Make is_monetary non-nullable after setting defaults
     op.alter_column('insurance_policies', 'is_monetary', nullable=False)
