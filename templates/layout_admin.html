@@ -32,6 +32,8 @@
             </a>
             <a href="{{ url_for('admin_store_management') }}"
                class="btn text-start {% if current_page == 'store' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🏪 Store</a>
+            <a href="{{ url_for('admin_rent_settings') }}"
+               class="btn text-start {% if current_page == 'rent' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🏠 Rent</a>
             <a href="#"
                class="btn text-start btn-outline-secondary disabled">📋 Audit (Coming Soon)</a>
         </div>

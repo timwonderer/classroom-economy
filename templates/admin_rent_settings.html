@@ -1,0 +1,137 @@
+{% extends 'layout_admin.html' %}
+{% set current_page = 'rent' %}
+{% set page_title = 'Rent Settings' %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <!-- Statistics Cards -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Total Students with Rent Enabled</h6>
+                    <h2>{{ total_students }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Paid This Month</h6>
+                    <h2>{{ paid_this_month }}</h2>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-body">
+                    <h6 class="text-muted">Unpaid This Month</h6>
+                    <h2>{{ total_students - paid_this_month }}</h2>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">Rent Configuration</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+                        <div class="mb-3">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" id="is_enabled"
+                                       name="is_enabled" {% if settings.is_enabled %}checked{% endif %}>
+                                <label class="form-check-label" for="is_enabled">
+                                    <strong>Enable Rent System</strong>
+                                </label>
+                            </div>
+                            <small class="text-muted">When enabled, students will be required to pay rent.</small>
+                        </div>
+
+                        <hr>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="rent_amount" class="form-label">Monthly Rent Amount ($)</label>
+                                <input type="number" step="0.01" min="0" class="form-control"
+                                       id="rent_amount" name="rent_amount"
+                                       value="{{ settings.rent_amount }}" required>
+                                <small class="text-muted">Amount students pay each month (per period)</small>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="due_day_of_month" class="form-label">Due Day of Month</label>
+                                <input type="number" min="1" max="31" class="form-control"
+                                       id="due_day_of_month" name="due_day_of_month"
+                                       value="{{ settings.due_day_of_month }}" required>
+                                <small class="text-muted">Day of month rent is due (1-31)</small>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="late_fee" class="form-label">Late Fee ($)</label>
+                                <input type="number" step="0.01" min="0" class="form-control"
+                                       id="late_fee" name="late_fee"
+                                       value="{{ settings.late_fee }}" required>
+                                <small class="text-muted">Fee charged for late payments (per period)</small>
+                            </div>
+
+                            <div class="col-md-6 mb-3">
+                                <label for="grace_period_days" class="form-label">Grace Period (Days)</label>
+                                <input type="number" min="0" max="31" class="form-control"
+                                       id="grace_period_days" name="grace_period_days"
+                                       value="{{ settings.grace_period_days }}" required>
+                                <small class="text-muted">Days after due date before late fee applies</small>
+                            </div>
+                        </div>
+
+                        <div class="mt-4">
+                            <button type="submit" class="btn btn-primary">Save Settings</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-4">
+            <div class="card bg-light">
+                <div class="card-header">
+                    <h5 class="mb-0">How Rent Works</h5>
+                </div>
+                <div class="card-body">
+                    <ul class="list-unstyled">
+                        <li class="mb-2">📅 <strong>Due Date:</strong> Rent is due on day {{ settings.due_day_of_month }} of each month</li>
+                        <li class="mb-2">⏰ <strong>Grace Period:</strong> {{ settings.grace_period_days }} days after due date</li>
+                        <li class="mb-2">💰 <strong>Amount:</strong> ${{ "%.2f"|format(settings.rent_amount) }} per period</li>
+                        <li class="mb-2">⚠️ <strong>Late Fee:</strong> ${{ "%.2f"|format(settings.late_fee) }} if paid late (per period)</li>
+                    </ul>
+
+                    <hr>
+
+                    <h6>Example Timeline:</h6>
+                    <p class="small text-muted">
+                        If due date is {{ settings.due_day_of_month}}:
+                        <br>• Rent due: Day {{ settings.due_day_of_month }}
+                        <br>• Grace period ends: Day {{ settings.due_day_of_month + settings.grace_period_days }}
+                        <br>• Late fee applies: Day {{ settings.due_day_of_month + settings.grace_period_days + 1 }}
+                    </p>
+
+                    <hr>
+
+                    <h6>Multi-Period Note:</h6>
+                    <p class="small text-muted">
+                        Students enrolled in multiple periods pay rent separately for each period.
+                        Example: A student in Period A and B pays ${{ "%.2f"|format(settings.rent_amount * 2) }}/month total.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
