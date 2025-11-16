@@ -1,58 +1,295 @@
-{% extends "base.html" %}
-{% block title %}Admin Signup{% endblock %}
+<!DOCTYPE html>
+<html lang="en">
 
-{% block content %}
-<div class="container mt-5" style="max-width: 480px;">
-    <h2 style="color:rgb(2, 70, 55)">Classroom Token Hub</h1>
-    <h3>New Teacher Sign Up</h2>
-      <div style="border-style:solid;border-color:rgb(14, 134, 126); padding: 5px 15px; border-radius: 5px; margin-bottom: 20px; margin-top:20px">
-    <p style="margin-top:20px"> Classroom Token Hub is an currently under development with limited capacity.
-    <span style="color:red"> To ensure the stability of our server, this app is currently only open to small number of teacher testers</span></p>
-    <p>Once we are ready for more teachers to join, we will open up the app to the general public.</p>
-    </div>
-   
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        <div class="mb-3">
-          {% for category, message in messages %}
-            <div class="alert 
-              {% if category == 'success' %}
-                alert-success
-              {% elif category == 'error' %}
-                alert-danger
-              {% else %}
-                alert-secondary
-              {% endif %}
-              alert-dismissible fade show" role="alert">
-              {{ message }}
-              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Token Hub - Teacher Sign Up</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .setup-wrapper {
+            display: flex;
+            height: 100vh;
+        }
+
+        .setup-form-side {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ffffff;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .branding-side {
+            flex: 1;
+            background: linear-gradient(135deg, #E8B856 0%, #D47B6F 50%, #C44D3B 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .branding-content {
+            text-align: center;
+            z-index: 2;
+            padding: 2rem;
+        }
+
+        .branding-content h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .branding-content .tagline {
+            font-size: 1.2rem;
+            font-weight: 300;
+            opacity: 0.9;
+        }
+
+        /* Decorative circles */
+        .circle {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.1;
+        }
+
+        .circle-1 {
+            width: 300px;
+            height: 300px;
+            background: #C47B5E;
+            top: -100px;
+            right: -100px;
+        }
+
+        .circle-2 {
+            width: 200px;
+            height: 200px;
+            background: #D9845E;
+            bottom: 50px;
+            left: -50px;
+        }
+
+        .circle-3 {
+            width: 150px;
+            height: 150px;
+            background: #B8945E;
+            top: 50%;
+            right: 10%;
+        }
+
+        .setup-container {
+            width: 100%;
+            max-width: 500px;
+        }
+
+        .setup-container h1 {
+            margin-bottom: 1rem;
+            font-weight: 600;
+            color: #2B3E50;
+            text-align: center;
+            font-size: 2rem;
+        }
+
+        .setup-container .subtitle {
+            text-align: center;
+            color: #6c757d;
+            margin-bottom: 2rem;
+            font-size: 0.95rem;
+        }
+
+        .info-box {
+            border: 2px solid #D47B6F;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            background-color: #fff9f5;
+        }
+
+        .info-box p {
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .info-box .limited-capacity {
+            color: #dc3545;
+            font-weight: 600;
+        }
+
+        .btn-primary {
+            background: #D47B6F;
+            border: none;
+            padding: 0.75rem;
+            font-weight: 500;
+            transition: background 0.3s ease;
+        }
+
+        .btn-primary:hover {
+            background: #C44D3B;
+        }
+
+        .back-to-login {
+            text-align: center;
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid #e9ecef;
+        }
+
+        .back-to-login a {
+            color: #D47B6F;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .back-to-login a:hover {
+            color: #C44D3B;
+            text-decoration: underline;
+        }
+
+        .footer-info {
+            margin-top: 2rem;
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+
+        .dev-notice {
+            color: #dc3545;
+            font-weight: 500;
+            margin-top: 1rem;
+        }
+
+        .form-label {
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .form-control:focus {
+            border-color: #D47B6F;
+            box-shadow: 0 0 0 0.2rem rgba(212, 123, 111, 0.25);
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        @media (max-width: 768px) {
+            .branding-side {
+                display: none;
+            }
+
+            .setup-form-side {
+                flex: 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="setup-wrapper">
+        <!-- Left side: Setup Form -->
+        <div class="setup-form-side">
+            <div class="setup-container">
+                <h1>Teacher Sign Up</h1>
+                <p class="subtitle">Join Classroom Token Hub</p>
+
+                <div class="info-box">
+                    <p>Classroom Token Hub is currently under development with limited capacity.</p>
+                    <p class="limited-capacity">To ensure server stability, this app is currently only open to a small number of teacher testers.</p>
+                    <p>Once we are ready for more teachers to join, we will open up the app to the general public.</p>
+                </div>
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                  {% if messages %}
+                    <div class="mb-3">
+                      {% for category, message in messages %}
+                        <div class="alert
+                          {% if category == 'success' %}
+                            alert-success
+                          {% elif category == 'error' %}
+                            alert-danger
+                          {% else %}
+                            alert-secondary
+                          {% endif %}
+                          alert-dismissible fade show" role="alert">
+                          {{ message }}
+                          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                      {% endfor %}
+                    </div>
+                  {% endif %}
+                {% endwith %}
+
+                <form method="POST" action="{{ url_for('admin_signup') }}">
+                    {{ form.csrf_token if form and form.csrf_token }}
+
+                    <div class="form-group">
+                        <label for="invite_code" class="form-label">Invite Code</label>
+                        <input id="invite_code" name="invite_code" type="text" required autocomplete="off" class="form-control" placeholder="Enter your invite code">
+                        <small class="form-text text-muted">The invite code is case-sensitive and one-time use only</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="username" class="form-label">Username</label>
+                        <input id="username" name="username" type="text" required autocomplete="username" class="form-control" placeholder="Create a unique username">
+                        <small class="form-text text-muted">This will be your login username</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">Sign Up</button>
+                </form>
+
+                <div class="back-to-login">
+                    <p class="mb-2">Already have an account?</p>
+                    <a href="{{ url_for('admin_login') }}">Back to Login</a>
+                </div>
+
+                <div class="footer-info text-center">
+                    <p class="dev-notice">
+                        This web app is currently under active development.<br>
+                        Some features may be unstable or crash unexpectedly.
+                    </p>
+
+                    <p class="mt-3 small">
+                        For questions or concerns, contact the developer at
+                        <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a>
+                    </p>
+
+                    <small class="text-muted d-block mt-3">BETA Stable Release v0.9.0</small>
+                </div>
             </div>
-          {% endfor %}
         </div>
-      {% endif %}
-    {% endwith %}
-    <form method="POST" action="{{ url_for('admin_signup') }}">
-        {{ form.csrf_token if form and form.csrf_token }}
-        <div class="mb-4">
-            <label for="invite_code" class="form-label">If you have received an <b>invite code</b>, enter it exactly as shown. The invite code is case-sensitive and one-time use only.</label>
-            <input id="invite_code" name="invite_code" type="text" required autocomplete="off" class="form-control">
+
+        <!-- Right side: Branding -->
+        <div class="branding-side">
+            <div class="circle circle-1"></div>
+            <div class="circle circle-2"></div>
+            <div class="circle circle-3"></div>
+            <div class="branding-content">
+                <h1>Classroom<br>Token Hub</h1>
+                <p class="tagline">Empowering Student Engagement</p>
+            </div>
         </div>
-        
-        <div class="mb-3">
-            <label for="username" class="form-label">Create a unique <b>username</b> that you will use to log in</label>
-            <input id="username" name="username" type="text" required autocomplete="username" class="form-control">
-        </div>
-        
-        <button type="submit" class="btn btn-primary w-100">Sign Up</button>
-    </form>
-    <p style="color:red;margin-top: 2rem;text-align: center;">
-            This web app is currently under active development. <br>Some features may be unstable or crash unexpectedly.
-        </p>
-        
-        <p class="mt-1 text-muted small">
-            For questions or concerns, contact the developer at
-            <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a>.
-        </p>
-        <small style="color: #999; text-align: center; display: block;margin-top: 1rem;">BETA Stable Release v0.9.0</small
-</div>
-{% endblock %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

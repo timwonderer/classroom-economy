@@ -1,126 +1,284 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
-    <title>Account Setup | Classroom Economy</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Token Hub - Set PIN & Passphrase</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/zxcvbn@4.4.2/dist/zxcvbn.js"></script>
-
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: #f4f7fa;
-            color: #333;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+        * {
             margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
+
+        body {
+            font-family: 'Noto Sans', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .setup-wrapper {
+            display: flex;
+            height: 100vh;
+        }
+
+        .setup-form-side {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ffffff;
+            padding: 2rem;
+            overflow-y: auto;
+        }
+
+        .branding-side {
+            flex: 1;
+            background: linear-gradient(135deg, #9B7AB8 0%, #A78AC8 50%, #7B6B9B 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .branding-content {
+            text-align: center;
+            z-index: 2;
+            padding: 2rem;
+        }
+
+        .branding-content h1 {
+            font-size: 3.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .branding-content .tagline {
+            font-size: 1.2rem;
+            font-weight: 300;
+            opacity: 0.9;
+        }
+
+        /* Decorative circles */
+        .circle {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.1;
+        }
+
+        .circle-1 {
+            width: 300px;
+            height: 300px;
+            background: #8F6876;
+            top: -100px;
+            right: -100px;
+        }
+
+        .circle-2 {
+            width: 200px;
+            height: 200px;
+            background: #C17B7E;
+            bottom: 50px;
+            left: -50px;
+        }
+
+        .circle-3 {
+            width: 150px;
+            height: 150px;
+            background: #6DB665;
+            top: 50%;
+            right: 10%;
+        }
+
         .setup-container {
-            background-color: #fff;
-            padding: 2rem 2.5rem;
-            border-radius: 10px;
-            box-shadow: 0 0 15px rgba(0, 0, 0, 0.05);
-            max-width: 500px;
             width: 100%;
+            max-width: 500px;
         }
-        h1 {
-            font-size: 1.75rem;
-            margin-bottom: 0.5rem;
+
+        .setup-container h1 {
+            margin-bottom: 1rem;
+            font-weight: 600;
+            color: #2B3E50;
+            text-align: center;
+            font-size: 2rem;
         }
-        p.description {
+
+        .setup-container .subtitle {
+            text-align: center;
+            color: #6c757d;
+            margin-bottom: 2rem;
             font-size: 0.95rem;
-            margin-bottom: 1.5rem;
-            color: #555;
+            padding: 1rem;
+            background-color: #f8f9fa;
+            border-radius: 8px;
         }
-        label {
+
+        .setup-container .subtitle strong {
+            color: #2B3E50;
             font-weight: 600;
         }
-        input[type="password"], input[type="text"] {
-            width: 100%;
-            padding: 0.5rem;
-            margin: 0.5rem 0 1rem;
-            border: 1px solid #ccc;
-            border-radius: 5px;
+
+        .btn-primary {
+            background: #9B7AB8;
+            border: none;
+            padding: 0.75rem;
+            font-weight: 500;
+            transition: background 0.3s ease;
         }
+
+        .btn-primary:hover {
+            background: #7B6B9B;
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .footer-info {
+            margin-top: 2rem;
+            font-size: 0.85rem;
+            color: #6c757d;
+        }
+
+        .form-label {
+            font-weight: 500;
+            color: #495057;
+        }
+
+        .form-control:focus {
+            border-color: #9B7AB8;
+            box-shadow: 0 0 0 0.2rem rgba(155, 122, 184, 0.25);
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .hint {
+            font-size: 0.85rem;
+            color: #6c757d;
+            margin-top: 0.25rem;
+        }
+
         .strength-meter {
             height: 10px;
             width: 100%;
-            background-color: #eee;
-            margin-bottom: 1rem;
+            background-color: #e9ecef;
+            margin-top: 0.5rem;
             border-radius: 5px;
+            overflow: hidden;
         }
+
         .strength-meter-fill {
             height: 100%;
             width: 0%;
             background-color: red;
             border-radius: 5px;
-            transition: width 0.3s ease-in-out;
+            transition: width 0.3s ease-in-out, background-color 0.3s ease-in-out;
         }
-        .hint {
-            font-size: 0.85rem;
-            color: #666;
-            margin-top: -0.5rem;
-            margin-bottom: 1rem;
+
+        #strength-feedback {
+            margin-top: 0.5rem;
+            font-weight: 500;
         }
-        button {
-            background-color: #007BFF;
-            color: white;
-            padding: 0.6rem 1.2rem;
-            border: none;
-            border-radius: 5px;
-            font-size: 1rem;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        ul {
-            color: red;
-            padding-left: 1.2rem;
+
+        @media (max-width: 768px) {
+            .branding-side {
+                display: none;
+            }
+
+            .setup-form-side {
+                flex: 1;
+            }
         }
     </style>
 </head>
+
 <body>
-    <div class="setup-container">
-        <h1>Set Your PIN & Passphrase</h1>
-        <p class="description">Your username is: <strong>{{ username }}</strong>. Please write it down if you haven’t already, as it will not be shown again after setup is complete.</p>
-{% with messages = get_flashed_messages(category_filter=['setup']) %}
-          {% if messages %}
-            <ul>
-              {% for message in messages %}
-                <li>{{ message }}</li>
-              {% endfor %}
-            </ul>
-          {% endif %}
-        {% endwith %}
+    <div class="setup-wrapper">
+        <!-- Left side: Setup Form -->
+        <div class="setup-form-side">
+            <div class="setup-container">
+                <h1>Set Your PIN & Passphrase</h1>
+                <p class="subtitle">Your username is: <strong>{{ username }}</strong><br>
+                Please write it down if you haven't already, as it will not be shown again after setup is complete.</p>
 
-        <form method="POST" onsubmit="return validateForm()">
-            {{ form.hidden_tag() }}
-            {{ form.pin.label(class="form-label") }}
-            {{ form.pin(class="form-control", placeholder="e.g. 938291") }}
-            {% for error in form.pin.errors %}
-                <div class="text-danger">{{ error }}</div>
-            {% endfor %}
-            <div class="hint">Use 4-8 digits number that you will remember. You will sign in using this PIN</div>
+                {% with messages = get_flashed_messages(category_filter=['setup']) %}
+                  {% if messages %}
+                    <div class="alert alert-danger">
+                      <ul class="mb-0">
+                        {% for message in messages %}
+                          <li>{{ message }}</li>
+                        {% endfor %}
+                      </ul>
+                    </div>
+                  {% endif %}
+                {% endwith %}
 
-            {{ form.passphrase.label(class="form-label") }}
-            {{ form.passphrase(class="form-control", id="passphrase", placeholder="e.g. Surprised!Banana!2!You!") }}
-            {% for error in form.passphrase.errors %}
-                <div class="text-danger">{{ error }}</div>
-            {% endfor %}
-            <div class="hint">A good passphrase is at least four words long with symbols and numbers within. It should be something easy for you to remember but hard for someone else to guess</div>
-            <div class="strength-meter">
-                <div class="strength-meter-fill" id="strength-bar"></div>
+                <form method="POST" onsubmit="return validateForm()">
+                    {{ form.hidden_tag() }}
+
+                    <div class="form-group">
+                        {{ form.pin.label(class="form-label") }}
+                        {{ form.pin(class="form-control", id="pin", placeholder="e.g. 938291") }}
+                        <div class="hint">Use 4-8 digits number that you will remember. You will sign in using this PIN</div>
+                        {% for error in form.pin.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="form-group">
+                        {{ form.passphrase.label(class="form-label") }}
+                        {{ form.passphrase(class="form-control", id="passphrase", placeholder="e.g. Surprised!Banana!2!You!") }}
+                        <div class="hint">A good passphrase is at least four words long with symbols and numbers within. It should be something easy for you to remember but hard for someone else to guess</div>
+                        {% for error in form.passphrase.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                        {% endfor %}
+                        <div class="strength-meter">
+                            <div class="strength-meter-fill" id="strength-bar"></div>
+                        </div>
+                        <div id="strength-feedback" class="hint"></div>
+                    </div>
+
+                    <div class="form-group">
+                        {{ form.submit(class="btn btn-primary w-100", id="submit-button", disabled=True) }}
+                    </div>
+                </form>
+
+                <div class="footer-info text-center">
+                    <p class="mt-3 small">
+                        For questions or concerns, contact the developer at
+                        <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a>
+                    </p>
+
+                    <small class="text-muted d-block mt-3">BETA Stable Release v0.9.0</small>
+                </div>
             </div>
-            <div id="strength-feedback" class="hint"></div>
+        </div>
 
-            {{ form.submit(class="btn btn-primary", id="submit-button", disabled=True) }}
-        </form>
+        <!-- Right side: Branding -->
+        <div class="branding-side">
+            <div class="circle circle-1"></div>
+            <div class="circle circle-2"></div>
+            <div class="circle circle-3"></div>
+            <div class="branding-content">
+                <h1>Classroom<br>Token Hub</h1>
+                <p class="tagline">Empowering Student Engagement</p>
+            </div>
+        </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         const passInput = document.getElementById('passphrase');
         const strengthBar = document.getElementById('strength-bar');
