@@ -219,14 +219,6 @@
                     </div>
 
                     <div class="form-group">
-                        {{ form.dob_sum.label(class="form-label") }}
-                        {{ form.dob_sum(class="form-control", placeholder="Re-enter your DOB Sum for verification") }}
-                        {% for error in form.dob_sum.errors %}
-                            <div class="text-danger small">{{ error }}</div>
-                        {% endfor %}
-                    </div>
-
-                    <div class="form-group">
                         {{ form.submit(class="btn btn-primary w-100") }}
                     </div>
                 </form>

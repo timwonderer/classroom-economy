@@ -553,10 +553,9 @@ def student_claim_account():
 
     if form.validate_on_submit():
         first_half = form.first_half.data.strip().lower()
-        second_half = form.second_half.data.strip().lower()
-        dob_sum = form.dob_sum.data.strip()
+        second_half = form.second_half.data.strip()
 
-        if not dob_sum.isdigit():
+        if not second_half.isdigit():
             flash("DOB sum must be a number.", "claim")
             return redirect(url_for('student_claim_account'))
 
@@ -565,8 +564,8 @@ def student_claim_account():
 
             if (
                 s.first_half_hash == hash_hmac(name_code.encode(), s.salt)
-                and s.second_half_hash == hash_hmac(dob_sum.encode(), s.salt)
-                and str(s.dob_sum) == dob_sum
+                and s.second_half_hash == hash_hmac(second_half.encode(), s.salt)
+                and str(s.dob_sum) == second_half
             ):
                 session['claimed_student_id'] = s.id
                 session.pop('generated_username', None)

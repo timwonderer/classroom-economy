@@ -48,7 +48,6 @@ class SystemAdminInviteForm(FlaskForm):
 class StudentClaimAccountForm(FlaskForm):
     first_half = StringField('First Half', validators=[DataRequired()])
     second_half = StringField('Second Half', validators=[DataRequired()])
-    dob_sum = StringField('DOB Sum', validators=[DataRequired()])
     submit = SubmitField('Claim Account')
 
 class StudentCreateUsernameForm(FlaskForm):
