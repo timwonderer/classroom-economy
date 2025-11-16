@@ -150,10 +150,12 @@ if os.getenv("FLASK_ENV", app.config.get("ENV")) == "production":
 
 # ---- Jinja2 filter: Format UTC datetime to user's local time ----
 import pytz
+from datetime import datetime, date
 def format_datetime(value, fmt='%Y-%m-%d %I:%M %p'):
     """
     Convert a UTC datetime to the user's timezone (from session) and format it.
     Defaults to Pacific Time if no timezone is set in the session.
+    Handles both datetime and date objects.
     """
     if not value:
         return ''
@@ -167,6 +169,10 @@ def format_datetime(value, fmt='%Y-%m-%d %I:%M %p'):
         target_tz = pytz.timezone('America/Los_Angeles')
 
     utc = pytz.utc
+
+    # Convert date objects to datetime objects at midnight
+    if isinstance(value, date) and not isinstance(value, datetime):
+        value = datetime.combine(value, datetime.min.time())
 
     # Localize naive datetimes as UTC before converting
     dt = value if getattr(value, 'tzinfo', None) else utc.localize(value)
