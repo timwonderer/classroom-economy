@@ -1,0 +1,121 @@
+{% extends "layout_admin.html" %}
+{% set page_title = "Edit Insurance Policy" %}
+{% block title %}Edit Policy{% endblock %}
+{% block content %}
+
+<div class="card shadow">
+  <div class="card-header">
+    <h5 class="mb-0">Edit Insurance Policy: {{ policy.title }}</h5>
+  </div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('admin_edit_insurance_policy', policy_id=policy.id) }}">
+      {{ form.hidden_tag() }}
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          {{ form.title.label(class="form-label") }}
+          {{ form.title(class="form-control") }}
+        </div>
+        <div class="col-md-3 mb-3">
+          {{ form.premium.label(class="form-label") }}
+          <div class="input-group">
+            <span class="input-group-text">$</span>
+            {{ form.premium(class="form-control") }}
+          </div>
+        </div>
+        <div class="col-md-3 mb-3">
+          {{ form.charge_frequency.label(class="form-label") }}
+          {{ form.charge_frequency(class="form-select") }}
+        </div>
+      </div>
+
+      <div class="mb-3">
+        {{ form.description.label(class="form-label") }}
+        {{ form.description(class="form-control", rows=3) }}
+      </div>
+
+      <div class="row">
+        <div class="col-md-3 mb-3">
+          {{ form.waiting_period_days.label(class="form-label") }}
+          {{ form.waiting_period_days(class="form-control") }}
+        </div>
+        <div class="col-md-3 mb-3">
+          {{ form.claim_time_limit_days.label(class="form-label") }}
+          {{ form.claim_time_limit_days(class="form-control") }}
+        </div>
+        <div class="col-md-3 mb-3">
+          {{ form.max_claims_count.label(class="form-label") }}
+          {{ form.max_claims_count(class="form-control") }}
+        </div>
+        <div class="col-md-3 mb-3">
+          {{ form.max_claims_period.label(class="form-label") }}
+          {{ form.max_claims_period(class="form-select") }}
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-4 mb-3">
+          {{ form.max_claim_amount.label(class="form-label") }}
+          <div class="input-group">
+            <span class="input-group-text">$</span>
+            {{ form.max_claim_amount(class="form-control") }}
+          </div>
+        </div>
+        <div class="col-md-4 mb-3">
+          {{ form.auto_cancel_nonpay_days.label(class="form-label") }}
+          {{ form.auto_cancel_nonpay_days(class="form-control") }}
+        </div>
+        <div class="col-md-4 mb-3">
+          {{ form.bundle_discount_percent.label(class="form-label") }}
+          <div class="input-group">
+            {{ form.bundle_discount_percent(class="form-control") }}
+                <span class="input-group-text">%</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="row">
+        <div class="col-md-4 mb-3">
+          <div class="form-check">
+            {{ form.autopay(class="form-check-input") }}
+            {{ form.autopay.label(class="form-check-label") }}
+          </div>
+        </div>
+        <div class="col-md-4 mb-3">
+          <div class="form-check">
+            {{ form.no_repurchase_after_cancel(class="form-check-input") }}
+            {{ form.no_repurchase_after_cancel.label(class="form-check-label") }}
+          </div>
+          <div class="mt-2">
+            {{ form.repurchase_wait_days.label(class="form-label small") }}
+            {{ form.repurchase_wait_days(class="form-control form-control-sm") }}
+          </div>
+        </div>
+        <div class="col-md-4 mb-3">
+          <div class="form-check">
+            {{ form.is_active(class="form-check-input") }}
+            {{ form.is_active.label(class="form-check-label") }}
+          </div>
+        </div>
+      </div>
+
+      <hr>
+
+      <div class="alert alert-info">
+        <strong>Policy Stats:</strong>
+        <ul class="mb-0">
+          <li>Currently enrolled: {{ policy.student_policies.filter_by(status='active').count() }} students</li>
+          <li>Total claims: {{ policy.claims.count() }}</li>
+          <li>Created: {{ policy.created_at.strftime('%Y-%m-%d') }}</li>
+        </ul>
+      </div>
+
+      <div class="d-flex gap-2">
+        {{ form.submit(class="btn btn-primary") }}
+        <a href="{{ url_for('admin_insurance_management') }}" class="btn btn-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
