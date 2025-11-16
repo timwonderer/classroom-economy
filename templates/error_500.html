@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>500 - Internal Server Error</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .error-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 900px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .error-header {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .error-header h1 {
+            font-size: 4rem;
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .error-header p {
+            font-size: 1.2rem;
+            margin: 0.5rem 0 0 0;
+            opacity: 0.9;
+        }
+
+        .error-body {
+            padding: 2rem;
+        }
+
+        .error-message {
+            background: #f8f9fa;
+            border-left: 4px solid #f5576c;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            border-radius: 4px;
+        }
+
+        .error-message h5 {
+            color: #f5576c;
+            margin-bottom: 0.5rem;
+        }
+
+        .error-message code {
+            background: #e9ecef;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            color: #495057;
+        }
+
+        .log-section {
+            margin-top: 1.5rem;
+        }
+
+        .log-output {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 1rem;
+            border-radius: 8px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+            word-break: break-all;
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 0.5rem;
+        }
+
+        .btn-copy {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 0.4rem 1rem;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background 0.3s;
+        }
+
+        .btn-copy:hover {
+            background: #5568d3;
+        }
+
+        .btn-copy.copied {
+            background: #28a745;
+        }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+            margin-top: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .btn-primary-custom {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: transform 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary-custom:hover {
+            transform: translateY(-2px);
+            color: white;
+        }
+
+        .error-id {
+            background: #e9ecef;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            margin-top: 1rem;
+            font-size: 0.9rem;
+            color: #495057;
+        }
+
+        @media (max-width: 768px) {
+            .error-header h1 {
+                font-size: 3rem;
+            }
+
+            .error-body {
+                padding: 1.5rem;
+            }
+
+            .actions {
+                flex-direction: column;
+            }
+
+            .btn-primary-custom {
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="error-container">
+        <div class="error-header">
+            <h1>500</h1>
+            <p>Oops! Something went wrong</p>
+        </div>
+
+        <div class="error-body">
+            <div class="alert alert-warning" role="alert">
+                <strong>We're sorry!</strong> The application encountered an unexpected error. This issue has been automatically logged and will be reviewed.
+            </div>
+
+            {% if error_id %}
+            <div class="error-id">
+                <strong>Error ID:</strong> {{ error_id }}
+            </div>
+            {% endif %}
+
+            {% if error_type and error_message %}
+            <div class="error-message">
+                <h5>{{ error_type }}</h5>
+                <code>{{ error_message }}</code>
+            </div>
+            {% endif %}
+
+            <div class="log-section">
+                <div class="log-header">
+                    <h5>Recent Log Output (Last 50 Lines)</h5>
+                    <button class="btn-copy" onclick="copyLogs()">Copy Logs</button>
+                </div>
+                <div class="log-output" id="logOutput">{{ log_output or '[No log output available]' }}</div>
+            </div>
+
+            <div class="actions">
+                <a href="/" class="btn-primary-custom">Go to Home</a>
+                <a href="javascript:history.back()" class="btn-primary-custom">Go Back</a>
+                {% if support_email %}
+                <a href="mailto:{{ support_email }}?subject=Error Report - ID {{ error_id }}&body=Error ID: {{ error_id }}%0D%0AError Type: {{ error_type }}%0D%0AError Message: {{ error_message }}%0D%0A%0D%0ALog Output:%0D%0A{{ log_output | urlencode }}"
+                   class="btn-primary-custom">Email Support</a>
+                {% endif %}
+            </div>
+
+            <div class="mt-4">
+                <p class="text-muted" style="font-size: 0.9rem;">
+                    If this problem persists, please contact support at
+                    <a href="mailto:{{ support_email }}">{{ support_email }}</a>
+                    and include the Error ID above.
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function copyLogs() {
+            const logOutput = document.getElementById('logOutput');
+            const textArea = document.createElement('textarea');
+            textArea.value = logOutput.textContent;
+            document.body.appendChild(textArea);
+            textArea.select();
+
+            try {
+                document.execCommand('copy');
+                const btn = event.target;
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+
+                setTimeout(() => {
+                    btn.textContent = 'Copy Logs';
+                    btn.classList.remove('copied');
+                }, 2000);
+            } catch (err) {
+                console.error('Failed to copy logs:', err);
+            }
+
+            document.body.removeChild(textArea);
+        }
+    </script>
+</body>
+
+</html>

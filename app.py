@@ -503,6 +503,21 @@ class InsuranceClaim(db.Model):
     processed_by = db.relationship('Admin', backref='processed_claims')
 
 
+# ---- Error Log Model ----
+class ErrorLog(db.Model):
+    __tablename__ = 'error_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    error_type = db.Column(db.String(100), nullable=True)  # Type of error (e.g., Exception class name)
+    error_message = db.Column(db.Text, nullable=True)  # Error message
+    request_path = db.Column(db.String(500), nullable=True)  # URL path that caused the error
+    request_method = db.Column(db.String(10), nullable=True)  # HTTP method (GET, POST, etc.)
+    user_agent = db.Column(db.String(500), nullable=True)  # Browser/client info
+    ip_address = db.Column(db.String(50), nullable=True)  # IP address of requester
+    log_output = db.Column(db.Text, nullable=False)  # Last 50 lines of log
+    stack_trace = db.Column(db.Text, nullable=True)  # Full stack trace
+
+
 # ---- Admin Model ----
 class Admin(db.Model):
     __tablename__ = 'admins'
@@ -563,6 +578,109 @@ else:
 
 
 
+# -------------------- ERROR LOGGING UTILITIES --------------------
+import traceback
+import collections
+
+def get_last_log_lines(num_lines=50):
+    """
+    Get the last N lines from the log file.
+    Returns a string with the last N lines, or an error message if the log file cannot be read.
+    """
+    log_file_path = os.getenv("LOG_FILE", "app.log")
+
+    # For non-production environments (no log file), return recent logs from memory
+    if os.getenv("FLASK_ENV", app.config.get("ENV")) != "production":
+        return "[Log file only available in production mode]"
+
+    try:
+        if not os.path.exists(log_file_path):
+            return f"[Log file not found at {log_file_path}]"
+
+        # Use deque for efficient tail operation
+        with open(log_file_path, 'r', encoding='utf-8', errors='replace') as f:
+            last_lines = collections.deque(f, maxlen=num_lines)
+
+        return ''.join(last_lines)
+    except Exception as e:
+        return f"[Error reading log file: {str(e)}]"
+
+
+def log_error_to_db(error_type=None, error_message=None, stack_trace=None, log_output=None):
+    """
+    Save error information to the database for later review.
+    This function should not raise exceptions to avoid recursive error loops.
+    """
+    try:
+        # Get request information if available
+        request_path = request.path if request else None
+        request_method = request.method if request else None
+        user_agent = request.headers.get('User-Agent', None) if request else None
+        ip_address = request.remote_addr if request else None
+
+        # Get log output
+        if log_output is None:
+            log_output = get_last_log_lines(50)
+
+        # Create error log entry
+        error_log = ErrorLog(
+            timestamp=datetime.utcnow(),
+            error_type=error_type,
+            error_message=error_message,
+            request_path=request_path,
+            request_method=request_method,
+            user_agent=user_agent,
+            ip_address=ip_address,
+            log_output=log_output,
+            stack_trace=stack_trace
+        )
+
+        db.session.add(error_log)
+        db.session.commit()
+
+        return error_log.id
+    except Exception as e:
+        # Log to app logger but don't raise - we don't want error logging to cause more errors
+        app.logger.error(f"Failed to log error to database: {str(e)}")
+        return None
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    """
+    Handle 500 Internal Server Error.
+    Logs the error to the database and displays a user-friendly error page.
+    """
+    # Get error details
+    error_type = type(error).__name__
+    error_message = str(error)
+    stack_trace = traceback.format_exc()
+
+    # Log to app logger
+    app.logger.exception("500 Internal Server Error occurred")
+
+    # Save to database
+    error_id = log_error_to_db(
+        error_type=error_type,
+        error_message=error_message,
+        stack_trace=stack_trace
+    )
+
+    # Rollback any pending database changes
+    db.session.rollback()
+
+    # Get log output for display
+    log_output = get_last_log_lines(50)
+
+    # Render error page
+    return render_template(
+        'error_500.html',
+        error_id=error_id,
+        error_type=error_type,
+        error_message=error_message,
+        log_output=log_output,
+        support_email='timothy.cs.chang@gmail.com'
+    ), 500
 
 
 # -------------------- AUTH HELPERS --------------------
