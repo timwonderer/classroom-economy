@@ -1,0 +1,140 @@
+{% extends "layout_student.html" %}
+
+{% block title %}File Insurance Claim{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>File Insurance Claim</h1>
+    <p class="subtitle">Submit a claim for {{ policy.title }}</p>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                Claim Information
+            </div>
+            <div class="card-body">
+                {% if errors %}
+                    {% for error in errors %}
+                        <div class="alert alert-danger">{{ error }}</div>
+                    {% endfor %}
+                {% endif %}
+
+                <form method="POST" action="{{ url_for('student_file_claim', policy_id=policy.id) }}">
+                    {{ form.hidden_tag() }}
+
+                    <div class="mb-3">
+                        <label class="form-label">Insurance Policy</label>
+                        <input type="text" class="form-control" value="{{ policy.title }}" disabled>
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.incident_date.label(class="form-label") }}
+                        {{ form.incident_date(class="form-control") }}
+                        <small class="form-text text-muted">
+                            Claims must be filed within {{ policy.claim_time_limit_days }} days of the incident.
+                        </small>
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.description.label(class="form-label") }}
+                        {{ form.description(class="form-control", rows=5, placeholder="Describe the incident in detail. Include what happened, when it happened, and any relevant context.") }}
+                        <small class="form-text text-muted">Be as detailed as possible to help with processing your claim.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.claim_amount.label(class="form-label") }}
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            {{ form.claim_amount(class="form-control", placeholder="Optional") }}
+                        </div>
+                        <small class="form-text text-muted">
+                            If applicable, specify the amount you're claiming.
+                            {% if policy.max_claim_amount %}
+                                Maximum: ${{ "%.2f".format(policy.max_claim_amount) }} per claim.
+                            {% endif %}
+                        </small>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        {{ form.submit(class="btn btn-primary") }}
+                        <a href="{{ url_for('student_insurance_marketplace') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                Policy Information
+            </div>
+            <div class="card-body">
+                <h6>{{ policy.title }}</h6>
+                <p class="small text-muted">{{ policy.description }}</p>
+
+                <hr>
+
+                <p class="mb-2"><strong>Coverage Details:</strong></p>
+                <ul class="small mb-3">
+                    <li>Waiting period: {{ policy.waiting_period_days }} days</li>
+                    <li>Claim deadline: {{ policy.claim_time_limit_days }} days from incident</li>
+                    {% if policy.max_claim_amount %}
+                        <li>Max claim: ${{ "%.2f".format(policy.max_claim_amount) }}</li>
+                    {% endif %}
+                    {% if policy.max_claims_count %}
+                        <li>Max claims: {{ policy.max_claims_count }} per {{ policy.max_claims_period }}</li>
+                    {% endif %}
+                </ul>
+
+                {% if enrollment.coverage_start_date %}
+                    <div class="alert alert-success py-2 small">
+                        ✓ Coverage active since {{ enrollment.coverage_start_date.strftime('%b %d, %Y') }}
+                    </div>
+                {% else %}
+                    <div class="alert alert-warning py-2 small">
+                        ⚠️ Still in {{ policy.waiting_period_days }}-day waiting period
+                    </div>
+                {% endif %}
+
+                {% if not enrollment.payment_current %}
+                    <div class="alert alert-danger py-2 small">
+                        ⚠️ Payment overdue ({{ enrollment.days_unpaid }} days)
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                Claims This {{ policy.max_claims_period|title }}
+            </div>
+            <div class="card-body">
+                {% if claims_this_period %}
+                    <p class="mb-2">You have {{ claims_this_period|length }} claim(s):</p>
+                    <ul class="small mb-0">
+                        {% for claim in claims_this_period %}
+                            <li>{{ claim.incident_date.strftime('%Y-%m-%d') }} -
+                                <span class="badge {% if claim.status == 'approved' or claim.status == 'paid' %}bg-success{% elif claim.status == 'pending' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                                    {{ claim.status|title }}
+                                </span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+
+                    {% if policy.max_claims_count and (claims_this_period|length >= policy.max_claims_count) %}
+                        <div class="alert alert-warning py-2 small mt-2">
+                            ⚠️ You've reached the maximum number of claims for this {{ policy.max_claims_period }}.
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <p class="text-muted small mb-0">No claims this {{ policy.max_claims_period }}.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
