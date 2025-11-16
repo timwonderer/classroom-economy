@@ -94,8 +94,9 @@ class InsurancePolicyForm(FlaskForm):
     is_monetary = BooleanField('Monetary Claims (students claim dollar amounts)', default=True)
 
     # Special rules
-    no_repurchase_after_cancel = BooleanField('Prevent repurchase after cancellation', default=False)
-    repurchase_wait_days = IntegerField('Days to wait before repurchase', default=30)
+    no_repurchase_after_cancel = BooleanField('Prevent repurchase after cancellation (permanent block)', default=False)
+    enable_repurchase_cooldown = BooleanField('Enable forced cooldown period', default=False)
+    repurchase_wait_days = IntegerField('Cooldown days before repurchase allowed', default=30)
     auto_cancel_nonpay_days = IntegerField('Auto-cancel after days of non-payment', default=7)
     claim_time_limit_days = IntegerField('Time limit to file claim (days from incident)', default=30)
 

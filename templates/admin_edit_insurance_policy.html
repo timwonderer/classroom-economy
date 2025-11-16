@@ -157,17 +157,31 @@
               <div class="card-body">
                 <!-- Repurchase Rules -->
                 <div class="mb-3 pb-3 border-bottom">
+                  <h6 class="fw-bold mb-2"><i class="bi bi-ban me-1"></i>Repurchase Restrictions</h6>
+
+                  <!-- Permanent Block -->
                   <div class="form-check form-switch mb-2">
-                    {{ form.no_repurchase_after_cancel(class="form-check-input", role="switch", id="cooldownToggle") }}
+                    {{ form.no_repurchase_after_cancel(class="form-check-input", role="switch", id="permanentBlockToggle") }}
                     {{ form.no_repurchase_after_cancel.label(class="form-check-label fw-bold") }}
                   </div>
-                  <div id="cooldownDays">
-                    {{ form.repurchase_wait_days.label(class="form-label fw-bold small") }}
-                    <div class="input-group input-group-sm">
-                      {{ form.repurchase_wait_days(class="form-control", placeholder="0") }}
-                      <span class="input-group-text">days</span>
+                  <small class="text-muted d-block mb-3">Students can NEVER repurchase after canceling</small>
+
+                  <!-- Cooldown Period -->
+                  <div id="cooldownSection">
+                    <div class="form-check form-switch mb-2">
+                      {{ form.enable_repurchase_cooldown(class="form-check-input", role="switch", id="cooldownToggle") }}
+                      {{ form.enable_repurchase_cooldown.label(class="form-check-label fw-bold") }}
                     </div>
-                    <small class="text-muted">Cooldown period for repurchase</small>
+                    <small class="text-muted d-block mb-2">Students must wait before repurchasing</small>
+
+                    <div id="cooldownDays" style="display: none;">
+                      {{ form.repurchase_wait_days.label(class="form-label fw-bold small") }}
+                      <div class="input-group input-group-sm">
+                        {{ form.repurchase_wait_days(class="form-control", placeholder="30") }}
+                        <span class="input-group-text">days</span>
+                      </div>
+                      <small class="text-muted">Cooldown period for repurchase</small>
+                    </div>
                   </div>
                 </div>
 
@@ -330,21 +344,39 @@ document.addEventListener('DOMContentLoaded', function() {
   // Initialize on load
   updateBundleIds();
 
-  // Toggle cooldown days visibility
+  // Handle mutually exclusive repurchase restrictions
+  const permanentBlockToggle = document.getElementById('permanentBlockToggle');
   const cooldownToggle = document.getElementById('cooldownToggle');
+  const cooldownSection = document.getElementById('cooldownSection');
   const cooldownDays = document.getElementById('cooldownDays');
 
-  function toggleCooldown() {
-    if (cooldownToggle.checked) {
-      cooldownDays.style.display = 'block';
-    } else {
+  function updateRepurchaseRestrictions() {
+    if (permanentBlockToggle.checked) {
+      // Permanent block is ON - disable and hide cooldown section
+      cooldownSection.style.opacity = '0.5';
+      cooldownSection.style.pointerEvents = 'none';
+      cooldownToggle.checked = false;
+      cooldownToggle.disabled = true;
       cooldownDays.style.display = 'none';
+    } else {
+      // Permanent block is OFF - enable cooldown section
+      cooldownSection.style.opacity = '1';
+      cooldownSection.style.pointerEvents = 'auto';
+      cooldownToggle.disabled = false;
+
+      // Show/hide days field based on cooldown toggle
+      if (cooldownToggle.checked) {
+        cooldownDays.style.display = 'block';
+      } else {
+        cooldownDays.style.display = 'none';
+      }
     }
   }
 
-  if (cooldownToggle) {
-    cooldownToggle.addEventListener('change', toggleCooldown);
-    toggleCooldown(); // Initialize on load
+  if (permanentBlockToggle && cooldownToggle) {
+    permanentBlockToggle.addEventListener('change', updateRepurchaseRestrictions);
+    cooldownToggle.addEventListener('change', updateRepurchaseRestrictions);
+    updateRepurchaseRestrictions(); // Initialize on load
   }
 });
 </script>
