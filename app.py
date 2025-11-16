@@ -688,8 +688,29 @@ def not_found_error(error):
     """
     Handle 404 Not Found Error.
     Displays a user-friendly page with navigation help.
+    Rate-limited database logging to prevent spam from bots/typos.
     """
     app.logger.warning(f"404 Not Found: {request.url}")
+
+    # Rate-limited logging: only log unique 404s once per hour
+    cache_key = f"404_{request.path}"
+    if not hasattr(app, '_404_cache'):
+        app._404_cache = {}
+
+    # Clean old entries (older than 1 hour)
+    current_time = datetime.utcnow()
+    app._404_cache = {k: v for k, v in app._404_cache.items()
+                      if (current_time - v).total_seconds() < 3600}
+
+    # Log to database if not recently logged
+    if cache_key not in app._404_cache:
+        log_error_to_db(
+            error_type='404 Not Found',
+            error_message=f"Page not found: {request.path}",
+            stack_trace=None
+        )
+        app._404_cache[cache_key] = current_time
+
     return render_template(
         'error_404.html',
         request_url=request.url
@@ -701,8 +722,17 @@ def forbidden_error(error):
     """
     Handle 403 Forbidden Error.
     Displays a user-friendly page with permission troubleshooting.
+    Logs to database to track potential security issues.
     """
     app.logger.warning(f"403 Forbidden: {request.url}")
+
+    # Log to database - permission errors could indicate security issues
+    log_error_to_db(
+        error_type='403 Forbidden',
+        error_message=f"Access forbidden: {request.path}",
+        stack_trace=None
+    )
+
     return render_template('error_403.html'), 403
 
 
@@ -711,8 +741,17 @@ def unauthorized_error(error):
     """
     Handle 401 Unauthorized Error.
     Displays a user-friendly page with login guidance.
+    Logs to database to track authentication issues.
     """
     app.logger.warning(f"401 Unauthorized: {request.url}")
+
+    # Log to database - authentication errors help identify session/auth issues
+    log_error_to_db(
+        error_type='401 Unauthorized',
+        error_message=f"Authentication required: {request.path}",
+        stack_trace=None
+    )
+
     return render_template('error_401.html'), 401
 
 
@@ -721,11 +760,21 @@ def bad_request_error(error):
     """
     Handle 400 Bad Request Error.
     Displays a user-friendly page with input validation help.
+    Logs to database to identify UX/validation issues.
     """
-    app.logger.warning(f"400 Bad Request: {request.url} - {str(error)}")
+    error_msg = str(error.description) if hasattr(error, 'description') else str(error)
+    app.logger.warning(f"400 Bad Request: {request.url} - {error_msg}")
+
+    # Log to database - validation errors help identify UX issues
+    log_error_to_db(
+        error_type='400 Bad Request',
+        error_message=f"Bad request on {request.path}: {error_msg}",
+        stack_trace=None
+    )
+
     return render_template(
         'error_400.html',
-        error_message=str(error.description) if hasattr(error, 'description') else str(error)
+        error_message=error_msg
     ), 400
 
 
@@ -734,8 +783,17 @@ def service_unavailable_error(error):
     """
     Handle 503 Service Unavailable Error.
     Displays a user-friendly page for maintenance/downtime.
+    Logs to database for service availability tracking.
     """
     app.logger.error(f"503 Service Unavailable: {request.url}")
+
+    # Log to database - service availability is critical to track
+    log_error_to_db(
+        error_type='503 Service Unavailable',
+        error_message=f"Service unavailable: {request.path}",
+        stack_trace=None
+    )
+
     return render_template('error_503.html'), 503
 
 
