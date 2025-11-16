@@ -76,6 +76,68 @@ def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
     return int(total_seconds)
 
 
+def calculate_period_attendance(student_id, period, date):
+    """
+    Calculates total attendance seconds for a student in a specific period
+    on a specific date. Used for daily attendance reporting.
+    """
+    from app import TapEvent
+
+    # Get all events for this student/period on the specified date
+    events = TapEvent.query.filter(
+        TapEvent.student_id == student_id,
+        TapEvent.period == period,
+        func.date(TapEvent.timestamp) == date
+    ).order_by(TapEvent.timestamp.asc()).all()
+
+    total_seconds = 0
+    in_time = None
+
+    for event in events:
+        event_time = _as_utc(event.timestamp)
+        if event.status == "active":
+            in_time = event_time
+        elif event.status == "inactive" and in_time:
+            total_seconds += (event_time - in_time).total_seconds()
+            in_time = None
+
+    return int(total_seconds)
+
+
+def get_session_status(student_id, period):
+    """
+    Gets the current session status for a student in a specific period.
+    Returns a tuple of (is_active, done, duration).
+    """
+    from app import TapEvent
+    from datetime import datetime, timezone
+
+    today = datetime.now(timezone.utc).date()
+
+    # Check if student is currently active
+    latest_event = (
+        TapEvent.query
+        .filter_by(student_id=student_id, period=period)
+        .order_by(TapEvent.timestamp.desc())
+        .first()
+    )
+    is_active = latest_event.status == "active" if latest_event else False
+
+    # Check if marked as done today
+    done = TapEvent.query.filter(
+        TapEvent.student_id == student_id,
+        TapEvent.period == period,
+        func.date(TapEvent.timestamp) == today,
+        TapEvent.reason != None
+    ).filter(func.lower(TapEvent.reason) == 'done').first() is not None
+
+    # Calculate unpaid duration
+    last_payroll_time = get_last_payroll_time()
+    duration = calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time)
+
+    return is_active, done, duration
+
+
 def get_all_block_statuses(student):
     """
     Gets the status for all blocks assigned to a student for the /api/student-status endpoint.
