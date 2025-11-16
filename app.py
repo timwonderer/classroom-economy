@@ -20,6 +20,7 @@ from forms import StudentLoginForm, AdminLoginForm
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
 from datetime import datetime, timedelta, timezone
+from calendar import monthrange
 from functools import wraps
 import pytz
 from sqlalchemy import or_, func, text
@@ -1197,7 +1198,9 @@ def student_rent():
     now = datetime.now()
     current_month = now.month
     current_year = now.year
-    due_date = datetime(current_year, current_month, min(settings.due_day_of_month, 28))
+    # Get actual last day of current month (handles 28, 29, 30, 31)
+    last_day_of_month = monthrange(current_year, current_month)[1]
+    due_date = datetime(current_year, current_month, min(settings.due_day_of_month, last_day_of_month))
     grace_end_date = due_date + timedelta(days=settings.grace_period_days)
 
     period_status = {}
@@ -1273,7 +1276,9 @@ def student_rent_pay(period):
         return redirect(url_for('student_rent'))
 
     # Calculate if late and total amount
-    due_date = datetime(current_year, current_month, min(settings.due_day_of_month, 28))
+    # Get actual last day of current month (handles 28, 29, 30, 31)
+    last_day_of_month = monthrange(current_year, current_month)[1]
+    due_date = datetime(current_year, current_month, min(settings.due_day_of_month, last_day_of_month))
     grace_end_date = due_date + timedelta(days=settings.grace_period_days)
     is_late = now > grace_end_date
 
