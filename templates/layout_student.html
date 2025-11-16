@@ -5,20 +5,205 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>{% block title %}Student Dashboard{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
-    <!-- <link href="/static/css/student.css" rel="stylesheet"> -->
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap');
+
+      /* Custom Color Theme - Matches Admin */
+      :root {
+          --primary-blue: #4A7BA7;
+          --primary-blue-light: #6BA3D0;
+          --primary-blue-lighter: #81B9D8;
+          --dark-blue: #2B3E50;
+          --success-teal: #4A9B8E;
+          --success-green: #6DB665;
+          --warning-gold: #E8B856;
+          --danger-red: #C44D3B;
+          --orange-warm: #D9845E;
+          --navbar-bg: #2B3E50;
+          --navbar-text: #E8DCC4;
+      }
+
+      body {
+          font-family: 'Noto Sans', sans-serif;
+      }
+
+      /* Navbar Styling */
+      .navbar-dark {
+          background-color: var(--navbar-bg) !important;
+      }
+
+      .navbar-brand {
+          font-weight: 600;
+          color: var(--navbar-text) !important;
+      }
+
+      .navbar-nav .nav-link {
+          color: var(--navbar-text) !important;
+          transition: all 0.2s;
+          border-radius: 0.375rem;
+          padding: 0.5rem 1rem !important;
+          margin: 0 0.25rem;
+      }
+
+      .navbar-nav .nav-link:hover {
+          background-color: rgba(106, 163, 208, 0.15);
+          color: var(--primary-blue-lighter) !important;
+      }
+
+      .navbar-nav .nav-link.active {
+          background-color: var(--primary-blue);
+          color: white !important;
+      }
+
+      /* Button Overrides */
+      .btn-primary {
+          background-color: var(--primary-blue) !important;
+          border-color: var(--primary-blue) !important;
+      }
+
+      .btn-primary:hover {
+          background-color: var(--primary-blue-light) !important;
+          border-color: var(--primary-blue-light) !important;
+      }
+
+      .btn-success {
+          background-color: var(--success-teal) !important;
+          border-color: var(--success-teal) !important;
+      }
+
+      .btn-success:hover {
+          background-color: var(--success-green) !important;
+          border-color: var(--success-green) !important;
+      }
+
+      .btn-danger {
+          background-color: var(--danger-red) !important;
+          border-color: var(--danger-red) !important;
+      }
+
+      .btn-outline-primary {
+          color: var(--primary-blue) !important;
+          border-color: var(--primary-blue) !important;
+      }
+
+      .btn-outline-primary:hover {
+          background-color: var(--primary-blue) !important;
+          border-color: var(--primary-blue) !important;
+          color: white !important;
+      }
+
+      .btn-outline-success {
+          color: var(--success-teal) !important;
+          border-color: var(--success-teal) !important;
+      }
+
+      .btn-outline-success:hover {
+          background-color: var(--success-teal) !important;
+          border-color: var(--success-teal) !important;
+          color: white !important;
+      }
+
+      .btn-outline-danger {
+          color: var(--danger-red) !important;
+          border-color: var(--danger-red) !important;
+      }
+
+      .btn-outline-danger:hover {
+          background-color: var(--danger-red) !important;
+          border-color: var(--danger-red) !important;
+          color: white !important;
+      }
+
+      /* Badge Overrides */
+      .badge.bg-primary {
+          background-color: var(--primary-blue) !important;
+      }
+
+      .badge.bg-success {
+          background-color: var(--success-teal) !important;
+      }
+
+      .badge.bg-warning {
+          background-color: var(--warning-gold) !important;
+          color: #000 !important;
+      }
+
+      .badge.bg-danger {
+          background-color: var(--danger-red) !important;
+      }
+
+      /* Card Styling */
+      .card {
+          border: none;
+          box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+      }
+
+      .card-header {
+          background-color: #f8f9fa;
+          border-bottom: 2px solid var(--primary-blue);
+          font-weight: 600;
+      }
+
+      /* Alert Overrides */
+      .alert-success {
+          background-color: rgba(74, 155, 142, 0.1);
+          border-color: var(--success-teal);
+          color: #2d5a52;
+      }
+
+      .alert-warning {
+          background-color: rgba(232, 184, 86, 0.1);
+          border-color: var(--warning-gold);
+          color: #6b5428;
+      }
+
+      .alert-danger {
+          background-color: rgba(196, 68, 59, 0.1);
+          border-color: var(--danger-red);
+          color: #7a2e2a;
+      }
+
+      .alert-info {
+          background-color: rgba(74, 123, 167, 0.1);
+          border-color: var(--primary-blue);
+          color: #2d4a67;
+      }
+
+      /* Link Colors */
+      a {
+          color: var(--primary-blue);
+      }
+
+      a:hover {
+          color: var(--primary-blue-light);
+      }
+
+      /* Table Styling */
+      .table thead {
+          background-color: #f8f9fa;
+          border-bottom: 2px solid var(--primary-blue);
+      }
+
+      .table-striped tbody tr:nth-of-type(odd) {
+          background-color: rgba(74, 123, 167, 0.03);
+      }
+    </style>
   </head>
   <body>
-    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+    <nav class="navbar navbar-expand-lg navbar-dark mb-4">
       <div class="container">
-          <a class="navbar-brand" href="{{ url_for('student_dashboard') }}">Classroom Economy</a>
-        <div class="collapse navbar-collapse">
+          <a class="navbar-brand" href="{{ url_for('student_dashboard') }}">💰 Classroom Economy</a>
+          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
+            <span class="navbar-toggler-icon"></span>
+          </button>
+        <div class="collapse navbar-collapse" id="navbarNav">
           <ul class="navbar-nav ms-auto">
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('student_dashboard') }}">Dashboard</a></li>
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('student_transfer') }}">Accounts</a></li>
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('student_insurance') }}">Insurance</a></li>
-              <li class="nav-item"><a class="nav-link" href="/student/shop">Shop</a></li>
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('student_rent') }}">Rent</a></li>
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('student_logout') }}">Logout</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_dashboard' %}active{% endif %}" href="{{ url_for('student_dashboard') }}">📊 Dashboard</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_transfer' %}active{% endif %}" href="{{ url_for('student_transfer') }}">💳 Accounts</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_insurance' %}active{% endif %}" href="{{ url_for('student_insurance') }}">🛡️ Insurance</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_shop' %}active{% endif %}" href="/student/shop">🏪 Shop</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_rent' %}active{% endif %}" href="{{ url_for('student_rent') }}">🏠 Rent</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('student_logout') }}">🚪 Logout</a></li>
           </ul>
         </div>
       </div>
@@ -35,7 +220,7 @@
           {% endfor %}
         {% endif %}
       {% endwith %}
-      
+
       {% block content %}{% endblock %}
     </div>
 
