@@ -90,6 +90,9 @@ class InsurancePolicyForm(FlaskForm):
     ], default='month')
     max_claim_amount = FloatField('Max Claim Amount $ (leave blank for unlimited)', validators=[Optional()])
 
+    # Claim type
+    is_monetary = BooleanField('Monetary Claims (students claim dollar amounts)', default=True)
+
     # Special rules
     no_repurchase_after_cancel = BooleanField('Prevent repurchase after cancellation', default=False)
     repurchase_wait_days = IntegerField('Days to wait before repurchase', default=30)
@@ -107,7 +110,9 @@ class InsuranceClaimForm(FlaskForm):
     policy_id = SelectField('Insurance Policy', coerce=int, validators=[DataRequired()])
     incident_date = DateField('Date of Incident', format='%Y-%m-%d', validators=[DataRequired()])
     description = TextAreaField('Claim Description', validators=[DataRequired()])
-    claim_amount = FloatField('Claim Amount (if applicable)', validators=[Optional()])
+    claim_amount = FloatField('Claim Amount ($)', validators=[Optional()])
+    claim_item = StringField('What are you claiming?', validators=[Optional()])
+    comments = TextAreaField('Additional Comments (optional)', validators=[Optional()])
     submit = SubmitField('Submit Claim')
 
 

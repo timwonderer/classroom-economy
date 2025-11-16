@@ -104,11 +104,27 @@
           <div class="row">
             <div class="col-md-4 mb-3">
               <div class="form-check">
+                {{ form.is_monetary(class="form-check-input") }}
+                {{ form.is_monetary.label(class="form-check-label") }}
+              </div>
+              <small class="text-muted">If unchecked, students will specify what item/service they're claiming.</small>
+            </div>
+            <div class="col-md-4 mb-3">
+              <div class="form-check">
                 {{ form.autopay(class="form-check-input") }}
                 {{ form.autopay.label(class="form-check-label") }}
               </div>
             </div>
             <div class="col-md-4 mb-3">
+              <div class="form-check">
+                {{ form.is_active(class="form-check-input") }}
+                {{ form.is_active.label(class="form-check-label") }}
+              </div>
+            </div>
+          </div>
+
+          <div class="row">
+            <div class="col-md-6 mb-3">
               <div class="form-check">
                 {{ form.no_repurchase_after_cancel(class="form-check-input") }}
                 {{ form.no_repurchase_after_cancel.label(class="form-check-label") }}
@@ -119,12 +135,6 @@
                 {{ form.repurchase_wait_days(class="form-control form-control-sm") }}
               </div>
               {% endif %}
-            </div>
-            <div class="col-md-4 mb-3">
-              <div class="form-check">
-                {{ form.is_active(class="form-check-input") }}
-                {{ form.is_active.label(class="form-check-label") }}
-              </div>
             </div>
           </div>
 
@@ -146,6 +156,7 @@
                 <th>Title</th>
                 <th>Premium</th>
                 <th>Frequency</th>
+                <th>Claim Type</th>
                 <th>Waiting Period</th>
                 <th>Max Claims</th>
                 <th>Status</th>
@@ -159,6 +170,11 @@
                 <td><strong>{{ policy.title }}</strong></td>
                 <td>${{ "%.2f".format(policy.premium) }}</td>
                 <td>{{ policy.charge_frequency|title }}</td>
+                <td>
+                  <span class="badge {{ 'bg-info' if policy.is_monetary else 'bg-warning' }}">
+                    {{ 'Monetary' if policy.is_monetary else 'Item/Service' }}
+                  </span>
+                </td>
                 <td>{{ policy.waiting_period_days }} days</td>
                 <td>
                   {% if policy.max_claims_count %}
@@ -321,7 +337,7 @@
                 <th>Policy</th>
                 <th>Incident Date</th>
                 <th>Filed Date</th>
-                <th>Amount</th>
+                <th>Claim</th>
                 <th>Status</th>
                 <th>Actions</th>
               </tr>
@@ -335,7 +351,9 @@
                 <td>{{ claim.filed_date.strftime('%Y-%m-%d') }}</td>
                 <td>
                   {% if claim.claim_amount %}
-                    ${{ "%.2f".format(claim.claim_amount) }}
+                    <span class="badge bg-success">${{ "%.2f".format(claim.claim_amount) }}</span>
+                  {% elif claim.claim_item %}
+                    <span class="badge bg-warning text-dark">{{ claim.claim_item }}</span>
                   {% else %}
                     N/A
                   {% endif %}

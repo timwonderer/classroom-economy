@@ -77,6 +77,13 @@
       <div class="row">
         <div class="col-md-4 mb-3">
           <div class="form-check">
+            {{ form.is_monetary(class="form-check-input") }}
+            {{ form.is_monetary.label(class="form-check-label") }}
+          </div>
+          <small class="text-muted">If unchecked, students will specify what item/service they're claiming instead of a dollar amount.</small>
+        </div>
+        <div class="col-md-4 mb-3">
+          <div class="form-check">
             {{ form.autopay(class="form-check-input") }}
             {{ form.autopay.label(class="form-check-label") }}
           </div>

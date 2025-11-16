@@ -431,6 +431,9 @@ class InsurancePolicy(db.Model):
     max_claims_period = db.Column(db.String(20), default='month')  # month, semester, year
     max_claim_amount = db.Column(db.Float, nullable=True)  # Max $ per claim (null = unlimited)
 
+    # Claim type
+    is_monetary = db.Column(db.Boolean, default=True)  # True = monetary claims, False = item/service claims
+
     # Special rules
     no_repurchase_after_cancel = db.Column(db.Boolean, default=False)
     repurchase_wait_days = db.Column(db.Integer, default=30)  # Days to wait after cancel
@@ -482,7 +485,9 @@ class InsuranceClaim(db.Model):
     incident_date = db.Column(db.DateTime, nullable=False)  # When incident occurred
     filed_date = db.Column(db.DateTime, default=datetime.utcnow)
     description = db.Column(db.Text, nullable=False)
-    claim_amount = db.Column(db.Float, nullable=True)  # Optional: requested amount
+    claim_amount = db.Column(db.Float, nullable=True)  # For monetary claims: requested amount
+    claim_item = db.Column(db.Text, nullable=True)  # For non-monetary claims: what they're claiming
+    comments = db.Column(db.Text, nullable=True)  # Optional comments from student
 
     status = db.Column(db.String(20), default='pending')  # pending, approved, rejected, paid
     rejection_reason = db.Column(db.Text, nullable=True)

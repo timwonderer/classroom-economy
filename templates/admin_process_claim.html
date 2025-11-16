@@ -23,14 +23,19 @@
           <dt class="col-sm-4">Filed Date:</dt>
           <dd class="col-sm-8">{{ claim.filed_date.strftime('%B %d, %Y at %I:%M %p') }}</dd>
 
+          {% if claim.claim_amount %}
           <dt class="col-sm-4">Claim Amount:</dt>
           <dd class="col-sm-8">
-            {% if claim.claim_amount %}
-              ${{ "%.2f".format(claim.claim_amount) }}
-            {% else %}
-              Not specified
-            {% endif %}
+            ${{ "%.2f".format(claim.claim_amount) }}
           </dd>
+          {% endif %}
+
+          {% if claim.claim_item %}
+          <dt class="col-sm-4">Claiming:</dt>
+          <dd class="col-sm-8">
+            <span class="badge bg-warning text-dark">{{ claim.claim_item }}</span>
+          </dd>
+          {% endif %}
 
           <dt class="col-sm-4">Current Status:</dt>
           <dd class="col-sm-8">
@@ -49,6 +54,11 @@
 
         <h6>Claim Description:</h6>
         <p class="bg-light p-3 rounded">{{ claim.description }}</p>
+
+        {% if claim.comments %}
+        <h6>Student Comments:</h6>
+        <p class="bg-light p-3 rounded">{{ claim.comments }}</p>
+        {% endif %}
 
         {% if claim.rejection_reason %}
         <h6>Rejection Reason:</h6>
@@ -69,6 +79,12 @@
         <h5 class="mb-0">Policy Information</h5>
       </div>
       <div class="card-body">
+        <p><strong>Claim Type:</strong><br>
+          <span class="badge {{ 'bg-info' if claim.policy.is_monetary else 'bg-warning text-dark' }}">
+            {{ 'Monetary' if claim.policy.is_monetary else 'Item/Service' }}
+          </span>
+        </p>
+
         <p><strong>Coverage Start:</strong><br>
           {% if enrollment.coverage_start_date %}
             {{ enrollment.coverage_start_date.strftime('%B %d, %Y') }}
