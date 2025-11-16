@@ -683,6 +683,62 @@ def internal_error(error):
     ), 500
 
 
+@app.errorhandler(404)
+def not_found_error(error):
+    """
+    Handle 404 Not Found Error.
+    Displays a user-friendly page with navigation help.
+    """
+    app.logger.warning(f"404 Not Found: {request.url}")
+    return render_template(
+        'error_404.html',
+        request_url=request.url
+    ), 404
+
+
+@app.errorhandler(403)
+def forbidden_error(error):
+    """
+    Handle 403 Forbidden Error.
+    Displays a user-friendly page with permission troubleshooting.
+    """
+    app.logger.warning(f"403 Forbidden: {request.url}")
+    return render_template('error_403.html'), 403
+
+
+@app.errorhandler(401)
+def unauthorized_error(error):
+    """
+    Handle 401 Unauthorized Error.
+    Displays a user-friendly page with login guidance.
+    """
+    app.logger.warning(f"401 Unauthorized: {request.url}")
+    return render_template('error_401.html'), 401
+
+
+@app.errorhandler(400)
+def bad_request_error(error):
+    """
+    Handle 400 Bad Request Error.
+    Displays a user-friendly page with input validation help.
+    """
+    app.logger.warning(f"400 Bad Request: {request.url} - {str(error)}")
+    return render_template(
+        'error_400.html',
+        error_message=str(error.description) if hasattr(error, 'description') else str(error)
+    ), 400
+
+
+@app.errorhandler(503)
+def service_unavailable_error(error):
+    """
+    Handle 503 Service Unavailable Error.
+    Displays a user-friendly page for maintenance/downtime.
+    """
+    app.logger.error(f"503 Service Unavailable: {request.url}")
+    return render_template('error_503.html'), 503
+
+
 # -------------------- AUTH HELPERS --------------------
 SESSION_TIMEOUT_MINUTES = 10
 
