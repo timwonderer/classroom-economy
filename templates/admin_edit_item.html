@@ -1,7 +1,9 @@
 {% extends "layout_admin.html" %}
-{% set page_title = "Edit: " ~ item.name %}
+{% set page_title = "Edit Store Item" %}
 
 {% block content %}
+    <h1 class="mb-4">Edit: {{ item.name }}</h1>
+
     <div class="card shadow mb-4">
         <div class="card-header">
             <h5 class="mb-0">Edit Item Details</h5>

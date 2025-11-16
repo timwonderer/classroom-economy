@@ -1,0 +1,112 @@
+{% extends "layout_admin.html" %}
+
+{% block title %}Hall Pass Management{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <h1 class="mb-4">Hall Pass Management</h1>
+
+    <!-- Pending Requests -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-warning text-dark fw-bold">
+            Pending Requests
+        </div>
+        <div class="card-body">
+            {% if pending_requests %}
+                <ul class="list-group">
+                    {% for req in pending_requests %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ req.student.full_name }}</strong> - {{ req.reason }}
+                                <small class="d-block text-muted">Requested at: {{ req.request_time | format_datetime }}</small>
+                            </div>
+                            <div>
+                                <button class="btn btn-sm btn-success me-2" onclick="handlePassAction({{ req.id }}, 'approve')">Approve</button>
+                                <button class="btn btn-sm btn-danger" onclick="handlePassAction({{ req.id }}, 'reject')">Reject</button>
+                            </div>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="text-muted text-center">No pending requests.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Approved Queue -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-info text-white fw-bold">
+            Approved Queue
+        </div>
+        <div class="card-body">
+            {% if approved_queue %}
+                <ul class="list-group">
+                    {% for req in approved_queue %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ req.student.full_name }}</strong> - {{ req.reason }}
+                                <small class="d-block text-muted">Approved at: {{ req.decision_time | format_datetime }}</small>
+                            </div>
+                            <button class="btn btn-sm btn-primary" onclick="handlePassAction({{ req.id }}, 'leave')" {% if out_of_class %}disabled{% endif %}>
+                                Left Class
+                            </button>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="text-muted text-center">The queue is empty.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Out of Classroom -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-success text-white fw-bold">
+            Out of Classroom
+        </div>
+        <div class="card-body">
+            {% if out_of_class %}
+                <ul class="list-group">
+                    {% for req in out_of_class %}
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>{{ req.student.full_name }}</strong> - {{ req.reason }}
+                                <small class="d-block text-muted">Left at: {{ req.left_time | format_datetime }}</small>
+                            </div>
+                            <button class="btn btn-sm btn-secondary" onclick="handlePassAction({{ req.id }}, 'return')">Returned</button>
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="text-muted text-center">No one is currently out of the classroom.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function handlePassAction(passId, action) {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    fetch(`/api/hall-pass/${passId}/${action}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // A simple reload is the easiest way to update the state
+            window.location.reload();
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Hall pass action error:', error);
+        alert('An unexpected error occurred.');
+    });
+}
+</script>
+{% endblock %}

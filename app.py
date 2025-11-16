@@ -26,11 +26,9 @@ from sqlalchemy import or_, func, text
 import sqlalchemy as sa
 # local security helpers
 from hash_utils import (
-    get_all_peppers,
-    get_primary_pepper,
+    get_random_salt,
     hash_hmac,
     hash_username,
-    iter_username_hashes,
 )
 import json
 import math
@@ -205,7 +203,7 @@ class Student(db.Model):
     pin_hash = db.Column(db.Text, nullable=True)
     passphrase_hash = db.Column(db.Text, nullable=True)
 
-    passes_left = db.Column(db.Integer, default=3)
+    hall_passes = db.Column(db.Integer, default=3)
     
     is_rent_enabled = db.Column(db.Boolean, default=True)
     is_property_tax_enabled = db.Column(db.Boolean, default=False)
@@ -337,6 +335,20 @@ class TapEvent(db.Model):
     reason = db.Column(db.String(50), nullable=True)
 
     student = db.relationship("Student", backref="tap_events")
+
+# ---- Hall Pass Log Model ----
+class HallPassLog(db.Model):
+    __tablename__ = 'hall_pass_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    reason = db.Column(db.String(50), nullable=False)
+    status = db.Column(db.String(20), default='pending', nullable=False) # pending, approved, rejected, left_class, returned
+    request_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    decision_time = db.Column(db.DateTime, nullable=True)
+    left_time = db.Column(db.DateTime, nullable=True)
+    return_time = db.Column(db.DateTime, nullable=True)
+
+    student = db.relationship('Student', backref='hall_pass_logs')
 
 
 # -------------------- STORE MODELS --------------------
@@ -504,7 +516,6 @@ def home():
 # --- PAGE 1: Claim Account ---
 @app.route('/student/claim-account', methods=['GET', 'POST'])
 def student_claim_account():
-    pepper_candidates = get_all_peppers()
     form = StudentClaimAccountForm()
 
     if form.validate_on_submit():
@@ -518,30 +529,16 @@ def student_claim_account():
 
         for s in Student.query.filter_by(has_completed_setup=False).all():
             name_code = first_half
-            matched_pepper = None
 
-            for pepper in pepper_candidates:
-                first_half_hash = hash_hmac(name_code.encode(), s.salt, pepper=pepper)
-                second_half_hash = hash_hmac(dob_sum.encode(), s.salt, pepper=pepper)
-
-                if (
-                    s.first_half_hash == first_half_hash
-                    and s.second_half_hash == second_half_hash
-                    and str(s.dob_sum) == dob_sum
-                ):
-                    matched_pepper = pepper
-                    break
-
-            if matched_pepper:
+            if (
+                s.first_half_hash == hash_hmac(name_code.encode(), s.salt)
+                and s.second_half_hash == hash_hmac(dob_sum.encode(), s.salt)
+                and str(s.dob_sum) == dob_sum
+            ):
                 session['claimed_student_id'] = s.id
                 session.pop('generated_username', None)
                 session.pop('theme_prompt', None)
                 session.pop('theme_slug', None)
-
-                if matched_pepper != get_primary_pepper():
-                    s.first_half_hash = hash_hmac(name_code.encode(), s.salt)
-                    s.second_half_hash = hash_hmac(dob_sum.encode(), s.salt)
-                    db.session.commit()
 
                 return redirect(url_for('student_create_username'))
 
@@ -955,7 +952,15 @@ def purchase_item():
         return jsonify({"status": "error", "message": "This item is out of stock."}), 400
 
     if item.limit_per_student is not None:
-        purchase_count = StudentItem.query.filter_by(student_id=student.id, store_item_id=item.id).count()
+        if item.item_type == 'hall_pass':
+            # For hall passes, check transaction history since no StudentItem is created
+            purchase_count = Transaction.query.filter_by(
+                student_id=student.id,
+                type='purchase',
+                description=f"Purchase: {item.name}"
+            ).count()
+        else:
+            purchase_count = StudentItem.query.filter_by(student_id=student.id, store_item_id=item.id).count()
         if purchase_count >= item.limit_per_student:
             return jsonify({"status": "error", "message": "You have reached the purchase limit for this item."}), 400
 
@@ -975,6 +980,13 @@ def purchase_item():
         if item.inventory is not None:
             item.inventory -= 1
 
+        # --- Handle special item type: Hall Pass ---
+        if item.item_type == 'hall_pass':
+            student.hall_passes += 1
+            db.session.commit()
+            return jsonify({"status": "success", "message": f"You purchased a Hall Pass! Your new balance is {student.hall_passes}."})
+
+        # --- Standard Item Logic ---
         # Create the student's item
         expiry_date = None
         if item.item_type == 'delayed' and item.auto_expiry_days:
@@ -1152,18 +1164,14 @@ def student_login():
         # This is still not ideal, but better than loading all students.
         # A better long-term solution is a dedicated username table or a different auth method.
         student = None
-        matched_pepper = None
         students_with_matching_username_structure = Student.query.filter(
             Student.username_hash.isnot(None)
         ).all()
 
         for s in students_with_matching_username_structure:
-            for candidate_hash, pepper in iter_username_hashes(username, s.salt):
-                if candidate_hash == s.username_hash:
-                    student = s
-                    matched_pepper = pepper
-                    break
-            if student:
+            candidate_hash = hash_username(username, s.salt)
+            if candidate_hash == s.username_hash:
+                student = s
                 break
 
         if not student or not check_password_hash(student.pin_hash or '', pin):
@@ -1171,12 +1179,6 @@ def student_login():
                 return jsonify(status="error", message="Invalid credentials"), 401
             flash("Invalid credentials", "error")
             return redirect(url_for('student_login', next=request.args.get('next')))
-
-        # If the username hash was verified with a legacy pepper, migrate it to the
-        # current pepper now that we have the plaintext username.
-        if matched_pepper and matched_pepper != get_primary_pepper():
-            student.username_hash = hash_username(username, student.salt)
-            db.session.commit()
 
         # --- Set session timeout ---
         # Clear old student-specific session keys without wiping the CSRF token
@@ -1661,6 +1663,104 @@ def void_transaction(transaction_id):
     return redirect(request.referrer or url_for('admin_dashboard'))
 
 
+# -------------------- ADMIN HALL PASS MANAGEMENT --------------------
+@app.route('/admin/hall-pass')
+@admin_required
+def admin_hall_pass():
+    pending_requests = HallPassLog.query.filter_by(status='pending').order_by(HallPassLog.request_time.asc()).all()
+    approved_queue = HallPassLog.query.filter_by(status='approved').order_by(HallPassLog.decision_time.asc()).all()
+    out_of_class = HallPassLog.query.filter_by(status='left_class').order_by(HallPassLog.left_time.asc()).all()
+
+    return render_template(
+        'admin_hall_pass.html',
+        pending_requests=pending_requests,
+        approved_queue=approved_queue,
+        out_of_class=out_of_class,
+        current_page="hall_pass"
+    )
+
+@app.route('/api/hall-pass/<int:pass_id>/<string:action>', methods=['POST'])
+@admin_required
+def handle_hall_pass_action(pass_id, action):
+    log_entry = HallPassLog.query.get_or_404(pass_id)
+    student = log_entry.student
+    now = datetime.now(timezone.utc)
+
+    if action == 'approve':
+        if log_entry.status != 'pending':
+            return jsonify({"status": "error", "message": "Pass is not pending."}), 400
+        if student.hall_passes <= 0:
+            return jsonify({"status": "error", "message": "Student has no hall passes left."}), 400
+
+        log_entry.status = 'approved'
+        log_entry.decision_time = now
+        student.hall_passes -= 1
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Pass approved."})
+
+    elif action == 'reject':
+        if log_entry.status != 'pending':
+            return jsonify({"status": "error", "message": "Pass is not pending."}), 400
+
+        log_entry.status = 'rejected'
+        log_entry.decision_time = now
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Pass rejected."})
+
+    elif action == 'leave':
+        if log_entry.status != 'approved':
+            return jsonify({"status": "error", "message": "Pass is not approved."}), 400
+
+        # Create a tap-out event for attendance tracking
+        tap_out_event = TapEvent(
+            student_id=student.id,
+            period="HALLPASS", # Use a special period for hall pass events
+            status='inactive',
+            timestamp=now,
+            reason=log_entry.reason
+        )
+        log_entry.status = 'left_class'
+        log_entry.left_time = now
+        db.session.add(tap_out_event)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Student has left the class."})
+
+    elif action == 'return':
+        if log_entry.status != 'left_class':
+            return jsonify({"status": "error", "message": "Student is not out of class."}), 400
+
+        # Create a tap-in event to close the loop
+        tap_in_event = TapEvent(
+            student_id=student.id,
+            period="HALLPASS",
+            status='active',
+            timestamp=now,
+            reason="Return from hall pass"
+        )
+        log_entry.status = 'returned'
+        log_entry.return_time = now
+        db.session.add(tap_in_event)
+        db.session.commit()
+        return jsonify({"status": "success", "message": "Student has returned."})
+
+    return jsonify({"status": "error", "message": "Invalid action."}), 400
+
+@app.route('/admin/student/<int:student_id>/set-hall-passes', methods=['POST'])
+@admin_required
+def set_hall_passes(student_id):
+    student = Student.query.get_or_404(student_id)
+    new_balance = request.form.get('hall_passes', type=int)
+
+    if new_balance is not None and new_balance >= 0:
+        student.hall_passes = new_balance
+        db.session.commit()
+        flash(f"Successfully updated {student.full_name}'s hall pass balance to {new_balance}.", "success")
+    else:
+        flash("Invalid hall pass balance provided.", "error")
+
+    return redirect(url_for('student_detail', student_id=student_id))
+
+
 # -------------------- ADMIN PAYROLL HISTORY --------------------
 @app.route('/admin/payroll-history')
 @admin_required
@@ -1882,7 +1982,6 @@ def admin_upload_students():
     import csv, io, os, re
     from datetime import datetime
 
-    pepper = get_primary_pepper()
     file = request.files.get('csv_file')
     if not file:
         flash("No file provided", "admin_error")
@@ -1933,11 +2032,11 @@ def admin_upload_students():
             dob_sum = mm + dd + yyyy
 
             # Generate salt
-            salt = os.urandom(16)
+            salt = get_random_salt()
 
-            # Compute first_half_hash and second_half_hash using HMAC with pepper
-            first_half_hash = hash_hmac(name_code.encode(), salt, pepper=pepper)
-            second_half_hash = hash_hmac(str(dob_sum).encode(), salt, pepper=pepper)
+            # Compute first_half_hash and second_half_hash using HMAC
+            first_half_hash = hash_hmac(name_code.encode(), salt)
+            second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
             student = Student(
                 first_name=first_name,
@@ -2017,6 +2116,49 @@ def handle_tap():
 
     now = datetime.now(timezone.utc)
 
+
+    # --- Hall Pass Logic for Tap Out ---
+    if action == 'tap_out':
+        reason = data.get("reason")
+        if not reason:
+            return jsonify({"error": "A reason is required for a hall pass."}), 400
+
+        # Special case for "Done for the day" - this is the old "tap out" behavior
+        if reason.lower() in ['done', 'done for the day']:
+            # Fall through to the standard TapEvent creation logic below
+            pass
+        else:
+            # All other reasons go through the hall pass approval flow
+            if student.hall_passes <= 0:
+                return jsonify({"error": "Insufficient hall passes."}), 400
+
+            # Create a hall pass log entry
+            hall_pass_log = HallPassLog(
+                student_id=student.id,
+                reason=reason,
+                status='pending',
+                request_time=now
+            )
+            db.session.add(hall_pass_log)
+            db.session.commit()
+
+            # Since the student is just requesting, they are still 'active'.
+            # We need to return the current state to the UI.
+            is_active = True
+            last_payroll_time = get_last_payroll_time()
+            duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time)
+            RATE_PER_SECOND = 0.25 / 60
+            projected_pay = duration * RATE_PER_SECOND
+
+            return jsonify({
+                "status": "ok",
+                "message": "Hall pass requested.",
+                "active": is_active,
+                "duration": duration,
+                "projected_pay": projected_pay
+            })
+
+    # --- Standard Tap In/Out Logic ---
     try:
         status = "active" if action == "tap_in" else "inactive"
         reason = data.get("reason") if action == "tap_out" else None

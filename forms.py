@@ -14,7 +14,8 @@ class StoreItemForm(FlaskForm):
     item_type = SelectField('Item Type', choices=[
         ('immediate', 'Immediate Use'),
         ('delayed', 'Delayed Use'),
-        ('collective', 'Collective Goal')
+        ('collective', 'Collective Goal'),
+        ('hall_pass', 'Hall Pass')
     ], validators=[DataRequired()])
     inventory = IntegerField('Inventory (leave blank for unlimited)', validators=[Optional()])
     limit_per_student = IntegerField('Purchase Limit per Student (leave blank for no limit)', validators=[Optional()])
