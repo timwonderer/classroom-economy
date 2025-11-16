@@ -21,7 +21,8 @@ def upgrade():
     op.alter_column('students', 'first_name',
                existing_type=sa.VARCHAR(length=50),
                type_=sa.LargeBinary(),
-               nullable=False)
+               nullable=False,
+               postgresql_using='first_name::bytea')
     # ### end Alembic commands ###
 
 
@@ -32,5 +33,6 @@ def downgrade():
     op.alter_column('students', 'first_name',
                existing_type=sa.LargeBinary(),
                type_=sa.VARCHAR(length=50),
-               nullable=False)
+               nullable=False,
+               postgresql_using='first_name::varchar')
     # ### end Alembic commands ###
