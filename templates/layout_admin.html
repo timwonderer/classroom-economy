@@ -23,7 +23,10 @@
             
             <a href="{{ url_for('admin_students') }}"
                class="btn text-start {% if current_page == 'students' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🎒 Students</a>
-           
+
+            <a href="{{ url_for('admin_hall_pass') }}"
+               class="btn text-start {% if current_page == 'hall_pass' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🎫 Hall Pass</a>
+
             <a href="{{ url_for('admin_payroll') }}"
                class="btn text-start {% if current_page == 'payroll' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🧾 Payroll</a>
             <a href="{{ url_for('admin_transactions') }}"

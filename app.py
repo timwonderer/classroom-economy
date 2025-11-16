@@ -2568,7 +2568,7 @@ def system_admin_login():
             totp = pyotp.TOTP(admin.totp_secret)
             if totp.verify(totp_code, valid_window=1):
                 session["is_system_admin"] = True
-                session['last_activity'] = datetime.utcnow().isoformat() + "Z"
+                session['last_activity'] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
                 flash("System admin login successful.")
                 next_url = request.args.get("next")
                 if not is_safe_url(next_url):
