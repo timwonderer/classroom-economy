@@ -1179,6 +1179,20 @@ def apply_savings_interest(student, annual_rate=0.045):
         db.session.add(interest_tx)
         db.session.commit()
 
+# -------------------- RENT HELPERS --------------------
+
+def _calculate_rent_deadlines(settings, reference_date=None):
+    """Return the due date and grace end date for the active month."""
+    reference_date = reference_date or datetime.now()
+    current_year = reference_date.year
+    current_month = reference_date.month
+    last_day_of_month = monthrange(current_year, current_month)[1]
+    due_day = min(settings.due_day_of_month, last_day_of_month)
+    due_date = datetime(current_year, current_month, due_day)
+    grace_end_date = due_date + timedelta(days=settings.grace_period_days)
+    return due_date, grace_end_date
+
+
 # -------------------- STUDENT RENT ROUTES --------------------
 @app.route('/student/rent')
 @login_required
@@ -1196,12 +1210,9 @@ def student_rent():
 
     # Calculate rent status for each period
     now = datetime.now()
+    due_date, grace_end_date = _calculate_rent_deadlines(settings, now)
     current_month = now.month
     current_year = now.year
-    # Get actual last day of current month (handles 28, 29, 30, 31)
-    last_day_of_month = monthrange(current_year, current_month)[1]
-    due_date = datetime(current_year, current_month, min(settings.due_day_of_month, last_day_of_month))
-    grace_end_date = due_date + timedelta(days=settings.grace_period_days)
 
     period_status = {}
     for period in student_blocks:
@@ -1276,10 +1287,7 @@ def student_rent_pay(period):
         return redirect(url_for('student_rent'))
 
     # Calculate if late and total amount
-    # Get actual last day of current month (handles 28, 29, 30, 31)
-    last_day_of_month = monthrange(current_year, current_month)[1]
-    due_date = datetime(current_year, current_month, min(settings.due_day_of_month, last_day_of_month))
-    grace_end_date = due_date + timedelta(days=settings.grace_period_days)
+    due_date, grace_end_date = _calculate_rent_deadlines(settings, now)
     is_late = now > grace_end_date
 
     total_amount = settings.rent_amount
