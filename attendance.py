@@ -43,7 +43,10 @@ def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
             elif event.status == "inactive" and in_time:
                 total_seconds += (event_time - in_time).total_seconds()
                 in_time = None
-        # NOTE: The live calculation `if in_time:` is removed to prevent timezone bugs.
+        if in_time:
+            # Student is still clocked in; count time up to now.
+            now = datetime.now(timezone.utc)
+            total_seconds += (now - in_time).total_seconds()
         return int(total_seconds)
 
     # --- If payroll history exists ---
@@ -72,7 +75,10 @@ def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
             total_seconds += (event_time - in_time).total_seconds()
             in_time = None
 
-    # NOTE: The live calculation `if in_time:` is removed to prevent timezone bugs.
+    if in_time:
+        # Student remained clocked in past the last recorded event; count up to now.
+        now = datetime.now(timezone.utc)
+        total_seconds += (now - in_time).total_seconds()
     return int(total_seconds)
 
 
