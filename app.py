@@ -3382,3 +3382,92 @@ def system_admin_logs():
     except Exception as e:
         structured_logs = [{"timestamp": "", "level": "ERROR", "module": "logs", "message": f"Error reading log file: {e}"}]
     return render_template("system_admin_logs.html", logs=structured_logs, current_page="sysadmin_logs")
+
+
+@app.route('/sysadmin/error-logs')
+@system_admin_required
+def system_admin_error_logs():
+    """
+    View error logs from the database.
+    Shows all errors captured by the error logging system.
+    """
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+
+    # Get error type filter if provided
+    error_type_filter = request.args.get('error_type', '')
+
+    query = ErrorLog.query
+
+    if error_type_filter:
+        query = query.filter(ErrorLog.error_type == error_type_filter)
+
+    # Paginate and order by most recent first
+    pagination = query.order_by(ErrorLog.timestamp.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+
+    error_logs = pagination.items
+
+    # Get distinct error types for filter dropdown
+    error_types = db.session.query(ErrorLog.error_type).distinct().all()
+    error_types = [et[0] for et in error_types if et[0]]
+
+    return render_template(
+        "system_admin_error_logs.html",
+        error_logs=error_logs,
+        pagination=pagination,
+        error_types=error_types,
+        current_error_type=error_type_filter,
+        current_page="sysadmin_error_logs"
+    )
+
+
+# -------------------- ERROR TESTING ROUTES (SYSADMIN ONLY) --------------------
+@app.route('/sysadmin/test-errors/400')
+@system_admin_required
+def test_error_400():
+    """Trigger a 400 Bad Request error for testing."""
+    from werkzeug.exceptions import BadRequest
+    raise BadRequest("This is a test 400 error triggered by system admin for testing purposes.")
+
+
+@app.route('/sysadmin/test-errors/401')
+@system_admin_required
+def test_error_401():
+    """Trigger a 401 Unauthorized error for testing."""
+    from werkzeug.exceptions import Unauthorized
+    raise Unauthorized("This is a test 401 error triggered by system admin for testing purposes.")
+
+
+@app.route('/sysadmin/test-errors/403')
+@system_admin_required
+def test_error_403():
+    """Trigger a 403 Forbidden error for testing."""
+    from werkzeug.exceptions import Forbidden
+    raise Forbidden("This is a test 403 error triggered by system admin for testing purposes.")
+
+
+@app.route('/sysadmin/test-errors/404')
+@system_admin_required
+def test_error_404():
+    """Trigger a 404 Not Found error for testing."""
+    from werkzeug.exceptions import NotFound
+    raise NotFound("This is a test 404 error triggered by system admin for testing purposes.")
+
+
+@app.route('/sysadmin/test-errors/500')
+@system_admin_required
+def test_error_500():
+    """Trigger a 500 Internal Server Error for testing."""
+    # Intentionally cause a division by zero error
+    x = 1 / 0
+    return "This should never be reached"
+
+
+@app.route('/sysadmin/test-errors/503')
+@system_admin_required
+def test_error_503():
+    """Trigger a 503 Service Unavailable error for testing."""
+    from werkzeug.exceptions import ServiceUnavailable
+    raise ServiceUnavailable("This is a test 503 error triggered by system admin for testing purposes.")

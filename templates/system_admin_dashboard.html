@@ -59,7 +59,7 @@
       </div>
     </div>
     <!-- System Admins Management Card -->
-    <div class="w-100 d-flex" style="max-width: 700px;">
+    <div class="w-100 d-flex mb-4" style="max-width: 700px;">
       <div class="card shadow flex-fill" style="min-width:0;">
         <div class="card-header bg-primary text-white">
           <h5 class="mb-0 fw-semibold">Current System Admins</h5>
@@ -78,13 +78,74 @@
         </div>
       </div>
     </div>
+
+    <!-- Error Testing & Monitoring Card -->
+    <div class="w-100 d-flex" style="max-width: 700px;">
+      <div class="card shadow flex-fill" style="min-width:0;">
+        <div class="card-header bg-danger text-white">
+          <h5 class="mb-0 fw-semibold">Error Testing & Monitoring</h5>
+        </div>
+        <div class="card-body">
+          <p class="mb-3">Test error pages and view error logs from the database.</p>
+
+          <div class="mb-3">
+            <a href="{{ url_for('system_admin_error_logs') }}" class="btn btn-danger w-100 mb-2">
+              View Error Logs Database
+            </a>
+          </div>
+
+          <hr>
+
+          <h6 class="fw-semibold mb-3">Test Error Pages</h6>
+          <p class="small text-muted mb-3">Click each button to trigger that error type and see how the error page looks. All test errors will be logged to the database.</p>
+
+          <div class="row g-2">
+            <div class="col-6 col-md-4">
+              <a href="{{ url_for('test_error_400') }}" class="btn btn-outline-warning w-100 btn-sm" target="_blank">
+                400 Bad Request
+              </a>
+            </div>
+            <div class="col-6 col-md-4">
+              <a href="{{ url_for('test_error_401') }}" class="btn btn-outline-info w-100 btn-sm" target="_blank">
+                401 Unauthorized
+              </a>
+            </div>
+            <div class="col-6 col-md-4">
+              <a href="{{ url_for('test_error_403') }}" class="btn btn-outline-danger w-100 btn-sm" target="_blank">
+                403 Forbidden
+              </a>
+            </div>
+            <div class="col-6 col-md-4">
+              <a href="{{ url_for('test_error_404') }}" class="btn btn-outline-secondary w-100 btn-sm" target="_blank">
+                404 Not Found
+              </a>
+            </div>
+            <div class="col-6 col-md-4">
+              <a href="{{ url_for('test_error_500') }}" class="btn btn-outline-danger w-100 btn-sm" target="_blank">
+                500 Internal Error
+              </a>
+            </div>
+            <div class="col-6 col-md-4">
+              <a href="{{ url_for('test_error_503') }}" class="btn btn-outline-warning w-100 btn-sm" target="_blank">
+                503 Unavailable
+              </a>
+            </div>
+          </div>
+
+          <div class="alert alert-info mt-3 mb-0">
+            <small>
+              <strong>Tip:</strong> Test buttons open in a new tab. After viewing the error page, close the tab and refresh the Error Logs Database to see the logged error.
+            </small>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
-  
+
   <div class="row">
-    <div class="col-12 
-     justify-content-center mt-4">
-        <a href="{{ logs_url }}" class="d-block btn btn-secondary mt-2" style="margin-bottom:10px">View System Logs</a>
-      <a href="{{ url_for('system_admin_logout') }}" class="btn d-block btn-danger" >Logout</a>
+    <div class="col-12 justify-content-center mt-4">
+      <a href="{{ logs_url }}" class="d-block btn btn-secondary mt-2" style="margin-bottom:10px">View System Logs (File)</a>
+      <a href="{{ url_for('system_admin_logout') }}" class="btn d-block btn-danger">Logout</a>
     </div>
   </div>
 </div>
