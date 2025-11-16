@@ -1,52 +1,71 @@
 {% extends "layout_student.html" %}
+
+{% block title %}Change Insurance{% endblock %}
+
 {% block content %}
-  <div class="container mt-4">
-    <h4 class="mb-3">Hello, {{ student_name }}!</h4>
+<div class="page-header">
+    <h1>Change Insurance Plan</h1>
+    <p class="subtitle">Update your insurance coverage</p>
+</div>
 
-    <div class="card mb-4">
-      <div class="card-header bg-info text-white">
-        <h5 class="mb-0">Your Current Insurance</h5>
-      </div>
-      <div class="card-body">
-        {% if current_plan %}
-          <p>DEBUG: current_plan is {{ current_plan }}</p>
-          {% if current_plan == 'paycheck_protection' %}
-            <p class="text-success"><i class="bi bi-shield-check"></i> Paycheck Protection - $90/month</p>
-          {% elif current_plan == 'responsibility' %}
-            <p class="text-warning"><i class="bi bi-person-check"></i> Personal Responsibility - $60/month</p>
-          {% elif current_plan == 'bundle' %}
-            <p class="text-primary"><i class="bi bi-box-seam"></i> Bundled Plan - $125/month</p>
-          {% else %}
-            <p class="text-muted">DEBUG: Unknown plan type</p>
-          {% endif %}
-        {% else %}
-          <p class="text-danger"><i class="bi bi-exclamation-triangle"></i> You do not currently have insurance.</p>
-        {% endif %}
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="card-header">
-        <h4>Change Your Insurance Plan</h4>
-      </div>
-      <div class="card-body">
-        <p>Select a new insurance option below. If you are upgrading to a bundled plan, we will calculate a prorated refund and adjust your monthly premium.</p>
-
-        <form method="POST" action="{{ url_for('student_insurance_change') }}">
-          <div class="form-group mt-3">
-            <label for="insuranceType">Select Insurance Plan:</label>
-            <select class="form-control" id="insuranceType" name="insurance_type" required>
-              <option value="paycheck">Paycheck Protection - $90/month</option>
-              <option value="responsibility">Personal Responsibility - $60/month</option>
-              <option value="bundle">Bundled Plan - $125/month</option>
-            </select>
-          </div>
-
-          <button type="submit" class="btn btn-primary mt-3">Confirm Change</button>
-          <a href="{{ url_for('student_insurance') }}" class="btn btn-secondary mt-3 ms-2">Cancel</a>
-        </form>
-      </div>
-    </div>
-
+<div class="card mb-4">
+  <div class="card-header">
+    Your Current Insurance
   </div>
+  <div class="card-body">
+    {% if current_plan %}
+      {% if current_plan == 'paycheck_protection' %}
+        <h5 class="text-primary">💼 Paycheck Protection</h5>
+        <p class="text-muted mb-0">$90/month</p>
+      {% elif current_plan == 'responsibility' %}
+        <h5 class="text-success">🤝 Personal Responsibility</h5>
+        <p class="text-muted mb-0">$60/month</p>
+      {% elif current_plan == 'bundle' %}
+        <h5 class="text-warning">📦 Bundled Plan</h5>
+        <p class="text-muted mb-0">$125/month</p>
+      {% else %}
+        <p class="text-muted">{{ current_plan|title }}</p>
+      {% endif %}
+    {% else %}
+      <p class="text-danger">⚠️ You do not currently have insurance.</p>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    Select New Insurance Plan
+  </div>
+  <div class="card-body">
+    <p class="mb-4">Select a new insurance option below. If you are upgrading to a bundled plan, we will calculate a prorated refund and adjust your monthly premium.</p>
+
+    <form method="POST" action="{{ url_for('student_insurance_change') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+      <div class="mb-4">
+        <label for="insuranceType" class="form-label">Select Insurance Plan</label>
+        <select class="form-select form-select-lg" id="insuranceType" name="insurance_type" required>
+          <option value="">-- Choose a plan --</option>
+          <option value="paycheck" {% if current_plan == 'paycheck_protection' %}disabled{% endif %}>
+            💼 Paycheck Protection - $90/month
+            {% if current_plan == 'paycheck_protection' %}(Current){% endif %}
+          </option>
+          <option value="responsibility" {% if current_plan == 'responsibility' %}disabled{% endif %}>
+            🤝 Personal Responsibility - $60/month
+            {% if current_plan == 'responsibility' %}(Current){% endif %}
+          </option>
+          <option value="bundle" {% if current_plan == 'bundle' %}disabled{% endif %}>
+            📦 Bundled Plan - $125/month
+            {% if current_plan == 'bundle' %}(Current){% endif %}
+          </option>
+        </select>
+      </div>
+
+      <div class="d-grid gap-2">
+        <button type="submit" class="btn btn-primary btn-lg">Confirm Change</button>
+        <a href="{{ url_for('student_insurance') }}" class="btn btn-outline-secondary">Cancel</a>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}
