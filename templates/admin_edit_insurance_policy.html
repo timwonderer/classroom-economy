@@ -20,182 +20,229 @@
     {{ form.hidden_tag() }}
 
     <div class="row">
-      <!-- Main Form Section -->
+      <!-- Main Form Section - 2x2 Grid -->
       <div class="col-lg-8 mb-4">
-        <!-- Basic Information Card -->
-        <div class="card shadow-sm mb-4">
-          <div class="card-header bg-primary text-white">
-            <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i>Basic Information</h5>
-          </div>
-          <div class="card-body">
-            <div class="row">
-              <div class="col-md-12 mb-3">
-                {{ form.title.label(class="form-label fw-bold") }}
-                {{ form.title(class="form-control form-control-lg", placeholder="e.g., Basic Health Coverage") }}
-                <small class="text-muted">This name will be displayed to students in the marketplace</small>
+        <!-- Row 1 -->
+        <div class="row mb-4">
+          <!-- Top Left: Basic Information -->
+          <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
+              <div class="card-header bg-primary text-white">
+                <h6 class="mb-0"><i class="bi bi-info-circle me-2"></i>Basic Information</h6>
+              </div>
+              <div class="card-body">
+                <div class="mb-3">
+                  {{ form.title.label(class="form-label fw-bold") }}
+                  {{ form.title(class="form-control", placeholder="e.g., Basic Health Coverage") }}
+                  <small class="text-muted">Policy name shown to students</small>
+                </div>
+                <div class="mb-3">
+                  {{ form.description.label(class="form-label fw-bold") }}
+                  {{ form.description(class="form-control", rows=6, placeholder="Describe what this policy covers...") }}
+                  <small class="text-muted">Clear description of coverage and benefits</small>
+                </div>
+                <div class="mb-0">
+                  <div class="form-check form-switch">
+                    {{ form.is_monetary(class="form-check-input", role="switch", id="isMonetaryToggle") }}
+                    {{ form.is_monetary.label(class="form-check-label fw-bold") }}
+                  </div>
+                  <div class="alert alert-light border mt-2 mb-0">
+                    <small><strong>Monetary:</strong> Dollar claims<br>
+                    <strong>Non-Monetary:</strong> Item/service claims</small>
+                  </div>
+                </div>
               </div>
             </div>
-            <div class="mb-3">
-              {{ form.description.label(class="form-label fw-bold") }}
-              {{ form.description(class="form-control", rows=4, placeholder="Describe what this policy covers, benefits, and any important details students should know...") }}
-              <small class="text-muted">Provide a clear description of coverage and benefits</small>
-            </div>
           </div>
-        </div>
 
-        <!-- Pricing & Payment Card -->
-        <div class="card shadow-sm mb-4">
-          <div class="card-header bg-success text-white">
-            <h5 class="mb-0"><i class="bi bi-currency-dollar me-2"></i>Pricing & Payment</h5>
-          </div>
-          <div class="card-body">
-            <div class="row">
-              <div class="col-md-4 mb-3">
-                {{ form.premium.label(class="form-label fw-bold") }}
-                <div class="input-group input-group-lg">
-                  <span class="input-group-text bg-success text-white">$</span>
-                  {{ form.premium(class="form-control", placeholder="0.00") }}
+          <!-- Top Right: Pricing & Payment -->
+          <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
+              <div class="card-header bg-success text-white">
+                <h6 class="mb-0"><i class="bi bi-currency-dollar me-2"></i>Pricing & Payment</h6>
+              </div>
+              <div class="card-body">
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    {{ form.premium.label(class="form-label fw-bold") }}
+                    <div class="input-group">
+                      <span class="input-group-text">$</span>
+                      {{ form.premium(class="form-control", placeholder="0.00") }}
+                    </div>
+                    <small class="text-muted">Cost per cycle</small>
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    {{ form.charge_frequency.label(class="form-label fw-bold") }}
+                    {{ form.charge_frequency(class="form-select") }}
+                    <small class="text-muted">Billing frequency</small>
+                  </div>
                 </div>
-                <small class="text-muted">Cost per billing cycle</small>
-              </div>
-              <div class="col-md-4 mb-3">
-                {{ form.charge_frequency.label(class="form-label fw-bold") }}
-                {{ form.charge_frequency(class="form-select form-select-lg") }}
-                <small class="text-muted">How often to charge</small>
-              </div>
-              <div class="col-md-4 mb-3">
-                {{ form.bundle_discount_percent.label(class="form-label fw-bold") }}
-                <div class="input-group input-group-lg">
-                  {{ form.bundle_discount_percent(class="form-control", placeholder="0") }}
-                  <span class="input-group-text bg-success text-white">%</span>
+                <div class="mb-3">
+                  <div class="form-check form-switch">
+                    {{ form.autopay(class="form-check-input", role="switch") }}
+                    {{ form.autopay.label(class="form-check-label fw-bold") }}
+                  </div>
+                  <small class="text-muted">Auto-deduct premiums from student accounts</small>
                 </div>
-                <small class="text-muted">Discount for bundled policies</small>
-              </div>
-            </div>
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <div class="form-check form-switch">
-                  {{ form.autopay(class="form-check-input", role="switch") }}
-                  {{ form.autopay.label(class="form-check-label fw-bold") }}
-                </div>
-                <small class="text-muted">Automatically deduct premiums from student accounts</small>
-              </div>
-              <div class="col-md-6 mb-3">
-                {{ form.auto_cancel_nonpay_days.label(class="form-label fw-bold") }}
-                <div class="input-group">
-                  {{ form.auto_cancel_nonpay_days(class="form-control", placeholder="0") }}
-                  <span class="input-group-text">days</span>
-                </div>
-                <small class="text-muted">Cancel policy after this many days of non-payment (0 = never)</small>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Coverage & Claims Card -->
-        <div class="card shadow-sm mb-4">
-          <div class="card-header bg-info text-white">
-            <h5 class="mb-0"><i class="bi bi-shield-check me-2"></i>Coverage & Claims</h5>
-          </div>
-          <div class="card-body">
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                {{ form.waiting_period_days.label(class="form-label fw-bold") }}
-                <div class="input-group">
-                  {{ form.waiting_period_days(class="form-control", placeholder="0") }}
-                  <span class="input-group-text">days</span>
-                </div>
-                <small class="text-muted">Days before coverage begins after purchase</small>
-              </div>
-              <div class="col-md-6 mb-3">
-                {{ form.claim_time_limit_days.label(class="form-label fw-bold") }}
-                <div class="input-group">
-                  {{ form.claim_time_limit_days(class="form-control", placeholder="0") }}
-                  <span class="input-group-text">days</span>
-                </div>
-                <small class="text-muted">Days after incident to file claim (0 = no limit)</small>
-              </div>
-            </div>
-            <div class="row">
-              <div class="col-md-4 mb-3">
-                {{ form.max_claims_count.label(class="form-label fw-bold") }}
-                {{ form.max_claims_count(class="form-control", placeholder="0") }}
-                <small class="text-muted">Max claims (0 = unlimited)</small>
-              </div>
-              <div class="col-md-4 mb-3">
-                {{ form.max_claims_period.label(class="form-label fw-bold") }}
-                {{ form.max_claims_period(class="form-select") }}
-                <small class="text-muted">Time period for max claims</small>
-              </div>
-              <div class="col-md-4 mb-3">
-                {{ form.max_claim_amount.label(class="form-label fw-bold") }}
-                <div class="input-group">
-                  <span class="input-group-text">$</span>
-                  {{ form.max_claim_amount(class="form-control", placeholder="0.00") }}
-                </div>
-                <small class="text-muted">Max payout per claim (0 = unlimited)</small>
-              </div>
-            </div>
-            <div class="row">
-              <div class="col-md-12 mb-2">
-                <div class="form-check form-switch">
-                  {{ form.is_monetary(class="form-check-input", role="switch") }}
-                  {{ form.is_monetary.label(class="form-check-label fw-bold") }}
-                </div>
-                <div class="alert alert-light border mt-2 mb-0">
-                  <small><strong>Monetary:</strong> Students claim dollar amounts (e.g., medical expenses)<br>
-                  <strong>Non-Monetary:</strong> Students specify items/services (e.g., laptop replacement, tutoring sessions)</small>
+                <div class="mb-0">
+                  {{ form.auto_cancel_nonpay_days.label(class="form-label fw-bold") }}
+                  <div class="input-group">
+                    {{ form.auto_cancel_nonpay_days(class="form-control", placeholder="0") }}
+                    <span class="input-group-text">days</span>
+                  </div>
+                  <small class="text-muted">Cancel if unpaid (0 = never)</small>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Policy Rules Card -->
-        <div class="card shadow-sm mb-4">
-          <div class="card-header bg-warning text-dark">
-            <h5 class="mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Policy Rules</h5>
-          </div>
-          <div class="card-body">
-            <div class="row">
-              <div class="col-md-6 mb-3">
-                <div class="form-check form-switch">
-                  {{ form.no_repurchase_after_cancel(class="form-check-input", role="switch", id="repurchaseToggle") }}
-                  {{ form.no_repurchase_after_cancel.label(class="form-check-label fw-bold") }}
-                </div>
-                <small class="text-muted">Prevent students from repurchasing after cancellation</small>
+        <!-- Row 2 -->
+        <div class="row">
+          <!-- Bottom Left: Coverage & Claims -->
+          <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
+              <div class="card-header bg-info text-white">
+                <h6 class="mb-0"><i class="bi bi-shield-check me-2"></i>Coverage & Claims</h6>
               </div>
-              <div class="col-md-6 mb-3">
-                {{ form.repurchase_wait_days.label(class="form-label fw-bold") }}
-                <div class="input-group">
-                  {{ form.repurchase_wait_days(class="form-control", placeholder="0") }}
-                  <span class="input-group-text">days</span>
+              <div class="card-body">
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    {{ form.waiting_period_days.label(class="form-label fw-bold") }}
+                    <div class="input-group">
+                      {{ form.waiting_period_days(class="form-control", placeholder="0") }}
+                      <span class="input-group-text">days</span>
+                    </div>
+                    <small class="text-muted">Before coverage starts</small>
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    {{ form.claim_time_limit_days.label(class="form-label fw-bold") }}
+                    <div class="input-group">
+                      {{ form.claim_time_limit_days(class="form-control", placeholder="0") }}
+                      <span class="input-group-text">days</span>
+                    </div>
+                    <small class="text-muted">To file after incident</small>
+                  </div>
                 </div>
-                <small class="text-muted">Waiting period before repurchase allowed</small>
+                <div class="row">
+                  <div class="col-md-6 mb-3">
+                    {{ form.max_claims_count.label(class="form-label fw-bold") }}
+                    {{ form.max_claims_count(class="form-control", placeholder="0") }}
+                    <small class="text-muted">Max per period (0 = ∞)</small>
+                  </div>
+                  <div class="col-md-6 mb-3">
+                    {{ form.max_claims_period.label(class="form-label fw-bold") }}
+                    {{ form.max_claims_period(class="form-select") }}
+                    <small class="text-muted">Period type</small>
+                  </div>
+                </div>
+                <div class="mb-0">
+                  {{ form.max_claim_amount.label(class="form-label fw-bold") }}
+                  <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    {{ form.max_claim_amount(class="form-control", placeholder="0.00") }}
+                  </div>
+                  <small class="text-muted">Max payout per claim (0 = ∞)</small>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Bottom Right: Policy Rules & Bundle Settings -->
+          <div class="col-md-6 mb-4">
+            <div class="card shadow-sm h-100">
+              <div class="card-header bg-warning text-dark">
+                <h6 class="mb-0"><i class="bi bi-gear me-2"></i>Rules & Bundles</h6>
+              </div>
+              <div class="card-body">
+                <!-- Repurchase Rules -->
+                <div class="mb-3 pb-3 border-bottom">
+                  <div class="form-check form-switch mb-2">
+                    {{ form.no_repurchase_after_cancel(class="form-check-input", role="switch", id="cooldownToggle") }}
+                    {{ form.no_repurchase_after_cancel.label(class="form-check-label fw-bold") }}
+                  </div>
+                  <div id="cooldownDays">
+                    {{ form.repurchase_wait_days.label(class="form-label fw-bold small") }}
+                    <div class="input-group input-group-sm">
+                      {{ form.repurchase_wait_days(class="form-control", placeholder="0") }}
+                      <span class="input-group-text">days</span>
+                    </div>
+                    <small class="text-muted">Cooldown period for repurchase</small>
+                  </div>
+                </div>
+
+                <!-- Bundle Settings -->
+                <div>
+                  <h6 class="fw-bold mb-2"><i class="bi bi-boxes me-1"></i>Bundle Discounts</h6>
+
+                  <!-- Policy Selection -->
+                  <div class="mb-3">
+                    <label class="form-label fw-bold small">Bundle With Policies</label>
+                    <div class="border rounded p-2" style="max-height: 120px; overflow-y: auto; background-color: #f8f9fa;">
+                      {% if available_policies %}
+                        {% for avail_policy in available_policies %}
+                        <div class="form-check form-check-sm">
+                          <input class="form-check-input bundle-policy-checkbox" type="checkbox"
+                                 value="{{ avail_policy.id }}"
+                                 id="bundle_{{ avail_policy.id }}"
+                                 {% if policy.bundle_with_policy_ids and (avail_policy.id|string in policy.bundle_with_policy_ids.split(',')) %}checked{% endif %}>
+                          <label class="form-check-label small" for="bundle_{{ avail_policy.id }}">
+                            {{ avail_policy.title }} (${{ avail_policy.premium }})
+                          </label>
+                        </div>
+                        {% endfor %}
+                      {% else %}
+                        <small class="text-muted">No other active policies available</small>
+                      {% endif %}
+                    </div>
+                    {{ form.bundle_with_policy_ids(class="form-control d-none", id="bundlePolicyIds") }}
+                    <small class="text-muted">Select policies that can be bundled</small>
+                  </div>
+
+                  <!-- Discount Options -->
+                  <div class="row">
+                    <div class="col-6">
+                      {{ form.bundle_discount_percent.label(class="form-label fw-bold small") }}
+                      <div class="input-group input-group-sm">
+                        {{ form.bundle_discount_percent(class="form-control", placeholder="0") }}
+                        <span class="input-group-text">%</span>
+                      </div>
+                      <small class="text-muted">Percent off</small>
+                    </div>
+                    <div class="col-6">
+                      {{ form.bundle_discount_amount.label(class="form-label fw-bold small") }}
+                      <div class="input-group input-group-sm">
+                        <span class="input-group-text">$</span>
+                        {{ form.bundle_discount_amount(class="form-control", placeholder="0.00") }}
+                      </div>
+                      <small class="text-muted">Dollar off</small>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Sidebar -->
+      <!-- Right Sidebar -->
       <div class="col-lg-4">
         <!-- Status Card -->
         <div class="card shadow-sm mb-4 border-{{ 'success' if policy.is_active else 'danger' }}">
           <div class="card-header bg-{{ 'success' if policy.is_active else 'danger' }} text-white">
-            <h5 class="mb-0"><i class="bi bi-toggle-{{ 'on' if policy.is_active else 'off' }} me-2"></i>Policy Status</h5>
+            <h6 class="mb-0"><i class="bi bi-toggle-{{ 'on' if policy.is_active else 'off' }} me-2"></i>Policy Status</h6>
           </div>
           <div class="card-body">
             <div class="form-check form-switch mb-3">
-              {{ form.is_active(class="form-check-input form-check-input-lg", role="switch") }}
-              {{ form.is_active.label(class="form-check-label fw-bold fs-5") }}
+              {{ form.is_active(class="form-check-input", role="switch", style="width: 3rem; height: 1.5rem;") }}
+              {{ form.is_active.label(class="form-check-label fw-bold fs-5 ms-2") }}
             </div>
             <div class="alert alert-{{ 'success' if policy.is_active else 'warning' }} mb-0">
               <small>
                 {% if policy.is_active %}
-                <i class="bi bi-check-circle"></i> This policy is visible to students and available for purchase
+                <i class="bi bi-check-circle"></i> Visible and available for purchase
                 {% else %}
-                <i class="bi bi-x-circle"></i> This policy is hidden from students and unavailable for purchase
+                <i class="bi bi-x-circle"></i> Hidden from students
                 {% endif %}
               </small>
             </div>
@@ -205,66 +252,101 @@
         <!-- Statistics Card -->
         <div class="card shadow-sm mb-4">
           <div class="card-header bg-secondary text-white">
-            <h5 class="mb-0"><i class="bi bi-graph-up me-2"></i>Policy Statistics</h5>
+            <h6 class="mb-0"><i class="bi bi-graph-up me-2"></i>Statistics</h6>
           </div>
-          <div class="card-body">
+          <div class="card-body p-3">
             <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
               <div>
-                <h6 class="text-muted mb-0">Active Enrollments</h6>
-                <h2 class="mb-0 text-primary">{{ policy.student_policies.filter_by(status='active').count() }}</h2>
+                <div class="text-muted small mb-1">Active Students</div>
+                <h3 class="mb-0 text-primary">{{ policy.student_policies.filter_by(status='active').count() }}</h3>
               </div>
               <div class="text-end">
-                <i class="bi bi-people-fill text-primary" style="font-size: 2rem;"></i>
+                <i class="bi bi-people-fill text-primary" style="font-size: 2.5rem; opacity: 0.2;"></i>
               </div>
             </div>
             <div class="d-flex justify-content-between align-items-center mb-3 pb-3 border-bottom">
               <div>
-                <h6 class="text-muted mb-0">Total Claims</h6>
-                <h2 class="mb-0 text-info">{{ policy.claims.count() }}</h2>
+                <div class="text-muted small mb-1">Total Claims</div>
+                <h3 class="mb-0 text-info">{{ policy.claims.count() }}</h3>
               </div>
               <div class="text-end">
-                <i class="bi bi-file-text-fill text-info" style="font-size: 2rem;"></i>
+                <i class="bi bi-file-text-fill text-info" style="font-size: 2.5rem; opacity: 0.2;"></i>
               </div>
             </div>
             <div class="d-flex justify-content-between align-items-center">
               <div>
-                <h6 class="text-muted mb-0">Created</h6>
-                <p class="mb-0">{{ policy.created_at.strftime('%B %d, %Y') }}</p>
+                <div class="text-muted small mb-1">Created</div>
+                <div class="fw-bold">{{ policy.created_at.strftime('%b %d, %Y') }}</div>
               </div>
               <div class="text-end">
-                <i class="bi bi-calendar-check text-secondary" style="font-size: 2rem;"></i>
+                <i class="bi bi-calendar-check text-secondary" style="font-size: 2rem; opacity: 0.2;"></i>
               </div>
             </div>
           </div>
         </div>
 
         <!-- Quick Tips Card -->
-        <div class="card shadow-sm mb-4 border-primary">
-          <div class="card-header bg-light border-primary">
-            <h6 class="mb-0 text-primary"><i class="bi bi-lightbulb me-2"></i>Quick Tips</h6>
+        <div class="card shadow-sm mb-4 bg-light">
+          <div class="card-header border-0 bg-transparent">
+            <h6 class="mb-0 text-primary"><i class="bi bi-lightbulb-fill me-2"></i>Quick Tips</h6>
           </div>
-          <div class="card-body">
-            <ul class="small mb-0 ps-3">
-              <li class="mb-2">Set a waiting period to prevent fraud</li>
-              <li class="mb-2">Use clear, student-friendly language in descriptions</li>
-              <li class="mb-2">Consider bundle discounts for multiple policies</li>
-              <li class="mb-0">Review claims regularly to adjust coverage</li>
+          <div class="card-body pt-0">
+            <ul class="small mb-0 ps-3" style="line-height: 1.8;">
+              <li>Waiting periods prevent fraud</li>
+              <li>Use clear, simple language</li>
+              <li>Bundle discounts encourage multiple policies</li>
+              <li>Review claims to adjust coverage</li>
             </ul>
           </div>
         </div>
 
         <!-- Action Buttons -->
-        <div class="card shadow-sm">
-          <div class="card-body">
-            <div class="d-grid gap-2">
-              {{ form.submit(class="btn btn-primary btn-lg") }}
-              <a href="{{ url_for('admin_insurance_management') }}" class="btn btn-outline-secondary">Cancel</a>
-            </div>
-          </div>
+        <div class="d-grid gap-2">
+          {{ form.submit(class="btn btn-primary btn-lg", value="💾 Save Changes") }}
+          <a href="{{ url_for('admin_insurance_management') }}" class="btn btn-outline-secondary">Cancel</a>
         </div>
       </div>
     </div>
   </form>
 </div>
+
+<script>
+// Update hidden field with selected bundle policies
+document.addEventListener('DOMContentLoaded', function() {
+  const checkboxes = document.querySelectorAll('.bundle-policy-checkbox');
+  const hiddenField = document.getElementById('bundlePolicyIds');
+
+  function updateBundleIds() {
+    const selectedIds = Array.from(checkboxes)
+      .filter(cb => cb.checked)
+      .map(cb => cb.value);
+    hiddenField.value = selectedIds.join(',');
+  }
+
+  checkboxes.forEach(cb => {
+    cb.addEventListener('change', updateBundleIds);
+  });
+
+  // Initialize on load
+  updateBundleIds();
+
+  // Toggle cooldown days visibility
+  const cooldownToggle = document.getElementById('cooldownToggle');
+  const cooldownDays = document.getElementById('cooldownDays');
+
+  function toggleCooldown() {
+    if (cooldownToggle.checked) {
+      cooldownDays.style.display = 'block';
+    } else {
+      cooldownDays.style.display = 'none';
+    }
+  }
+
+  if (cooldownToggle) {
+    cooldownToggle.addEventListener('change', toggleCooldown);
+    toggleCooldown(); // Initialize on load
+  }
+});
+</script>
 
 {% endblock %}

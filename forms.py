@@ -100,7 +100,9 @@ class InsurancePolicyForm(FlaskForm):
     claim_time_limit_days = IntegerField('Time limit to file claim (days from incident)', default=30)
 
     # Bundle settings
+    bundle_with_policy_ids = StringField('Bundle with Policies', validators=[Optional()])  # Comma-separated IDs
     bundle_discount_percent = FloatField('Bundle Discount %', default=0, validators=[Optional()])
+    bundle_discount_amount = FloatField('Bundle Discount Amount ($)', default=0, validators=[Optional()])
 
     is_active = BooleanField('Policy is Active', default=True)
     submit = SubmitField('Save Policy')
