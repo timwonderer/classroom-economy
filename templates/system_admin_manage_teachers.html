@@ -103,7 +103,7 @@
                                     </td>
                                     <td>{{ teacher.email or 'N/A' }}</td>
                                     <td>
-                                        <span class="badge bg-info">{{ teacher.students.count() }} students</span>
+                                        <span class="badge bg-secondary">Shared</span>
                                     </td>
                                     <td><small>{{ teacher.created_at.strftime('%b %d, %Y') if teacher.created_at else 'Unknown' }}</small></td>
                                     <td><small>{{ teacher.last_login.strftime('%b %d, %I:%M %p') if teacher.last_login else 'Never' }}</small></td>
@@ -112,8 +112,7 @@
                                                 data-bs-toggle="modal"
                                                 data-bs-target="#deleteModal"
                                                 data-teacher-id="{{ teacher.id }}"
-                                                data-teacher-name="{{ teacher.username }}"
-                                                data-student-count="{{ teacher.students.count() }}">
+                                                data-teacher-name="{{ teacher.username }}">
                                             <i class="bi bi-trash"></i> Delete
                                         </button>
                                     </td>
@@ -144,9 +143,9 @@
                 <p>Are you sure you want to delete teacher <strong id="modalTeacherName"></strong>?</p>
                 <div class="alert alert-danger">
                     <i class="bi bi-exclamation-circle me-2"></i>
-                    <strong>Warning:</strong> This will also delete <strong id="modalStudentCount"></strong> student(s) and all their data!
+                    <strong>Warning:</strong> This will also delete ALL students and their data!
                 </div>
-                <p class="text-muted small">This action cannot be undone.</p>
+                <p class="text-muted small">This action cannot be undone. Students are currently shared across all teachers.</p>
             </div>
             <div class="modal-footer border-secondary">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -169,10 +168,8 @@ if (deleteModal) {
         const button = event.relatedTarget;
         const teacherId = button.getAttribute('data-teacher-id');
         const teacherName = button.getAttribute('data-teacher-name');
-        const studentCount = button.getAttribute('data-student-count');
 
         document.getElementById('modalTeacherName').textContent = teacherName;
-        document.getElementById('modalStudentCount').textContent = studentCount;
         document.getElementById('deleteForm').action = `/system-admin/manage-teachers/delete/${teacherId}`;
     });
 }
