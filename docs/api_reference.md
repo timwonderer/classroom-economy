@@ -223,49 +223,59 @@ These endpoints require an active administrator login session.
 
 ## Web Page Routes
 
-The following routes render HTML pages and are not part of the JSON API. They are listed here for completeness.
+The following routes render HTML pages and are not part of the JSON API. They provide the user interface for the application.
 
 ### Public & Setup Routes
-- `GET /`
-- `GET, POST /student/claim-account`
-- `GET, POST /student/create-username`
-- `GET, POST /student/setup-pin-passphrase`
-- `GET, POST /student/login`
-- `GET, POST /admin/login`
-- `GET, POST /admin/signup`
-- `GET, POST /sysadmin/login`
-- `GET /privacy`
-- `GET /terms`
+
+These routes are accessible without logging in. They handle the initial setup and login for all user types.
+
+-   **`GET /`**: Redirects to the student login page.
+-   **`GET, POST /student/claim-account`**: The first step for a new student to claim their account using a code from the teacher.
+-   **`GET, POST /student/create-username`**: The second step for a new student to create their unique username.
+-   **`GET, POST /student/setup-pin-passphrase`**: The final setup step for a student to create their PIN and passphrase.
+-   **`GET, POST /student/login`**: The login page for students.
+-   **`GET, POST /admin/login`**: The login page for admins (teachers).
+-   **`GET, POST /admin/signup`**: The signup page for new admins, requiring a valid invite code.
+-   **`GET, POST /sysadmin/login`**: The login page for system administrators.
+-   **`GET /privacy`**: Displays the privacy policy.
+-   **`GET /terms`**: Displays the terms of service.
 
 ### Student Routes (`@login_required`)
-- `GET /setup-complete`
-- `GET /student/dashboard`
-- `GET, POST /student/transfer`
-- `GET, POST /student/insurance`
-- `GET, POST /student/insurance/change`
-- `GET /student/shop`
-- `GET /student/logout`
+
+These routes require an active student login session.
+
+-   **`GET /setup-complete`**: A confirmation page shown after a student successfully completes the setup process.
+-   **`GET /student/dashboard`**: The main dashboard for students, showing balances, attendance status, and recent transactions.
+-   **`GET, POST /student/transfer`**: Allows students to transfer funds between their checking and savings accounts.
+-   **`GET, POST /student/insurance`**: The insurance marketplace where students can browse, purchase, and manage insurance policies.
+-   **`GET /student/shop`**: The classroom store where students can purchase items with their earnings.
+-   **`GET /student/logout`**: Logs the student out of their session.
 
 ### Admin Routes (`@admin_required`)
-- `GET /admin` or `/admin/dashboard`
-- `POST /admin/bonuses`
-- `GET /admin/students`
-- `POST /admin/add-student-manual`
-- `POST /admin/upload-students`
-- `GET /admin/download-csv-template`
-- `GET /admin/students/<int:student_id>`
-- `POST /admin/void-transaction/<int:transaction_id>`
-- `GET, POST /admin/store`
-- `GET, POST /admin/store/edit/<int:item_id>`
-- `POST /admin/store/delete/<int:item_id>`
-- `GET /admin/transactions`
-- `GET /admin/payroll`
-- `POST /admin/run-payroll`
-- `GET /admin/payroll-history`
-- `GET /admin/attendance-log`
-- `GET /admin/logout`
+
+These routes require an active admin (teacher) login session.
+
+-   **`GET /admin` or `/admin/dashboard`**: The main dashboard for admins, showing an overview of the classroom.
+-   **`POST /admin/bonuses`**: Applies a bonus or fee to all students.
+-   **`GET /admin/students`**: Displays a list of all students.
+-   **`POST /admin/upload-students`**: Handles the CSV upload for adding new students.
+-   **`GET /admin/download-csv-template`**: Serves the CSV template file for adding students.
+-   **`GET /admin/students/<int:student_id>`**: Displays the detailed view for a specific student.
+-   **`POST /admin/void-transaction/<int:transaction_id>`**: Voids a specific transaction.
+-   **`GET, POST /admin/store`**: The store management page for adding and editing items.
+-   **`GET, POST /admin/store/edit/<int:item_id>`**: The page for editing a specific store item.
+-   **`POST /admin/store/delete/<int:item_id>`**: Deactivates a specific store item.
+-   **`GET /admin/transactions`**: Displays a filterable log of all student transactions.
+-   **`GET /admin/payroll`**: The payroll management page, showing estimates and recent payrolls.
+-   **`POST /admin/run-payroll`**: Manually triggers a payroll run.
+-   **`GET /admin/payroll-history`**: Displays a detailed history of all past payrolls.
+-   **`GET /admin/attendance-log`**: Shows a complete log of all student tap-in and tap-out events.
+-   **`GET /admin/logout`**: Logs the admin out of their session.
 
 ### System Admin Routes (`@system_admin_required`)
-- `GET, POST /sysadmin/dashboard`
-- `GET /sysadmin/logs`
-- `GET /sysadmin/logout`
+
+These routes require an active system administrator login session.
+
+-   **`GET, POST /sysadmin/dashboard`**: The main dashboard for system admins, showing system-wide statistics and management options.
+-   **`GET /sysadmin/logs`**: Displays the application's log file output.
+-   **`GET /sysadmin/logout`**: Logs the system admin out of their session.
