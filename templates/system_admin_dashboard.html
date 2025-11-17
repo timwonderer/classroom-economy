@@ -58,6 +58,22 @@
         </div>
       </div>
     </div>
+    <!-- User Management Card -->
+    <div class="w-100 d-flex mb-4" style="max-width: 700px;">
+      <div class="card shadow flex-fill" style="min-width:0;">
+        <div class="card-header bg-success text-white">
+          <h5 class="mb-0 fw-semibold">User Management</h5>
+        </div>
+        <div class="card-body">
+          <p class="mb-3">Manage teachers (admins) and their students</p>
+          <a href="{{ url_for('system_admin_manage_admins') }}" class="btn btn-success w-100 mb-2">
+            Manage Teachers
+          </a>
+          <small class="text-muted">View all teachers, see their student counts, signup dates, and last login times. Delete teachers and their students if needed.</small>
+        </div>
+      </div>
+    </div>
+
     <!-- System Admins Management Card -->
     <div class="w-100 d-flex mb-4" style="max-width: 700px;">
       <div class="card shadow flex-fill" style="min-width:0;">

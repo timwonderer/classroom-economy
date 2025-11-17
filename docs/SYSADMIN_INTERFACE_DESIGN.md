@@ -11,77 +11,70 @@ The System Admin interface is the super-user control panel for the Classroom Tok
 - ✅ View error logs (database)
 - ✅ Test error pages
 - ✅ TOTP-based authentication
+- ✅ **Manage teachers (admins)** - View list, delete with cascade
+- ✅ **Track admin timestamps** - Signup date, last login
+
+## Design Philosophy
+
+**Simplified Role Separation:**
+- **System Admins** manage teachers and system-wide settings
+- **Teachers (Admins)** manage their own students
+- **Students** use the system
+
+**Key Decision:** Sysadmins should NOT see individual student data. This maintains:
+- Clear separation of responsibilities
+- Simplified interface
+- Privacy boundaries
+- Proper delegation to teachers
 
 ## Proposed New Capabilities
 
 ### 1. User Management
 
-#### A. Admin (Teacher) Management
+#### A. Admin (Teacher) Management ✅ IMPLEMENTED
 **Route:** `/sysadmin/admins`
 
-**Features:**
-- View all admin accounts with details:
+**Features (Implemented):**
+- ✅ View all admin accounts with details:
   - Username
-  - Creation date
-  - TOTP setup status
-  - Number of students (once multi-tenancy is implemented)
+  - Signup date (created_at)
   - Last login timestamp
-  - Total logins count
+  - Number of students (currently shows total, will be per-teacher after multi-tenancy)
 
-- **Delete Admin Account:**
-  - Confirmation modal with warnings
-  - Options:
-    - [ ] Delete admin only (reassign students to another teacher)
-    - [ ] Delete admin and all their students (DANGEROUS)
-    - [ ] Delete admin and transfer students to specific teacher
-  - Show impact before deletion (X students, Y transactions, etc.)
-  - Soft delete option (mark as inactive instead of hard delete)
+- ✅ **Delete Admin Account:**
+  - Confirmation modal with clear warnings
+  - **Simplified approach:** Deleting admin always deletes all their students
+  - Shows student count and impact before deletion
+  - Cascades to all student data (transactions, items, insurance, rent, etc.)
+  - Permanent action (no soft delete - keeps things simple)
+  - No reassignment options (keeps interface simple)
 
-- **Reset Admin TOTP:**
-  - Emergency access if admin loses authenticator
-  - Generate new TOTP secret
-  - Display QR code
+**Features (Future):**
+- [ ] Reset Admin TOTP (for emergency access if authenticator lost)
+- [ ] View Admin Activity (recent actions, payroll runs, etc.)
+- [ ] Total login count tracking
+- [ ] Export teacher list to CSV
 
-- **View Admin Activity:**
-  - Last login
-  - Recent actions
-  - Payroll runs
-  - Transaction voids
+**Design Rationale:**
+The simplified delete approach (always delete students with teacher) is intentional:
+- Keeps interface simple and predictable
+- Matches real-world use case (teacher leaves = class ends)
+- Avoids complex reassignment logic before multi-tenancy
+- Clear warning prevents accidents
 
-#### B. Student Management
-**Route:** `/sysadmin/students`
+#### B. Student Management - INTENTIONALLY REMOVED
+**Design Decision:** Sysadmins do NOT manage students directly.
 
-**Features:**
-- View all students across all teachers:
-  - Student ID
-  - First name (encrypted, decrypted for display)
-  - Username hash (first 8 chars)
-  - Associated teacher/admin
-  - Balance
-  - Last login
-  - Account status
+**Reasoning:**
+- Students belong to teachers, not system admins
+- Deleting a teacher automatically handles their students
+- Keeps sysadmin interface focused on system management
+- Teachers are responsible for their own student data
+- Maintains proper role hierarchy
 
-- **Search/Filter:**
-  - By teacher
-  - By name (fuzzy search)
-  - By balance range
-  - By account status (active/inactive)
-  - By creation date
-
-- **Delete Student:**
-  - Confirmation modal
-  - Show impact (transactions, items owned, etc.)
-  - Option to void transactions first
-  - Hard delete or soft delete
-
-- **Bulk Operations:**
-  - Delete all students for a teacher
-  - Export student data to CSV
-  - Bulk balance adjustment
-
-- **Transfer Student:**
-  - Move student to different teacher
-  - Preserve all transaction history
+**If you need student management:**
+- Log in as the teacher who owns the students
+- Or delete the teacher (which deletes all their students)
 
 #### C. Orphaned Data Cleanup
 **Route:** `/sysadmin/cleanup`
@@ -352,24 +345,26 @@ System Admin Dashboard
 
 ## Implementation Priority
 
-### Phase 1 (Current Session) - High Priority
-- [x] Error testing and monitoring (DONE)
-- [ ] Admin (teacher) management page
-- [ ] Delete admin functionality
-- [ ] Student management page
-- [ ] Delete student functionality
+### Phase 1 (Completed) ✅
+- [x] Error testing and monitoring
+- [x] Error logs database viewer
+- [x] Admin (teacher) management page
+- [x] Delete admin functionality with cascade
+- [x] Track admin signup date and last login
+- [x] Student management REMOVED (by design - sysadmins don't manage students)
 
 ### Phase 2 (Next Session) - Medium Priority
 - [ ] Statistics dashboard
-- [ ] Audit log
+- [ ] Audit log for critical actions
 - [ ] Database cleanup tools
-- [ ] Data export features
+- [ ] Data export features (CSV export)
+- [ ] Admin TOTP reset functionality
 
 ### Phase 3 (Future) - Low Priority
 - [ ] System configuration UI
 - [ ] Communication/announcements
 - [ ] Advanced analytics
-- [ ] Multi-tenancy support
+- [ ] **Multi-tenancy support** (see MULTI_TENANCY_TODO.md)
 
 ## Mockups / Wireframes
 
