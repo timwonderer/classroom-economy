@@ -19,8 +19,15 @@
         h1 {
             text-align: center;
             font-weight: 700;
+            margin-bottom: 1rem;
+            font-size: 2.5rem;
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 1.2rem;
+            opacity: 0.8;
             margin-bottom: 2rem;
-            font-size: 3rem;
         }
 
         .verification-container {
@@ -36,12 +43,22 @@
             padding: 1.5rem;
             margin-bottom: 1.5rem;
             transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .pass-card.returned {
+            opacity: 0.6;
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .pass-card.out {
+            border-color: rgba(40, 167, 69, 0.5);
+            border-width: 3px;
         }
 
         .pass-card:hover {
             transform: translateY(-5px);
             box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-            border-color: rgba(255, 255, 255, 0.4);
         }
 
         .student-name {
@@ -86,19 +103,47 @@
             display: inline-block;
             background: #28a745;
             color: white;
-            padding: 0.25rem 1rem;
+            padding: 0.4rem 1.2rem;
+            border-radius: 25px;
+            font-weight: 700;
+            font-size: 1.5rem;
+            letter-spacing: 0.1em;
+        }
+
+        .status-badge {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            padding: 0.5rem 1rem;
             border-radius: 20px;
             font-weight: 700;
-            font-size: 1.3rem;
+            font-size: 1rem;
+        }
+
+        .status-badge.out {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-badge.returned {
+            background: #6c757d;
+            color: white;
+        }
+
+        .return-time {
+            font-size: 1rem;
+            color: #6c757d;
+            margin-top: 0.5rem;
         }
     </style>
 </head>
 <body>
     <div class="verification-container">
-        <h1>Students Out of Class</h1>
+        <h1>Hall Pass Verification</h1>
+        <p class="subtitle">Last 10 Students Who Used Hall Passes</p>
         <div id="passesList"></div>
         <div id="noPassesMessage" class="no-passes" style="display: none;">
-            No students are currently out of class
+            No recent hall pass activity
         </div>
     </div>
 
@@ -135,9 +180,18 @@
 
             noPassesMessage.style.display = 'none';
 
-            const html = passes.map(pass => `
-                <div class="pass-card">
+            const html = passes.map(pass => {
+                const isOut = pass.status === 'left';
+                const statusClass = isOut ? 'out' : 'returned';
+                const statusText = isOut ? 'OUT NOW' : 'RETURNED';
+
+                return `
+                <div class="pass-card ${statusClass}">
+                    <span class="status-badge ${statusClass}">${statusText}</span>
                     <div class="student-name">${pass.student_name}</div>
+                    <div class="mb-2">
+                        <span class="pass-number-badge">Pass #${pass.pass_number}</span>
+                    </div>
                     <div class="info-row">
                         <span class="info-label">Period:</span>
                         <span class="info-value">${pass.period}</span>
@@ -150,9 +204,11 @@
                         <span class="info-label">Left at:</span>
                         <span class="info-value">${formatTime(pass.left_time)}</span>
                     </div>
-                    <div class="time-elapsed">${getTimeElapsed(pass.left_time)}</div>
+                    ${isOut ? `<div class="time-elapsed">${getTimeElapsed(pass.left_time)}</div>` : ''}
+                    ${!isOut && pass.return_time ? `<div class="return-time">Returned at ${formatTime(pass.return_time)}</div>` : ''}
                 </div>
-            `).join('');
+            `;
+            }).join('');
 
             passesList.innerHTML = html;
         }

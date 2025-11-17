@@ -2730,19 +2730,25 @@ def hall_pass_verification():
 
 @app.route('/api/hall-pass/verification/active', methods=['GET'])
 def get_active_hall_passes():
-    """Get all active hall passes for verification display"""
-    # Get all passes that are currently "left" status
-    active_passes = HallPassLog.query.filter_by(status='left').order_by(HallPassLog.left_time.asc()).all()
+    """Get last 10 students who used hall passes for verification display"""
+    # Get the last 10 students who have left class (both currently out and recently returned)
+    # Ordered by left_time descending (most recent first)
+    recent_passes = HallPassLog.query.filter(
+        HallPassLog.status.in_(['left', 'returned']),
+        HallPassLog.left_time.isnot(None)
+    ).order_by(HallPassLog.left_time.desc()).limit(10).all()
 
     passes_data = []
-    for log_entry in active_passes:
+    for log_entry in recent_passes:
         student = log_entry.student
         passes_data.append({
             "student_name": student.full_name,
             "period": log_entry.period,
             "destination": log_entry.reason,
             "left_time": log_entry.left_time.isoformat() if log_entry.left_time else None,
-            "pass_number": log_entry.pass_number
+            "return_time": log_entry.return_time.isoformat() if log_entry.return_time else None,
+            "pass_number": log_entry.pass_number,
+            "status": log_entry.status
         })
 
     return jsonify({
