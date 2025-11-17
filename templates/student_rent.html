@@ -102,7 +102,7 @@
                 <form action="{{ url_for('student_rent_pay', period=period) }}" method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <button type="submit" class="btn btn-primary w-100"
-                            onclick="return confirm('Pay rent for Period {{ period|upper }} - ${{ \"%.2f\"|format(total_due) }}?');">
+                            onclick="return confirm('Pay rent for Period {{ period|upper }} - ${{ total_due|round(2) }}?');">
                         Pay Rent (${{ "%.2f"|format(total_due) }})
                     </button>
                 </form>
