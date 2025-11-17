@@ -1,169 +1,216 @@
-{% extends "base.html" %}
-
-{% block title %}System Admin Dashboard{% endblock %}
+{% extends "layout_system_admin.html" %}
+{% set page_title = "System Dashboard" %}
+{% set page_subtitle = "Overview of your classroom economy system" %}
+{% set current_page = "dashboard" %}
 
 {% block content %}
-<div class="container py-5">
-  <h2 class="mb-4 fw-bold text-center">System Dashboard</h2>
-  <small class="text-muted mb-4 d-block text-center">Generate invite code and view system logs</small>
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      <div class="alert alert-info text-center" role="alert">
-        {{ messages[0] }}
-      </div>
-    {% endif %}
-  {% endwith %}
-  <div class="mx-auto d-flex flex-column align-items-center" style="max-width: 900px;">
-    <!-- Invite Codes Management Card -->
-    <div class="w-100 d-flex mb-4" style="max-width: 700px;">
-      <div class="card shadow flex-fill" style="min-width:0;">
-        <div class="card-header bg-primary text-white">
-          <h5 class="mb-0 fw-semibold">Manage Invite Codes</h5>
-        </div>
-        <div class="card-body d-flex flex-column">
-          <form method="POST" action="{{ url_for('system_admin_dashboard') }}">
-            {{ form.hidden_tag() }}
-            <div class="form-floating mb-3">
-              <input type="text" class="form-control" id="code" name="code" placeholder="New Invite Code" autocomplete="off">
-              <label for="code">New Invite Code (leave blank for auto-generate)</label>
+<div class="container-fluid">
+    <!-- Key Statistics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3 mb-3">
+            <div class="card stat-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted mb-1" style="font-size: 0.85rem;">Total Teachers</p>
+                            <h3 class="mb-0 fw-bold" style="color: var(--accent-cyan);">{{ total_teachers }}</h3>
+                        </div>
+                        <div>
+                            <i class="bi bi-person-badge fs-1" style="color: var(--primary-purple); opacity: 0.3;"></i>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="form-floating mb-3">
-              <input type="number" class="form-control" id="expiry_days" name="expiry_days" value="30" min="1" placeholder="Expiry Days" required>
-              <label for="expiry_days">Expiry Days (default 30)</label>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card stat-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted mb-1" style="font-size: 0.85rem;">Total Students</p>
+                            <h3 class="mb-0 fw-bold" style="color: var(--accent-green);">{{ total_students }}</h3>
+                        </div>
+                        <div>
+                            <i class="bi bi-people fs-1" style="color: var(--primary-purple); opacity: 0.3;"></i>
+                        </div>
+                    </div>
+                </div>
             </div>
-            <div class="d-flex justify-content-center">
-              <button type="submit" class="btn btn-success w-100" style="max-width: 240px;">Generate Invite Code</button>
+        </div>
+
+        <div class="col-md-3 mb-3">
+            <div class="card stat-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted mb-1" style="font-size: 0.85rem;">Active Invite Codes</p>
+                            <h3 class="mb-0 fw-bold" style="color: var(--accent-orange);">{{ active_invites }}</h3>
+                        </div>
+                        <div>
+                            <i class="bi bi-ticket-perforated fs-1" style="color: var(--primary-purple); opacity: 0.3;"></i>
+                        </div>
+                    </div>
+                </div>
             </div>
-          </form>
-          <hr>
-          <small class="text-muted mb-2">Distribute these codes to teachers to allow them to sign up.</small>
-          <h5 class="fw-semibold mb-3 mt-3">Existing Invite Codes</h5>
-          <ul class="list-group">
-            {% for invite in invites %}
-              <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap">
-                <span class="d-flex align-items-center">
-                  <code class="me-2" id="invite-{{ loop.index }}">{{ invite.code }}</code>
-                  <button class="btn btn-sm btn-outline-secondary" aria-label="Copy invite code" onclick="navigator.clipboard.writeText('{{ invite.code }}')">Copy</button>
-                </span>
-                {% if invite.used %}
-                  <span class="badge bg-secondary rounded-pill px-3 py-1">Used</span>
-                {% else %}
-                  <span class="badge bg-success rounded-pill px-3 py-1">Active</span>
-                {% endif %}
-              </li>
-            {% else %}
-              <li class="list-group-item text-muted">No invite codes found.</li>
-            {% endfor %}
-          </ul>
         </div>
-      </div>
-    </div>
-    <!-- User Management Card -->
-    <div class="w-100 d-flex mb-4" style="max-width: 700px;">
-      <div class="card shadow flex-fill" style="min-width:0;">
-        <div class="card-header bg-success text-white">
-          <h5 class="mb-0 fw-semibold">User Management</h5>
+
+        <div class="col-md-3 mb-3">
+            <div class="card stat-card">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <p class="text-muted mb-1" style="font-size: 0.85rem;">System Admins</p>
+                            <h3 class="mb-0 fw-bold" style="color: var(--accent-cyan);">{{ system_admin_count }}</h3>
+                        </div>
+                        <div>
+                            <i class="bi bi-shield-lock fs-1" style="color: var(--primary-purple); opacity: 0.3;"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="card-body">
-          <p class="mb-3">Manage teachers (admins) and their students</p>
-          <a href="{{ url_for('system_admin_manage_admins') }}" class="btn btn-success w-100 mb-2">
-            Manage Teachers
-          </a>
-          <small class="text-muted">View all teachers, see their student counts, signup dates, and last login times. Delete teachers and their students if needed.</small>
-        </div>
-      </div>
     </div>
 
-    <!-- System Admins Management Card -->
-    <div class="w-100 d-flex mb-4" style="max-width: 700px;">
-      <div class="card shadow flex-fill" style="min-width:0;">
-        <div class="card-header bg-primary text-white">
-          <h5 class="mb-0 fw-semibold">Current System Admins</h5>
+    <!-- Recent Activity Section -->
+    <div class="row">
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Recent Teacher Registrations</h5>
+                </div>
+                <div class="card-body">
+                    {% if recent_teachers %}
+                        <div class="list-group list-group-flush">
+                            {% for teacher in recent_teachers %}
+                            <div class="list-group-item bg-transparent border-bottom" style="border-color: rgba(255,255,255,0.1) !important;">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <h6 class="mb-1">{{ teacher.username }}</h6>
+                                        <small class="text-muted">
+                                            <i class="bi bi-calendar3 me-1"></i>
+                                            Joined {{ teacher.created_at.strftime('%b %d, %Y') }}
+                                        </small>
+                                    </div>
+                                    <span class="badge bg-success">
+                                        {{ teacher.students.count() }} students
+                                    </span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted text-center mb-0">No teachers registered yet</p>
+                    {% endif %}
+                </div>
+            </div>
         </div>
-        <div class="card-body d-flex flex-column">
-          <ul class="list-group">
-            {% for admin in system_admins %}
-              <li class="list-group-item d-flex justify-content-between align-items-center flex-wrap">
-                <span>{{ admin.username }}</span>
-                <span class="badge bg-info rounded-pill px-3 py-1">Active</span>
-              </li>
-            {% else %}
-              <li class="list-group-item text-muted">No system admins found.</li>
-            {% endfor %}
-          </ul>
+
+        <div class="col-md-6 mb-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Recent Errors</h5>
+                </div>
+                <div class="card-body">
+                    {% if recent_errors %}
+                        <div class="list-group list-group-flush">
+                            {% for error in recent_errors %}
+                            <div class="list-group-item bg-transparent border-bottom" style="border-color: rgba(255,255,255,0.1) !important;">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div class="flex-grow-1">
+                                        <div class="d-flex align-items-center mb-1">
+                                            <span class="badge bg-danger me-2">{{ error.error_type }}</span>
+                                            <small class="text-muted">{{ error.timestamp.strftime('%b %d, %I:%M %p') }}</small>
+                                        </div>
+                                        <small class="text-muted">
+                                            {{ error.request_method }} {{ error.request_path }}
+                                        </small>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="text-center mt-3">
+                            <a href="{{ url_for('system_admin_logs_testing') }}" class="btn btn-sm btn-outline-primary">
+                                View All Errors
+                            </a>
+                        </div>
+                    {% else %}
+                        <p class="text-muted text-center mb-0">No recent errors</p>
+                    {% endif %}
+                </div>
+            </div>
         </div>
-      </div>
     </div>
 
-    <!-- Error Testing & Monitoring Card -->
-    <div class="w-100 d-flex" style="max-width: 700px;">
-      <div class="card shadow flex-fill" style="min-width:0;">
-        <div class="card-header bg-danger text-white">
-          <h5 class="mb-0 fw-semibold">Error Testing & Monitoring</h5>
+    <!-- Quick Actions -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-lightning-charge me-2"></i>Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 mb-3">
+                            <a href="{{ url_for('system_admin_manage_teachers') }}" class="btn btn-outline-primary w-100 py-3">
+                                <i class="bi bi-people-fill d-block fs-3 mb-2"></i>
+                                Manage Teachers
+                            </a>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <a href="{{ url_for('system_admin_manage_teachers') }}#invite-codes" class="btn btn-outline-primary w-100 py-3">
+                                <i class="bi bi-ticket-perforated d-block fs-3 mb-2"></i>
+                                Generate Invite Code
+                            </a>
+                        </div>
+                        <div class="col-md-4 mb-3">
+                            <a href="{{ url_for('system_admin_logs_testing') }}" class="btn btn-outline-primary w-100 py-3">
+                                <i class="bi bi-file-text-fill d-block fs-3 mb-2"></i>
+                                View System Logs
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
-        <div class="card-body">
-          <p class="mb-3">Test error pages and view error logs from the database.</p>
+    </div>
 
-          <div class="mb-3">
-            <a href="{{ url_for('system_admin_error_logs') }}" class="btn btn-danger w-100 mb-2">
-              View Error Logs Database
-            </a>
-          </div>
-
-          <hr>
-
-          <h6 class="fw-semibold mb-3">Test Error Pages</h6>
-          <p class="small text-muted mb-3">Click each button to trigger that error type and see how the error page looks. All test errors will be logged to the database.</p>
-
-          <div class="row g-2">
-            <div class="col-6 col-md-4">
-              <a href="{{ url_for('test_error_400') }}" class="btn btn-outline-warning w-100 btn-sm" target="_blank">
-                400 Bad Request
-              </a>
+    <!-- System Admins List -->
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-shield-lock me-2"></i>Current System Administrators</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Status</th>
+                                    <th>Last Active</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for admin in system_admins %}
+                                <tr>
+                                    <td><i class="bi bi-person-badge me-2"></i>{{ admin.username }}</td>
+                                    <td><span class="badge bg-success">Active</span></td>
+                                    <td><small class="text-muted">{{ admin.last_login.strftime('%b %d, %Y %I:%M %p') if admin.last_login else 'Never' }}</small></td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="3" class="text-center text-muted">No system admins found</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
-            <div class="col-6 col-md-4">
-              <a href="{{ url_for('test_error_401') }}" class="btn btn-outline-info w-100 btn-sm" target="_blank">
-                401 Unauthorized
-              </a>
-            </div>
-            <div class="col-6 col-md-4">
-              <a href="{{ url_for('test_error_403') }}" class="btn btn-outline-danger w-100 btn-sm" target="_blank">
-                403 Forbidden
-              </a>
-            </div>
-            <div class="col-6 col-md-4">
-              <a href="{{ url_for('test_error_404') }}" class="btn btn-outline-secondary w-100 btn-sm" target="_blank">
-                404 Not Found
-              </a>
-            </div>
-            <div class="col-6 col-md-4">
-              <a href="{{ url_for('test_error_500') }}" class="btn btn-outline-danger w-100 btn-sm" target="_blank">
-                500 Internal Error
-              </a>
-            </div>
-            <div class="col-6 col-md-4">
-              <a href="{{ url_for('test_error_503') }}" class="btn btn-outline-warning w-100 btn-sm" target="_blank">
-                503 Unavailable
-              </a>
-            </div>
-          </div>
-
-          <div class="alert alert-info mt-3 mb-0">
-            <small>
-              <strong>Tip:</strong> Test buttons open in a new tab. After viewing the error page, close the tab and refresh the Error Logs Database to see the logged error.
-            </small>
-          </div>
         </div>
-      </div>
     </div>
-  </div>
-
-  <div class="row">
-    <div class="col-12 justify-content-center mt-4">
-      <a href="{{ logs_url }}" class="d-block btn btn-secondary mt-2" style="margin-bottom:10px">View System Logs (File)</a>
-      <a href="{{ url_for('system_admin_logout') }}" class="btn d-block btn-danger">Logout</a>
-    </div>
-  </div>
 </div>
-
 {% endblock %}
