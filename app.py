@@ -3296,26 +3296,30 @@ def system_admin_login():
 @app.route('/sysadmin/dashboard', methods=['GET', 'POST'])
 @system_admin_required
 def system_admin_dashboard():
-    import secrets
-    invites = AdminInviteCode.query.order_by(AdminInviteCode.created_at.desc()).all()
-    form = SystemAdminInviteForm()
-    if form.validate_on_submit():
-        code = form.code.data or secrets.token_urlsafe(8)
-        expires_at = form.expires_at.data
-        invite = AdminInviteCode(code=code, expires_at=expires_at)
-        db.session.add(invite)
-        db.session.commit()
-        flash(f"✅ Invite code {code} created successfully.", "success")
-        return redirect(url_for("system_admin_dashboard"))
+    # Gather statistics
+    total_teachers = Admin.query.count()
+    total_students = Student.query.count()
+    active_invites = AdminInviteCode.query.filter_by(used=False).count()
+    system_admin_count = SystemAdmin.query.count()
+
+    # Recent teachers (last 5)
+    recent_teachers = Admin.query.order_by(Admin.created_at.desc()).limit(5).all()
+
+    # Recent errors (last 5)
+    recent_errors = ErrorLog.query.order_by(ErrorLog.timestamp.desc()).limit(5).all()
+
+    # System admins
     system_admins = SystemAdmin.query.order_by(SystemAdmin.username.asc()).all()
-    logs_url = url_for("system_admin_logs")
+
     return render_template(
         "system_admin_dashboard.html",
-        invites=invites,
-        form=form,
-        system_admins=system_admins,
-        current_page="sysadmin_dashboard",
-        logs_url=logs_url
+        total_teachers=total_teachers,
+        total_students=total_students,
+        active_invites=active_invites,
+        system_admin_count=system_admin_count,
+        recent_teachers=recent_teachers,
+        recent_errors=recent_errors,
+        system_admins=system_admins
     )
 
 
@@ -3554,3 +3558,96 @@ def system_admin_delete_admin(admin_id):
         flash(f"Error deleting admin: {str(e)}", "error")
 
     return redirect(url_for('system_admin_manage_admins'))
+
+
+@app.route('/sysadmin/manage-teachers', methods=['GET', 'POST'])
+@system_admin_required
+def system_admin_manage_teachers():
+    """
+    Combined page for teacher management and invite codes.
+    """
+    import secrets
+    from datetime import datetime, timedelta
+
+    # Handle invite code form submission
+    form = SystemAdminInviteForm()
+    if form.validate_on_submit():
+        code = form.code.data or secrets.token_urlsafe(8)
+        expiry_days = request.form.get('expiry_days', 30, type=int)
+        expires_at = datetime.utcnow() + timedelta(days=expiry_days)
+        invite = AdminInviteCode(code=code, expires_at=expires_at)
+        db.session.add(invite)
+        db.session.commit()
+        flash(f"✅ Invite code '{code}' created successfully.", "success")
+        return redirect(url_for("system_admin_manage_teachers") + "#invite-codes")
+
+    # Get all invite codes
+    invites = AdminInviteCode.query.order_by(AdminInviteCode.created_at.desc()).all()
+
+    # Get all teachers
+    teachers = Admin.query.order_by(Admin.created_at.desc()).all()
+
+    return render_template(
+        "system_admin_manage_teachers.html",
+        form=form,
+        invites=invites,
+        teachers=teachers
+    )
+
+
+@app.route('/sysadmin/manage-teachers/delete/<int:admin_id>', methods=['POST'])
+@system_admin_required
+def system_admin_delete_teacher(admin_id):
+    """
+    Delete a teacher and all their associated data.
+    """
+    admin = Admin.query.get_or_404(admin_id)
+
+    try:
+        # Count students for feedback message
+        student_count = Student.query.count()  # TODO: After multi-tenancy, filter by teacher_id
+
+        # Delete all students and their associated data
+        for student in Student.query.all():  # TODO: Filter by teacher_id
+            Transaction.query.filter_by(student_id=student.id).delete()
+            TapEvent.query.filter_by(student_id=student.id).delete()
+            HallPassLog.query.filter_by(student_id=student.id).delete()
+            StudentItem.query.filter_by(student_id=student.id).delete()
+            RentPayment.query.filter_by(student_id=student.id).delete()
+            from sqlalchemy import delete
+            db.session.execute(delete(StudentInsurance).where(StudentInsurance.student_id == student.id))
+            InsuranceClaim.query.filter_by(student_id=student.id).delete()
+
+        Student.query.delete()  # TODO: Filter by teacher_id
+
+        admin_username = admin.username
+        db.session.delete(admin)
+        db.session.commit()
+
+        flash(f"✅ Teacher '{admin_username}' and {student_count} students deleted successfully.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception(f"Error deleting teacher {admin_id}")
+        flash(f"❌ Error deleting teacher: {str(e)}", "error")
+
+    return redirect(url_for('system_admin_manage_teachers'))
+
+
+@app.route('/sysadmin/logs-testing')
+@system_admin_required
+def system_admin_logs_testing():
+    """
+    Combined page for viewing error logs and testing error pages.
+    """
+    # Get recent error logs
+    recent_errors = ErrorLog.query.order_by(ErrorLog.timestamp.desc()).limit(50).all()
+
+    # Get system logs URL
+    logs_url = url_for("system_admin_logs")
+
+    return render_template(
+        "system_admin_logs_testing.html",
+        recent_errors=recent_errors,
+        logs_url=logs_url
+    )

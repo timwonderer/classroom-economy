@@ -1,0 +1,180 @@
+{% extends "layout_system_admin.html" %}
+{% set page_title = "Teacher Management" %}
+{% set page_subtitle = "Manage teachers and generate invite codes" %}
+{% set current_page = "teachers" %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Invite Codes Section -->
+    <div class="row mb-4" id="invite-codes">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-ticket-perforated me-2"></i>Manage Invite Codes</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <form method="POST" action="{{ url_for('system_admin_manage_teachers') }}">
+                                {{ form.hidden_tag() }}
+                                <div class="mb-3">
+                                    <label for="code" class="form-label">New Invite Code</label>
+                                    <input type="text" class="form-control" id="code" name="code" placeholder="Leave blank for auto-generate" autocomplete="off">
+                                    <div class="form-text">Auto-generates a random code if left empty</div>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="expiry_days" class="form-label">Expiry Days</label>
+                                    <input type="number" class="form-control" id="expiry_days" name="expiry_days" value="30" min="1" required>
+                                    <div class="form-text">Number of days until the code expires</div>
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="bi bi-plus-circle me-2"></i>Generate Invite Code
+                                </button>
+                            </form>
+                        </div>
+
+                        <div class="col-md-6">
+                            <h6 class="mb-3">Existing Invite Codes</h6>
+                            <div class="list-group" style="max-height: 400px; overflow-y: auto;">
+                                {% for invite in invites %}
+                                <div class="list-group-item list-group-item-action bg-transparent">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div class="flex-grow-1">
+                                            <code class="fs-6">{{ invite.code }}</code>
+                                            <div class="small text-muted mt-1">
+                                                {% if invite.used %}
+                                                    <i class="bi bi-check-circle me-1"></i>Used by {{ invite.used_by.username if invite.used_by else 'Unknown' }}
+                                                {% else %}
+                                                    <i class="bi bi-calendar3 me-1"></i>Expires {{ invite.expires_at.strftime('%b %d, %Y') }}
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                        <div class="d-flex align-items-center gap-2">
+                                            {% if not invite.used %}
+                                            <button class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText('{{ invite.code }}')">
+                                                <i class="bi bi-clipboard"></i>
+                                            </button>
+                                            {% endif %}
+                                            <span class="badge {{ 'bg-secondary' if invite.used else 'bg-success' }}">
+                                                {{ 'Used' if invite.used else 'Active' }}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <div class="list-group-item bg-transparent text-center text-muted">
+                                    No invite codes found
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Teacher Management Section -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-people-fill me-2"></i>All Teachers</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Username</th>
+                                    <th>Email</th>
+                                    <th>Students</th>
+                                    <th>Joined</th>
+                                    <th>Last Login</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for teacher in teachers %}
+                                <tr>
+                                    <td>
+                                        <i class="bi bi-person-badge me-2"></i>
+                                        <strong>{{ teacher.username }}</strong>
+                                    </td>
+                                    <td>{{ teacher.email or 'N/A' }}</td>
+                                    <td>
+                                        <span class="badge bg-info">{{ teacher.students.count() }} students</span>
+                                    </td>
+                                    <td><small>{{ teacher.created_at.strftime('%b %d, %Y') if teacher.created_at else 'Unknown' }}</small></td>
+                                    <td><small>{{ teacher.last_login.strftime('%b %d, %I:%M %p') if teacher.last_login else 'Never' }}</small></td>
+                                    <td>
+                                        <button class="btn btn-sm btn-outline-danger"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#deleteModal"
+                                                data-teacher-id="{{ teacher.id }}"
+                                                data-teacher-name="{{ teacher.username }}"
+                                                data-student-count="{{ teacher.students.count() }}">
+                                            <i class="bi bi-trash"></i> Delete
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% else %}
+                                <tr>
+                                    <td colspan="6" class="text-center text-muted">No teachers registered yet</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div class="modal fade" id="deleteModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-light">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title"><i class="bi bi-exclamation-triangle text-danger me-2"></i>Confirm Deletion</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>Are you sure you want to delete teacher <strong id="modalTeacherName"></strong>?</p>
+                <div class="alert alert-danger">
+                    <i class="bi bi-exclamation-circle me-2"></i>
+                    <strong>Warning:</strong> This will also delete <strong id="modalStudentCount"></strong> student(s) and all their data!
+                </div>
+                <p class="text-muted small">This action cannot be undone.</p>
+            </div>
+            <div class="modal-footer border-secondary">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <form method="POST" id="deleteForm" style="display: inline;">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <button type="submit" class="btn btn-danger">
+                        <i class="bi bi-trash me-2"></i>Delete Teacher
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Handle delete modal
+const deleteModal = document.getElementById('deleteModal');
+if (deleteModal) {
+    deleteModal.addEventListener('show.bs.modal', event => {
+        const button = event.relatedTarget;
+        const teacherId = button.getAttribute('data-teacher-id');
+        const teacherName = button.getAttribute('data-teacher-name');
+        const studentCount = button.getAttribute('data-student-count');
+
+        document.getElementById('modalTeacherName').textContent = teacherName;
+        document.getElementById('modalStudentCount').textContent = studentCount;
+        document.getElementById('deleteForm').action = `/system-admin/manage-teachers/delete/${teacherId}`;
+    });
+}
+</script>
+{% endblock %}
