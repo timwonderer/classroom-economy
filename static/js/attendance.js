@@ -141,6 +141,8 @@ function updateBlockUI(period, isActive, duration, projectedPay, hallPass = null
 function updateHallPassOverlay(period, hallPass) {
   const passInfoDisplay = document.getElementById(`hallPassInfo-${period}`);
 
+  console.log('updateHallPassOverlay called:', { period, hallPass, elementFound: !!passInfoDisplay });
+
   if (!hallPass || hallPass.status === 'returned') {
     // No active hall pass - hide pass info
     if (passInfoDisplay) passInfoDisplay.style.display = 'none';
@@ -178,6 +180,8 @@ function updateHallPassOverlay(period, hallPass) {
     } else {
       passInfoDisplay.style.display = 'none';
     }
+  } else {
+    console.error(`Element hallPassInfo-${period} not found in DOM!`);
   }
 }
 
