@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Hall Pass Check in/out{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Hall Pass Check in/out</h1>
+
+<div id="inputScreen">
+    <div class="mb-3">
+        <label for="passNumber" class="form-label">Enter your pass number:</label>
+        <input type="text" class="form-control form-control-lg text-center" id="passNumber"
+               placeholder="e.g., A42" maxlength="3" style="text-transform: uppercase; font-size: 2rem;">
+    </div>
+    <button class="btn btn-primary btn-lg w-100" onclick="lookupPass()">Submit</button>
+</div>
+
+<div id="infoScreen" style="display: none;">
+    <div class="alert alert-info">
+        <h4>Student Information</h4>
+        <p><strong>Name:</strong> <span id="studentName"></span></p>
+        <p><strong>Period:</strong> <span id="period"></span></p>
+        <p><strong>Destination:</strong> <span id="destination"></span></p>
+        <p><strong>Request Time:</strong> <span id="requestTime"></span></p>
+    </div>
+    <button id="usePassBtn" class="btn btn-success btn-lg w-100 mb-2" style="display: none;" onclick="usePass()">
+        Use Hall Pass
+    </button>
+    <button id="returnBtn" class="btn btn-warning btn-lg w-100 mb-2" style="display: none;" onclick="returnFromPass()">
+        Returned
+    </button>
+    <button class="btn btn-secondary w-100" onclick="resetForm()">Cancel</button>
+</div>
+
+<div id="successScreen" style="display: none;">
+    <div class="alert alert-success">
+        <h4 id="successTitle">Success!</h4>
+        <p id="successMessage"></p>
+    </div>
+    <button class="btn btn-primary w-100" onclick="resetForm()">Done</button>
+</div>
+
+<div id="errorScreen" style="display: none;">
+    <div class="alert alert-danger">
+        <h4>Error</h4>
+        <p id="errorMessage"></p>
+    </div>
+    <button class="btn btn-primary w-100" onclick="resetForm()">Try Again</button>
+</div>
+
+<script>
+let currentPassNumber = '';
+
+function resetForm() {
+    document.getElementById('inputScreen').style.display = 'block';
+    document.getElementById('infoScreen').style.display = 'none';
+    document.getElementById('successScreen').style.display = 'none';
+    document.getElementById('errorScreen').style.display = 'none';
+    document.getElementById('passNumber').value = '';
+    currentPassNumber = '';
+}
+
+function showError(message) {
+    document.getElementById('inputScreen').style.display = 'none';
+    document.getElementById('infoScreen').style.display = 'none';
+    document.getElementById('successScreen').style.display = 'none';
+    document.getElementById('errorScreen').style.display = 'block';
+    document.getElementById('errorMessage').textContent = message;
+}
+
+function showSuccess(title, message) {
+    document.getElementById('inputScreen').style.display = 'none';
+    document.getElementById('infoScreen').style.display = 'none';
+    document.getElementById('successScreen').style.display = 'block';
+    document.getElementById('errorScreen').style.display = 'none';
+    document.getElementById('successTitle').textContent = title;
+    document.getElementById('successMessage').textContent = message;
+}
+
+function lookupPass() {
+    const passNumber = document.getElementById('passNumber').value.trim().toUpperCase();
+
+    if (!passNumber) {
+        showError('Please enter a pass number.');
+        return;
+    }
+
+    currentPassNumber = passNumber;
+
+    fetch(`/api/hall-pass/lookup/${passNumber}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'error') {
+                showError(data.message);
+                return;
+            }
+
+            // Show student information
+            document.getElementById('studentName').textContent = data.student_name;
+            document.getElementById('period').textContent = data.period;
+            document.getElementById('destination').textContent = data.destination;
+            document.getElementById('requestTime').textContent = new Date(data.request_time).toLocaleString();
+
+            // Show appropriate button based on pass status
+            document.getElementById('usePassBtn').style.display = 'none';
+            document.getElementById('returnBtn').style.display = 'none';
+
+            if (data.pass_status === 'approved') {
+                document.getElementById('usePassBtn').style.display = 'block';
+            } else if (data.pass_status === 'left') {
+                document.getElementById('returnBtn').style.display = 'block';
+            } else {
+                showError(`Pass status is "${data.pass_status}". Cannot use this pass.`);
+                return;
+            }
+
+            // Show info screen
+            document.getElementById('inputScreen').style.display = 'none';
+            document.getElementById('infoScreen').style.display = 'block';
+        })
+        .catch(error => {
+            showError('Failed to lookup pass number. Please try again.');
+            console.error('Error:', error);
+        });
+}
+
+function usePass() {
+    fetch('/api/hall-pass/terminal/use', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ pass_number: currentPassNumber })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'error') {
+            showError(data.message);
+            return;
+        }
+
+        showSuccess('Hall Pass Activated!', `${data.student_name} has left the class to ${data.destination}.`);
+    })
+    .catch(error => {
+        showError('Failed to activate hall pass. Please try again.');
+        console.error('Error:', error);
+    });
+}
+
+function returnFromPass() {
+    fetch('/api/hall-pass/terminal/return', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ pass_number: currentPassNumber })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'error') {
+            showError(data.message);
+            return;
+        }
+
+        showSuccess('Welcome Back!', `${data.student_name} has returned to class.`);
+    })
+    .catch(error => {
+        showError('Failed to process return. Please try again.');
+        console.error('Error:', error);
+    });
+}
+
+// Allow Enter key to submit
+document.getElementById('passNumber').addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        lookupPass();
+    }
+});
+
+// Auto-focus on pass number input
+document.getElementById('passNumber').focus();
+</script>
+{% endblock %}

@@ -26,6 +26,40 @@
         border-radius: 10px;
         font-weight: 500;
     }
+
+    .hall-pass-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(5px);
+        z-index: 10;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 8px;
+    }
+
+    .hall-pass-status-card {
+        text-align: center;
+        padding: 2rem;
+        max-width: 400px;
+    }
+
+    .hall-pass-status-card h4 {
+        margin-bottom: 1rem;
+        font-weight: 600;
+    }
+
+    .hall-pass-status-card .pass-number-display {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: var(--success-green);
+        margin: 1rem 0;
+        letter-spacing: 0.1em;
+    }
 </style>
 {% endblock %}
 
@@ -141,7 +175,14 @@
                  aria-labelledby="tab-{{ blk }}-tab"
                  data-block-row="{{ blk }}">
                 {% set state = period_states[blk] %}
-                <div class="row">
+                <div class="row position-relative">
+                    <!-- Hall Pass Status Card Overlay -->
+                    <div id="hallPassOverlay-{{ blk }}" class="hall-pass-overlay" style="display: none;">
+                        <div class="hall-pass-status-card">
+                            <div id="hallPassContent-{{ blk }}"></div>
+                        </div>
+                    </div>
+
                     <div class="col-md-8">
                         <p class="mb-2">
                             <strong>Status:</strong>
@@ -155,6 +196,9 @@
                     <div class="col-md-4 text-md-end">
                         <button class="btn btn-success me-2 mb-2 tap-btn" id="tapIn-{{ blk }}" data-period="{{ blk }}" data-action="tap_in" aria-label="Tap In for Block {{ blk }}" {% if state['active'] or state['done'] %}disabled{% endif %}>Tap In</button>
                         <button class="btn btn-danger mb-2 tap-btn" id="tapOut-{{ blk }}" data-period="{{ blk }}" data-action="tap_out" aria-label="Tap Out for Block {{ blk }}" {% if not state['active'] %}disabled{% endif %}>Tap Out</button>
+                        <div id="passNumber-{{ blk }}" class="mt-2" style="display: none;">
+                            <span class="badge bg-success" style="font-size: 1.1rem;">Pass #<span class="pass-number-text"></span></span>
+                        </div>
                     </div>
                 </div>
             </div>

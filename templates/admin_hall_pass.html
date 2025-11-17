@@ -4,7 +4,17 @@
 
 {% block content %}
 <div class="container-fluid mt-4">
-    <h1 class="mb-4">Hall Pass Management</h1>
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">Hall Pass Management</h1>
+        <div>
+            <a href="/hall-pass/verification" target="_blank" class="btn btn-primary me-2">
+                📺 Verification Display
+            </a>
+            <a href="/hall-pass/terminal" target="_blank" class="btn btn-secondary">
+                💻 Terminal
+            </a>
+        </div>
+    </div>
 
     <!-- Pending Requests -->
     <div class="card shadow mb-4">
@@ -18,7 +28,7 @@
                         <li class="list-group-item d-flex justify-content-between align-items-center">
                             <div>
                                 <strong>{{ req.student.full_name }}</strong> - {{ req.reason }}
-                                <small class="d-block text-muted">Requested at: {{ req.request_time | format_datetime }}</small>
+                                <small class="d-block text-muted">Requested at: {{ req.request_time | format_datetime }} | Period: {{ req.period }}</small>
                             </div>
                             <div>
                                 <button class="btn btn-sm btn-success me-2" onclick="handlePassAction({{ req.id }}, 'approve')">Approve</button>
@@ -45,7 +55,10 @@
                         <li class="list-group-item d-flex justify-content-between align-items-center">
                             <div>
                                 <strong>{{ req.student.full_name }}</strong> - {{ req.reason }}
-                                <small class="d-block text-muted">Approved at: {{ req.decision_time | format_datetime }}</small>
+                                {% if req.pass_number %}
+                                    <span class="badge bg-success ms-2" style="font-size: 1rem;">Pass #{{ req.pass_number }}</span>
+                                {% endif %}
+                                <small class="d-block text-muted">Approved at: {{ req.decision_time | format_datetime }} | Period: {{ req.period }}</small>
                             </div>
                             <button class="btn btn-sm btn-primary" onclick="handlePassAction({{ req.id }}, 'leave')" {% if out_of_class %}disabled{% endif %}>
                                 Left Class
@@ -71,7 +84,10 @@
                         <li class="list-group-item d-flex justify-content-between align-items-center">
                             <div>
                                 <strong>{{ req.student.full_name }}</strong> - {{ req.reason }}
-                                <small class="d-block text-muted">Left at: {{ req.left_time | format_datetime }}</small>
+                                {% if req.pass_number %}
+                                    <span class="badge bg-success ms-2" style="font-size: 1rem;">Pass #{{ req.pass_number }}</span>
+                                {% endif %}
+                                <small class="d-block text-muted">Left at: {{ req.left_time | format_datetime }} | Period: {{ req.period }}</small>
                             </div>
                             <button class="btn btn-sm btn-secondary" onclick="handlePassAction({{ req.id }}, 'return')">Returned</button>
                         </li>

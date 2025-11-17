@@ -354,6 +354,8 @@ class HallPassLog(db.Model):
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     reason = db.Column(db.String(50), nullable=False)
     status = db.Column(db.String(20), default='pending', nullable=False) # pending, approved, rejected, left_class, returned
+    pass_number = db.Column(db.String(3), nullable=True, unique=True) # Format: letter + 2 digits (e.g., A42)
+    period = db.Column(db.String(10), nullable=True) # Which period the request was made in
     request_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     decision_time = db.Column(db.DateTime, nullable=True)
     left_time = db.Column(db.DateTime, nullable=True)
@@ -2623,14 +2625,35 @@ def handle_hall_pass_action(pass_id, action):
     if action == 'approve':
         if log_entry.status != 'pending':
             return jsonify({"status": "error", "message": "Pass is not pending."}), 400
-        if student.hall_passes <= 0:
+
+        # Check if hall pass deduction is needed (not for Office/Summons/Done for the day)
+        should_deduct = log_entry.reason.lower() not in ['office', 'summons', 'done for the day']
+
+        if should_deduct and student.hall_passes <= 0:
             return jsonify({"status": "error", "message": "Student has no hall passes left."}), 400
+
+        # Generate unique pass number (letter + 2 digits)
+        import random
+        import string
+        while True:
+            letter = random.choice(string.ascii_uppercase)
+            digits = random.randint(10, 99)
+            pass_number = f"{letter}{digits}"
+            # Check if this pass number already exists
+            existing = HallPassLog.query.filter_by(pass_number=pass_number).first()
+            if not existing:
+                break
 
         log_entry.status = 'approved'
         log_entry.decision_time = now
-        student.hall_passes -= 1
+        log_entry.pass_number = pass_number
+
+        # Only deduct hall pass for regular reasons (not Office/Summons/Done for the day)
+        if should_deduct:
+            student.hall_passes -= 1
+
         db.session.commit()
-        return jsonify({"status": "success", "message": "Pass approved."})
+        return jsonify({"status": "success", "message": "Pass approved.", "pass_number": pass_number})
 
     elif action == 'reject':
         if log_entry.status != 'pending':
@@ -2693,6 +2716,165 @@ def set_hall_passes(student_id):
         flash("Invalid hall pass balance provided.", "error")
 
     return redirect(url_for('student_detail', student_id=student_id))
+
+# -------------------- HALL PASS TERMINAL & VERIFICATION PAGES --------------------
+@app.route('/hall-pass/terminal')
+def hall_pass_terminal():
+    """Hall Pass Check in/out terminal page (no login required)"""
+    return render_template('hall_pass_terminal.html')
+
+@app.route('/hall-pass/verification')
+def hall_pass_verification():
+    """Hall Pass Verification page for display (no login required)"""
+    return render_template('hall_pass_verification.html')
+
+@app.route('/api/hall-pass/verification/active', methods=['GET'])
+def get_active_hall_passes():
+    """Get last 10 students who used hall passes for verification display"""
+    # Get the last 10 students who have left class (both currently out and recently returned)
+    # Ordered by left_time descending (most recent first)
+    recent_passes = HallPassLog.query.filter(
+        HallPassLog.status.in_(['left', 'returned']),
+        HallPassLog.left_time.isnot(None)
+    ).order_by(HallPassLog.left_time.desc()).limit(10).all()
+
+    passes_data = []
+    for log_entry in recent_passes:
+        student = log_entry.student
+        passes_data.append({
+            "student_name": student.full_name,
+            "period": log_entry.period,
+            "destination": log_entry.reason,
+            "left_time": log_entry.left_time.isoformat() if log_entry.left_time else None,
+            "return_time": log_entry.return_time.isoformat() if log_entry.return_time else None,
+            "pass_number": log_entry.pass_number,
+            "status": log_entry.status
+        })
+
+    return jsonify({
+        "status": "success",
+        "passes": passes_data
+    })
+
+# -------------------- HALL PASS TERMINAL API --------------------
+# These endpoints are used by the hall pass terminal (no login required)
+
+@app.route('/api/hall-pass/lookup/<string:pass_number>', methods=['GET'])
+def lookup_hall_pass(pass_number):
+    """Look up a hall pass by its pass number (for terminal use)"""
+    # Find the hall pass log entry by pass number
+    log_entry = HallPassLog.query.filter_by(pass_number=pass_number.upper()).first()
+
+    if not log_entry:
+        return jsonify({"status": "error", "message": "Pass number not found."}), 404
+
+    student = log_entry.student
+
+    # Return the pass information
+    return jsonify({
+        "status": "success",
+        "pass_id": log_entry.id,
+        "student_name": student.full_name,
+        "period": log_entry.period,
+        "destination": log_entry.reason,
+        "request_time": log_entry.request_time.isoformat() if log_entry.request_time else None,
+        "pass_status": log_entry.status,
+        "left_time": log_entry.left_time.isoformat() if log_entry.left_time else None,
+        "return_time": log_entry.return_time.isoformat() if log_entry.return_time else None
+    })
+
+@app.route('/api/hall-pass/terminal/use', methods=['POST'])
+def terminal_use_hall_pass():
+    """Student uses hall pass at terminal (check-in to leave class)"""
+    data = request.get_json()
+    pass_number = data.get('pass_number', '').upper()
+
+    if not pass_number:
+        return jsonify({"status": "error", "message": "Pass number is required."}), 400
+
+    # Find the hall pass log entry
+    log_entry = HallPassLog.query.filter_by(pass_number=pass_number).first()
+
+    if not log_entry:
+        return jsonify({"status": "error", "message": "Pass number not found."}), 404
+
+    # Check if pass is approved
+    if log_entry.status != 'approved':
+        return jsonify({
+            "status": "error",
+            "message": f"Pass is not approved. Current status: {log_entry.status}"
+        }), 400
+
+    student = log_entry.student
+    now = datetime.now(timezone.utc)
+
+    # Update status to "left"
+    log_entry.status = 'left'
+    log_entry.left_time = now
+
+    # Create a tap-out event to stop time counting
+    tap_out_event = TapEvent(
+        student_id=student.id,
+        period=log_entry.period,
+        status='inactive',
+        timestamp=now,
+        reason=f"Hall pass: {log_entry.reason}"
+    )
+    db.session.add(tap_out_event)
+    db.session.commit()
+
+    return jsonify({
+        "status": "success",
+        "message": "Hall pass activated. Student has left the class.",
+        "student_name": student.full_name,
+        "destination": log_entry.reason
+    })
+
+@app.route('/api/hall-pass/terminal/return', methods=['POST'])
+def terminal_return_hall_pass():
+    """Student returns from hall pass at terminal (check-out when returning)"""
+    data = request.get_json()
+    pass_number = data.get('pass_number', '').upper()
+
+    if not pass_number:
+        return jsonify({"status": "error", "message": "Pass number is required."}), 400
+
+    # Find the hall pass log entry
+    log_entry = HallPassLog.query.filter_by(pass_number=pass_number).first()
+
+    if not log_entry:
+        return jsonify({"status": "error", "message": "Pass number not found."}), 404
+
+    # Check if student has left
+    if log_entry.status != 'left':
+        return jsonify({
+            "status": "error",
+            "message": f"Cannot return - pass status is {log_entry.status}, not 'left'."
+        }), 400
+
+    student = log_entry.student
+    now = datetime.now(timezone.utc)
+
+    # Update status to "returned"
+    log_entry.status = 'returned'
+    log_entry.return_time = now
+
+    # Create a tap-in event to start time counting again
+    tap_in_event = TapEvent(
+        student_id=student.id,
+        period=log_entry.period,
+        status='active',
+        timestamp=now,
+        reason="Return from hall pass"
+    )
+    db.session.add(tap_in_event)
+    db.session.commit()
+
+    return jsonify({
+        "status": "success",
+        "message": "Student has returned to class.",
+        "student_name": student.full_name
+    })
 
 
 # -------------------- ADMIN PAYROLL HISTORY --------------------
@@ -3104,13 +3286,17 @@ def handle_tap():
             pass
         else:
             # All other reasons go through the hall pass approval flow
-            if student.hall_passes <= 0:
+            # Check if hall pass is required (not for Office/Summons/Done for the day)
+            should_require_pass = reason.lower() not in ['office', 'summons', 'done for the day']
+
+            if should_require_pass and student.hall_passes <= 0:
                 return jsonify({"error": "Insufficient hall passes."}), 400
 
             # Create a hall pass log entry
             hall_pass_log = HallPassLog(
                 student_id=student.id,
                 reason=reason,
+                period=period,
                 status='pending',
                 request_time=now
             )
@@ -3200,8 +3386,50 @@ from attendance import get_all_block_statuses
 def student_status():
     student = get_logged_in_student()
     period_states = get_all_block_statuses(student)
+
+    # Add hall pass information for each period
+    for period in period_states:
+        # Find pending or approved hall passes for this period
+        hall_pass = HallPassLog.query.filter_by(
+            student_id=student.id,
+            period=period
+        ).filter(
+            HallPassLog.status.in_(['pending', 'approved', 'left'])
+        ).order_by(HallPassLog.request_time.desc()).first()
+
+        if hall_pass:
+            period_states[period]['hall_pass'] = {
+                'id': hall_pass.id,
+                'status': hall_pass.status,
+                'reason': hall_pass.reason,
+                'pass_number': hall_pass.pass_number,
+                'request_time': hall_pass.request_time.isoformat() if hall_pass.request_time else None
+            }
+        else:
+            period_states[period]['hall_pass'] = None
+
     return jsonify(period_states)
 
+@app.route('/api/hall-pass/cancel/<int:pass_id>', methods=['POST'])
+@login_required
+def cancel_hall_pass(pass_id):
+    """Cancel a pending hall pass request (student)"""
+    student = get_logged_in_student()
+    hall_pass = HallPassLog.query.get_or_404(pass_id)
+
+    # Verify this hall pass belongs to the student
+    if hall_pass.student_id != student.id:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 403
+
+    # Only pending passes can be cancelled
+    if hall_pass.status != 'pending':
+        return jsonify({"status": "error", "message": "Only pending requests can be cancelled."}), 400
+
+    # Delete the hall pass request
+    db.session.delete(hall_pass)
+    db.session.commit()
+
+    return jsonify({"status": "success", "message": "Hall pass request cancelled."})
 
 
 @app.route('/api/set-timezone', methods=['POST'])

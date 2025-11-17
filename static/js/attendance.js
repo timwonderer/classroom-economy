@@ -105,13 +105,13 @@ setInterval(() => {
     .then(r => r.json())
     .then(data => {
       Object.keys(data).forEach(period => {
-        updateBlockUI(period, data[period].active, data[period].duration, data[period].projected_pay);
+        updateBlockUI(period, data[period].active, data[period].duration, data[period].projected_pay, data[period].hall_pass);
       });
     })
     .catch(err => console.error("Status polling error:", err));
 }, 10000);
 
-function updateBlockUI(period, isActive, duration, projectedPay) {
+function updateBlockUI(period, isActive, duration, projectedPay, hallPass = null) {
   const row = document.querySelector(`[data-block-row="${period}"]`);
   if (!row) return;
 
@@ -133,6 +133,94 @@ function updateBlockUI(period, isActive, duration, projectedPay) {
 
   if (tapInBtn) tapInBtn.disabled = isActive;
   if (tapOutBtn) tapOutBtn.disabled = !isActive;
+
+  // Handle hall pass overlay
+  updateHallPassOverlay(period, hallPass);
+}
+
+function updateHallPassOverlay(period, hallPass) {
+  const overlay = document.getElementById(`hallPassOverlay-${period}`);
+  const content = document.getElementById(`hallPassContent-${period}`);
+  const passNumberDisplay = document.getElementById(`passNumber-${period}`);
+
+  if (!hallPass || hallPass.status === 'returned') {
+    // No active hall pass - hide overlay and pass number
+    if (overlay) overlay.style.display = 'none';
+    if (passNumberDisplay) passNumberDisplay.style.display = 'none';
+    return;
+  }
+
+  // Show pass number badge if pass is left or approved
+  if (passNumberDisplay && hallPass.pass_number && (hallPass.status === 'left' || hallPass.status === 'approved')) {
+    passNumberDisplay.style.display = 'block';
+    passNumberDisplay.querySelector('.pass-number-text').textContent = hallPass.pass_number;
+  } else if (passNumberDisplay) {
+    passNumberDisplay.style.display = 'none';
+  }
+
+  // Show overlay for pending or approved status
+  if (hallPass.status === 'pending') {
+    overlay.style.display = 'flex';
+    content.innerHTML = `
+      <h4>🕐 Pending Approval</h4>
+      <p>Your hall pass request for <strong>${hallPass.reason}</strong> is waiting for teacher approval.</p>
+      <button class="btn btn-danger" onclick="cancelHallPass(${hallPass.id}, '${period}')">Cancel Request</button>
+    `;
+  } else if (hallPass.status === 'approved') {
+    overlay.style.display = 'flex';
+    content.innerHTML = `
+      <h4>✅ Request Approved!</h4>
+      <p>Your pass number is:</p>
+      <div class="pass-number-display">${hallPass.pass_number}</div>
+      <p class="mb-3">Go to the hall pass terminal to check in and use your pass.</p>
+      <button class="btn btn-success" onclick="acknowledgeApproval('${period}')">Acknowledge and Close</button>
+    `;
+  } else if (hallPass.status === 'left') {
+    // Student has left - don't show overlay, just the pass number badge
+    overlay.style.display = 'none';
+  } else {
+    overlay.style.display = 'none';
+  }
+}
+
+function cancelHallPass(passId, period) {
+  if (!confirm('Are you sure you want to cancel this hall pass request?')) {
+    return;
+  }
+
+  fetch(`/api/hall-pass/cancel/${passId}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+    }
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'success') {
+      createToast('Hall pass request cancelled.');
+      // Refresh status immediately
+      fetch("/api/student-status")
+        .then(r => r.json())
+        .then(statusData => {
+          updateBlockUI(period, statusData[period].active, statusData[period].duration, statusData[period].projected_pay, statusData[period].hall_pass);
+        });
+    } else {
+      createToast(data.message || 'Failed to cancel request.', true);
+    }
+  })
+  .catch(err => {
+    console.error('Cancel error:', err);
+    createToast('Network error. Try again.', true);
+  });
+}
+
+function acknowledgeApproval(period) {
+  // Simply hide the overlay - the pass is still active, just acknowledged
+  const overlay = document.getElementById(`hallPassOverlay-${period}`);
+  if (overlay) {
+    overlay.style.display = 'none';
+  }
 }
 
 function formatDuration(seconds) {

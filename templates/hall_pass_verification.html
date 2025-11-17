@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hall Pass Verification</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: rgb(5, 57, 54);
+            font-family: 'Noto Sans', sans-serif;
+            color: white;
+            padding: 2rem;
+        }
+
+        h1 {
+            text-align: center;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            font-size: 2.5rem;
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 1.2rem;
+            opacity: 0.8;
+            margin-bottom: 2rem;
+        }
+
+        .verification-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .pass-card {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            border-radius: 15px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .pass-card.returned {
+            opacity: 0.6;
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .pass-card.out {
+            border-color: rgba(40, 167, 69, 0.5);
+            border-width: 3px;
+        }
+
+        .pass-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+        }
+
+        .student-name {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 0.5rem;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 0.5rem;
+            font-size: 1.2rem;
+        }
+
+        .info-label {
+            font-weight: 600;
+            opacity: 0.8;
+        }
+
+        .info-value {
+            font-weight: 400;
+        }
+
+        .time-elapsed {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #ffc107;
+            text-align: right;
+            margin-top: 0.5rem;
+        }
+
+        .no-passes {
+            text-align: center;
+            font-size: 2rem;
+            opacity: 0.7;
+            margin-top: 5rem;
+        }
+
+        .pass-number-badge {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 0.4rem 1.2rem;
+            border-radius: 25px;
+            font-weight: 700;
+            font-size: 1.5rem;
+            letter-spacing: 0.1em;
+        }
+
+        .status-badge {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-weight: 700;
+            font-size: 1rem;
+        }
+
+        .status-badge.out {
+            background: #28a745;
+            color: white;
+        }
+
+        .status-badge.returned {
+            background: #6c757d;
+            color: white;
+        }
+
+        .return-time {
+            font-size: 1rem;
+            color: #6c757d;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="verification-container">
+        <h1>Hall Pass Verification</h1>
+        <p class="subtitle">Last 10 Students Who Used Hall Passes</p>
+        <div id="passesList"></div>
+        <div id="noPassesMessage" class="no-passes" style="display: none;">
+            No recent hall pass activity
+        </div>
+    </div>
+
+    <script>
+        function formatTime(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleTimeString('en-US', {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        }
+
+        function getTimeElapsed(isoString) {
+            const leftTime = new Date(isoString);
+            const now = new Date();
+            const diffMs = now - leftTime;
+            const diffMins = Math.floor(diffMs / 60000);
+
+            if (diffMins < 1) return 'Just left';
+            if (diffMins === 1) return '1 minute ago';
+            return `${diffMins} minutes ago`;
+        }
+
+        function renderPasses(passes) {
+            const passesList = document.getElementById('passesList');
+            const noPassesMessage = document.getElementById('noPassesMessage');
+
+            if (passes.length === 0) {
+                passesList.innerHTML = '';
+                noPassesMessage.style.display = 'block';
+                return;
+            }
+
+            noPassesMessage.style.display = 'none';
+
+            const html = passes.map(pass => {
+                const isOut = pass.status === 'left';
+                const statusClass = isOut ? 'out' : 'returned';
+                const statusText = isOut ? 'OUT NOW' : 'RETURNED';
+
+                return `
+                <div class="pass-card ${statusClass}">
+                    <span class="status-badge ${statusClass}">${statusText}</span>
+                    <div class="student-name">${pass.student_name}</div>
+                    <div class="mb-2">
+                        <span class="pass-number-badge">Pass #${pass.pass_number}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Period:</span>
+                        <span class="info-value">${pass.period}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Destination:</span>
+                        <span class="info-value">${pass.destination}</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">Left at:</span>
+                        <span class="info-value">${formatTime(pass.left_time)}</span>
+                    </div>
+                    ${isOut ? `<div class="time-elapsed">${getTimeElapsed(pass.left_time)}</div>` : ''}
+                    ${!isOut && pass.return_time ? `<div class="return-time">Returned at ${formatTime(pass.return_time)}</div>` : ''}
+                </div>
+            `;
+            }).join('');
+
+            passesList.innerHTML = html;
+        }
+
+        function fetchActivePasses() {
+            fetch('/api/hall-pass/verification/active')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        renderPasses(data.passes);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching active passes:', error);
+                });
+        }
+
+        // Initial fetch
+        fetchActivePasses();
+
+        // Refresh every 5 seconds
+        setInterval(fetchActivePasses, 5000);
+
+        // Update elapsed times every 30 seconds
+        setInterval(() => {
+            const timeElements = document.querySelectorAll('.time-elapsed');
+            const leftTimes = Array.from(document.querySelectorAll('.info-value'))
+                .filter((el, i) => i % 3 === 2) // Every 3rd info-value is the left_time
+                .map(el => el.textContent);
+
+            // This is a simple approach - in production you'd want to store the actual times
+            // For now, the regular fetchActivePasses will update everything
+        }, 30000);
+    </script>
+</body>
+</html>
