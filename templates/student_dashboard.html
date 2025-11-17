@@ -31,6 +31,20 @@
     [id^="hallPassInfo-"] .alert {
         text-align: center;
     }
+
+    /* Prevent pass number badge from flickering on hover */
+    #passNumber-a .badge,
+    #passNumber-b .badge,
+    #passNumber-c .badge,
+    #passNumber-d .badge,
+    #passNumber-e .badge,
+    #passNumber-f .badge,
+    #passNumber-g .badge,
+    [id^="passNumber-"] .badge {
+        user-select: none;
+        pointer-events: none;
+        transition: none;
+    }
 </style>
 {% endblock %}
 
