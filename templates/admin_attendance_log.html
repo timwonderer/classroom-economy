@@ -24,9 +24,7 @@
         <td>{{ log.student.full_name if log.student else log.student_name }}</td>
         <td>
           {% if log.timestamp %}
-            <span class="local-timestamp" data-timestamp="{{ log.timestamp.isoformat() }}Z">
-              {{ log.timestamp.strftime("%Y-%m-%d %I:%M %p") }}
-            </span>
+            <span class="local-timestamp" data-timestamp="{{ log.timestamp.isoformat() }}Z"></span>
           {% else %}
             —
           {% endif %}
@@ -39,4 +37,27 @@
     </tbody>
   </table>
 </div>
+
+<script>
+// Convert UTC timestamps to local time display
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll(".local-timestamp").forEach(el => {
+        const utcString = el.dataset.timestamp;
+        if (utcString) {
+            const date = new Date(utcString);
+            const options = {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: 'numeric',
+                hour12: true
+            };
+            el.textContent = date.toLocaleString(undefined, options);
+        } else {
+            el.textContent = '—';
+        }
+    });
+});
+</script>
 {% endblock %}
