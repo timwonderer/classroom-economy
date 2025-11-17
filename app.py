@@ -2370,6 +2370,23 @@ def admin_deactivate_insurance_policy(policy_id):
     flash(f"Insurance policy '{policy.title}' has been deactivated.", "success")
     return redirect(url_for('admin_insurance_management'))
 
+@app.route('/admin/insurance/student-policy/<int:enrollment_id>')
+@admin_required
+def admin_view_student_policy(enrollment_id):
+    """View student's policy enrollment details and claims history"""
+    enrollment = StudentInsurance.query.get_or_404(enrollment_id)
+
+    # Get claims for this enrollment
+    claims = InsuranceClaim.query.filter_by(student_insurance_id=enrollment.id).order_by(
+        InsuranceClaim.filed_date.desc()
+    ).all()
+
+    return render_template('admin_view_student_policy.html',
+                          enrollment=enrollment,
+                          policy=enrollment.policy,
+                          student=enrollment.student,
+                          claims=claims)
+
 @app.route('/admin/insurance/claim/<int:claim_id>', methods=['GET', 'POST'])
 @admin_required
 def admin_process_claim(claim_id):
