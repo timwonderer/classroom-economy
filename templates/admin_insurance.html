@@ -61,7 +61,7 @@
               {% for policy in policies %}
               <tr>
                 <td><strong>{{ policy.title }}</strong></td>
-                <td>${{ "%.2f".format(policy.premium) }}</td>
+                <td>${{ "%.2f"|format(policy.premium) }}</td>
                 <td>{{ policy.charge_frequency|title }}</td>
                 <td>
                   <span class="badge {{ 'bg-info' if policy.is_monetary else 'bg-warning' }}">
@@ -386,7 +386,7 @@
                     Waiting Period
                   {% endif %}
                 </td>
-                <td>${{ "%.2f".format(enrollment.policy.premium) }}</td>
+                <td>${{ "%.2f"|format(enrollment.policy.premium) }}</td>
                 <td>
                   {% if enrollment.next_payment_due %}
                     {{ enrollment.next_payment_due.strftime('%Y-%m-%d') }}
@@ -499,7 +499,7 @@
                 <td>{{ claim.filed_date.strftime('%Y-%m-%d') }}</td>
                 <td>
                   {% if claim.claim_amount %}
-                    <span class="badge bg-success">${{ "%.2f".format(claim.claim_amount) }}</span>
+                    <span class="badge bg-success">${{ "%.2f"|format(claim.claim_amount) }}</span>
                   {% elif claim.claim_item %}
                     <span class="badge bg-warning text-dark">{{ claim.claim_item }}</span>
                   {% else %}

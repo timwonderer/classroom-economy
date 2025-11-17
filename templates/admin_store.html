@@ -80,7 +80,7 @@
                 {% for item in items %}
                 <tr>
                     <td>{{ item.name }}</td>
-                    <td>${{ "%.2f".format(item.price) }}</td>
+                    <td>${{ "%.2f"|format(item.price) }}</td>
                     <td>{{ item.item_type.replace('_', ' ')|title }}</td>
                     <td>{{ item.inventory if item.inventory is not none else 'Unlimited' }}</td>
                     <td>{{ item.limit_per_student if item.limit_per_student is not none else 'N/A' }}</td>

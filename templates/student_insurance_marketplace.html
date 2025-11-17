@@ -22,7 +22,7 @@
                     <h5 class="mb-1">{{ enrollment.policy.title }}</h5>
                     <p class="text-muted small mb-2">{{ enrollment.policy.description }}</p>
                     <p class="mb-0">
-                        <span class="badge bg-primary">${{ "%.2f".format(enrollment.policy.premium) }}/{{ enrollment.policy.charge_frequency }}</span>
+                        <span class="badge bg-primary">${{ "%.2f"|format(enrollment.policy.premium) }}/{{ enrollment.policy.charge_frequency }}</span>
                         <span class="badge {{ 'bg-info' if enrollment.policy.is_monetary else 'bg-warning text-dark' }}">
                             {{ 'Monetary' if enrollment.policy.is_monetary else 'Item/Service' }}
                         </span>
@@ -69,7 +69,7 @@
             </div>
             <div class="card-body d-flex flex-column">
                 <h3 class="{% if loop.index == 1 %}text-primary{% elif loop.index == 2 %}text-success{% elif loop.index == 3 %}text-warning{% endif %} mb-3">
-                    ${{ "%.2f".format(policy.premium) }}<small class="text-muted">/ {{ policy.charge_frequency }}</small>
+                    ${{ "%.2f"|format(policy.premium) }}<small class="text-muted">/ {{ policy.charge_frequency }}</small>
                 </h3>
 
                 <p class="flex-grow-1">{{ policy.description or 'Comprehensive coverage for your needs.' }}</p>
@@ -85,7 +85,7 @@
                             <li>Unlimited claims</li>
                         {% endif %}
                         {% if policy.is_monetary and policy.max_claim_amount %}
-                            <li>Max claim amount: ${{ "%.2f".format(policy.max_claim_amount) }}</li>
+                            <li>Max claim amount: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
                         {% endif %}
                         <li>File claims within {{ policy.claim_time_limit_days }} days of incident</li>
                     </ul>
@@ -145,9 +145,9 @@
                         <td>{{ claim.filed_date.strftime('%Y-%m-%d') }}</td>
                         <td>
                             {% if claim.approved_amount %}
-                                ${{ "%.2f".format(claim.approved_amount) }}
+                                ${{ "%.2f"|format(claim.approved_amount) }}
                             {% elif claim.claim_amount %}
-                                ${{ "%.2f".format(claim.claim_amount) }}
+                                ${{ "%.2f"|format(claim.claim_amount) }}
                             {% else %}
                                 N/A
                             {% endif %}

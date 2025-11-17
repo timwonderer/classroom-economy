@@ -23,7 +23,7 @@
 
                 <div class="row">
                     <div class="col-md-6">
-                        <p><strong>Premium:</strong> ${{ "%.2f".format(enrollment.policy.premium) }} / {{ enrollment.policy.charge_frequency }}</p>
+                        <p><strong>Premium:</strong> ${{ "%.2f"|format(enrollment.policy.premium) }} / {{ enrollment.policy.charge_frequency }}</p>
                         <p><strong>Autopay:</strong> {{ 'Enabled' if enrollment.policy.autopay else 'Disabled' }}</p>
                         <p><strong>Status:</strong>
                             <span class="badge {% if enrollment.status == 'active' %}bg-success{% else %}bg-secondary{% endif %}">
@@ -65,7 +65,7 @@
                             <li>Waiting period: {{ enrollment.policy.waiting_period_days }} days</li>
                             <li>Claim deadline: {{ enrollment.policy.claim_time_limit_days }} days from incident</li>
                             {% if enrollment.policy.max_claim_amount %}
-                                <li>Max per claim: ${{ "%.2f".format(enrollment.policy.max_claim_amount) }}</li>
+                                <li>Max per claim: ${{ "%.2f"|format(enrollment.policy.max_claim_amount) }}</li>
                             {% else %}
                                 <li>Max per claim: Unlimited</li>
                             {% endif %}
@@ -116,9 +116,9 @@
                                     <td>{{ claim.filed_date.strftime('%Y-%m-%d') }}</td>
                                     <td>
                                         {% if claim.approved_amount %}
-                                            ${{ "%.2f".format(claim.approved_amount) }}
+                                            ${{ "%.2f"|format(claim.approved_amount) }}
                                         {% elif claim.claim_amount %}
-                                            ${{ "%.2f".format(claim.claim_amount) }}
+                                            ${{ "%.2f"|format(claim.claim_amount) }}
                                         {% else %}
                                             N/A
                                         {% endif %}

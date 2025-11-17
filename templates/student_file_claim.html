@@ -53,7 +53,7 @@
                         <small class="form-text text-muted">
                             Specify the dollar amount you're claiming.
                             {% if policy.max_claim_amount %}
-                                Maximum: ${{ "%.2f".format(policy.max_claim_amount) }} per claim.
+                                Maximum: ${{ "%.2f"|format(policy.max_claim_amount) }} per claim.
                             {% endif %}
                         </small>
                     </div>
@@ -105,7 +105,7 @@
                     <li>Waiting period: {{ policy.waiting_period_days }} days</li>
                     <li>Claim deadline: {{ policy.claim_time_limit_days }} days from incident</li>
                     {% if policy.is_monetary and policy.max_claim_amount %}
-                        <li>Max claim: ${{ "%.2f".format(policy.max_claim_amount) }}</li>
+                        <li>Max claim: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
                     {% endif %}
                     {% if policy.max_claims_count %}
                         <li>Max claims: {{ policy.max_claims_count }} per {{ policy.max_claims_period }}</li>

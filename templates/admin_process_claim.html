@@ -27,7 +27,7 @@
           {% if claim.claim_amount %}
           <dt class="col-sm-4">Claim Amount:</dt>
           <dd class="col-sm-8">
-            ${{ "%.2f".format(claim.claim_amount) }}
+            ${{ "%.2f"|format(claim.claim_amount) }}
           </dd>
           {% endif %}
 
@@ -104,7 +104,7 @@
 
         <p><strong>Max Claim Amount:</strong><br>
           {% if claim.policy.max_claim_amount %}
-            ${{ "%.2f".format(claim.policy.max_claim_amount) }}
+            ${{ "%.2f"|format(claim.policy.max_claim_amount) }}
           {% else %}
             Unlimited
           {% endif %}
