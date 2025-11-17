@@ -147,6 +147,8 @@ function updateHallPassOverlay(period, hallPass) {
     // No active hall pass - hide overlay and pass number
     if (overlay) overlay.style.display = 'none';
     if (passNumberDisplay) passNumberDisplay.style.display = 'none';
+    // Clear acknowledgement when pass is returned
+    sessionStorage.removeItem(`hallpass_ack_${hallPass?.id}`);
     return;
   }
 
@@ -158,6 +160,9 @@ function updateHallPassOverlay(period, hallPass) {
     passNumberDisplay.style.display = 'none';
   }
 
+  // Check if user has acknowledged this approval
+  const isAcknowledged = sessionStorage.getItem(`hallpass_ack_${hallPass.id}`) === 'true';
+
   // Show overlay for pending or approved status
   if (hallPass.status === 'pending') {
     overlay.style.display = 'flex';
@@ -166,18 +171,20 @@ function updateHallPassOverlay(period, hallPass) {
       <p>Your hall pass request for <strong>${hallPass.reason}</strong> is waiting for teacher approval.</p>
       <button class="btn btn-danger" onclick="cancelHallPass(${hallPass.id}, '${period}')">Cancel Request</button>
     `;
-  } else if (hallPass.status === 'approved') {
+  } else if (hallPass.status === 'approved' && !isAcknowledged) {
     overlay.style.display = 'flex';
     content.innerHTML = `
       <h4>✅ Request Approved!</h4>
       <p>Your pass number is:</p>
       <div class="pass-number-display">${hallPass.pass_number}</div>
       <p class="mb-3">Go to the hall pass terminal to check in and use your pass.</p>
-      <button class="btn btn-success" onclick="acknowledgeApproval('${period}')">Acknowledge and Close</button>
+      <button class="btn btn-success" onclick="acknowledgeApproval('${period}', ${hallPass.id})">Acknowledge and Close</button>
     `;
   } else if (hallPass.status === 'left') {
     // Student has left - don't show overlay, just the pass number badge
     overlay.style.display = 'none';
+    // Clear acknowledgement when student leaves
+    sessionStorage.removeItem(`hallpass_ack_${hallPass.id}`);
   } else {
     overlay.style.display = 'none';
   }
@@ -215,8 +222,10 @@ function cancelHallPass(passId, period) {
   });
 }
 
-function acknowledgeApproval(period) {
-  // Simply hide the overlay - the pass is still active, just acknowledged
+function acknowledgeApproval(period, passId) {
+  // Mark this pass as acknowledged in session storage so it doesn't pop up again
+  sessionStorage.setItem(`hallpass_ack_${passId}`, 'true');
+  // Hide the overlay
   const overlay = document.getElementById(`hallPassOverlay-${period}`);
   if (overlay) {
     overlay.style.display = 'none';
