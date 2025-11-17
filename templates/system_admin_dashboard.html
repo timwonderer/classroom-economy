@@ -13,10 +13,10 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <p class="text-muted mb-1" style="font-size: 0.85rem;">Total Teachers</p>
-                            <h3 class="mb-0 fw-bold" style="color: var(--accent-cyan);">{{ total_teachers }}</h3>
+                            <h3 class="mb-0 fw-bold" style="color: var(--primary-blue);">{{ total_teachers }}</h3>
                         </div>
                         <div>
-                            <i class="bi bi-person-badge fs-1" style="color: var(--primary-purple); opacity: 0.3;"></i>
+                            <i class="bi bi-person-badge fs-1" style="color: var(--primary-blue); opacity: 0.3;"></i>
                         </div>
                     </div>
                 </div>
@@ -29,10 +29,10 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <p class="text-muted mb-1" style="font-size: 0.85rem;">Total Students</p>
-                            <h3 class="mb-0 fw-bold" style="color: var(--accent-green);">{{ total_students }}</h3>
+                            <h3 class="mb-0 fw-bold" style="color: var(--success-green);">{{ total_students }}</h3>
                         </div>
                         <div>
-                            <i class="bi bi-people fs-1" style="color: var(--primary-purple); opacity: 0.3;"></i>
+                            <i class="bi bi-people fs-1" style="color: var(--success-teal); opacity: 0.3;"></i>
                         </div>
                     </div>
                 </div>
@@ -45,10 +45,10 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <p class="text-muted mb-1" style="font-size: 0.85rem;">Active Invite Codes</p>
-                            <h3 class="mb-0 fw-bold" style="color: var(--accent-orange);">{{ active_invites }}</h3>
+                            <h3 class="mb-0 fw-bold" style="color: var(--warning-gold);">{{ active_invites }}</h3>
                         </div>
                         <div>
-                            <i class="bi bi-ticket-perforated fs-1" style="color: var(--primary-purple); opacity: 0.3;"></i>
+                            <i class="bi bi-ticket-perforated fs-1" style="color: var(--warning-gold); opacity: 0.3;"></i>
                         </div>
                     </div>
                 </div>
@@ -61,10 +61,10 @@
                     <div class="d-flex justify-content-between align-items-center">
                         <div>
                             <p class="text-muted mb-1" style="font-size: 0.85rem;">System Admins</p>
-                            <h3 class="mb-0 fw-bold" style="color: var(--accent-cyan);">{{ system_admin_count }}</h3>
+                            <h3 class="mb-0 fw-bold" style="color: var(--primary-blue);">{{ system_admin_count }}</h3>
                         </div>
                         <div>
-                            <i class="bi bi-shield-lock fs-1" style="color: var(--primary-purple); opacity: 0.3;"></i>
+                            <i class="bi bi-shield-lock fs-1" style="color: var(--primary-blue); opacity: 0.3;"></i>
                         </div>
                     </div>
                 </div>
@@ -83,7 +83,7 @@
                     {% if recent_teachers %}
                         <div class="list-group list-group-flush">
                             {% for teacher in recent_teachers %}
-                            <div class="list-group-item bg-transparent border-bottom" style="border-color: rgba(255,255,255,0.1) !important;">
+                            <div class="list-group-item bg-transparent border-bottom">
                                 <div class="d-flex justify-content-between align-items-center">
                                     <div>
                                         <h6 class="mb-1">{{ teacher.username }}</h6>
@@ -115,7 +115,7 @@
                     {% if recent_errors %}
                         <div class="list-group list-group-flush">
                             {% for error in recent_errors %}
-                            <div class="list-group-item bg-transparent border-bottom" style="border-color: rgba(255,255,255,0.1) !important;">
+                            <div class="list-group-item bg-transparent border-bottom">
                                 <div class="d-flex justify-content-between align-items-start">
                                     <div class="flex-grow-1">
                                         <div class="d-flex align-items-center mb-1">

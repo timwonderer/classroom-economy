@@ -121,6 +121,10 @@ def url_encode_filter(s):
 app.jinja_env.filters['url_encode'] = url_encode_filter
 app.jinja_env.filters['urlencode'] = url_encode_filter
 
+# Add built-in functions to Jinja2 globals
+app.jinja_env.globals['min'] = min
+app.jinja_env.globals['max'] = max
+
 import logging
 from logging.handlers import RotatingFileHandler
 
