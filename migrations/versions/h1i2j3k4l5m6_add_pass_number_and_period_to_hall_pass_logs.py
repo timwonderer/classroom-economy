@@ -1,7 +1,7 @@
 """Add pass_number and period to hall_pass_logs
 
 Revision ID: h1i2j3k4l5m6
-Revises: merge_001
+Revises: e5f6g7h8i9j0
 Create Date: 2025-11-17 00:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'h1i2j3k4l5m6'
-down_revision = 'merge_001'
+down_revision = 'e5f6g7h8i9j0'
 branch_labels = None
 depends_on = None
 
