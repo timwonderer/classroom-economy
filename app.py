@@ -3471,3 +3471,193 @@ def test_error_503():
     """Trigger a 503 Service Unavailable error for testing."""
     from werkzeug.exceptions import ServiceUnavailable
     raise ServiceUnavailable("This is a test 503 error triggered by system admin for testing purposes.")
+
+
+# -------------------- ADMIN (TEACHER) MANAGEMENT --------------------
+@app.route('/sysadmin/admins')
+@system_admin_required
+def system_admin_manage_admins():
+    """
+    View and manage all admin (teacher) accounts.
+    Shows admin details, student counts, and allows deletion.
+    """
+    # Get all admins with student counts
+    admins = Admin.query.all()
+    admin_data = []
+
+    for admin in admins:
+        # Count students (will be useful once multi-tenancy is implemented)
+        student_count = Student.query.count()  # Currently counts all students
+        # TODO: After multi-tenancy, use: Student.query.filter_by(teacher_id=admin.id).count()
+
+        admin_data.append({
+            'id': admin.id,
+            'username': admin.username,
+            'student_count': student_count,
+            'totp_setup': bool(admin.totp_secret)
+        })
+
+    return render_template(
+        'system_admin_manage_admins.html',
+        admins=admin_data,
+        current_page='sysadmin_admins'
+    )
+
+
+@app.route('/sysadmin/admins/<int:admin_id>/delete', methods=['POST'])
+@system_admin_required
+def system_admin_delete_admin(admin_id):
+    """
+    Delete an admin account with cascade options for their students.
+    """
+    admin = Admin.query.get_or_404(admin_id)
+    action = request.form.get('action')  # 'delete_admin_only', 'delete_with_students', 'reassign'
+    target_admin_id = request.form.get('target_admin_id')  # For reassignment
+
+    try:
+        if action == 'delete_with_students':
+            # Delete all students associated with this admin (currently all students)
+            # TODO: After multi-tenancy, filter by teacher_id
+            student_count = Student.query.count()
+
+            # Delete related data for each student
+            for student in Student.query.all():
+                # Delete transactions
+                Transaction.query.filter_by(student_id=student.id).delete()
+                # Delete tap events
+                TapEvent.query.filter_by(student_id=student.id).delete()
+                # Delete hall pass logs
+                HallPassLog.query.filter_by(student_id=student.id).delete()
+                # Delete student items
+                StudentItem.query.filter_by(student_id=student.id).delete()
+                # Delete rent payments
+                RentPayment.query.filter_by(student_id=student.id).delete()
+                # Delete insurance enrollments
+                from sqlalchemy import delete
+                db.session.execute(delete(StudentInsurance).where(StudentInsurance.student_id == student.id))
+                # Delete insurance claims
+                InsuranceClaim.query.filter_by(student_id=student.id).delete()
+
+            # Delete all students
+            Student.query.delete()
+
+            # Delete the admin
+            db.session.delete(admin)
+            db.session.commit()
+
+            flash(f"Admin '{admin.username}' and {student_count} students deleted successfully.", "success")
+
+        elif action == 'reassign' and target_admin_id:
+            # TODO: Implement after multi-tenancy
+            # For now, just delete the admin
+            db.session.delete(admin)
+            db.session.commit()
+            flash(f"Admin '{admin.username}' deleted. Student reassignment will be available after multi-tenancy is implemented.", "warning")
+
+        elif action == 'delete_admin_only':
+            # Delete only the admin, leave students orphaned
+            # TODO: After multi-tenancy, this will leave students with NULL teacher_id
+            db.session.delete(admin)
+            db.session.commit()
+            flash(f"Admin '{admin.username}' deleted successfully. Students remain in the system.", "success")
+
+        else:
+            flash("Invalid action specified.", "error")
+
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception(f"Error deleting admin {admin_id}")
+        flash(f"Error deleting admin: {str(e)}", "error")
+
+    return redirect(url_for('system_admin_manage_admins'))
+
+
+# -------------------- STUDENT MANAGEMENT --------------------
+@app.route('/sysadmin/students')
+@system_admin_required
+def system_admin_manage_students():
+    """
+    View and manage all students across all teachers.
+    Provides search, filter, and bulk operations.
+    """
+    page = request.args.get('page', 1, type=int)
+    search = request.args.get('search', '')
+    per_page = 50
+
+    # Base query
+    query = Student.query
+
+    # Apply search filter if provided
+    if search:
+        # Search by first name (decrypt for comparison - this is slow, consider search optimization)
+        query = query.filter(Student.first_name.ilike(f'%{search}%'))
+
+    # Paginate
+    pagination = query.order_by(Student.id.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+
+    students = pagination.items
+
+    # Get student data with additional info
+    student_data = []
+    for student in students:
+        # Get last login from tap events
+        last_tap = TapEvent.query.filter_by(student_id=student.id).order_by(TapEvent.timestamp.desc()).first()
+        last_login = last_tap.timestamp if last_tap else None
+
+        student_data.append({
+            'id': student.id,
+            'first_name': student.first_name,
+            'username_hash': student.username_hash[:8] if student.username_hash else 'N/A',
+            'balance': student.balance,
+            'last_login': last_login,
+            'teacher': 'All Teachers'  # TODO: Replace with actual teacher after multi-tenancy
+        })
+
+    return render_template(
+        'system_admin_manage_students.html',
+        students=student_data,
+        pagination=pagination,
+        search=search,
+        current_page='sysadmin_students'
+    )
+
+
+@app.route('/sysadmin/students/<int:student_id>/delete', methods=['POST'])
+@system_admin_required
+def system_admin_delete_student(student_id):
+    """
+    Delete a student and optionally their associated data.
+    """
+    student = Student.query.get_or_404(student_id)
+    delete_data = request.form.get('delete_data') == 'true'
+
+    try:
+        if delete_data:
+            # Delete all associated data
+            Transaction.query.filter_by(student_id=student_id).delete()
+            TapEvent.query.filter_by(student_id=student_id).delete()
+            HallPassLog.query.filter_by(student_id=student_id).delete()
+            StudentItem.query.filter_by(student_id=student_id).delete()
+            RentPayment.query.filter_by(student_id=student_id).delete()
+            from sqlalchemy import delete
+            db.session.execute(delete(StudentInsurance).where(StudentInsurance.student_id == student_id))
+            InsuranceClaim.query.filter_by(student_id=student_id).delete()
+
+        # Delete the student
+        student_name = student.first_name
+        db.session.delete(student)
+        db.session.commit()
+
+        if delete_data:
+            flash(f"Student '{student_name}' and all associated data deleted successfully.", "success")
+        else:
+            flash(f"Student '{student_name}' deleted successfully.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception(f"Error deleting student {student_id}")
+        flash(f"Error deleting student: {str(e)}", "error")
+
+    return redirect(url_for('system_admin_manage_students'))
