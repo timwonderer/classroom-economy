@@ -150,8 +150,8 @@
     <script>
         function formatTime(isoString) {
             const date = new Date(isoString);
-            return date.toLocaleTimeString('en-US', {
-                timeZone: 'America/Los_Angeles',
+            // Browser will automatically convert from UTC to local timezone
+            return date.toLocaleTimeString(undefined, {
                 hour: 'numeric',
                 minute: '2-digit',
                 hour12: true

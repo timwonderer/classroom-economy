@@ -2773,6 +2773,16 @@ def get_active_hall_passes():
         HallPassLog.left_time.isnot(None)
     ).order_by(HallPassLog.left_time.desc()).limit(10).all()
 
+    # Helper function to ensure times are marked as UTC
+    def format_utc_time(dt):
+        if not dt:
+            return None
+        # Ensure datetime is treated as UTC
+        if dt.tzinfo is None:
+            from datetime import timezone
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+
     passes_data = []
     for log_entry in recent_passes:
         student = log_entry.student
@@ -2780,8 +2790,8 @@ def get_active_hall_passes():
             "student_name": student.full_name,
             "period": log_entry.period,
             "destination": log_entry.reason,
-            "left_time": log_entry.left_time.isoformat() if log_entry.left_time else None,
-            "return_time": log_entry.return_time.isoformat() if log_entry.return_time else None,
+            "left_time": format_utc_time(log_entry.left_time),
+            "return_time": format_utc_time(log_entry.return_time),
             "pass_number": log_entry.pass_number,
             "status": log_entry.status
         })
@@ -2805,17 +2815,26 @@ def lookup_hall_pass(pass_number):
 
     student = log_entry.student
 
-    # Return the pass information
+    # Return the pass information (ensure times are marked as UTC)
+    def format_utc_time(dt):
+        if not dt:
+            return None
+        # Ensure datetime is treated as UTC
+        if dt.tzinfo is None:
+            from datetime import timezone
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+
     return jsonify({
         "status": "success",
         "pass_id": log_entry.id,
         "student_name": student.full_name,
         "period": log_entry.period,
         "destination": log_entry.reason,
-        "request_time": log_entry.request_time.isoformat() if log_entry.request_time else None,
+        "request_time": format_utc_time(log_entry.request_time),
         "pass_status": log_entry.status,
-        "left_time": log_entry.left_time.isoformat() if log_entry.left_time else None,
-        "return_time": log_entry.return_time.isoformat() if log_entry.return_time else None
+        "left_time": format_utc_time(log_entry.left_time),
+        "return_time": format_utc_time(log_entry.return_time)
     })
 
 @app.route('/api/hall-pass/terminal/use', methods=['POST'])
