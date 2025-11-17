@@ -3395,6 +3395,19 @@ def handle_tap():
                 "duration": duration
             })
 
+        # When tapping in, automatically return any active hall pass
+        if action == "tap_in":
+            active_hall_pass = HallPassLog.query.filter_by(
+                student_id=student.id,
+                period=period,
+                status='left'
+            ).order_by(HallPassLog.request_time.desc()).first()
+
+            if active_hall_pass:
+                active_hall_pass.status = 'returned'
+                active_hall_pass.return_time = now
+                app.logger.info(f"Auto-returned hall pass {active_hall_pass.id} for student {student.id}")
+
         event = TapEvent(
             student_id=student.id,
             period=period,
