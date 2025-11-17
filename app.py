@@ -1059,6 +1059,22 @@ def student_dashboard():
 
     # Compute most recent deposit and insurance paid flag
     recent_deposit = student.recent_deposits[0] if student.recent_deposits else None
+
+    # Track seen deposits in session to show notification only once
+    if 'seen_deposit_ids' not in session:
+        session['seen_deposit_ids'] = []
+
+    # Only show deposit if it hasn't been seen yet
+    if recent_deposit and recent_deposit.id not in session['seen_deposit_ids']:
+        # Mark as seen
+        session['seen_deposit_ids'].append(recent_deposit.id)
+        session.modified = True
+        # Keep only last 10 seen deposit IDs to prevent session bloat
+        session['seen_deposit_ids'] = session['seen_deposit_ids'][-10:]
+    else:
+        # Don't show if already seen
+        recent_deposit = None
+
     insurance_paid = bool(student.insurance_last_paid)
 
     tz = pytz.timezone('America/Los_Angeles')
@@ -1443,7 +1459,8 @@ def student_view_policy(enrollment_id):
                           student=student,
                           enrollment=enrollment,
                           policy=enrollment.policy,
-                          claims=claims)
+                          claims=claims,
+                          now=datetime.utcnow())
 
 
 # -------------------- STUDENT SHOP --------------------
