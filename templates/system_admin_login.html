@@ -1,47 +1,304 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>System Admin Login</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        :root {
+            --primary-dark: #1a1a2e;
+            --primary-purple: #6f42c1;
+            --primary-purple-light: #8c5cd6;
+            --dark-bg: #0f0f1e;
+            --sidebar-bg: #16213e;
+            --sidebar-text: #e8e8e8;
+            --accent-cyan: #00d4ff;
+            --accent-green: #00ff88;
+            --danger-red: #ff3b3b;
+        }
 
-{% block title %}System Admin Login{% endblock %}
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-{% block content %}
-<h4 class="mb-1 text-center" style="font-family:noto sans mono;">🤫 Super Secret Backstage Access 🤫</h4>
-<p class="fst-italic text-center mb-4" style="noto sans mono">Authorized System Administrators Only</p>
-<div class="card bg-dark text-light p-4 rounded shadow-sm" style="max-width: 400px; margin: auto;">
-    {% if form %}
-    <form method="POST">
-        {{ form.hidden_tag() }}
-        <div class="mb-3">
-            {{ form.username.label(class="form-label") }}
-            {{ form.username(class="form-control", autofocus=True, style="font-family: monospace;") }}
-        </div>
-        <div class="mb-3">
-            {{ form.totp_code.label(class="form-label") }}
-            {{ form.totp_code(class="form-control", placeholder="", style="font-family: monospace;") }}
-        </div>
-        <div class="d-flex flex-column align-items-center mt-2">
-            {{ form.submit(class="btn btn-primary w-100 d-flex justify-content-center align-items-center") }}
-            <span class="pulse-lock mt-2">🔒</span>
-        </div>
-        <style>
-            .form-label {
-                font-family: monospace;
+        body {
+            font-family: 'Noto Sans', sans-serif;
+            background: linear-gradient(135deg, var(--dark-bg) 0%, var(--primary-dark) 50%, var(--sidebar-bg) 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--sidebar-text);
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Animated background circles */
+        .bg-circle {
+            position: absolute;
+            border-radius: 50%;
+            opacity: 0.05;
+        }
+
+        .bg-circle-1 {
+            width: 500px;
+            height: 500px;
+            background: var(--primary-purple);
+            top: -200px;
+            right: -200px;
+            animation: float 20s infinite ease-in-out;
+        }
+
+        .bg-circle-2 {
+            width: 300px;
+            height: 300px;
+            background: var(--accent-cyan);
+            bottom: -100px;
+            left: -100px;
+            animation: float 15s infinite ease-in-out reverse;
+        }
+
+        .bg-circle-3 {
+            width: 200px;
+            height: 200px;
+            background: var(--accent-green);
+            top: 40%;
+            right: 20%;
+            animation: float 18s infinite ease-in-out;
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translate(0, 0) scale(1);
             }
-            @keyframes pulse-lock {
-                0% { transform: scale(1); }
-                50% { transform: scale(1.1); }
-                100% { transform: scale(1); }
+            50% {
+                transform: translate(30px, -30px) scale(1.1);
             }
-            .pulse-lock {
-                display: inline-block;
-                animation: pulse-lock 2s infinite;
-                font-size: 1.5rem;
+        }
+
+        .login-container {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 450px;
+            padding: 2rem;
+        }
+
+        .login-card {
+            background: rgba(26, 26, 46, 0.9);
+            border: 1px solid rgba(111, 66, 193, 0.3);
+            border-radius: 1rem;
+            padding: 3rem 2.5rem;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 50px rgba(111, 66, 193, 0.2);
+            backdrop-filter: blur(10px);
+        }
+
+        .lock-icon {
+            font-size: 3rem;
+            animation: pulse-glow 2s infinite;
+            display: inline-block;
+            margin-bottom: 1rem;
+        }
+
+        @keyframes pulse-glow {
+            0%, 100% {
+                opacity: 0.6;
+                text-shadow: 0 0 10px var(--accent-cyan);
+                transform: scale(1);
             }
-        </style>
-    </form>
-    {% endif %}
-</div>
-<div class="mt-4 text-center">
-    <p><a class="text-decoration-none fw-bold btn-secondary btn" href="{{ url_for('student_login') }}">Return to Student Login</a></p>
-    <p><a href="{{ url_for('admin_login') }}" class="btn text-decoration-none fw-bold btn-secondary">Return to Teacher Login</a></p>
-    <p class="fst-italic text-secondary small mt-2">*You didn't see this page.*</p>
-</div>
-{% endblock %}
+            50% {
+                opacity: 1;
+                text-shadow: 0 0 30px var(--accent-cyan), 0 0 50px var(--primary-purple);
+                transform: scale(1.05);
+            }
+        }
+
+        .login-title {
+            color: var(--accent-cyan);
+            font-weight: 700;
+            font-size: 1.8rem;
+            margin-bottom: 0.5rem;
+            text-shadow: 0 0 10px rgba(0, 212, 255, 0.5);
+        }
+
+        .login-subtitle {
+            color: var(--sidebar-text);
+            opacity: 0.7;
+            font-size: 0.9rem;
+            margin-bottom: 2rem;
+        }
+
+        .form-label {
+            color: var(--accent-cyan);
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .form-control {
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(111, 66, 193, 0.3);
+            color: var(--sidebar-text);
+            padding: 0.75rem 1rem;
+            border-radius: 0.5rem;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
+        }
+
+        .form-control:focus {
+            background-color: rgba(255, 255, 255, 0.08);
+            border-color: var(--primary-purple);
+            box-shadow: 0 0 0 0.25rem rgba(111, 66, 193, 0.25), 0 0 20px rgba(111, 66, 193, 0.3);
+            color: var(--sidebar-text);
+        }
+
+        .form-control::placeholder {
+            color: rgba(232, 232, 232, 0.3);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-purple) 0%, var(--primary-purple-light) 100%);
+            border: none;
+            padding: 0.75rem 1.5rem;
+            font-weight: 600;
+            border-radius: 0.5rem;
+            transition: all 0.3s;
+            box-shadow: 0 4px 15px rgba(111, 66, 193, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 25px rgba(111, 66, 193, 0.6);
+            background: linear-gradient(135deg, var(--primary-purple-light) 0%, var(--primary-purple) 100%);
+        }
+
+        .btn-secondary {
+            background-color: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: var(--sidebar-text);
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            transition: all 0.3s;
+        }
+
+        .btn-secondary:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.3);
+            color: var(--sidebar-text);
+        }
+
+        .back-links {
+            margin-top: 2rem;
+            text-align: center;
+            padding-top: 1.5rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .back-links a {
+            color: var(--accent-cyan);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .back-links a:hover {
+            color: var(--primary-purple-light);
+            text-decoration: none;
+        }
+
+        .security-notice {
+            background-color: rgba(255, 59, 59, 0.1);
+            border: 1px solid rgba(255, 59, 59, 0.3);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .security-notice i {
+            color: var(--danger-red);
+            margin-right: 0.5rem;
+        }
+
+        .alert {
+            background-color: rgba(255, 59, 59, 0.2);
+            border: 1px solid var(--danger-red);
+            color: var(--sidebar-text);
+            border-radius: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <!-- Background animated circles -->
+    <div class="bg-circle bg-circle-1"></div>
+    <div class="bg-circle bg-circle-2"></div>
+    <div class="bg-circle bg-circle-3"></div>
+
+    <!-- Login Container -->
+    <div class="login-container">
+        <div class="login-card">
+            <div class="text-center">
+                <div class="lock-icon">🔒</div>
+                <h1 class="login-title">System Administrator</h1>
+                <p class="login-subtitle">Authorized Access Only</p>
+            </div>
+
+            <div class="security-notice">
+                <i class="bi bi-shield-lock"></i>
+                <strong>Secure Access Required</strong>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ 'danger' if category == 'error' else category }} mb-3">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            {% if form %}
+            <form method="POST">
+                {{ form.hidden_tag() }}
+                <div class="mb-3">
+                    {{ form.username.label(class="form-label") }}
+                    {{ form.username(class="form-control", autofocus=True, placeholder="admin") }}
+                </div>
+                <div class="mb-4">
+                    {{ form.totp_code.label(class="form-label") }}
+                    {{ form.totp_code(class="form-control", placeholder="000000") }}
+                    <small class="text-muted" style="font-size: 0.8rem;">
+                        <i class="bi bi-info-circle me-1"></i>Enter 6-digit code from authenticator app
+                    </small>
+                </div>
+                <div class="d-grid">
+                    {{ form.submit(class="btn btn-primary") }}
+                </div>
+            </form>
+            {% endif %}
+
+            <div class="back-links">
+                <a href="{{ url_for('student_login') }}">
+                    <i class="bi bi-arrow-left me-2"></i>Return to Main Login
+                </a>
+            </div>
+        </div>
+
+        <div class="text-center mt-4">
+            <small class="text-muted" style="opacity: 0.5; font-size: 0.75rem;">
+                Unauthorized access attempts are logged and monitored
+            </small>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

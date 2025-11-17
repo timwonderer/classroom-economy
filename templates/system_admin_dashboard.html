@@ -89,7 +89,7 @@
                                         <h6 class="mb-1">{{ teacher.username }}</h6>
                                         <small class="text-muted">
                                             <i class="bi bi-calendar3 me-1"></i>
-                                            Joined {{ teacher.created_at.strftime('%b %d, %Y') }}
+                                            Joined {{ teacher.created_at.strftime('%b %d, %Y') if teacher.created_at else 'Unknown' }}
                                         </small>
                                     </div>
                                     <span class="badge bg-success">
