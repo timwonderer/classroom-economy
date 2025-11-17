@@ -110,7 +110,6 @@ class InsurancePolicyForm(FlaskForm):
 
 
 class InsuranceClaimForm(FlaskForm):
-    policy_id = SelectField('Insurance Policy', coerce=int, validators=[DataRequired()])
     incident_date = DateField('Date of Incident', format='%Y-%m-%d', validators=[DataRequired()])
     description = TextAreaField('Claim Description', validators=[DataRequired()])
     claim_amount = FloatField('Claim Amount ($)', validators=[Optional()])

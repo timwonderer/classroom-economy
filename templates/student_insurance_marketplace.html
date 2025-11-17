@@ -37,7 +37,12 @@
                     </p>
                 </div>
                 <div class="col-md-4 text-md-end">
-                    <a href="{{ url_for('student_file_claim', policy_id=enrollment.policy.id) }}" class="btn btn-sm btn-outline-primary mb-2">File Claim</a>
+                    {% set in_waiting_period = not enrollment.coverage_start_date or enrollment.coverage_start_date > now %}
+                    {% if in_waiting_period %}
+                        <button class="btn btn-sm btn-outline-secondary mb-2" disabled title="Coverage not active yet - still in waiting period">File Claim (Waiting Period)</button>
+                    {% else %}
+                        <a href="{{ url_for('student_file_claim', policy_id=enrollment.policy.id) }}" class="btn btn-sm btn-outline-primary mb-2">File Claim</a>
+                    {% endif %}
                     <a href="{{ url_for('student_view_policy', enrollment_id=enrollment.id) }}" class="btn btn-sm btn-outline-secondary mb-2">View Details</a>
                     <form action="{{ url_for('student_cancel_insurance', enrollment_id=enrollment.id) }}" method="POST" class="d-inline">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

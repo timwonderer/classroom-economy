@@ -1234,7 +1234,8 @@ def student_insurance_marketplace():
                           available_policies=available_policies,
                           can_purchase=can_purchase,
                           repurchase_blocks=repurchase_blocks,
-                          my_claims=my_claims)
+                          my_claims=my_claims,
+                          now=datetime.utcnow())
 
 @app.route('/student/insurance/purchase/<int:policy_id>', methods=['POST'])
 @login_required
