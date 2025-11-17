@@ -309,12 +309,12 @@ def system_admin_required(f):
         last_activity = session.get('last_activity')
         now = datetime.now(timezone.utc)
         if last_activity:
-            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            last_activity = datetime.fromisoformat(last_activity)
             if now - last_activity > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                 session.pop("is_system_admin", None)
                 flash("Session expired. Please log in again.")
                 return redirect(url_for('system_admin_login', next=request.path))
-        session['last_activity'] = now.strftime("%Y-%m-%d %H:%M:%S")
+        session['last_activity'] = now.isoformat()
         return f(*args, **kwargs)
     return decorated_function
 
@@ -856,14 +856,14 @@ def admin_required(f):
         last_activity = session.get('last_activity')
 
         if last_activity:
-            last_activity = datetime.strptime(last_activity, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+            last_activity = datetime.fromisoformat(last_activity)
             if (now - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                 session.pop("is_admin", None)
                 flash("Admin session expired. Please log in again.")
                 encoded_next = urllib.parse.quote(request.path, safe="")
                 return redirect(f"{url_for('admin_login')}?next={encoded_next}")
 
-        session['last_activity'] = now.strftime("%Y-%m-%d %H:%M:%S")
+        session['last_activity'] = now.isoformat()
         return f(*args, **kwargs)
     return decorated_function
 
@@ -2047,7 +2047,7 @@ def admin_login():
                 db.session.commit()
 
                 session["is_admin"] = True
-                session["last_activity"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
+                session["last_activity"] = datetime.now(timezone.utc).isoformat()
                 app.logger.info(f"✅ Admin login success for {username}")
                 flash("Admin login successful.")
                 next_url = request.args.get("next")
@@ -3549,7 +3549,7 @@ def system_admin_login():
             totp = pyotp.TOTP(admin.totp_secret)
             if totp.verify(totp_code, valid_window=1):
                 session["is_system_admin"] = True
-                session['last_activity'] = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+                session['last_activity'] = datetime.now(timezone.utc).isoformat()
                 flash("System admin login successful.")
                 next_url = request.args.get("next")
                 if not is_safe_url(next_url):
