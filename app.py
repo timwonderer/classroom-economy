@@ -1171,7 +1171,7 @@ def student_transfer():
     return render_template('student_transfer.html', student=student)
 
 # -------------------- INSURANCE ROUTE --------------------
-@app.route('/student/insurance')
+@app.route('/student/insurance', endpoint='student_insurance')
 @login_required
 def student_insurance_marketplace():
     """Insurance marketplace - browse and manage policies"""
@@ -1246,7 +1246,7 @@ def student_purchase_insurance(policy_id):
 
     if existing:
         flash("You are already enrolled in this policy.", "warning")
-        return redirect(url_for('student_insurance_marketplace'))
+        return redirect(url_for('student_insurance'))
 
     # Check repurchase restrictions
     cancelled = StudentInsurance.query.filter_by(
@@ -1259,19 +1259,19 @@ def student_purchase_insurance(policy_id):
         # Check for permanent block (no repurchase allowed EVER)
         if policy.no_repurchase_after_cancel:
             flash("This policy cannot be repurchased after cancellation.", "danger")
-            return redirect(url_for('student_insurance_marketplace'))
+            return redirect(url_for('student_insurance'))
 
         # Check for cooldown period (temporary restriction)
         if policy.enable_repurchase_cooldown and cancelled.cancel_date:
             days_since_cancel = (datetime.utcnow() - cancelled.cancel_date).days
             if days_since_cancel < policy.repurchase_wait_days:
                 flash(f"You must wait {policy.repurchase_wait_days - days_since_cancel} more days before repurchasing this policy.", "warning")
-                return redirect(url_for('student_insurance_marketplace'))
+                return redirect(url_for('student_insurance'))
 
     # Check sufficient funds
     if student.checking_balance < policy.premium:
         flash("Insufficient funds to purchase this insurance policy.", "danger")
-        return redirect(url_for('student_insurance_marketplace'))
+        return redirect(url_for('student_insurance'))
 
     # Create enrollment
     enrollment = StudentInsurance(
@@ -1298,7 +1298,7 @@ def student_purchase_insurance(policy_id):
 
     db.session.commit()
     flash(f"Successfully purchased {policy.title}! Coverage starts after {policy.waiting_period_days} day waiting period.", "success")
-    return redirect(url_for('student_insurance_marketplace'))
+    return redirect(url_for('student_insurance'))
 
 @app.route('/student/insurance/cancel/<int:enrollment_id>', methods=['POST'])
 @login_required
@@ -1310,14 +1310,14 @@ def student_cancel_insurance(enrollment_id):
     # Verify ownership
     if enrollment.student_id != student.id:
         flash("Unauthorized access.", "danger")
-        return redirect(url_for('student_insurance_marketplace'))
+        return redirect(url_for('student_insurance'))
 
     enrollment.status = 'cancelled'
     enrollment.cancel_date = datetime.utcnow()
 
     db.session.commit()
     flash(f"Insurance policy '{enrollment.policy.title}' has been cancelled.", "info")
-    return redirect(url_for('student_insurance_marketplace'))
+    return redirect(url_for('student_insurance'))
 
 @app.route('/student/insurance/claim/<int:policy_id>', methods=['GET', 'POST'])
 @login_required
@@ -1336,7 +1336,7 @@ def student_file_claim(policy_id):
 
     if not enrollment:
         flash("You are not enrolled in this policy.", "danger")
-        return redirect(url_for('student_insurance_marketplace'))
+        return redirect(url_for('student_insurance'))
 
     policy = enrollment.policy
     form = InsuranceClaimForm()
@@ -1400,7 +1400,7 @@ def student_file_claim(policy_id):
         db.session.commit()
 
         flash("Claim submitted successfully! It will be reviewed by your teacher.", "success")
-        return redirect(url_for('student_insurance_marketplace'))
+        return redirect(url_for('student_insurance'))
 
     # Get claims for this period
     claims_this_period = InsuranceClaim.query.filter_by(
@@ -1425,7 +1425,7 @@ def student_view_policy(enrollment_id):
     # Verify ownership
     if enrollment.student_id != student.id:
         flash("Unauthorized access.", "danger")
-        return redirect(url_for('student_insurance_marketplace'))
+        return redirect(url_for('student_insurance'))
 
     # Get claims for this policy
     claims = InsuranceClaim.query.filter_by(student_insurance_id=enrollment.id).order_by(
