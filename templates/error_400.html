@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>400 - Bad Request</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans', sans-serif;
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .error-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 750px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .error-header {
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+            color: #333;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .error-header h1 {
+            font-size: 5rem;
+            font-weight: 700;
+            margin: 0;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .error-header p {
+            font-size: 1.3rem;
+            margin: 0.5rem 0 0 0;
+            opacity: 0.85;
+        }
+
+        .error-body {
+            padding: 2rem;
+        }
+
+        .friendly-message {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .friendly-message h3 {
+            color: #333;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .friendly-message p {
+            color: #666;
+            font-size: 1.05rem;
+            line-height: 1.6;
+        }
+
+        .error-details {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .error-details strong {
+            color: #e65100;
+        }
+
+        .error-details code {
+            background: #ffe0b2;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            color: #bf360c;
+        }
+
+        .troubleshooting {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .troubleshooting h5 {
+            color: #ff9800;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .troubleshooting ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .troubleshooting li {
+            padding: 0.5rem 0;
+            color: #555;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .troubleshooting li:before {
+            content: "✓";
+            color: #ff9800;
+            font-weight: bold;
+            margin-right: 0.75rem;
+            font-size: 1.2rem;
+        }
+
+        .common-issues {
+            background: #e3f2fd;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .common-issues h5 {
+            color: #1976d2;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .common-issues ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .common-issues li {
+            padding: 0.4rem 0;
+            color: #555;
+            font-size: 0.95rem;
+        }
+
+        .common-issues li strong {
+            color: #1976d2;
+        }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn-primary-custom {
+            background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%);
+            color: #333;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: transform 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary-custom:hover {
+            transform: translateY(-2px);
+            color: #333;
+            box-shadow: 0 5px 15px rgba(252, 182, 159, 0.4);
+        }
+
+        .btn-secondary-custom {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: transform 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-secondary-custom:hover {
+            transform: translateY(-2px);
+            color: white;
+            background: #5a6268;
+        }
+
+        .emoji {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .error-header h1 {
+                font-size: 4rem;
+            }
+
+            .error-body {
+                padding: 1.5rem;
+            }
+
+            .actions {
+                flex-direction: column;
+            }
+
+            .btn-primary-custom,
+            .btn-secondary-custom {
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="error-container">
+        <div class="error-header">
+            <h1>400</h1>
+            <p>Bad Request</p>
+        </div>
+
+        <div class="error-body">
+            <div class="friendly-message">
+                <div class="emoji">⚠️</div>
+                <h3>We couldn't understand your request.</h3>
+                <p>The request you sent contains invalid or missing information.</p>
+            </div>
+
+            {% if error_message %}
+            <div class="error-details">
+                <strong>Error Details:</strong> <code>{{ error_message }}</code>
+            </div>
+            {% endif %}
+
+            <div class="troubleshooting">
+                <h5>How to Fix This:</h5>
+                <ul>
+                    <li><strong>Double-check your input:</strong> Make sure all required fields are filled out correctly</li>
+                    <li><strong>Verify numbers and dates:</strong> Ensure numeric values are valid and dates are in the correct format</li>
+                    <li><strong>Check for special characters:</strong> Some fields may not accept certain symbols or characters</li>
+                    <li><strong>Don't modify URLs:</strong> If you manually edited the URL, try using the normal navigation instead</li>
+                    <li><strong>Clear and retry:</strong> Go back, clear the form, and try submitting again</li>
+                </ul>
+            </div>
+
+            <div class="common-issues">
+                <h5>Common Issues:</h5>
+                <ul>
+                    <li><strong>Missing required fields</strong> - All fields marked with * must be filled in</li>
+                    <li><strong>Invalid email format</strong> - Email must be in format: name@example.com</li>
+                    <li><strong>Number out of range</strong> - Check min/max values for numeric fields</li>
+                    <li><strong>Invalid date</strong> - Dates must be valid calendar dates</li>
+                    <li><strong>File too large</strong> - Uploaded files may have size limits</li>
+                    <li><strong>Unsupported file type</strong> - Check accepted file formats</li>
+                </ul>
+            </div>
+
+            <div class="actions">
+                <a href="javascript:history.back()" class="btn-primary-custom">Go Back & Fix</a>
+                <a href="/" class="btn-secondary-custom">Go to Home</a>
+            </div>
+
+            <div class="mt-4 text-center">
+                <p class="text-muted" style="font-size: 0.9rem;">
+                    Still having trouble? Contact support at
+                    <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

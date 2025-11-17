@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>403 - Access Forbidden</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans', sans-serif;
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .error-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 700px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .error-header {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .error-header h1 {
+            font-size: 5rem;
+            font-weight: 700;
+            margin: 0;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .error-header p {
+            font-size: 1.3rem;
+            margin: 0.5rem 0 0 0;
+            opacity: 0.95;
+        }
+
+        .error-body {
+            padding: 2rem;
+        }
+
+        .friendly-message {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .friendly-message h3 {
+            color: #333;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .friendly-message p {
+            color: #666;
+            font-size: 1.05rem;
+            line-height: 1.6;
+        }
+
+        .troubleshooting {
+            background: #fff3cd;
+            border-left: 4px solid #fa709a;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .troubleshooting h5 {
+            color: #fa709a;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .troubleshooting ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .troubleshooting li {
+            padding: 0.5rem 0;
+            color: #555;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .troubleshooting li:before {
+            content: "✓";
+            color: #fa709a;
+            font-weight: bold;
+            margin-right: 0.75rem;
+            font-size: 1.2rem;
+        }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn-primary-custom {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: transform 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary-custom:hover {
+            transform: translateY(-2px);
+            color: white;
+            box-shadow: 0 5px 15px rgba(250, 112, 154, 0.4);
+        }
+
+        .btn-secondary-custom {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: transform 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-secondary-custom:hover {
+            transform: translateY(-2px);
+            color: white;
+            background: #5a6268;
+        }
+
+        .emoji {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .error-header h1 {
+                font-size: 4rem;
+            }
+
+            .error-body {
+                padding: 1.5rem;
+            }
+
+            .actions {
+                flex-direction: column;
+            }
+
+            .btn-primary-custom,
+            .btn-secondary-custom {
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="error-container">
+        <div class="error-header">
+            <h1>403</h1>
+            <p>Access Forbidden</p>
+        </div>
+
+        <div class="error-body">
+            <div class="friendly-message">
+                <div class="emoji">🚫</div>
+                <h3>You don't have permission to access this page.</h3>
+                <p>This page is restricted and requires specific permissions to view.</p>
+            </div>
+
+            <div class="troubleshooting">
+                <h5>Troubleshooting Steps:</h5>
+                <ul>
+                    <li><strong>Check your account type:</strong> You might be logged in as a student but trying to access an admin-only page (or vice versa)</li>
+                    <li><strong>Re-authenticate:</strong> Your session may have expired. Try logging out and logging back in</li>
+                    <li><strong>Verify the URL:</strong> Make sure you're accessing the correct page for your account type</li>
+                    <li><strong>Contact your teacher/admin:</strong> If you believe you should have access, ask them to check your permissions</li>
+                    <li><strong>Clear your browser cache:</strong> Sometimes old session data can cause permission issues</li>
+                </ul>
+            </div>
+
+            <div class="actions">
+                <a href="/" class="btn-primary-custom">Go to Home</a>
+                <a href="javascript:history.back()" class="btn-secondary-custom">Go Back</a>
+            </div>
+
+            <div class="mt-4 text-center">
+                <p class="text-muted" style="font-size: 0.9rem;">
+                    Need help? Contact support at
+                    <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a>
+                </p>
+            </div>
+        </div>
+    </div>
+</body>
+
+</html>

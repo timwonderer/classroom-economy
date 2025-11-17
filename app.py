@@ -503,6 +503,21 @@ class InsuranceClaim(db.Model):
     processed_by = db.relationship('Admin', backref='processed_claims')
 
 
+# ---- Error Log Model ----
+class ErrorLog(db.Model):
+    __tablename__ = 'error_logs'
+    id = db.Column(db.Integer, primary_key=True)
+    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    error_type = db.Column(db.String(100), nullable=True)  # Type of error (e.g., Exception class name)
+    error_message = db.Column(db.Text, nullable=True)  # Error message
+    request_path = db.Column(db.String(500), nullable=True)  # URL path that caused the error
+    request_method = db.Column(db.String(10), nullable=True)  # HTTP method (GET, POST, etc.)
+    user_agent = db.Column(db.String(500), nullable=True)  # Browser/client info
+    ip_address = db.Column(db.String(50), nullable=True)  # IP address of requester
+    log_output = db.Column(db.Text, nullable=False)  # Last 50 lines of log
+    stack_trace = db.Column(db.Text, nullable=True)  # Full stack trace
+
+
 # ---- Admin Model ----
 class Admin(db.Model):
     __tablename__ = 'admins'
@@ -510,6 +525,8 @@ class Admin(db.Model):
     username = db.Column(db.String(80), unique=True, nullable=False)
     # TOTP-only: store secret, remove password_hash
     totp_secret = db.Column(db.String(32), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)  # Nullable for existing records
+    last_login = db.Column(db.DateTime, nullable=True)
 
 # after your models are defined but before you start serving requests
 from flask.cli import with_appcontext
@@ -563,6 +580,223 @@ else:
 
 
 
+# -------------------- ERROR LOGGING UTILITIES --------------------
+import traceback
+import collections
+
+def get_last_log_lines(num_lines=50):
+    """
+    Get the last N lines from the log file.
+    Returns a string with the last N lines, or an error message if the log file cannot be read.
+    """
+    log_file_path = os.getenv("LOG_FILE", "app.log")
+
+    # For non-production environments (no log file), return recent logs from memory
+    if os.getenv("FLASK_ENV", app.config.get("ENV")) != "production":
+        return "[Log file only available in production mode]"
+
+    try:
+        if not os.path.exists(log_file_path):
+            return f"[Log file not found at {log_file_path}]"
+
+        # Use deque for efficient tail operation
+        with open(log_file_path, 'r', encoding='utf-8', errors='replace') as f:
+            last_lines = collections.deque(f, maxlen=num_lines)
+
+        return ''.join(last_lines)
+    except Exception as e:
+        return f"[Error reading log file: {str(e)}]"
+
+
+def log_error_to_db(error_type=None, error_message=None, stack_trace=None, log_output=None):
+    """
+    Save error information to the database for later review.
+    This function should not raise exceptions to avoid recursive error loops.
+    """
+    try:
+        # Get request information if available
+        request_path = request.path if request else None
+        request_method = request.method if request else None
+        user_agent = request.headers.get('User-Agent', None) if request else None
+        ip_address = request.remote_addr if request else None
+
+        # Get log output
+        if log_output is None:
+            log_output = get_last_log_lines(50)
+
+        # Create error log entry
+        error_log = ErrorLog(
+            timestamp=datetime.utcnow(),
+            error_type=error_type,
+            error_message=error_message,
+            request_path=request_path,
+            request_method=request_method,
+            user_agent=user_agent,
+            ip_address=ip_address,
+            log_output=log_output,
+            stack_trace=stack_trace
+        )
+
+        db.session.add(error_log)
+        db.session.commit()
+
+        return error_log.id
+    except Exception as e:
+        # Log to app logger but don't raise - we don't want error logging to cause more errors
+        app.logger.error(f"Failed to log error to database: {str(e)}")
+        return None
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    """
+    Handle 500 Internal Server Error.
+    Logs the error to the database and displays a user-friendly error page.
+    """
+    # Get error details
+    error_type = type(error).__name__
+    error_message = str(error)
+    stack_trace = traceback.format_exc()
+
+    # Log to app logger
+    app.logger.exception("500 Internal Server Error occurred")
+
+    # Save to database
+    error_id = log_error_to_db(
+        error_type=error_type,
+        error_message=error_message,
+        stack_trace=stack_trace
+    )
+
+    # Rollback any pending database changes
+    db.session.rollback()
+
+    # Get log output for display
+    log_output = get_last_log_lines(50)
+
+    # Render error page
+    return render_template(
+        'error_500.html',
+        error_id=error_id,
+        error_type=error_type,
+        error_message=error_message,
+        log_output=log_output,
+        support_email='timothy.cs.chang@gmail.com'
+    ), 500
+
+
+@app.errorhandler(404)
+def not_found_error(error):
+    """
+    Handle 404 Not Found Error.
+    Displays a user-friendly page with navigation help.
+    Rate-limited database logging to prevent spam from bots/typos.
+    """
+    app.logger.warning(f"404 Not Found: {request.url}")
+
+    # Rate-limited logging: only log unique 404s once per hour
+    cache_key = f"404_{request.path}"
+    if not hasattr(app, '_404_cache'):
+        app._404_cache = {}
+
+    # Clean old entries (older than 1 hour)
+    current_time = datetime.utcnow()
+    app._404_cache = {k: v for k, v in app._404_cache.items()
+                      if (current_time - v).total_seconds() < 3600}
+
+    # Log to database if not recently logged
+    if cache_key not in app._404_cache:
+        log_error_to_db(
+            error_type='404 Not Found',
+            error_message=f"Page not found: {request.path}",
+            stack_trace=None
+        )
+        app._404_cache[cache_key] = current_time
+
+    return render_template(
+        'error_404.html',
+        request_url=request.url
+    ), 404
+
+
+@app.errorhandler(403)
+def forbidden_error(error):
+    """
+    Handle 403 Forbidden Error.
+    Displays a user-friendly page with permission troubleshooting.
+    Logs to database to track potential security issues.
+    """
+    app.logger.warning(f"403 Forbidden: {request.url}")
+
+    # Log to database - permission errors could indicate security issues
+    log_error_to_db(
+        error_type='403 Forbidden',
+        error_message=f"Access forbidden: {request.path}",
+        stack_trace=None
+    )
+
+    return render_template('error_403.html'), 403
+
+
+@app.errorhandler(401)
+def unauthorized_error(error):
+    """
+    Handle 401 Unauthorized Error.
+    Displays a user-friendly page with login guidance.
+    Logs to database to track authentication issues.
+    """
+    app.logger.warning(f"401 Unauthorized: {request.url}")
+
+    # Log to database - authentication errors help identify session/auth issues
+    log_error_to_db(
+        error_type='401 Unauthorized',
+        error_message=f"Authentication required: {request.path}",
+        stack_trace=None
+    )
+
+    return render_template('error_401.html'), 401
+
+
+@app.errorhandler(400)
+def bad_request_error(error):
+    """
+    Handle 400 Bad Request Error.
+    Displays a user-friendly page with input validation help.
+    Logs to database to identify UX/validation issues.
+    """
+    error_msg = str(error.description) if hasattr(error, 'description') else str(error)
+    app.logger.warning(f"400 Bad Request: {request.url} - {error_msg}")
+
+    # Log to database - validation errors help identify UX issues
+    log_error_to_db(
+        error_type='400 Bad Request',
+        error_message=f"Bad request on {request.path}: {error_msg}",
+        stack_trace=None
+    )
+
+    return render_template(
+        'error_400.html',
+        error_message=error_msg
+    ), 400
+
+
+@app.errorhandler(503)
+def service_unavailable_error(error):
+    """
+    Handle 503 Service Unavailable Error.
+    Displays a user-friendly page for maintenance/downtime.
+    Logs to database for service availability tracking.
+    """
+    app.logger.error(f"503 Service Unavailable: {request.url}")
+
+    # Log to database - service availability is critical to track
+    log_error_to_db(
+        error_type='503 Service Unavailable',
+        error_message=f"Service unavailable: {request.path}",
+        stack_trace=None
+    )
+
+    return render_template('error_503.html'), 503
 
 
 # -------------------- AUTH HELPERS --------------------
@@ -1784,6 +2018,10 @@ def admin_login():
         if admin:
             totp = pyotp.TOTP(admin.totp_secret)
             if totp.verify(totp_code, valid_window=1):
+                # Update last login timestamp
+                admin.last_login = datetime.utcnow()
+                db.session.commit()
+
                 session["is_admin"] = True
                 session["last_activity"] = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
                 app.logger.info(f"✅ Admin login success for {username}")
@@ -3150,3 +3388,169 @@ def system_admin_logs():
     except Exception as e:
         structured_logs = [{"timestamp": "", "level": "ERROR", "module": "logs", "message": f"Error reading log file: {e}"}]
     return render_template("system_admin_logs.html", logs=structured_logs, current_page="sysadmin_logs")
+
+
+@app.route('/sysadmin/error-logs')
+@system_admin_required
+def system_admin_error_logs():
+    """
+    View error logs from the database.
+    Shows all errors captured by the error logging system.
+    """
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+
+    # Get error type filter if provided
+    error_type_filter = request.args.get('error_type', '')
+
+    query = ErrorLog.query
+
+    if error_type_filter:
+        query = query.filter(ErrorLog.error_type == error_type_filter)
+
+    # Paginate and order by most recent first
+    pagination = query.order_by(ErrorLog.timestamp.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+
+    error_logs = pagination.items
+
+    # Get distinct error types for filter dropdown
+    error_types = db.session.query(ErrorLog.error_type).distinct().all()
+    error_types = [et[0] for et in error_types if et[0]]
+
+    return render_template(
+        "system_admin_error_logs.html",
+        error_logs=error_logs,
+        pagination=pagination,
+        error_types=error_types,
+        current_error_type=error_type_filter,
+        current_page="sysadmin_error_logs"
+    )
+
+
+# -------------------- ERROR TESTING ROUTES (SYSADMIN ONLY) --------------------
+@app.route('/sysadmin/test-errors/400')
+@system_admin_required
+def test_error_400():
+    """Trigger a 400 Bad Request error for testing."""
+    from werkzeug.exceptions import BadRequest
+    raise BadRequest("This is a test 400 error triggered by system admin for testing purposes.")
+
+
+@app.route('/sysadmin/test-errors/401')
+@system_admin_required
+def test_error_401():
+    """Trigger a 401 Unauthorized error for testing."""
+    from werkzeug.exceptions import Unauthorized
+    raise Unauthorized("This is a test 401 error triggered by system admin for testing purposes.")
+
+
+@app.route('/sysadmin/test-errors/403')
+@system_admin_required
+def test_error_403():
+    """Trigger a 403 Forbidden error for testing."""
+    from werkzeug.exceptions import Forbidden
+    raise Forbidden("This is a test 403 error triggered by system admin for testing purposes.")
+
+
+@app.route('/sysadmin/test-errors/404')
+@system_admin_required
+def test_error_404():
+    """Trigger a 404 Not Found error for testing."""
+    from werkzeug.exceptions import NotFound
+    raise NotFound("This is a test 404 error triggered by system admin for testing purposes.")
+
+
+@app.route('/sysadmin/test-errors/500')
+@system_admin_required
+def test_error_500():
+    """Trigger a 500 Internal Server Error for testing."""
+    # Intentionally cause a division by zero error
+    x = 1 / 0
+    return "This should never be reached"
+
+
+@app.route('/sysadmin/test-errors/503')
+@system_admin_required
+def test_error_503():
+    """Trigger a 503 Service Unavailable error for testing."""
+    from werkzeug.exceptions import ServiceUnavailable
+    raise ServiceUnavailable("This is a test 503 error triggered by system admin for testing purposes.")
+
+
+# -------------------- ADMIN (TEACHER) MANAGEMENT --------------------
+@app.route('/sysadmin/admins')
+@system_admin_required
+def system_admin_manage_admins():
+    """
+    View and manage all admin (teacher) accounts.
+    Shows admin details, student counts, signup date, and last login.
+    """
+    # Get all admins with student counts
+    admins = Admin.query.all()
+    admin_data = []
+
+    for admin in admins:
+        # Count students (will be accurate once multi-tenancy is implemented)
+        student_count = Student.query.count()  # Currently counts all students
+        # TODO: After multi-tenancy, use: Student.query.filter_by(teacher_id=admin.id).count()
+
+        admin_data.append({
+            'id': admin.id,
+            'username': admin.username,
+            'student_count': student_count,
+            'created_at': admin.created_at,
+            'last_login': admin.last_login
+        })
+
+    return render_template(
+        'system_admin_manage_admins.html',
+        admins=admin_data,
+        current_page='sysadmin_admins'
+    )
+
+
+@app.route('/sysadmin/admins/<int:admin_id>/delete', methods=['POST'])
+@system_admin_required
+def system_admin_delete_admin(admin_id):
+    """
+    Delete an admin account and all students created under that teacher.
+    This is a permanent action that cascades to all student data.
+    """
+    admin = Admin.query.get_or_404(admin_id)
+
+    try:
+        # Count students for feedback message
+        # TODO: After multi-tenancy, filter by teacher_id
+        student_count = Student.query.count()
+
+        # Delete all students and their associated data
+        # TODO: After multi-tenancy, filter by: Student.query.filter_by(teacher_id=admin_id).all()
+        for student in Student.query.all():
+            # Delete all related data for each student
+            Transaction.query.filter_by(student_id=student.id).delete()
+            TapEvent.query.filter_by(student_id=student.id).delete()
+            HallPassLog.query.filter_by(student_id=student.id).delete()
+            StudentItem.query.filter_by(student_id=student.id).delete()
+            RentPayment.query.filter_by(student_id=student.id).delete()
+            from sqlalchemy import delete
+            db.session.execute(delete(StudentInsurance).where(StudentInsurance.student_id == student.id))
+            InsuranceClaim.query.filter_by(student_id=student.id).delete()
+
+        # Delete all students
+        Student.query.delete()
+
+        # Delete the admin
+        admin_username = admin.username
+        db.session.delete(admin)
+        db.session.commit()
+
+        flash(f"Admin '{admin_username}' and {student_count} students deleted successfully.", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception(f"Error deleting admin {admin_id}")
+        flash(f"Error deleting admin: {str(e)}", "error")
+
+    return redirect(url_for('system_admin_manage_admins'))

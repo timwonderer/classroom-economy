@@ -75,8 +75,24 @@
       <li><strong>Encryption at Rest</strong>: All sensitive data is encrypted at rest to protect it from unauthorized access.</li>
       <li><strong>State-of-the-Art Hashing</strong>: We use industry-leading algorithms to protect your credentials. Passwords and PINs are hashed using <strong>Argon2</strong>, a key derivation function that is highly resistant to brute-force and rainbow table attacks. Other sensitive identifiers are hashed using <strong>HMAC-SHA256</strong> with a per-record salt and a global pepper, ensuring that each hash is unique and secure.</li>
       <li><strong>Encrypted Transit</strong>: All data transmitted between your device and our servers is protected using HTTPS/TLS, preventing eavesdropping or tampering.</li>
-      - <strong>Secure Session Management</strong>: The application enforces idle timeouts and avoids persistent cookies to minimize the risk of unauthorized access from unattended devices.</li>
+      <li><strong>Secure Session Management</strong>: The application enforces idle timeouts and avoids persistent cookies to minimize the risk of unauthorized access from unattended devices.</li>
       <li><strong>Irreversible Hashes</strong>: All hashing is one-way, meaning that original values cannot be recovered from the stored hashes by anyone, including administrators.</li>
+    </ul>
+
+    <h4>Error Logging & Monitoring</h4>
+    <p>To maintain system reliability and quickly resolve technical issues, our application automatically logs errors and technical failures. This logging helps us identify and fix problems to ensure a smooth experience for all users.</p>
+    <h5>What We Log</h5>
+    <ul>
+      <li><strong>Error Type</strong>: The classification of the error (e.g., 404 Not Found, 500 Internal Server Error).</li>
+      <li><strong>Timestamp</strong>: When the error occurred.</li>
+      <li><strong>Request Details</strong>: The URL path and HTTP method that triggered the error.</li>
+      <li><strong>Technical Context</strong>: IP address, user agent (browser information), stack trace, and the last 50 lines of application logs.</li>
+    </ul>
+    <h5>Access & Retention</h5>
+    <ul>
+      <li>Error logs are accessible only to system administrators for debugging and system improvement purposes.</li>
+      <li>Error logs do not contain student PII such as names, balances, or transaction details—only technical diagnostic information.</li>
+      <li>Logs are retained for a reasonable period to support troubleshooting and are periodically purged in accordance with data retention policies.</li>
     </ul>
 
     <h4>Student Rights & Access</h4>

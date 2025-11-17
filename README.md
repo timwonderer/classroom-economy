@@ -23,9 +23,14 @@ An interactive banking and classroom management platform for teaching students a
 
 ### Current
 
-*   **System Admin Portal**: Manage admin invites and view system logs.
+*   **System Admin Portal**: Comprehensive super-user interface for managing teachers, generating admin invites, viewing system logs, monitoring errors, and testing error pages.
+*   **Teacher Management**: System admins can view all teacher accounts with signup dates, last login timestamps, and student counts. Delete teachers with automatic cascade deletion of all their students and related data.
+*   **Comprehensive Error Handling**: Custom error pages for all major HTTP errors (400, 401, 403, 404, 500, 503) with user-friendly troubleshooting guides and automatic database logging.
+*   **Database Error Logging**: All errors are automatically logged to database with full context including timestamp, error type, request details, user agent, IP address, stack trace, and last 50 lines of application logs.
+*   **Error Testing & Monitoring**: Built-in error testing interface allowing system admins to trigger test errors safely and view paginated, filterable error logs from the database.
 *   **Invite-Based Admin Signup**: New administrators can only sign up using a secure, single-use invite code.
 *   **TOTP-Only Admin Authentication**: All administrator accounts are secured with Time-Based One-Time Passwords (TOTP) for enhanced security.
+*   **Admin Activity Tracking**: Track when each admin account was created and their last login timestamp.
 *   **Student Roster Management**: Upload student rosters via CSV or add students manually.
 *   **Student First-Time Setup**: Students complete a secure setup process to create a PIN and passphrase for account access.
 *   **Attendance Tracking**: Students can tap in and out for designated class periods, with session durations logged automatically.
