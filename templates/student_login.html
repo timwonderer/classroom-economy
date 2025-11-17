@@ -204,7 +204,7 @@
             <div class="login-container">
                 <h2>Welcome Back</h2>
 
-                <!-- Tabs for Student/Teacher -->
+                <!-- Tabs for Student/Teacher/System Admin -->
                 <ul class="nav nav-tabs" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link active" id="student-tab" data-bs-toggle="tab" data-bs-target="#student-login" type="button" role="tab">
@@ -214,6 +214,11 @@
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="teacher-tab" data-bs-toggle="tab" data-bs-target="#teacher-login" type="button" role="tab" onclick="window.location.href='{{ url_for('admin_login') }}'">
                             Teacher Login
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="sysadmin-tab" data-bs-toggle="tab" data-bs-target="#sysadmin-login" type="button" role="tab" onclick="window.location.href='{{ url_for('system_admin_login') }}'">
+                            System Admin
                         </button>
                     </li>
                 </ul>

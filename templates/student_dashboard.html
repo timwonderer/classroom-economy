@@ -72,11 +72,6 @@
         🚨 Your insurance payment is past due.
     </div>
 {% endif %}
-{% if student.amount_needed_to_cover_bills > 0 %}
-    <div class="alert alert-warning">
-        💡 You're short ${{ '%.2f' | format(student.amount_needed_to_cover_bills) }} for next month's bills.
-    </div>
-{% endif %}
 {% if recent_deposit %}
     <div class="alert alert-success">
         ✅ You received a deposit of ${{ '%.2f'|format(recent_deposit.amount) }}.
