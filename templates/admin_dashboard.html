@@ -42,6 +42,7 @@
             <td>
                 {% if not tx.is_void %}
                 <form method="POST" action="{{ url_for('void_transaction', transaction_id=tx.id) }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-sm btn-danger">Void</button>
                 </form>
                 {% else %}
