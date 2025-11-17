@@ -353,7 +353,7 @@ class HallPassLog(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     reason = db.Column(db.String(50), nullable=False)
-    status = db.Column(db.String(20), default='pending', nullable=False) # pending, approved, rejected, left_class, returned
+    status = db.Column(db.String(20), default='pending', nullable=False) # pending, approved, rejected, left, returned
     pass_number = db.Column(db.String(3), nullable=True, unique=True) # Format: letter + 2 digits (e.g., A42)
     period = db.Column(db.String(10), nullable=True) # Which period the request was made in
     request_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
@@ -2605,7 +2605,7 @@ def void_transaction(transaction_id):
 def admin_hall_pass():
     pending_requests = HallPassLog.query.filter_by(status='pending').order_by(HallPassLog.request_time.asc()).all()
     approved_queue = HallPassLog.query.filter_by(status='approved').order_by(HallPassLog.decision_time.asc()).all()
-    out_of_class = HallPassLog.query.filter_by(status='left_class').order_by(HallPassLog.left_time.asc()).all()
+    out_of_class = HallPassLog.query.filter_by(status='left').order_by(HallPassLog.left_time.asc()).all()
 
     return render_template(
         'admin_hall_pass.html',
@@ -2676,14 +2676,14 @@ def handle_hall_pass_action(pass_id, action):
             timestamp=now,
             reason=log_entry.reason
         )
-        log_entry.status = 'left_class'
+        log_entry.status = 'left'
         log_entry.left_time = now
         db.session.add(tap_out_event)
         db.session.commit()
         return jsonify({"status": "success", "message": "Student has left the class."})
 
     elif action == 'return':
-        if log_entry.status != 'left_class':
+        if log_entry.status != 'left':
             return jsonify({"status": "error", "message": "Student is not out of class."}), 400
 
         # Create a tap-in event to close the loop
