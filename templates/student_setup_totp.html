@@ -83,7 +83,6 @@
     <p><strong>{{ totp_uri.split('secret=')[1].split('&')[0] }}</strong></p>
 
     <form method="POST">
-        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label for="code" class="code-label">Enter the 6-digit code from your app:</label>
         <input type="text" id="code" name="code" placeholder="123456" required>
         <button type="submit">Verify</button>
