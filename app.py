@@ -16,6 +16,7 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from forms import AdminSignupForm, SystemAdminInviteForm
 from forms import StudentClaimAccountForm, StudentCreateUsernameForm, StudentPinPassphraseForm
 from forms import StudentLoginForm, AdminLoginForm
+from forms import PayrollSettingsForm, PayrollRewardForm, PayrollFineForm, ManualPaymentForm
 
 from flask_sqlalchemy import SQLAlchemy
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -533,6 +534,55 @@ class Admin(db.Model):
     totp_secret = db.Column(db.String(32), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)  # Nullable for existing records
     last_login = db.Column(db.DateTime, nullable=True)
+
+
+# ---- Payroll Settings Model ----
+class PayrollSettings(db.Model):
+    __tablename__ = 'payroll_settings'
+    id = db.Column(db.Integer, primary_key=True)
+    block = db.Column(db.String(10), nullable=True)  # NULL = global/default settings
+    pay_rate = db.Column(db.Float, nullable=False, default=0.25)  # $ per minute
+    payroll_frequency_days = db.Column(db.Integer, nullable=False, default=14)
+    next_payroll_date = db.Column(db.DateTime, nullable=True)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Optional: different rates for different scenarios
+    overtime_multiplier = db.Column(db.Float, default=1.0)
+    bonus_rate = db.Column(db.Float, default=0.0)
+
+    def __repr__(self):
+        return f'<PayrollSettings {self.block or "Global"}>'
+
+
+# ---- Payroll Reward Model ----
+class PayrollReward(db.Model):
+    __tablename__ = 'payroll_rewards'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    amount = db.Column(db.Float, nullable=False)
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<PayrollReward {self.name}: ${self.amount}>'
+
+
+# ---- Payroll Fine Model ----
+class PayrollFine(db.Model):
+    __tablename__ = 'payroll_fines'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    amount = db.Column(db.Float, nullable=False)  # Positive value, will be deducted
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<PayrollFine {self.name}: -${self.amount}>'
+
 
 # after your models are defined but before you start serving requests
 from flask.cli import with_appcontext
@@ -3049,73 +3099,335 @@ def run_payroll():
 @admin_required
 def admin_payroll():
     """
-    Payroll page: Show payroll estimate and recent payrolls.
-    Estimate is computed from TapEvent (append-only), not TapSession.
+    Enhanced payroll page with tabs for settings, students, rewards, fines, and manual payments.
     """
     from sqlalchemy import desc
     from datetime import datetime, timedelta
     import pytz
 
     pacific = pytz.timezone('America/Los_Angeles')
-
-    # Get the last payroll time once; it's already UTC-aware from the helper.
     last_payroll_time = get_last_payroll_time()
 
-    # Next scheduled payroll: every other Friday from last payroll
+    # Get all students
+    students = Student.query.all()
+
+    # Get all blocks
+    blocks = sorted(set(s.block for s in students if s.block))
+
+    # Next scheduled payroll calculation
     if last_payroll_time:
         next_pay_date_utc = last_payroll_time + timedelta(days=14)
     else:
         next_pay_date_utc = datetime.now(timezone.utc)
-
     next_pay_date = next_pay_date_utc.astimezone(pacific)
 
-    # Recent payroll activity: 20 most recent payroll transactions, joined with student info
-    recent_raw = (
-        db.session.query(
-            Transaction,
-            Student.first_name.label("student_name"),
-            Student.block.label("student_block")
-        )
-        .join(Student, Transaction.student_id == Student.id)
-        .filter(Transaction.type == 'payroll')
-        .order_by(Transaction.timestamp.desc())
-        .limit(20)
-        .all()
-    )
-    recent_payrolls = [
-        {
-            'student_id': tx.student_id,
-            'student_name': name,
-            'student_block': block,
-            'amount': tx.amount,
-            'timestamp': tx.timestamp  # raw datetime for filter to format
-        }
-        for tx, name, block in recent_raw
-    ]
+    # Recent payroll activity
+    recent_payrolls = Transaction.query.filter_by(type='payroll').order_by(Transaction.timestamp.desc()).limit(20).all()
 
-    # Estimate payroll from TapEvent (since last payroll)
-    students = Student.query.all()
-
-    # Use the centralized payroll calculation logic
+    # Calculate payroll estimates
     payroll_summary = calculate_payroll(students, last_payroll_time)
     total_payroll_estimate = sum(payroll_summary.values())
 
-    app.logger.info(f"PAYROLL ESTIMATE DEBUG: Total estimate is ${total_payroll_estimate:.2f}")
+    # Next payroll by block (for now, use same date for all blocks)
+    next_payroll_by_block = []
+    for block in blocks:
+        block_students = [s for s in students if block in (s.block or '').split(',')]
+        block_estimate = sum(payroll_summary.get(s.id, 0) for s in block_students)
+        next_payroll_by_block.append({
+            'block': block,
+            'next_date': next_pay_date,
+            'estimate': block_estimate
+        })
+
+    # Student statistics
+    student_stats = []
+    for student in students:
+        # Calculate unpaid minutes
+        unpaid_seconds = calculate_unpaid_attendance_seconds(student.id, last_payroll_time)
+        unpaid_minutes = unpaid_seconds / 60.0
+        estimated_payout = payroll_summary.get(student.id, 0)
+
+        # Get last payroll date
+        last_payroll = Transaction.query.filter_by(
+            student_id=student.id,
+            type='payroll'
+        ).order_by(Transaction.timestamp.desc()).first()
+
+        # Total earned from payroll
+        total_earned = db.session.query(func.sum(Transaction.amount)).filter(
+            Transaction.student_id == student.id,
+            Transaction.type == 'payroll',
+            Transaction.is_void == False
+        ).scalar() or 0.0
+
+        student_stats.append({
+            'student_id': student.id,
+            'student_name': student.full_name,
+            'block': student.block,
+            'unpaid_minutes': int(unpaid_minutes),
+            'estimated_payout': estimated_payout,
+            'last_payroll_date': last_payroll.timestamp if last_payroll else None,
+            'total_earned': total_earned
+        })
+
+    # Get payroll settings
+    block_settings = PayrollSettings.query.filter_by(is_active=True).all()
+
+    # Get rewards and fines
+    rewards = PayrollReward.query.order_by(PayrollReward.created_at.desc()).all()
+    fines = PayrollFine.query.order_by(PayrollFine.created_at.desc()).all()
+
+    # Initialize forms
+    settings_form = PayrollSettingsForm()
+    settings_form.block.choices = [('', 'Global (All Blocks)')] + [(b, b) for b in blocks]
+
+    reward_form = PayrollRewardForm()
+    fine_form = PayrollFineForm()
+    manual_payment_form = ManualPaymentForm()
+
+    # Quick stats
+    avg_payout = total_payroll_estimate / len(students) if students else 0
 
     return render_template(
         'admin_payroll.html',
+        # Overview tab
         recent_payrolls=recent_payrolls,
         next_payroll_date=next_pay_date,
-        current_page="payroll",
+        next_payroll_by_block=next_payroll_by_block,
         total_payroll_estimate=total_payroll_estimate,
-        now=datetime.now(pacific).strftime("%Y-%m-%d %I:%M %p")
+        total_students=len(students),
+        avg_payout=avg_payout,
+        total_blocks=len(blocks),
+        # Settings tab
+        settings_form=settings_form,
+        block_settings=block_settings,
+        next_global_payroll=next_pay_date,
+        # Students tab
+        student_stats=student_stats,
+        # Rewards & Fines tab
+        rewards=rewards,
+        fines=fines,
+        reward_form=reward_form,
+        fine_form=fine_form,
+        # Manual Payment tab
+        manual_payment_form=manual_payment_form,
+        all_students=students,
+        current_page="payroll"
     )
+
+
+# -------------------- PAYROLL SETTINGS --------------------
+@app.route('/admin/payroll/settings', methods=['POST'])
+@admin_required
+def admin_payroll_settings():
+    """Save payroll settings for a block or globally."""
+    form = PayrollSettingsForm()
+
+    # Get all blocks for choices
+    students = Student.query.all()
+    blocks = sorted(set(s.block for s in students if s.block))
+    form.block.choices = [('', 'Global (All Blocks)')] + [(b, b) for b in blocks]
+
+    if form.validate_on_submit():
+        try:
+            if form.apply_to_all.data:
+                # Apply to all blocks
+                for block in blocks:
+                    # Check if setting exists for this block
+                    setting = PayrollSettings.query.filter_by(block=block).first()
+                    if not setting:
+                        setting = PayrollSettings(block=block)
+
+                    setting.pay_rate = form.pay_rate.data
+                    setting.payroll_frequency_days = form.payroll_frequency_days.data
+                    setting.overtime_multiplier = form.overtime_multiplier.data or 1.0
+                    setting.bonus_rate = form.bonus_rate.data or 0.0
+                    setting.is_active = form.is_active.data
+                    setting.updated_at = datetime.utcnow()
+
+                    db.session.add(setting)
+
+                # Also update/create global setting
+                global_setting = PayrollSettings.query.filter_by(block=None).first()
+                if not global_setting:
+                    global_setting = PayrollSettings(block=None)
+
+                global_setting.pay_rate = form.pay_rate.data
+                global_setting.payroll_frequency_days = form.payroll_frequency_days.data
+                global_setting.overtime_multiplier = form.overtime_multiplier.data or 1.0
+                global_setting.bonus_rate = form.bonus_rate.data or 0.0
+                global_setting.is_active = form.is_active.data
+                global_setting.updated_at = datetime.utcnow()
+
+                db.session.add(global_setting)
+                flash('Payroll settings applied to all blocks successfully!', 'success')
+            else:
+                # Apply to specific block or global
+                block_value = form.block.data if form.block.data else None
+                setting = PayrollSettings.query.filter_by(block=block_value).first()
+
+                if not setting:
+                    setting = PayrollSettings(block=block_value)
+
+                setting.pay_rate = form.pay_rate.data
+                setting.payroll_frequency_days = form.payroll_frequency_days.data
+                setting.overtime_multiplier = form.overtime_multiplier.data or 1.0
+                setting.bonus_rate = form.bonus_rate.data or 0.0
+                setting.is_active = form.is_active.data
+                setting.updated_at = datetime.utcnow()
+
+                db.session.add(setting)
+                flash(f'Payroll settings saved for {block_value or "Global"}!', 'success')
+
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"Error saving payroll settings: {e}")
+            flash('Error saving payroll settings. Please try again.', 'error')
+    else:
+        flash('Invalid form data. Please check your inputs.', 'error')
+
+    return redirect(url_for('admin_payroll'))
+
+
+# -------------------- PAYROLL REWARDS --------------------
+@app.route('/admin/payroll/rewards/add', methods=['POST'])
+@admin_required
+def admin_payroll_add_reward():
+    """Add a new payroll reward."""
+    form = PayrollRewardForm()
+
+    if form.validate_on_submit():
+        try:
+            reward = PayrollReward(
+                name=form.name.data,
+                description=form.description.data,
+                amount=form.amount.data,
+                is_active=form.is_active.data
+            )
+            db.session.add(reward)
+            db.session.commit()
+            flash(f'Reward "{reward.name}" created successfully!', 'success')
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"Error creating reward: {e}")
+            flash('Error creating reward. Please try again.', 'error')
+    else:
+        flash('Invalid form data. Please check your inputs.', 'error')
+
+    return redirect(url_for('admin_payroll'))
+
+
+@app.route('/admin/payroll/rewards/<int:reward_id>/delete', methods=['POST'])
+@admin_required
+def admin_payroll_delete_reward(reward_id):
+    """Delete a payroll reward."""
+    try:
+        reward = PayrollReward.query.get_or_404(reward_id)
+        db.session.delete(reward)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Reward deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error deleting reward: {e}")
+        return jsonify({'success': False, 'message': 'Error deleting reward'}), 500
+
+
+# -------------------- PAYROLL FINES --------------------
+@app.route('/admin/payroll/fines/add', methods=['POST'])
+@admin_required
+def admin_payroll_add_fine():
+    """Add a new payroll fine."""
+    form = PayrollFineForm()
+
+    if form.validate_on_submit():
+        try:
+            fine = PayrollFine(
+                name=form.name.data,
+                description=form.description.data,
+                amount=form.amount.data,
+                is_active=form.is_active.data
+            )
+            db.session.add(fine)
+            db.session.commit()
+            flash(f'Fine "{fine.name}" created successfully!', 'success')
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"Error creating fine: {e}")
+            flash('Error creating fine. Please try again.', 'error')
+    else:
+        flash('Invalid form data. Please check your inputs.', 'error')
+
+    return redirect(url_for('admin_payroll'))
+
+
+@app.route('/admin/payroll/fines/<int:fine_id>/delete', methods=['POST'])
+@admin_required
+def admin_payroll_delete_fine(fine_id):
+    """Delete a payroll fine."""
+    try:
+        fine = PayrollFine.query.get_or_404(fine_id)
+        db.session.delete(fine)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Fine deleted successfully'})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error deleting fine: {e}")
+        return jsonify({'success': False, 'message': 'Error deleting fine'}), 500
+
+
+# -------------------- MANUAL PAYMENTS --------------------
+@app.route('/admin/payroll/manual-payment', methods=['POST'])
+@admin_required
+def admin_payroll_manual_payment():
+    """Send manual payments to selected students."""
+    form = ManualPaymentForm()
+
+    if form.validate_on_submit():
+        try:
+            student_ids = request.form.getlist('student_ids')
+
+            if not student_ids:
+                flash('Please select at least one student.', 'warning')
+                return redirect(url_for('admin_payroll'))
+
+            description = form.description.data
+            amount = form.amount.data
+            account_type = form.account_type.data
+
+            # Create transactions for each selected student
+            count = 0
+            for student_id in student_ids:
+                student = Student.query.get(int(student_id))
+                if student:
+                    transaction = Transaction(
+                        student_id=student.id,
+                        amount=amount,
+                        description=f"Manual Payment: {description}",
+                        account_type=account_type,
+                        type='manual_payment',
+                        timestamp=datetime.utcnow()
+                    )
+                    db.session.add(transaction)
+                    count += 1
+
+            db.session.commit()
+            flash(f'Manual payment of ${amount:.2f} sent to {count} student(s)!', 'success')
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f"Error sending manual payments: {e}")
+            flash('Error sending manual payments. Please try again.', 'error')
+    else:
+        flash('Invalid form data. Please check your inputs.', 'error')
+
+    return redirect(url_for('admin_payroll'))
+
 
 @app.route('/student/logout')
 @login_required
 def student_logout():
     session.pop('student_id', None)
-    flash("You’ve been logged out.")
+    flash("You've been logged out.")
     return redirect(url_for('student_login'))
 
 

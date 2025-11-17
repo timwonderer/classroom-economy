@@ -129,3 +129,42 @@ class AdminClaimProcessForm(FlaskForm):
     rejection_reason = TextAreaField('Rejection Reason (if rejected)')
     admin_notes = TextAreaField('Admin Notes')
     submit = SubmitField('Update Claim')
+
+
+# -------------------- PAYROLL FORMS --------------------
+class PayrollSettingsForm(FlaskForm):
+    block = SelectField('Class Block/Period', choices=[], validators=[Optional()])  # Empty choices, populated dynamically
+    pay_rate = FloatField('Pay Rate ($ per minute)', validators=[DataRequired()], default=0.25)
+    payroll_frequency_days = IntegerField('Payroll Frequency (days)', validators=[DataRequired()], default=14)
+    overtime_multiplier = FloatField('Overtime Multiplier', validators=[Optional()], default=1.0)
+    bonus_rate = FloatField('Bonus Rate ($ per minute)', validators=[Optional()], default=0.0)
+    apply_to_all = BooleanField('Apply to All Blocks', default=False)
+    is_active = BooleanField('Settings Active', default=True)
+    submit = SubmitField('Save Settings')
+
+
+class PayrollRewardForm(FlaskForm):
+    name = StringField('Reward Name', validators=[DataRequired()])
+    description = TextAreaField('Description', validators=[Optional()])
+    amount = FloatField('Amount ($)', validators=[DataRequired()])
+    is_active = BooleanField('Active', default=True)
+    submit = SubmitField('Save Reward')
+
+
+class PayrollFineForm(FlaskForm):
+    name = StringField('Fine Name', validators=[DataRequired()])
+    description = TextAreaField('Description', validators=[Optional()])
+    amount = FloatField('Amount ($)', validators=[DataRequired()])
+    is_active = BooleanField('Active', default=True)
+    submit = SubmitField('Save Fine')
+
+
+class ManualPaymentForm(FlaskForm):
+    description = StringField('Payment Description', validators=[DataRequired()])
+    amount = FloatField('Amount ($)', validators=[DataRequired()])
+    account_type = SelectField('Account Type', choices=[
+        ('checking', 'Checking'),
+        ('savings', 'Savings')
+    ], default='checking', validators=[DataRequired()])
+    # student_ids will be handled in the template with checkboxes
+    submit = SubmitField('Send Payment')
