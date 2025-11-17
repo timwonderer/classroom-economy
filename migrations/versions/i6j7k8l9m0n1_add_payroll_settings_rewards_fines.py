@@ -1,7 +1,7 @@
 """Add payroll settings, rewards, and fines tables
 
 Revision ID: i6j7k8l9m0n1
-Revises: merge_staging_and_hall_pass_branches
+Revises: merge_001
 Create Date: 2025-11-17 12:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'i6j7k8l9m0n1'
-down_revision = 'merge_staging_and_hall_pass_branches'
+down_revision = 'merge_001'
 branch_labels = None
 depends_on = None
 
