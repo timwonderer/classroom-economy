@@ -1,6 +1,7 @@
 # 📄 seed_dummy_students.py for Classroom Token Hub
 
-from app import db, Student
+from app.extensions import db
+from app.models import Student
 from werkzeug.security import generate_password_hash
 from hash_utils import hash_username, get_random_salt
 

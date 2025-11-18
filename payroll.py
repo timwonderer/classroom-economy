@@ -1,4 +1,5 @@
-from app import db, TapEvent, Student, Transaction, PayrollSettings
+from app.extensions import db
+from app.models import TapEvent, Student, Transaction, PayrollSettings
 from datetime import datetime, timezone
 from attendance import calculate_unpaid_attendance_seconds
 
