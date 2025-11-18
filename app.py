@@ -2015,9 +2015,56 @@ def student_login():
 def admin_dashboard():
     from payroll import calculate_payroll
     from attendance import get_last_payroll_time
+
+    # Get all students for calculations
     students = Student.query.order_by(Student.first_name).all()
-    transactions = Transaction.query.order_by(Transaction.timestamp.desc()).limit(20).all()
     student_lookup = {s.id: s for s in students}
+
+    # Quick Stats
+    total_students = len(students)
+    total_balance = sum(s.balance for s in students)
+    avg_balance = total_balance / total_students if total_students > 0 else 0
+
+    # Pending actions - count all types of pending approvals
+    pending_redemptions_count = StudentItem.query.filter_by(status='processing').count()
+    pending_hall_passes_count = HallPassLog.query.filter_by(status='pending').count()
+    pending_insurance_claims_count = InsuranceClaim.query.filter_by(status='pending').count()
+    total_pending_actions = pending_redemptions_count + pending_hall_passes_count + pending_insurance_claims_count
+
+    # Get recent items for each pending type (limited for display)
+    recent_redemptions = StudentItem.query.filter_by(status='processing').order_by(StudentItem.redemption_date.desc()).limit(5).all()
+    recent_hall_passes = HallPassLog.query.filter_by(status='pending').order_by(HallPassLog.request_time.desc()).limit(5).all()
+    recent_insurance_claims = InsuranceClaim.query.filter_by(status='pending').order_by(InsuranceClaim.filed_date.desc()).limit(5).all()
+
+    # Recent transactions (limited to 5 for display)
+    recent_transactions = Transaction.query.filter_by(is_void=False).order_by(Transaction.timestamp.desc()).limit(5).all()
+    total_transactions_today = Transaction.query.filter(
+        Transaction.timestamp >= datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0),
+        Transaction.is_void == False
+    ).count()
+
+    # Recent attendance logs (limited to 5 for display)
+    raw_logs = (
+        db.session.query(
+            TapEvent,
+            Student.first_name,
+            Student.last_initial
+        )
+        .join(Student, TapEvent.student_id == Student.id)
+        .order_by(TapEvent.timestamp.desc())
+        .limit(5)
+        .all()
+    )
+    recent_logs = []
+    for log, first_name, last_initial in raw_logs:
+        recent_logs.append({
+            'student_id': log.student_id,
+            'student_name': f"{first_name} {last_initial}.",
+            'period': log.period,
+            'timestamp': log.timestamp,
+            'reason': log.reason,
+            'status': log.status
+        })
 
     # --- Payroll Info ---
     last_payroll_time = get_last_payroll_time()
@@ -2035,37 +2082,30 @@ def admin_dashboard():
         next_pay_date_utc = now_utc + timedelta(days=days_until_friday)
     next_payroll_date = next_pay_date_utc.astimezone(pacific)
 
-
-    # Use TapEvent for logs (append-only) - fetch with student name
-    raw_logs = (
-        db.session.query(
-            TapEvent,
-            Student.first_name,
-            Student.last_initial
-        )
-        .join(Student, TapEvent.student_id == Student.id)
-        .order_by(TapEvent.timestamp.desc())
-        .limit(20)
-        .all()
+    return render_template(
+        'admin_dashboard.html',
+        # Quick stats
+        total_students=total_students,
+        total_balance=total_balance,
+        avg_balance=avg_balance,
+        total_pending_actions=total_pending_actions,
+        pending_redemptions_count=pending_redemptions_count,
+        pending_hall_passes_count=pending_hall_passes_count,
+        pending_insurance_claims_count=pending_insurance_claims_count,
+        total_transactions_today=total_transactions_today,
+        # Payroll info
+        total_payroll_estimate=total_payroll_estimate,
+        next_payroll_date=next_payroll_date,
+        # Limited data for cards
+        recent_redemptions=recent_redemptions,
+        recent_hall_passes=recent_hall_passes,
+        recent_insurance_claims=recent_insurance_claims,
+        recent_transactions=recent_transactions,
+        recent_logs=recent_logs,
+        # Lookup table
+        student_lookup=student_lookup,
+        current_page="dashboard"
     )
-    logs = []
-    for log, first_name, last_initial in raw_logs:
-        logs.append({
-            'student_id': log.student_id,
-            'student_name': f"{first_name} {last_initial}.",
-            'period': log.period,
-            'timestamp': log.timestamp,
-            'reason': log.reason,
-            'status': log.status
-        })
-    app.logger.info(f"📝 Dashboard logs data: {logs}")
-    for entry in logs:
-        app.logger.debug(f"Log entry - student_id: {entry['student_id']}, reason: {entry.get('reason')}")
-
-    # Fetch pending redemption requests
-    redemption_requests = StudentItem.query.filter_by(status='processing').order_by(StudentItem.redemption_date.asc()).all()
-
-    return render_template('admin_dashboard.html', students=students, transactions=transactions, student_lookup=student_lookup, logs=logs, redemption_requests=redemption_requests, current_page="dashboard")
 
 @app.route('/api/approve-redemption', methods=['POST'])
 @admin_required
