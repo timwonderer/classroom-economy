@@ -271,6 +271,28 @@
   <!-- SETTINGS TAB -->
   <div class="tab-pane fade" id="settings" role="tabpanel">
     <div class="row">
+      <!-- Setup/Update Banner -->
+      {% if show_setup_banner %}
+      <div class="col-12 mb-3">
+        <div class="alert alert-warning alert-dismissible fade show" role="alert">
+          <h5 class="alert-heading"><i class="bi bi-exclamation-triangle me-2"></i>No Payroll Settings</h5>
+          <p class="mb-2">No Payroll Setting has been created yet. Do you want to use preset amounts?</p>
+          <button type="button" class="btn btn-sm btn-warning" id="usePresetBtn">
+            <i class="bi bi-check-circle me-1"></i>Yes, Use Preset Values
+          </button>
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      </div>
+      {% elif block_settings %}
+      <div class="col-12 mb-3">
+        <div class="alert alert-info alert-dismissible fade show" role="alert">
+          <i class="bi bi-info-circle me-2"></i>
+          Payroll settings have been set on <strong>{{ block_settings[0].created_at.strftime('%B %d, %Y') if block_settings[0].created_at else 'unknown date' }}</strong>. Any changes here will override the previous settings.
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+      </div>
+      {% endif %}
+
       <!-- LEFT: Settings Form -->
       <div class="col-lg-8 mb-4">
         <div class="card shadow">
@@ -561,6 +583,14 @@
                     <td class="text-end fw-bold">$<span id="simSemester">0.00</span></td>
                   </tr>
                 </table>
+              </div>
+            </div>
+
+            <!-- Settings Summary (Plain English) -->
+            <div class="mt-4 pt-3 border-top" id="settingsSummary">
+              <h6 class="fw-bold mb-2"><i class="bi bi-file-text me-2"></i>Current Settings:</h6>
+              <div id="settingsSummaryText" class="small text-muted">
+                <p class="mb-0"><em>Configure your payroll settings above to see a summary here.</em></p>
               </div>
             </div>
           </div>
@@ -922,6 +952,15 @@
 <script>
 // Convert UTC timestamps to local time
 document.addEventListener("DOMContentLoaded", () => {
+    // Auto-switch to Settings tab if no settings exist
+    {% if show_setup_banner %}
+    const settingsTab = document.querySelector('a[href="#settings"]');
+    if (settingsTab) {
+        const tab = new bootstrap.Tab(settingsTab);
+        tab.show();
+    }
+    {% endif %}
+
     // Timestamp conversion
     document.querySelectorAll(".local-timestamp").forEach(el => {
         const utcString = el.dataset.timestamp;
@@ -1187,6 +1226,136 @@ document.addEventListener("DOMContentLoaded", () => {
             document.getElementById('simulatorResults').style.display = 'block';
         });
     }
+
+    // Use Preset Values Button
+    const usePresetBtn = document.getElementById('usePresetBtn');
+    if (usePresetBtn) {
+        usePresetBtn.addEventListener('click', function() {
+            // Simple mode preset values
+            document.getElementById('simplePayRate').value = '15.00';
+            document.getElementById('simpleFrequency').value = 'biweekly';
+
+            // Set first pay date to next Monday
+            const today = new Date();
+            const nextMonday = new Date(today);
+            nextMonday.setDate(today.getDate() + ((1 + 7 - today.getDay()) % 7 || 7));
+            document.getElementById('simpleFirstPayDate').value = nextMonday.toISOString().split('T')[0];
+
+            document.getElementById('simpleDailyLimit').value = '8';
+
+            // Check "All Periods" by default
+            const simpleApplyAll = document.getElementById('simpleApplyAll');
+            if (simpleApplyAll) simpleApplyAll.checked = true;
+
+            // Dismiss the alert
+            this.closest('.alert').remove();
+
+            // Update settings summary
+            updateSettingsSummary();
+        });
+    }
+
+    // Update Settings Summary (Plain English)
+    function updateSettingsSummary() {
+        const summaryDiv = document.getElementById('settingsSummaryText');
+        if (!summaryDiv) return;
+
+        const isAdvanced = settingsModeToggle && settingsModeToggle.checked;
+        let summaryHTML = '';
+
+        if (isAdvanced) {
+            // Advanced Mode Summary
+            const payAmount = parseFloat(document.getElementById('advPayAmount')?.value) || 0;
+            const timeUnit = document.getElementById('advTimeUnit')?.value || 'minutes';
+            const scheduleType = document.getElementById('advPaySchedule')?.value || 'biweekly';
+            const firstPayDate = document.getElementById('advFirstPayDate')?.value;
+            const overtimeEnabled = document.getElementById('advOvertimeEnabled')?.checked;
+            const maxTimeValue = document.getElementById('advMaxTimeValue')?.value;
+            const roundingMode = document.getElementById('advRoundingMode')?.value || 'down';
+
+            summaryHTML = `<p class="mb-2">Students get paid <strong>$${payAmount.toFixed(2)}</strong> per <strong>${timeUnit}</strong>.</p>`;
+
+            // Pay schedule
+            const scheduleNames = {
+                'daily': 'daily',
+                'weekly': 'weekly',
+                'biweekly': 'bi-weekly',
+                'monthly': 'monthly',
+                'custom': 'custom schedule'
+            };
+            summaryHTML += `<p class="mb-2">Their pay schedule is <strong>${scheduleNames[scheduleType]}</strong>`;
+            if (firstPayDate) {
+                const date = new Date(firstPayDate + 'T00:00:00');
+                summaryHTML += `, and the first pay date is <strong>${date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</strong>`;
+            }
+            summaryHTML += '.</p>';
+
+            // Overtime
+            if (overtimeEnabled) {
+                const threshold = document.getElementById('advOvertimeThreshold')?.value;
+                const thresholdUnit = document.getElementById('advOvertimeThresholdUnit')?.value;
+                const thresholdPeriod = document.getElementById('advOvertimeThresholdPeriod')?.value;
+                const multiplier = document.getElementById('advOvertimeMultiplier')?.value;
+
+                if (threshold && thresholdUnit && thresholdPeriod && multiplier) {
+                    summaryHTML += `<p class="mb-2">Overtime is enabled at <strong>${multiplier}x</strong> pay after <strong>${threshold} ${thresholdUnit}</strong> per <strong>${thresholdPeriod}</strong>.</p>`;
+                }
+            }
+
+            // Max time per day
+            if (maxTimeValue) {
+                const maxTimeUnit = document.getElementById('advMaxTimeUnit')?.value || 'hours';
+                summaryHTML += `<p class="mb-2">Students will tap out after <strong>${maxTimeValue} ${maxTimeUnit}</strong> per day (resets at 12:00 AM PST).</p>`;
+            }
+
+            // Rounding
+            const roundingNames = { 'up': 'rounds up', 'down': 'rounds down', 'nearest': 'rounds to nearest' };
+            summaryHTML += `<p class="mb-1">Time tracking <strong>${roundingNames[roundingMode] || 'rounds down'}</strong> to the nearest time increment.</p>`;
+
+        } else {
+            // Simple Mode Summary
+            const payRate = parseFloat(document.getElementById('simplePayRate')?.value) || 0;
+            const frequency = document.getElementById('simpleFrequency')?.value || 'biweekly';
+            const firstPayDate = document.getElementById('simpleFirstPayDate')?.value;
+            const dailyLimit = document.getElementById('simpleDailyLimit')?.value;
+
+            summaryHTML = `<p class="mb-2">Students get paid <strong>$${payRate.toFixed(2)}</strong> per hour.</p>`;
+
+            const frequencyNames = {
+                'weekly': 'weekly',
+                'biweekly': 'bi-weekly',
+                'monthly': 'monthly'
+            };
+            summaryHTML += `<p class="mb-2">Their pay schedule is <strong>${frequencyNames[frequency]}</strong>`;
+
+            if (firstPayDate) {
+                const date = new Date(firstPayDate + 'T00:00:00');
+                summaryHTML += `, and the first pay date is <strong>${date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</strong>`;
+            }
+            summaryHTML += '.</p>';
+
+            if (dailyLimit) {
+                summaryHTML += `<p class="mb-1">Students will tap out after <strong>${dailyLimit} hours</strong> per day (resets at 12:00 AM PST).</p>`;
+            }
+        }
+
+        summaryDiv.innerHTML = summaryHTML;
+    }
+
+    // Update summary when form fields change
+    const formFields = document.querySelectorAll('#payrollSettingsForm input, #payrollSettingsForm select');
+    formFields.forEach(field => {
+        field.addEventListener('change', updateSettingsSummary);
+        field.addEventListener('input', updateSettingsSummary);
+    });
+
+    // Update summary when mode toggle changes
+    if (settingsModeToggle) {
+        settingsModeToggle.addEventListener('change', updateSettingsSummary);
+    }
+
+    // Initial summary update if there are existing values
+    updateSettingsSummary();
 
     // Settings Form Validation
     const payrollSettingsForm = document.getElementById('payrollSettingsForm');

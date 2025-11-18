@@ -654,6 +654,11 @@ else:
         _run_admin_check()
 
 
+@app.context_processor
+def inject_payroll_status():
+    """Make payroll settings status available in all templates."""
+    has_payroll_settings = PayrollSettings.query.first() is not None
+    return dict(has_payroll_settings=has_payroll_settings)
 
 
 # -------------------- ERROR LOGGING UTILITIES --------------------
@@ -3136,6 +3141,10 @@ def admin_payroll():
     # Get all blocks
     blocks = sorted(set(s.block for s in students if s.block))
 
+    # Check if payroll settings exist
+    has_settings = PayrollSettings.query.first() is not None
+    show_setup_banner = not has_settings
+
     # Next scheduled payroll calculation (keep in UTC for template)
     if last_payroll_time:
         next_pay_date_utc = last_payroll_time + timedelta(days=14)
@@ -3248,6 +3257,7 @@ def admin_payroll():
         settings_form=settings_form,
         block_settings=block_settings,
         next_global_payroll=next_pay_date_utc,  # Pass UTC timestamp
+        show_setup_banner=show_setup_banner,
         # Students tab
         student_stats=student_stats,
         # Rewards & Fines tab
