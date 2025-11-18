@@ -3180,14 +3180,19 @@ def admin_payroll():
             return None
         return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
 
-    def _compute_next_pay_date(setting, last_run, now):
+    def _compute_next_pay_date(setting, now):
         freq_days = setting.payroll_frequency_days if setting and setting.payroll_frequency_days else 14
         first_pay = _as_utc(setting.first_pay_date) if setting and setting.first_pay_date else None
 
-        if last_run:
-            candidate = last_run + timedelta(days=freq_days)
-        elif first_pay:
-            candidate = first_pay
+        # Anchor the schedule strictly to the configured first pay date so manual runs
+        # don't shift the calendar. If no first date is set, fall back to now + frequency.
+        if first_pay:
+            if first_pay > now:
+                return first_pay
+
+            elapsed_days = (now - first_pay).days
+            periods_since_first = elapsed_days // freq_days
+            candidate = first_pay + timedelta(days=freq_days * (periods_since_first + 1))
         else:
             candidate = now + timedelta(days=freq_days)
 
@@ -3196,9 +3201,7 @@ def admin_payroll():
         return candidate
 
     # Next scheduled payroll calculation (keep in UTC for template)
-
-    next_pay_date_utc = _compute_next_pay_date(default_setting, last_payroll_time, now_utc)
-
+    next_pay_date_utc = _compute_next_pay_date(default_setting, now_utc)
 
     # Recent payroll activity
     recent_payrolls = Transaction.query.filter_by(type='payroll').order_by(Transaction.timestamp.desc()).limit(20).all()
@@ -3213,13 +3216,11 @@ def admin_payroll():
         block_students = [s for s in students if block in [b.strip() for b in (s.block or '').split(',')]]
         block_estimate = sum(payroll_summary.get(s.id, 0) for s in block_students)
         setting = settings_by_block.get(block, default_setting)
-        block_next_payroll = _compute_next_pay_date(setting, last_payroll_time, now_utc)
+        block_next_payroll = _compute_next_pay_date(setting, now_utc)
         next_payroll_by_block.append({
             'block': block,
-
             'next_date': block_next_payroll,  # Keep in UTC
             'next_date_iso': format_utc_iso(block_next_payroll),
-
             'estimate': block_estimate
         })
 
