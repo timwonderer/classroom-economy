@@ -25,7 +25,7 @@ from app.auth import system_admin_required
 from forms import SystemAdminLoginForm, SystemAdminInviteForm
 
 # Import utility functions
-from app import is_safe_url
+from app.utils.helpers import is_safe_url
 
 # Create blueprint
 sysadmin_bp = Blueprint('sysadmin', __name__, url_prefix='/sysadmin')

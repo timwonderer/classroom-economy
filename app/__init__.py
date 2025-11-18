@@ -11,12 +11,9 @@ import urllib.parse
 import pytz
 from datetime import datetime, date, timezone
 from logging.handlers import RotatingFileHandler
-from urllib.parse import urlparse, urljoin
 
 from flask import Flask, request, session
 from dotenv import load_dotenv
-from sqlalchemy.types import TypeDecorator, LargeBinary
-from cryptography.fernet import Fernet
 
 # Load environment variables
 load_dotenv()
@@ -31,53 +28,11 @@ if missing_vars:
 
 
 # -------------------- UTILITIES --------------------
+# Utilities moved to app/utils/ in Stage 5
 
-class PIIEncryptedType(TypeDecorator):
-    """Custom AES encryption for PII fields using Fernet."""
-    impl = LargeBinary
-
-    def __init__(self, key_env_var, *args, **kwargs):
-        key = os.getenv(key_env_var)
-        if not key:
-            raise RuntimeError(f"Missing required environment variable: {key_env_var}")
-        self.fernet = Fernet(key)
-        super().__init__(*args, **kwargs)
-
-    def process_bind_param(self, value, dialect):
-        if value is None:
-            return None
-        if isinstance(value, str):
-            value = value.encode('utf-8')
-        return self.fernet.encrypt(value)
-
-    def process_result_value(self, value, dialect):
-        if value is None:
-            return None
-        decrypted = self.fernet.decrypt(value)
-        return decrypted.decode('utf-8')
-
-
-def format_utc_iso(dt):
-    """Return a UTC ISO-8601 string (with trailing Z) for a datetime or None."""
-    if not dt:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    else:
-        dt = dt.astimezone(timezone.utc)
-    return dt.isoformat().replace("+00:00", "Z")
-
-
-def is_safe_url(target):
-    """
-    Ensure a redirect URL is safe by checking if it's on the same domain.
-    """
-    # Allow empty targets
-    if not target:
-        return True
-    ref_url = urlparse(request.host_url)
-    test_url = urlparse(urljoin(request.host_url, target))
-    return test_url.scheme in ('http', 'https') and ref_url.netloc == test_url.netloc
+from app.utils.encryption import PIIEncryptedType
+from app.utils.helpers import format_utc_iso, is_safe_url
+from app.utils.constants import THEME_PROMPTS
 
 
 def url_encode_filter(s):

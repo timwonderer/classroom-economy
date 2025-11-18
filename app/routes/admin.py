@@ -41,7 +41,7 @@ from forms import (
 )
 
 # Import utility functions
-from app import is_safe_url, format_utc_iso
+from app.utils.helpers import is_safe_url, format_utc_iso
 from hash_utils import get_random_salt, hash_hmac
 from payroll import calculate_payroll
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds

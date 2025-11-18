@@ -29,23 +29,10 @@ from forms import (
 )
 
 # Import utility functions
-from app import is_safe_url
+from app.utils.helpers import is_safe_url
+from app.utils.constants import THEME_PROMPTS
 from hash_utils import hash_hmac, hash_username
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
-
-# Theme prompts for username generation
-THEME_PROMPTS = [
-    {"slug": "animal", "prompt": "Write in your favorite animal."},
-    {"slug": "color", "prompt": "Write in your favorite color."},
-    {"slug": "space", "prompt": "Write in something related to outer space."},
-    {"slug": "nature", "prompt": "Write in a nature word (tree, river, etc.)."},
-    {"slug": "food", "prompt": "Write in your favorite fruit or food."},
-    {"slug": "trait", "prompt": "Write in a positive character trait (bravery, kindness, etc.)."},
-    {"slug": "place", "prompt": "Write in a place you want to visit."},
-    {"slug": "science", "prompt": "Write in a science word you like."},
-    {"slug": "hobby", "prompt": "Write in your favorite hobby or sport."},
-    {"slug": "happy", "prompt": "Write in something that makes you happy."},
-]
 
 # Create blueprint
 student_bp = Blueprint('student', __name__, url_prefix='/student')

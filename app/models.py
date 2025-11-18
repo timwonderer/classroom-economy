@@ -5,39 +5,10 @@ All SQLAlchemy models are defined here with proper relationships and properties.
 Times are stored as UTC in the database.
 """
 
-import os
 from datetime import datetime, timedelta, timezone
-from sqlalchemy.types import TypeDecorator, LargeBinary
-from cryptography.fernet import Fernet
 
 from app.extensions import db
-
-
-# Note: PIIEncryptedType is temporarily defined here
-# It will be moved to app/utils in Stage 5
-class PIIEncryptedType(TypeDecorator):
-    """Custom AES encryption for PII fields using Fernet."""
-    impl = LargeBinary
-
-    def __init__(self, key_env_var, *args, **kwargs):
-        key = os.getenv(key_env_var)
-        if not key:
-            raise RuntimeError(f"Missing required environment variable: {key_env_var}")
-        self.fernet = Fernet(key)
-        super().__init__(*args, **kwargs)
-
-    def process_bind_param(self, value, dialect):
-        if value is None:
-            return None
-        if isinstance(value, str):
-            value = value.encode('utf-8')
-        return self.fernet.encrypt(value)
-
-    def process_result_value(self, value, dialect):
-        if value is None:
-            return None
-        decrypted = self.fernet.decrypt(value)
-        return decrypted.decode('utf-8')
+from app.utils.encryption import PIIEncryptedType
 
 
 # -------------------- MODELS --------------------

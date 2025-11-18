@@ -1,17 +1,5 @@
-THEME_PROMPTS = [
-    {"slug": "animal", "prompt": "Write in your favorite animal."},
-    {"slug": "color", "prompt": "Write in your favorite color."},
-    {"slug": "space", "prompt": "Write in something related to outer space."},
-    {"slug": "nature", "prompt": "Write in a nature word (tree, river, etc.)."},
-    {"slug": "food", "prompt": "Write in your favorite fruit or food."},
-    {"slug": "trait", "prompt": "Write in a positive character trait (bravery, kindness, etc.)."},
-    {"slug": "place", "prompt": "Write in a place you want to visit."},
-    {"slug": "science", "prompt": "Write in a science word you like."},
-    {"slug": "hobby", "prompt": "Write in your favorite hobby or sport."},
-    {"slug": "happy", "prompt": "Write in something that makes you happy."},
-]
-
 from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, Response
+from app.utils.constants import THEME_PROMPTS
 
 from forms import AdminSignupForm, SystemAdminInviteForm
 from forms import StudentClaimAccountForm, StudentCreateUsernameForm, StudentPinPassphraseForm
@@ -49,19 +37,11 @@ PACIFIC = pytz.timezone('America/Los_Angeles')
 utc = pytz.utc
 import pyotp
 
-# -------------------- UTILITIES (Temporary - will move to app/utils in Stage 5) --------------------
-# PIIEncryptedType is now defined in app/models.py
-
-
-def format_utc_iso(dt):
-    """Return a UTC ISO-8601 string (with trailing Z) for a datetime or ``None``."""
-    if not dt:
-        return None
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    else:
-        dt = dt.astimezone(timezone.utc)
-    return dt.isoformat().replace("+00:00", "Z")
+# -------------------- UTILITIES --------------------
+# Utilities have been moved to app/utils in Stage 5
+# Import them here for backward compatibility
+from app.utils.helpers import format_utc_iso, is_safe_url
+from app.utils.encryption import PIIEncryptedType
 
 
 # -------------------- APPLICATION FACTORY --------------------
@@ -77,7 +57,6 @@ app = create_app()
 # Models have been moved to app/models.py (Stage 2 of refactor)
 # Import all models here for backward compatibility
 from app.models import (
-    PIIEncryptedType,  # Utility type, will move to app/utils in Stage 5
     Student,
     AdminInviteCode,
     SystemAdmin,
