@@ -41,13 +41,18 @@ def calculate_payroll(students, last_payroll_time):
     summary = {}
 
     for student in students:
-        student_blocks = [b.strip().upper() for b in (student.block or "").split(',') if b.strip()]
-        for blk in student_blocks:
-            # Get pay rate for this specific block
-            rate_per_second = get_pay_rate_for_block(blk)
+        # Keep original block names for settings lookup, but uppercase for TapEvent queries
+        student_blocks = [b.strip() for b in (student.block or "").split(',') if b.strip()]
+        for block_original in student_blocks:
+            block_upper = block_original.upper()
+
+            # Get pay rate using original block name (matches PayrollSettings.block)
+            rate_per_second = get_pay_rate_for_block(block_original)
+
+            # Query TapEvents using uppercase (matches TapEvent.period)
             q = TapEvent.query.filter(
                 TapEvent.student_id == student.id,
-                TapEvent.period == blk
+                TapEvent.period == block_upper
             )
             if last_payroll_time:
                 q = q.filter(TapEvent.timestamp > last_payroll_time)

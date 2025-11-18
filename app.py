@@ -3176,7 +3176,8 @@ def admin_payroll():
         unpaid_seconds = 0
         student_blocks = [b.strip() for b in (student.block or "").split(',') if b.strip()]
         for block in student_blocks:
-            unpaid_seconds += calculate_unpaid_attendance_seconds(student.id, block, last_payroll_time)
+            # TapEvent.period is stored in uppercase, so uppercase the block name
+            unpaid_seconds += calculate_unpaid_attendance_seconds(student.id, block.upper(), last_payroll_time)
 
         unpaid_minutes = unpaid_seconds / 60.0
         estimated_payout = payroll_summary.get(student.id, 0)
