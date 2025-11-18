@@ -23,13 +23,13 @@ def login_required(f):
     Decorator to require student authentication for a route.
 
     Enforces a strict 10-minute timeout from login time.
-    Redirects to student_login if not authenticated or session expired.
+    Redirects to student.login if not authenticated or session expired.
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'student_id' not in session:
             encoded_next = urllib.parse.quote(request.path, safe="")
-            return redirect(f"{url_for('student_login')}?next={encoded_next}")
+            return redirect(f"{url_for('student.login')}?next={encoded_next}")
 
         # Enforce strict 10-minute timeout from login time
         login_time_str = session.get('login_time')
@@ -39,7 +39,7 @@ def login_required(f):
             session.pop('login_time', None)
             session.pop('last_activity', None)
             flash("Session is invalid. Please log in again.")
-            return redirect(url_for('student_login'))
+            return redirect(url_for('student.login'))
 
         login_time = datetime.fromisoformat(login_time_str)
         if (datetime.now(timezone.utc) - login_time) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
@@ -49,7 +49,7 @@ def login_required(f):
             session.pop('last_activity', None)
             flash("Session expired. Please log in again.")
             encoded_next = urllib.parse.quote(request.path, safe="")
-            return redirect(f"{url_for('student_login')}?next={encoded_next}")
+            return redirect(f"{url_for('student.login')}?next={encoded_next}")
 
         # Continue to update last_activity for other potential uses, but it no longer controls the timeout
         session['last_activity'] = datetime.now(timezone.utc).isoformat()
@@ -62,7 +62,7 @@ def admin_required(f):
     Decorator to require admin authentication for a route.
 
     Enforces session timeout based on last activity.
-    Redirects to admin_login if not authenticated or session expired.
+    Redirects to admin.login if not authenticated or session expired.
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -70,7 +70,7 @@ def admin_required(f):
         if not session.get("is_admin"):
             flash("You must be an admin to view this page.")
             encoded_next = urllib.parse.quote(request.path, safe="")
-            return redirect(f"{url_for('admin_login')}?next={encoded_next}")
+            return redirect(f"{url_for('admin.login')}?next={encoded_next}")
 
         now = datetime.now(timezone.utc)
         last_activity = session.get('last_activity')
@@ -81,7 +81,7 @@ def admin_required(f):
                 session.pop("is_admin", None)
                 flash("Admin session expired. Please log in again.")
                 encoded_next = urllib.parse.quote(request.path, safe="")
-                return redirect(f"{url_for('admin_login')}?next={encoded_next}")
+                return redirect(f"{url_for('admin.login')}?next={encoded_next}")
 
         session['last_activity'] = now.isoformat()
         return f(*args, **kwargs)
@@ -93,13 +93,13 @@ def system_admin_required(f):
     Decorator to require system admin authentication for a route.
 
     Enforces session timeout based on last activity.
-    Redirects to system_admin_login if not authenticated or session expired.
+    Redirects to sysadmin.login if not authenticated or session expired.
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not session.get("is_system_admin"):
             flash("System administrator access required.")
-            return redirect(url_for('system_admin_login', next=request.path))
+            return redirect(url_for('sysadmin.login', next=request.path))
         last_activity = session.get('last_activity')
         now = datetime.now(timezone.utc)
         if last_activity:
@@ -107,7 +107,7 @@ def system_admin_required(f):
             if now - last_activity > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                 session.pop("is_system_admin", None)
                 flash("Session expired. Please log in again.")
-                return redirect(url_for('system_admin_login', next=request.path))
+                return redirect(url_for('sysadmin.login', next=request.path))
         session['last_activity'] = now.isoformat()
         return f(*args, **kwargs)
     return decorated_function
