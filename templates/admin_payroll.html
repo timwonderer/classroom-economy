@@ -60,7 +60,7 @@
                       <td><strong>{{ block_info.block }}</strong></td>
                       <td>
                         {% if block_info.next_date %}
-                          <span class="local-timestamp" data-timestamp="{{ block_info.next_date.isoformat() }}Z"></span>
+                          <span class="local-timestamp" data-timestamp="{{ block_info.next_date_iso or format_utc_iso(block_info.next_date) }}"></span>
                         {% else %}
                           N/A
                         {% endif %}
@@ -135,7 +135,7 @@
                 <tr>
                   <td>
                     {% if record.timestamp %}
-                      <span class="local-timestamp" data-timestamp="{{ record.timestamp.isoformat() }}Z"></span>
+                      <span class="local-timestamp" data-timestamp="{{ format_utc_iso(record.timestamp) }}"></span>
                     {% else %}
                       N/A
                     {% endif %}
@@ -220,7 +220,7 @@
                   </td>
                   <td>
                     {% if entry.timestamp %}
-                      <span class="local-timestamp" data-timestamp="{{ entry.timestamp.isoformat() }}Z"></span>
+                      <span class="local-timestamp" data-timestamp="{{ format_utc_iso(entry.timestamp) }}"></span>
                     {% else %}
                       —
                     {% endif %}
@@ -1002,7 +1002,11 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".local-timestamp").forEach(el => {
         const utcString = el.dataset.timestamp;
         if (utcString) {
-            const date = new Date(utcString);
+            const normalized = utcString
+                .replace(' ', 'T')
+                .replace('+00:00Z', 'Z')
+                .replace('+00:00', 'Z');
+            const date = new Date(normalized);
             const options = {
                 year: 'numeric',
                 month: 'short',

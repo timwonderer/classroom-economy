@@ -40,6 +40,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def format_utc_iso(dt):
+    """Return a UTC ISO-8601 string (with trailing Z) for a datetime or ``None``."""
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
+
+
 from forms import AdminTOTPConfirmForm
 
 
@@ -3135,21 +3146,23 @@ def admin_payroll():
     pacific = pytz.timezone('America/Los_Angeles')
     last_payroll_time = get_last_payroll_time()
 
+    # Normalize to UTC to avoid any naive/aware mismatches downstream
+    if last_payroll_time and last_payroll_time.tzinfo is None:
+        last_payroll_time = last_payroll_time.replace(tzinfo=timezone.utc)
+
     # Get all students
     students = Student.query.all()
 
-    # Get all blocks
-    blocks = sorted(set(s.block for s in students if s.block))
+    # Get all blocks (split multi-block assignments like "A, B")
+    blocks = sorted({b.strip() for s in students for b in (s.block or "").split(',') if b.strip()})
 
     # Check if payroll settings exist
     has_settings = PayrollSettings.query.first() is not None
     show_setup_banner = not has_settings
 
     # Next scheduled payroll calculation (keep in UTC for template)
-    if last_payroll_time:
-        next_pay_date_utc = last_payroll_time + timedelta(days=14)
-    else:
-        next_pay_date_utc = datetime.now(timezone.utc)
+    reference_start = last_payroll_time or datetime.now(timezone.utc)
+    next_pay_date_utc = reference_start + timedelta(days=14)
 
     # Recent payroll activity
     recent_payrolls = Transaction.query.filter_by(type='payroll').order_by(Transaction.timestamp.desc()).limit(20).all()
@@ -3166,6 +3179,7 @@ def admin_payroll():
         next_payroll_by_block.append({
             'block': block,
             'next_date': next_pay_date_utc,  # Keep in UTC
+            'next_date_iso': format_utc_iso(next_pay_date_utc),
             'estimate': block_estimate
         })
 
@@ -3284,7 +3298,8 @@ def admin_payroll():
         payroll_history=payroll_history,
         # General
         blocks=blocks,
-        current_page="payroll"
+        current_page="payroll",
+        format_utc_iso=format_utc_iso
     )
 
 
