@@ -3150,6 +3150,7 @@ def admin_payroll():
     if last_payroll_time and last_payroll_time.tzinfo is None:
         last_payroll_time = last_payroll_time.replace(tzinfo=timezone.utc)
 
+
     now_utc = datetime.now(timezone.utc)
 
     # Get all students
@@ -3195,7 +3196,9 @@ def admin_payroll():
         return candidate
 
     # Next scheduled payroll calculation (keep in UTC for template)
+
     next_pay_date_utc = _compute_next_pay_date(default_setting, last_payroll_time, now_utc)
+
 
     # Recent payroll activity
     recent_payrolls = Transaction.query.filter_by(type='payroll').order_by(Transaction.timestamp.desc()).limit(20).all()
@@ -3213,8 +3216,10 @@ def admin_payroll():
         block_next_payroll = _compute_next_pay_date(setting, last_payroll_time, now_utc)
         next_payroll_by_block.append({
             'block': block,
+
             'next_date': block_next_payroll,  # Keep in UTC
             'next_date_iso': format_utc_iso(block_next_payroll),
+
             'estimate': block_estimate
         })
 
