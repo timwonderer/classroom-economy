@@ -50,7 +50,7 @@
 
 {% block session_timer %}
 <div class="alert alert-warning text-center fw-bold session-timer" id="session-timer">
-    ⏳ You will be signed out in <span id="countdown">10:00</span>
+    <span class="material-symbols-outlined">schedule</span> You will be signed out in <span id="countdown">10:00</span>
 </div>
 
 <!-- Session Timeout Modal -->
@@ -61,7 +61,7 @@
                 <h5 class="modal-title" id="timeoutModalLabel">Session Expired</h5>
             </div>
             <div class="modal-body">
-                ⏰ Time's up! You are now being signed out.
+                <span class="material-symbols-outlined">alarm</span> Time's up! You are now being signed out.
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-danger" onclick="window.location.href='{{ url_for('student_logout') }}'">Log Out</button>
@@ -76,11 +76,11 @@
 <div class="page-header">
     {% set current_hour = now.hour %}
     {% if current_hour < 12 %}
-        <h1>Good morning{% if student_name %}, {{ student_name }}{% endif %}! 🌅</h1>
+        <h1><span class="material-symbols-outlined">light_mode</span> Good morning{% if student_name %}, {{ student_name }}{% endif %}!</h1>
     {% elif current_hour < 18 %}
-        <h1>Good afternoon{% if student_name %}, {{ student_name }}{% endif %}! ☀️</h1>
+        <h1><span class="material-symbols-outlined">wb_sunny</span> Good afternoon{% if student_name %}, {{ student_name }}{% endif %}!</h1>
     {% else %}
-        <h1>Good evening{% if student_name %}, {{ student_name }}{% endif %}! 🌙</h1>
+        <h1><span class="material-symbols-outlined">nights_stay</span> Good evening{% if student_name %}, {{ student_name }}{% endif %}!</h1>
     {% endif %}
     <p class="subtitle">Welcome to your dashboard</p>
 </div>
@@ -88,12 +88,12 @@
 <!-- Alerts -->
 {% if not student.insurance_paid and student.insurance_plan != 'none' %}
     <div class="alert alert-danger">
-        🚨 Your insurance payment is past due.
+        <span class="material-symbols-outlined">warning</span> Your insurance payment is past due.
     </div>
 {% endif %}
 {% if recent_deposit %}
     <div class="alert alert-success">
-        ✅ You received a deposit of ${{ '%.2f'|format(recent_deposit.amount) }}.
+        <span class="material-symbols-outlined">check_circle</span> You received a deposit of ${{ '%.2f'|format(recent_deposit.amount) }}.
     </div>
 {% endif %}
 
@@ -133,7 +133,7 @@
 <!-- Attendance & Productivity Section -->
 <div class="card mb-4">
     <div class="card-header">
-        ⏰ Attendance & Productivity
+        <span class="material-symbols-outlined">schedule</span> Attendance & Productivity
     </div>
     <div class="card-body">
         <ul class="nav nav-tabs mb-3" id="attendanceTabs" role="tablist">
@@ -190,7 +190,7 @@
 <!-- My Items Section -->
 <div class="card mb-4">
     <div class="card-header">
-        🎁 My Items
+        <span class="material-symbols-outlined">card_giftcard</span> My Items
     </div>
     <div class="card-body">
         {% if student_items %}

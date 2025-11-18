@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <style>
       /* Custom Color Theme */
       :root {
@@ -233,26 +234,52 @@
           background-color: rgba(74, 123, 167, 0.03);
       }
 
-      /* Page Header */
+      /* Modern Page Title Banner */
+      .page-title-banner {
+          background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-light) 100%);
+          color: white;
+          padding: 1.75rem 2rem;
+          border-radius: 12px;
+          margin-bottom: 2rem;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .page-title-banner h1 {
+          margin: 0;
+          font-weight: 600;
+          font-size: 1.875rem;
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+      }
+
+      .page-title-banner .subtitle {
+          margin: 0.5rem 0 0 0;
+          opacity: 0.95;
+          font-size: 1rem;
+          font-weight: 400;
+      }
+
+      /* Legacy support for existing page-header class */
       .page-header {
           background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-light) 100%);
           color: white;
-          padding: 2rem;
-          border-radius: 10px;
+          padding: 1.75rem 2rem;
+          border-radius: 12px;
           margin-bottom: 2rem;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       }
 
       .page-header h1 {
           margin: 0;
-          font-weight: 700;
-          font-size: 2rem;
+          font-weight: 600;
+          font-size: 1.875rem;
       }
 
       .page-header .subtitle {
           margin: 0.5rem 0 0 0;
-          opacity: 0.9;
-          font-size: 1.1rem;
+          opacity: 0.95;
+          font-size: 1rem;
       }
 
       /* Session Timer */
@@ -290,24 +317,52 @@
       .modal-header .btn-close {
           filter: brightness(0) invert(1);
       }
+
+      /* Material Symbols Styling */
+      .material-symbols-outlined {
+          font-family: 'Material Symbols Outlined';
+          font-weight: normal;
+          font-style: normal;
+          font-size: 20px;
+          line-height: 1;
+          letter-spacing: normal;
+          text-transform: none;
+          display: inline-block;
+          white-space: nowrap;
+          word-wrap: normal;
+          direction: ltr;
+          vertical-align: middle;
+          -webkit-font-feature-settings: 'liga';
+          -webkit-font-smoothing: antialiased;
+      }
+
+      .navbar-nav .material-symbols-outlined {
+          font-size: 18px;
+          margin-right: 4px;
+      }
+
+      .page-title-banner .material-symbols-outlined,
+      .page-header .material-symbols-outlined {
+          font-size: 28px;
+      }
     </style>
     {% block extra_styles %}{% endblock %}
   </head>
   <body>
     <nav class="navbar navbar-expand-lg navbar-dark mb-4">
       <div class="container">
-          <a class="navbar-brand" href="{{ url_for('student_dashboard') }}">💰 Classroom Token Hub</a>
+          <a class="navbar-brand" href="{{ url_for('student_dashboard') }}"><span class="material-symbols-outlined" style="font-size: 24px;">account_balance</span> Classroom Token Hub</a>
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
           </button>
         <div class="collapse navbar-collapse" id="navbarNav">
           <ul class="navbar-nav ms-auto">
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_dashboard' %}active{% endif %}" href="{{ url_for('student_dashboard') }}">📊 Dashboard</a></li>
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_transfer' %}active{% endif %}" href="{{ url_for('student_transfer') }}">💳 Accounts</a></li>
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_insurance' %}active{% endif %}" href="{{ url_for('student_insurance') }}">🛡️ Insurance</a></li>
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_shop' %}active{% endif %}" href="{{ url_for('student_shop') }}">🏪 Shop</a></li>
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_rent' %}active{% endif %}" href="{{ url_for('student_rent') }}">🏠 Rent</a></li>
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('student_logout') }}">🚪 Logout</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_dashboard' %}active{% endif %}" href="{{ url_for('student_dashboard') }}"><span class="material-symbols-outlined">dashboard</span> Dashboard</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_transfer' %}active{% endif %}" href="{{ url_for('student_transfer') }}"><span class="material-symbols-outlined">account_balance_wallet</span> Accounts</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_insurance' %}active{% endif %}" href="{{ url_for('student_insurance') }}"><span class="material-symbols-outlined">shield</span> Insurance</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_shop' %}active{% endif %}" href="{{ url_for('student_shop') }}"><span class="material-symbols-outlined">storefront</span> Shop</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_rent' %}active{% endif %}" href="{{ url_for('student_rent') }}"><span class="material-symbols-outlined">home</span> Rent</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('student_logout') }}"><span class="material-symbols-outlined">logout</span> Logout</a></li>
           </ul>
         </div>
       </div>
