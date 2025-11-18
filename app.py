@@ -3306,7 +3306,9 @@ def admin_upload_students():
         flash("No file provided", "admin_error")
         return redirect(url_for('admin_students'))
 
-    stream = io.StringIO(file.stream.read().decode("UTF8"), newline=None)
+    # Read file content and remove BOM if present
+    content = file.stream.read().decode("UTF-8-sig")  # UTF-8-sig removes BOM
+    stream = io.StringIO(content, newline=None)
     csv_input = csv.DictReader(stream)
     added_count = 0
     errors = 0
@@ -3314,10 +3316,12 @@ def admin_upload_students():
 
     for row in csv_input:
         try:
-            first_name = row.get('first_name', '').strip()
-            last_name = row.get('last_name', '').strip()
-            dob_str = row.get('date_of_birth', '').strip()
-            block = row.get('block', '').strip().upper()
+            # Handle both template column names and code-friendly names (case-insensitive)
+            # Try template column names first, then fall back to lowercase versions
+            first_name = (row.get('First Name') or row.get('first_name') or '').strip()
+            last_name = (row.get('Last Name') or row.get('last_name') or '').strip()
+            dob_str = (row.get('Date of Birth (MM/DD/YYYY)') or row.get('date_of_birth') or '').strip()
+            block = (row.get('Period/Block') or row.get('block') or '').strip().upper()
 
             if not all([first_name, last_name, dob_str, block]):
                 raise ValueError("Missing required fields.")
