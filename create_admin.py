@@ -9,7 +9,9 @@ import qrcode
 from io import BytesIO
 
 # Set up Flask app context
-from app import app, db, SystemAdmin, Admin
+from app import app
+from app.extensions import db
+from app.models import SystemAdmin, Admin
 
 def create_system_admin(username):
     """Create a system admin account."""

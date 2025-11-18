@@ -3,7 +3,7 @@ from sqlalchemy import func
 
 def get_last_payroll_time():
     """Fetches the timestamp of the most recent global payroll transaction."""
-    from app import Transaction  # Local import to avoid circular dependency
+    from app.models import Transaction  # Local import to avoid circular dependency
     last_payroll_tx = Transaction.query.filter_by(type="payroll").order_by(Transaction.timestamp.desc()).first()
     return _as_utc(last_payroll_tx.timestamp) if last_payroll_tx else None
 
@@ -21,7 +21,8 @@ def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
     since the last payroll run. This version is corrected to prevent double-counting
     and only calculates completed sessions to ensure correctness.
     """
-    from app import TapEvent, db
+    from app.models import TapEvent
+    from app.extensions import db
     from datetime import datetime, timezone
 
     last_payroll_time = _as_utc(last_payroll_time)
@@ -87,7 +88,7 @@ def calculate_period_attendance(student_id, period, date):
     Calculates total attendance seconds for a student in a specific period
     on a specific date. Used for daily attendance reporting.
     """
-    from app import TapEvent
+    from app.models import TapEvent
 
     # Get all events for this student/period on the specified date
     events = TapEvent.query.filter(
@@ -115,7 +116,7 @@ def get_session_status(student_id, period):
     Gets the current session status for a student in a specific period.
     Returns a tuple of (is_active, done, duration).
     """
-    from app import TapEvent
+    from app.models import TapEvent
     from datetime import datetime, timezone
 
     today = datetime.now(timezone.utc).date()
@@ -148,7 +149,7 @@ def get_all_block_statuses(student):
     """
     Gets the status for all blocks assigned to a student for the /api/student-status endpoint.
     """
-    from app import TapEvent
+    from app.models import TapEvent
     from sqlalchemy import func
     from datetime import datetime, timezone
 
