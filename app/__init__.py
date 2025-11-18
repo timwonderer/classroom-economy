@@ -190,13 +190,16 @@ def create_app():
     app.jinja_env.globals['max'] = max
 
     # -------------------- REGISTER BLUEPRINTS --------------------
-    # TODO: Register blueprints here in Stage 4
-    # Example:
-    # from app.routes.student import student_bp
-    # from app.routes.admin import admin_bp
-    # from app.routes.system_admin import system_admin_bp
-    # app.register_blueprint(student_bp)
-    # app.register_blueprint(admin_bp)
-    # app.register_blueprint(system_admin_bp)
+    from app.routes.main import main_bp
+    from app.routes.api import api_bp
+    from app.routes.system_admin import sysadmin_bp
+    from app.routes.student import student_bp
+    from app.routes.admin import admin_bp
+
+    app.register_blueprint(main_bp)
+    app.register_blueprint(api_bp)
+    app.register_blueprint(sysadmin_bp)
+    app.register_blueprint(student_bp)
+    app.register_blueprint(admin_bp)
 
     return app
