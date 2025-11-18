@@ -233,26 +233,52 @@
           background-color: rgba(74, 123, 167, 0.03);
       }
 
-      /* Page Header */
+      /* Modern Page Title Banner */
+      .page-title-banner {
+          background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-light) 100%);
+          color: white;
+          padding: 1.75rem 2rem;
+          border-radius: 12px;
+          margin-bottom: 2rem;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      }
+
+      .page-title-banner h1 {
+          margin: 0;
+          font-weight: 600;
+          font-size: 1.875rem;
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+      }
+
+      .page-title-banner .subtitle {
+          margin: 0.5rem 0 0 0;
+          opacity: 0.95;
+          font-size: 1rem;
+          font-weight: 400;
+      }
+
+      /* Legacy support for existing page-header class */
       .page-header {
           background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-light) 100%);
           color: white;
-          padding: 2rem;
-          border-radius: 10px;
+          padding: 1.75rem 2rem;
+          border-radius: 12px;
           margin-bottom: 2rem;
-          box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
       }
 
       .page-header h1 {
           margin: 0;
-          font-weight: 700;
-          font-size: 2rem;
+          font-weight: 600;
+          font-size: 1.875rem;
       }
 
       .page-header .subtitle {
           margin: 0.5rem 0 0 0;
-          opacity: 0.9;
-          font-size: 1.1rem;
+          opacity: 0.95;
+          font-size: 1rem;
       }
 
       /* Session Timer */

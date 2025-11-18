@@ -121,6 +121,51 @@
         background-color: var(--warning-gold) !important;
         color: #000 !important;
     }
+
+    /* Collapsible Navigation Styling */
+    .nav-group button {
+        position: relative;
+    }
+
+    .nav-group .chevron {
+        transition: transform 0.2s ease;
+    }
+
+    .nav-group button:not(.collapsed) .chevron {
+        transform: rotate(180deg);
+    }
+
+    .nav-group .collapse {
+        transition: all 0.3s ease;
+    }
+
+    /* Modern Title Banner */
+    .page-title-banner {
+        background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-light) 100%);
+        color: white;
+        padding: 1.5rem 2rem;
+        border-radius: 12px;
+        margin-bottom: 2rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .page-title-banner h2 {
+        margin: 0;
+        font-weight: 600;
+        font-size: 1.75rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+
+    .page-title-banner time {
+        font-size: 0.95rem;
+        opacity: 0.95;
+        font-weight: 500;
+    }
 </style>
 
     <title>{{ page_title or "Admin Panel" }}</title>
@@ -130,42 +175,102 @@
 <body style="font-family:noto sans" class="d-flex">
     <!-- Flash Toast Container -->
 <div id="flashToastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050;"></div>
-    <div class="sidebar border-end vh-100 p-3 d-flex flex-column" style="width: 240px;">
-        <h5>Admin Panel</h5>
-        <div class="d-grid gap-2">
+    <div class="sidebar border-end vh-100 p-3 d-flex flex-column" style="width: 260px;">
+        <div class="mb-4">
+            <h5 class="mb-0">💼 Admin Portal</h5>
+            <small class="text-muted" style="font-size: 0.75rem;">Classroom Economy</small>
+        </div>
+        <div class="d-grid gap-2" style="overflow-y: auto;">
+            <!-- Dashboard -->
             <a href="{{ url_for('admin_dashboard') }}"
                class="btn text-start {% if current_page == 'dashboard' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">📊 Dashboard</a>
-            <a href="{{ url_for('admin_attendance_log') }}"
-               class="btn text-start {% if current_page == 'attendance' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">✅ Attendance</a>
 
-            <a href="{{ url_for('admin_students') }}"
-               class="btn text-start {% if current_page == 'students' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🎒 Students</a>
+            <!-- Students Group -->
+            <div class="nav-group">
+                <button class="btn btn-outline-primary text-start w-100 d-flex justify-content-between align-items-center collapsed"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#studentsGroup"
+                        aria-expanded="false">
+                    <span>👥 Students</span>
+                    <svg width="12" height="12" class="chevron">
+                        <path d="M2 4 L6 8 L10 4" stroke="currentColor" fill="none" stroke-width="2"/>
+                    </svg>
+                </button>
+                <div class="collapse {% if current_page in ['attendance', 'students', 'hall_pass'] %}show{% endif %}" id="studentsGroup">
+                    <div class="d-grid gap-1 mt-1 ms-3">
+                        <a href="{{ url_for('admin_attendance_log') }}"
+                           class="btn btn-sm text-start {% if current_page == 'attendance' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">✅ Attendance</a>
+                        <a href="{{ url_for('admin_students') }}"
+                           class="btn btn-sm text-start {% if current_page == 'students' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🎒 Manage Students</a>
+                        <a href="{{ url_for('admin_hall_pass') }}"
+                           class="btn btn-sm text-start {% if current_page == 'hall_pass' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🎫 Hall Pass</a>
+                    </div>
+                </div>
+            </div>
 
-            <a href="{{ url_for('admin_hall_pass') }}"
-               class="btn text-start {% if current_page == 'hall_pass' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🎫 Hall Pass</a>
+            <!-- Payroll Group -->
+            <div class="nav-group">
+                <button class="btn btn-outline-primary text-start w-100 d-flex justify-content-between align-items-center collapsed"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#payrollGroup"
+                        aria-expanded="false">
+                    <span>💵 Payroll</span>
+                    <svg width="12" height="12" class="chevron">
+                        <path d="M2 4 L6 8 L10 4" stroke="currentColor" fill="none" stroke-width="2"/>
+                    </svg>
+                </button>
+                <div class="collapse {% if current_page in ['payroll'] %}show{% endif %}" id="payrollGroup">
+                    <div class="d-grid gap-1 mt-1 ms-3">
+                        <a href="{{ url_for('admin_payroll') }}"
+                           class="btn btn-sm text-start {% if current_page == 'payroll' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🧾 Process Payroll</a>
+                        <a href="#"
+                           class="btn btn-sm text-start btn-outline-secondary disabled">💼 Jobs (Soon)</a>
+                    </div>
+                </div>
+            </div>
 
-            <a href="{{ url_for('admin_payroll') }}"
-               class="btn text-start {% if current_page == 'payroll' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🧾 Payroll</a>
-            <a href="{{ url_for('admin_transactions') }}"
-               class="btn text-start {% if current_page == 'transactions' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
-              💰 Transactions
-            </a>
+            <!-- Store -->
             <a href="{{ url_for('admin_store_management') }}"
                class="btn text-start {% if current_page == 'store' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🏪 Store</a>
-            <a href="{{ url_for('admin_rent_settings') }}"
-               class="btn text-start {% if current_page == 'rent' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🏠 Rent</a>
-            <a href="{{ url_for('admin_insurance_management') }}"
-               class="btn text-start {% if current_page == 'insurance' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🛡️ Insurance</a>
-            <a href="#"
-               class="btn text-start btn-outline-secondary disabled">📋 Audit (Coming Soon)</a>
+
+            <!-- Bills Group -->
+            <div class="nav-group">
+                <button class="btn btn-outline-primary text-start w-100 d-flex justify-content-between align-items-center collapsed"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#billsGroup"
+                        aria-expanded="false">
+                    <span>📋 Bills</span>
+                    <svg width="12" height="12" class="chevron">
+                        <path d="M2 4 L6 8 L10 4" stroke="currentColor" fill="none" stroke-width="2"/>
+                    </svg>
+                </button>
+                <div class="collapse {% if current_page in ['rent', 'insurance'] %}show{% endif %}" id="billsGroup">
+                    <div class="d-grid gap-1 mt-1 ms-3">
+                        <a href="{{ url_for('admin_rent_settings') }}"
+                           class="btn btn-sm text-start {% if current_page == 'rent' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🏠 Rent</a>
+                        <a href="{{ url_for('admin_insurance_management') }}"
+                           class="btn btn-sm text-start {% if current_page == 'insurance' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">🛡️ Insurance</a>
+                        <a href="#"
+                           class="btn btn-sm text-start btn-outline-secondary disabled">⚡ Utilities (Soon)</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Transactions -->
+            <a href="{{ url_for('admin_transactions') }}"
+               class="btn text-start {% if current_page == 'transactions' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">💰 Transactions</a>
         </div>
         <div class="mt-auto">
             <a href="{{ url_for('admin_logout') }}" class="btn btn-outline-secondary text-start w-100">🚪 Sign Out</a>
         </div>
     </div>
     <div class="flex-grow-1 p-4">
-        <div class="d-flex justify-content-between align-items-center mb-3">
-            <h2 class="mb-0">{{ page_title or "Admin Panel" }}</h2>
+        <!-- Modern Title Banner -->
+        <div class="page-title-banner">
+            <h2>{% block page_icon %}📊{% endblock %} {{ page_title or "Admin Panel" }}</h2>
             <time id="current-time"></time>
         </div>
         {% block content %}{% endblock %}
