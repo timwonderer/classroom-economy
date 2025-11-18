@@ -3104,6 +3104,8 @@ def admin_payroll():
     from sqlalchemy import desc
     from datetime import datetime, timedelta
     import pytz
+    from payroll import calculate_payroll
+    from attendance import calculate_unpaid_attendance_seconds
 
     pacific = pytz.timezone('America/Los_Angeles')
     last_payroll_time = get_last_payroll_time()
@@ -3114,12 +3116,11 @@ def admin_payroll():
     # Get all blocks
     blocks = sorted(set(s.block for s in students if s.block))
 
-    # Next scheduled payroll calculation
+    # Next scheduled payroll calculation (keep in UTC for template)
     if last_payroll_time:
         next_pay_date_utc = last_payroll_time + timedelta(days=14)
     else:
         next_pay_date_utc = datetime.now(timezone.utc)
-    next_pay_date = next_pay_date_utc.astimezone(pacific)
 
     # Recent payroll activity
     recent_payrolls = Transaction.query.filter_by(type='payroll').order_by(Transaction.timestamp.desc()).limit(20).all()
@@ -3131,11 +3132,11 @@ def admin_payroll():
     # Next payroll by block (for now, use same date for all blocks)
     next_payroll_by_block = []
     for block in blocks:
-        block_students = [s for s in students if block in (s.block or '').split(',')]
+        block_students = [s for s in students if block in [b.strip() for b in (s.block or '').split(',')]]
         block_estimate = sum(payroll_summary.get(s.id, 0) for s in block_students)
         next_payroll_by_block.append({
             'block': block,
-            'next_date': next_pay_date,
+            'next_date': next_pay_date_utc,  # Keep in UTC
             'estimate': block_estimate
         })
 
@@ -3196,7 +3197,7 @@ def admin_payroll():
         'admin_payroll.html',
         # Overview tab
         recent_payrolls=recent_payrolls,
-        next_payroll_date=next_pay_date,
+        next_payroll_date=next_pay_date_utc,  # Pass UTC timestamp
         next_payroll_by_block=next_payroll_by_block,
         total_payroll_estimate=total_payroll_estimate,
         total_students=len(students),
@@ -3205,7 +3206,7 @@ def admin_payroll():
         # Settings tab
         settings_form=settings_form,
         block_settings=block_settings,
-        next_global_payroll=next_pay_date,
+        next_global_payroll=next_pay_date_utc,  # Pass UTC timestamp
         # Students tab
         student_stats=student_stats,
         # Rewards & Fines tab
