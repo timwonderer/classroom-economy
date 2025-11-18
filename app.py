@@ -2022,7 +2022,7 @@ def admin_dashboard():
 
     # Quick Stats
     total_students = len(students)
-    total_balance = sum(s.balance for s in students)
+    total_balance = sum(s.checking_balance + s.savings_balance for s in students)
     avg_balance = total_balance / total_students if total_students > 0 else 0
 
     # Pending actions - count all types of pending approvals
