@@ -146,7 +146,7 @@ def setup_pin_passphrase():
         session.pop('claimed_student_id', None)
         session.pop('generated_username', None)
         flash("Setup completed successfully!", "setup")
-        return redirect(url_for('setup_complete'))
+        return redirect(url_for('student.setup_complete'))
     return render_template('student_pin_setup.html', username=username, form=form)
 
 
