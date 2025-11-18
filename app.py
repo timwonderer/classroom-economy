@@ -552,6 +552,26 @@ class PayrollSettings(db.Model):
     overtime_multiplier = db.Column(db.Float, default=1.0)
     bonus_rate = db.Column(db.Float, default=0.0)
 
+    # Enhanced settings for simple/advanced modes
+    settings_mode = db.Column(db.String(20), nullable=False, default='simple')  # 'simple' or 'advanced'
+
+    # Simple mode fields
+    daily_limit_hours = db.Column(db.Float, nullable=True)  # Max hours per day (auto tap-out)
+
+    # Advanced mode fields
+    time_unit = db.Column(db.String(20), nullable=False, default='minutes')  # seconds/minutes/hours/days
+    overtime_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    overtime_threshold = db.Column(db.Float, nullable=True)  # Threshold value
+    overtime_threshold_unit = db.Column(db.String(20), nullable=True)  # seconds/minutes/hours
+    overtime_threshold_period = db.Column(db.String(20), nullable=True)  # day/week/month
+    max_time_per_day = db.Column(db.Float, nullable=True)  # Max time value (overrides overtime)
+    max_time_per_day_unit = db.Column(db.String(20), nullable=True)  # seconds/minutes/hours
+    pay_schedule_type = db.Column(db.String(20), nullable=False, default='biweekly')  # daily/weekly/biweekly/monthly/custom
+    pay_schedule_custom_value = db.Column(db.Integer, nullable=True)  # For custom schedule
+    pay_schedule_custom_unit = db.Column(db.String(20), nullable=True)  # day/week for custom
+    first_pay_date = db.Column(db.DateTime, nullable=True)  # First payday
+    rounding_mode = db.Column(db.String(20), nullable=False, default='down')  # 'up' or 'down'
+
     def __repr__(self):
         return f'<PayrollSettings {self.block or "Global"}>'
 
@@ -3250,72 +3270,161 @@ def admin_payroll():
 @app.route('/admin/payroll/settings', methods=['POST'])
 @admin_required
 def admin_payroll_settings():
-    """Save payroll settings for a block or globally."""
-    form = PayrollSettingsForm()
+    """Save payroll settings for a block or globally (Simple or Advanced mode)."""
+    from datetime import datetime, timezone, timedelta
 
-    # Get all blocks for choices
-    students = Student.query.all()
-    blocks = sorted(set(s.block for s in students if s.block))
-    form.block.choices = [('', 'Global (All Blocks)')] + [(b, b) for b in blocks]
+    try:
+        # Get all blocks
+        students = Student.query.all()
+        blocks = sorted(set(s.block for s in students if s.block))
 
-    if form.validate_on_submit():
-        try:
-            if form.apply_to_all.data:
-                # Apply to all blocks
-                for block in blocks:
-                    # Check if setting exists for this block
-                    setting = PayrollSettings.query.filter_by(block=block).first()
-                    if not setting:
-                        setting = PayrollSettings(block=block)
+        # Determine which mode we're in
+        settings_mode = request.form.get('settings_mode', 'simple')
 
-                    setting.pay_rate = form.pay_rate.data
-                    setting.payroll_frequency_days = form.payroll_frequency_days.data
-                    setting.overtime_multiplier = form.overtime_multiplier.data or 1.0
-                    setting.bonus_rate = form.bonus_rate.data or 0.0
-                    setting.is_active = form.is_active.data
-                    setting.updated_at = datetime.utcnow()
+        # Parse form data based on mode
+        if settings_mode == 'simple':
+            # Simple mode fields
+            pay_rate_per_hour = float(request.form.get('simple_pay_rate', 15.0))
+            pay_rate_per_minute = pay_rate_per_hour / 60.0  # Convert to per-minute for storage
 
-                    db.session.add(setting)
+            frequency = request.form.get('simple_frequency', 'biweekly')
+            frequency_days_map = {'weekly': 7, 'biweekly': 14, 'monthly': 30}
+            payroll_frequency_days = frequency_days_map.get(frequency, 14)
 
-                # Also update/create global setting
-                global_setting = PayrollSettings.query.filter_by(block=None).first()
-                if not global_setting:
-                    global_setting = PayrollSettings(block=None)
+            first_pay_date_str = request.form.get('simple_first_pay_date')
+            first_pay_date = datetime.strptime(first_pay_date_str, '%Y-%m-%d') if first_pay_date_str else None
 
-                global_setting.pay_rate = form.pay_rate.data
-                global_setting.payroll_frequency_days = form.payroll_frequency_days.data
-                global_setting.overtime_multiplier = form.overtime_multiplier.data or 1.0
-                global_setting.bonus_rate = form.bonus_rate.data or 0.0
-                global_setting.is_active = form.is_active.data
-                global_setting.updated_at = datetime.utcnow()
+            daily_limit_hours = request.form.get('simple_daily_limit')
+            daily_limit_hours = float(daily_limit_hours) if daily_limit_hours else None
 
-                db.session.add(global_setting)
-                flash('Payroll settings applied to all blocks successfully!', 'success')
+            apply_to = request.form.get('simple_apply_to', 'all')
+            selected_blocks = request.form.getlist('simple_blocks[]') if apply_to == 'selected' else blocks
+
+            # Create settings dict for simple mode
+            settings_data = {
+                'settings_mode': 'simple',
+                'pay_rate': pay_rate_per_minute,
+                'payroll_frequency_days': payroll_frequency_days,
+                'first_pay_date': first_pay_date,
+                'daily_limit_hours': daily_limit_hours,
+                'time_unit': 'minutes',
+                'pay_schedule_type': frequency,
+                'is_active': True,
+                # Reset advanced fields
+                'overtime_enabled': False,
+                'overtime_threshold': None,
+                'overtime_threshold_unit': None,
+                'overtime_threshold_period': None,
+                'overtime_multiplier': 1.0,
+                'max_time_per_day': None,
+                'max_time_per_day_unit': None,
+                'rounding_mode': 'down'
+            }
+
+        else:  # Advanced mode
+            pay_amount = float(request.form.get('adv_pay_amount', 0.25))
+            time_unit = request.form.get('adv_time_unit', 'minutes')
+
+            # Convert to per-minute for storage
+            unit_to_minute_multiplier = {
+                'seconds': 60,
+                'minutes': 1,
+                'hours': 1/60,
+                'days': 1/(60*24)
+            }
+            pay_rate_per_minute = pay_amount * unit_to_minute_multiplier.get(time_unit, 1)
+
+            # Overtime settings
+            overtime_enabled = 'adv_overtime_enabled' in request.form
+            overtime_threshold = request.form.get('adv_overtime_threshold')
+            overtime_threshold = float(overtime_threshold) if overtime_threshold else None
+            overtime_unit = request.form.get('adv_overtime_unit')
+            overtime_period = request.form.get('adv_overtime_period')
+            overtime_multiplier = request.form.get('adv_overtime_multiplier')
+            overtime_multiplier = float(overtime_multiplier) if overtime_multiplier else 1.0
+
+            # Max time per day
+            max_time_value = request.form.get('adv_max_time_value')
+            max_time_value = float(max_time_value) if max_time_value else None
+            max_time_unit = request.form.get('adv_max_time_unit')
+
+            # Pay schedule
+            pay_schedule = request.form.get('adv_pay_schedule', 'biweekly')
+            custom_value = request.form.get('adv_custom_schedule_value')
+            custom_unit = request.form.get('adv_custom_schedule_unit')
+
+            # Calculate payroll_frequency_days
+            if pay_schedule == 'custom':
+                custom_value = int(custom_value) if custom_value else 14
+                if custom_unit == 'weeks':
+                    payroll_frequency_days = custom_value * 7
+                else:  # days
+                    payroll_frequency_days = custom_value
             else:
-                # Apply to specific block or global
-                block_value = form.block.data if form.block.data else None
-                setting = PayrollSettings.query.filter_by(block=block_value).first()
+                schedule_map = {'daily': 1, 'weekly': 7, 'biweekly': 14, 'monthly': 30}
+                payroll_frequency_days = schedule_map.get(pay_schedule, 14)
 
-                if not setting:
-                    setting = PayrollSettings(block=block_value)
+            first_pay_date_str = request.form.get('adv_first_pay_date')
+            first_pay_date = datetime.strptime(first_pay_date_str, '%Y-%m-%d') if first_pay_date_str else None
 
-                setting.pay_rate = form.pay_rate.data
-                setting.payroll_frequency_days = form.payroll_frequency_days.data
-                setting.overtime_multiplier = form.overtime_multiplier.data or 1.0
-                setting.bonus_rate = form.bonus_rate.data or 0.0
-                setting.is_active = form.is_active.data
-                setting.updated_at = datetime.utcnow()
+            rounding = request.form.get('adv_rounding', 'down')
 
-                db.session.add(setting)
-                flash(f'Payroll settings saved for {block_value or "Global"}!', 'success')
+            apply_to = request.form.get('adv_apply_to', 'all')
+            selected_blocks = request.form.getlist('adv_blocks[]') if apply_to == 'selected' else blocks
 
-            db.session.commit()
-        except Exception as e:
-            db.session.rollback()
-            app.logger.error(f"Error saving payroll settings: {e}")
-            flash('Error saving payroll settings. Please try again.', 'error')
-    else:
-        flash('Invalid form data. Please check your inputs.', 'error')
+            settings_data = {
+                'settings_mode': 'advanced',
+                'pay_rate': pay_rate_per_minute,
+                'time_unit': time_unit,
+                'overtime_enabled': overtime_enabled,
+                'overtime_threshold': overtime_threshold,
+                'overtime_threshold_unit': overtime_unit if overtime_enabled else None,
+                'overtime_threshold_period': overtime_period if overtime_enabled else None,
+                'overtime_multiplier': overtime_multiplier if overtime_enabled else 1.0,
+                'max_time_per_day': max_time_value,
+                'max_time_per_day_unit': max_time_unit if max_time_value else None,
+                'pay_schedule_type': pay_schedule,
+                'pay_schedule_custom_value': int(custom_value) if pay_schedule == 'custom' and custom_value else None,
+                'pay_schedule_custom_unit': custom_unit if pay_schedule == 'custom' else None,
+                'payroll_frequency_days': payroll_frequency_days,
+                'first_pay_date': first_pay_date,
+                'rounding_mode': rounding,
+                'is_active': True,
+                # Reset simple fields
+                'daily_limit_hours': None
+            }
+
+        # Apply settings to selected blocks or all
+        if apply_to == 'all' or not selected_blocks:
+            # Apply to all blocks + global
+            target_blocks = [None] + blocks  # None = global
+        else:
+            # Apply to selected blocks only
+            target_blocks = selected_blocks
+
+        for block_value in target_blocks:
+            setting = PayrollSettings.query.filter_by(block=block_value).first()
+            if not setting:
+                setting = PayrollSettings(block=block_value)
+
+            # Update all fields
+            for key, value in settings_data.items():
+                setattr(setting, key, value)
+
+            setting.updated_at = datetime.utcnow()
+            db.session.add(setting)
+
+        db.session.commit()
+
+        if apply_to == 'all' or not selected_blocks:
+            flash(f'Payroll settings ({settings_mode} mode) applied to all periods successfully!', 'success')
+        else:
+            flash(f'Payroll settings ({settings_mode} mode) applied to {len(selected_blocks)} period(s) successfully!', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error saving payroll settings: {e}")
+        flash(f'Error saving payroll settings: {str(e)}', 'error')
 
     return redirect(url_for('admin_payroll'))
 

@@ -270,147 +270,301 @@
 
   <!-- SETTINGS TAB -->
   <div class="tab-pane fade" id="settings" role="tabpanel">
-    <div class="card shadow mb-4">
-      <div class="card-header bg-primary text-white">
-        <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Payroll Settings</h5>
+    <div class="row">
+      <!-- LEFT: Settings Form -->
+      <div class="col-lg-8 mb-4">
+        <div class="card shadow">
+          <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Payroll Settings</h5>
+            <!-- Mode Toggle -->
+            <div class="form-check form-switch">
+              <input class="form-check-input" type="checkbox" id="settingsModeToggle" role="switch">
+              <label class="form-check-label text-white" for="settingsModeToggle">Advanced Mode</label>
+            </div>
+          </div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('admin_payroll_settings') }}" id="payrollSettingsForm">
+              {{ settings_form.hidden_tag() }}
+              <input type="hidden" name="settings_mode" id="settingsModeInput" value="simple">
+
+              <!-- SIMPLE MODE -->
+              <div id="simpleModeFields">
+                <div class="alert alert-info">
+                  <i class="bi bi-info-circle me-2"></i>
+                  <strong>Simple Mode:</strong> Easy-to-use settings for basic payroll configuration.
+                </div>
+
+                <!-- Pay Rate (per hour) -->
+                <div class="mb-3">
+                  <label for="simplePayRate" class="form-label fw-bold">Pay Rate:</label>
+                  <div class="input-group">
+                    <span class="input-group-text">$</span>
+                    <input type="number" class="form-control" id="simplePayRate" name="simple_pay_rate" step="0.01" placeholder="15.00">
+                    <span class="input-group-text">/hour</span>
+                  </div>
+                  <small class="text-muted">Amount paid per hour of attendance</small>
+                </div>
+
+                <!-- Payroll Frequency -->
+                <div class="mb-3">
+                  <label for="simpleFrequency" class="form-label fw-bold">Payroll Frequency:</label>
+                  <select class="form-select" id="simpleFrequency" name="simple_frequency">
+                    <option value="weekly">Weekly</option>
+                    <option value="biweekly" selected>Bi-weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                </div>
+
+                <!-- First Pay Date -->
+                <div class="mb-3">
+                  <label for="simpleFirstPayDate" class="form-label fw-bold">Starting Date (First Payday):</label>
+                  <input type="date" class="form-control" id="simpleFirstPayDate" name="simple_first_pay_date">
+                  <small class="text-muted">Date of the first payroll run</small>
+                </div>
+
+                <!-- Daily Limit -->
+                <div class="mb-3">
+                  <label for="simpleDailyLimit" class="form-label fw-bold">Daily Limit (Max Hours):</label>
+                  <input type="number" class="form-control" id="simpleDailyLimit" name="simple_daily_limit" step="0.5" placeholder="8.0">
+                  <small class="text-muted">Maximum hours a student can accumulate per day. Auto tap-out if exceeded. Resets at 12:00 AM PST. Leave blank for no limit.</small>
+                </div>
+
+                <!-- Apply To -->
+                <div class="mb-3">
+                  <label class="form-label fw-bold">Apply Settings To:</label>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="simple_apply_to" id="simpleApplyAll" value="all" checked>
+                    <label class="form-check-label" for="simpleApplyAll">All Periods/Blocks</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="simple_apply_to" id="simpleApplySelected" value="selected">
+                    <label class="form-check-label" for="simpleApplySelected">Selected Periods:</label>
+                  </div>
+                  <div id="simpleBlockCheckboxes" class="ms-4 mt-2" style="display:none;">
+                    {% for block in blocks %}
+                    <div class="form-check">
+                      <input class="form-check-input simple-block-checkbox" type="checkbox" name="simple_blocks[]" value="{{ block }}" id="simple_block_{{ block }}">
+                      <label class="form-check-label" for="simple_block_{{ block }}">{{ block }}</label>
+                    </div>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+
+              <!-- ADVANCED MODE (hidden by default) -->
+              <div id="advancedModeFields" style="display:none;">
+                <div class="alert alert-warning">
+                  <i class="bi bi-exclamation-triangle me-2"></i>
+                  <strong>Advanced Mode:</strong> Full control over payroll calculations with detailed options.
+                </div>
+
+                <!-- Pay Amount & Time Increment -->
+                <div class="row mb-3">
+                  <div class="col-md-6">
+                    <label for="advPayAmount" class="form-label fw-bold">Pay Amount:</label>
+                    <div class="input-group">
+                      <span class="input-group-text">$</span>
+                      <input type="number" class="form-control" id="advPayAmount" name="adv_pay_amount" step="0.01" placeholder="0.25">
+                    </div>
+                  </div>
+                  <div class="col-md-6">
+                    <label for="advTimeUnit" class="form-label fw-bold">Time Increment:</label>
+                    <select class="form-select" id="advTimeUnit" name="adv_time_unit">
+                      <option value="seconds">Per Second</option>
+                      <option value="minutes" selected>Per Minute</option>
+                      <option value="hours">Per Hour</option>
+                      <option value="days">Per Day</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Overtime Settings -->
+                <div class="card mb-3 border-info">
+                  <div class="card-header bg-info bg-opacity-10">
+                    <div class="form-check form-switch">
+                      <input class="form-check-input" type="checkbox" id="advOvertimeEnabled" name="adv_overtime_enabled">
+                      <label class="form-check-label fw-bold" for="advOvertimeEnabled">Enable Overtime</label>
+                    </div>
+                  </div>
+                  <div class="card-body" id="overtimeFields" style="display:none;">
+                    <div class="row mb-3">
+                      <div class="col-md-4">
+                        <label for="advOvertimeThreshold" class="form-label">Threshold:</label>
+                        <input type="number" class="form-control" id="advOvertimeThreshold" name="adv_overtime_threshold" step="0.1" placeholder="8">
+                      </div>
+                      <div class="col-md-4">
+                        <label for="advOvertimeUnit" class="form-label">Unit:</label>
+                        <select class="form-select" id="advOvertimeUnit" name="adv_overtime_unit">
+                          <option value="seconds">Seconds</option>
+                          <option value="minutes">Minutes</option>
+                          <option value="hours" selected>Hours</option>
+                        </select>
+                      </div>
+                      <div class="col-md-4">
+                        <label for="advOvertimePeriod" class="form-label">Per:</label>
+                        <select class="form-select" id="advOvertimePeriod" name="adv_overtime_period">
+                          <option value="day" selected>Day</option>
+                          <option value="week">Week</option>
+                          <option value="month">Month</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div class="mb-0">
+                      <label for="advOvertimeMultiplier" class="form-label">Overtime Multiplier:</label>
+                      <div class="input-group">
+                        <input type="number" class="form-control" id="advOvertimeMultiplier" name="adv_overtime_multiplier" step="0.1" min="1.0" placeholder="1.5">
+                        <span class="input-group-text">x</span>
+                      </div>
+                      <small class="text-muted">Must be ≥ 1.0 (e.g., 1.5 = 1.5x base rate for overtime)</small>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Maximum Time Per Day -->
+                <div class="mb-3">
+                  <label class="form-label fw-bold">Maximum Allowable Time Per Day:</label>
+                  <div class="row">
+                    <div class="col-md-6">
+                      <input type="number" class="form-control" id="advMaxTimeValue" name="adv_max_time_value" step="0.1" placeholder="Leave blank for unlimited">
+                      <small class="text-muted">Student will auto tap-out after this time</small>
+                    </div>
+                    <div class="col-md-6">
+                      <select class="form-select" id="advMaxTimeUnit" name="adv_max_time_unit">
+                        <option value="seconds">Seconds</option>
+                        <option value="minutes">Minutes</option>
+                        <option value="hours" selected>Hours</option>
+                      </select>
+                    </div>
+                  </div>
+                  <small class="text-muted text-warning"><i class="bi bi-exclamation-triangle"></i> This overrides overtime calculations</small>
+                </div>
+
+                <!-- Pay Schedule -->
+                <div class="mb-3">
+                  <label for="advPaySchedule" class="form-label fw-bold">Pay Schedule:</label>
+                  <select class="form-select mb-2" id="advPaySchedule" name="adv_pay_schedule">
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="biweekly" selected>Bi-weekly</option>
+                    <option value="monthly">Monthly</option>
+                    <option value="custom">Custom</option>
+                  </select>
+                  <div id="customScheduleFields" style="display:none;">
+                    <div class="row">
+                      <div class="col-md-6">
+                        <input type="number" class="form-control" id="advCustomScheduleValue" name="adv_custom_schedule_value" placeholder="Enter number">
+                      </div>
+                      <div class="col-md-6">
+                        <select class="form-select" id="advCustomScheduleUnit" name="adv_custom_schedule_unit">
+                          <option value="days" selected>Day(s)</option>
+                          <option value="weeks">Week(s)</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- First Pay Date -->
+                <div class="mb-3">
+                  <label for="advFirstPayDate" class="form-label fw-bold">First Pay Date:</label>
+                  <input type="date" class="form-control" id="advFirstPayDate" name="adv_first_pay_date">
+                </div>
+
+                <!-- Rounding Mode -->
+                <div class="mb-3">
+                  <label for="advRounding" class="form-label fw-bold">Rounding:</label>
+                  <select class="form-select" id="advRounding" name="adv_rounding">
+                    <option value="down" selected>Round Down</option>
+                    <option value="up">Round Up</option>
+                  </select>
+                  <small class="text-muted">If time doesn't reach next increment</small>
+                </div>
+
+                <!-- Apply To -->
+                <div class="mb-3">
+                  <label class="form-label fw-bold">Apply Settings To:</label>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="adv_apply_to" id="advApplyAll" value="all" checked>
+                    <label class="form-check-label" for="advApplyAll">All Periods/Blocks</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="adv_apply_to" id="advApplySelected" value="selected">
+                    <label class="form-check-label" for="advApplySelected">Selected Periods:</label>
+                  </div>
+                  <div id="advBlockCheckboxes" class="ms-4 mt-2" style="display:none;">
+                    {% for block in blocks %}
+                    <div class="form-check">
+                      <input class="form-check-input adv-block-checkbox" type="checkbox" name="adv_blocks[]" value="{{ block }}" id="adv_block_{{ block }}">
+                      <label class="form-check-label" for="adv_block_{{ block }}">{{ block }}</label>
+                    </div>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Validation Errors Display -->
+              <div id="validationErrors" class="alert alert-danger" style="display:none;">
+                <strong><i class="bi bi-exclamation-circle me-2"></i>Conflicting Settings:</strong>
+                <ul id="validationErrorList" class="mb-0"></ul>
+              </div>
+
+              <!-- Save Button -->
+              <div class="text-end">
+                <button type="submit" class="btn btn-primary btn-lg">
+                  <i class="bi bi-save me-2"></i>Save Settings
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       </div>
-      <div class="card-body">
-        <form method="POST" action="{{ url_for('admin_payroll_settings') }}" id="payrollSettingsForm">
-          {{ settings_form.hidden_tag() }}
 
-          <!-- 2x2 Card Grid -->
-          <div class="row">
-            <!-- Top Left: Global Pay Rate Settings -->
-            <div class="col-lg-6 mb-4">
-              <div class="card shadow-sm h-100 border-primary">
-                <div class="card-header bg-primary bg-opacity-10">
-                  <h6 class="mb-0 text-primary"><i class="bi bi-currency-dollar me-2"></i>Pay Rate Settings</h6>
-                </div>
-                <div class="card-body">
-                  <div class="mb-3">
-                    {{ settings_form.pay_rate.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      <span class="input-group-text">$</span>
-                      {{ settings_form.pay_rate(class="form-control", placeholder="0.25", step="0.01") }}
-                      <span class="input-group-text">/min</span>
-                    </div>
-                    <small class="text-muted">Amount paid per minute of attendance</small>
-                  </div>
-                  <div class="mb-3">
-                    {{ settings_form.bonus_rate.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      <span class="input-group-text">$</span>
-                      {{ settings_form.bonus_rate(class="form-control", placeholder="0.00", step="0.01") }}
-                      <span class="input-group-text">/min</span>
-                    </div>
-                    <small class="text-muted">Additional bonus rate (optional)</small>
-                  </div>
-                  <div class="mb-0">
-                    {{ settings_form.overtime_multiplier.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      {{ settings_form.overtime_multiplier(class="form-control", placeholder="1.0", step="0.1") }}
-                      <span class="input-group-text">x</span>
-                    </div>
-                    <small class="text-muted">Multiplier for overtime hours</small>
-                  </div>
-                </div>
-              </div>
+      <!-- RIGHT: Pay Simulator -->
+      <div class="col-lg-4 mb-4">
+        <div class="card shadow border-success">
+          <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="bi bi-calculator me-2"></i>Pay Simulator</h5>
+          </div>
+          <div class="card-body">
+            <p class="text-muted small">Estimate student earnings based on your current settings.</p>
+
+            <!-- Simulator Inputs -->
+            <div class="mb-3">
+              <label for="simMinutesPerClass" class="form-label fw-bold">Minutes per Class:</label>
+              <input type="number" class="form-control" id="simMinutesPerClass" value="50" min="1">
             </div>
 
-            <!-- Top Right: Schedule & Frequency -->
-            <div class="col-lg-6 mb-4">
-              <div class="card shadow-sm h-100 border-success">
-                <div class="card-header bg-success bg-opacity-10">
-                  <h6 class="mb-0 text-success"><i class="bi bi-calendar-check me-2"></i>Schedule & Frequency</h6>
-                </div>
-                <div class="card-body">
-                  <div class="mb-3">
-                    {{ settings_form.payroll_frequency_days.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      {{ settings_form.payroll_frequency_days(class="form-control", placeholder="14") }}
-                      <span class="input-group-text">days</span>
-                    </div>
-                    <small class="text-muted">How often payroll runs (e.g., 14 = bi-weekly)</small>
-                  </div>
-                  <div class="alert alert-info mb-0">
-                    <small>
-                      <i class="bi bi-info-circle me-2"></i>
-                      <strong>Next Payroll:</strong>
-                      {% if next_global_payroll %}
-                        <span class="local-timestamp" data-timestamp="{{ next_global_payroll.isoformat() }}Z"></span>
-                      {% else %}
-                        Not scheduled
-                      {% endif %}
-                    </small>
-                  </div>
-                </div>
-              </div>
+            <div class="mb-3">
+              <label for="simClassesPerWeek" class="form-label fw-bold">Classes per Week:</label>
+              <input type="number" class="form-control" id="simClassesPerWeek" value="5" min="1">
             </div>
 
-            <!-- Bottom Left: Per-Block Settings -->
-            <div class="col-lg-6 mb-4">
-              <div class="card shadow-sm h-100 border-info">
-                <div class="card-header bg-info bg-opacity-10">
-                  <h6 class="mb-0 text-info"><i class="bi bi-calendar2-week me-2"></i>Block-Specific Settings</h6>
-                </div>
-                <div class="card-body">
-                  <div class="mb-3">
-                    {{ settings_form.block.label(class="form-label fw-bold") }}
-                    {{ settings_form.block(class="form-select") }}
-                    <small class="text-muted">Apply settings to specific block or global</small>
-                  </div>
-                  <div class="mb-3">
-                    <div class="form-check form-switch">
-                      {{ settings_form.apply_to_all(class="form-check-input", role="switch") }}
-                      {{ settings_form.apply_to_all.label(class="form-check-label fw-bold") }}
-                    </div>
-                    <small class="text-muted">Apply these settings to all blocks</small>
-                  </div>
-                  <div class="alert alert-light border mb-0">
-                    <small>
-                      <strong>Current Block Settings:</strong><br>
-                      {% if block_settings %}
-                        {% for setting in block_settings %}
-                          <span class="badge bg-secondary me-1">{{ setting.block or "Global" }}: ${{ "%.2f"|format(setting.pay_rate) }}/min</span>
-                        {% endfor %}
-                      {% else %}
-                        No specific settings configured
-                      {% endif %}
-                    </small>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <button type="button" class="btn btn-success w-100 mb-3" id="calculatePayBtn">
+              <i class="bi bi-calculator me-2"></i>Calculate
+            </button>
 
-            <!-- Bottom Right: Advanced Options -->
-            <div class="col-lg-6 mb-4">
-              <div class="card shadow-sm h-100 border-warning">
-                <div class="card-header bg-warning bg-opacity-10">
-                  <h6 class="mb-0 text-warning"><i class="bi bi-sliders me-2"></i>Advanced Options</h6>
-                </div>
-                <div class="card-body">
-                  <div class="mb-3">
-                    <div class="form-check form-switch">
-                      {{ settings_form.is_active(class="form-check-input", role="switch") }}
-                      {{ settings_form.is_active.label(class="form-check-label fw-bold") }}
-                    </div>
-                    <small class="text-muted">Enable/disable these settings</small>
-                  </div>
-                  <div class="alert alert-warning mb-0">
-                    <small>
-                      <i class="bi bi-exclamation-triangle me-2"></i>
-                      <strong>Note:</strong> Changes to payroll settings will affect the next payroll run. Past payrolls are not retroactively adjusted.
-                    </small>
-                  </div>
-                </div>
+            <!-- Results -->
+            <div id="simulatorResults" style="display:none;">
+              <div class="alert alert-success mb-0">
+                <h6 class="fw-bold">Estimated Earnings:</h6>
+                <table class="table table-sm table-borderless mb-0">
+                  <tr>
+                    <td>Per Week:</td>
+                    <td class="text-end fw-bold">$<span id="simWeekly">0.00</span></td>
+                  </tr>
+                  <tr>
+                    <td>Per Month (4 weeks):</td>
+                    <td class="text-end fw-bold">$<span id="simMonthly">0.00</span></td>
+                  </tr>
+                  <tr>
+                    <td>Per Semester (18 weeks):</td>
+                    <td class="text-end fw-bold">$<span id="simSemester">0.00</span></td>
+                  </tr>
+                </table>
               </div>
             </div>
           </div>
-
-          <div class="text-end">
-            {{ settings_form.submit(class="btn btn-primary btn-lg") }}
-          </div>
-        </form>
+        </div>
       </div>
     </div>
   </div>
@@ -908,6 +1062,180 @@ document.addEventListener("DOMContentLoaded", () => {
     // Void Selected Button
     if (voidSelectedBtn) {
         voidSelectedBtn.addEventListener('click', voidSelectedTransactions);
+    }
+
+    // SETTINGS TAB: Mode Toggle
+    const settingsModeToggle = document.getElementById('settingsModeToggle');
+    const settingsModeInput = document.getElementById('settingsModeInput');
+    const simpleModeFields = document.getElementById('simpleModeFields');
+    const advancedModeFields = document.getElementById('advancedModeFields');
+
+    if (settingsModeToggle) {
+        settingsModeToggle.addEventListener('change', function() {
+            if (this.checked) {
+                // Advanced mode
+                simpleModeFields.style.display = 'none';
+                advancedModeFields.style.display = 'block';
+                settingsModeInput.value = 'advanced';
+            } else {
+                // Simple mode
+                simpleModeFields.style.display = 'block';
+                advancedModeFields.style.display = 'none';
+                settingsModeInput.value = 'simple';
+            }
+        });
+    }
+
+    // Simple Mode: Apply To - Show/hide block checkboxes
+    const simpleApplySelected = document.getElementById('simpleApplySelected');
+    const simpleBlockCheckboxes = document.getElementById('simpleBlockCheckboxes');
+
+    if (simpleApplySelected) {
+        document.querySelectorAll('input[name="simple_apply_to"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (simpleApplySelected.checked) {
+                    simpleBlockCheckboxes.style.display = 'block';
+                } else {
+                    simpleBlockCheckboxes.style.display = 'none';
+                }
+            });
+        });
+    }
+
+    // Advanced Mode: Overtime toggle
+    const advOvertimeEnabled = document.getElementById('advOvertimeEnabled');
+    const overtimeFields = document.getElementById('overtimeFields');
+
+    if (advOvertimeEnabled) {
+        advOvertimeEnabled.addEventListener('change', function() {
+            overtimeFields.style.display = this.checked ? 'block' : 'none';
+        });
+    }
+
+    // Advanced Mode: Custom schedule toggle
+    const advPaySchedule = document.getElementById('advPaySchedule');
+    const customScheduleFields = document.getElementById('customScheduleFields');
+
+    if (advPaySchedule) {
+        advPaySchedule.addEventListener('change', function() {
+            customScheduleFields.style.display = this.value === 'custom' ? 'block' : 'none';
+        });
+    }
+
+    // Advanced Mode: Apply To - Show/hide block checkboxes
+    const advApplySelected = document.getElementById('advApplySelected');
+    const advBlockCheckboxes = document.getElementById('advBlockCheckboxes');
+
+    if (advApplySelected) {
+        document.querySelectorAll('input[name="adv_apply_to"]').forEach(radio => {
+            radio.addEventListener('change', function() {
+                if (advApplySelected.checked) {
+                    advBlockCheckboxes.style.display = 'block';
+                } else {
+                    advBlockCheckboxes.style.display = 'none';
+                }
+            });
+        });
+    }
+
+    // Pay Simulator
+    const calculatePayBtn = document.getElementById('calculatePayBtn');
+    if (calculatePayBtn) {
+        calculatePayBtn.addEventListener('click', function() {
+            const minutesPerClass = parseFloat(document.getElementById('simMinutesPerClass').value) || 0;
+            const classesPerWeek = parseFloat(document.getElementById('simClassesPerWeek').value) || 0;
+
+            // Get pay rate based on current mode
+            let payRatePerMinute = 0;
+
+            if (settingsModeToggle && settingsModeToggle.checked) {
+                // Advanced mode
+                const payAmount = parseFloat(document.getElementById('advPayAmount').value) || 0;
+                const timeUnit = document.getElementById('advTimeUnit').value;
+
+                // Convert to per-minute rate
+                switch(timeUnit) {
+                    case 'seconds':
+                        payRatePerMinute = payAmount * 60;
+                        break;
+                    case 'minutes':
+                        payRatePerMinute = payAmount;
+                        break;
+                    case 'hours':
+                        payRatePerMinute = payAmount / 60;
+                        break;
+                    case 'days':
+                        payRatePerMinute = payAmount / (60 * 24);
+                        break;
+                }
+            } else {
+                // Simple mode (pay rate per hour)
+                const payRatePerHour = parseFloat(document.getElementById('simplePayRate').value) || 0;
+                payRatePerMinute = payRatePerHour / 60;
+            }
+
+            // Calculate earnings
+            const minutesPerWeek = minutesPerClass * classesPerWeek;
+            const weeklyEarnings = minutesPerWeek * payRatePerMinute;
+            const monthlyEarnings = weeklyEarnings * 4;
+            const semesterEarnings = weeklyEarnings * 18;
+
+            // Display results
+            document.getElementById('simWeekly').textContent = weeklyEarnings.toFixed(2);
+            document.getElementById('simMonthly').textContent = monthlyEarnings.toFixed(2);
+            document.getElementById('simSemester').textContent = semesterEarnings.toFixed(2);
+            document.getElementById('simulatorResults').style.display = 'block';
+        });
+    }
+
+    // Settings Form Validation
+    const payrollSettingsForm = document.getElementById('payrollSettingsForm');
+    if (payrollSettingsForm) {
+        payrollSettingsForm.addEventListener('submit', function(e) {
+            const validationErrors = [];
+            const errorList = document.getElementById('validationErrorList');
+            const errorDiv = document.getElementById('validationErrors');
+
+            // Clear previous errors
+            errorList.innerHTML = '';
+            errorDiv.style.display = 'none';
+
+            if (settingsModeToggle && settingsModeToggle.checked) {
+                // Advanced mode validations
+                const overtimeEnabled = document.getElementById('advOvertimeEnabled').checked;
+                const maxTimeValue = parseFloat(document.getElementById('advMaxTimeValue').value);
+                const overtimeMultiplier = parseFloat(document.getElementById('advOvertimeMultiplier').value);
+
+                // Check if overtime multiplier is >= 1.0
+                if (overtimeEnabled && overtimeMultiplier && overtimeMultiplier < 1.0) {
+                    validationErrors.push('Overtime multiplier must be ≥ 1.0');
+                }
+
+                // Check if max time per day and overtime are both enabled
+                if (overtimeEnabled && maxTimeValue) {
+                    validationErrors.push('Maximum time per day overrides overtime. Consider disabling one of them.');
+                }
+
+                // Check if custom schedule has values
+                const scheduleType = document.getElementById('advPaySchedule').value;
+                const customValue = document.getElementById('advCustomScheduleValue').value;
+                if (scheduleType === 'custom' && !customValue) {
+                    validationErrors.push('Custom schedule requires a value');
+                }
+            }
+
+            // Display errors if any
+            if (validationErrors.length > 0) {
+                e.preventDefault();
+                validationErrors.forEach(error => {
+                    const li = document.createElement('li');
+                    li.textContent = error;
+                    errorList.appendChild(li);
+                });
+                errorDiv.style.display = 'block';
+                errorDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        });
     }
 });
 
