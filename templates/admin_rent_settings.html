@@ -2,7 +2,7 @@
 {% set current_page = 'rent' %}
 {% set page_title = 'Rent Settings' %}
 
-{% block page_icon %}🏠{% endblock %}
+{% block page_icon %}home{% endblock %}
 {% block content %}
 <div class="container-fluid">
     <div class="row mb-4">
@@ -107,10 +107,10 @@
                 </div>
                 <div class="card-body">
                     <ul class="list-unstyled">
-                        <li class="mb-2">📅 <strong>Due Date:</strong> Rent is due on day {{ settings.due_day_of_month }} of each month</li>
-                        <li class="mb-2">⏰ <strong>Grace Period:</strong> {{ settings.grace_period_days }} days after due date</li>
-                        <li class="mb-2">💰 <strong>Amount:</strong> ${{ "%.2f"|format(settings.rent_amount) }} per period</li>
-                        <li class="mb-2">⚠️ <strong>Late Fee:</strong> ${{ "%.2f"|format(settings.late_fee) }} if paid late (per period)</li>
+                        <li class="mb-2"><span class="material-symbols-outlined">event</span> <strong>Due Date:</strong> Rent is due on day {{ settings.due_day_of_month }} of each month</li>
+                        <li class="mb-2"><span class="material-symbols-outlined">schedule</span> <strong>Grace Period:</strong> {{ settings.grace_period_days }} days after due date</li>
+                        <li class="mb-2"><span class="material-symbols-outlined">payments</span> <strong>Amount:</strong> ${{ "%.2f"|format(settings.rent_amount) }} per period</li>
+                        <li class="mb-2"><span class="material-symbols-outlined">warning</span> <strong>Late Fee:</strong> ${{ "%.2f"|format(settings.late_fee) }} if paid late (per period)</li>
                     </ul>
 
                     <hr>
