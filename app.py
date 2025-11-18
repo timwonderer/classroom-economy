@@ -3561,8 +3561,8 @@ def admin_payroll_edit_fine(fine_id):
 # -------------------- VOID TRANSACTIONS --------------------
 @app.route('/admin/payroll/transactions/<int:transaction_id>/void', methods=['POST'])
 @admin_required
-def void_transaction(transaction_id):
-    """Void a single transaction."""
+def void_payroll_transaction(transaction_id):
+    """Void a single transaction from payroll interface."""
     try:
         transaction = Transaction.query.get_or_404(transaction_id)
 
