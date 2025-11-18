@@ -73,10 +73,9 @@ An interactive banking and classroom management platform for teaching students a
     flask run
     ```
 
-To seed the database with sample student data for testing, you can run:
-```bash
-python seed_dummy_students.py
-```
+For testing purposes, you can:
+- Use `student_upload_template.csv` as a reference for CSV roster uploads
+- Run `python seed_dummy_students.py` to seed the database with sample students
 
 ## Configuration
 
