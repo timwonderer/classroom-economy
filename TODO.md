@@ -1,6 +1,6 @@
 # Classroom Token Hub - Development TODO List
 
-**Last Updated:** 2025-11-17
+**Last Updated:** 2025-11-19
 **Purpose:** Comprehensive task tracking for all planned features and improvements
 
 ---
@@ -340,6 +340,14 @@
 - [ ] Create reusable template components
 - [ ] Consolidate duplicate code (timezone conversion, etc.)
 
+### app.py Refactor Roadmap
+- [ ] Create `app/__init__.py` with factory pattern and centralized extension setup; keep `app = create_app()` in root for compatibility.
+- [ ] Move all models into `app/models.py` using shared `db`; update Alembic imports and temporarily re-export models from `app.py`.
+- [ ] Extract auth helpers/decorators to `app/auth.py` and update route imports; keep compatibility shims during transition.
+- [ ] Convert routes into audience-specific blueprints under `app/routes/` with unchanged URLs and endpoint names.
+- [ ] Move utilities (PII encryption, URL safety, datetime formatting, logging helpers) into `app/utils/` and register via `create_app()`.
+- [ ] Remove transitional re-exports after modules are updated and parity is validated.
+
 ### Testing
 - [ ] Increase test coverage (currently minimal)
 - [ ] Add integration tests for critical workflows
@@ -408,6 +416,10 @@
 
 ## 📝 SESSION NOTES
 
+### Session: 2025-11-19
+- Documented app.py refactor roadmap for agents in `docs/AGENT_REFACTOR_PLAN.md`.
+- Updated TODO with staged refactor plan and next-session priority adjustment.
+
 ### Session: 2025-11-18
 - Repository housekeeping and cleanup
 - Removed obsolete files: test_roster_upload.csv, sample_students.csv, startup.txt
@@ -437,7 +449,7 @@
 
 1. **Implement payroll settings UI** (8-12 hours) - High impact, frequently requested
 2. **Add basic pagination to student list** (3-4 hours) - Performance improvement
-3. **Start account recovery system** (4-6 hours initial) - Student PIN reset first
+3. **Start app.py refactor (stage 1: factory + extensions)** (4-6 hours initial) - See `docs/AGENT_REFACTOR_PLAN.md`
 
 ---
 
