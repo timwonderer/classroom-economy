@@ -22,18 +22,13 @@
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="students-tab" data-bs-toggle="tab" data-bs-target="#students" type="button" role="tab">
-      <i class="bi bi-people me-1"></i>Students
-    </button>
-  </li>
-  <li class="nav-item" role="presentation">
     <button class="nav-link" id="rewards-fines-tab" data-bs-toggle="tab" data-bs-target="#rewards-fines" type="button" role="tab">
       <i class="bi bi-star me-1"></i>Rewards & Fines
     </button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="manual-payment-tab" data-bs-toggle="tab" data-bs-target="#manual-payment" type="button" role="tab">
-      <i class="bi bi-cash-coin me-1"></i>Manual Payment
+      <i class="bi bi-cash-coin me-1"></i>Manual
     </button>
   </li>
 </ul>
@@ -179,16 +174,21 @@
         <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Payroll History</h5>
       </div>
       <div class="card-body">
-        <!-- Filter Form -->
+        <!-- Filter and Actions -->
         <div class="row mb-3">
           <div class="col-md-4">
-            <label for="historyBlockFilter" class="form-label">Block:</label>
+            <label for="historyBlockFilter" class="form-label fw-bold">Block:</label>
             <select id="historyBlockFilter" class="form-select">
               <option value="">All Blocks</option>
               {% for block in blocks %}
                 <option value="{{ block }}">{{ block }}</option>
               {% endfor %}
             </select>
+          </div>
+          <div class="col-md-8 text-end">
+            <button id="voidSelectedBtn" class="btn btn-danger" disabled>
+              <i class="bi bi-x-circle me-2"></i>Void Selected (<span id="voidCount">0</span>)
+            </button>
           </div>
         </div>
 
@@ -197,23 +197,38 @@
           <table class="table table-striped table-hover" id="payrollHistoryTable">
             <thead>
               <tr>
+                <th width="40">
+                  <input type="checkbox" id="selectAllHistory" class="form-check-input">
+                </th>
                 <th>Date</th>
+                <th>Type</th>
                 <th>Block</th>
                 <th>Student</th>
                 <th>Amount</th>
                 <th>Notes</th>
+                <th width="100">Actions</th>
               </tr>
             </thead>
             <tbody>
               {% if payroll_history %}
                 {% for entry in payroll_history %}
-                <tr data-block="{{ entry.block }}">
+                <tr data-block="{{ entry.block }}" data-transaction-id="{{ entry.transaction_id }}" class="{% if entry.is_void %}table-secondary text-muted{% endif %}">
+                  <td>
+                    {% if not entry.is_void %}
+                    <input type="checkbox" class="form-check-input history-checkbox" value="{{ entry.transaction_id }}">
+                    {% endif %}
+                  </td>
                   <td>
                     {% if entry.timestamp %}
                       <span class="local-timestamp" data-timestamp="{{ entry.timestamp.isoformat() }}Z"></span>
                     {% else %}
                       —
                     {% endif %}
+                  </td>
+                  <td>
+                    <span class="badge bg-{% if entry.type == 'payroll' %}primary{% elif entry.type == 'reward' %}success{% elif entry.type == 'fine' %}danger{% else %}secondary{% endif %}">
+                      {{ entry.type|title }}
+                    </span>
                   </td>
                   <td>{{ entry.block }}</td>
                   <td>
@@ -227,12 +242,24 @@
                   </td>
                   <td class="{% if entry.amount > 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
                     ${{ "%.2f"|format(entry.amount) }}
+                    {% if entry.is_void %}
+                      <span class="badge bg-secondary ms-1">VOID</span>
+                    {% endif %}
                   </td>
                   <td>{{ entry.notes }}</td>
+                  <td>
+                    {% if not entry.is_void %}
+                      <button class="btn btn-sm btn-outline-danger" onclick="voidTransaction({{ entry.transaction_id }})">
+                        <i class="bi bi-x-circle"></i> Void
+                      </button>
+                    {% else %}
+                      <span class="text-muted small">Voided</span>
+                    {% endif %}
+                  </td>
                 </tr>
                 {% endfor %}
               {% else %}
-                <tr><td colspan="5" class="text-center text-muted">No payroll records found.</td></tr>
+                <tr><td colspan="8" class="text-center text-muted">No payroll records found.</td></tr>
               {% endif %}
             </tbody>
           </table>
@@ -388,57 +415,6 @@
     </div>
   </div>
 
-  <!-- STUDENTS TAB -->
-  <div class="tab-pane fade" id="students" role="tabpanel">
-    <div class="card shadow">
-      <div class="card-header">
-        <h5 class="mb-0"><i class="bi bi-people me-2"></i>Student Payroll Statistics</h5>
-      </div>
-      <div class="card-body">
-        {% if student_stats %}
-          <div class="table-responsive">
-            <table class="table table-striped table-hover">
-              <thead>
-                <tr>
-                  <th>Student Name</th>
-                  <th>Block</th>
-                  <th>Unpaid Time</th>
-                  <th>Estimated Payout</th>
-                  <th>Last Payroll</th>
-                  <th>Total Earned</th>
-                </tr>
-              </thead>
-              <tbody>
-                {% for stat in student_stats %}
-                <tr>
-                  <td>
-                    <a href="{{ url_for('student_detail', student_id=stat.student_id) }}">
-                      {{ stat.student_name }}
-                    </a>
-                  </td>
-                  <td>{{ stat.block }}</td>
-                  <td>{{ stat.unpaid_minutes|default(0) }} min</td>
-                  <td class="text-success fw-bold">${{ "%.2f"|format(stat.estimated_payout|default(0)) }}</td>
-                  <td>
-                    {% if stat.last_payroll_date %}
-                      <span class="local-timestamp" data-timestamp="{{ stat.last_payroll_date.isoformat() }}Z"></span>
-                    {% else %}
-                      Never
-                    {% endif %}
-                  </td>
-                  <td class="text-primary fw-bold">${{ "%.2f"|format(stat.total_earned|default(0)) }}</td>
-                </tr>
-                {% endfor %}
-              </tbody>
-            </table>
-          </div>
-        {% else %}
-          <p class="text-muted">No student data available.</p>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
   <!-- REWARDS & FINES TAB -->
   <div class="tab-pane fade" id="rewards-fines" role="tabpanel">
     <div class="row">
@@ -488,8 +464,8 @@
                       <span class="badge bg-secondary">Inactive</span>
                     {% endif %}
                     <br>
-                    <button class="btn btn-sm btn-success mt-1 me-1" onclick="applyReward({{ reward.id }}, '{{ reward.name }}')">
-                      <i class="bi bi-check-circle me-1"></i>Apply
+                    <button class="btn btn-sm btn-outline-primary mt-1 me-1" onclick="editReward({{ reward.id }}, '{{ reward.name|replace("'", "\\'") }}', '{{ reward.description|replace("'", "\\'")|default('') }}', {{ reward.amount }}, {{ reward.is_active|lower }})">
+                      <i class="bi bi-pencil me-1"></i>Edit
                     </button>
                     <button class="btn btn-sm btn-outline-danger mt-1" onclick="deleteReward({{ reward.id }})">Delete</button>
                   </div>
@@ -549,8 +525,8 @@
                       <span class="badge bg-secondary">Inactive</span>
                     {% endif %}
                     <br>
-                    <button class="btn btn-sm btn-warning mt-1 me-1" onclick="applyFine({{ fine.id }}, '{{ fine.name }}')">
-                      <i class="bi bi-exclamation-circle me-1"></i>Apply
+                    <button class="btn btn-sm btn-outline-primary mt-1 me-1" onclick="editFine({{ fine.id }}, '{{ fine.name|replace("'", "\\'") }}', '{{ fine.description|replace("'", "\\'")|default('') }}', {{ fine.amount }}, {{ fine.is_active|lower }})">
+                      <i class="bi bi-pencil me-1"></i>Edit
                     </button>
                     <button class="btn btn-sm btn-outline-danger mt-1" onclick="deleteFine({{ fine.id }})">Delete</button>
                   </div>
@@ -568,93 +544,221 @@
 
   <!-- MANUAL PAYMENT TAB -->
   <div class="tab-pane fade" id="manual-payment" role="tabpanel">
-    <div class="card shadow">
-      <div class="card-header bg-primary text-white">
-        <h5 class="mb-0"><i class="bi bi-cash-coin me-2"></i>Send Manual Payment</h5>
+    <div class="row">
+      <!-- LEFT COLUMN: Student Selection -->
+      <div class="col-lg-6 mb-4">
+        <div class="card shadow h-100">
+          <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="bi bi-people me-2"></i>Select Students</h5>
+          </div>
+          <div class="card-body">
+            <!-- Block/Period Filter -->
+            <div class="mb-3">
+              <label for="studentBlockFilter" class="form-label fw-bold">Filter by Period/Block:</label>
+              <select id="studentBlockFilter" class="form-select">
+                <option value="">All Periods</option>
+                {% for block in blocks %}
+                  <option value="{{ block }}">{{ block }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <!-- Student Table -->
+            <div class="table-responsive" style="max-height: 450px; overflow-y: auto;">
+              <table class="table table-sm table-hover">
+                <thead class="sticky-top bg-light">
+                  <tr>
+                    <th width="40">
+                      <input type="checkbox" id="selectAllStudents" class="form-check-input">
+                    </th>
+                    <th>Student</th>
+                    <th class="text-end">Checking</th>
+                    <th class="text-end">Savings</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {% if all_students %}
+                    {% for student in all_students %}
+                    <tr class="student-row" data-blocks="{{ student.block }}" data-student-id="{{ student.id }}">
+                      <td>
+                        <input class="form-check-input student-checkbox" type="checkbox" value="{{ student.id }}" data-blocks="{{ student.block }}">
+                      </td>
+                      <td>
+                        <strong>{{ student.full_name }}</strong><br>
+                        <small class="text-muted">{{ student.block }}</small>
+                      </td>
+                      <td class="text-end">${{ "%.2f"|format(student.checking_balance) }}</td>
+                      <td class="text-end">${{ "%.2f"|format(student.savings_balance) }}</td>
+                    </tr>
+                    {% endfor %}
+                  {% else %}
+                    <tr><td colspan="4" class="text-center text-muted">No students found.</td></tr>
+                  {% endif %}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="alert alert-info mt-3 mb-0">
+              <i class="bi bi-info-circle me-2"></i>
+              <strong>Selected:</strong> <span id="selectedCount">0</span> student(s)
+            </div>
+          </div>
+        </div>
       </div>
-      <div class="card-body">
-        <form method="POST" action="{{ url_for('admin_payroll_manual_payment') }}" id="manualPaymentForm">
-          {{ manual_payment_form.hidden_tag() }}
 
-          <div class="row">
-            <div class="col-lg-6">
-              <div class="card mb-3">
-                <div class="card-header">
-                  <h6 class="mb-0">Payment Details</h6>
-                </div>
-                <div class="card-body">
-                  <div class="mb-3">
-                    {{ manual_payment_form.description.label(class="form-label fw-bold") }}
-                    {{ manual_payment_form.description(class="form-control", placeholder="e.g., Bonus for excellent attendance") }}
-                  </div>
-                  <div class="mb-3">
-                    {{ manual_payment_form.amount.label(class="form-label fw-bold") }}
-                    <div class="input-group">
-                      <span class="input-group-text">$</span>
-                      {{ manual_payment_form.amount(class="form-control", placeholder="0.00", step="0.01") }}
-                    </div>
-                  </div>
-                  <div class="mb-3">
-                    {{ manual_payment_form.account_type.label(class="form-label fw-bold") }}
-                    {{ manual_payment_form.account_type(class="form-select") }}
-                  </div>
-                </div>
+      <!-- RIGHT COLUMN: Manual Payment Fields -->
+      <div class="col-lg-6 mb-4">
+        <div class="card shadow h-100">
+          <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="bi bi-cash-coin me-2"></i>Payment Details</h5>
+          </div>
+          <div class="card-body">
+            <form id="manualPaymentForm">
+              {{ manual_payment_form.hidden_tag() }}
+
+              <!-- Preset Reward/Fine Selector -->
+              <div class="mb-3">
+                <label for="presetSelector" class="form-label fw-bold">Use Preset (Optional):</label>
+                <select id="presetSelector" class="form-select">
+                  <option value="">-- Select Preset --</option>
+                  <optgroup label="Rewards">
+                    {% for reward in rewards %}
+                      {% if reward.is_active %}
+                      <option value="reward_{{ reward.id }}" data-description="{{ reward.name }}" data-amount="{{ reward.amount }}" data-type="reward">
+                        {{ reward.name }} (+${{ "%.2f"|format(reward.amount) }})
+                      </option>
+                      {% endif %}
+                    {% endfor %}
+                  </optgroup>
+                  <optgroup label="Fines">
+                    {% for fine in fines %}
+                      {% if fine.is_active %}
+                      <option value="fine_{{ fine.id }}" data-description="{{ fine.name }}" data-amount="-{{ fine.amount }}" data-type="fine">
+                        {{ fine.name }} (-${{ "%.2f"|format(fine.amount) }})
+                      </option>
+                      {% endif %}
+                    {% endfor %}
+                  </optgroup>
+                </select>
+                <small class="text-muted">Selecting a preset will auto-fill description and amount (you can override)</small>
               </div>
-            </div>
 
-            <div class="col-lg-6">
-              <div class="card mb-3">
-                <div class="card-header">
-                  <h6 class="mb-0">Select Students</h6>
-                </div>
-                <div class="card-body">
-                  <!-- Block Filter -->
-                  <div class="mb-3">
-                    <label for="studentBlockFilter" class="form-label fw-bold">Filter by Block:</label>
-                    <select id="studentBlockFilter" class="form-select form-select-sm">
-                      <option value="">All Blocks</option>
-                      {% for block in blocks %}
-                        <option value="{{ block }}">{{ block }}</option>
-                      {% endfor %}
-                    </select>
-                  </div>
-
-                  <!-- Student List -->
-                  <div style="max-height: 300px; overflow-y: auto;">
-                    <div class="form-check mb-2">
-                      <input class="form-check-input" type="checkbox" id="selectAllStudents">
-                      <label class="form-check-label fw-bold" for="selectAllStudents">
-                        Select All (Filtered)
-                      </label>
-                    </div>
-                    <hr>
-                    {% if all_students %}
-                      {% for student in all_students %}
-                      <div class="form-check mb-2 student-item" data-blocks="{{ student.block }}">
-                        <input class="form-check-input student-checkbox" type="checkbox" name="student_ids" value="{{ student.id }}" id="student_{{ student.id }}" data-blocks="{{ student.block }}">
-                        <label class="form-check-label" for="student_{{ student.id }}">
-                          {{ student.full_name }} <small class="text-muted">({{ student.block }})</small>
-                        </label>
-                      </div>
-                      {% endfor %}
-                    {% else %}
-                      <p class="text-muted">No students found.</p>
-                    {% endif %}
-                  </div>
-                </div>
+              <!-- Description -->
+              <div class="mb-3">
+                {{ manual_payment_form.description.label(class="form-label fw-bold") }}
+                {{ manual_payment_form.description(class="form-control", id="manualDescription", placeholder="e.g., Bonus for excellent attendance") }}
               </div>
-            </div>
-          </div>
 
-          <div class="alert alert-info">
-            <i class="bi bi-info-circle me-2"></i>
-            <strong>Selected:</strong> <span id="selectedCount">0</span> student(s) will receive this payment.
-          </div>
+              <!-- Amount (overrides preset) -->
+              <div class="mb-3">
+                {{ manual_payment_form.amount.label(class="form-label fw-bold") }}
+                <div class="input-group">
+                  <span class="input-group-text">$</span>
+                  {{ manual_payment_form.amount(class="form-control", id="manualAmount", placeholder="0.00", step="0.01") }}
+                </div>
+                <small class="text-muted">This overrides the preset amount if filled</small>
+              </div>
 
-          <div class="text-end">
-            {{ manual_payment_form.submit(class="btn btn-primary btn-lg") }}
+              <!-- Account Type -->
+              <div class="mb-3">
+                {{ manual_payment_form.account_type.label(class="form-label fw-bold") }}
+                {{ manual_payment_form.account_type(class="form-select") }}
+              </div>
+
+              <hr>
+
+              <!-- Action Buttons -->
+              <div class="d-grid gap-2">
+                <button type="button" id="applyToSelected" class="btn btn-primary btn-lg">
+                  <i class="bi bi-check-circle me-2"></i>Apply to Selected
+                </button>
+                <button type="button" id="applyToAll" class="btn btn-outline-primary">
+                  <i class="bi bi-check-circle-fill me-2"></i>Apply to All in Period
+                </button>
+              </div>
+            </form>
           </div>
-        </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Reward Modal -->
+<div class="modal fade" id="editRewardModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Reward</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editRewardId">
+        <div class="mb-3">
+          <label for="editRewardName" class="form-label fw-bold">Name:</label>
+          <input type="text" class="form-control" id="editRewardName" required>
+        </div>
+        <div class="mb-3">
+          <label for="editRewardDescription" class="form-label fw-bold">Description:</label>
+          <textarea class="form-control" id="editRewardDescription" rows="2"></textarea>
+        </div>
+        <div class="mb-3">
+          <label for="editRewardAmount" class="form-label fw-bold">Amount:</label>
+          <div class="input-group">
+            <span class="input-group-text">$</span>
+            <input type="number" class="form-control" id="editRewardAmount" step="0.01" required>
+          </div>
+        </div>
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="editRewardActive">
+            <label class="form-check-label" for="editRewardActive">Active</label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveReward()">Save Changes</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Fine Modal -->
+<div class="modal fade" id="editFineModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Fine</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editFineId">
+        <div class="mb-3">
+          <label for="editFineName" class="form-label fw-bold">Name:</label>
+          <input type="text" class="form-control" id="editFineName" required>
+        </div>
+        <div class="mb-3">
+          <label for="editFineDescription" class="form-label fw-bold">Description:</label>
+          <textarea class="form-control" id="editFineDescription" rows="2"></textarea>
+        </div>
+        <div class="mb-3">
+          <label for="editFineAmount" class="form-label fw-bold">Amount:</label>
+          <div class="input-group">
+            <span class="input-group-text">$</span>
+            <input type="number" class="form-control" id="editFineAmount" step="0.01" required>
+          </div>
+        </div>
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="editFineActive">
+            <label class="form-check-label" for="editFineActive">Active</label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="saveFine()">Save Changes</button>
       </div>
     </div>
   </div>
@@ -664,6 +768,7 @@
 <script>
 // Convert UTC timestamps to local time
 document.addEventListener("DOMContentLoaded", () => {
+    // Timestamp conversion
     document.querySelectorAll(".local-timestamp").forEach(el => {
         const utcString = el.dataset.timestamp;
         if (utcString) {
@@ -682,13 +787,13 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // Manual Payment: Block Filter for Students
+    // Manual Payment Tab: Block Filter for Students
     const studentBlockFilter = document.getElementById('studentBlockFilter');
-    const studentItems = document.querySelectorAll('.student-item');
+    const studentRows = document.querySelectorAll('.student-row');
     const selectAllCheckbox = document.getElementById('selectAllStudents');
     const selectedCountEl = document.getElementById('selectedCount');
 
-    // Set default block (first option after "All Blocks")
+    // Set default block (first option after "All Periods")
     if (studentBlockFilter && studentBlockFilter.options.length > 1) {
         studentBlockFilter.selectedIndex = 1; // Select first actual block
         studentBlockFilter.dispatchEvent(new Event('change')); // Trigger filter
@@ -697,14 +802,14 @@ document.addEventListener("DOMContentLoaded", () => {
     if (studentBlockFilter) {
         studentBlockFilter.addEventListener('change', function() {
             const selectedBlock = this.value;
-            studentItems.forEach(item => {
-                const studentBlocks = item.dataset.blocks.split(',').map(b => b.trim());
+            studentRows.forEach(row => {
+                const studentBlocks = row.dataset.blocks.split(',').map(b => b.trim());
                 if (!selectedBlock || studentBlocks.includes(selectedBlock)) {
-                    item.style.display = '';
+                    row.style.display = '';
                 } else {
-                    item.style.display = 'none';
+                    row.style.display = 'none';
                     // Uncheck hidden students
-                    item.querySelector('.student-checkbox').checked = false;
+                    row.querySelector('.student-checkbox').checked = false;
                 }
             });
             selectAllCheckbox.checked = false;
@@ -714,9 +819,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (selectAllCheckbox) {
         selectAllCheckbox.addEventListener('change', function() {
-            const visibleCheckboxes = Array.from(studentItems)
-                .filter(item => item.style.display !== 'none')
-                .map(item => item.querySelector('.student-checkbox'));
+            const visibleCheckboxes = Array.from(studentRows)
+                .filter(row => row.style.display !== 'none')
+                .map(row => row.querySelector('.student-checkbox'));
             visibleCheckboxes.forEach(cb => cb.checked = this.checked);
             updateSelectedCount();
         });
@@ -728,13 +833,31 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     function updateSelectedCount() {
-        const count = Array.from(studentCheckboxes).filter(cb => cb.checked && cb.closest('.student-item').style.display !== 'none').length;
+        const count = Array.from(studentCheckboxes).filter(cb => cb.checked && cb.closest('.student-row').style.display !== 'none').length;
         if (selectedCountEl) {
             selectedCountEl.textContent = count;
         }
     }
 
     updateSelectedCount();
+
+    // Preset Selector for Manual Payment
+    const presetSelector = document.getElementById('presetSelector');
+    const manualDescription = document.getElementById('manualDescription');
+    const manualAmount = document.getElementById('manualAmount');
+
+    if (presetSelector) {
+        presetSelector.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            if (selectedOption.value) {
+                const description = selectedOption.dataset.description;
+                const amount = selectedOption.dataset.amount;
+
+                if (manualDescription) manualDescription.value = description;
+                if (manualAmount) manualAmount.value = Math.abs(parseFloat(amount));
+            }
+        });
+    }
 
     // History Tab: Block Filter
     const historyBlockFilter = document.getElementById('historyBlockFilter');
@@ -751,6 +874,40 @@ document.addEventListener("DOMContentLoaded", () => {
                 }
             });
         });
+    }
+
+    // History Tab: Select All Checkbox
+    const selectAllHistory = document.getElementById('selectAllHistory');
+    const historyCheckboxes = document.querySelectorAll('.history-checkbox');
+    const voidCountEl = document.getElementById('voidCount');
+    const voidSelectedBtn = document.getElementById('voidSelectedBtn');
+
+    if (selectAllHistory) {
+        selectAllHistory.addEventListener('change', function() {
+            const visibleCheckboxes = Array.from(historyCheckboxes).filter(cb => {
+                const row = cb.closest('tr');
+                return row && row.style.display !== 'none';
+            });
+            visibleCheckboxes.forEach(cb => cb.checked = this.checked);
+            updateVoidCount();
+        });
+    }
+
+    historyCheckboxes.forEach(cb => {
+        cb.addEventListener('change', updateVoidCount);
+    });
+
+    function updateVoidCount() {
+        const count = Array.from(historyCheckboxes).filter(cb => cb.checked).length;
+        if (voidCountEl) voidCountEl.textContent = count;
+        if (voidSelectedBtn) voidSelectedBtn.disabled = count === 0;
+    }
+
+    updateVoidCount();
+
+    // Void Selected Button
+    if (voidSelectedBtn) {
+        voidSelectedBtn.addEventListener('click', voidSelectedTransactions);
     }
 });
 
@@ -775,6 +932,50 @@ document.getElementById('runPayrollBtn')?.addEventListener('click', async functi
   }
 });
 
+// Edit Reward
+function editReward(id, name, description, amount, isActive) {
+  document.getElementById('editRewardId').value = id;
+  document.getElementById('editRewardName').value = name;
+  document.getElementById('editRewardDescription').value = description;
+  document.getElementById('editRewardAmount').value = amount;
+  document.getElementById('editRewardActive').checked = isActive;
+
+  const modal = new bootstrap.Modal(document.getElementById('editRewardModal'));
+  modal.show();
+}
+
+// Save Reward
+async function saveReward() {
+  const id = document.getElementById('editRewardId').value;
+  const name = document.getElementById('editRewardName').value;
+  const description = document.getElementById('editRewardDescription').value;
+  const amount = document.getElementById('editRewardAmount').value;
+  const isActive = document.getElementById('editRewardActive').checked;
+
+  const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+  try {
+    const resp = await fetch(`/admin/payroll/rewards/${id}/edit`, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ name, description, amount, is_active: isActive })
+    });
+
+    const data = await resp.json();
+    if (data.success) {
+      showToast('Reward updated successfully', 'success');
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      showToast(data.message || 'Failed to update reward', 'error');
+    }
+  } catch (err) {
+    showToast('Error updating reward', 'error');
+  }
+}
+
 // Delete Reward
 function deleteReward(rewardId) {
   if (!confirm('Are you sure you want to delete this reward?')) return;
@@ -797,6 +998,50 @@ function deleteReward(rewardId) {
     }
   })
   .catch(err => showToast('Error deleting reward', 'error'));
+}
+
+// Edit Fine
+function editFine(id, name, description, amount, isActive) {
+  document.getElementById('editFineId').value = id;
+  document.getElementById('editFineName').value = name;
+  document.getElementById('editFineDescription').value = description;
+  document.getElementById('editFineAmount').value = amount;
+  document.getElementById('editFineActive').checked = isActive;
+
+  const modal = new bootstrap.Modal(document.getElementById('editFineModal'));
+  modal.show();
+}
+
+// Save Fine
+async function saveFine() {
+  const id = document.getElementById('editFineId').value;
+  const name = document.getElementById('editFineName').value;
+  const description = document.getElementById('editFineDescription').value;
+  const amount = document.getElementById('editFineAmount').value;
+  const isActive = document.getElementById('editFineActive').checked;
+
+  const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+  try {
+    const resp = await fetch(`/admin/payroll/fines/${id}/edit`, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ name, description, amount, is_active: isActive })
+    });
+
+    const data = await resp.json();
+    if (data.success) {
+      showToast('Fine updated successfully', 'success');
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      showToast(data.message || 'Failed to update fine', 'error');
+    }
+  } catch (err) {
+    showToast('Error updating fine', 'error');
+  }
 }
 
 // Delete Fine
@@ -823,80 +1068,159 @@ function deleteFine(fineId) {
   .catch(err => showToast('Error deleting fine', 'error'));
 }
 
-// Apply Reward to Students
-function applyReward(rewardId, rewardName) {
-  // Switch to Manual Payment tab for student selection
-  const studentCheckboxes = document.querySelectorAll('.student-checkbox:checked');
+// Manual Payment: Apply to Selected
+document.getElementById('applyToSelected')?.addEventListener('click', async function() {
+  const selectedStudents = Array.from(document.querySelectorAll('.student-checkbox:checked')).map(cb => cb.value);
 
-  if (studentCheckboxes.length === 0) {
-    alert('Please go to the Manual Payment tab, select students, and then apply the reward.');
+  if (selectedStudents.length === 0) {
+    alert('Please select at least one student.');
     return;
   }
 
-  if (!confirm(`Apply reward "${rewardName}" to ${studentCheckboxes.length} selected student(s)?`)) return;
+  const description = document.getElementById('manualDescription').value;
+  const amount = document.getElementById('manualAmount').value;
+  const accountType = document.querySelector('select[name="account_type"]').value;
 
-  const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-  const formData = new FormData();
-  studentCheckboxes.forEach(cb => formData.append('student_ids', cb.value));
-
-  fetch(`/admin/payroll/rewards/${rewardId}/apply`, {
-    method: 'POST',
-    headers: {
-      'X-CSRFToken': csrfToken
-    },
-    body: formData
-  })
-  .then(resp => resp.json())
-  .then(data => {
-    if (data.success) {
-      showToast(data.message, 'success');
-      setTimeout(() => location.reload(), 1000);
-    } else {
-      showToast(data.message || 'Failed to apply reward', 'error');
-    }
-  })
-  .catch(err => showToast('Error applying reward', 'error'));
-}
-
-// Apply Fine to Students
-function applyFine(fineId, fineName) {
-  // Switch to Manual Payment tab for student selection
-  const studentCheckboxes = document.querySelectorAll('.student-checkbox:checked');
-
-  if (studentCheckboxes.length === 0) {
-    alert('Please go to the Manual Payment tab, select students, and then apply the fine.');
+  if (!description || !amount) {
+    alert('Please fill in description and amount.');
     return;
   }
 
-  if (!confirm(`Apply fine "${fineName}" to ${studentCheckboxes.length} selected student(s)?`)) return;
+  await submitManualPayment(selectedStudents, description, amount, accountType);
+});
 
+// Manual Payment: Apply to All in Period
+document.getElementById('applyToAll')?.addEventListener('click', async function() {
+  const selectedBlock = document.getElementById('studentBlockFilter').value;
+
+  if (!selectedBlock) {
+    alert('Please select a specific period/block first.');
+    return;
+  }
+
+  const allStudentsInPeriod = Array.from(document.querySelectorAll('.student-row'))
+    .filter(row => row.style.display !== 'none')
+    .map(row => row.querySelector('.student-checkbox').value);
+
+  if (allStudentsInPeriod.length === 0) {
+    alert('No students found in the selected period.');
+    return;
+  }
+
+  const description = document.getElementById('manualDescription').value;
+  const amount = document.getElementById('manualAmount').value;
+  const accountType = document.querySelector('select[name="account_type"]').value;
+
+  if (!description || !amount) {
+    alert('Please fill in description and amount.');
+    return;
+  }
+
+  if (!confirm(`Apply payment to all ${allStudentsInPeriod.length} students in this period?`)) return;
+
+  await submitManualPayment(allStudentsInPeriod, description, amount, accountType);
+});
+
+// Submit Manual Payment
+async function submitManualPayment(studentIds, description, amount, accountType) {
   const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-  const formData = new FormData();
-  studentCheckboxes.forEach(cb => formData.append('student_ids', cb.value));
 
-  fetch(`/admin/payroll/fines/${fineId}/apply`, {
-    method: 'POST',
-    headers: {
-      'X-CSRFToken': csrfToken
-    },
-    body: formData
-  })
-  .then(resp => resp.json())
-  .then(data => {
-    if (data.success) {
-      showToast(data.message, 'success');
+  const formData = new FormData();
+  formData.append('description', description);
+  formData.append('amount', amount);
+  formData.append('account_type', accountType);
+  studentIds.forEach(id => formData.append('student_ids', id));
+
+  try {
+    const resp = await fetch('{{ url_for("admin_payroll_manual_payment") }}', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken
+      },
+      body: formData
+    });
+
+    if (resp.redirected) {
+      showToast('Payment applied successfully!', 'success');
       setTimeout(() => location.reload(), 1000);
     } else {
-      showToast(data.message || 'Failed to apply fine', 'error');
+      const data = await resp.json();
+      if (data.success) {
+        showToast(data.message || 'Payment applied successfully!', 'success');
+        setTimeout(() => location.reload(), 1000);
+      } else {
+        showToast(data.message || 'Failed to apply payment', 'error');
+      }
     }
-  })
-  .catch(err => showToast('Error applying fine', 'error'));
+  } catch (err) {
+    showToast('Error applying payment', 'error');
+  }
 }
 
-// Toast notification helper (assumes this exists in layout)
+// Void Single Transaction
+async function voidTransaction(transactionId) {
+  if (!confirm('Are you sure you want to void this transaction? This cannot be undone.')) return;
+
+  const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+  try {
+    const resp = await fetch(`/admin/payroll/transactions/${transactionId}/void`, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const data = await resp.json();
+    if (data.success) {
+      showToast('Transaction voided successfully', 'success');
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      showToast(data.message || 'Failed to void transaction', 'error');
+    }
+  } catch (err) {
+    showToast('Error voiding transaction', 'error');
+  }
+}
+
+// Void Selected Transactions
+async function voidSelectedTransactions() {
+  const selectedIds = Array.from(document.querySelectorAll('.history-checkbox:checked')).map(cb => cb.value);
+
+  if (selectedIds.length === 0) {
+    alert('Please select at least one transaction to void.');
+    return;
+  }
+
+  if (!confirm(`Are you sure you want to void ${selectedIds.length} transaction(s)? This cannot be undone.`)) return;
+
+  const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+  try {
+    const resp = await fetch('/admin/payroll/transactions/void-bulk', {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ transaction_ids: selectedIds })
+    });
+
+    const data = await resp.json();
+    if (data.success) {
+      showToast(`${selectedIds.length} transaction(s) voided successfully`, 'success');
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      showToast(data.message || 'Failed to void transactions', 'error');
+    }
+  } catch (err) {
+    showToast('Error voiding transactions', 'error');
+  }
+}
+
+// Toast notification helper
 function showToast(message, type) {
-  // If there's a global toast function, use it
-  // Otherwise, just alert
   if (window.toast) {
     window.toast(message, type);
   } else {

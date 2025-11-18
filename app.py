@@ -3102,7 +3102,7 @@ def admin_payroll():
     Enhanced payroll page with tabs for settings, students, rewards, fines, and manual payments.
     """
     from sqlalchemy import desc
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     import pytz
     from payroll import calculate_payroll
     from attendance import calculate_unpaid_attendance_seconds
@@ -3193,20 +3193,25 @@ def admin_payroll():
     # Quick stats
     avg_payout = total_payroll_estimate / len(students) if students else 0
 
-    # Payroll history for History tab
-    payroll_history_transactions = Transaction.query.filter_by(type='payroll').order_by(Transaction.timestamp.desc()).limit(100).all()
+    # Payroll history for History tab (all transaction types, not just payroll)
+    payroll_history_transactions = Transaction.query.filter(
+        Transaction.type.in_(['payroll', 'reward', 'fine', 'manual_payment'])
+    ).order_by(Transaction.timestamp.desc()).limit(100).all()
     student_lookup = {s.id: s for s in students}
     payroll_history = []
     for tx in payroll_history_transactions:
         student = student_lookup.get(tx.student_id)
         payroll_history.append({
+            'transaction_id': tx.id,
             'timestamp': tx.timestamp,
+            'type': tx.type or 'manual_payment',
             'block': student.block if student else 'Unknown',
             'student_id': tx.student_id,
             'student': student,
             'student_name': student.full_name if student else 'Unknown',
             'amount': tx.amount,
-            'notes': tx.description or ''
+            'notes': tx.description or '',
+            'is_void': tx.is_void
         })
 
     return render_template(
@@ -3399,6 +3404,96 @@ def admin_payroll_delete_fine(fine_id):
         db.session.rollback()
         app.logger.error(f"Error deleting fine: {e}")
         return jsonify({'success': False, 'message': 'Error deleting fine'}), 500
+
+
+# -------------------- EDIT REWARDS & FINES --------------------
+@app.route('/admin/payroll/rewards/<int:reward_id>/edit', methods=['POST'])
+@admin_required
+def admin_payroll_edit_reward(reward_id):
+    """Edit an existing reward."""
+    try:
+        reward = PayrollReward.query.get_or_404(reward_id)
+        data = request.get_json()
+
+        reward.name = data.get('name', reward.name)
+        reward.description = data.get('description', reward.description)
+        reward.amount = float(data.get('amount', reward.amount))
+        reward.is_active = data.get('is_active', reward.is_active)
+
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Reward updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error editing reward: {e}")
+        return jsonify({'success': False, 'message': 'Error editing reward'}), 500
+
+
+@app.route('/admin/payroll/fines/<int:fine_id>/edit', methods=['POST'])
+@admin_required
+def admin_payroll_edit_fine(fine_id):
+    """Edit an existing fine."""
+    try:
+        fine = PayrollFine.query.get_or_404(fine_id)
+        data = request.get_json()
+
+        fine.name = data.get('name', fine.name)
+        fine.description = data.get('description', fine.description)
+        fine.amount = float(data.get('amount', fine.amount))
+        fine.is_active = data.get('is_active', fine.is_active)
+
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Fine updated successfully'})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error editing fine: {e}")
+        return jsonify({'success': False, 'message': 'Error editing fine'}), 500
+
+
+# -------------------- VOID TRANSACTIONS --------------------
+@app.route('/admin/payroll/transactions/<int:transaction_id>/void', methods=['POST'])
+@admin_required
+def void_transaction(transaction_id):
+    """Void a single transaction."""
+    try:
+        transaction = Transaction.query.get_or_404(transaction_id)
+
+        if transaction.is_void:
+            return jsonify({'success': False, 'message': 'Transaction is already voided'}), 400
+
+        transaction.is_void = True
+        db.session.commit()
+
+        return jsonify({'success': True, 'message': 'Transaction voided successfully'})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error voiding transaction: {e}")
+        return jsonify({'success': False, 'message': 'Error voiding transaction'}), 500
+
+
+@app.route('/admin/payroll/transactions/void-bulk', methods=['POST'])
+@admin_required
+def void_transactions_bulk():
+    """Void multiple transactions at once."""
+    try:
+        data = request.get_json()
+        transaction_ids = data.get('transaction_ids', [])
+
+        if not transaction_ids:
+            return jsonify({'success': False, 'message': 'No transactions selected'}), 400
+
+        count = 0
+        for tx_id in transaction_ids:
+            transaction = Transaction.query.get(int(tx_id))
+            if transaction and not transaction.is_void:
+                transaction.is_void = True
+                count += 1
+
+        db.session.commit()
+        return jsonify({'success': True, 'message': f'{count} transaction(s) voided successfully'})
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f"Error voiding transactions in bulk: {e}")
+        return jsonify({'success': False, 'message': 'Error voiding transactions'}), 500
 
 
 # -------------------- APPLY REWARDS & FINES --------------------
