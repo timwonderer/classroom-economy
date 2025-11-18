@@ -179,10 +179,64 @@
         <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Payroll History</h5>
       </div>
       <div class="card-body">
-        <p>View detailed payroll history with filtering options.</p>
-        <a href="{{ url_for('admin_payroll_history') }}" class="btn btn-primary">
-          <i class="bi bi-box-arrow-up-right me-2"></i>Open Full History Page
-        </a>
+        <!-- Filter Form -->
+        <div class="row mb-3">
+          <div class="col-md-4">
+            <label for="historyBlockFilter" class="form-label">Block:</label>
+            <select id="historyBlockFilter" class="form-select">
+              <option value="">All Blocks</option>
+              {% for block in blocks %}
+                <option value="{{ block }}">{{ block }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+
+        <!-- History Table -->
+        <div class="table-responsive">
+          <table class="table table-striped table-hover" id="payrollHistoryTable">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Block</th>
+                <th>Student</th>
+                <th>Amount</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% if payroll_history %}
+                {% for entry in payroll_history %}
+                <tr data-block="{{ entry.block }}">
+                  <td>
+                    {% if entry.timestamp %}
+                      <span class="local-timestamp" data-timestamp="{{ entry.timestamp.isoformat() }}Z"></span>
+                    {% else %}
+                      —
+                    {% endif %}
+                  </td>
+                  <td>{{ entry.block }}</td>
+                  <td>
+                    {% if entry.student %}
+                      <a href="{{ url_for('student_detail', student_id=entry.student_id) }}">
+                        {{ entry.student_name }}
+                      </a>
+                    {% else %}
+                      {{ entry.student_name }}
+                    {% endif %}
+                  </td>
+                  <td class="{% if entry.amount > 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
+                    ${{ "%.2f"|format(entry.amount) }}
+                  </td>
+                  <td>{{ entry.notes }}</td>
+                </tr>
+                {% endfor %}
+              {% else %}
+                <tr><td colspan="5" class="text-center text-muted">No payroll records found.</td></tr>
+              {% endif %}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>
@@ -434,6 +488,9 @@
                       <span class="badge bg-secondary">Inactive</span>
                     {% endif %}
                     <br>
+                    <button class="btn btn-sm btn-success mt-1 me-1" onclick="applyReward({{ reward.id }}, '{{ reward.name }}')">
+                      <i class="bi bi-check-circle me-1"></i>Apply
+                    </button>
                     <button class="btn btn-sm btn-outline-danger mt-1" onclick="deleteReward({{ reward.id }})">Delete</button>
                   </div>
                 </li>
@@ -492,6 +549,9 @@
                       <span class="badge bg-secondary">Inactive</span>
                     {% endif %}
                     <br>
+                    <button class="btn btn-sm btn-warning mt-1 me-1" onclick="applyFine({{ fine.id }}, '{{ fine.name }}')">
+                      <i class="bi bi-exclamation-circle me-1"></i>Apply
+                    </button>
                     <button class="btn btn-sm btn-outline-danger mt-1" onclick="deleteFine({{ fine.id }})">Delete</button>
                   </div>
                 </li>
@@ -547,26 +607,40 @@
                 <div class="card-header">
                   <h6 class="mb-0">Select Students</h6>
                 </div>
-                <div class="card-body" style="max-height: 400px; overflow-y: auto;">
-                  <div class="form-check mb-2">
-                    <input class="form-check-input" type="checkbox" id="selectAllStudents">
-                    <label class="form-check-label fw-bold" for="selectAllStudents">
-                      Select All Students
-                    </label>
+                <div class="card-body">
+                  <!-- Block Filter -->
+                  <div class="mb-3">
+                    <label for="studentBlockFilter" class="form-label fw-bold">Filter by Block:</label>
+                    <select id="studentBlockFilter" class="form-select form-select-sm">
+                      <option value="">All Blocks</option>
+                      {% for block in blocks %}
+                        <option value="{{ block }}">{{ block }}</option>
+                      {% endfor %}
+                    </select>
                   </div>
-                  <hr>
-                  {% if all_students %}
-                    {% for student in all_students %}
+
+                  <!-- Student List -->
+                  <div style="max-height: 300px; overflow-y: auto;">
                     <div class="form-check mb-2">
-                      <input class="form-check-input student-checkbox" type="checkbox" name="student_ids" value="{{ student.id }}" id="student_{{ student.id }}">
-                      <label class="form-check-label" for="student_{{ student.id }}">
-                        {{ student.full_name }} <small class="text-muted">({{ student.block }})</small>
+                      <input class="form-check-input" type="checkbox" id="selectAllStudents">
+                      <label class="form-check-label fw-bold" for="selectAllStudents">
+                        Select All (Filtered)
                       </label>
                     </div>
-                    {% endfor %}
-                  {% else %}
-                    <p class="text-muted">No students found.</p>
-                  {% endif %}
+                    <hr>
+                    {% if all_students %}
+                      {% for student in all_students %}
+                      <div class="form-check mb-2 student-item" data-blocks="{{ student.block }}">
+                        <input class="form-check-input student-checkbox" type="checkbox" name="student_ids" value="{{ student.id }}" id="student_{{ student.id }}" data-blocks="{{ student.block }}">
+                        <label class="form-check-label" for="student_{{ student.id }}">
+                          {{ student.full_name }} <small class="text-muted">({{ student.block }})</small>
+                        </label>
+                      </div>
+                      {% endfor %}
+                    {% else %}
+                      <p class="text-muted">No students found.</p>
+                    {% endif %}
+                  </div>
                 </div>
               </div>
             </div>
@@ -608,30 +682,76 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // Select All Students checkbox
+    // Manual Payment: Block Filter for Students
+    const studentBlockFilter = document.getElementById('studentBlockFilter');
+    const studentItems = document.querySelectorAll('.student-item');
     const selectAllCheckbox = document.getElementById('selectAllStudents');
-    const studentCheckboxes = document.querySelectorAll('.student-checkbox');
     const selectedCountEl = document.getElementById('selectedCount');
 
-    if (selectAllCheckbox) {
-        selectAllCheckbox.addEventListener('change', function() {
-            studentCheckboxes.forEach(cb => cb.checked = this.checked);
+    // Set default block (first option after "All Blocks")
+    if (studentBlockFilter && studentBlockFilter.options.length > 1) {
+        studentBlockFilter.selectedIndex = 1; // Select first actual block
+        studentBlockFilter.dispatchEvent(new Event('change')); // Trigger filter
+    }
+
+    if (studentBlockFilter) {
+        studentBlockFilter.addEventListener('change', function() {
+            const selectedBlock = this.value;
+            studentItems.forEach(item => {
+                const studentBlocks = item.dataset.blocks.split(',').map(b => b.trim());
+                if (!selectedBlock || studentBlocks.includes(selectedBlock)) {
+                    item.style.display = '';
+                } else {
+                    item.style.display = 'none';
+                    // Uncheck hidden students
+                    item.querySelector('.student-checkbox').checked = false;
+                }
+            });
+            selectAllCheckbox.checked = false;
             updateSelectedCount();
         });
     }
 
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', function() {
+            const visibleCheckboxes = Array.from(studentItems)
+                .filter(item => item.style.display !== 'none')
+                .map(item => item.querySelector('.student-checkbox'));
+            visibleCheckboxes.forEach(cb => cb.checked = this.checked);
+            updateSelectedCount();
+        });
+    }
+
+    const studentCheckboxes = document.querySelectorAll('.student-checkbox');
     studentCheckboxes.forEach(cb => {
         cb.addEventListener('change', updateSelectedCount);
     });
 
     function updateSelectedCount() {
-        const count = Array.from(studentCheckboxes).filter(cb => cb.checked).length;
+        const count = Array.from(studentCheckboxes).filter(cb => cb.checked && cb.closest('.student-item').style.display !== 'none').length;
         if (selectedCountEl) {
             selectedCountEl.textContent = count;
         }
     }
 
     updateSelectedCount();
+
+    // History Tab: Block Filter
+    const historyBlockFilter = document.getElementById('historyBlockFilter');
+    if (historyBlockFilter) {
+        historyBlockFilter.addEventListener('change', function() {
+            const selectedBlock = this.value;
+            const historyRows = document.querySelectorAll('#payrollHistoryTable tbody tr[data-block]');
+            historyRows.forEach(row => {
+                const rowBlock = row.dataset.block;
+                if (!selectedBlock || rowBlock === selectedBlock) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        });
+    }
 });
 
 // Run Payroll
@@ -701,6 +821,76 @@ function deleteFine(fineId) {
     }
   })
   .catch(err => showToast('Error deleting fine', 'error'));
+}
+
+// Apply Reward to Students
+function applyReward(rewardId, rewardName) {
+  // Switch to Manual Payment tab for student selection
+  const studentCheckboxes = document.querySelectorAll('.student-checkbox:checked');
+
+  if (studentCheckboxes.length === 0) {
+    alert('Please go to the Manual Payment tab, select students, and then apply the reward.');
+    return;
+  }
+
+  if (!confirm(`Apply reward "${rewardName}" to ${studentCheckboxes.length} selected student(s)?`)) return;
+
+  const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+  const formData = new FormData();
+  studentCheckboxes.forEach(cb => formData.append('student_ids', cb.value));
+
+  fetch(`/admin/payroll/rewards/${rewardId}/apply`, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': csrfToken
+    },
+    body: formData
+  })
+  .then(resp => resp.json())
+  .then(data => {
+    if (data.success) {
+      showToast(data.message, 'success');
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      showToast(data.message || 'Failed to apply reward', 'error');
+    }
+  })
+  .catch(err => showToast('Error applying reward', 'error'));
+}
+
+// Apply Fine to Students
+function applyFine(fineId, fineName) {
+  // Switch to Manual Payment tab for student selection
+  const studentCheckboxes = document.querySelectorAll('.student-checkbox:checked');
+
+  if (studentCheckboxes.length === 0) {
+    alert('Please go to the Manual Payment tab, select students, and then apply the fine.');
+    return;
+  }
+
+  if (!confirm(`Apply fine "${fineName}" to ${studentCheckboxes.length} selected student(s)?`)) return;
+
+  const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+  const formData = new FormData();
+  studentCheckboxes.forEach(cb => formData.append('student_ids', cb.value));
+
+  fetch(`/admin/payroll/fines/${fineId}/apply`, {
+    method: 'POST',
+    headers: {
+      'X-CSRFToken': csrfToken
+    },
+    body: formData
+  })
+  .then(resp => resp.json())
+  .then(data => {
+    if (data.success) {
+      showToast(data.message, 'success');
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      showToast(data.message || 'Failed to apply fine', 'error');
+    }
+  })
+  .catch(err => showToast('Error applying fine', 'error'));
 }
 
 // Toast notification helper (assumes this exists in layout)
