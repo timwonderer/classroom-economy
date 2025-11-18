@@ -3207,6 +3207,15 @@ def admin_payroll():
     # Get payroll settings
     block_settings = PayrollSettings.query.filter_by(is_active=True).all()
 
+    # Get default/global settings for form pre-population
+    default_setting = PayrollSettings.query.filter_by(block=None, is_active=True).first()
+
+    # Organize settings by block for display
+    settings_by_block = {}
+    for setting in block_settings:
+        if setting.block:
+            settings_by_block[setting.block] = setting
+
     # Get rewards and fines
     rewards = PayrollReward.query.order_by(PayrollReward.created_at.desc()).all()
     fines = PayrollFine.query.order_by(PayrollFine.created_at.desc()).all()
@@ -3256,6 +3265,8 @@ def admin_payroll():
         # Settings tab
         settings_form=settings_form,
         block_settings=block_settings,
+        default_setting=default_setting,
+        settings_by_block=settings_by_block,
         next_global_payroll=next_pay_date_utc,  # Pass UTC timestamp
         show_setup_banner=show_setup_banner,
         # Students tab
