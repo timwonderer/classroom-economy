@@ -10,3 +10,4 @@ GPT_instruction.md
 *.db
 instance/
 local.db
+.vscode/

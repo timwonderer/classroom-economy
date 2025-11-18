@@ -3150,6 +3150,7 @@ def admin_payroll():
     if last_payroll_time and last_payroll_time.tzinfo is None:
         last_payroll_time = last_payroll_time.replace(tzinfo=timezone.utc)
 
+
     now_utc = datetime.now(timezone.utc)
 
     # Get all students
