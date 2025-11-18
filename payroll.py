@@ -1,5 +1,7 @@
 from app import db, TapEvent, Student, Transaction, PayrollSettings
 from datetime import datetime, timezone
+from attendance import calculate_unpaid_attendance_seconds
+
 
 def get_pay_rate_for_block(block):
     """
@@ -49,35 +51,11 @@ def calculate_payroll(students, last_payroll_time):
             # Get pay rate using original block name (matches PayrollSettings.block)
             rate_per_second = get_pay_rate_for_block(block_original)
 
-            # Query TapEvents using uppercase (matches TapEvent.period)
-            q = TapEvent.query.filter(
-                TapEvent.student_id == student.id,
-                TapEvent.period == block_upper
+            total_seconds = calculate_unpaid_attendance_seconds(
+                student.id,
+                block_upper,
+                last_payroll_time,
             )
-            if last_payroll_time:
-                q = q.filter(TapEvent.timestamp > last_payroll_time)
-
-            events = q.order_by(TapEvent.timestamp.asc()).all()
-
-            total_seconds = 0
-            in_time = None
-            for event in events:
-                event_time = event.timestamp.replace(tzinfo=timezone.utc)
-                if event.status == "active":
-                    if in_time is None:
-                        in_time = event_time
-                elif event.status == "inactive":
-                    if in_time:
-                        delta = (event_time - in_time).total_seconds()
-                        if delta > 0:
-                            total_seconds += delta
-                        in_time = None
-
-            if in_time:
-                now = datetime.now(timezone.utc)
-                delta = (now - in_time).total_seconds()
-                if delta > 0:
-                    total_seconds += delta
 
             if total_seconds > 0:
                 amount = round(total_seconds * rate_per_second, 2)

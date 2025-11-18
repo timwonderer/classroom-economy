@@ -40,6 +40,17 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def format_utc_iso(dt):
+    """Return a UTC ISO-8601 string (with trailing Z) for a datetime or ``None``."""
+    if not dt:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+    return dt.isoformat().replace("+00:00", "Z")
+
+
 from forms import AdminTOTPConfirmForm
 
 
@@ -3135,21 +3146,56 @@ def admin_payroll():
     pacific = pytz.timezone('America/Los_Angeles')
     last_payroll_time = get_last_payroll_time()
 
+    # Normalize to UTC to avoid any naive/aware mismatches downstream
+    if last_payroll_time and last_payroll_time.tzinfo is None:
+        last_payroll_time = last_payroll_time.replace(tzinfo=timezone.utc)
+
+    now_utc = datetime.now(timezone.utc)
+
     # Get all students
     students = Student.query.all()
 
-    # Get all blocks
-    blocks = sorted(set(s.block for s in students if s.block))
+    # Get all blocks (split multi-block assignments like "A, B")
+    blocks = sorted({b.strip() for s in students for b in (s.block or "").split(',') if b.strip()})
 
     # Check if payroll settings exist
     has_settings = PayrollSettings.query.first() is not None
     show_setup_banner = not has_settings
 
+    # Get payroll settings
+    block_settings = PayrollSettings.query.filter_by(is_active=True).all()
+
+    # Get default/global settings for form pre-population
+    default_setting = PayrollSettings.query.filter_by(block=None, is_active=True).first()
+
+    # Organize settings by block for display and lookup
+    settings_by_block = {}
+    for setting in block_settings:
+        if setting.block:
+            settings_by_block[setting.block] = setting
+
+    def _as_utc(dt):
+        if not dt:
+            return None
+        return dt.replace(tzinfo=timezone.utc) if dt.tzinfo is None else dt.astimezone(timezone.utc)
+
+    def _compute_next_pay_date(setting, last_run, now):
+        freq_days = setting.payroll_frequency_days if setting and setting.payroll_frequency_days else 14
+        first_pay = _as_utc(setting.first_pay_date) if setting and setting.first_pay_date else None
+
+        if last_run:
+            candidate = last_run + timedelta(days=freq_days)
+        elif first_pay:
+            candidate = first_pay
+        else:
+            candidate = now + timedelta(days=freq_days)
+
+        while candidate <= now:
+            candidate += timedelta(days=freq_days)
+        return candidate
+
     # Next scheduled payroll calculation (keep in UTC for template)
-    if last_payroll_time:
-        next_pay_date_utc = last_payroll_time + timedelta(days=14)
-    else:
-        next_pay_date_utc = datetime.now(timezone.utc)
+    next_pay_date_utc = _compute_next_pay_date(default_setting, last_payroll_time, now_utc)
 
     # Recent payroll activity
     recent_payrolls = Transaction.query.filter_by(type='payroll').order_by(Transaction.timestamp.desc()).limit(20).all()
@@ -3158,14 +3204,17 @@ def admin_payroll():
     payroll_summary = calculate_payroll(students, last_payroll_time)
     total_payroll_estimate = sum(payroll_summary.values())
 
-    # Next payroll by block (for now, use same date for all blocks)
+    # Next payroll by block
     next_payroll_by_block = []
     for block in blocks:
         block_students = [s for s in students if block in [b.strip() for b in (s.block or '').split(',')]]
         block_estimate = sum(payroll_summary.get(s.id, 0) for s in block_students)
+        setting = settings_by_block.get(block, default_setting)
+        block_next_payroll = _compute_next_pay_date(setting, last_payroll_time, now_utc)
         next_payroll_by_block.append({
             'block': block,
-            'next_date': next_pay_date_utc,  # Keep in UTC
+            'next_date': block_next_payroll,  # Keep in UTC
+            'next_date_iso': format_utc_iso(block_next_payroll),
             'estimate': block_estimate
         })
 
@@ -3204,18 +3253,6 @@ def admin_payroll():
             'last_payroll_date': last_payroll.timestamp if last_payroll else None,
             'total_earned': total_earned
         })
-
-    # Get payroll settings
-    block_settings = PayrollSettings.query.filter_by(is_active=True).all()
-
-    # Get default/global settings for form pre-population
-    default_setting = PayrollSettings.query.filter_by(block=None, is_active=True).first()
-
-    # Organize settings by block for display
-    settings_by_block = {}
-    for setting in block_settings:
-        if setting.block:
-            settings_by_block[setting.block] = setting
 
     # Get rewards and fines
     rewards = PayrollReward.query.order_by(PayrollReward.created_at.desc()).all()
@@ -3284,7 +3321,8 @@ def admin_payroll():
         payroll_history=payroll_history,
         # General
         blocks=blocks,
-        current_page="payroll"
+        current_page="payroll",
+        format_utc_iso=format_utc_iso
     )
 
 
