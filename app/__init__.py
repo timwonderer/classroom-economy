@@ -28,8 +28,6 @@ if missing_vars:
 
 
 # -------------------- UTILITIES --------------------
-# Utilities moved to app/utils/ in Stage 5
-
 from app.utils.encryption import PIIEncryptedType
 from app.utils.helpers import format_utc_iso, is_safe_url
 from app.utils.constants import THEME_PROMPTS
