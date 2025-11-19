@@ -69,6 +69,18 @@
     .sidebar {
         background-color: var(--sidebar-bg);
         color: var(--sidebar-text);
+        position: fixed;
+        left: 0;
+        top: 0;
+        height: 100vh;
+        overflow-y: auto;
+        z-index: 1000;
+    }
+
+    .main-content {
+        margin-left: 260px;
+        height: 100vh;
+        overflow-y: auto;
     }
 
     .sidebar h5 {
@@ -295,7 +307,7 @@
             <a href="{{ url_for('admin.logout') }}" class="btn btn-outline-secondary text-start w-100"><span class="material-symbols-outlined">logout</span> Sign Out</a>
         </div>
     </div>
-    <div class="flex-grow-1 p-4">
+    <div class="main-content p-4">
         <!-- Modern Title Banner -->
         <div class="page-title-banner">
             <h2><span class="material-symbols-outlined">{% block page_icon %}dashboard{% endblock %}</span> {{ page_title or "Admin Panel" }}</h2>

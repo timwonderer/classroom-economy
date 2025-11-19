@@ -209,7 +209,11 @@
                                 <tr>
                                     <td class="fw-bold">Last Activity:</td>
                                     <td>
-                                        <span class="local-timestamp" data-timestamp="{{ latest_tap_event.timestamp.isoformat() }}Z"></span>
+                                        {% if latest_tap_event.timestamp %}
+                                            <span class="local-timestamp" data-timestamp="{{ latest_tap_event.timestamp.isoformat() }}Z"></span>
+                                        {% else %}
+                                            <span class="text-muted">N/A</span>
+                                        {% endif %}
                                     </td>
                                 </tr>
                                 <tr>
@@ -266,7 +270,11 @@
                                 {% for tx in transactions %}
                                 <tr {% if tx.is_void %}class="table-secondary text-decoration-line-through"{% endif %}>
                                     <td>
-                                        <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
+                                        {% if tx.timestamp %}
+                                            <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
+                                        {% else %}
+                                            <span class="text-muted">N/A</span>
+                                        {% endif %}
                                     </td>
                                     <td>
                                         <span class="badge bg-info">{{ tx.type|title if tx.type else 'General' }}</span>
@@ -331,7 +339,11 @@
                                         <strong>{{ s_item.store_item.name }}</strong>
                                     </td>
                                     <td>
-                                        <span class="local-timestamp" data-timestamp="{{ s_item.purchase_date.isoformat() }}Z"></span>
+                                        {% if s_item.purchase_date %}
+                                            <span class="local-timestamp" data-timestamp="{{ s_item.purchase_date.isoformat() }}Z"></span>
+                                        {% else %}
+                                            <span class="text-muted">N/A</span>
+                                        {% endif %}
                                     </td>
                                     <td>
                                         {% if s_item.status == 'purchased' %}
@@ -387,7 +399,11 @@
                                 {% for tap in tap_events[:50] %}
                                 <tr>
                                     <td>
-                                        <span class="local-timestamp" data-timestamp="{{ tap.timestamp.isoformat() }}Z"></span>
+                                        {% if tap.timestamp %}
+                                            <span class="local-timestamp" data-timestamp="{{ tap.timestamp.isoformat() }}Z"></span>
+                                        {% else %}
+                                            <span class="text-muted">N/A</span>
+                                        {% endif %}
                                     </td>
                                     <td><span class="badge bg-primary">{{ tap.period|upper }}</span></td>
                                     <td>
@@ -551,7 +567,11 @@
                                 {% for tx in earnings[:20] %}
                                 <tr>
                                     <td>
-                                        <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
+                                        {% if tx.timestamp %}
+                                            <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
+                                        {% else %}
+                                            <span class="text-muted">N/A</span>
+                                        {% endif %}
                                     </td>
                                     <td>
                                         <span class="badge bg-info">{{ tx.type|title if tx.type else 'Deposit' }}</span>
