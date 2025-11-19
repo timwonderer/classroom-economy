@@ -1,4 +1,4 @@
-# Cleanup Duplicate Students
+# Cleanup Duplicate Students (PostgreSQL)
 
 ## Problem
 Due to an algorithm bug in the previous commit, duplicate students were created when the roster was uploaded twice. The duplicate detection failed because it was using a different hashing algorithm.
@@ -13,13 +13,13 @@ The bug has been FIXED. Now you need to clean up the existing duplicates.
 Run this command to see which students are duplicated:
 
 ```bash
-sqlite3 instance/classroom_economy.db "
+psql $DATABASE_URL -c "
 SELECT
     first_name,
     last_initial,
     block,
     COUNT(*) as count,
-    GROUP_CONCAT(id) as student_ids
+    STRING_AGG(id::text, ', ') as student_ids
 FROM students
 WHERE block IS NOT NULL
 GROUP BY first_name, last_initial, block
@@ -42,7 +42,7 @@ For each set of duplicates, you want to KEEP the student with:
 Run this to see details of duplicates:
 
 ```bash
-sqlite3 instance/classroom_economy.db -header -column "
+psql $DATABASE_URL -c "
 SELECT
     id,
     first_name || ' ' || last_initial || '.' as name,
@@ -65,10 +65,12 @@ ORDER BY block, last_initial, first_name, id;
 
 ## Step 3: Delete Duplicates (AUTOMATED - RECOMMENDED)
 
+### Option A: Using psql directly
+
 This will automatically delete all duplicates, keeping the OLDEST record (lowest ID) for each student:
 
 ```bash
-sqlite3 instance/classroom_economy.db "
+psql $DATABASE_URL -c "
 DELETE FROM students
 WHERE id NOT IN (
     SELECT MIN(id)
@@ -86,6 +88,53 @@ AND (first_name, last_initial, block) IN (
 "
 ```
 
+### Option B: Using Flask shell (safer, with transaction support)
+
+```bash
+flask shell
+```
+
+Then run this Python code:
+
+```python
+from app.extensions import db
+from app.models import Student
+from sqlalchemy import func
+from collections import defaultdict
+
+# Get all students
+students = Student.query.order_by(Student.id).all()
+
+# Group by (first_name, last_initial, block)
+groups = defaultdict(list)
+for student in students:
+    if student.block:
+        key = (student.first_name, student.last_initial, student.block)
+        groups[key].append(student)
+
+# Find duplicates
+duplicates = {k: v for k, v in groups.items() if len(v) > 1}
+
+print(f"Found {len(duplicates)} sets of duplicates")
+
+# Delete duplicates (keep oldest)
+deleted_count = 0
+for (first_name, last_initial, block), students_list in duplicates.items():
+    students_list.sort(key=lambda s: s.id)
+    keep = students_list[0]
+    to_delete = students_list[1:]
+
+    print(f"{first_name} {last_initial}. in {block}: Keeping ID={keep.id}, Deleting {len(to_delete)} copies")
+
+    for dup in to_delete:
+        db.session.delete(dup)
+        deleted_count += 1
+
+# Commit changes
+db.session.commit()
+print(f"✓ Deleted {deleted_count} duplicate records!")
+```
+
 ---
 
 ## Step 4: Verify Cleanup
@@ -93,7 +142,7 @@ AND (first_name, last_initial, block) IN (
 Check that duplicates are gone:
 
 ```bash
-sqlite3 instance/classroom_economy.db "
+psql $DATABASE_URL -c "
 SELECT
     block,
     COUNT(*) as student_count
@@ -114,31 +163,70 @@ If you want to manually choose which duplicates to delete:
 
 ```bash
 # Find a specific duplicate set
-sqlite3 instance/classroom_economy.db "
+psql $DATABASE_URL -c "
 SELECT id, first_name, last_initial, block, has_completed_setup
 FROM students
 WHERE first_name = 'Destiny' AND last_initial = 'M' AND block = 'A';
 "
 
 # Delete a specific ID
-sqlite3 instance/classroom_economy.db "DELETE FROM students WHERE id = 123;"
+psql $DATABASE_URL -c "DELETE FROM students WHERE id = 123;"
 ```
 
 ---
 
 ## Safety Notes
 
-1. **BACKUP FIRST**: The automated script will backup your database automatically, but you can also manually backup:
+1. **BACKUP FIRST**: PostgreSQL backup:
    ```bash
-   cp instance/classroom_economy.db instance/classroom_economy.db.backup
+   pg_dump $DATABASE_URL > backup_before_cleanup.sql
    ```
 
 2. **If something goes wrong**, restore from backup:
    ```bash
-   cp instance/classroom_economy.db.backup instance/classroom_economy.db
+   psql $DATABASE_URL < backup_before_cleanup.sql
    ```
 
 3. **The fix is now in place**: After cleanup, uploading the same roster again will NOT create duplicates.
+
+---
+
+## Quick Copy-Paste Commands
+
+### 1. Backup
+```bash
+pg_dump $DATABASE_URL > backup_before_cleanup.sql
+```
+
+### 2. Delete duplicates
+```bash
+psql $DATABASE_URL -c "
+DELETE FROM students
+WHERE id NOT IN (
+    SELECT MIN(id)
+    FROM students
+    WHERE block IS NOT NULL
+    GROUP BY first_name, last_initial, block
+)
+AND (first_name, last_initial, block) IN (
+    SELECT first_name, last_initial, block
+    FROM students
+    WHERE block IS NOT NULL
+    GROUP BY first_name, last_initial, block
+    HAVING COUNT(*) > 1
+);
+"
+```
+
+### 3. Verify
+```bash
+psql $DATABASE_URL -c "
+SELECT block, COUNT(*) as students
+FROM students
+GROUP BY block
+ORDER BY block;
+"
+```
 
 ---
 
