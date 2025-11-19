@@ -141,7 +141,7 @@
         <div class="row">
             <!-- Student Info Card -->
             <div class="col-lg-6 mb-4">
-                <div class="card shadow">
+                <div class="card shadow h-100">
                     <div class="card-header bg-info text-white">
                         <h5 class="mb-0"><i class="bi bi-person me-2"></i>Student Information</h5>
                     </div>
@@ -152,12 +152,13 @@
                                 <td>{{ student.full_name }}</td>
                             </tr>
                             <tr>
-                                <td class="fw-bold">Block:</td>
-                                <td><span class="badge bg-primary">{{ student.block|upper }}</span></td>
-                            </tr>
-                            <tr>
-                                <td class="fw-bold">Student ID:</td>
-                                <td><code>#{{ student.id }}</code></td>
+                                <td class="fw-bold">Block(s):</td>
+                                <td>
+                                    {% set blocks = student.block.split(',') %}
+                                    {% for block in blocks %}
+                                        <span class="badge bg-primary me-1">{{ block.strip()|upper }}</span>
+                                    {% endfor %}
+                                </td>
                             </tr>
                             <tr>
                                 <td class="fw-bold">Setup Status:</td>
@@ -170,71 +171,66 @@
                                 </td>
                             </tr>
                             <tr>
-                                <td class="fw-bold">Insurance Plan:</td>
-                                <td>{{ student.insurance_plan if student.insurance_plan != 'none' else 'None' }}</td>
+                                <td class="fw-bold">Insurance:</td>
+                                <td>
+                                    {% if student.insurance_plan and student.insurance_plan != 'none' %}
+                                        <span class="badge bg-info">{{ student.insurance_plan|title }}</span>
+                                    {% else %}
+                                        <span class="text-muted">None</span>
+                                    {% endif %}
+                                </td>
                             </tr>
+                            {% if student.is_rent_enabled %}
+                            <tr>
+                                <td class="fw-bold">Housing:</td>
+                                <td><span class="badge bg-secondary">Renter</span></td>
+                            </tr>
+                            {% endif %}
+                            {% if student.owns_seat %}
+                            <tr>
+                                <td class="fw-bold">Property:</td>
+                                <td><span class="badge bg-success">Homeowner</span></td>
+                            </tr>
+                            {% endif %}
                         </table>
                     </div>
                 </div>
             </div>
 
-            <!-- Quick Stats Card -->
-            <div class="col-lg-6 mb-4">
-                <div class="card shadow">
-                    <div class="card-header bg-success text-white">
-                        <h5 class="mb-0"><i class="bi bi-graph-up me-2"></i>Quick Stats</h5>
-                    </div>
-                    <div class="card-body">
-                        <div class="row text-center">
-                            <div class="col-6 mb-3">
-                                <h4 class="text-primary">${{ "%.2f"|format(student.checking_balance + student.savings_balance) }}</h4>
-                                <small class="text-muted">Total Balance</small>
-                            </div>
-                            <div class="col-6 mb-3">
-                                <h4 class="text-success">{{ transactions|selectattr('amount', 'gt', 0)|list|length }}</h4>
-                                <small class="text-muted">Total Deposits</small>
-                            </div>
-                            <div class="col-6">
-                                <h4 class="text-info">{{ student_items|length }}</h4>
-                                <small class="text-muted">Items Owned</small>
-                            </div>
-                            <div class="col-6">
-                                <h4 class="text-warning">{{ student.hall_passes }}</h4>
-                                <small class="text-muted">Hall Passes</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
             <!-- Recent Activity Card -->
-            <div class="col-lg-12 mb-4">
-                <div class="card shadow">
+            <div class="col-lg-6 mb-4">
+                <div class="card shadow h-100">
                     <div class="card-header bg-secondary text-white">
-                        <h5 class="mb-0"><i class="bi bi-activity me-2"></i>Recent Attendance</h5>
+                        <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Recent Attendance</h5>
                     </div>
                     <div class="card-body">
                         {% if latest_tap_event %}
-                            <div class="row">
-                                <div class="col-md-3">
-                                    <strong>Timestamp:</strong><br>
-                                    <span class="local-timestamp" data-timestamp="{{ latest_tap_event.timestamp.isoformat() }}Z"></span>
-                                </div>
-                                <div class="col-md-3">
-                                    <strong>Status:</strong><br>
-                                    <span class="badge {% if latest_tap_event.status == 'active' %}bg-success{% else %}bg-secondary{% endif %}">
-                                        {{ latest_tap_event.status|capitalize }}
-                                    </span>
-                                </div>
-                                <div class="col-md-3">
-                                    <strong>Period:</strong><br>
-                                    {{ latest_tap_event.period|upper }}
-                                </div>
-                                <div class="col-md-3">
-                                    <strong>Reason:</strong><br>
-                                    {{ latest_tap_event.reason if latest_tap_event.reason else 'N/A' }}
-                                </div>
-                            </div>
+                            <table class="table table-borderless mb-0">
+                                <tr>
+                                    <td class="fw-bold">Last Activity:</td>
+                                    <td>
+                                        <span class="local-timestamp" data-timestamp="{{ latest_tap_event.timestamp.isoformat() }}Z"></span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Status:</td>
+                                    <td>
+                                        <span class="badge {% if latest_tap_event.status == 'active' %}bg-success{% else %}bg-secondary{% endif %}">
+                                            {{ latest_tap_event.status|capitalize }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Period:</td>
+                                    <td><span class="badge bg-primary">{{ latest_tap_event.period|upper }}</span></td>
+                                </tr>
+                                {% if latest_tap_event.reason %}
+                                <tr>
+                                    <td class="fw-bold">Reason:</td>
+                                    <td>{{ latest_tap_event.reason }}</td>
+                                </tr>
+                                {% endif %}
+                            </table>
                         {% else %}
                             <p class="text-muted mb-0">No attendance records found.</p>
                         {% endif %}
@@ -578,78 +574,30 @@
 
     <!-- SETTINGS TAB -->
     <div class="tab-pane fade" id="settings" role="tabpanel">
-        <div class="row">
+        <div class="row justify-content-center">
             <!-- Hall Passes Card -->
-            <div class="col-lg-6 mb-4">
+            <div class="col-lg-8 mb-4">
                 <div class="card shadow">
                     <div class="card-header bg-warning text-dark">
                         <h5 class="mb-0"><i class="bi bi-ticket-perforated me-2"></i>Hall Pass Management</h5>
                     </div>
                     <div class="card-body">
                         <p><strong>Current Balance:</strong> <span class="badge bg-primary fs-5">{{ student.hall_passes }}</span></p>
-                        <form action="{{ url_for('admin.set_hall_passes', student_id=student.id) }}" method="post" class="row g-3">
+                        <form action="{{ url_for('admin.set_hall_passes', student_id=student.id) }}" method="post" class="row g-3 align-items-end">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                            <div class="col-auto">
-                                <label for="hall_passes" class="form-label fw-bold">Set New Balance:</label>
+                            <div class="col-md-6">
+                                <label for="hall_passes" class="form-label fw-bold">Set New Balance</label>
+                                <input type="number" class="form-control form-control-lg" name="hall_passes" id="hall_passes" value="{{ student.hall_passes }}" min="0" required>
                             </div>
-                            <div class="col-auto">
-                                <input type="number" class="form-control" name="hall_passes" id="hall_passes" value="{{ student.hall_passes }}" min="0" required>
-                            </div>
-                            <div class="col-auto">
-                                <button type="submit" class="btn btn-warning">
-                                    <i class="bi bi-check-circle me-1"></i>Update
+                            <div class="col-md-6">
+                                <button type="submit" class="btn btn-warning btn-lg w-100">
+                                    <i class="bi bi-check-circle me-1"></i>Update Hall Passes
                                 </button>
                             </div>
                         </form>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Account Settings Card -->
-            <div class="col-lg-6 mb-4">
-                <div class="card shadow">
-                    <div class="card-header bg-secondary text-white">
-                        <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Account Settings</h5>
-                    </div>
-                    <div class="card-body">
-                        <table class="table table-borderless mb-0">
-                            <tr>
-                                <td class="fw-bold">Rent Enabled:</td>
-                                <td>
-                                    {% if student.is_rent_enabled %}
-                                        <span class="badge bg-success">Yes</span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">No</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="fw-bold">Homeowner:</td>
-                                <td>
-                                    {% if student.owns_seat %}
-                                        <span class="badge bg-success">Yes</span>
-                                    {% else %}
-                                        <span class="badge bg-secondary">No</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="fw-bold">Insurance Plan:</td>
-                                <td>
-                                    <span class="badge bg-info">{{ student.insurance_plan if student.insurance_plan != 'none' else 'None' }}</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="fw-bold">Setup Complete:</td>
-                                <td>
-                                    {% if student.has_completed_setup %}
-                                        <span class="badge bg-success">Yes</span>
-                                    {% else %}
-                                        <span class="badge bg-warning text-dark">No</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        </table>
+                        <div class="alert alert-info mt-3 mb-0">
+                            <small><i class="bi bi-info-circle me-2"></i>Other settings can be changed via the "Edit Student" button at the top of the page.</small>
+                        </div>
                     </div>
                 </div>
             </div>
