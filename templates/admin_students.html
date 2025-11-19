@@ -430,8 +430,10 @@
 
 {% block extra_scripts %}
 <script>
+console.log('📝 Script block executing (before DOMContentLoaded)');
+
 document.addEventListener('DOMContentLoaded', function() {
-  console.log('🚀 Student management page scripts loaded');
+  console.log('🚀 Student management page scripts loaded (inside DOMContentLoaded)');
 
   // Edit Student Modal
   const editModal = document.getElementById('editStudentModal');
