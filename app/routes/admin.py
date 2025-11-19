@@ -418,15 +418,57 @@ def edit_student():
     student_id = request.form.get('student_id', type=int)
     student = Student.query.get_or_404(student_id)
 
-    # Update basic fields
-    student.first_name = request.form.get('first_name', '').strip()
-    student.last_initial = request.form.get('last_initial', '').strip().upper()
-    student.block = request.form.get('block', '').strip()
+    # Get form data
+    new_first_name = request.form.get('first_name', '').strip()
+    last_name_input = request.form.get('last_name', '').strip()
+    new_last_initial = last_name_input[0].upper() if last_name_input else student.last_initial
 
-    # Update DOB sum if provided
-    dob_sum = request.form.get('dob_sum', '').strip()
-    if dob_sum:
-        student.dob_sum = int(dob_sum)
+    # Get selected blocks (multiple checkboxes)
+    selected_blocks = request.form.getlist('blocks')
+    if not selected_blocks:
+        flash("At least one block must be selected.", "error")
+        return redirect(url_for('admin.students'))
+
+    # Join blocks with commas (e.g., "A,B,C")
+    new_blocks = ','.join(sorted(b.strip().upper() for b in selected_blocks))
+
+    # Check if name changed (need to recalculate hashes)
+    name_changed = (new_first_name != student.first_name or new_last_initial != student.last_initial)
+
+    # Update basic fields
+    student.first_name = new_first_name
+    student.last_initial = new_last_initial
+    student.block = new_blocks
+
+    # If name changed, recalculate name code and hashes
+    if name_changed:
+        # Generate new name code (vowels + consonants from first name + last initial)
+        full_name_for_code = (new_first_name + new_last_initial).lower()
+        vowels = ''.join(c for c in full_name_for_code if c in 'aeiou')
+        consonants = ''.join(c for c in full_name_for_code if c.isalpha() and c not in 'aeiou')
+        name_code = vowels + consonants
+
+        # Regenerate first_half_hash (name code hash)
+        student.first_half_hash = hash_hmac(name_code, student.salt)
+
+    # Update DOB sum if provided (and recalculate second_half_hash)
+    dob_sum_str = request.form.get('dob_sum', '').strip()
+    if dob_sum_str:
+        new_dob_sum = int(dob_sum_str)
+        if new_dob_sum != student.dob_sum:
+            student.dob_sum = new_dob_sum
+            # Regenerate second_half_hash (DOB sum hash)
+            student.second_half_hash = hash_hmac(str(new_dob_sum), student.salt)
+
+    # Handle login reset
+    reset_login = request.form.get('reset_login') == 'on'
+    if reset_login:
+        # Clear login credentials but keep account data
+        student.username_hash = None
+        student.pin_hash = None
+        student.passphrase_hash = None
+        student.has_completed_setup = False
+        flash(f"{student.full_name}'s login has been reset. They will need to re-claim their account.", "warning")
 
     try:
         db.session.commit()

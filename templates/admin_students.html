@@ -40,11 +40,6 @@
       <i class="bi bi-person-plus me-1"></i>Add Individual
     </button>
   </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" id="add-manual-tab" data-bs-toggle="tab" data-bs-target="#add-manual" type="button" role="tab">
-      <i class="bi bi-person-plus-fill me-1"></i>Add Manually
-    </button>
-  </li>
 </ul>
 
 <div class="tab-content" id="studentTabContent">
@@ -291,139 +286,11 @@
     </div>
   </div>
 
-  <!-- ADD MANUALLY TAB -->
-  <div class="tab-pane fade" id="add-manual" role="tabpanel">
-    <div class="card shadow">
-      <div class="card-header bg-warning text-dark">
-        <h5 class="mb-0"><i class="bi bi-person-plus-fill me-2"></i>Add Student Manually (Advanced)</h5>
-      </div>
-      <div class="card-body">
-        <div class="alert alert-warning">
-          <h6><i class="bi bi-exclamation-triangle me-2"></i>Advanced Mode</h6>
-          <p class="mb-0">This mode allows you to manually configure all student settings including credentials. Use with caution.</p>
-        </div>
-
-        <div class="row justify-content-center">
-          <div class="col-lg-10">
-            <form action="{{ url_for('admin.add_manual_student') }}" method="post">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-
-              <!-- Basic Info Card -->
-              <div class="card border-primary mb-3">
-                <div class="card-header bg-primary bg-opacity-10">
-                  <h6 class="mb-0 text-primary"><i class="bi bi-info-circle me-2"></i>Basic Information</h6>
-                </div>
-                <div class="card-body">
-                  <div class="row">
-                    <div class="col-md-4 mb-3">
-                      <label for="manual_first_name" class="form-label fw-bold">First Name <span class="text-danger">*</span></label>
-                      <input type="text" class="form-control" id="manual_first_name" name="first_name" required>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                      <label for="manual_last_name" class="form-label fw-bold">Last Name <span class="text-danger">*</span></label>
-                      <input type="text" class="form-control" id="manual_last_name" name="last_name" required>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                      <label for="manual_block" class="form-label fw-bold">Block <span class="text-danger">*</span></label>
-                      <select class="form-select" id="manual_block" name="block" required>
-                        <option value="">Select...</option>
-                        {% for block in blocks %}
-                        <option value="{{ block }}">Block {{ block|upper }}</option>
-                        {% endfor %}
-                      </select>
-                    </div>
-                  </div>
-                  <div class="row">
-                    <div class="col-md-6 mb-3">
-                      <label for="manual_dob" class="form-label fw-bold">Date of Birth <span class="text-danger">*</span></label>
-                      <input type="text"
-                             class="form-control"
-                             id="manual_dob"
-                             name="dob"
-                             placeholder="MM/DD/YYYY"
-                             pattern="\d{2}/\d{2}/\d{4}"
-                             required>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label for="manual_username" class="form-label fw-bold">Username (Optional)</label>
-                      <input type="text" class="form-control" id="manual_username" name="username">
-                      <div class="form-text">Leave blank to auto-generate</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Credentials Card -->
-              <div class="card border-secondary mb-3">
-                <div class="card-header bg-secondary bg-opacity-10">
-                  <h6 class="mb-0 text-secondary"><i class="bi bi-key me-2"></i>Credentials (Optional)</h6>
-                </div>
-                <div class="card-body">
-                  <div class="row">
-                    <div class="col-md-6 mb-3">
-                      <label for="manual_pin" class="form-label fw-bold">PIN</label>
-                      <input type="password"
-                             class="form-control"
-                             id="manual_pin"
-                             name="pin"
-                             pattern="\d{4,6}"
-                             placeholder="4-6 digits">
-                      <div class="form-text">Leave blank for student to set</div>
-                    </div>
-                    <div class="col-md-6 mb-3">
-                      <label for="manual_passphrase" class="form-label fw-bold">Passphrase</label>
-                      <input type="password" class="form-control" id="manual_passphrase" name="passphrase">
-                      <div class="form-text">Leave blank for student to set</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Settings Card -->
-              <div class="card border-success mb-3">
-                <div class="card-header bg-success bg-opacity-10">
-                  <h6 class="mb-0 text-success"><i class="bi bi-gear me-2"></i>Initial Settings</h6>
-                </div>
-                <div class="card-body">
-                  <div class="row">
-                    <div class="col-md-4 mb-3">
-                      <label for="manual_hall_passes" class="form-label fw-bold">Hall Passes</label>
-                      <input type="number" class="form-control" id="manual_hall_passes" name="hall_passes" value="3" min="0">
-                    </div>
-                    <div class="col-md-4 mb-3">
-                      <label class="form-label fw-bold d-block">Rent Enabled</label>
-                      <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="manual_rent_enabled" name="rent_enabled" checked>
-                        <label class="form-check-label" for="manual_rent_enabled">Enable rent for this student</label>
-                      </div>
-                    </div>
-                    <div class="col-md-4 mb-3">
-                      <label class="form-label fw-bold d-block">Setup Status</label>
-                      <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" id="manual_setup_complete" name="setup_complete">
-                        <label class="form-check-label" for="manual_setup_complete">Mark as setup complete</label>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div class="d-grid">
-                <button type="submit" class="btn btn-warning btn-lg">
-                  <i class="bi bi-person-plus-fill me-2"></i>Create Student (Advanced)
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
 </div>
 
 <!-- Edit Student Modal -->
 <div class="modal fade" id="editStudentModal" tabindex="-1" aria-labelledby="editStudentModalLabel" aria-hidden="true">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-lg">
     <form action="{{ url_for('admin.edit_student') }}" method="post">
       <div class="modal-content">
         <div class="modal-header bg-primary text-white">
@@ -436,30 +303,79 @@
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <input type="hidden" id="edit_student_id" name="student_id">
 
-          <div class="mb-3">
-            <label for="edit_first_name" class="form-label fw-bold">First Name</label>
-            <input type="text" class="form-control" id="edit_first_name" name="first_name" required>
+          <!-- Basic Information -->
+          <div class="card border-primary mb-3">
+            <div class="card-header bg-primary bg-opacity-10">
+              <h6 class="mb-0 text-primary"><i class="bi bi-person me-2"></i>Basic Information</h6>
+            </div>
+            <div class="card-body">
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="edit_first_name" class="form-label fw-bold">First Name</label>
+                  <input type="text" class="form-control" id="edit_first_name" name="first_name" required>
+                  <div class="form-text">Used for account claim process</div>
+                </div>
+                <div class="col-md-6 mb-3">
+                  <label for="edit_last_name" class="form-label fw-bold">Last Name</label>
+                  <input type="text" class="form-control" id="edit_last_name" name="last_name" required>
+                  <div class="form-text">First letter will become last initial</div>
+                </div>
+              </div>
+              <div class="mb-3">
+                <label for="edit_dob_sum" class="form-label fw-bold">DOB Sum (Optional)</label>
+                <input type="number" class="form-control" id="edit_dob_sum" name="dob_sum">
+                <div class="form-text">Sum of DOB components (MM + DD + YYYY). Leave blank to keep unchanged.</div>
+              </div>
+            </div>
           </div>
-          <div class="mb-3">
-            <label for="edit_last_initial" class="form-label fw-bold">Last Initial</label>
-            <input type="text" class="form-control" id="edit_last_initial" name="last_initial" maxlength="1" required>
+
+          <!-- Block Assignment -->
+          <div class="card border-info mb-3">
+            <div class="card-header bg-info bg-opacity-10">
+              <h6 class="mb-0 text-info"><i class="bi bi-calendar-week me-2"></i>Block Assignment</h6>
+            </div>
+            <div class="card-body">
+              <p class="text-muted small mb-2">Select all blocks this student attends (can select multiple):</p>
+              <div class="row">
+                {% for block in blocks %}
+                <div class="col-6 col-md-4 mb-2">
+                  <div class="form-check">
+                    <input class="form-check-input block-checkbox" type="checkbox" name="blocks" value="{{ block }}" id="edit_block_{{ block }}">
+                    <label class="form-check-label" for="edit_block_{{ block }}">
+                      Block {{ block|upper }}
+                    </label>
+                  </div>
+                </div>
+                {% endfor %}
+              </div>
+              <div class="form-text">At least one block must be selected</div>
+            </div>
           </div>
-          <div class="mb-3">
-            <label for="edit_block" class="form-label fw-bold">Block</label>
-            <select class="form-select" id="edit_block" name="block" required>
-              {% for block in blocks %}
-              <option value="{{ block }}">Block {{ block|upper }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="mb-3">
-            <label for="edit_dob_sum" class="form-label fw-bold">DOB Sum</label>
-            <input type="number" class="form-control" id="edit_dob_sum" name="dob_sum">
-            <div class="form-text">Leave blank to keep unchanged</div>
+
+          <!-- Login Management -->
+          <div class="card border-warning mb-3">
+            <div class="card-header bg-warning bg-opacity-10">
+              <h6 class="mb-0 text-warning"><i class="bi bi-key me-2"></i>Login Management</h6>
+            </div>
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center">
+                <div>
+                  <p class="mb-1 fw-bold">Reset Student Login</p>
+                  <p class="text-muted small mb-0">Forces student to go through account claim process again. Account data will be preserved.</p>
+                </div>
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="edit_reset_login" name="reset_login" role="switch">
+                  <label class="form-check-label" for="edit_reset_login">Reset</label>
+                </div>
+              </div>
+              <div class="alert alert-warning mt-3 mb-0" id="reset_login_warning" style="display:none;">
+                <small><i class="bi bi-exclamation-triangle me-2"></i>Student will need to re-claim their account using their name and DOB.</small>
+              </div>
+            </div>
           </div>
 
           <div class="alert alert-info mb-0">
-            <small><i class="bi bi-info-circle me-2"></i><strong>Note:</strong> Usernames, PINs, and passphrases cannot be edited here. Students must reset them through the proper channels.</small>
+            <small><i class="bi bi-info-circle me-2"></i><strong>Note:</strong> Changing the name will update what the student needs to enter during the account claim process.</small>
           </div>
         </div>
         <div class="modal-footer">
@@ -520,17 +436,50 @@
     editModal.addEventListener('show.bs.modal', event => {
       const button = event.relatedTarget;
       const studentId = button.getAttribute('data-student-id');
-      const studentName = button.getAttribute('data-student-name');
+      const firstName = button.getAttribute('data-student-name');
       const lastInitial = button.getAttribute('data-student-last-initial');
-      const block = button.getAttribute('data-student-block');
+      const blocksStr = button.getAttribute('data-student-block');
       const dobSum = button.getAttribute('data-student-dob-sum');
 
+      // Populate basic fields
       editModal.querySelector('#edit_student_id').value = studentId;
-      editModal.querySelector('#edit_first_name').value = studentName;
-      editModal.querySelector('#edit_last_initial').value = lastInitial;
-      editModal.querySelector('#edit_block').value = block;
+      editModal.querySelector('#edit_first_name').value = firstName;
+      editModal.querySelector('#edit_last_name').value = lastInitial; // Show just the initial, teacher can expand
       editModal.querySelector('#edit_dob_sum').value = dobSum || '';
+
+      // Uncheck all blocks first
+      editModal.querySelectorAll('.block-checkbox').forEach(cb => cb.checked = false);
+
+      // Check the appropriate blocks (handle comma-separated list)
+      if (blocksStr) {
+        const blocks = blocksStr.split(',').map(b => b.trim().toUpperCase());
+        blocks.forEach(block => {
+          const checkbox = editModal.querySelector(`#edit_block_${block.toLowerCase()}`);
+          if (checkbox) {
+            checkbox.checked = true;
+          }
+        });
+      }
+
+      // Reset login checkbox and warning
+      const resetLoginCheckbox = editModal.querySelector('#edit_reset_login');
+      const resetLoginWarning = editModal.querySelector('#reset_login_warning');
+      if (resetLoginCheckbox) {
+        resetLoginCheckbox.checked = false;
+        if (resetLoginWarning) {
+          resetLoginWarning.style.display = 'none';
+        }
+      }
     });
+
+    // Show/hide warning when reset login checkbox is toggled
+    const resetLoginCheckbox = editModal.querySelector('#edit_reset_login');
+    const resetLoginWarning = editModal.querySelector('#reset_login_warning');
+    if (resetLoginCheckbox && resetLoginWarning) {
+      resetLoginCheckbox.addEventListener('change', function() {
+        resetLoginWarning.style.display = this.checked ? 'block' : 'none';
+      });
+    }
   }
 
   // Delete Student Modal
