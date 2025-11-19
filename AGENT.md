@@ -660,7 +660,7 @@ python create_admin.py             # Create admin account
 python manage_invites.py           # Manage invite codes
 
 # Deployment
-gunicorn --bind=0.0.0.0 --timeout 600 app:app
+gunicorn --bind=0.0.0.0 --timeout 600 wsgi:app
 
 # Dependencies
 ./scripts/update_packages.sh       # Update and test packages

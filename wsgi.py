@@ -4,7 +4,7 @@ Root application module for Classroom Token Hub.
 This module serves as the WSGI entry point and provides backward compatibility
 imports. All routes have been modularized into blueprints (Stages 4-5).
 
-For gunicorn: app:app
+For gunicorn: wsgi:app
 """
 
 from flask import render_template, request, session
