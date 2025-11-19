@@ -180,16 +180,10 @@
                                     {% endif %}
                                 </td>
                             </tr>
-                            {% if student.is_rent_enabled %}
+                            {% if global_rent_enabled and student.is_rent_enabled %}
                             <tr>
                                 <td class="fw-bold">Housing:</td>
                                 <td><span class="badge bg-secondary">Renter</span></td>
-                            </tr>
-                            {% endif %}
-                            {% if student.owns_seat %}
-                            <tr>
-                                <td class="fw-bold">Property:</td>
-                                <td><span class="badge bg-success">Homeowner</span></td>
                             </tr>
                             {% endif %}
                         </table>
