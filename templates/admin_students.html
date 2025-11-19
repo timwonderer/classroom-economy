@@ -431,6 +431,8 @@
 {% block extra_scripts %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  console.log('🚀 Student management page scripts loaded');
+
   // Edit Student Modal
   const editModal = document.getElementById('editStudentModal');
   if (editModal) {
@@ -485,7 +487,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Delete Student Modal
   const deleteModal = document.getElementById('deleteStudentModal');
+  console.log('🗑️ Delete modal element:', deleteModal);
+
   if (deleteModal) {
+    console.log('✅ Delete modal found, attaching event listeners');
     deleteModal.addEventListener('show.bs.modal', event => {
       const button = event.relatedTarget;
       const studentId = button.getAttribute('data-student-id');
@@ -528,7 +533,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
       });
     }
+  } else {
+    console.error('❌ Delete modal not found in DOM');
   }
+
+  console.log('✅ All student management scripts initialized');
 });
 </script>
 {% endblock %}

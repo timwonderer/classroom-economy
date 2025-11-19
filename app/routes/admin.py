@@ -337,13 +337,16 @@ def students():
     """View all students with basic information organized by block."""
     all_students = Student.query.order_by(Student.block, Student.first_name).all()
 
-    # Get unique blocks
-    blocks = sorted(set(s.block for s in all_students))
+    # Get unique blocks - split comma-separated blocks into individual blocks
+    blocks = sorted({b.strip() for s in all_students for b in (s.block or "").split(',') if b.strip()})
 
-    # Group students by block
+    # Group students by block (students can appear in multiple blocks)
     students_by_block = {}
     for block in blocks:
-        students_by_block[block] = [s for s in all_students if s.block == block]
+        students_by_block[block] = [
+            s for s in all_students
+            if block.upper() in [b.strip().upper() for b in (s.block or "").split(',')]
+        ]
 
     # Add username_display attribute to each student
     for student in all_students:
