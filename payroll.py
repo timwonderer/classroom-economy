@@ -29,6 +29,53 @@ def get_pay_rate_for_block(block):
     return 0.25 / 60  # $0.25 per minute
 
 
+def get_daily_limit_seconds(block):
+    """
+    Get the daily time limit in seconds for a specific block from settings.
+
+    Args:
+        block (str): The block/period identifier.
+
+    Returns:
+        int or None: The daily limit in seconds, or None if no limit is set.
+    """
+    # Try block-specific settings first
+    if block:
+        setting = PayrollSettings.query.filter_by(block=block, is_active=True).first()
+        if setting:
+            # Simple mode: daily_limit_hours
+            if setting.settings_mode == 'simple' and setting.daily_limit_hours:
+                return int(setting.daily_limit_hours * 3600)  # Convert hours to seconds
+            # Advanced mode: max_time_per_day
+            elif setting.settings_mode == 'advanced' and setting.max_time_per_day:
+                unit_to_seconds = {
+                    'seconds': 1,
+                    'minutes': 60,
+                    'hours': 3600,
+                    'days': 86400
+                }
+                multiplier = unit_to_seconds.get(setting.max_time_per_day_unit, 3600)
+                return int(setting.max_time_per_day * multiplier)
+
+    # Fall back to global settings
+    global_setting = PayrollSettings.query.filter_by(block=None, is_active=True).first()
+    if global_setting:
+        if global_setting.settings_mode == 'simple' and global_setting.daily_limit_hours:
+            return int(global_setting.daily_limit_hours * 3600)
+        elif global_setting.settings_mode == 'advanced' and global_setting.max_time_per_day:
+            unit_to_seconds = {
+                'seconds': 1,
+                'minutes': 60,
+                'hours': 3600,
+                'days': 86400
+            }
+            multiplier = unit_to_seconds.get(global_setting.max_time_per_day_unit, 3600)
+            return int(global_setting.max_time_per_day * multiplier)
+
+    # No limit set
+    return None
+
+
 def calculate_payroll(students, last_payroll_time):
     """
     Calculates payroll for a given list of students since the last payroll run.

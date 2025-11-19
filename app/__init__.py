@@ -149,6 +149,16 @@ def create_app():
     app.jinja_env.globals['min'] = min
     app.jinja_env.globals['max'] = max
 
+    # -------------------- CONTEXT PROCESSORS --------------------
+    @app.context_processor
+    def inject_global_settings():
+        """Inject global settings into all templates."""
+        from app.models import RentSettings
+        rent_settings = RentSettings.query.first()
+        return {
+            'global_rent_enabled': rent_settings.is_enabled if rent_settings else False
+        }
+
     # -------------------- REGISTER BLUEPRINTS --------------------
     from app.routes.main import main_bp
     from app.routes.api import api_bp

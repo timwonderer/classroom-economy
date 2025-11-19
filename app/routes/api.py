@@ -617,6 +617,30 @@ def handle_tap():
                 "duration": duration
             })
 
+        # Check daily limit when tapping IN
+        if action == "tap_in":
+            import pytz
+            from payroll import get_daily_limit_seconds
+            from attendance import calculate_period_attendance
+
+            daily_limit = get_daily_limit_seconds(period)
+            if daily_limit:
+                # Use Pacific timezone for daily reset
+                pacific = pytz.timezone('America/Los_Angeles')
+                now_pacific = now.astimezone(pacific)
+                today_pacific = now_pacific.date()
+
+                today_attendance = calculate_period_attendance(student.id, period, today_pacific)
+
+                if today_attendance >= daily_limit:
+                    hours_limit = daily_limit / 3600.0
+                    current_app.logger.warning(
+                        f"Student {student.id} attempted to tap in for {period} but has reached daily limit of {hours_limit} hours"
+                    )
+                    return jsonify({
+                        "error": f"Daily limit of {hours_limit:.1f} hours reached for this period. Please try again tomorrow."
+                    }), 400
+
         # When tapping in, automatically return any active hall pass
         if action == "tap_in":
             active_hall_pass = HallPassLog.query.filter_by(
@@ -667,10 +691,82 @@ def handle_tap():
     })
 
 
+def check_and_auto_tapout_if_limit_reached(student):
+    """
+    Checks if an active student has reached their daily limit and auto-taps them out.
+    This function should be called periodically (e.g., during status checks).
+    Daily limits reset at midnight Pacific time.
+    """
+    import pytz
+    from payroll import get_daily_limit_seconds
+    from attendance import calculate_period_attendance
+
+    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+    now_utc = datetime.now(timezone.utc)
+
+    # Use Pacific timezone for daily reset
+    pacific = pytz.timezone('America/Los_Angeles')
+    now_pacific = now_utc.astimezone(pacific)
+    today_pacific = now_pacific.date()
+
+    for period in student_blocks:
+        # Check if student is currently active in this period
+        latest_event = (
+            TapEvent.query
+            .filter_by(student_id=student.id, period=period)
+            .order_by(TapEvent.timestamp.desc())
+            .first()
+        )
+
+        if latest_event and latest_event.status == "active":
+            # Get daily limit for this period
+            daily_limit = get_daily_limit_seconds(period)
+
+            if daily_limit:
+                # Calculate today's completed attendance (tap in/out pairs) using Pacific date
+                today_attendance = calculate_period_attendance(student.id, period, today_pacific)
+
+                # Add current active session time
+                last_tap_in = latest_event.timestamp
+                last_tap_in_pacific = last_tap_in.astimezone(pacific) if last_tap_in.tzinfo else last_tap_in.replace(tzinfo=timezone.utc).astimezone(pacific)
+
+                if last_tap_in_pacific.date() == today_pacific:  # Only if tapped in today (Pacific time)
+                    current_session_seconds = (now_utc - last_tap_in).total_seconds()
+                    today_attendance += current_session_seconds
+
+                # If limit reached or exceeded, auto-tap-out
+                if today_attendance >= daily_limit:
+                    hours_limit = daily_limit / 3600.0
+                    current_app.logger.info(
+                        f"Auto-tapping out student {student.id} from {period} - daily limit of {hours_limit} hours reached (total: {today_attendance/3600:.2f}h)"
+                    )
+
+                    # Create tap-out event
+                    tap_out_event = TapEvent(
+                        student_id=student.id,
+                        period=period,
+                        status="inactive",
+                        timestamp=now_utc,
+                        reason=f"Daily limit ({hours_limit:.1f}h) reached"
+                    )
+                    db.session.add(tap_out_event)
+
+    # Commit all auto-tap-outs at once
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to auto-tap-out student {student.id}: {e}")
+
+
 @api_bp.route('/student-status', methods=['GET'])
 @login_required
 def student_status():
     student = get_logged_in_student()
+
+    # Check and auto-tap-out if daily limit reached
+    check_and_auto_tapout_if_limit_reached(student)
+
     period_states = get_all_block_statuses(student)
 
     return jsonify({
