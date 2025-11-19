@@ -202,10 +202,10 @@
                     {{ form.hidden_tag() }}
 
                     <div class="form-group">
-                        <label class="form-label fw-bold">Name Code</label>
-                        {{ form.first_half(class="form-control form-control-lg", placeholder="Type here...") }}
+                        <label class="form-label fw-bold"><span class="material-icons" style="vertical-align: middle;">edit</span> Name Code</label>
+                        {{ form.first_half(class="form-control form-control-lg", placeholder="Type your name code here...") }}
                         <div class="alert alert-info mt-2 mb-0">
-                            <strong>📝 How to create your name code:</strong>
+                            <strong><span class="material-icons" style="vertical-align: middle; font-size: 18px;">help</span> How to create your name code:</strong>
                             <ol class="mb-0 mt-2">
                                 <li>Write all vowels (a, e, i, o, u) from your <strong>FIRST NAME</strong> only</li>
                                 <li>Then write all consonants from your <strong>LAST NAME</strong> only</li>
@@ -230,10 +230,10 @@
                     </div>
 
                     <div class="form-group">
-                        <label class="form-label fw-bold">Birthday Sum</label>
+                        <label class="form-label fw-bold"><span class="material-icons" style="vertical-align: middle;">cake</span> Birthday Sum</label>
                         {{ form.second_half(class="form-control form-control-lg", placeholder="Type the number here...") }}
                         <div class="alert alert-warning mt-2 mb-0">
-                            <strong>🎂 How to calculate your birthday sum:</strong>
+                            <strong><span class="material-icons" style="vertical-align: middle; font-size: 18px;">calculate</span> How to calculate your birthday sum:</strong>
                             <ol class="mb-0 mt-2">
                                 <li>Add the month + day + year numbers together</li>
                                 <li>Type ONLY the final number (don't type the + signs or =)</li>
@@ -243,8 +243,8 @@
                                 • Month: 3, Day: 15, Year: 2010<br>
                                 • Add them: 3 + 15 + 2010 = 2028<br>
                                 • <strong>Type this: <span class="text-primary">2028</span></strong><br>
-                                • ❌ DON'T type: "3 + 15 + 2010" or "3+15+2010"<br>
-                                • ✅ DO type: "2028"
+                                • <span class="material-icons text-danger" style="vertical-align: middle; font-size: 18px;">close</span> DON'T type: "3 + 15 + 2010" or "3+15+2010"<br>
+                                • <span class="material-icons text-success" style="vertical-align: middle; font-size: 18px;">check</span> DO type: "2028"
                             </div>
                         </div>
                         {% for error in form.second_half.errors %}

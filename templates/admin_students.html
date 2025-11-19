@@ -27,17 +27,17 @@
 <ul class="nav nav-tabs mb-4" id="studentTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" id="roster-tab" data-bs-toggle="tab" data-bs-target="#roster" type="button" role="tab">
-      <i class="bi bi-people me-1"></i>Student Roster
+      <span class="material-icons me-1" style="vertical-align: middle;">groups</span>Student Roster
     </button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="bulk-upload-tab" data-bs-toggle="tab" data-bs-target="#bulk-upload" type="button" role="tab">
-      <i class="bi bi-upload me-1"></i>Bulk Upload
+      <span class="material-icons me-1" style="vertical-align: middle;">cloud_upload</span>Bulk Upload
     </button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="individual-upload-tab" data-bs-toggle="tab" data-bs-target="#individual-upload" type="button" role="tab">
-      <i class="bi bi-person-plus me-1"></i>Add Individual
+      <span class="material-icons me-1" style="vertical-align: middle;">person_add</span>Add Individual
     </button>
   </li>
 </ul>
@@ -47,10 +47,10 @@
   <div class="tab-pane fade show active" id="roster" role="tabpanel">
     <div class="card shadow">
       <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="bi bi-people me-2"></i>Student Roster by Block</h5>
+        <h5 class="mb-0"><span class="material-icons me-2" style="vertical-align: middle;">groups</span>Student Roster by Block</h5>
         <div>
           <a href="{{ url_for('admin.export_students') }}" class="btn btn-light btn-sm">
-            <i class="bi bi-file-earmark-arrow-down me-1"></i> Export All
+            <span class="material-icons me-1" style="vertical-align: middle;">download</span> Export All
           </a>
         </div>
       </div>
@@ -66,7 +66,7 @@
                     type="button"
                     role="tab">
               {% if block == "Unassigned" %}
-                <i class="bi bi-question-circle me-1"></i>{{ block }}
+                <span class="material-icons me-1" style="vertical-align: middle;">help</span>{{ block }}
               {% else %}
                 Block {{ block|upper }}
               {% endif %}
@@ -92,10 +92,10 @@
                   </div>
                   <div>
                     <button type="button" class="btn btn-danger btn-sm" onclick="bulkDeleteStudents('{{ block }}')">
-                      <i class="bi bi-trash"></i> Delete Selected
+                      <span class="material-icons" style="vertical-align: middle;">delete</span> Delete Selected
                     </button>
                     <button type="button" class="btn btn-warning btn-sm" onclick="clearSelection('{{ block }}')">
-                      <i class="bi bi-x-circle"></i> Clear Selection
+                      <span class="material-icons" style="vertical-align: middle;">cancel</span> Clear Selection
                     </button>
                   </div>
                 </div>
@@ -103,7 +103,7 @@
 
               <div class="mb-2">
                 <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteEntireBlock('{{ block }}')">
-                  <i class="bi bi-trash3"></i> Delete All Students in Block {{ block|upper }}
+                  <span class="material-icons" style="vertical-align: middle;">delete_forever</span> Delete All Students in Block {{ block|upper }}
                 </button>
               </div>
 
@@ -162,14 +162,14 @@
                                 data-student-last-initial="{{ student.last_initial }}"
                                 data-student-block="{{ student.block }}"
                                 data-student-dob-sum="{{ student.dob_sum }}">
-                          <i class="bi bi-pencil"></i> Edit
+                          <span class="material-icons" style="vertical-align: middle;">edit</span> Edit
                         </button>
                         <button class="btn btn-sm btn-outline-danger quick-action-btn"
                                 data-bs-toggle="modal"
                                 data-bs-target="#deleteStudentModal"
                                 data-student-id="{{ student.id }}"
                                 data-student-name="{{ student.full_name }}">
-                          <i class="bi bi-trash"></i> Delete
+                          <span class="material-icons" style="vertical-align: middle;">delete</span> Delete
                         </button>
                       </td>
                     </tr>
@@ -179,7 +179,7 @@
               </div>
             {% else %}
               <div class="alert alert-info">
-                <i class="bi bi-info-circle me-2"></i>No students in Block {{ block|upper }}
+                <span class="material-icons me-2" style="vertical-align: middle;">info</span>No students in Block {{ block|upper }}
               </div>
             {% endif %}
           </div>
@@ -193,14 +193,14 @@
   <div class="tab-pane fade" id="bulk-upload" role="tabpanel">
     <div class="card shadow">
       <div class="card-header bg-success text-white">
-        <h5 class="mb-0"><i class="bi bi-upload me-2"></i>Bulk Student Upload</h5>
+        <h5 class="mb-0"><span class="material-icons me-2" style="vertical-align: middle;">cloud_upload</span>Bulk Student Upload</h5>
       </div>
       <div class="card-body">
         <div class="row">
           <div class="col-lg-6 mb-4">
             <div class="card border-primary h-100">
               <div class="card-header bg-primary bg-opacity-10">
-                <h6 class="mb-0 text-primary"><i class="bi bi-info-circle me-2"></i>Instructions</h6>
+                <h6 class="mb-0 text-primary"><span class="material-icons me-2" style="vertical-align: middle;">info</span>Instructions</h6>
               </div>
               <div class="card-body">
                 <ol class="mb-3">
@@ -210,7 +210,7 @@
                   <li class="mb-2">Upload the completed file</li>
                 </ol>
                 <div class="alert alert-warning mb-0">
-                  <strong><i class="bi bi-exclamation-triangle me-2"></i>Important:</strong>
+                  <strong><span class="material-icons me-2" style="vertical-align: middle;">warning</span>Important:</strong>
                   <ul class="mb-0 mt-2">
                     <li>Do not modify the header row</li>
                     <li>Date of Birth must be in MM/DD/YYYY format</li>
@@ -223,7 +223,7 @@
           <div class="col-lg-6 mb-4">
             <div class="card border-success h-100">
               <div class="card-header bg-success bg-opacity-10">
-                <h6 class="mb-0 text-success"><i class="bi bi-cloud-upload me-2"></i>Upload File</h6>
+                <h6 class="mb-0 text-success"><span class="material-icons me-2" style="vertical-align: middle;">cloud_upload</span>Upload File</h6>
               </div>
               <div class="card-body">
                 <form action="{{ url_for('admin.upload_students') }}" method="post" enctype="multipart/form-data">
@@ -240,10 +240,10 @@
                   </div>
                   <div class="d-grid gap-2">
                     <a href="{{ url_for('admin.download_csv_template') }}" class="btn btn-outline-primary">
-                      <i class="bi bi-download me-2"></i>Download Template
+                      <span class="material-icons me-2" style="vertical-align: middle;">download</span>Download Template
                     </a>
                     <button type="submit" class="btn btn-success btn-lg">
-                      <i class="bi bi-upload me-2"></i>Upload Students
+                      <span class="material-icons me-2" style="vertical-align: middle;">cloud_upload</span>Upload Students
                     </button>
                   </div>
                 </form>
@@ -259,7 +259,7 @@
   <div class="tab-pane fade" id="individual-upload" role="tabpanel">
     <div class="card shadow">
       <div class="card-header bg-info text-white">
-        <h5 class="mb-0"><i class="bi bi-person-plus me-2"></i>Add Individual Student</h5>
+        <h5 class="mb-0"><span class="material-icons me-2" style="vertical-align: middle;">person_add</span>Add Individual Student</h5>
       </div>
       <div class="card-body">
         <div class="row justify-content-center">
@@ -269,7 +269,7 @@
 
               <div class="card border-info mb-3">
                 <div class="card-header bg-info bg-opacity-10">
-                  <h6 class="mb-0 text-info"><i class="bi bi-person me-2"></i>Student Information</h6>
+                  <h6 class="mb-0 text-info"><span class="material-icons me-2" style="vertical-align: middle;">person</span>Student Information</h6>
                 </div>
                 <div class="card-body">
                   <div class="row">
@@ -311,7 +311,7 @@
 
               <div class="d-grid">
                 <button type="submit" class="btn btn-info btn-lg">
-                  <i class="bi bi-person-plus me-2"></i>Add Student
+                  <span class="material-icons me-2" style="vertical-align: middle;">person_add</span>Add Student
                 </button>
               </div>
             </form>
@@ -341,7 +341,7 @@
           <!-- Basic Information -->
           <div class="card border-primary mb-3">
             <div class="card-header bg-primary bg-opacity-10">
-              <h6 class="mb-0 text-primary"><i class="bi bi-person me-2"></i>Basic Information</h6>
+              <h6 class="mb-0 text-primary"><span class="material-icons me-2" style="vertical-align: middle;">person</span>Basic Information</h6>
             </div>
             <div class="card-body">
               <div class="row">
@@ -367,7 +367,7 @@
           <!-- Block Assignment -->
           <div class="card border-info mb-3">
             <div class="card-header bg-info bg-opacity-10">
-              <h6 class="mb-0 text-info"><i class="bi bi-calendar-week me-2"></i>Block Assignment</h6>
+              <h6 class="mb-0 text-info"><span class="material-icons me-2" style="vertical-align: middle;">calendar_today</span>Block Assignment</h6>
             </div>
             <div class="card-body">
               <p class="text-muted small mb-2">Select all blocks this student attends (can select multiple):</p>
@@ -392,7 +392,7 @@
           <!-- Login Management -->
           <div class="card border-warning mb-3">
             <div class="card-header bg-warning bg-opacity-10">
-              <h6 class="mb-0 text-warning"><i class="bi bi-key me-2"></i>Login Management</h6>
+              <h6 class="mb-0 text-warning"><span class="material-icons me-2" style="vertical-align: middle;">key</span>Login Management</h6>
             </div>
             <div class="card-body">
               <div class="d-flex justify-content-between align-items-center">
@@ -406,13 +406,13 @@
                 </div>
               </div>
               <div class="alert alert-warning mt-3 mb-0" id="reset_login_warning" style="display:none;">
-                <small><i class="bi bi-exclamation-triangle me-2"></i>Student will need to re-claim their account using their name and DOB.</small>
+                <small><span class="material-icons me-2" style="vertical-align: middle;">warning</span>Student will need to re-claim their account using their name and DOB.</small>
               </div>
             </div>
           </div>
 
           <div class="alert alert-info mb-0">
-            <small><i class="bi bi-info-circle me-2"></i><strong>Note:</strong> Changing the name will update what the student needs to enter during the account claim process.</small>
+            <small><span class="material-icons me-2" style="vertical-align: middle;">info</span><strong>Note:</strong> Changing the name will update what the student needs to enter during the account claim process.</small>
           </div>
         </div>
         <div class="modal-footer">
@@ -431,7 +431,7 @@
       <div class="modal-content">
         <div class="modal-header bg-danger text-white">
           <h5 class="modal-title" id="deleteStudentModalLabel">
-            <i class="bi bi-exclamation-triangle me-2"></i>Delete Student
+            <span class="material-icons me-2" style="vertical-align: middle;">warning</span>Delete Student
           </h5>
           <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
@@ -440,7 +440,7 @@
           <input type="hidden" id="delete_student_id" name="student_id">
 
           <div class="alert alert-danger">
-            <h6><i class="bi bi-exclamation-triangle me-2"></i>Warning</h6>
+            <h6><span class="material-icons me-2" style="vertical-align: middle;">warning</span>Warning</h6>
             <p>You are about to delete <strong id="delete_student_name"></strong>.</p>
             <p class="mb-0">This action will permanently delete:</p>
             <ul class="mb-0">
