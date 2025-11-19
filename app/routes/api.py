@@ -701,6 +701,14 @@ def check_and_auto_tapout_if_limit_reached(student):
     from payroll import get_daily_limit_seconds
     from attendance import calculate_period_attendance
 
+    # Helper function to ensure UTC timezone-aware datetime
+    def _as_utc(dt):
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
     student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
     now_utc = datetime.now(timezone.utc)
 
@@ -727,11 +735,12 @@ def check_and_auto_tapout_if_limit_reached(student):
                 today_attendance = calculate_period_attendance(student.id, period, today_pacific)
 
                 # Add current active session time
-                last_tap_in = latest_event.timestamp
-                last_tap_in_pacific = last_tap_in.astimezone(pacific) if last_tap_in.tzinfo else last_tap_in.replace(tzinfo=timezone.utc).astimezone(pacific)
+                # Convert to UTC-aware datetime to prevent TypeError
+                last_tap_in_utc = _as_utc(latest_event.timestamp)
+                last_tap_in_pacific = last_tap_in_utc.astimezone(pacific)
 
                 if last_tap_in_pacific.date() == today_pacific:  # Only if tapped in today (Pacific time)
-                    current_session_seconds = (now_utc - last_tap_in).total_seconds()
+                    current_session_seconds = (now_utc - last_tap_in_utc).total_seconds()
                     today_attendance += current_session_seconds
 
                 # If limit reached or exceeded, auto-tap-out
