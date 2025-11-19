@@ -385,7 +385,7 @@
                     <input type="number" class="form-control" id="simpleDailyLimit" name="simple_daily_limit" step="0.5" placeholder="8.0" value="{% if default_setting and default_setting.daily_limit_hours %}{{ default_setting.daily_limit_hours }}{% endif %}">
                     <span class="input-group-text">hours/day</span>
                   </div>
-                  <small class="text-muted">Maximum hours a student can earn per day. Students will be prevented from tapping in once this limit is reached. Resets at midnight. Leave blank for no limit.</small>
+                  <small class="text-muted">Maximum hours a student can earn per day. Students will be auto-tapped-out when this limit is reached and prevented from tapping in until the next day. Resets at midnight PST. Leave blank for no limit.</small>
                 </div>
 
                 <!-- Apply To -->
@@ -485,7 +485,7 @@
                   <div class="row">
                     <div class="col-md-6">
                       <input type="number" class="form-control" id="advMaxTimeValue" name="adv_max_time_value" step="0.1" placeholder="Leave blank for unlimited" value="{% if default_setting and default_setting.max_time_per_day %}{{ default_setting.max_time_per_day }}{% endif %}">
-                      <small class="text-muted">Students will be prevented from tapping in once this limit is reached per day</small>
+                      <small class="text-muted">Students will be auto-tapped-out when limit is reached and prevented from tapping in until next day (resets at midnight PST)</small>
                     </div>
                     <div class="col-md-6">
                       <select class="form-select" id="advMaxTimeUnit" name="adv_max_time_unit">
