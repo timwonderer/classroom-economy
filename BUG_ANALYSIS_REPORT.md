@@ -59,11 +59,16 @@ This manifests as a **500 Internal Server Error** to the end user.
 ## Detailed Bug Inventory
 
 ### Summary Statistics
-- **Total broken references:** 103
-- **Unique broken endpoints:** 41
-- **Affected template files:** 30+
+- **Total broken references:** 127 (103 initial + 24 with parameters)
+- **Unique broken endpoints:** 50
+- **Affected template files:** 40+
 - **Error type:** 500 Internal Server Error (BuildError)
 - **Blueprints affected:** student, admin, sysadmin, main
+
+### Fix History
+- **Initial fix (commit 76a16c8):** 98 endpoint references fixed automatically
+- **Follow-up fix (commit 8d34b54):** 24 additional references with parameters fixed
+- **Total fixed:** 127 broken endpoint references
 
 ### Complete Endpoint Mapping
 
