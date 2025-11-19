@@ -114,16 +114,15 @@ def dashboard():
     payroll_summary = calculate_payroll(students, last_payroll_time)
     total_payroll_estimate = sum(payroll_summary.values())
 
-    pacific = pytz.timezone('America/Los_Angeles')
+    # Calculate next payroll date (keep in UTC for template conversion)
     if last_payroll_time:
-        next_pay_date_utc = last_payroll_time + timedelta(days=14)
+        next_payroll_date = last_payroll_time + timedelta(days=14)
     else:
         now_utc = datetime.now(timezone.utc)
         days_until_friday = (4 - now_utc.weekday() + 7) % 7
         if days_until_friday == 0:
             days_until_friday = 7
-        next_pay_date_utc = now_utc + timedelta(days=days_until_friday)
-    next_payroll_date = next_pay_date_utc.astimezone(pacific)
+        next_payroll_date = now_utc + timedelta(days=days_until_friday)
 
     return render_template(
         'admin_dashboard.html',
