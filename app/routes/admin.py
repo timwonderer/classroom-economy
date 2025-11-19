@@ -31,13 +31,13 @@ from app.extensions import db
 from app.models import (
     Student, Admin, AdminInviteCode, Transaction, TapEvent, StoreItem, StudentItem,
     RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    HallPassLog, PayrollSettings, PayrollReward, PayrollFine
+    HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings
 )
 from app.auth import admin_required
 from forms import (
     AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, StoreItemForm,
     InsurancePolicyForm, AdminClaimProcessForm, PayrollSettingsForm,
-    PayrollRewardForm, PayrollFineForm, ManualPaymentForm
+    PayrollRewardForm, PayrollFineForm, ManualPaymentForm, BankingSettingsForm
 )
 
 # Import utility functions
@@ -2453,3 +2453,130 @@ def tap_out_students():
             "status": "error",
             "message": f"Failed to tap out students: {str(e)}"
         }), 500
+
+
+# -------------------- BANKING ROUTES --------------------
+
+@admin_bp.route('/banking')
+@admin_required
+def banking():
+    """Banking management page with transactions and settings."""
+    # Get current banking settings
+    settings = BankingSettings.query.first()
+
+    # Create form and populate with existing data
+    form = BankingSettingsForm()
+    if settings:
+        form.savings_apy.data = settings.savings_apy
+        form.savings_monthly_rate.data = settings.savings_monthly_rate
+        form.interest_schedule_type.data = settings.interest_schedule_type
+        form.interest_schedule_cycle_days.data = settings.interest_schedule_cycle_days
+        form.interest_payout_start_date.data = settings.interest_payout_start_date
+        form.overdraft_protection_enabled.data = settings.overdraft_protection_enabled
+        form.overdraft_fee_enabled.data = settings.overdraft_fee_enabled
+        form.overdraft_fee_type.data = settings.overdraft_fee_type
+        form.overdraft_fee_flat_amount.data = settings.overdraft_fee_flat_amount
+        form.overdraft_fee_progressive_1.data = settings.overdraft_fee_progressive_1
+        form.overdraft_fee_progressive_2.data = settings.overdraft_fee_progressive_2
+        form.overdraft_fee_progressive_3.data = settings.overdraft_fee_progressive_3
+        form.overdraft_fee_progressive_cap.data = settings.overdraft_fee_progressive_cap
+
+    # Get recent transactions (last 50)
+    recent_transactions = (
+        db.session.query(Transaction, Student)
+        .join(Student, Transaction.student_id == Student.id)
+        .filter(Transaction.is_void == False)
+        .order_by(Transaction.timestamp.desc())
+        .limit(50)
+        .all()
+    )
+
+    # Build transaction list for template
+    transactions = []
+    for tx, student in recent_transactions:
+        transactions.append({
+            'id': tx.id,
+            'timestamp': tx.timestamp,
+            'student_id': student.id,
+            'student_name': student.full_name,
+            'student_block': student.block,
+            'amount': tx.amount,
+            'account_type': tx.account_type,
+            'description': tx.description,
+            'type': tx.type,
+            'is_void': tx.is_void
+        })
+
+    # Get all students for stats
+    students = Student.query.all()
+
+    # Calculate banking stats
+    total_checking = sum(s.checking_balance for s in students)
+    total_savings = sum(s.savings_balance for s in students)
+    total_deposits = sum(s.checking_balance + s.savings_balance for s in students)
+
+    # Count students with savings
+    students_with_savings = sum(1 for s in students if s.savings_balance > 0)
+
+    # Get all blocks
+    blocks = sorted(set(s.block for s in students))
+
+    return render_template(
+        'admin_banking.html',
+        settings=settings,
+        form=form,
+        transactions=transactions,
+        total_checking=total_checking,
+        total_savings=total_savings,
+        total_deposits=total_deposits,
+        students_with_savings=students_with_savings,
+        total_students=len(students),
+        blocks=blocks,
+        current_page="banking",
+        format_utc_iso=format_utc_iso
+    )
+
+
+@admin_bp.route('/banking/settings', methods=['POST'])
+@admin_required
+def banking_settings_update():
+    """Update banking settings."""
+    form = BankingSettingsForm()
+
+    if form.validate_on_submit():
+        # Get or create settings
+        settings = BankingSettings.query.first()
+        if not settings:
+            settings = BankingSettings()
+            db.session.add(settings)
+
+        # Update settings from form
+        settings.savings_apy = form.savings_apy.data or 0.0
+        settings.savings_monthly_rate = form.savings_monthly_rate.data or 0.0
+        settings.interest_schedule_type = form.interest_schedule_type.data
+        settings.interest_schedule_cycle_days = form.interest_schedule_cycle_days.data or 30
+        settings.interest_payout_start_date = form.interest_payout_start_date.data
+        settings.overdraft_protection_enabled = form.overdraft_protection_enabled.data
+        settings.overdraft_fee_enabled = form.overdraft_fee_enabled.data
+        settings.overdraft_fee_type = form.overdraft_fee_type.data
+        settings.overdraft_fee_flat_amount = form.overdraft_fee_flat_amount.data or 0.0
+        settings.overdraft_fee_progressive_1 = form.overdraft_fee_progressive_1.data or 0.0
+        settings.overdraft_fee_progressive_2 = form.overdraft_fee_progressive_2.data or 0.0
+        settings.overdraft_fee_progressive_3 = form.overdraft_fee_progressive_3.data or 0.0
+        settings.overdraft_fee_progressive_cap = form.overdraft_fee_progressive_cap.data
+        settings.updated_at = datetime.utcnow()
+
+        try:
+            db.session.commit()
+            flash('Banking settings updated successfully!', 'success')
+            current_app.logger.info(f"Banking settings updated by admin")
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            current_app.logger.error(f"Failed to update banking settings: {e}", exc_info=True)
+            flash('Error updating banking settings.', 'error')
+    else:
+        for field, errors in form.errors.items():
+            for error in errors:
+                flash(f'{field}: {error}', 'error')
+
+    return redirect(url_for('admin.banking'))

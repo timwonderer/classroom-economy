@@ -168,3 +168,37 @@ class ManualPaymentForm(FlaskForm):
     ], default='checking', validators=[DataRequired()])
     # student_ids will be handled in the template with checkboxes
     submit = SubmitField('Send Payment')
+
+
+# -------------------- BANKING FORMS --------------------
+class BankingSettingsForm(FlaskForm):
+    # Interest settings
+    savings_apy = FloatField('Annual Percentage Yield (APY %)', validators=[Optional()], default=0.0)
+    savings_monthly_rate = FloatField('Monthly Interest Rate (%)', validators=[Optional()], default=0.0)
+
+    # Interest payout schedule
+    interest_schedule_type = SelectField('Interest Payout Schedule', choices=[
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly (30 day cycle)')
+    ], default='monthly', validators=[DataRequired()])
+    interest_schedule_cycle_days = IntegerField('Cycle Days (for monthly)', default=30, validators=[Optional()])
+    interest_payout_start_date = DateField('Starting Date', format='%Y-%m-%d', validators=[Optional()])
+
+    # Overdraft protection
+    overdraft_protection_enabled = BooleanField('Enable Overdraft Protection (Savings covers Checking)', default=False)
+
+    # Overdraft fees
+    overdraft_fee_enabled = BooleanField('Enable Overdraft/NSF Fees', default=False)
+    overdraft_fee_type = SelectField('Fee Type', choices=[
+        ('flat', 'Flat Fee per Transaction'),
+        ('progressive', 'Progressive Fee per Transaction')
+    ], default='flat')
+    overdraft_fee_flat_amount = FloatField('Flat Fee Amount ($)', default=0.0, validators=[Optional()])
+
+    # Progressive fee tiers
+    overdraft_fee_progressive_1 = FloatField('1st Overdraft Fee ($)', default=0.0, validators=[Optional()])
+    overdraft_fee_progressive_2 = FloatField('2nd Overdraft Fee ($)', default=0.0, validators=[Optional()])
+    overdraft_fee_progressive_3 = FloatField('3rd+ Overdraft Fee ($)', default=0.0, validators=[Optional()])
+    overdraft_fee_progressive_cap = FloatField('Fee Cap per Period ($, optional)', validators=[Optional()])
+
+    submit = SubmitField('Save Banking Settings')
