@@ -54,13 +54,17 @@ def claim_account():
             return redirect(url_for('student.claim_account'))
 
         for s in Student.query.filter_by(has_completed_setup=False).all():
+            # Try the name code as entered (supports manual entry)
             name_code = first_half
 
-            if (
-                s.first_half_hash == hash_hmac(name_code.encode(), s.salt)
-                and s.second_half_hash == hash_hmac(second_half.encode(), s.salt)
+            # Check if the hash matches
+            hash_matches = s.first_half_hash == hash_hmac(name_code.encode(), s.salt)
+            dob_matches = (
+                s.second_half_hash == hash_hmac(second_half.encode(), s.salt)
                 and str(s.dob_sum) == second_half
-            ):
+            )
+
+            if hash_matches and dob_matches:
                 session['claimed_student_id'] = s.id
                 session.pop('generated_username', None)
                 session.pop('theme_prompt', None)

@@ -203,7 +203,8 @@
 
                     <div class="form-group">
                         {{ form.first_half.label(class="form-label") }}
-                        {{ form.first_half(class="form-control", placeholder="Vowels of first name + consonants of last name (no spaces)") }}
+                        {{ form.first_half(class="form-control", placeholder="All vowels + all consonants from your full name (lowercase, no spaces)") }}
+                        <small class="form-text text-muted">Example: "John Smith" → "oijhnsmth" (vowels: o, i + consonants: j, h, n, s, m, t, h)</small>
                         {% for error in form.first_half.errors %}
                             <div class="text-danger small">{{ error }}</div>
                         {% endfor %}
