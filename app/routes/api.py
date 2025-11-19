@@ -617,6 +617,25 @@ def handle_tap():
                 "duration": duration
             })
 
+        # Check daily limit when tapping IN
+        if action == "tap_in":
+            from payroll import get_daily_limit_seconds
+            from attendance import calculate_period_attendance
+
+            daily_limit = get_daily_limit_seconds(period)
+            if daily_limit:
+                today = now.date()
+                today_attendance = calculate_period_attendance(student.id, period, today)
+
+                if today_attendance >= daily_limit:
+                    hours_limit = daily_limit / 3600.0
+                    current_app.logger.warning(
+                        f"Student {student.id} attempted to tap in for {period} but has reached daily limit of {hours_limit} hours"
+                    )
+                    return jsonify({
+                        "error": f"Daily limit of {hours_limit:.1f} hours reached for this period. Please try again tomorrow."
+                    }), 400
+
         # When tapping in, automatically return any active hall pass
         if action == "tap_in":
             active_hall_pass = HallPassLog.query.filter_by(

@@ -158,9 +158,6 @@
               </tbody>
             </table>
           </div>
-          <div class="text-end">
-            <a href="{{ url_for('admin.payroll_history') }}" class="btn btn-outline-secondary btn-sm">View Full History</a>
-          </div>
         {% else %}
           <p class="text-muted">No recent payrolls found.</p>
         {% endif %}
@@ -383,9 +380,12 @@
 
                 <!-- Daily Limit -->
                 <div class="mb-3">
-                  <label for="simpleDailyLimit" class="form-label fw-bold">Daily Limit (Max Hours):</label>
-                  <input type="number" class="form-control" id="simpleDailyLimit" name="simple_daily_limit" step="0.5" placeholder="8.0" value="{% if default_setting and default_setting.daily_limit_hours %}{{ default_setting.daily_limit_hours }}{% endif %}">
-                  <small class="text-muted">Maximum hours a student can accumulate per day. Auto tap-out if exceeded. Resets at 12:00 AM PST. Leave blank for no limit.</small>
+                  <label for="simpleDailyLimit" class="form-label fw-bold">Daily Time Limit:</label>
+                  <div class="input-group">
+                    <input type="number" class="form-control" id="simpleDailyLimit" name="simple_daily_limit" step="0.5" placeholder="8.0" value="{% if default_setting and default_setting.daily_limit_hours %}{{ default_setting.daily_limit_hours }}{% endif %}">
+                    <span class="input-group-text">hours/day</span>
+                  </div>
+                  <small class="text-muted">Maximum hours a student can earn per day. Students will be prevented from tapping in once this limit is reached. Resets at midnight. Leave blank for no limit.</small>
                 </div>
 
                 <!-- Apply To -->
@@ -481,11 +481,11 @@
 
                 <!-- Maximum Time Per Day -->
                 <div class="mb-3">
-                  <label class="form-label fw-bold">Maximum Allowable Time Per Day:</label>
+                  <label class="form-label fw-bold">Daily Time Limit:</label>
                   <div class="row">
                     <div class="col-md-6">
                       <input type="number" class="form-control" id="advMaxTimeValue" name="adv_max_time_value" step="0.1" placeholder="Leave blank for unlimited" value="{% if default_setting and default_setting.max_time_per_day %}{{ default_setting.max_time_per_day }}{% endif %}">
-                      <small class="text-muted">Student will auto tap-out after this time</small>
+                      <small class="text-muted">Students will be prevented from tapping in once this limit is reached per day</small>
                     </div>
                     <div class="col-md-6">
                       <select class="form-select" id="advMaxTimeUnit" name="adv_max_time_unit">
