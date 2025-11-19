@@ -30,7 +30,7 @@ import pytz
 from app.extensions import db
 from app.models import (
     Student, Admin, AdminInviteCode, Transaction, TapEvent, StoreItem, StudentItem,
-    RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
+    RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
     HallPassLog, PayrollSettings, PayrollReward, PayrollFine
 )
 from app.auth import admin_required
@@ -747,11 +747,44 @@ def rent_settings():
         db.session.commit()
 
     if request.method == 'POST':
-        settings.rent_amount = float(request.form.get('rent_amount'))
-        settings.due_day_of_month = int(request.form.get('due_day_of_month'))
-        settings.late_fee = float(request.form.get('late_fee'))
-        settings.grace_period_days = int(request.form.get('grace_period_days'))
+        # Main toggle
         settings.is_enabled = request.form.get('is_enabled') == 'on'
+
+        # Rent amount and frequency
+        settings.rent_amount = float(request.form.get('rent_amount', 50.0))
+        settings.frequency_type = request.form.get('frequency_type', 'monthly')
+
+        if settings.frequency_type == 'custom':
+            settings.custom_frequency_value = int(request.form.get('custom_frequency_value', 1))
+            settings.custom_frequency_unit = request.form.get('custom_frequency_unit', 'days')
+        else:
+            settings.custom_frequency_value = None
+            settings.custom_frequency_unit = None
+
+        # Due date settings
+        first_due_date_str = request.form.get('first_rent_due_date')
+        if first_due_date_str:
+            settings.first_rent_due_date = datetime.strptime(first_due_date_str, '%Y-%m-%d')
+        else:
+            settings.first_rent_due_date = None
+
+        settings.due_day_of_month = int(request.form.get('due_day_of_month', 1))
+
+        # Grace period and late penalties
+        settings.grace_period_days = int(request.form.get('grace_period_days', 3))
+        settings.late_penalty_amount = float(request.form.get('late_penalty_amount', 10.0))
+        settings.late_penalty_type = request.form.get('late_penalty_type', 'once')
+
+        if settings.late_penalty_type == 'recurring':
+            settings.late_penalty_frequency_days = int(request.form.get('late_penalty_frequency_days', 7))
+        else:
+            settings.late_penalty_frequency_days = None
+
+        # Student payment options
+        settings.bill_preview_enabled = request.form.get('bill_preview_enabled') == 'on'
+        settings.bill_preview_days = int(request.form.get('bill_preview_days', 7))
+        settings.allow_incremental_payment = request.form.get('allow_incremental_payment') == 'on'
+        settings.prevent_purchase_when_late = request.form.get('prevent_purchase_when_late') == 'on'
 
         db.session.commit()
         flash("Rent settings updated successfully!", "success")
@@ -766,10 +799,130 @@ def rent_settings():
         period_year=current_year
     ).count()
 
+    # Get active waivers
+    now = datetime.now(timezone.utc)
+    active_waivers = RentWaiver.query.filter(
+        RentWaiver.waiver_end_date >= now
+    ).all()
+
+    # Get all students for waiver form
+    all_students = Student.query.order_by(Student.first_name).all()
+
+    # Calculate payroll warning
+    payroll_warning = None
+    if settings.is_enabled and settings.rent_amount > 0:
+        # Get average payroll amount per student per month
+        payroll_settings = PayrollSettings.query.filter_by(is_active=True).first()
+        if payroll_settings:
+            # Calculate rent per month based on frequency
+            rent_per_month = settings.rent_amount
+            if settings.frequency_type == 'daily':
+                rent_per_month = settings.rent_amount * 30
+            elif settings.frequency_type == 'weekly':
+                rent_per_month = settings.rent_amount * 4
+            elif settings.frequency_type == 'custom':
+                if settings.custom_frequency_unit == 'days':
+                    rent_per_month = settings.rent_amount * (30 / settings.custom_frequency_value)
+                elif settings.custom_frequency_unit == 'weeks':
+                    rent_per_month = settings.rent_amount * (30 / (settings.custom_frequency_value * 7))
+                elif settings.custom_frequency_unit == 'months':
+                    rent_per_month = settings.rent_amount / settings.custom_frequency_value
+
+            # Estimate monthly payroll (assuming average 20 work days, 6 hours per day)
+            # Using simple mode settings if available
+            pay_per_minute = payroll_settings.pay_rate
+            estimated_monthly_payroll = pay_per_minute * 60 * 6 * 20  # 6 hours/day * 20 days
+
+            if rent_per_month > estimated_monthly_payroll * 0.8:  # If rent is more than 80% of payroll
+                payroll_warning = f"Rent (${rent_per_month:.2f}/month) exceeds recommended 80% of estimated monthly payroll (${estimated_monthly_payroll:.2f}). Students may struggle to afford rent."
+
     return render_template('admin_rent_settings.html',
                           settings=settings,
                           total_students=total_students,
-                          paid_this_month=paid_this_month)
+                          paid_this_month=paid_this_month,
+                          active_waivers=active_waivers,
+                          all_students=all_students,
+                          payroll_warning=payroll_warning)
+
+
+@admin_bp.route('/rent-waiver/add', methods=['POST'])
+@admin_required
+def add_rent_waiver():
+    """Add rent waiver for selected students."""
+    student_ids = request.form.getlist('student_ids')
+    periods_count = int(request.form.get('periods_count', 1))
+    reason = request.form.get('reason', '')
+
+    if not student_ids:
+        flash("Please select at least one student.", "danger")
+        return redirect(url_for('admin.rent_settings'))
+
+    # Get rent settings to calculate waiver period
+    settings = RentSettings.query.first()
+    if not settings:
+        flash("Rent settings not configured.", "danger")
+        return redirect(url_for('admin.rent_settings'))
+
+    # Calculate waiver end date based on frequency
+    now = datetime.now(timezone.utc)
+    waiver_start = now
+
+    # Calculate days per period based on frequency type
+    if settings.frequency_type == 'daily':
+        days_per_period = 1
+    elif settings.frequency_type == 'weekly':
+        days_per_period = 7
+    elif settings.frequency_type == 'monthly':
+        days_per_period = 30
+    elif settings.frequency_type == 'custom':
+        if settings.custom_frequency_unit == 'days':
+            days_per_period = settings.custom_frequency_value
+        elif settings.custom_frequency_unit == 'weeks':
+            days_per_period = settings.custom_frequency_value * 7
+        elif settings.custom_frequency_unit == 'months':
+            days_per_period = settings.custom_frequency_value * 30
+        else:
+            days_per_period = 30
+    else:
+        days_per_period = 30
+
+    total_days = days_per_period * periods_count
+    waiver_end = waiver_start + timedelta(days=total_days)
+
+    # Get current admin
+    admin_id = session.get('admin_id')
+
+    # Create waivers for each student
+    count = 0
+    for student_id in student_ids:
+        student = Student.query.get(int(student_id))
+        if student:
+            waiver = RentWaiver(
+                student_id=student.id,
+                waiver_start_date=waiver_start,
+                waiver_end_date=waiver_end,
+                periods_count=periods_count,
+                reason=reason,
+                created_by_admin_id=admin_id
+            )
+            db.session.add(waiver)
+            count += 1
+
+    db.session.commit()
+    flash(f"Rent waiver added for {count} student(s) for {periods_count} period(s).", "success")
+    return redirect(url_for('admin.rent_settings'))
+
+
+@admin_bp.route('/rent-waiver/<int:waiver_id>/remove', methods=['POST'])
+@admin_required
+def remove_rent_waiver(waiver_id):
+    """Remove a rent waiver."""
+    waiver = RentWaiver.query.get_or_404(waiver_id)
+    student_name = waiver.student.full_name
+    db.session.delete(waiver)
+    db.session.commit()
+    flash(f"Rent waiver removed for {student_name}.", "success")
+    return redirect(url_for('admin.rent_settings'))
 
 
 # -------------------- INSURANCE MANAGEMENT --------------------

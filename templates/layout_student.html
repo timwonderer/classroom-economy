@@ -361,7 +361,7 @@
               <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.transfer' %}active{% endif %}" href="{{ url_for('student.transfer') }}"><span class="material-symbols-outlined">account_balance_wallet</span> Accounts</a></li>
               <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.student_insurance' %}active{% endif %}" href="{{ url_for('student.student_insurance') }}"><span class="material-symbols-outlined">shield</span> Insurance</a></li>
               <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.shop' %}active{% endif %}" href="{{ url_for('student.shop') }}"><span class="material-symbols-outlined">storefront</span> Shop</a></li>
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.rent' %}active{% endif %}" href="{{ url_for('student.rent') }}"><span class="material-symbols-outlined">home</span> Rent</a></li>
+              {% if global_rent_enabled %}<li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.rent' %}active{% endif %}" href="{{ url_for('student.rent') }}"><span class="material-symbols-outlined">home</span> Rent</a></li>{% endif %}
               <li class="nav-item"><a class="nav-link" href="{{ url_for('student.logout') }}"><span class="material-symbols-outlined">logout</span> Logout</a></li>
           </ul>
         </div>
