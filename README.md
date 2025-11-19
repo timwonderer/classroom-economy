@@ -4,147 +4,287 @@ An interactive banking and classroom management platform for teaching students a
 
 ⚠️ **Note:** This repository is currently private and under active development for controlled classroom testing.
 
-## Table of Contents
+---
 
-- [🎓 Classroom Token Hub](#-classroom-token-hub)
-  - [Table of Contents](#table-of-contents)
-  - [Features](#features)
-    - [Current](#current)
-    - [Planned / Partial](#planned--partial)
-  - [Getting Started](#getting-started)
-  - [Configuration](#configuration)
-  - [Deployment](#deployment)
-  - [Monitoring](#monitoring)
-  - [Roadmap](#roadmap)
-  - [Maintaining Dependencies](#maintaining-dependencies)
-  - [License](#license)
+## Overview
+
+**Classroom Token Hub** is an educational banking simulation that helps students learn financial literacy through hands-on experience. Students earn tokens by attending class, which they can spend in a classroom store, use for hall passes, or manage through savings and checking accounts.
+
+**License:** [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) - Free for educational and nonprofit use, not for commercial applications.
+
+---
 
 ## Features
 
-### Current
+### Core Features
 
-*   **Modern UI Design**: Clean, professional interface with Material Symbols iconography, gradient title banners, and collapsible navigation groups for improved user experience across admin and student portals.
-*   **System Admin Portal**: Comprehensive super-user interface for managing teachers, generating admin invites, viewing system logs, monitoring errors, and testing error pages.
-*   **Teacher Management**: System admins can view all teacher accounts with signup dates, last login timestamps, and student counts. Delete teachers with automatic cascade deletion of all their students and related data.
-*   **Comprehensive Error Handling**: Custom error pages for all major HTTP errors (400, 401, 403, 404, 500, 503) with user-friendly troubleshooting guides and automatic database logging.
-*   **Database Error Logging**: All errors are automatically logged to database with full context including timestamp, error type, request details, user agent, IP address, stack trace, and last 50 lines of application logs.
-*   **Error Testing & Monitoring**: Built-in error testing interface allowing system admins to trigger test errors safely and view paginated, filterable error logs from the database.
-*   **Invite-Based Admin Signup**: New administrators can only sign up using a secure, single-use invite code.
-*   **TOTP-Only Admin Authentication**: All administrator accounts are secured with Time-Based One-Time Passwords (TOTP) for enhanced security.
-*   **Admin Activity Tracking**: Track when each admin account was created and their last login timestamp.
-*   **Student Roster Management**: Upload student rosters via CSV or add students manually.
-*   **Student First-Time Setup**: Students complete a secure setup process to create a PIN and passphrase for account access.
-*   **Attendance Tracking**: Students can tap in and out for designated class periods, with session durations logged automatically.
-*   **Automated Payroll**: The system calculates and distributes payroll to students based on their attendance.
-*   **Transaction Logging**: All financial activities, including bonuses, fees, and transfers, are logged.
-*   **GitHub Actions CI/CD**: Automated deployment pipeline to DigitalOcean.
+- **System Admin Portal** - Manage teachers, view logs, monitor errors
+- **Teacher Dashboard** - Manage students, run payroll, configure settings
+- **Student Portal** - View balance, make purchases, track attendance
+- **Attendance Tracking** - Tap in/out system with automatic time logging
+- **Automated Payroll** - Calculate and distribute earnings based on attendance
+- **Transaction Logging** - Complete audit trail of all financial activities
+- **Classroom Store** - Virtual and physical items for purchase
+- **Hall Pass System** - Time-limited passes with automatic tracking
+- **Insurance System** - Optional protection against fines and fees
+- **Rent & Property Tax** - Optional recurring charges for advanced economics
+- **TOTP Authentication** - Secure admin access with two-factor authentication
 
-### Planned / Partial
+### Security Features
 
-*   Rent and property tax tracking fields
-*   Classroom store purchases and reward management
-*   Optional TOTP or passkey second factor for students
-*   Student "Shop" interface and admin-managed store items
+- **PII Encryption** - All student names encrypted at rest
+- **TOTP for Admins** - Time-based one-time passwords required
+- **CSRF Protection** - Protection against cross-site request forgery
+- **Credential Hashing** - Salted and peppered password hashing
+- **Database Error Logging** - Automatic error tracking and monitoring
+- **Custom Error Pages** - User-friendly error handling (400, 401, 403, 404, 500, 503)
 
-## Getting Started
+---
 
-1.  **Set up the environment:**
-    ```bash
-    python3 -m venv venv
-    source venv/bin/activate
-    pip install -r requirements.txt
-    ```
+## Quick Start
 
-2.  **Configure your environment variables:**
-    Create a `.env` file and populate it with the required variables listed in the [Configuration](#configuration) section.
+### Prerequisites
 
-3.  **Apply database migrations:**
-    ```bash
-    flask db upgrade
-    ```
+- Python 3.10+
+- PostgreSQL database
+- Virtual environment (recommended)
 
-4.  **Create the first System Admin:**
-    Run the following command and follow the prompts to create your initial administrator account. You will be given a TOTP secret to add to your authenticator app.
-    ```bash
-    flask create-sysadmin
-    ```
+### Installation
 
-5.  **Run the application:**
-    ```bash
-    flask run
-    ```
+1. **Clone the repository**
+   ```bash
+   git clone <repository-url>
+   cd classroom-economy
+   ```
 
-For testing purposes, you can:
+2. **Set up virtual environment**
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+3. **Configure environment variables**
+
+   Create a `.env` file in the root directory:
+   ```bash
+   SECRET_KEY=<long-random-string>
+   DATABASE_URL=postgresql://user:password@host:port/dbname
+   FLASK_ENV=development
+   ENCRYPTION_KEY=<32-byte-base64-key>  # Generate with: openssl rand -base64 32
+   PEPPER_KEY=<secret-pepper-string>
+   CSRF_SECRET_KEY=<random-string>
+   ```
+
+4. **Initialize the database**
+   ```bash
+   flask db upgrade
+   ```
+
+5. **Create your first system admin**
+   ```bash
+   flask create-sysadmin
+   ```
+   Follow the prompts and scan the QR code with your authenticator app.
+
+6. **Run the application**
+   ```bash
+   flask run
+   ```
+   Navigate to `http://localhost:5000`
+
+### Testing with Sample Data
+
 - Use `student_upload_template.csv` as a reference for CSV roster uploads
 - Run `python seed_dummy_students.py` to seed the database with sample students
 
-## Configuration
+---
 
-The application requires the following environment variables to be set:
+## Documentation
 
-*   `SECRET_KEY`: A long, random string used to secure sessions and sign cookies.
-*   `DATABASE_URL`: The full connection string for your PostgreSQL database (e.g., `postgresql://user:password@host:port/dbname`).
-*   `FLASK_ENV`: The environment for Flask (e.g., `development` or `production`).
-*   `ENCRYPTION_KEY`: A 32-byte key for encrypting personally identifiable information (PII). You can generate one with `openssl rand -base64 32`.
-*   `PEPPER_KEY`: A secret key used to add an additional layer of security to student credentials.
+📚 **[Complete Documentation →](docs/README.md)**
 
-The application also recognizes these optional variables for logging:
+### For Users
 
-*   `LOG_LEVEL`: The logging level (default: `INFO`).
-*   `LOG_FORMAT`: The log message format.
-*   `LOG_FILE`: The file used for rotating logs when `FLASK_ENV=production`.
+- **[Student Guide](docs/user-guides/student_guide.md)** - How students use the platform
+- **[Teacher Manual](docs/user-guides/teacher_manual.md)** - Comprehensive admin guide
 
-## Deployment
+### For Developers
 
-Deploy using Gunicorn:
+- **[Architecture Guide](docs/technical-reference/architecture.md)** - System design and patterns
+- **[Database Schema](docs/technical-reference/database_schema.md)** - Complete database reference
+- **[API Reference](docs/technical-reference/api_reference.md)** - REST API documentation
+- **[Development TODO](docs/development/TODO.md)** - Current tasks and priorities
 
-```bash
-gunicorn --bind=0.0.0.0 --timeout 600 wsgi:app
+### Deployment
+
+- **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment instructions
+- **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
+
+---
+
+## Technology Stack
+
+**Backend:**
+- Flask 3.1.0 (Python web framework)
+- SQLAlchemy 2.0.40 (ORM)
+- PostgreSQL (Database)
+- Gunicorn (WSGI server)
+
+**Frontend:**
+- Jinja2 templates
+- Bootstrap 5
+- Material Symbols icons
+- Minimal JavaScript
+
+**Security:**
+- Flask-WTF (CSRF protection)
+- pyotp (TOTP authentication)
+- cryptography (PII encryption)
+
+**Testing:**
+- pytest
+- pytest-flask
+
+**Deployment:**
+- Docker support
+- GitHub Actions CI/CD
+- DigitalOcean production hosting
+
+---
+
+## Project Structure
+
+```
+classroom-economy/
+├── app/                      # Main application package
+│   ├── __init__.py           # Application factory
+│   ├── extensions.py         # Flask extensions
+│   ├── models.py             # Database models
+│   ├── auth.py               # Authentication decorators
+│   ├── routes/               # Blueprint-based routes
+│   │   ├── admin.py          # Teacher portal
+│   │   ├── student.py        # Student portal
+│   │   ├── system_admin.py   # System admin portal
+│   │   ├── main.py           # Public routes
+│   │   └── api.py            # REST API
+│   └── utils/                # Utilities
+├── templates/                # Jinja2 templates
+├── static/                   # CSS, JS, images
+├── tests/                    # Test suite
+├── migrations/               # Database migrations
+├── docs/                     # Documentation
+├── scripts/                  # Utility scripts
+├── wsgi.py                   # WSGI entry point
+└── requirements.txt          # Python dependencies
 ```
 
-For DigitalOcean deployments, run migrations, then launch Gunicorn:
+---
+
+## Development
+
+### Running Tests
 
 ```bash
-FLASK_APP=wsgi flask db upgrade
-gunicorn --bind=0.0.0.0 --timeout 600 wsgi:app
+pytest tests/                 # Run all tests
+pytest tests/test_payroll.py  # Run specific test
+pytest -v                     # Verbose output
 ```
 
-## Monitoring
+### Database Migrations
 
-Deploy behind a production web server such as NGINX. Call `/health` for a 200 response when the database is reachable.
+```bash
+flask db migrate -m "Description"  # Create migration
+flask db upgrade                   # Apply migrations
+flask db downgrade                 # Rollback
+```
+
+### Common Commands
+
+```bash
+flask run                     # Run development server
+flask create-sysadmin         # Create system admin
+python create_admin.py        # Create teacher account
+python manage_invites.py      # Manage admin invites
+python seed_dummy_students.py # Seed test data
+```
+
+---
 
 ## Roadmap
 
-*   CSV export of student data and logs
-*   Classroom store & inventory system
-*   Rent and property tax payment workflows
-*   Optional TOTP or passkey authentication for students
-*   Mobile-friendly redesign
-*   Stock market mini-game using school data
+### High Priority
+- [ ] Configurable payroll settings (rates, schedule)
+- [ ] Account recovery system for students
+- [ ] Multi-tenancy (teacher data isolation)
+- [ ] Comprehensive test coverage
 
-## Maintaining Dependencies
+### Medium Priority
+- [ ] Email notifications
+- [ ] Audit logging for admin actions
+- [ ] CSV export functionality
+- [ ] Mobile-responsive redesign
 
-Review upgrades monthly:
+### Future Features
+- [ ] Stock market simulation
+- [ ] Loan system with interest
+- [ ] Student-to-student transfers
+- [ ] Leaderboards and achievements
 
-1. Activate your virtual environment.
-2. Run `./scripts/update_packages.sh` to upgrade and run the tests.
-3. Commit the updated `requirements.txt` if tests pass.
+See [docs/development/TODO.md](docs/development/TODO.md) for complete task list with estimates.
+
+---
+
+## Monitoring
+
+Deploy behind a production web server (e.g., NGINX). The `/health` endpoint returns a 200 status when the database is reachable.
+
+```bash
+curl http://your-domain/health
+```
+
+---
+
+## Contributing
+
+We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+**Before contributing:**
+1. Review the [Architecture Guide](docs/technical-reference/architecture.md)
+2. Check [TODO.md](docs/development/TODO.md) for current priorities
+3. Ensure all tests pass
+4. Follow the existing code style
+
+---
 
 ## License
 
 This project is licensed under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/).
 
-> \[!IMPORTANT]
-> **This license allows you to:**
->
-> * Use this project in classrooms, clubs, and nonprofit educational settings
-> * Modify or adapt it for school use, assignments, or personal learning
-> * Share it with students or other educators
-> * Use it for research or academic presentations (as long as they are not sold)
->
-> **This license prohibits you from:**
->
-> * Using it as part of a commercial product or SaaS platform
-> * Hosting a paid service or subscription that includes this software
-> * Incorporating it into any offering that generates revenue (e.g., paid courses, tutoring platforms)
-> * Using it internally within a for-profit business, even if not publicly distributed
+### ✅ You CAN:
+- Use in classrooms, clubs, and nonprofit educational settings
+- Modify for school use, assignments, or personal learning
+- Share with students or other educators
+- Use for research or academic presentations (non-commercial)
+
+### ❌ You CANNOT:
+- Use as part of a commercial product or SaaS platform
+- Host a paid service or subscription
+- Incorporate into revenue-generating offerings
+- Use internally within for-profit businesses
+
+---
+
+## Support
+
+**Documentation:** [docs/README.md](docs/README.md)
+**Issues:** Use GitHub Issues for bug reports and feature requests
+**Security:** Report security issues privately to project maintainers
+
+---
+
+## Acknowledgments
+
+Built for educators and students to make learning about finance engaging and practical.
+
+**Last Updated:** 2025-11-19
