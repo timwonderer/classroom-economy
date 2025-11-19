@@ -32,8 +32,6 @@ class Student(db.Model):
     hall_passes = db.Column(db.Integer, default=3)
 
     is_rent_enabled = db.Column(db.Boolean, default=True)
-    is_property_tax_enabled = db.Column(db.Boolean, default=False)
-    owns_seat = db.Column(db.Boolean, default=False)
     insurance_plan = db.Column(db.String, default="none")
     insurance_last_paid = db.Column(db.DateTime, nullable=True)
     second_factor_type = db.Column(db.String, nullable=True)
@@ -90,8 +88,6 @@ class Student(db.Model):
         total_due = 0
         if self.is_rent_enabled:
             total_due += 800
-        if self.is_property_tax_enabled and self.owns_seat:
-            total_due += 120
         if self.insurance_plan != "none":
             total_due += 200  # Estimated insurance cost
         return max(0, total_due - self.checking_balance)
@@ -201,12 +197,39 @@ class StudentItem(db.Model):
 class RentSettings(db.Model):
     __tablename__ = 'rent_settings'
     id = db.Column(db.Integer, primary_key=True)
-    rent_amount = db.Column(db.Float, default=50.0)
-    due_day_of_month = db.Column(db.Integer, default=1)  # Day of month rent is due (1-31)
-    late_fee = db.Column(db.Float, default=10.0)
-    grace_period_days = db.Column(db.Integer, default=3)  # Days after due date before late fee
+
+    # Main toggle
     is_enabled = db.Column(db.Boolean, default=True)
+
+    # Rent amount and frequency
+    rent_amount = db.Column(db.Float, default=50.0)
+    frequency_type = db.Column(db.String(20), default='monthly')  # 'daily', 'weekly', 'monthly', 'custom'
+    custom_frequency_value = db.Column(db.Integer, nullable=True)  # For custom: x per time unit
+    custom_frequency_unit = db.Column(db.String(20), nullable=True)  # 'days', 'weeks', 'months'
+
+    # Due date settings
+    first_rent_due_date = db.Column(db.DateTime, nullable=True)
+    due_day_of_month = db.Column(db.Integer, default=1)  # For monthly frequency (kept for compatibility)
+
+    # Grace period and late penalties
+    grace_period_days = db.Column(db.Integer, default=3)
+    late_penalty_amount = db.Column(db.Float, default=10.0)
+    late_penalty_type = db.Column(db.String(20), default='once')  # 'once' or 'recurring'
+    late_penalty_frequency_days = db.Column(db.Integer, nullable=True)  # For recurring type
+
+    # Bill preview and payment options
+    bill_preview_enabled = db.Column(db.Boolean, default=False)
+    bill_preview_days = db.Column(db.Integer, default=7)
+    allow_incremental_payment = db.Column(db.Boolean, default=False)
+    prevent_purchase_when_late = db.Column(db.Boolean, default=False)
+
+    # Metadata
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Keep old field names for backward compatibility (deprecated)
+    @property
+    def late_fee(self):
+        return self.late_penalty_amount
 
 
 class RentPayment(db.Model):
@@ -222,6 +245,21 @@ class RentPayment(db.Model):
     late_fee_charged = db.Column(db.Float, default=0.0)
 
     student = db.relationship('Student', backref='rent_payments')
+
+
+class RentWaiver(db.Model):
+    __tablename__ = 'rent_waivers'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    waiver_start_date = db.Column(db.DateTime, nullable=False)
+    waiver_end_date = db.Column(db.DateTime, nullable=False)
+    periods_count = db.Column(db.Integer, nullable=False)  # Number of rent periods to skip
+    reason = db.Column(db.Text, nullable=True)
+    created_by_admin_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    student = db.relationship('Student', backref='rent_waivers')
+    created_by = db.relationship('Admin', backref='rent_waivers_created')
 
 
 # -------------------- INSURANCE MODELS --------------------

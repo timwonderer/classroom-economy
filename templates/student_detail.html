@@ -116,10 +116,10 @@
             <i class="bi bi-clock-history me-1"></i>Attendance
         </button>
     </li>
-    {% if student.is_rent_enabled or student.owns_seat %}
+    {% if student.is_rent_enabled %}
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="housing-tab" data-bs-toggle="tab" data-bs-target="#housing" type="button" role="tab">
-            <i class="bi bi-house me-1"></i>Housing
+            <i class="bi bi-house me-1"></i>Rent
         </button>
     </li>
     {% endif %}
@@ -431,13 +431,12 @@
         </div>
     </div>
 
-    <!-- HOUSING TAB (Only if rent or property tax enabled) -->
-    {% if student.is_rent_enabled or student.owns_seat %}
+    <!-- RENT TAB (Only if rent enabled) -->
+    {% if student.is_rent_enabled %}
     <div class="tab-pane fade" id="housing" role="tabpanel">
         <div class="row">
             <!-- Rent Card -->
-            {% if student.is_rent_enabled %}
-            <div class="col-lg-6 mb-4">
+            <div class="col-lg-12 mb-4">
                 <div class="card shadow h-100">
                     <div class="card-header bg-primary text-white">
                         <h5 class="mb-0"><i class="bi bi-house-door me-2"></i>Rent Information</h5>
@@ -447,7 +446,7 @@
                             <tr>
                                 <td class="fw-bold">Status:</td>
                                 <td>
-                                    <span class="badge bg-info">Renter</span>
+                                    <span class="badge bg-info">Rent Enabled</span>
                                 </td>
                             </tr>
                             <tr>
@@ -478,52 +477,6 @@
                     </div>
                 </div>
             </div>
-            {% endif %}
-
-            <!-- Property Tax Card -->
-            {% if student.owns_seat %}
-            <div class="col-lg-6 mb-4">
-                <div class="card shadow h-100">
-                    <div class="card-header bg-success text-white">
-                        <h5 class="mb-0"><i class="bi bi-house me-2"></i>Property Tax Information</h5>
-                    </div>
-                    <div class="card-body">
-                        <table class="table table-borderless">
-                            <tr>
-                                <td class="fw-bold">Status:</td>
-                                <td>
-                                    <span class="badge bg-success">Homeowner</span>
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="fw-bold">Last Payment:</td>
-                                <td>
-                                    {% if student.property_tax_last_paid %}
-                                        <span class="local-timestamp" data-timestamp="{{ student.property_tax_last_paid.isoformat() }}Z"></span>
-                                    {% else %}
-                                        <span class="text-muted">Never</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                            <tr>
-                                <td class="fw-bold">Due Date:</td>
-                                <td>{{ student.property_tax_due_date.strftime('%B %d, %Y') if student.property_tax_due_date else 'N/A' }}</td>
-                            </tr>
-                            <tr>
-                                <td class="fw-bold">Overdue:</td>
-                                <td>
-                                    {% if student.property_tax_overdue %}
-                                        <span class="badge bg-danger">Yes</span>
-                                    {% else %}
-                                        <span class="badge bg-success">No</span>
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        </table>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
         </div>
     </div>
     {% endif %}
