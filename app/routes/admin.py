@@ -572,11 +572,11 @@ def add_individual_student():
         month, day, year = map(int, dob_str.split('/'))
         dob_sum = month + day + year
 
-        # Generate name code (vowels + consonants)
-        full_name_lower = (first_name + last_name).lower()
-        vowels = ''.join(c for c in full_name_lower if c in 'aeiou')
-        consonants = ''.join(c for c in full_name_lower if c.isalpha() and c not in 'aeiou')
-        name_code = vowels + consonants
+        # Generate name code (MUST match original algorithm for consistency)
+        # vowels from first_name + consonants from last_name
+        vowels = re.findall(r'[AEIOUaeiou]', first_name)
+        consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
+        name_code = ''.join(vowels + consonants).lower()
 
         # Generate salt and hashes
         salt = get_random_salt()
@@ -596,12 +596,13 @@ def add_individual_student():
             if existing_student.first_name == first_name:
                 # Same first name and last initial - need to verify it's truly the same person
                 # by comparing the full last name through the name code
-                existing_name_code = (existing_student.first_name + last_name).lower()
-                existing_name_code = ''.join(c for c in existing_name_code if c in 'aeiou') + \
-                                   ''.join(c for c in existing_name_code if c.isalpha() and c not in 'aeiou')
+                # MUST use same algorithm: vowels from first_name + consonants from last_name
+                test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
+                test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
+                test_name_code = ''.join(test_vowels + test_consonants).lower()
 
                 # Try to verify with the stored hash
-                test_hash = hash_hmac(existing_name_code, existing_student.salt)
+                test_hash = hash_hmac(test_name_code, existing_student.salt)
                 if test_hash == existing_student.first_half_hash:
                     flash(f"Student {first_name} {last_name} in block {block} already exists.", "warning")
                     return redirect(url_for('admin.students'))
@@ -660,11 +661,11 @@ def add_manual_student():
         month, day, year = map(int, dob_str.split('/'))
         dob_sum = month + day + year
 
-        # Generate name code
-        full_name_lower = (first_name + last_name).lower()
-        vowels = ''.join(c for c in full_name_lower if c in 'aeiou')
-        consonants = ''.join(c for c in full_name_lower if c.isalpha() and c not in 'aeiou')
-        name_code = vowels + consonants
+        # Generate name code (MUST match original algorithm for consistency)
+        # vowels from first_name + consonants from last_name
+        vowels = re.findall(r'[AEIOUaeiou]', first_name)
+        consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
+        name_code = ''.join(vowels + consonants).lower()
 
         # Generate salt and hashes
         salt = get_random_salt()
@@ -680,11 +681,12 @@ def add_manual_student():
         for existing_student in potential_duplicates:
             if existing_student.first_name == first_name:
                 # Same first name and last initial - verify full last name matches
-                existing_name_code = (existing_student.first_name + last_name).lower()
-                existing_name_code = ''.join(c for c in existing_name_code if c in 'aeiou') + \
-                                   ''.join(c for c in existing_name_code if c.isalpha() and c not in 'aeiou')
+                # MUST use same algorithm: vowels from first_name + consonants from last_name
+                test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
+                test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
+                test_name_code = ''.join(test_vowels + test_consonants).lower()
 
-                test_hash = hash_hmac(existing_name_code, existing_student.salt)
+                test_hash = hash_hmac(test_name_code, existing_student.salt)
                 if test_hash == existing_student.first_half_hash:
                     flash(f"Student {first_name} {last_name} in block {block} already exists.", "warning")
                     return redirect(url_for('admin.students'))
@@ -2144,11 +2146,10 @@ def upload_students():
             for student in potential_matches:
                 if student.first_name == first_name:
                     # Same first name and last initial - verify full last name matches too
-                    # Generate name code using the new last_name being added
-                    test_name_code_full = (first_name + last_name).lower()
-                    test_vowels = ''.join(c for c in test_name_code_full if c in 'aeiou')
-                    test_consonants = ''.join(c for c in test_name_code_full if c.isalpha() and c not in 'aeiou')
-                    test_name_code = test_vowels + test_consonants
+                    # MUST use original algorithm: vowels from first_name + consonants from last_name
+                    test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
+                    test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
+                    test_name_code = ''.join(test_vowels + test_consonants).lower()
 
                     # Check if this matches the existing student's hash
                     test_hash = hash_hmac(test_name_code.encode(), student.salt)
@@ -2161,12 +2162,11 @@ def upload_students():
                 duplicated += 1
                 continue  # skip this duplicate
 
-            # Generate name_code (vowels + consonants from full name)
-            # Using consistent algorithm across all student creation methods
-            full_name_lower = (first_name + last_name).lower()
-            vowels = ''.join(c for c in full_name_lower if c in 'aeiou')
-            consonants = ''.join(c for c in full_name_lower if c.isalpha() and c not in 'aeiou')
-            name_code = vowels + consonants
+            # Generate name_code (MUST match original algorithm for consistency)
+            # vowels from first_name + consonants from last_name
+            vowels = re.findall(r'[AEIOUaeiou]', first_name)
+            consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
+            name_code = ''.join(vowels + consonants).lower()
 
             # Generate dob_sum
             mm, dd, yyyy = map(int, dob_str.split('/'))
