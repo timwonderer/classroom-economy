@@ -85,7 +85,14 @@ def create_app():
     Returns:
         Flask: Configured Flask application instance
     """
-    app = Flask(__name__)
+    # Get the parent directory of the app package (project root)
+    # This is needed because templates/ and static/ are at project root, not in app/
+    import os as _os
+    basedir = _os.path.abspath(_os.path.join(_os.path.dirname(__file__), '..'))
+
+    app = Flask(__name__,
+                template_folder=_os.path.join(basedir, 'templates'),
+                static_folder=_os.path.join(basedir, 'static'))
 
     # -------------------- CONFIGURATION --------------------
     app.config.from_mapping(
