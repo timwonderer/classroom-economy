@@ -64,7 +64,7 @@
                 <span class="material-symbols-outlined">alarm</span> Time's up! You are now being signed out.
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-danger" onclick="window.location.href='{{ url_for('student_logout') }}'">Log Out</button>
+                <button type="button" class="btn btn-danger" onclick="window.location.href='{{ url_for('student.logout') }}'">Log Out</button>
             </div>
         </div>
     </div>
@@ -217,7 +217,7 @@
                 {% endfor %}
             </div>
         {% else %}
-            <p class="text-muted text-center mb-0">You don't own any items yet. <a href="{{ url_for('student_shop') }}">Visit the shop</a> to buy some!</p>
+            <p class="text-muted text-center mb-0">You don't own any items yet. <a href="{{ url_for('student.shop') }}">Visit the shop</a> to buy some!</p>
         {% endif %}
     </div>
 </div>
@@ -303,7 +303,7 @@
             clearInterval(interval);
             const modal = new bootstrap.Modal(document.getElementById('timeoutModal'));
             modal.show();
-            setTimeout(() => window.location.href = "{{ url_for('student_logout') }}", 5000);
+            setTimeout(() => window.location.href = "{{ url_for('student.logout') }}", 5000);
         }
     }, 1000);
 </script>

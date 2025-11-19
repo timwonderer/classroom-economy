@@ -212,7 +212,7 @@
                         </button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="teacher-tab" data-bs-toggle="tab" data-bs-target="#teacher-login" type="button" role="tab" onclick="window.location.href='{{ url_for('admin_login') }}'">
+                        <button class="nav-link" id="teacher-tab" data-bs-toggle="tab" data-bs-target="#teacher-login" type="button" role="tab" onclick="window.location.href='{{ url_for('admin.login') }}'">
                             Teacher Login
                         </button>
                     </li>
@@ -247,9 +247,9 @@
 
                         <div class="first-time-link">
                             <p class="mb-2">First time here?</p>
-                            <a href="{{ url_for('student_claim_account') }}">Create a student account</a>
+                            <a href="{{ url_for('student.claim_account') }}">Create a student account</a>
                             <span class="mx-2">|</span>
-                            <a href="{{ url_for('admin_signup') }}">Set up teacher account</a>
+                            <a href="{{ url_for('admin.signup') }}">Set up teacher account</a>
                         </div>
                     </div>
                 </div>
@@ -266,9 +266,9 @@
                     </p>
 
                     <div class="mt-2">
-                        <a href="{{ url_for('privacy') }}" class="small">Privacy Policy</a>
+                        <a href="{{ url_for('main.privacy') }}" class="small">Privacy Policy</a>
                         <span class="mx-2">|</span>
-                        <a href="{{ url_for('terms') }}" class="small">Terms of Service</a>
+                        <a href="{{ url_for('main.terms') }}" class="small">Terms of Service</a>
                     </div>
 
                     <small class="text-muted d-block mt-3">BETA Stable Release v0.9.0</small>

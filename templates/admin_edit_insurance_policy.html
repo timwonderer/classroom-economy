@@ -9,7 +9,7 @@
     <div class="col">
       <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
-          <li class="breadcrumb-item"><a href="{{ url_for('admin_insurance_management') }}">Insurance</a></li>
+          <li class="breadcrumb-item"><a href="{{ url_for('admin.insurance_management') }}">Insurance</a></li>
           <li class="breadcrumb-item active">Edit Policy: {{ policy.title }}</li>
         </ol>
       </nav>
@@ -317,7 +317,7 @@
         <!-- Action Buttons -->
         <div class="d-grid gap-2">
           {{ form.submit(class="btn btn-primary btn-lg", value="💾 Save Changes") }}
-          <a href="{{ url_for('admin_insurance_management') }}" class="btn btn-outline-secondary">Cancel</a>
+          <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-outline-secondary">Cancel</a>
         </div>
       </div>
     </div>

@@ -16,7 +16,7 @@
         <h3 class="mb-0">{{ total_students }}</h3>
         <small class="text-muted">Total Students</small>
         <div class="mt-2">
-          <a href="{{ url_for('admin_students') }}" class="btn btn-sm btn-outline-primary">View All</a>
+          <a href="{{ url_for('admin.students') }}" class="btn btn-sm btn-outline-primary">View All</a>
         </div>
       </div>
     </div>
@@ -59,7 +59,7 @@
         <h3 class="mb-0">{{ total_transactions_today }}</h3>
         <small class="text-muted">Transactions Today</small>
         <div class="mt-2">
-          <a href="{{ url_for('admin_transactions') }}" class="btn btn-sm btn-outline-info">View All</a>
+          <a href="{{ url_for('admin.transactions') }}" class="btn btn-sm btn-outline-info">View All</a>
         </div>
       </div>
     </div>
@@ -111,7 +111,7 @@
           <button id="runPayrollBtn" class="btn btn-primary">
             <i class="bi bi-play-circle me-1"></i>Run Payroll Now
           </button>
-          <a href="{{ url_for('admin_payroll') }}" class="btn btn-outline-primary">
+          <a href="{{ url_for('admin.payroll') }}" class="btn btn-outline-primary">
             <i class="bi bi-gear me-1"></i>Manage Payroll Settings
           </a>
         </div>
@@ -197,7 +197,7 @@
                     </small>
                   </div>
                   <div>
-                    <a href="{{ url_for('admin_hall_pass') }}" class="btn btn-sm btn-primary">
+                    <a href="{{ url_for('admin.hall_pass') }}" class="btn btn-sm btn-primary">
                       <i class="bi bi-box-arrow-up-right"></i> View
                     </a>
                   </div>
@@ -231,7 +231,7 @@
                     </small>
                   </div>
                   <div>
-                    <a href="{{ url_for('admin_insurance_management') }}" class="btn btn-sm btn-primary">
+                    <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-sm btn-primary">
                       <i class="bi bi-box-arrow-up-right"></i> View
                     </a>
                   </div>
@@ -265,7 +265,7 @@
       <div class="card-header bg-info text-white">
         <div class="d-flex justify-content-between align-items-center">
           <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>Recent Transactions</h5>
-          <a href="{{ url_for('admin_transactions') }}" class="btn btn-sm btn-light">View All</a>
+          <a href="{{ url_for('admin.transactions') }}" class="btn btn-sm btn-light">View All</a>
         </div>
       </div>
       <div class="card-body">
@@ -324,7 +324,7 @@
       <div class="card-header bg-success text-white">
         <div class="d-flex justify-content-between align-items-center">
           <h5 class="mb-0"><i class="bi bi-calendar-check me-2"></i>Recent Attendance</h5>
-          <a href="{{ url_for('admin_attendance_log') }}" class="btn btn-sm btn-light">View All</a>
+          <a href="{{ url_for('admin.attendance_log') }}" class="btn btn-sm btn-light">View All</a>
         </div>
       </div>
       <div class="card-body">
@@ -379,25 +379,25 @@
       <div class="card-body">
         <div class="row text-center">
           <div class="col-md-3 col-6 mb-2">
-            <a href="{{ url_for('admin_students') }}" class="btn btn-outline-primary w-100">
+            <a href="{{ url_for('admin.students') }}" class="btn btn-outline-primary w-100">
               <i class="bi bi-people d-block mb-1" style="font-size: 1.5rem;"></i>
               Students
             </a>
           </div>
           <div class="col-md-3 col-6 mb-2">
-            <a href="{{ url_for('admin_store_management') }}" class="btn btn-outline-primary w-100">
+            <a href="{{ url_for('admin.store_management') }}" class="btn btn-outline-primary w-100">
               <i class="bi bi-shop d-block mb-1" style="font-size: 1.5rem;"></i>
               Store
             </a>
           </div>
           <div class="col-md-3 col-6 mb-2">
-            <a href="{{ url_for('admin_insurance_management') }}" class="btn btn-outline-primary w-100">
+            <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-outline-primary w-100">
               <i class="bi bi-shield-check d-block mb-1" style="font-size: 1.5rem;"></i>
               Insurance
             </a>
           </div>
           <div class="col-md-3 col-6 mb-2">
-            <a href="{{ url_for('admin_hall_pass') }}" class="btn btn-outline-primary w-100">
+            <a href="{{ url_for('admin.hall_pass') }}" class="btn btn-outline-primary w-100">
               <i class="bi bi-door-open d-block mb-1" style="font-size: 1.5rem;"></i>
               Hall Passes
             </a>
@@ -510,7 +510,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
                 const form = document.createElement('form');
                 form.method = 'POST';
-                form.action = '{{ url_for("run_payroll") }}';
+                form.action = '{{ url_for("admin.run_payroll") }}';
 
                 const csrfInput = document.createElement('input');
                 csrfInput.type = 'hidden';

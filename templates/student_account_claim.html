@@ -225,7 +225,7 @@
 
                 <div class="back-to-login">
                     <p class="mb-2">Already have an account?</p>
-                    <a href="{{ url_for('student_login') }}">Back to Login</a>
+                    <a href="{{ url_for('student.login') }}">Back to Login</a>
                 </div>
 
                 <div class="footer-info text-center">
@@ -235,9 +235,9 @@
                     </p>
 
                     <div class="mt-2">
-                        <a href="{{ url_for('privacy') }}" class="small">Privacy Policy</a>
+                        <a href="{{ url_for('main.privacy') }}" class="small">Privacy Policy</a>
                         <span class="mx-2">|</span>
-                        <a href="{{ url_for('terms') }}" class="small">Terms of Service</a>
+                        <a href="{{ url_for('main.terms') }}" class="small">Terms of Service</a>
                     </div>
 
                     <small class="text-muted d-block mt-3">BETA Stable Release v0.9.0</small>

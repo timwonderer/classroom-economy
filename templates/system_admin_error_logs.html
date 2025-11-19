@@ -21,7 +21,7 @@
       <div class="card shadow-sm">
         <div class="card-body">
           <h5 class="card-title mb-3">Filter Errors</h5>
-          <form method="GET" action="{{ url_for('system_admin_error_logs') }}" class="mb-0">
+          <form method="GET" action="{{ url_for('sysadmin.error_logs') }}" class="mb-0">
             <div class="input-group">
               <select name="error_type" class="form-select">
                 <option value="">All Error Types</option>
@@ -31,7 +31,7 @@
               </select>
               <button type="submit" class="btn btn-primary">Filter</button>
               {% if current_error_type %}
-                <a href="{{ url_for('system_admin_error_logs') }}" class="btn btn-outline-secondary">Clear</a>
+                <a href="{{ url_for('sysadmin.error_logs') }}" class="btn btn-outline-secondary">Clear</a>
               {% endif %}
             </div>
           </form>
@@ -203,7 +203,7 @@
 
   <div class="row mt-4">
     <div class="col-12 text-center">
-      <a href="{{ url_for('system_admin_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+      <a href="{{ url_for('sysadmin.dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
     </div>
   </div>
 </div>

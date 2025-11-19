@@ -239,7 +239,7 @@
                   {% endif %}
                 {% endwith %}
 
-                <form method="POST" action="{{ url_for('admin_signup') }}">
+                <form method="POST" action="{{ url_for('admin.signup') }}">
                     {{ form.csrf_token if form and form.csrf_token }}
 
                     <div class="form-group">
@@ -259,7 +259,7 @@
 
                 <div class="back-to-login">
                     <p class="mb-2">Already have an account?</p>
-                    <a href="{{ url_for('admin_login') }}">Back to Login</a>
+                    <a href="{{ url_for('admin.login') }}">Back to Login</a>
                 </div>
 
                 <div class="footer-info text-center">

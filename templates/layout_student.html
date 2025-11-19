@@ -351,18 +351,18 @@
   <body>
     <nav class="navbar navbar-expand-lg navbar-dark mb-4">
       <div class="container">
-          <a class="navbar-brand" href="{{ url_for('student_dashboard') }}"><span class="material-symbols-outlined" style="font-size: 24px;">account_balance</span> Classroom Token Hub</a>
+          <a class="navbar-brand" href="{{ url_for('student.dashboard') }}"><span class="material-symbols-outlined" style="font-size: 24px;">account_balance</span> Classroom Token Hub</a>
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
           </button>
         <div class="collapse navbar-collapse" id="navbarNav">
           <ul class="navbar-nav ms-auto">
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_dashboard' %}active{% endif %}" href="{{ url_for('student_dashboard') }}"><span class="material-symbols-outlined">dashboard</span> Dashboard</a></li>
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_transfer' %}active{% endif %}" href="{{ url_for('student_transfer') }}"><span class="material-symbols-outlined">account_balance_wallet</span> Accounts</a></li>
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_insurance' %}active{% endif %}" href="{{ url_for('student_insurance') }}"><span class="material-symbols-outlined">shield</span> Insurance</a></li>
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_shop' %}active{% endif %}" href="{{ url_for('student_shop') }}"><span class="material-symbols-outlined">storefront</span> Shop</a></li>
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student_rent' %}active{% endif %}" href="{{ url_for('student_rent') }}"><span class="material-symbols-outlined">home</span> Rent</a></li>
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('student_logout') }}"><span class="material-symbols-outlined">logout</span> Logout</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.dashboard' %}active{% endif %}" href="{{ url_for('student.dashboard') }}"><span class="material-symbols-outlined">dashboard</span> Dashboard</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.transfer' %}active{% endif %}" href="{{ url_for('student.transfer') }}"><span class="material-symbols-outlined">account_balance_wallet</span> Accounts</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.student_insurance' %}active{% endif %}" href="{{ url_for('student.student_insurance') }}"><span class="material-symbols-outlined">shield</span> Insurance</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.shop' %}active{% endif %}" href="{{ url_for('student.shop') }}"><span class="material-symbols-outlined">storefront</span> Shop</a></li>
+              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.rent' %}active{% endif %}" href="{{ url_for('student.rent') }}"><span class="material-symbols-outlined">home</span> Rent</a></li>
+              <li class="nav-item"><a class="nav-link" href="{{ url_for('student.logout') }}"><span class="material-symbols-outlined">logout</span> Logout</a></li>
           </ul>
         </div>
       </div>

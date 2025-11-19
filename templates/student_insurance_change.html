@@ -39,7 +39,8 @@
   <div class="card-body">
     <p class="mb-4">Select a new insurance option below. If you are upgrading to a bundled plan, we will calculate a prorated refund and adjust your monthly premium.</p>
 
-    <form method="POST" action="{{ url_for('student_insurance_change') }}">
+    <!-- Note: This feature is not yet implemented. Redirecting to insurance page. -->
+    <form method="POST" action="{{ url_for('student.student_insurance') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
 
       <div class="mb-4">
@@ -63,7 +64,7 @@
 
       <div class="d-grid gap-2">
         <button type="submit" class="btn btn-primary btn-lg">Confirm Change</button>
-        <a href="{{ url_for('student_insurance') }}" class="btn btn-outline-secondary">Cancel</a>
+        <a href="{{ url_for('student.student_insurance') }}" class="btn btn-outline-secondary">Cancel</a>
       </div>
     </form>
   </div>

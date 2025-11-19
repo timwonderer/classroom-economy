@@ -210,7 +210,7 @@
         </div>
         <div class="d-grid gap-2" style="overflow-y: auto;">
             <!-- Dashboard -->
-            <a href="{{ url_for('admin_dashboard') }}"
+            <a href="{{ url_for('admin.dashboard') }}"
                class="btn text-start {% if current_page == 'dashboard' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">dashboard</span> Dashboard</a>
 
             <!-- Students Group -->
@@ -227,11 +227,11 @@
                 </button>
                 <div class="collapse {% if current_page in ['attendance', 'students', 'hall_pass'] %}show{% endif %}" id="studentsGroup">
                     <div class="d-grid gap-1 mt-1 ms-3">
-                        <a href="{{ url_for('admin_attendance_log') }}"
+                        <a href="{{ url_for('admin.attendance_log') }}"
                            class="btn btn-sm text-start {% if current_page == 'attendance' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">fact_check</span> Attendance</a>
-                        <a href="{{ url_for('admin_students') }}"
+                        <a href="{{ url_for('admin.students') }}"
                            class="btn btn-sm text-start {% if current_page == 'students' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">school</span> Manage Students</a>
-                        <a href="{{ url_for('admin_hall_pass') }}"
+                        <a href="{{ url_for('admin.hall_pass') }}"
                            class="btn btn-sm text-start {% if current_page == 'hall_pass' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">confirmation_number</span> Hall Pass</a>
                     </div>
                 </div>
@@ -251,7 +251,7 @@
                 </button>
                 <div class="collapse {% if current_page in ['payroll'] %}show{% endif %}" id="payrollGroup">
                     <div class="d-grid gap-1 mt-1 ms-3">
-                        <a href="{{ url_for('admin_payroll') }}"
+                        <a href="{{ url_for('admin.payroll') }}"
                            class="btn btn-sm text-start {% if current_page == 'payroll' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">payments</span> Process Payroll</a>
                         <a href="#"
                            class="btn btn-sm text-start btn-outline-secondary disabled"><span class="material-symbols-outlined">work</span> Jobs (Soon)</a>
@@ -260,7 +260,7 @@
             </div>
 
             <!-- Store -->
-            <a href="{{ url_for('admin_store_management') }}"
+            <a href="{{ url_for('admin.store_management') }}"
                class="btn text-start {% if current_page == 'store' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">storefront</span> Store</a>
 
             <!-- Bills Group -->
@@ -277,9 +277,9 @@
                 </button>
                 <div class="collapse {% if current_page in ['rent', 'insurance'] %}show{% endif %}" id="billsGroup">
                     <div class="d-grid gap-1 mt-1 ms-3">
-                        <a href="{{ url_for('admin_rent_settings') }}"
+                        <a href="{{ url_for('admin.rent_settings') }}"
                            class="btn btn-sm text-start {% if current_page == 'rent' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">home</span> Rent</a>
-                        <a href="{{ url_for('admin_insurance_management') }}"
+                        <a href="{{ url_for('admin.insurance_management') }}"
                            class="btn btn-sm text-start {% if current_page == 'insurance' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">shield</span> Insurance</a>
                         <a href="#"
                            class="btn btn-sm text-start btn-outline-secondary disabled"><span class="material-symbols-outlined">bolt</span> Utilities (Soon)</a>
@@ -288,11 +288,11 @@
             </div>
 
             <!-- Transactions -->
-            <a href="{{ url_for('admin_transactions') }}"
+            <a href="{{ url_for('admin.transactions') }}"
                class="btn text-start {% if current_page == 'transactions' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">account_balance_wallet</span> Transactions</a>
         </div>
         <div class="mt-auto">
-            <a href="{{ url_for('admin_logout') }}" class="btn btn-outline-secondary text-start w-100"><span class="material-symbols-outlined">logout</span> Sign Out</a>
+            <a href="{{ url_for('admin.logout') }}" class="btn btn-outline-secondary text-start w-100"><span class="material-symbols-outlined">logout</span> Sign Out</a>
         </div>
     </div>
     <div class="flex-grow-1 p-4">

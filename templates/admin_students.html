@@ -10,13 +10,13 @@
                 <h4 style="margin-bottom:10px">Bulk Student Upload</h4>
                 <p>You can upload a spreadsheet containing multiple students at once to save time. In order for the system to recognize student information, you must use the custom template by clicking the download button below.</p>
                 <div class="d-flex flex-wrap gap-2">
-                    <a href="{{ url_for('download_csv_template') }}" class="btn" style="background-color: rgb(219, 66, 0); color:white; border-style:outset">
+                    <a href="{{ url_for('admin.download_csv_template') }}" class="btn" style="background-color: rgb(219, 66, 0); color:white; border-style:outset">
                         <i class="bi bi-download me-1"></i> Download Bulk Student Template
                     </a>
                     <button class="btn" style="background-color: green; color:white; border-style:outset" data-bs-toggle="modal" data-bs-target="#uploadModal">
                         <i class="bi bi-upload me-1"></i> Upload Bulk Student Template
                     </button>
-                    <a href="{{ url_for('export_students') }}" class="btn btn-primary">
+                    <a href="{{ url_for('admin.export_students') }}" class="btn btn-primary">
                         <i class="bi bi-file-earmark-arrow-down me-1"></i> Export All Student Data
                     </a>
                 </div>
@@ -28,7 +28,7 @@
 <!-- Upload Modal -->
 <div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
   <div class="modal-dialog">
-    <form action="{{ url_for('admin_upload_students') }}" method="post" enctype="multipart/form-data">
+    <form action="{{ url_for('admin.upload_students') }}" method="post" enctype="multipart/form-data">
       <div class="modal-content">
         <div class="modal-header" style="background-color:rgb(2, 62, 121);color:white;">
           <h5 class="modal-title" id="uploadModalLabel">Upload Students CSV</h5>

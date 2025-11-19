@@ -159,7 +159,7 @@
             </table>
           </div>
           <div class="text-end">
-            <a href="{{ url_for('admin_payroll_history') }}" class="btn btn-outline-secondary btn-sm">View Full History</a>
+            <a href="{{ url_for('admin.payroll_history') }}" class="btn btn-outline-secondary btn-sm">View Full History</a>
           </div>
         {% else %}
           <p class="text-muted">No recent payrolls found.</p>
@@ -342,7 +342,7 @@
             </div>
             {% endif %}
 
-            <form method="POST" action="{{ url_for('admin_payroll_settings') }}" id="payrollSettingsForm">
+            <form method="POST" action="{{ url_for('admin.payroll_settings') }}" id="payrollSettingsForm">
               {{ settings_form.hidden_tag() }}
               <input type="hidden" name="settings_mode" id="settingsModeInput" value="{% if default_setting and default_setting.settings_mode == 'advanced' %}advanced{% else %}simple{% endif %}">
 
@@ -648,7 +648,7 @@
           </div>
           <div class="card-body">
             <!-- Add Reward Form -->
-            <form method="POST" action="{{ url_for('admin_payroll_add_reward') }}" class="mb-4">
+            <form method="POST" action="{{ url_for('admin.payroll_add_reward') }}" class="mb-4">
               {{ reward_form.hidden_tag() }}
               <div class="mb-2">
                 {{ reward_form.name(class="form-control form-control-sm", placeholder="Reward Name") }}
@@ -709,7 +709,7 @@
           </div>
           <div class="card-body">
             <!-- Add Fine Form -->
-            <form method="POST" action="{{ url_for('admin_payroll_add_fine') }}" class="mb-4">
+            <form method="POST" action="{{ url_for('admin.payroll_add_fine') }}" class="mb-4">
               {{ fine_form.hidden_tag() }}
               <div class="mb-2">
                 {{ fine_form.name(class="form-control form-control-sm", placeholder="Fine Name") }}
@@ -1454,7 +1454,7 @@ document.addEventListener("DOMContentLoaded", () => {
 document.getElementById('runPayrollBtn')?.addEventListener('click', async function() {
   const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
   try {
-    const resp = await fetch('{{ url_for("run_payroll") }}', {
+    const resp = await fetch('{{ url_for("admin.run_payroll") }}', {
       method: 'POST',
       headers: {
         'X-Requested-With': 'XMLHttpRequest',
@@ -1671,7 +1671,7 @@ async function submitManualPayment(studentIds, description, amount, accountType)
   studentIds.forEach(id => formData.append('student_ids', id));
 
   try {
-    const resp = await fetch('{{ url_for("admin_payroll_manual_payment") }}', {
+    const resp = await fetch('{{ url_for("admin.payroll_manual_payment") }}', {
       method: 'POST',
       headers: {
         'X-CSRFToken': csrfToken
