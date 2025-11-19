@@ -1,138 +1,529 @@
-{% extends 'layout_admin.html' %}
-{% set current_page = 'rent' %}
-{% set page_title = 'Rent Settings' %}
-
+{% extends "layout_admin.html" %}
+{% set page_title = "Rent Management" %}
+{% set current_page = "rent" %}
+{% block title %}Rent Management{% endblock %}
 {% block page_icon %}home{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .grayed-out {
+        opacity: 0.5;
+        pointer-events: none;
+    }
+    .warning-banner {
+        border-left: 4px solid #ffc107;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container-fluid">
-    <div class="row mb-4">
-        <!-- Statistics Cards -->
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body">
-                    <h6 class="text-muted">Total Students with Rent Enabled</h6>
-                    <h2>{{ total_students }}</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body">
-                    <h6 class="text-muted">Paid This Month</h6>
-                    <h2>{{ paid_this_month }}</h2>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card">
-                <div class="card-body">
-                    <h6 class="text-muted">Unpaid This Month</h6>
-                    <h2>{{ total_students - paid_this_month }}</h2>
-                </div>
-            </div>
-        </div>
-    </div>
 
+<!-- Nav Tabs -->
+<ul class="nav nav-tabs mb-4" id="rentTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab">
+      <i class="bi bi-grid me-1"></i>Overview
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab">
+      <i class="bi bi-gear me-1"></i>Settings
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="waivers-tab" data-bs-toggle="tab" data-bs-target="#waivers" type="button" role="tab">
+      <i class="bi bi-calendar-x me-1"></i>Waivers
+    </button>
+  </li>
+</ul>
+
+<div class="tab-content" id="rentTabContent">
+  <!-- OVERVIEW TAB -->
+  <div class="tab-pane fade show active" id="overview" role="tabpanel">
+    {% if settings.is_enabled %}
+    <!-- Statistics Cards (only shown when rent is enabled) -->
     <div class="row">
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-header">
-                    <h4 class="mb-0">Rent Configuration</h4>
-                </div>
-                <div class="card-body">
-                    <form method="POST">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
-
-                        <div class="mb-3">
-                            <div class="form-check form-switch">
-                                <input class="form-check-input" type="checkbox" id="is_enabled"
-                                       name="is_enabled" {% if settings.is_enabled %}checked{% endif %}>
-                                <label class="form-check-label" for="is_enabled">
-                                    <strong>Enable Rent System</strong>
-                                </label>
-                            </div>
-                            <small class="text-muted">When enabled, students will be required to pay rent.</small>
-                        </div>
-
-                        <hr>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="rent_amount" class="form-label">Monthly Rent Amount ($)</label>
-                                <input type="number" step="0.01" min="0" class="form-control"
-                                       id="rent_amount" name="rent_amount"
-                                       value="{{ settings.rent_amount }}" required>
-                                <small class="text-muted">Amount students pay each month (per period)</small>
-                            </div>
-
-                            <div class="col-md-6 mb-3">
-                                <label for="due_day_of_month" class="form-label">Due Day of Month</label>
-                                <input type="number" min="1" max="31" class="form-control"
-                                       id="due_day_of_month" name="due_day_of_month"
-                                       value="{{ settings.due_day_of_month }}" required>
-                                <small class="text-muted">Day of month rent is due (1-31)</small>
-                            </div>
-                        </div>
-
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label for="late_fee" class="form-label">Late Fee ($)</label>
-                                <input type="number" step="0.01" min="0" class="form-control"
-                                       id="late_fee" name="late_fee"
-                                       value="{{ settings.late_fee }}" required>
-                                <small class="text-muted">Fee charged for late payments (per period)</small>
-                            </div>
-
-                            <div class="col-md-6 mb-3">
-                                <label for="grace_period_days" class="form-label">Grace Period (Days)</label>
-                                <input type="number" min="0" max="31" class="form-control"
-                                       id="grace_period_days" name="grace_period_days"
-                                       value="{{ settings.grace_period_days }}" required>
-                                <small class="text-muted">Days after due date before late fee applies</small>
-                            </div>
-                        </div>
-
-                        <div class="mt-4">
-                            <button type="submit" class="btn btn-primary">Save Settings</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
+      <div class="col-lg-4 mb-4">
+        <div class="card shadow">
+          <div class="card-body text-center">
+            <div class="mb-2 text-muted">Total Students with Rent Enabled</div>
+            <h2 class="text-primary">{{ total_students }}</h2>
+          </div>
         </div>
-
-        <div class="col-md-4">
-            <div class="card bg-light">
-                <div class="card-header">
-                    <h5 class="mb-0">How Rent Works</h5>
-                </div>
-                <div class="card-body">
-                    <ul class="list-unstyled">
-                        <li class="mb-2"><span class="material-symbols-outlined">event</span> <strong>Due Date:</strong> Rent is due on day {{ settings.due_day_of_month }} of each month</li>
-                        <li class="mb-2"><span class="material-symbols-outlined">schedule</span> <strong>Grace Period:</strong> {{ settings.grace_period_days }} days after due date</li>
-                        <li class="mb-2"><span class="material-symbols-outlined">payments</span> <strong>Amount:</strong> ${{ "%.2f"|format(settings.rent_amount) }} per period</li>
-                        <li class="mb-2"><span class="material-symbols-outlined">warning</span> <strong>Late Fee:</strong> ${{ "%.2f"|format(settings.late_fee) }} if paid late (per period)</li>
-                    </ul>
-
-                    <hr>
-
-                    <h6>Example Timeline:</h6>
-                    <p class="small text-muted">
-                        If due date is {{ settings.due_day_of_month}}:
-                        <br>• Rent due: Day {{ settings.due_day_of_month }}
-                        <br>• Grace period ends: Day {{ settings.due_day_of_month + settings.grace_period_days }}
-                        <br>• Late fee applies: Day {{ settings.due_day_of_month + settings.grace_period_days + 1 }}
-                    </p>
-
-                    <hr>
-
-                    <h6>Multi-Period Note:</h6>
-                    <p class="small text-muted">
-                        Students enrolled in multiple periods pay rent separately for each period.
-                        Example: A student in Period A and B pays ${{ "%.2f"|format(settings.rent_amount * 2) }}/month total.
-                    </p>
-                </div>
-            </div>
+      </div>
+      <div class="col-lg-4 mb-4">
+        <div class="card shadow">
+          <div class="card-body text-center">
+            <div class="mb-2 text-muted">Paid This Month</div>
+            <h2 class="text-success">{{ paid_this_month }}</h2>
+          </div>
         </div>
+      </div>
+      <div class="col-lg-4 mb-4">
+        <div class="card shadow">
+          <div class="card-body text-center">
+            <div class="mb-2 text-muted">Unpaid This Month</div>
+            <h2 class="text-danger">{{ total_students - paid_this_month }}</h2>
+          </div>
+        </div>
+      </div>
     </div>
+    {% else %}
+    <!-- System Disabled Message -->
+    <div class="alert alert-warning border-warning">
+      <div class="d-flex align-items-center mb-3">
+        <i class="bi bi-power fs-1 me-3"></i>
+        <div>
+          <h4 class="mb-1">Rent System is Currently Disabled</h4>
+          <p class="mb-0">The rent feature is turned off. Students cannot see or interact with rent-related features.</p>
+        </div>
+      </div>
+      <hr>
+      <p class="mb-2"><strong>What this means:</strong></p>
+      <ul class="mb-0">
+        <li>Rent link is hidden from student navigation</li>
+        <li>No rent collection or payment processing</li>
+        <li>Rent tab hidden in student detail pages</li>
+        <li>All rent-related notifications disabled</li>
+      </ul>
+      <div class="mt-3">
+        <a href="#settings-tab" class="btn btn-primary" data-bs-toggle="tab" data-bs-target="#settings">
+          <i class="bi bi-gear me-2"></i>Go to Settings to Enable
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Current Settings Summary -->
+    <div class="card shadow">
+      <div class="card-header {% if settings.is_enabled %}bg-info text-white{% else %}bg-secondary text-white{% endif %}">
+        <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i>Current Rent Configuration</h5>
+      </div>
+      <div class="card-body">
+        {% if settings.is_enabled %}
+          <div class="row">
+            <div class="col-md-6">
+              <h6 class="text-muted">Rent Amount</h6>
+              <p class="h4">${{ "%.2f"|format(settings.rent_amount) }}
+                <small class="text-muted">
+                  {% if settings.frequency_type == 'daily' %}per day
+                  {% elif settings.frequency_type == 'weekly' %}per week
+                  {% elif settings.frequency_type == 'monthly' %}per month
+                  {% elif settings.frequency_type == 'custom' %}every {{ settings.custom_frequency_value }} {{ settings.custom_frequency_unit }}
+                  {% endif %}
+                </small>
+              </p>
+            </div>
+            <div class="col-md-6">
+              <h6 class="text-muted">Late Penalty</h6>
+              <p class="h4">${{ "%.2f"|format(settings.late_penalty_amount) }}
+                <small class="text-muted">
+                  {% if settings.late_penalty_type == 'once' %}once per period
+                  {% else %}every {{ settings.late_penalty_frequency_days }} days
+                  {% endif %}
+                </small>
+              </p>
+            </div>
+            <div class="col-md-6">
+              <h6 class="text-muted">Grace Period</h6>
+              <p class="h4">{{ settings.grace_period_days }} days</p>
+            </div>
+            <div class="col-md-6">
+              <h6 class="text-muted">First Due Date</h6>
+              <p class="h4">
+                {% if settings.first_rent_due_date %}
+                  {{ settings.first_rent_due_date.strftime('%B %d, %Y') }}
+                {% else %}
+                  Day {{ settings.due_day_of_month }} of each month
+                {% endif %}
+              </p>
+            </div>
+          </div>
+          <hr>
+          <div class="row">
+            <div class="col-md-4">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" disabled {% if settings.bill_preview_enabled %}checked{% endif %}>
+                <label class="form-check-label">
+                  Bill Preview <small class="text-muted">({{ settings.bill_preview_days }} days before)</small>
+                </label>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" disabled {% if settings.allow_incremental_payment %}checked{% endif %}>
+                <label class="form-check-label">
+                  Incremental Payment
+                </label>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" disabled {% if settings.prevent_purchase_when_late %}checked{% endif %}>
+                <label class="form-check-label">
+                  Prevent Purchase When Late
+                </label>
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <div class="alert alert-warning mb-0">
+            <i class="bi bi-exclamation-triangle me-2"></i>Rent system is currently <strong>disabled</strong>. Enable it in the Settings tab to activate rent collection.
+          </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS TAB -->
+  <div class="tab-pane fade" id="settings" role="tabpanel">
+    <form method="POST" id="rentSettingsForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+      <!-- Main Toggle Card -->
+      <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0"><i class="bi bi-power me-2"></i>Rent System Control</h5>
+        </div>
+        <div class="card-body">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="is_enabled"
+                   name="is_enabled" {% if settings.is_enabled %}checked{% endif %}
+                   onchange="toggleRentSettings()">
+            <label class="form-check-label" for="is_enabled">
+              <strong>Enable Rent System</strong>
+            </label>
+          </div>
+          <small class="text-muted">When disabled, all rent-related features will be hidden from students and no rent will be collected.</small>
+        </div>
+      </div>
+
+      <!-- Warning Banner (if applicable) -->
+      {% if payroll_warning %}
+      <div class="alert alert-warning warning-banner mb-4">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <strong>Warning:</strong> {{ payroll_warning }}
+      </div>
+      {% endif %}
+
+      <div id="rentSettingsContainer">
+        <!-- Amount & Frequency Card -->
+        <div class="card shadow mb-4">
+          <div class="card-header bg-success text-white">
+            <h5 class="mb-0"><i class="bi bi-currency-dollar me-2"></i>Rent Amount & Frequency</h5>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label for="rent_amount" class="form-label fw-bold">Rent Amount ($)</label>
+                <input type="number" step="0.01" min="0" class="form-control"
+                       id="rent_amount" name="rent_amount"
+                       value="{{ settings.rent_amount }}" required>
+                <small class="text-muted">How much students pay per rent period</small>
+              </div>
+
+              <div class="col-md-6 mb-3">
+                <label for="frequency_type" class="form-label fw-bold">Payment Frequency</label>
+                <select class="form-select" id="frequency_type" name="frequency_type"
+                        onchange="toggleCustomFrequency()" required>
+                  <option value="daily" {% if settings.frequency_type == 'daily' %}selected{% endif %}>Per Day</option>
+                  <option value="weekly" {% if settings.frequency_type == 'weekly' %}selected{% endif %}>Per Week</option>
+                  <option value="monthly" {% if settings.frequency_type == 'monthly' %}selected{% endif %}>Per Month (30 days)</option>
+                  <option value="custom" {% if settings.frequency_type == 'custom' %}selected{% endif %}>Custom</option>
+                </select>
+                <small class="text-muted">How often rent is due</small>
+              </div>
+            </div>
+
+            <!-- Custom Frequency Fields -->
+            <div id="customFrequencyFields" style="display: {% if settings.frequency_type == 'custom' %}block{% else %}none{% endif %};">
+              <div class="row">
+                <div class="col-md-6 mb-3">
+                  <label for="custom_frequency_value" class="form-label fw-bold">Custom Period Value</label>
+                  <input type="number" min="1" class="form-control"
+                         id="custom_frequency_value" name="custom_frequency_value"
+                         value="{{ settings.custom_frequency_value or 1 }}">
+                  <small class="text-muted">Number of time units</small>
+                </div>
+
+                <div class="col-md-6 mb-3">
+                  <label for="custom_frequency_unit" class="form-label fw-bold">Custom Period Unit</label>
+                  <select class="form-select" id="custom_frequency_unit" name="custom_frequency_unit">
+                    <option value="days" {% if settings.custom_frequency_unit == 'days' %}selected{% endif %}>Days</option>
+                    <option value="weeks" {% if settings.custom_frequency_unit == 'weeks' %}selected{% endif %}>Weeks</option>
+                    <option value="months" {% if settings.custom_frequency_unit == 'months' %}selected{% endif %}>Months</option>
+                  </select>
+                  <small class="text-muted">Time unit for the period</small>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Due Date Card -->
+        <div class="card shadow mb-4">
+          <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="bi bi-calendar-event me-2"></i>Due Date Settings</h5>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label for="first_rent_due_date" class="form-label fw-bold">First Rent Due Date</label>
+                <input type="date" class="form-control"
+                       id="first_rent_due_date" name="first_rent_due_date"
+                       value="{{ settings.first_rent_due_date.strftime('%Y-%m-%d') if settings.first_rent_due_date else '' }}">
+                <small class="text-muted">When the first rent payment is due (subsequent payments calculated from this)</small>
+              </div>
+
+              <div class="col-md-6 mb-3">
+                <label for="due_day_of_month" class="form-label fw-bold">Due Day of Month <span class="text-muted">(for monthly frequency)</span></label>
+                <input type="number" min="1" max="31" class="form-control"
+                       id="due_day_of_month" name="due_day_of_month"
+                       value="{{ settings.due_day_of_month }}">
+                <small class="text-muted">Day of month rent is due (1-31, only used for monthly frequency)</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Grace Period & Late Penalties Card -->
+        <div class="card shadow mb-4">
+          <div class="card-header bg-warning text-dark">
+            <h5 class="mb-0"><i class="bi bi-exclamation-triangle me-2"></i>Grace Period & Late Penalties</h5>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label for="grace_period_days" class="form-label fw-bold">Grace Period (Days)</label>
+                <input type="number" min="0" max="365" class="form-control"
+                       id="grace_period_days" name="grace_period_days"
+                       value="{{ settings.grace_period_days }}" required>
+                <small class="text-muted">Days after due date before late penalty applies</small>
+              </div>
+
+              <div class="col-md-6 mb-3">
+                <label for="late_penalty_amount" class="form-label fw-bold">Late Penalty Amount ($)</label>
+                <input type="number" step="0.01" min="0" class="form-control"
+                       id="late_penalty_amount" name="late_penalty_amount"
+                       value="{{ settings.late_penalty_amount }}" required>
+                <small class="text-muted">Fee charged for late payments</small>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label for="late_penalty_type" class="form-label fw-bold">Penalty Application</label>
+                <select class="form-select" id="late_penalty_type" name="late_penalty_type"
+                        onchange="toggleRecurringPenalty()" required>
+                  <option value="once" {% if settings.late_penalty_type == 'once' %}selected{% endif %}>Apply Once Per Rent Period</option>
+                  <option value="recurring" {% if settings.late_penalty_type == 'recurring' %}selected{% endif %}>Apply Recurring</option>
+                </select>
+                <small class="text-muted">How often late penalties are applied</small>
+              </div>
+
+              <div class="col-md-6 mb-3" id="recurringPenaltyField" style="display: {% if settings.late_penalty_type == 'recurring' %}block{% else %}none{% endif %};">
+                <label for="late_penalty_frequency_days" class="form-label fw-bold">Recurring Every (Days)</label>
+                <input type="number" min="1" class="form-control"
+                       id="late_penalty_frequency_days" name="late_penalty_frequency_days"
+                       value="{{ settings.late_penalty_frequency_days or 7 }}">
+                <small class="text-muted">Days between recurring penalty charges</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Student Options Card -->
+        <div class="card shadow mb-4">
+          <div class="card-header bg-secondary text-white">
+            <h5 class="mb-0"><i class="bi bi-person-check me-2"></i>Student Payment Options</h5>
+          </div>
+          <div class="card-body">
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="bill_preview_enabled"
+                         name="bill_preview_enabled" {% if settings.bill_preview_enabled %}checked{% endif %}
+                         onchange="toggleBillPreview()">
+                  <label class="form-check-label fw-bold" for="bill_preview_enabled">
+                    Enable Bill Preview
+                  </label>
+                </div>
+                <small class="text-muted d-block mb-2">Students can see incoming bills before due date</small>
+
+                <div id="billPreviewDaysField" style="display: {% if settings.bill_preview_enabled %}block{% else %}none{% endif %};">
+                  <label for="bill_preview_days" class="form-label">Preview Days Before Due</label>
+                  <input type="number" min="1" max="365" class="form-control"
+                         id="bill_preview_days" name="bill_preview_days"
+                         value="{{ settings.bill_preview_days }}">
+                  <small class="text-muted">How many days before due date students can see the bill</small>
+                </div>
+              </div>
+
+              <div class="col-md-6 mb-3">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="allow_incremental_payment"
+                         name="allow_incremental_payment" {% if settings.allow_incremental_payment %}checked{% endif %}>
+                  <label class="form-check-label fw-bold" for="allow_incremental_payment">
+                    Allow Incremental Payment
+                  </label>
+                </div>
+                <small class="text-muted d-block">Students can pay partial rent throughout the period before due date</small>
+              </div>
+
+              <div class="col-md-6 mb-3">
+                <div class="form-check form-switch">
+                  <input class="form-check-input" type="checkbox" id="prevent_purchase_when_late"
+                         name="prevent_purchase_when_late" {% if settings.prevent_purchase_when_late %}checked{% endif %}>
+                  <label class="form-check-label fw-bold" for="prevent_purchase_when_late">
+                    Prevent Purchase/Redemption When Late
+                  </label>
+                </div>
+                <small class="text-muted d-block">Block store purchases and item redemptions if student is late on rent</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="text-end">
+          <button type="submit" class="btn btn-primary btn-lg">
+            <i class="bi bi-save me-2"></i>Save Settings
+          </button>
+        </div>
+      </div>
+    </form>
+  </div>
+
+  <!-- WAIVERS TAB -->
+  <div class="tab-pane fade" id="waivers" role="tabpanel">
+    <div class="row">
+      <!-- Add Waiver Card -->
+      <div class="col-lg-5 mb-4">
+        <div class="card shadow">
+          <div class="card-header bg-primary text-white">
+            <h5 class="mb-0"><i class="bi bi-plus-circle me-2"></i>Add Rent Waiver</h5>
+          </div>
+          <div class="card-body">
+            <form method="POST" action="{{ url_for('admin.add_rent_waiver') }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+              <div class="mb-3">
+                <label class="form-label fw-bold">Select Students</label>
+                <select class="form-select" id="waiver_student_ids" name="student_ids" multiple size="8" required>
+                  {% for student in all_students %}
+                    <option value="{{ student.id }}">{{ student.full_name }} (Block {{ student.block }})</option>
+                  {% endfor %}
+                </select>
+                <small class="text-muted">Hold Ctrl/Cmd to select multiple students</small>
+              </div>
+
+              <div class="mb-3">
+                <label for="periods_count" class="form-label fw-bold">Number of Periods to Waive</label>
+                <input type="number" class="form-control" id="periods_count" name="periods_count"
+                       min="1" value="1" required>
+                <small class="text-muted">How many rent periods to skip</small>
+              </div>
+
+              <div class="mb-3">
+                <label for="waiver_reason" class="form-label fw-bold">Reason (Optional)</label>
+                <textarea class="form-control" id="waiver_reason" name="reason" rows="3"></textarea>
+                <small class="text-muted">Note for why rent is being waived</small>
+              </div>
+
+              <button type="submit" class="btn btn-primary w-100">
+                <i class="bi bi-check-circle me-2"></i>Add Waiver
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Active Waivers List -->
+      <div class="col-lg-7 mb-4">
+        <div class="card shadow">
+          <div class="card-header bg-info text-white">
+            <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>Active Rent Waivers</h5>
+          </div>
+          <div class="card-body">
+            {% if active_waivers %}
+              <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                  <thead>
+                    <tr>
+                      <th>Student</th>
+                      <th>Periods</th>
+                      <th>Valid Until</th>
+                      <th>Reason</th>
+                      <th>Action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for waiver in active_waivers %}
+                    <tr>
+                      <td>{{ waiver.student.full_name }}</td>
+                      <td>{{ waiver.periods_count }}</td>
+                      <td>
+                        <span class="local-timestamp" data-timestamp="{{ waiver.waiver_end_date.isoformat() }}Z"></span>
+                      </td>
+                      <td>{{ waiver.reason or '-' }}</td>
+                      <td>
+                        <form method="POST" action="{{ url_for('admin.remove_rent_waiver', waiver_id=waiver.id) }}" style="display: inline;">
+                          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                          <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Remove this waiver?')">
+                            <i class="bi bi-trash"></i>
+                          </button>
+                        </form>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <p class="text-muted text-center mb-0">No active rent waivers</p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
+
+<script>
+function toggleRentSettings() {
+  const isEnabled = document.getElementById('is_enabled').checked;
+  const container = document.getElementById('rentSettingsContainer');
+  if (isEnabled) {
+    container.classList.remove('grayed-out');
+  } else {
+    container.classList.add('grayed-out');
+  }
+}
+
+function toggleCustomFrequency() {
+  const frequencyType = document.getElementById('frequency_type').value;
+  const customFields = document.getElementById('customFrequencyFields');
+  customFields.style.display = (frequencyType === 'custom') ? 'block' : 'none';
+}
+
+function toggleRecurringPenalty() {
+  const penaltyType = document.getElementById('late_penalty_type').value;
+  const recurringField = document.getElementById('recurringPenaltyField');
+  recurringField.style.display = (penaltyType === 'recurring') ? 'block' : 'none';
+}
+
+function toggleBillPreview() {
+  const isEnabled = document.getElementById('bill_preview_enabled').checked;
+  const daysField = document.getElementById('billPreviewDaysField');
+  daysField.style.display = isEnabled ? 'block' : 'none';
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+  toggleRentSettings();
+  toggleCustomFrequency();
+  toggleRecurringPenalty();
+  toggleBillPreview();
+});
+</script>
+
 {% endblock %}
