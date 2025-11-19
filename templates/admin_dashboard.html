@@ -297,7 +297,7 @@
                     {% endif %}
                   </strong>
                   <br>
-                  <form method="POST" action="{{ url_for('void_transaction', transaction_id=tx.id) }}" class="d-inline">
+                  <form method="POST" action="{{ url_for('admin.void_transaction', transaction_id=tx.id) }}" class="d-inline">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-sm btn-outline-danger mt-1" onclick="return confirm('Are you sure you want to void this transaction?')">
                       <i class="bi bi-x-circle"></i> Void

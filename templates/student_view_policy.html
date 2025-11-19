@@ -182,7 +182,7 @@
                     {% if in_waiting_period %}
                         <button class="btn btn-primary" disabled title="Coverage not active yet - still in waiting period">File New Claim (Waiting Period)</button>
                     {% else %}
-                        <a href="{{ url_for('student_file_claim', policy_id=enrollment.policy.id) }}" class="btn btn-primary">File New Claim</a>
+                        <a href="{{ url_for('student.file_claim', policy_id=enrollment.policy.id) }}" class="btn btn-primary">File New Claim</a>
                     {% endif %}
                 </div>
             </div>
@@ -203,7 +203,7 @@
                             File a Claim (Waiting Period)
                         </button>
                     {% else %}
-                        <a href="{{ url_for('student_file_claim', policy_id=enrollment.policy.id) }}" class="btn btn-primary">
+                        <a href="{{ url_for('student.file_claim', policy_id=enrollment.policy.id) }}" class="btn btn-primary">
                             File a Claim
                         </a>
                     {% endif %}
@@ -229,7 +229,7 @@
                     {% endif %}
                 </p>
 
-                <form action="{{ url_for('student_cancel_insurance', enrollment_id=enrollment.id) }}" method="POST">
+                <form action="{{ url_for('student.cancel_insurance', enrollment_id=enrollment.id) }}" method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-danger w-100" onclick="return confirm('Are you sure you want to cancel this insurance policy?')">
                         Cancel This Policy

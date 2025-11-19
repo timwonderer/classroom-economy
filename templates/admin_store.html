@@ -87,7 +87,7 @@
                     <td>{{ item.limit_per_student if item.limit_per_student is not none else 'N/A' }}</td>
                     <td><span class="badge {{ 'bg-success' if item.is_active else 'bg-secondary' }}">{{ 'Active' if item.is_active else 'Inactive' }}</span></td>
                     <td>
-                        <a href="{{ url_for('admin_edit_store_item', item_id=item.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                        <a href="{{ url_for('admin.edit_store_item', item_id=item.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
                         <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deleteItemModal" data-item-id="{{ item.id }}" data-item-name="{{ item.name }}">
                             Delete
                         </button>

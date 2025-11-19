@@ -16,7 +16,7 @@
     </div>
   </div>
 
-  <form method="POST" action="{{ url_for('admin_edit_insurance_policy', policy_id=policy.id) }}">
+  <form method="POST" action="{{ url_for('admin.edit_insurance_policy', policy_id=policy.id) }}">
     {{ form.hidden_tag() }}
 
     <div class="row">

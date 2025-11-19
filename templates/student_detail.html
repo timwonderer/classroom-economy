@@ -32,7 +32,7 @@
         <div class="card-header bg-warning text-dark">Hall Pass Management</div>
         <div class="card-body">
             <p><strong>Current Hall Passes:</strong> {{ student.hall_passes }}</p>
-            <form action="{{ url_for('set_hall_passes', student_id=student.id) }}" method="post" class="row g-3 align-items-center">
+            <form action="{{ url_for('admin.set_hall_passes', student_id=student.id) }}" method="post" class="row g-3 align-items-center">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="col-auto">
                     <label for="hall_passes" class="form-label">Set New Balance:</label>

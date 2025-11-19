@@ -41,10 +41,10 @@
                     {% if in_waiting_period %}
                         <button class="btn btn-sm btn-outline-secondary mb-2" disabled title="Coverage not active yet - still in waiting period">File Claim (Waiting Period)</button>
                     {% else %}
-                        <a href="{{ url_for('student_file_claim', policy_id=enrollment.policy.id) }}" class="btn btn-sm btn-outline-primary mb-2">File Claim</a>
+                        <a href="{{ url_for('student.file_claim', policy_id=enrollment.policy.id) }}" class="btn btn-sm btn-outline-primary mb-2">File Claim</a>
                     {% endif %}
-                    <a href="{{ url_for('student_view_policy', enrollment_id=enrollment.id) }}" class="btn btn-sm btn-outline-secondary mb-2">View Details</a>
-                    <form action="{{ url_for('student_cancel_insurance', enrollment_id=enrollment.id) }}" method="POST" class="d-inline">
+                    <a href="{{ url_for('student.view_policy', enrollment_id=enrollment.id) }}" class="btn btn-sm btn-outline-secondary mb-2">View Details</a>
+                    <form action="{{ url_for('student.cancel_insurance', enrollment_id=enrollment.id) }}" method="POST" class="d-inline">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn btn-sm btn-outline-danger mb-2" onclick="return confirm('Are you sure you want to cancel this policy?')">Cancel Policy</button>
                     </form>
@@ -97,7 +97,7 @@
                 </div>
 
                 {% if can_purchase[policy.id] %}
-                    <form action="{{ url_for('student_purchase_insurance', policy_id=policy.id) }}" method="POST">
+                    <form action="{{ url_for('student.purchase_insurance', policy_id=policy.id) }}" method="POST">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                         <button type="submit" class="btn {% if loop.index == 1 %}btn-primary{% elif loop.index == 2 %}btn-success{% elif loop.index == 3 %}btn-warning{% else %}btn-secondary{% endif %} w-100">
                             Purchase Plan

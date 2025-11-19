@@ -168,7 +168,7 @@
     <h5 class="mb-0">Process This Claim</h5>
   </div>
   <div class="card-body">
-    <form method="POST" action="{{ url_for('admin_process_claim', claim_id=claim.id) }}">
+    <form method="POST" action="{{ url_for('admin.process_claim', claim_id=claim.id) }}">
       {{ form.hidden_tag() }}
 
       <div class="row">

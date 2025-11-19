@@ -9,7 +9,7 @@
             <h5 class="mb-0">Edit Item Details</h5>
         </div>
         <div class="card-body">
-            <form method="POST" action="{{ url_for('admin_edit_store_item', item_id=item.id) }}">
+            <form method="POST" action="{{ url_for('admin.edit_store_item', item_id=item.id) }}">
                 {{ form.hidden_tag() }}
                 <div class="row">
                     <div class="col-md-6 mb-3">

@@ -136,7 +136,7 @@
                                         </span>
                                     </td>
                                     <td>
-                                        <a href="{{ url_for('admin_process_claim', claim_id=claim.id) }}" class="btn btn-sm btn-outline-primary">
+                                        <a href="{{ url_for('admin.process_claim', claim_id=claim.id) }}" class="btn btn-sm btn-outline-primary">
                                             Process
                                         </a>
                                     </td>
@@ -160,7 +160,7 @@
             </div>
             <div class="card-body">
                 <div class="d-grid gap-2">
-                    <a href="{{ url_for('student_detail', student_id=student.id) }}" class="btn btn-primary">
+                    <a href="{{ url_for('admin.student_detail', student_id=student.id) }}" class="btn btn-primary">
                         View Student Details
                     </a>
                     <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-outline-secondary">

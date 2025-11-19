@@ -99,7 +99,7 @@
                     You need ${{ "%.2f"|format(total_due - student.checking_balance) }} more to pay rent for Period {{ period|upper }}.
                 </p>
                 {% else %}
-                <form action="{{ url_for('student_rent_pay', period=period) }}" method="POST">
+                <form action="{{ url_for('student.rent_pay', period=period) }}" method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <button type="submit" class="btn btn-primary w-100"
                             onclick="return confirm('Pay rent for Period {{ period|upper }} - ${{ total_due|round(2) }}?');">

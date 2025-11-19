@@ -74,7 +74,7 @@
             {% for student in students %}
             <tr>
                 <td>
-                    <a href="{{ url_for('student_detail', student_id=student.id) }}">
+                    <a href="{{ url_for('admin.student_detail', student_id=student.id) }}">
                         {{ student.full_name if student else "Unknown" }}
                     </a>
                 </td>

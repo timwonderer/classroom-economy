@@ -84,7 +84,7 @@
                 </td>
                 <td>{{ policy.student_policies.filter_by(status='active').count() }} students</td>
                 <td>
-                  <a href="{{ url_for('admin_edit_insurance_policy', policy_id=policy.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                  <a href="{{ url_for('admin.edit_insurance_policy', policy_id=policy.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
                   <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deactivatePolicyModal" data-policy-id="{{ policy.id }}" data-policy-title="{{ policy.title }}">
                     Deactivate
                   </button>
@@ -403,7 +403,7 @@
                   {% endif %}
                 </td>
                 <td>
-                  <a href="{{ url_for('admin_view_student_policy', enrollment_id=enrollment.id) }}" class="btn btn-sm btn-outline-info">View</a>
+                  <a href="{{ url_for('admin.view_student_policy', enrollment_id=enrollment.id) }}" class="btn btn-sm btn-outline-info">View</a>
                 </td>
               </tr>
               {% endfor %}
@@ -518,7 +518,7 @@
                   </span>
                 </td>
                 <td>
-                  <a href="{{ url_for('admin_process_claim', claim_id=claim.id) }}" class="btn btn-sm btn-outline-primary">Process</a>
+                  <a href="{{ url_for('admin.process_claim', claim_id=claim.id) }}" class="btn btn-sm btn-outline-primary">Process</a>
                 </td>
               </tr>
               {% endfor %}

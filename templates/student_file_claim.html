@@ -21,7 +21,7 @@
                     {% endfor %}
                 {% endif %}
 
-                <form method="POST" action="{{ url_for('student_file_claim', policy_id=policy.id) }}">
+                <form method="POST" action="{{ url_for('student.file_claim', policy_id=policy.id) }}">
                     {{ form.hidden_tag() }}
 
                     <div class="mb-3">

@@ -143,7 +143,7 @@
                   </td>
                   <td>
                     {% if record.student %}
-                      <a href="{{ url_for('student_detail', student_id=record.student_id) }}">
+                      <a href="{{ url_for('admin.student_detail', student_id=record.student_id) }}">
                         {{ record.student.full_name }}
                       </a>
                     {% else %}
@@ -234,7 +234,7 @@
                   <td>{{ entry.block }}</td>
                   <td>
                     {% if entry.student %}
-                      <a href="{{ url_for('student_detail', student_id=entry.student_id) }}">
+                      <a href="{{ url_for('admin.student_detail', student_id=entry.student_id) }}">
                         {{ entry.student_name }}
                       </a>
                     {% else %}
