@@ -621,7 +621,7 @@ def handle_tap():
         if action == "tap_in":
             import pytz
             from payroll import get_daily_limit_seconds
-            from attendance import calculate_period_attendance
+            from attendance import calculate_period_attendance_utc_range
 
             daily_limit = get_daily_limit_seconds(period)
             if daily_limit:
@@ -630,7 +630,16 @@ def handle_tap():
                 now_pacific = now.astimezone(pacific)
                 today_pacific = now_pacific.date()
 
-                today_attendance = calculate_period_attendance(student.id, period, today_pacific)
+                # Calculate UTC boundaries for today in Pacific timezone
+                start_of_day_pacific = pacific.localize(datetime.combine(today_pacific, datetime.min.time()))
+                start_of_day_utc = start_of_day_pacific.astimezone(timezone.utc)
+                end_of_day_pacific = start_of_day_pacific + timedelta(days=1)
+                end_of_day_utc = end_of_day_pacific.astimezone(timezone.utc)
+
+                # Query using proper UTC boundaries
+                today_attendance = calculate_period_attendance_utc_range(
+                    student.id, period, start_of_day_utc, end_of_day_utc
+                )
 
                 if today_attendance >= daily_limit:
                     hours_limit = daily_limit / 3600.0
@@ -699,7 +708,7 @@ def check_and_auto_tapout_if_limit_reached(student):
     """
     import pytz
     from payroll import get_daily_limit_seconds
-    from attendance import calculate_period_attendance
+    from attendance import calculate_period_attendance_utc_range
 
     # Helper function to ensure UTC timezone-aware datetime
     def _as_utc(dt):
@@ -717,6 +726,15 @@ def check_and_auto_tapout_if_limit_reached(student):
     now_pacific = now_utc.astimezone(pacific)
     today_pacific = now_pacific.date()
 
+    # Calculate UTC boundaries for today in Pacific timezone
+    # Start: midnight Pacific today -> UTC
+    start_of_day_pacific = pacific.localize(datetime.combine(today_pacific, datetime.min.time()))
+    start_of_day_utc = start_of_day_pacific.astimezone(timezone.utc)
+
+    # End: midnight Pacific tomorrow -> UTC
+    end_of_day_pacific = start_of_day_pacific + timedelta(days=1)
+    end_of_day_utc = end_of_day_pacific.astimezone(timezone.utc)
+
     for period in student_blocks:
         # Check if student is currently active in this period
         latest_event = (
@@ -731,15 +749,17 @@ def check_and_auto_tapout_if_limit_reached(student):
             daily_limit = get_daily_limit_seconds(period)
 
             if daily_limit:
-                # Calculate today's completed attendance (tap in/out pairs) using Pacific date
-                today_attendance = calculate_period_attendance(student.id, period, today_pacific)
+                # Calculate today's completed attendance using proper Pacific day boundaries
+                today_attendance = calculate_period_attendance_utc_range(
+                    student.id, period, start_of_day_utc, end_of_day_utc
+                )
 
                 # Add current active session time
                 # Convert to UTC-aware datetime to prevent TypeError
                 last_tap_in_utc = _as_utc(latest_event.timestamp)
-                last_tap_in_pacific = last_tap_in_utc.astimezone(pacific)
 
-                if last_tap_in_pacific.date() == today_pacific:  # Only if tapped in today (Pacific time)
+                # Only add active session time if tapped in today (within Pacific day boundaries)
+                if start_of_day_utc <= last_tap_in_utc < end_of_day_utc:
                     current_session_seconds = (now_utc - last_tap_in_utc).total_seconds()
                     today_attendance += current_session_seconds
 
