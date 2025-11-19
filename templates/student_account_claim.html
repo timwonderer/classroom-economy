@@ -201,52 +201,25 @@
                 <form method="POST">
                     {{ form.hidden_tag() }}
 
-                    <div class="form-group">
-                        <label class="form-label fw-bold"><span class="material-icons" style="vertical-align: middle;">edit</span> Name Code</label>
-                        {{ form.first_half(class="form-control form-control-lg", placeholder="Type your name code here...") }}
-                        <div class="alert alert-info mt-2 mb-0">
-                            <strong><span class="material-icons" style="vertical-align: middle; font-size: 18px;">help</span> How to create your name code:</strong>
-                            <ol class="mb-0 mt-2">
-                                <li>Write all vowels (a, e, i, o, u) from your <strong>FIRST NAME</strong> only</li>
-                                <li>Then write all consonants from your <strong>LAST NAME</strong> only</li>
-                                <li>All lowercase, no spaces</li>
-                            </ol>
-                            <div class="mt-2 p-2 bg-white border rounded">
-                                <strong>Example:</strong> If your name is <strong>"Maria Lopez"</strong><br>
-                                • Vowels from "Maria": a, i, a → <code>aia</code><br>
-                                • Consonants from "Lopez": L, p, z → <code>lpz</code><br>
-                                • <strong>Type this: <span class="text-primary">aialpz</span></strong> (all lowercase)
-                            </div>
-                            <div class="mt-2 p-2 bg-light border rounded">
-                                <strong>Another Example:</strong> If your name is <strong>"John Smith"</strong><br>
-                                • Vowels from "John": o → <code>o</code><br>
-                                • Consonants from "Smith": S, m, t, h → <code>smth</code><br>
-                                • <strong>Type this: <span class="text-primary">osmth</span></strong>
-                            </div>
-                        </div>
+                    <div class="form-group mb-3">
+                        <label class="form-label fw-bold">Name Code</label>
+                        {{ form.first_half(class="form-control form-control-lg", placeholder="Example: aialpz") }}
+                        <small class="form-text text-muted">
+                            Vowels from your FIRST name + consonants from your LAST name (all lowercase)<br>
+                            <strong>Example:</strong> "Maria Lopez" → vowels (a,i,a) + consonants (l,p,z) = <code>aialpz</code>
+                        </small>
                         {% for error in form.first_half.errors %}
                             <div class="text-danger small">{{ error }}</div>
                         {% endfor %}
                     </div>
 
-                    <div class="form-group">
-                        <label class="form-label fw-bold"><span class="material-icons" style="vertical-align: middle;">cake</span> Birthday Sum</label>
-                        {{ form.second_half(class="form-control form-control-lg", placeholder="Type the number here...") }}
-                        <div class="alert alert-warning mt-2 mb-0">
-                            <strong><span class="material-icons" style="vertical-align: middle; font-size: 18px;">calculate</span> How to calculate your birthday sum:</strong>
-                            <ol class="mb-0 mt-2">
-                                <li>Add the month + day + year numbers together</li>
-                                <li>Type ONLY the final number (don't type the + signs or =)</li>
-                            </ol>
-                            <div class="mt-2 p-2 bg-white border rounded">
-                                <strong>Example:</strong> If your birthday is <strong>March 15, 2010</strong><br>
-                                • Month: 3, Day: 15, Year: 2010<br>
-                                • Add them: 3 + 15 + 2010 = 2028<br>
-                                • <strong>Type this: <span class="text-primary">2028</span></strong><br>
-                                • <span class="material-icons text-danger" style="vertical-align: middle; font-size: 18px;">close</span> DON'T type: "3 + 15 + 2010" or "3+15+2010"<br>
-                                • <span class="material-icons text-success" style="vertical-align: middle; font-size: 18px;">check</span> DO type: "2028"
-                            </div>
-                        </div>
+                    <div class="form-group mb-3">
+                        <label class="form-label fw-bold">Birthday Sum</label>
+                        {{ form.second_half(class="form-control form-control-lg", placeholder="Example: 2028") }}
+                        <small class="form-text text-muted">
+                            Add: month + day + year (type ONLY the final number)<br>
+                            <strong>Example:</strong> March 15, 2010 → 3 + 15 + 2010 = <code>2028</code> (type "2028")
+                        </small>
                         {% for error in form.second_half.errors %}
                             <div class="text-danger small">{{ error }}</div>
                         {% endfor %}
