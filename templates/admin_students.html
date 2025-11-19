@@ -84,10 +84,36 @@
                role="tabpanel">
             {% set block_students = students_by_block[block] %}
             {% if block_students %}
+              <!-- Bulk Actions Toolbar -->
+              <div class="bulk-actions-toolbar mb-3 p-3 bg-light border rounded d-none" id="bulk-toolbar-{{ block }}">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div>
+                    <strong><span class="selected-count">0</span> students selected</strong>
+                  </div>
+                  <div>
+                    <button type="button" class="btn btn-danger btn-sm" onclick="bulkDeleteStudents('{{ block }}')">
+                      <i class="bi bi-trash"></i> Delete Selected
+                    </button>
+                    <button type="button" class="btn btn-warning btn-sm" onclick="clearSelection('{{ block }}')">
+                      <i class="bi bi-x-circle"></i> Clear Selection
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mb-2">
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteEntireBlock('{{ block }}')">
+                  <i class="bi bi-trash3"></i> Delete All Students in Block {{ block|upper }}
+                </button>
+              </div>
+
               <div class="table-responsive">
-                <table class="table table-hover table-striped">
+                <table class="table table-hover table-striped" id="students-table-{{ block }}">
                   <thead class="table-dark">
                     <tr>
+                      <th style="width: 40px;">
+                        <input type="checkbox" class="form-check-input select-all-checkbox" onchange="toggleSelectAll('{{ block }}', this)">
+                      </th>
                       <th>Name</th>
                       <th>Username</th>
                       <th>Checking</th>
@@ -100,7 +126,10 @@
                   </thead>
                   <tbody>
                     {% for student in block_students %}
-                    <tr>
+                    <tr class="student-row" data-student-id="{{ student.id }}">
+                      <td>
+                        <input type="checkbox" class="form-check-input student-checkbox" value="{{ student.id }}" onchange="updateBulkToolbar('{{ block }}')">
+                      </td>
                       <td>
                         <a href="{{ url_for('admin.student_detail', student_id=student.id) }}" class="fw-bold text-decoration-none">
                           {{ student.full_name }}
@@ -549,5 +578,141 @@ document.addEventListener('DOMContentLoaded', function() {
 
   console.log('✅ All student management scripts initialized');
 });
+
+// -------------------- BULK DELETE FUNCTIONS --------------------
+
+function toggleSelectAll(block, checkbox) {
+  const table = document.getElementById(`students-table-${block}`);
+  const checkboxes = table.querySelectorAll('.student-checkbox');
+  checkboxes.forEach(cb => cb.checked = checkbox.checked);
+  updateBulkToolbar(block);
+}
+
+function updateBulkToolbar(block) {
+  const table = document.getElementById(`students-table-${block}`);
+  const checkboxes = table.querySelectorAll('.student-checkbox:checked');
+  const toolbar = document.getElementById(`bulk-toolbar-${block}`);
+  const count = checkboxes.length;
+
+  if (count > 0) {
+    toolbar.classList.remove('d-none');
+    toolbar.querySelector('.selected-count').textContent = count;
+  } else {
+    toolbar.classList.add('d-none');
+  }
+}
+
+function clearSelection(block) {
+  const table = document.getElementById(`students-table-${block}`);
+  const checkboxes = table.querySelectorAll('.student-checkbox');
+  checkboxes.forEach(cb => cb.checked = false);
+  table.querySelector('.select-all-checkbox').checked = false;
+  updateBulkToolbar(block);
+}
+
+function bulkDeleteStudents(block) {
+  const table = document.getElementById(`students-table-${block}`);
+  const checkboxes = table.querySelectorAll('.student-checkbox:checked');
+  const studentIds = Array.from(checkboxes).map(cb => cb.value);
+
+  if (studentIds.length === 0) {
+    alert('Please select at least one student to delete.');
+    return;
+  }
+
+  const count = studentIds.length;
+  const confirmation = confirm(
+    `⚠️ WARNING: You are about to permanently delete ${count} student(s) and ALL their data:\n\n` +
+    `• All transactions and balances\n` +
+    `• All attendance records\n` +
+    `• All hall pass logs\n` +
+    `• All purchases and items\n\n` +
+    `This action CANNOT be undone!\n\n` +
+    `Type "DELETE" in the next prompt to confirm.`
+  );
+
+  if (!confirmation) return;
+
+  const confirmText = prompt(`Type "DELETE" to confirm deletion of ${count} student(s):`);
+  if (confirmText !== 'DELETE') {
+    alert('Deletion cancelled. You must type "DELETE" exactly to confirm.');
+    return;
+  }
+
+  // Send bulk delete request
+  fetch('/admin/students/bulk-delete', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    },
+    body: JSON.stringify({ student_ids: studentIds })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.status === 'success') {
+      alert(data.message);
+      location.reload();
+    } else {
+      alert('Error: ' + data.message);
+    }
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    alert('Network error occurred while deleting students.');
+  });
+}
+
+function deleteEntireBlock(block) {
+  const table = document.getElementById(`students-table-${block}`);
+  const allRows = table.querySelectorAll('.student-row');
+  const count = allRows.length;
+
+  if (count === 0) {
+    alert('No students in this block to delete.');
+    return;
+  }
+
+  const confirmation = confirm(
+    `⚠️ CRITICAL WARNING: You are about to permanently delete ALL ${count} students in Block ${block.toUpperCase()} and ALL their data:\n\n` +
+    `• All transactions and balances\n` +
+    `• All attendance records\n` +
+    `• All hall pass logs\n` +
+    `• All purchases and items\n\n` +
+    `This action CANNOT be undone!\n\n` +
+    `Type "DELETE BLOCK ${block.toUpperCase()}" in the next prompt to confirm.`
+  );
+
+  if (!confirmation) return;
+
+  const confirmText = prompt(`Type "DELETE BLOCK ${block.toUpperCase()}" to confirm:`);
+  if (confirmText !== `DELETE BLOCK ${block.toUpperCase()}`) {
+    alert('Deletion cancelled. You must type the exact confirmation text.');
+    return;
+  }
+
+  // Send block delete request
+  fetch('/admin/students/delete-block', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    },
+    body: JSON.stringify({ block: block })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.status === 'success') {
+      alert(data.message);
+      location.reload();
+    } else {
+      alert('Error: ' + data.message);
+    }
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    alert('Network error occurred while deleting block.');
+  });
+}
 </script>
 {% endblock %}

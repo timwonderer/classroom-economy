@@ -472,7 +472,7 @@ def edit_student():
         name_code = vowels + consonants
 
         # Regenerate first_half_hash (name code hash)
-        student.first_half_hash = hash_hmac(name_code, student.salt)
+        student.first_half_hash = hash_hmac(name_code.encode(), student.salt)
 
     # Update DOB sum if provided (and recalculate second_half_hash)
     dob_sum_str = request.form.get('dob_sum', '').strip()
@@ -481,7 +481,7 @@ def edit_student():
         if new_dob_sum != student.dob_sum:
             student.dob_sum = new_dob_sum
             # Regenerate second_half_hash (DOB sum hash)
-            student.second_half_hash = hash_hmac(str(new_dob_sum), student.salt)
+            student.second_half_hash = hash_hmac(str(new_dob_sum).encode(), student.salt)
 
     # Handle login reset
     reset_login = request.form.get('reset_login') == 'on'
@@ -549,6 +549,83 @@ def delete_student():
         flash(f"Error deleting student: {str(e)}", "error")
 
     return redirect(url_for('admin.students'))
+
+
+@admin_bp.route('/students/bulk-delete', methods=['POST'])
+@admin_required
+def bulk_delete_students():
+    """Delete multiple students at once."""
+    data = request.get_json()
+    student_ids = data.get('student_ids', [])
+
+    if not student_ids:
+        return jsonify({"status": "error", "message": "No students selected."}), 400
+
+    try:
+        deleted_count = 0
+        for student_id in student_ids:
+            student = Student.query.get(student_id)
+            if student:
+                # Delete associated records
+                Transaction.query.filter_by(student_id=student.id).delete()
+                TapEvent.query.filter_by(student_id=student.id).delete()
+                StudentItem.query.filter_by(student_id=student.id).delete()
+                RentPayment.query.filter_by(student_id=student.id).delete()
+                RentWaiver.query.filter_by(student_id=student.id).delete()
+                StudentInsurance.query.filter_by(student_id=student.id).delete()
+                InsuranceClaim.query.filter_by(student_id=student.id).delete()
+                HallPassLog.query.filter_by(student_id=student.id).delete()
+
+                # Delete the student
+                db.session.delete(student)
+                deleted_count += 1
+
+        db.session.commit()
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully deleted {deleted_count} student(s) and all associated data."
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@admin_bp.route('/students/delete-block', methods=['POST'])
+@admin_required
+def delete_block():
+    """Delete all students in a specific block."""
+    data = request.get_json()
+    block = data.get('block', '').strip().upper()
+
+    if not block:
+        return jsonify({"status": "error", "message": "No block specified."}), 400
+
+    try:
+        students = Student.query.filter_by(block=block).all()
+        deleted_count = len(students)
+
+        for student in students:
+            # Delete associated records
+            Transaction.query.filter_by(student_id=student.id).delete()
+            TapEvent.query.filter_by(student_id=student.id).delete()
+            StudentItem.query.filter_by(student_id=student.id).delete()
+            RentPayment.query.filter_by(student_id=student.id).delete()
+            RentWaiver.query.filter_by(student_id=student.id).delete()
+            StudentInsurance.query.filter_by(student_id=student.id).delete()
+            InsuranceClaim.query.filter_by(student_id=student.id).delete()
+            HallPassLog.query.filter_by(student_id=student.id).delete()
+
+            # Delete the student
+            db.session.delete(student)
+
+        db.session.commit()
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully deleted all {deleted_count} student(s) in Block {block} and all associated data."
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @admin_bp.route('/student/add-individual', methods=['POST'])

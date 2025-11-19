@@ -202,18 +202,45 @@
                     {{ form.hidden_tag() }}
 
                     <div class="form-group">
-                        {{ form.first_half.label(class="form-label") }}
-                        {{ form.first_half(class="form-control", placeholder="All vowels + all consonants from your full name (lowercase, no spaces)") }}
-                        <small class="form-text text-muted">Example: "John Smith" → "oijhnsmth" (vowels: o, i + consonants: j, h, n, s, m, t, h)</small>
+                        <label class="form-label fw-bold">Name Code</label>
+                        {{ form.first_half(class="form-control form-control-lg", placeholder="Type here...") }}
+                        <div class="alert alert-info mt-2 mb-0">
+                            <strong>📝 How to create your name code:</strong>
+                            <ol class="mb-0 mt-2">
+                                <li>Write all vowels (a, e, i, o, u) from your full name</li>
+                                <li>Then write all consonants from your full name</li>
+                                <li>All lowercase, no spaces</li>
+                            </ol>
+                            <div class="mt-2 p-2 bg-white border rounded">
+                                <strong>Example:</strong> If your name is <strong>"Maria Lopez"</strong><br>
+                                • Vowels: a, i, a, o, e → <code>aiaoe</code><br>
+                                • Consonants: M, r, L, p, z → <code>mrlpz</code><br>
+                                • <strong>Type this: <span class="text-primary">aiaoeMrlpz</span></strong>
+                            </div>
+                        </div>
                         {% for error in form.first_half.errors %}
                             <div class="text-danger small">{{ error }}</div>
                         {% endfor %}
                     </div>
 
                     <div class="form-group">
-                        {{ form.second_half.label(class="form-label") }}
-                        {{ form.second_half(class="form-control", placeholder="Your DOB Sum (MM + DD + YYYY)") }}
-                        <small class="form-text text-muted">Example: If your birthday is 05/14/2010, enter 5 + 14 + 2010 = 2029</small>
+                        <label class="form-label fw-bold">Birthday Sum</label>
+                        {{ form.second_half(class="form-control form-control-lg", placeholder="Type the number here...") }}
+                        <div class="alert alert-warning mt-2 mb-0">
+                            <strong>🎂 How to calculate your birthday sum:</strong>
+                            <ol class="mb-0 mt-2">
+                                <li>Add the month + day + year numbers together</li>
+                                <li>Type ONLY the final number (don't type the + signs or =)</li>
+                            </ol>
+                            <div class="mt-2 p-2 bg-white border rounded">
+                                <strong>Example:</strong> If your birthday is <strong>March 15, 2010</strong><br>
+                                • Month: 3, Day: 15, Year: 2010<br>
+                                • Add them: 3 + 15 + 2010 = 2028<br>
+                                • <strong>Type this: <span class="text-primary">2028</span></strong><br>
+                                • ❌ DON'T type: "3 + 15 + 2010" or "3+15+2010"<br>
+                                • ✅ DO type: "2028"
+                            </div>
+                        </div>
                         {% for error in form.second_half.errors %}
                             <div class="text-danger small">{{ error }}</div>
                         {% endfor %}
