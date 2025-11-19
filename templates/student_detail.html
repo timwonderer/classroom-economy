@@ -116,7 +116,7 @@
             <i class="bi bi-clock-history me-1"></i>Attendance
         </button>
     </li>
-    {% if student.is_rent_enabled %}
+    {% if global_rent_enabled and student.is_rent_enabled %}
     <li class="nav-item" role="presentation">
         <button class="nav-link" id="housing-tab" data-bs-toggle="tab" data-bs-target="#housing" type="button" role="tab">
             <i class="bi bi-house me-1"></i>Rent
@@ -180,16 +180,10 @@
                                     {% endif %}
                                 </td>
                             </tr>
-                            {% if student.is_rent_enabled %}
+                            {% if global_rent_enabled and student.is_rent_enabled %}
                             <tr>
                                 <td class="fw-bold">Housing:</td>
                                 <td><span class="badge bg-secondary">Renter</span></td>
-                            </tr>
-                            {% endif %}
-                            {% if student.owns_seat %}
-                            <tr>
-                                <td class="fw-bold">Property:</td>
-                                <td><span class="badge bg-success">Homeowner</span></td>
                             </tr>
                             {% endif %}
                         </table>
@@ -431,8 +425,8 @@
         </div>
     </div>
 
-    <!-- RENT TAB (Only if rent enabled) -->
-    {% if student.is_rent_enabled %}
+    <!-- RENT TAB (Only if rent enabled globally and for student) -->
+    {% if global_rent_enabled and student.is_rent_enabled %}
     <div class="tab-pane fade" id="housing" role="tabpanel">
         <div class="row">
             <!-- Rent Card -->
