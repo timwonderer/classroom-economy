@@ -65,7 +65,11 @@
                     data-bs-target="#block-{{ block }}"
                     type="button"
                     role="tab">
-              Block {{ block|upper }}
+              {% if block == "Unassigned" %}
+                <i class="bi bi-question-circle me-1"></i>{{ block }}
+              {% else %}
+                Block {{ block|upper }}
+              {% endif %}
               <span class="badge bg-secondary ms-1">{{ students_by_block[block]|length }}</span>
             </button>
           </li>
@@ -266,7 +270,9 @@
                       <select class="form-select" id="block" name="block" required>
                         <option value="">Select a block...</option>
                         {% for block in blocks %}
+                        {% if block != "Unassigned" %}
                         <option value="{{ block }}">Block {{ block|upper }}</option>
+                        {% endif %}
                         {% endfor %}
                       </select>
                     </div>
@@ -338,6 +344,7 @@
               <p class="text-muted small mb-2">Select all blocks this student attends (can select multiple):</p>
               <div class="row">
                 {% for block in blocks %}
+                {% if block != "Unassigned" %}
                 <div class="col-6 col-md-4 mb-2">
                   <div class="form-check">
                     <input class="form-check-input block-checkbox" type="checkbox" name="blocks" value="{{ block }}" id="edit_block_{{ block }}">
@@ -346,9 +353,10 @@
                     </label>
                   </div>
                 </div>
+                {% endif %}
                 {% endfor %}
               </div>
-              <div class="form-text">At least one block must be selected</div>
+              <div class="form-text">At least one block must be selected (uncheck all to mark as unassigned)</div>
             </div>
           </div>
 

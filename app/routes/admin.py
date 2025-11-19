@@ -339,13 +339,26 @@ def students():
     # Get unique blocks - split comma-separated blocks into individual blocks
     blocks = sorted({b.strip() for s in all_students for b in (s.block or "").split(',') if b.strip()})
 
+    # Check if there are any students without block assignments
+    unassigned_students = [s for s in all_students if not s.block or not s.block.strip()]
+    if unassigned_students:
+        # Add "Unassigned" as a special block at the beginning
+        blocks = ["Unassigned"] + blocks
+
     # Group students by block (students can appear in multiple blocks)
     students_by_block = {}
+
+    # Handle unassigned students first
+    if unassigned_students:
+        students_by_block["Unassigned"] = unassigned_students
+
+    # Group students by their assigned blocks
     for block in blocks:
-        students_by_block[block] = [
-            s for s in all_students
-            if block.upper() in [b.strip().upper() for b in (s.block or "").split(',')]
-        ]
+        if block != "Unassigned":  # Skip the special "Unassigned" block
+            students_by_block[block] = [
+                s for s in all_students
+                if s.block and block.upper() in [b.strip().upper() for b in s.block.split(',')]
+            ]
 
     # Add username_display attribute to each student
     for student in all_students:
@@ -432,12 +445,13 @@ def edit_student():
 
     # Get selected blocks (multiple checkboxes)
     selected_blocks = request.form.getlist('blocks')
-    if not selected_blocks:
-        flash("At least one block must be selected.", "error")
-        return redirect(url_for('admin.students'))
 
-    # Join blocks with commas (e.g., "A,B,C")
-    new_blocks = ','.join(sorted(b.strip().upper() for b in selected_blocks))
+    # Join blocks with commas (e.g., "A,B,C"), or set to None if no blocks selected
+    if selected_blocks:
+        new_blocks = ','.join(sorted(b.strip().upper() for b in selected_blocks))
+    else:
+        # No blocks selected - student will be marked as "Unassigned"
+        new_blocks = None
 
     # Check if name changed (need to recalculate hashes)
     name_changed = (new_first_name != student.first_name or new_last_initial != student.last_initial)
