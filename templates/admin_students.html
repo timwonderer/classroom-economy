@@ -91,6 +91,12 @@
                     <strong><span class="selected-count">0</span> students selected</strong>
                   </div>
                   <div>
+                    <button type="button" class="btn btn-info btn-sm me-2" onclick="tapOutSelected('{{ block }}')">
+                      <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px;">logout</span> Tap Out Selected
+                    </button>
+                    <button type="button" class="btn btn-secondary btn-sm me-2" onclick="tapOutAllBlock('{{ block }}')">
+                      <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px;">logout</span> Tap Out Entire Block
+                    </button>
                     <button type="button" class="btn btn-danger btn-sm" onclick="bulkDeleteStudents('{{ block }}')">
                       <span class="material-icons" style="vertical-align: middle;">delete</span> Delete Selected
                     </button>
@@ -712,6 +718,117 @@ function deleteEntireBlock(block) {
   .catch(error => {
     console.error('Error:', error);
     alert('Network error occurred while deleting block.');
+  });
+}
+
+function tapOutSelected(block) {
+  const table = document.getElementById(`students-table-${block}`);
+  const checkboxes = table.querySelectorAll('.student-checkbox:checked');
+  const studentIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+  if (studentIds.length === 0) {
+    alert('Please select at least one student to tap out.');
+    return;
+  }
+
+  const count = studentIds.length;
+  const confirmation = confirm(
+    `Are you sure you want to tap out ${count} selected student(s) from Block ${block.toUpperCase()}?\n\n` +
+    `This will mark them as inactive for this period.`
+  );
+
+  if (!confirmation) return;
+
+  // Call the tap-out API
+  fetch('/admin/tap-out-students', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    },
+    body: JSON.stringify({
+      student_ids: studentIds,
+      period: block.toUpperCase(),
+      reason: 'Teacher tap-out (selected students)'
+    })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.status === 'success') {
+      let message = data.message;
+      if (data.tapped_out && data.tapped_out.length > 0) {
+        message += '\n\nTapped out:\n' + data.tapped_out.join(', ');
+      }
+      if (data.already_inactive && data.already_inactive.length > 0) {
+        message += '\n\nAlready inactive:\n' + data.already_inactive.join(', ');
+      }
+      if (data.errors && data.errors.length > 0) {
+        message += '\n\nErrors:\n' + data.errors.join('\n');
+      }
+      alert(message);
+      // Clear selection after tap-out
+      clearSelection(block);
+    } else {
+      alert('Error: ' + data.message);
+    }
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    alert('Network error occurred while tapping out students.');
+  });
+}
+
+function tapOutAllBlock(block) {
+  const table = document.getElementById(`students-table-${block}`);
+  const allRows = table.querySelectorAll('.student-row');
+  const count = allRows.length;
+
+  if (count === 0) {
+    alert('No students in this block to tap out.');
+    return;
+  }
+
+  const confirmation = confirm(
+    `Are you sure you want to tap out ALL active students in Block ${block.toUpperCase()}?\n\n` +
+    `This will mark all currently active students as inactive for this period.`
+  );
+
+  if (!confirmation) return;
+
+  // Call the tap-out API with tap_out_all flag
+  fetch('/admin/tap-out-students', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    },
+    body: JSON.stringify({
+      tap_out_all: true,
+      period: block.toUpperCase(),
+      reason: 'Teacher tap-out (entire block)'
+    })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.status === 'success') {
+      let message = data.message;
+      if (data.tapped_out && data.tapped_out.length > 0) {
+        message += '\n\nTapped out:\n' + data.tapped_out.join(', ');
+      }
+      if (data.already_inactive && data.already_inactive.length > 0) {
+        message += '\n\nAlready inactive:\n' + data.already_inactive.join(', ');
+      }
+      if (data.errors && data.errors.length > 0) {
+        message += '\n\nErrors:\n' + data.errors.join('\n');
+      }
+      alert(message);
+    } else {
+      alert('Error: ' + data.message);
+    }
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    alert('Network error occurred while tapping out block.');
   });
 }
 </script>

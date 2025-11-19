@@ -726,7 +726,8 @@ def check_and_auto_tapout_if_limit_reached(student):
             return dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
 
-    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+    # Keep original case for settings lookup, but uppercase for TapEvent queries
+    student_blocks = [b.strip() for b in student.block.split(',') if b.strip()]
     now_utc = datetime.now(timezone.utc)
 
     # Use Pacific timezone for daily reset
@@ -743,23 +744,25 @@ def check_and_auto_tapout_if_limit_reached(student):
     end_of_day_pacific = start_of_day_pacific + timedelta(days=1)
     end_of_day_utc = end_of_day_pacific.astimezone(timezone.utc)
 
-    for period in student_blocks:
-        # Check if student is currently active in this period
+    for block_original in student_blocks:
+        period_upper = block_original.upper()
+
+        # Check if student is currently active in this period (TapEvent uses uppercase)
         latest_event = (
             TapEvent.query
-            .filter_by(student_id=student.id, period=period)
+            .filter_by(student_id=student.id, period=period_upper)
             .order_by(TapEvent.timestamp.desc())
             .first()
         )
 
         if latest_event and latest_event.status == "active":
-            # Get daily limit for this period
-            daily_limit = get_daily_limit_seconds(period)
+            # Get daily limit for this period (use original case for settings lookup)
+            daily_limit = get_daily_limit_seconds(block_original)
 
             if daily_limit:
                 # Calculate today's completed attendance using proper Pacific day boundaries
                 today_attendance = calculate_period_attendance_utc_range(
-                    student.id, period, start_of_day_utc, end_of_day_utc
+                    student.id, period_upper, start_of_day_utc, end_of_day_utc
                 )
 
                 # Add current active session time
@@ -775,13 +778,13 @@ def check_and_auto_tapout_if_limit_reached(student):
                 if today_attendance >= daily_limit:
                     hours_limit = daily_limit / 3600.0
                     current_app.logger.info(
-                        f"Auto-tapping out student {student.id} from {period} - daily limit of {hours_limit} hours reached (total: {today_attendance/3600:.2f}h)"
+                        f"Auto-tapping out student {student.id} from {period_upper} - daily limit of {hours_limit} hours reached (total: {today_attendance/3600:.2f}h)"
                     )
 
                     # Create tap-out event
                     tap_out_event = TapEvent(
                         student_id=student.id,
-                        period=period,
+                        period=period_upper,
                         status="inactive",
                         timestamp=now_utc,
                         reason=f"Daily limit ({hours_limit:.1f}h) reached"

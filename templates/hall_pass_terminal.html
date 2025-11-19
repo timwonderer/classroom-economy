@@ -94,12 +94,15 @@ function lookupPass() {
                 return;
             }
 
+            // Extract pass data from nested structure
+            const pass = data.pass;
+
             // Show student information
-            document.getElementById('studentName').textContent = data.student_name;
-            document.getElementById('period').textContent = data.period;
-            document.getElementById('destination').textContent = data.destination;
+            document.getElementById('studentName').textContent = pass.student_name;
+            document.getElementById('period').textContent = pass.period;
+            document.getElementById('destination').textContent = pass.destination;
             // Format time in local timezone (browser will convert from UTC)
-            const requestDate = new Date(data.request_time);
+            const requestDate = new Date(pass.request_time);
             const options = {
                 year: 'numeric',
                 month: '2-digit',
@@ -114,12 +117,12 @@ function lookupPass() {
             document.getElementById('usePassBtn').style.display = 'none';
             document.getElementById('returnBtn').style.display = 'none';
 
-            if (data.pass_status === 'approved') {
+            if (pass.pass_status === 'approved') {
                 document.getElementById('usePassBtn').style.display = 'block';
-            } else if (data.pass_status === 'left') {
+            } else if (pass.pass_status === 'left') {
                 document.getElementById('returnBtn').style.display = 'block';
             } else {
-                showError(`Pass status is "${data.pass_status}". Cannot use this pass.`);
+                showError(`Pass status is "${pass.pass_status}". Cannot use this pass.`);
                 return;
             }
 

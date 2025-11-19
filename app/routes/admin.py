@@ -2334,3 +2334,122 @@ def export_students():
         mimetype='text/csv',
         headers={'Content-Disposition': f'attachment; filename={filename}'}
     )
+
+
+# -------------------- ADMIN TAP OUT --------------------
+
+@admin_bp.route('/tap-out-students', methods=['POST'])
+@admin_required
+def tap_out_students():
+    """
+    Admin endpoint to tap out one or more students from a specific period.
+    Supports single student, multiple students, or entire block tap-out.
+    """
+    data = request.get_json()
+
+    # Get parameters
+    student_ids = data.get('student_ids', [])  # List of student IDs, or 'all' for entire block
+    period = data.get('period', '').strip().upper()
+    reason = data.get('reason', 'Teacher tap-out')
+    tap_out_all = data.get('tap_out_all', False)  # If true, tap out all active students in this period
+
+    if not period:
+        return jsonify({"status": "error", "message": "Period is required."}), 400
+
+    if not tap_out_all and not student_ids:
+        return jsonify({"status": "error", "message": "Either student_ids or tap_out_all must be provided."}), 400
+
+    now_utc = datetime.now(timezone.utc)
+    tapped_out = []
+    already_inactive = []
+    errors = []
+
+    try:
+        # If tap_out_all is true, get all students with this period who are currently active
+        if tap_out_all:
+            # Find all students in this block
+            students = Student.query.all()
+            for student in students:
+                student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+                if period not in student_blocks:
+                    continue
+
+                # Check if student is currently active in this period
+                latest_event = (
+                    TapEvent.query
+                    .filter_by(student_id=student.id, period=period)
+                    .order_by(TapEvent.timestamp.desc())
+                    .first()
+                )
+
+                if latest_event and latest_event.status == "active":
+                    student_ids.append(student.id)
+
+        # Process each student ID
+        for student_id in student_ids:
+            student = Student.query.get(student_id)
+
+            if not student:
+                errors.append(f"Student ID {student_id} not found")
+                continue
+
+            # Verify the student has this period in their block
+            student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+            if period not in student_blocks:
+                errors.append(f"{student.full_name} is not enrolled in period {period}")
+                continue
+
+            # Check if student is currently active in this period
+            latest_event = (
+                TapEvent.query
+                .filter_by(student_id=student.id, period=period)
+                .order_by(TapEvent.timestamp.desc())
+                .first()
+            )
+
+            if not latest_event or latest_event.status != "active":
+                already_inactive.append(student.full_name)
+                continue
+
+            # Create tap-out event
+            tap_out_event = TapEvent(
+                student_id=student.id,
+                period=period,
+                status="inactive",
+                timestamp=now_utc,
+                reason=reason
+            )
+            db.session.add(tap_out_event)
+            tapped_out.append(student.full_name)
+
+            current_app.logger.info(
+                f"Admin tapped out student {student.id} ({student.full_name}) from period {period}"
+            )
+
+        # Commit all tap-outs
+        db.session.commit()
+
+        # Build response message
+        message_parts = []
+        if tapped_out:
+            message_parts.append(f"Successfully tapped out {len(tapped_out)} student(s)")
+        if already_inactive:
+            message_parts.append(f"{len(already_inactive)} student(s) were already inactive")
+        if errors:
+            message_parts.append(f"{len(errors)} error(s) occurred")
+
+        return jsonify({
+            "status": "success",
+            "message": ". ".join(message_parts),
+            "tapped_out": tapped_out,
+            "already_inactive": already_inactive,
+            "errors": errors
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Admin tap-out failed: {e}", exc_info=True)
+        return jsonify({
+            "status": "error",
+            "message": f"Failed to tap out students: {str(e)}"
+        }), 500

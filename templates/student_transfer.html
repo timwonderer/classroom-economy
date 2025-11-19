@@ -77,7 +77,7 @@
 <div class="modal fade" id="passphraseModal" tabindex="-1" aria-labelledby="passphraseModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content">
-            <form id="passphraseForm" method="POST">
+            <form id="passphraseForm" method="POST" action="{{ url_for('student.transfer') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="modal-header">
                     <h5 class="modal-title" id="passphraseModalLabel">Confirm Transfer</h5>
