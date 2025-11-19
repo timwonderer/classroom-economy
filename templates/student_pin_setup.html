@@ -210,8 +210,8 @@
         <div class="setup-form-side">
             <div class="setup-container">
                 <h1>Set Your PIN & Passphrase</h1>
-                <p class="subtitle">Your username is: <strong>{{ username }}</strong><br></p>
-                <h2><style="font-weight:bold">Please write it down if you haven't already, as it will not be shown again after setup is complete.</style></h2>
+                <p class="subtitle"></strong><br></p>
+                <h2 style="font-weight:bold"><span style="background-color:#ffe3cc">Your username is: <strong>{{ username }}</span>. Please write it down if you haven't already, as it will not be shown again after setup is complete.</style></h2>
 
                 {% with messages = get_flashed_messages(category_filter=['setup']) %}
                   {% if messages %}
