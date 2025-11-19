@@ -485,14 +485,27 @@ def edit_student():
     return redirect(url_for('admin.students'))
 
 
-@admin_bp.route('/student/delete', methods=['POST'])
+@admin_bp.route('/student/delete', methods=['GET', 'POST'])
 @admin_required
 def delete_student():
     """Delete a student and all associated data."""
+    current_app.logger.info(f"Delete student route accessed. Method: {request.method}, Form data: {dict(request.form)}")
+
+    # If GET request, show error and redirect (for debugging)
+    if request.method == 'GET':
+        flash("Delete student must be accessed via POST request.", "error")
+        return redirect(url_for('admin.students'))
+
     student_id = request.form.get('student_id', type=int)
     confirmation = request.form.get('confirmation', '').strip()
 
+    if not student_id:
+        current_app.logger.error("No student_id provided in delete request")
+        flash("Error: No student ID provided.", "error")
+        return redirect(url_for('admin.students'))
+
     if confirmation != 'DELETE':
+        current_app.logger.info(f"Delete cancelled: confirmation '{confirmation}' != 'DELETE'")
         flash("Deletion cancelled: confirmation text did not match.", "warning")
         return redirect(url_for('admin.students'))
 
