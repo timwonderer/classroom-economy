@@ -336,13 +336,16 @@ def students():
     """View all students with basic information organized by block."""
     all_students = Student.query.order_by(Student.block, Student.first_name).all()
 
-    # Get unique blocks
-    blocks = sorted(set(s.block for s in all_students))
+    # Get unique blocks - split comma-separated blocks into individual blocks
+    blocks = sorted({b.strip() for s in all_students for b in (s.block or "").split(',') if b.strip()})
 
-    # Group students by block
+    # Group students by block (students can appear in multiple blocks)
     students_by_block = {}
     for block in blocks:
-        students_by_block[block] = [s for s in all_students if s.block == block]
+        students_by_block[block] = [
+            s for s in all_students
+            if block.upper() in [b.strip().upper() for b in (s.block or "").split(',')]
+        ]
 
     # Add username_display attribute to each student
     for student in all_students:
@@ -484,14 +487,27 @@ def edit_student():
     return redirect(url_for('admin.students'))
 
 
-@admin_bp.route('/student/delete', methods=['POST'])
+@admin_bp.route('/student/delete', methods=['GET', 'POST'])
 @admin_required
 def delete_student():
     """Delete a student and all associated data."""
+    current_app.logger.info(f"Delete student route accessed. Method: {request.method}, Form data: {dict(request.form)}")
+
+    # If GET request, show error and redirect (for debugging)
+    if request.method == 'GET':
+        flash("Delete student must be accessed via POST request.", "error")
+        return redirect(url_for('admin.students'))
+
     student_id = request.form.get('student_id', type=int)
     confirmation = request.form.get('confirmation', '').strip()
 
+    if not student_id:
+        current_app.logger.error("No student_id provided in delete request")
+        flash("Error: No student ID provided.", "error")
+        return redirect(url_for('admin.students'))
+
     if confirmation != 'DELETE':
+        current_app.logger.info(f"Delete cancelled: confirmation '{confirmation}' != 'DELETE'")
         flash("Deletion cancelled: confirmation text did not match.", "warning")
         return redirect(url_for('admin.students'))
 
