@@ -370,7 +370,7 @@
 
     {% block session_timer %}{% endblock %}
 
-    <div class="container content-container">
+    <div class="container-fluid content-container">
       {% with messages = get_flashed_messages(with_categories=true) %}
         {% if messages %}
           {% for category, message in messages %}
