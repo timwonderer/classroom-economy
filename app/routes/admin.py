@@ -334,10 +334,30 @@ def logout():
 @admin_bp.route('/students')
 @admin_required
 def students():
-    """View all students with basic information."""
-    students = Student.query.order_by(Student.block, Student.first_name).all()
-    # Remove deprecated last_tap_in/last_tap_out logic; templates should not reference them.
-    return render_template('admin_students.html', students=students, current_page="students")
+    """View all students with basic information organized by block."""
+    all_students = Student.query.order_by(Student.block, Student.first_name).all()
+
+    # Get unique blocks
+    blocks = sorted(set(s.block for s in all_students))
+
+    # Group students by block
+    students_by_block = {}
+    for block in blocks:
+        students_by_block[block] = [s for s in all_students if s.block == block]
+
+    # Add username_display attribute to each student
+    for student in all_students:
+        if student.username_hash and student.has_completed_setup:
+            # Username is hashed, we need to display a placeholder
+            student.username_display = f"user_{student.id}"
+        else:
+            student.username_display = "Not Set"
+
+    return render_template('admin_students.html',
+                         students=all_students,
+                         blocks=blocks,
+                         students_by_block=students_by_block,
+                         current_page="students")
 
 
 @admin_bp.route('/students/<int:student_id>')
@@ -389,6 +409,214 @@ def set_hall_passes(student_id):
         flash("Invalid hall pass balance provided.", "error")
 
     return redirect(url_for('admin.student_detail', student_id=student_id))
+
+
+@admin_bp.route('/student/edit', methods=['POST'])
+@admin_required
+def edit_student():
+    """Edit student basic information."""
+    student_id = request.form.get('student_id', type=int)
+    student = Student.query.get_or_404(student_id)
+
+    # Update basic fields
+    student.first_name = request.form.get('first_name', '').strip()
+    student.last_initial = request.form.get('last_initial', '').strip().upper()
+    student.block = request.form.get('block', '').strip()
+
+    # Update DOB sum if provided
+    dob_sum = request.form.get('dob_sum', '').strip()
+    if dob_sum:
+        student.dob_sum = int(dob_sum)
+
+    try:
+        db.session.commit()
+        flash(f"Successfully updated {student.full_name}'s information.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error updating student: {str(e)}", "error")
+
+    return redirect(url_for('admin.students'))
+
+
+@admin_bp.route('/student/delete', methods=['POST'])
+@admin_required
+def delete_student():
+    """Delete a student and all associated data."""
+    student_id = request.form.get('student_id', type=int)
+    confirmation = request.form.get('confirmation', '').strip()
+
+    if confirmation != 'DELETE':
+        flash("Deletion cancelled: confirmation text did not match.", "warning")
+        return redirect(url_for('admin.students'))
+
+    student = Student.query.get_or_404(student_id)
+    student_name = student.full_name
+
+    try:
+        # Delete associated records (cascade should handle this, but being explicit)
+        Transaction.query.filter_by(student_id=student.id).delete()
+        TapEvent.query.filter_by(student_id=student.id).delete()
+        StudentItem.query.filter_by(student_id=student.id).delete()
+        RentPayment.query.filter_by(student_id=student.id).delete()
+        StudentInsurance.query.filter_by(student_id=student.id).delete()
+        HallPassLog.query.filter_by(student_id=student.id).delete()
+
+        # Delete the student
+        db.session.delete(student)
+        db.session.commit()
+
+        flash(f"Successfully deleted {student_name} and all associated data.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error deleting student: {str(e)}", "error")
+
+    return redirect(url_for('admin.students'))
+
+
+@admin_bp.route('/student/add-individual', methods=['POST'])
+@admin_required
+def add_individual_student():
+    """Add a single student (same as bulk upload but for one student)."""
+    try:
+        first_name = request.form.get('first_name', '').strip()
+        last_name = request.form.get('last_name', '').strip()
+        dob_str = request.form.get('dob', '').strip()
+        block = request.form.get('block', '').strip().upper()
+
+        if not all([first_name, last_name, dob_str, block]):
+            flash("All fields are required.", "error")
+            return redirect(url_for('admin.students'))
+
+        # Generate last_initial
+        last_initial = last_name[0].upper()
+
+        # Parse DOB and calculate sum
+        month, day, year = map(int, dob_str.split('/'))
+        dob_sum = month + day + year
+
+        # Generate name code (vowels + consonants)
+        full_name_lower = (first_name + last_name).lower()
+        vowels = ''.join(c for c in full_name_lower if c in 'aeiou')
+        consonants = ''.join(c for c in full_name_lower if c.isalpha() and c not in 'aeiou')
+        name_code = vowels + consonants
+
+        # Generate salt and hashes
+        salt = get_random_salt()
+        first_half_hash = hash_hmac(name_code, salt)
+        second_half_hash = hash_hmac(str(dob_sum), salt)
+
+        # Check for duplicates
+        duplicate = Student.query.filter_by(
+            last_initial=last_initial,
+            block=block
+        ).first()
+
+        if duplicate and duplicate.first_name == first_name:
+            flash(f"Student {first_name} {last_initial}. in block {block} already exists.", "warning")
+            return redirect(url_for('admin.students'))
+
+        # Create student
+        new_student = Student(
+            first_name=first_name,
+            last_initial=last_initial,
+            block=block,
+            salt=salt,
+            first_half_hash=first_half_hash,
+            second_half_hash=second_half_hash,
+            dob_sum=dob_sum,
+            has_completed_setup=False
+        )
+
+        db.session.add(new_student)
+        db.session.commit()
+
+        flash(f"Successfully added {first_name} {last_initial}. to block {block}.", "success")
+    except ValueError:
+        flash("Invalid date format. Use MM/DD/YYYY.", "error")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error adding student: {str(e)}", "error")
+
+    return redirect(url_for('admin.students'))
+
+
+@admin_bp.route('/student/add-manual', methods=['POST'])
+@admin_required
+def add_manual_student():
+    """Add a student with full manual configuration (advanced mode)."""
+    try:
+        from werkzeug.security import generate_password_hash
+
+        first_name = request.form.get('first_name', '').strip()
+        last_name = request.form.get('last_name', '').strip()
+        dob_str = request.form.get('dob', '').strip()
+        block = request.form.get('block', '').strip().upper()
+        username = request.form.get('username', '').strip()
+        pin = request.form.get('pin', '').strip()
+        passphrase = request.form.get('passphrase', '').strip()
+        hall_passes = int(request.form.get('hall_passes', 3))
+        rent_enabled = request.form.get('rent_enabled') == 'on'
+        setup_complete = request.form.get('setup_complete') == 'on'
+
+        if not all([first_name, last_name, dob_str, block]):
+            flash("Required fields missing.", "error")
+            return redirect(url_for('admin.students'))
+
+        # Generate last_initial
+        last_initial = last_name[0].upper()
+
+        # Parse DOB and calculate sum
+        month, day, year = map(int, dob_str.split('/'))
+        dob_sum = month + day + year
+
+        # Generate name code
+        full_name_lower = (first_name + last_name).lower()
+        vowels = ''.join(c for c in full_name_lower if c in 'aeiou')
+        consonants = ''.join(c for c in full_name_lower if c.isalpha() and c not in 'aeiou')
+        name_code = vowels + consonants
+
+        # Generate salt and hashes
+        salt = get_random_salt()
+        first_half_hash = hash_hmac(name_code, salt)
+        second_half_hash = hash_hmac(str(dob_sum), salt)
+
+        # Create student
+        new_student = Student(
+            first_name=first_name,
+            last_initial=last_initial,
+            block=block,
+            salt=salt,
+            first_half_hash=first_half_hash,
+            second_half_hash=second_half_hash,
+            dob_sum=dob_sum,
+            hall_passes=hall_passes,
+            is_rent_enabled=rent_enabled,
+            has_completed_setup=setup_complete
+        )
+
+        # Set username if provided
+        if username:
+            new_student.username_hash = hash_hmac(username, salt)
+
+        # Set PIN if provided
+        if pin:
+            new_student.pin_hash = generate_password_hash(pin)
+
+        # Set passphrase if provided
+        if passphrase:
+            new_student.passphrase_hash = generate_password_hash(passphrase)
+
+        db.session.add(new_student)
+        db.session.commit()
+
+        flash(f"Successfully created {first_name} {last_initial}. in block {block} (manual mode).", "success")
+    except ValueError:
+        flash("Invalid date format. Use MM/DD/YYYY.", "error")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error creating student: {str(e)}", "error")
+
+    return redirect(url_for('admin.students'))
 
 
 # -------------------- STORE MANAGEMENT --------------------

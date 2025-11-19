@@ -2,89 +2,549 @@
 {% set page_title = "Student Management" %}
 {% block title %}Student Management{% endblock %}
 {% block page_icon %}school{% endblock %}
+
+{% block extra_styles %}
+<style>
+    .student-card {
+        transition: all 0.2s ease;
+    }
+    .student-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    }
+    .block-tab-content {
+        min-height: 400px;
+    }
+    .quick-action-btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.875rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
+<!-- Nav Tabs -->
+<ul class="nav nav-tabs mb-4" id="studentTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="roster-tab" data-bs-toggle="tab" data-bs-target="#roster" type="button" role="tab">
+      <i class="bi bi-people me-1"></i>Student Roster
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="bulk-upload-tab" data-bs-toggle="tab" data-bs-target="#bulk-upload" type="button" role="tab">
+      <i class="bi bi-upload me-1"></i>Bulk Upload
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="individual-upload-tab" data-bs-toggle="tab" data-bs-target="#individual-upload" type="button" role="tab">
+      <i class="bi bi-person-plus me-1"></i>Add Individual
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="add-manual-tab" data-bs-toggle="tab" data-bs-target="#add-manual" type="button" role="tab">
+      <i class="bi bi-person-plus-fill me-1"></i>Add Manually
+    </button>
+  </li>
+</ul>
 
-    <div class="row mb-4">
-        <div class="col-md-12 mb-2">
-            <div class="card p-3 bg-light">
-                <h4 style="margin-bottom:10px">Bulk Student Upload</h4>
-                <p>You can upload a spreadsheet containing multiple students at once to save time. In order for the system to recognize student information, you must use the custom template by clicking the download button below.</p>
-                <div class="d-flex flex-wrap gap-2">
-                    <a href="{{ url_for('admin.download_csv_template') }}" class="btn" style="background-color: rgb(219, 66, 0); color:white; border-style:outset">
-                        <i class="bi bi-download me-1"></i> Download Bulk Student Template
-                    </a>
-                    <button class="btn" style="background-color: green; color:white; border-style:outset" data-bs-toggle="modal" data-bs-target="#uploadModal">
-                        <i class="bi bi-upload me-1"></i> Upload Bulk Student Template
-                    </button>
-                    <a href="{{ url_for('admin.export_students') }}" class="btn btn-primary">
-                        <i class="bi bi-file-earmark-arrow-down me-1"></i> Export All Student Data
-                    </a>
-                </div>
-            </div>
+<div class="tab-content" id="studentTabContent">
+  <!-- ROSTER TAB -->
+  <div class="tab-pane fade show active" id="roster" role="tabpanel">
+    <div class="card shadow">
+      <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="bi bi-people me-2"></i>Student Roster by Block</h5>
+        <div>
+          <a href="{{ url_for('admin.export_students') }}" class="btn btn-light btn-sm">
+            <i class="bi bi-file-earmark-arrow-down me-1"></i> Export All
+          </a>
         </div>
+      </div>
+      <div class="card-body">
+        <!-- Block Filter Tabs -->
+        <ul class="nav nav-pills mb-3" id="blockTabs" role="tablist">
+          {% for block in blocks %}
+          <li class="nav-item" role="presentation">
+            <button class="nav-link {% if loop.first %}active{% endif %}"
+                    id="block-{{ block }}-tab"
+                    data-bs-toggle="pill"
+                    data-bs-target="#block-{{ block }}"
+                    type="button"
+                    role="tab">
+              Block {{ block|upper }}
+              <span class="badge bg-secondary ms-1">{{ students_by_block[block]|length }}</span>
+            </button>
+          </li>
+          {% endfor %}
+        </ul>
+
+        <!-- Block Content -->
+        <div class="tab-content block-tab-content" id="blockTabContent">
+          {% for block in blocks %}
+          <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+               id="block-{{ block }}"
+               role="tabpanel">
+            {% set block_students = students_by_block[block] %}
+            {% if block_students %}
+              <div class="table-responsive">
+                <table class="table table-hover table-striped">
+                  <thead class="table-dark">
+                    <tr>
+                      <th>Name</th>
+                      <th>Username</th>
+                      <th>Checking</th>
+                      <th>Savings</th>
+                      <th>Total Earnings</th>
+                      <th>Hall Passes</th>
+                      <th>Setup Status</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {% for student in block_students %}
+                    <tr>
+                      <td>
+                        <a href="{{ url_for('admin.student_detail', student_id=student.id) }}" class="fw-bold text-decoration-none">
+                          {{ student.full_name }}
+                        </a>
+                      </td>
+                      <td>
+                        <span class="badge bg-info">{{ student.username_display if student.has_completed_setup else 'Not Set' }}</span>
+                      </td>
+                      <td class="{% if student.checking_balance < 0 %}text-danger{% endif %}">
+                        ${{ "%.2f"|format(student.checking_balance) }}
+                      </td>
+                      <td>${{ "%.2f"|format(student.savings_balance) }}</td>
+                      <td class="text-success">${{ "%.2f"|format(student.total_earnings) }}</td>
+                      <td>
+                        <span class="badge bg-primary">{{ student.hall_passes }}</span>
+                      </td>
+                      <td>
+                        {% if student.has_completed_setup %}
+                          <span class="badge bg-success">Complete</span>
+                        {% else %}
+                          <span class="badge bg-warning text-dark">Pending</span>
+                        {% endif %}
+                      </td>
+                      <td>
+                        <button class="btn btn-sm btn-outline-primary quick-action-btn me-1"
+                                data-bs-toggle="modal"
+                                data-bs-target="#editStudentModal"
+                                data-student-id="{{ student.id }}"
+                                data-student-name="{{ student.first_name }}"
+                                data-student-last-initial="{{ student.last_initial }}"
+                                data-student-block="{{ student.block }}"
+                                data-student-dob-sum="{{ student.dob_sum }}">
+                          <i class="bi bi-pencil"></i> Edit
+                        </button>
+                        <button class="btn btn-sm btn-outline-danger quick-action-btn"
+                                data-bs-toggle="modal"
+                                data-bs-target="#deleteStudentModal"
+                                data-student-id="{{ student.id }}"
+                                data-student-name="{{ student.full_name }}">
+                          <i class="bi bi-trash"></i> Delete
+                        </button>
+                      </td>
+                    </tr>
+                    {% endfor %}
+                  </tbody>
+                </table>
+              </div>
+            {% else %}
+              <div class="alert alert-info">
+                <i class="bi bi-info-circle me-2"></i>No students in Block {{ block|upper }}
+              </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
     </div>
+  </div>
 
+  <!-- BULK UPLOAD TAB -->
+  <div class="tab-pane fade" id="bulk-upload" role="tabpanel">
+    <div class="card shadow">
+      <div class="card-header bg-success text-white">
+        <h5 class="mb-0"><i class="bi bi-upload me-2"></i>Bulk Student Upload</h5>
+      </div>
+      <div class="card-body">
+        <div class="row">
+          <div class="col-lg-6 mb-4">
+            <div class="card border-primary h-100">
+              <div class="card-header bg-primary bg-opacity-10">
+                <h6 class="mb-0 text-primary"><i class="bi bi-info-circle me-2"></i>Instructions</h6>
+              </div>
+              <div class="card-body">
+                <ol class="mb-3">
+                  <li class="mb-2">Download the CSV template using the button below</li>
+                  <li class="mb-2">Fill in student information (First Name, Last Name, Date of Birth in MM/DD/YYYY format, Period/Block)</li>
+                  <li class="mb-2">Save the file as CSV format</li>
+                  <li class="mb-2">Upload the completed file</li>
+                </ol>
+                <div class="alert alert-warning mb-0">
+                  <strong><i class="bi bi-exclamation-triangle me-2"></i>Important:</strong>
+                  <ul class="mb-0 mt-2">
+                    <li>Do not modify the header row</li>
+                    <li>Date of Birth must be in MM/DD/YYYY format</li>
+                    <li>Duplicate students will be automatically skipped</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-6 mb-4">
+            <div class="card border-success h-100">
+              <div class="card-header bg-success bg-opacity-10">
+                <h6 class="mb-0 text-success"><i class="bi bi-cloud-upload me-2"></i>Upload File</h6>
+              </div>
+              <div class="card-body">
+                <form action="{{ url_for('admin.upload_students') }}" method="post" enctype="multipart/form-data">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                  <div class="mb-3">
+                    <label for="csv_file" class="form-label fw-bold">Select CSV File</label>
+                    <input class="form-control form-control-lg"
+                           type="file"
+                           name="csv_file"
+                           id="csv_file"
+                           accept=".csv"
+                           required>
+                    <div class="form-text">Only .csv files are accepted</div>
+                  </div>
+                  <div class="d-grid gap-2">
+                    <a href="{{ url_for('admin.download_csv_template') }}" class="btn btn-outline-primary">
+                      <i class="bi bi-download me-2"></i>Download Template
+                    </a>
+                    <button type="submit" class="btn btn-success btn-lg">
+                      <i class="bi bi-upload me-2"></i>Upload Students
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 
-<!-- Upload Modal -->
-<div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
+  <!-- INDIVIDUAL UPLOAD TAB -->
+  <div class="tab-pane fade" id="individual-upload" role="tabpanel">
+    <div class="card shadow">
+      <div class="card-header bg-info text-white">
+        <h5 class="mb-0"><i class="bi bi-person-plus me-2"></i>Add Individual Student</h5>
+      </div>
+      <div class="card-body">
+        <div class="row justify-content-center">
+          <div class="col-lg-8">
+            <form action="{{ url_for('admin.add_individual_student') }}" method="post">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+              <div class="card border-info mb-3">
+                <div class="card-header bg-info bg-opacity-10">
+                  <h6 class="mb-0 text-info"><i class="bi bi-person me-2"></i>Student Information</h6>
+                </div>
+                <div class="card-body">
+                  <div class="row">
+                    <div class="col-md-6 mb-3">
+                      <label for="first_name" class="form-label fw-bold">First Name <span class="text-danger">*</span></label>
+                      <input type="text" class="form-control" id="first_name" name="first_name" required>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                      <label for="last_name" class="form-label fw-bold">Last Name <span class="text-danger">*</span></label>
+                      <input type="text" class="form-control" id="last_name" name="last_name" required>
+                    </div>
+                  </div>
+                  <div class="row">
+                    <div class="col-md-6 mb-3">
+                      <label for="dob" class="form-label fw-bold">Date of Birth <span class="text-danger">*</span></label>
+                      <input type="text"
+                             class="form-control"
+                             id="dob"
+                             name="dob"
+                             placeholder="MM/DD/YYYY"
+                             pattern="\d{2}/\d{2}/\d{4}"
+                             required>
+                      <div class="form-text">Format: MM/DD/YYYY</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                      <label for="block" class="form-label fw-bold">Block/Period <span class="text-danger">*</span></label>
+                      <select class="form-select" id="block" name="block" required>
+                        <option value="">Select a block...</option>
+                        {% for block in blocks %}
+                        <option value="{{ block }}">Block {{ block|upper }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-grid">
+                <button type="submit" class="btn btn-info btn-lg">
+                  <i class="bi bi-person-plus me-2"></i>Add Student
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADD MANUALLY TAB -->
+  <div class="tab-pane fade" id="add-manual" role="tabpanel">
+    <div class="card shadow">
+      <div class="card-header bg-warning text-dark">
+        <h5 class="mb-0"><i class="bi bi-person-plus-fill me-2"></i>Add Student Manually (Advanced)</h5>
+      </div>
+      <div class="card-body">
+        <div class="alert alert-warning">
+          <h6><i class="bi bi-exclamation-triangle me-2"></i>Advanced Mode</h6>
+          <p class="mb-0">This mode allows you to manually configure all student settings including credentials. Use with caution.</p>
+        </div>
+
+        <div class="row justify-content-center">
+          <div class="col-lg-10">
+            <form action="{{ url_for('admin.add_manual_student') }}" method="post">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+              <!-- Basic Info Card -->
+              <div class="card border-primary mb-3">
+                <div class="card-header bg-primary bg-opacity-10">
+                  <h6 class="mb-0 text-primary"><i class="bi bi-info-circle me-2"></i>Basic Information</h6>
+                </div>
+                <div class="card-body">
+                  <div class="row">
+                    <div class="col-md-4 mb-3">
+                      <label for="manual_first_name" class="form-label fw-bold">First Name <span class="text-danger">*</span></label>
+                      <input type="text" class="form-control" id="manual_first_name" name="first_name" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                      <label for="manual_last_name" class="form-label fw-bold">Last Name <span class="text-danger">*</span></label>
+                      <input type="text" class="form-control" id="manual_last_name" name="last_name" required>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                      <label for="manual_block" class="form-label fw-bold">Block <span class="text-danger">*</span></label>
+                      <select class="form-select" id="manual_block" name="block" required>
+                        <option value="">Select...</option>
+                        {% for block in blocks %}
+                        <option value="{{ block }}">Block {{ block|upper }}</option>
+                        {% endfor %}
+                      </select>
+                    </div>
+                  </div>
+                  <div class="row">
+                    <div class="col-md-6 mb-3">
+                      <label for="manual_dob" class="form-label fw-bold">Date of Birth <span class="text-danger">*</span></label>
+                      <input type="text"
+                             class="form-control"
+                             id="manual_dob"
+                             name="dob"
+                             placeholder="MM/DD/YYYY"
+                             pattern="\d{2}/\d{2}/\d{4}"
+                             required>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                      <label for="manual_username" class="form-label fw-bold">Username (Optional)</label>
+                      <input type="text" class="form-control" id="manual_username" name="username">
+                      <div class="form-text">Leave blank to auto-generate</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Credentials Card -->
+              <div class="card border-secondary mb-3">
+                <div class="card-header bg-secondary bg-opacity-10">
+                  <h6 class="mb-0 text-secondary"><i class="bi bi-key me-2"></i>Credentials (Optional)</h6>
+                </div>
+                <div class="card-body">
+                  <div class="row">
+                    <div class="col-md-6 mb-3">
+                      <label for="manual_pin" class="form-label fw-bold">PIN</label>
+                      <input type="password"
+                             class="form-control"
+                             id="manual_pin"
+                             name="pin"
+                             pattern="\d{4,6}"
+                             placeholder="4-6 digits">
+                      <div class="form-text">Leave blank for student to set</div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                      <label for="manual_passphrase" class="form-label fw-bold">Passphrase</label>
+                      <input type="password" class="form-control" id="manual_passphrase" name="passphrase">
+                      <div class="form-text">Leave blank for student to set</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Settings Card -->
+              <div class="card border-success mb-3">
+                <div class="card-header bg-success bg-opacity-10">
+                  <h6 class="mb-0 text-success"><i class="bi bi-gear me-2"></i>Initial Settings</h6>
+                </div>
+                <div class="card-body">
+                  <div class="row">
+                    <div class="col-md-4 mb-3">
+                      <label for="manual_hall_passes" class="form-label fw-bold">Hall Passes</label>
+                      <input type="number" class="form-control" id="manual_hall_passes" name="hall_passes" value="3" min="0">
+                    </div>
+                    <div class="col-md-4 mb-3">
+                      <label class="form-label fw-bold d-block">Rent Enabled</label>
+                      <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="manual_rent_enabled" name="rent_enabled" checked>
+                        <label class="form-check-label" for="manual_rent_enabled">Enable rent for this student</label>
+                      </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                      <label class="form-label fw-bold d-block">Setup Status</label>
+                      <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="manual_setup_complete" name="setup_complete">
+                        <label class="form-check-label" for="manual_setup_complete">Mark as setup complete</label>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="d-grid">
+                <button type="submit" class="btn btn-warning btn-lg">
+                  <i class="bi bi-person-plus-fill me-2"></i>Create Student (Advanced)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Student Modal -->
+<div class="modal fade" id="editStudentModal" tabindex="-1" aria-labelledby="editStudentModalLabel" aria-hidden="true">
   <div class="modal-dialog">
-    <form action="{{ url_for('admin.upload_students') }}" method="post" enctype="multipart/form-data">
+    <form action="{{ url_for('admin.edit_student') }}" method="post">
       <div class="modal-content">
-        <div class="modal-header" style="background-color:rgb(2, 62, 121);color:white;">
-          <h5 class="modal-title" id="uploadModalLabel">Upload Students CSV</h5>
-          <button type="button"   class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="editStudentModalLabel">
+            <i class="bi bi-pencil me-2"></i>Edit Student
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
         <div class="modal-body">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" id="edit_student_id" name="student_id">
+
           <div class="mb-3">
-            <p style="font-weight:bold;">You must use the provided template to fill out student information.</p>           
-            <label for="csv_file" class="form-label">Select CSV file:</label>
-            <input class="form-control" type="file" name="csv_file" id="csv_file" accept=".csv" required onchange="document.getElementById('file-chosen').textContent = this.files[0]?.name || 'No file chosen';">
-            <div id="file-chosen" class="form-text mt-1">No file chosen</div>
+            <label for="edit_first_name" class="form-label fw-bold">First Name</label>
+            <input type="text" class="form-control" id="edit_first_name" name="first_name" required>
           </div>
-           <p style="font-weight:bold;"> Please check your file before uploading:</p>
-            <ul>
-                    <li> Make sure the header row is unchanged.</li>
-                    <li> Make sure the Date of Birth is in MM/DD/YYYY format.</li>
-                    <li> Make sure the file is in CSV format.</li>
-                </ul>
+          <div class="mb-3">
+            <label for="edit_last_initial" class="form-label fw-bold">Last Initial</label>
+            <input type="text" class="form-control" id="edit_last_initial" name="last_initial" maxlength="1" required>
+          </div>
+          <div class="mb-3">
+            <label for="edit_block" class="form-label fw-bold">Block</label>
+            <select class="form-select" id="edit_block" name="block" required>
+              {% for block in blocks %}
+              <option value="{{ block }}">Block {{ block|upper }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="edit_dob_sum" class="form-label fw-bold">DOB Sum</label>
+            <input type="number" class="form-control" id="edit_dob_sum" name="dob_sum">
+            <div class="form-text">Leave blank to keep unchanged</div>
+          </div>
+
+          <div class="alert alert-info mb-0">
+            <small><i class="bi bi-info-circle me-2"></i><strong>Note:</strong> Usernames, PINs, and passphrases cannot be edited here. Students must reset them through the proper channels.</small>
+          </div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-          <button type="submit" class="btn btn-primary">Upload</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
         </div>
       </div>
     </form>
   </div>
 </div>
-    
 
-    <table class="table table-bordered table-striped table-hover mt-4">
-        <thead class="table-dark">
-            <tr>
-                <th>Name</th>
-                <th>Block</th>
-                <th>Checking</th>
-                <th>Savings</th>
-                <th>Hall Passes</th>
-                <th>Setup Complete</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for student in students %}
-            <tr>
-                <td>
-                    <a href="{{ url_for('admin.student_detail', student_id=student.id) }}">
-                        {{ student.full_name if student else "Unknown" }}
-                    </a>
-                </td>
-                <td>{{ student.block }}</td>
-                <td>${{ "%.2f"|format(student.checking_balance) }}</td>
-                <td>${{ "%.2f"|format(student.savings_balance) }}</td>
-                <td>{{ student.hall_passes }}</td>
-                <td>{{ 'Yes' if student.has_completed_setup else 'No' }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
+<!-- Delete Student Modal -->
+<div class="modal fade" id="deleteStudentModal" tabindex="-1" aria-labelledby="deleteStudentModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <form action="{{ url_for('admin.delete_student') }}" method="post">
+      <div class="modal-content">
+        <div class="modal-header bg-danger text-white">
+          <h5 class="modal-title" id="deleteStudentModalLabel">
+            <i class="bi bi-exclamation-triangle me-2"></i>Delete Student
+          </h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" id="delete_student_id" name="student_id">
+
+          <div class="alert alert-danger">
+            <h6><i class="bi bi-exclamation-triangle me-2"></i>Warning</h6>
+            <p>You are about to delete <strong id="delete_student_name"></strong>.</p>
+            <p class="mb-0">This action will permanently delete:</p>
+            <ul class="mb-0">
+              <li>All transaction history</li>
+              <li>All attendance records</li>
+              <li>All purchased items</li>
+              <li>All other student data</li>
+            </ul>
+          </div>
+
+          <p class="mb-3">Type <strong class="text-danger">DELETE</strong> to confirm:</p>
+          <input type="text" class="form-control" id="delete_confirmation" name="confirmation" required>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger">Delete Permanently</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  // Edit Student Modal
+  const editModal = document.getElementById('editStudentModal');
+  if (editModal) {
+    editModal.addEventListener('show.bs.modal', event => {
+      const button = event.relatedTarget;
+      const studentId = button.getAttribute('data-student-id');
+      const studentName = button.getAttribute('data-student-name');
+      const lastInitial = button.getAttribute('data-student-last-initial');
+      const block = button.getAttribute('data-student-block');
+      const dobSum = button.getAttribute('data-student-dob-sum');
+
+      editModal.querySelector('#edit_student_id').value = studentId;
+      editModal.querySelector('#edit_first_name').value = studentName;
+      editModal.querySelector('#edit_last_initial').value = lastInitial;
+      editModal.querySelector('#edit_block').value = block;
+      editModal.querySelector('#edit_dob_sum').value = dobSum || '';
+    });
+  }
+
+  // Delete Student Modal
+  const deleteModal = document.getElementById('deleteStudentModal');
+  if (deleteModal) {
+    deleteModal.addEventListener('show.bs.modal', event => {
+      const button = event.relatedTarget;
+      const studentId = button.getAttribute('data-student-id');
+      const studentName = button.getAttribute('data-student-name');
+
+      deleteModal.querySelector('#delete_student_id').value = studentId;
+      deleteModal.querySelector('#delete_student_name').textContent = studentName;
+      deleteModal.querySelector('#delete_confirmation').value = '';
+    });
+  }
+</script>
 {% endblock %}

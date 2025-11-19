@@ -130,6 +130,198 @@
     </div>
 </div>
 
+<!-- Financial Management Section -->
+<div class="card mb-4">
+    <div class="card-header">
+        <span class="material-symbols-outlined">account_balance_wallet</span> Financial Management
+    </div>
+    <div class="card-body">
+        <ul class="nav nav-tabs mb-3" id="financialTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="transfer-tab" data-bs-toggle="tab" data-bs-target="#transfer" type="button" role="tab">
+                    <span class="material-symbols-outlined">sync_alt</span> Transfer
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="checking-history-tab" data-bs-toggle="tab" data-bs-target="#checking-history" type="button" role="tab">
+                    <span class="material-symbols-outlined">receipt_long</span> Checking History
+                    <span class="badge bg-secondary">{{ checking_transactions|length }}</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="savings-history-tab" data-bs-toggle="tab" data-bs-target="#savings-history" type="button" role="tab">
+                    <span class="material-symbols-outlined">savings</span> Savings History
+                    <span class="badge bg-secondary">{{ savings_transactions|length }}</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats" type="button" role="tab">
+                    <span class="material-symbols-outlined">analytics</span> Stats
+                </button>
+            </li>
+        </ul>
+        <div class="tab-content" id="financialTabContent">
+            <!-- Transfer Tab -->
+            <div class="tab-pane fade show active" id="transfer" role="tabpanel">
+                <div class="row justify-content-center">
+                    <div class="col-md-8">
+                        <div class="card border-primary">
+                            <div class="card-header bg-primary bg-opacity-10">
+                                <h6 class="mb-0 text-primary"><span class="material-symbols-outlined">sync_alt</span> Transfer Funds</h6>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted mb-3">Transfer money between your checking and savings accounts.</p>
+                                <a href="{{ url_for('student.transfer') }}" class="btn btn-primary w-100">
+                                    <span class="material-symbols-outlined">sync_alt</span> Go to Transfer Page
+                                </a>
+                            </div>
+                        </div>
+                        <div class="alert alert-info mt-3">
+                            <strong><span class="material-symbols-outlined">info</span> Tip:</strong> Your savings account earns {{ '%.2f'|format(forecast_interest * 12) }}% annual interest (approximately ${{ '%.2f'|format(forecast_interest) }}/month).
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Checking History Tab -->
+            <div class="tab-pane fade" id="checking-history" role="tabpanel">
+                {% if checking_transactions %}
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Amount</th>
+                                    <th>Description</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tx in checking_transactions[:50] %}
+                                <tr {% if tx.is_void %}class="table-secondary text-decoration-line-through"{% endif %}>
+                                    <td>{{ tx.timestamp.strftime('%m/%d/%y %I:%M %p') if tx.timestamp else 'N/A' }}</td>
+                                    <td><span class="badge bg-info">{{ tx.type|title if tx.type else 'General' }}</span></td>
+                                    <td class="{% if tx.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                        ${{ "%.2f"|format(tx.amount) }}
+                                    </td>
+                                    <td>{{ tx.description or 'N/A' }}</td>
+                                    <td>
+                                        {% if tx.is_void %}
+                                            <span class="badge bg-secondary">Voided</span>
+                                        {% else %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if checking_transactions|length > 50 %}
+                        <p class="text-muted text-center">Showing most recent 50 transactions</p>
+                    {% endif %}
+                {% else %}
+                    <div class="alert alert-info">
+                        <span class="material-symbols-outlined">info</span> No checking transactions yet.
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Savings History Tab -->
+            <div class="tab-pane fade" id="savings-history" role="tabpanel">
+                {% if savings_transactions %}
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Amount</th>
+                                    <th>Description</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tx in savings_transactions[:50] %}
+                                <tr {% if tx.is_void %}class="table-secondary text-decoration-line-through"{% endif %}>
+                                    <td>{{ tx.timestamp.strftime('%m/%d/%y %I:%M %p') if tx.timestamp else 'N/A' }}</td>
+                                    <td><span class="badge bg-info">{{ tx.type|title if tx.type else 'General' }}</span></td>
+                                    <td class="{% if tx.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                        ${{ "%.2f"|format(tx.amount) }}
+                                    </td>
+                                    <td>{{ tx.description or 'N/A' }}</td>
+                                    <td>
+                                        {% if tx.is_void %}
+                                            <span class="badge bg-secondary">Voided</span>
+                                        {% else %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if savings_transactions|length > 50 %}
+                        <p class="text-muted text-center">Showing most recent 50 transactions</p>
+                    {% endif %}
+                {% else %}
+                    <div class="alert alert-info">
+                        <span class="material-symbols-outlined">info</span> No savings transactions yet.
+                    </div>
+                {% endif %}
+            </div>
+
+            <!-- Stats Tab -->
+            <div class="tab-pane fade" id="stats" role="tabpanel">
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <div class="card border-primary">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted text-uppercase mb-2">Total Balance</h6>
+                                <h3 class="text-primary mb-0">${{ "%.2f"|format(student.checking_balance + student.savings_balance) }}</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card border-success">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted text-uppercase mb-2">Total Earnings</h6>
+                                <h3 class="text-success mb-0">${{ "%.2f"|format(student.total_earnings) }}</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <div class="card border-info">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted text-uppercase mb-2">Total Transactions</h6>
+                                <h3 class="text-info mb-0">{{ transactions|length }}</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="card border-warning">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted text-uppercase mb-2">Items Owned</h6>
+                                <h3 class="text-warning mb-0">{{ student_items|length }}</h3>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6 mb-3">
+                        <div class="card border-secondary">
+                            <div class="card-body text-center">
+                                <h6 class="text-muted text-uppercase mb-2">Monthly Interest Forecast</h6>
+                                <h3 class="text-secondary mb-0">${{ "%.2f"|format(forecast_interest) }}</h3>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Attendance & Productivity Section -->
 <div class="card mb-4">
     <div class="card-header">
@@ -194,27 +386,97 @@
     </div>
     <div class="card-body">
         {% if student_items %}
-            <div class="list-group">
-                {% for s_item in student_items %}
-                <div class="list-group-item d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="mb-1">{{ s_item.store_item.name }}</h6>
-                        <small class="text-muted">
-                            Purchased: {{ s_item.purchase_date.strftime('%Y-%m-%d') }} |
-                            <span class="badge bg-info">{{ s_item.status|title }}</span>
-                        </small>
-                    </div>
-                    {% if s_item.store_item.item_type == 'delayed' and s_item.status == 'purchased' %}
-                    <button class="btn btn-sm btn-outline-success"
-                            data-bs-toggle="modal"
-                            data-bs-target="#useItemModal"
-                            data-student-item-id="{{ s_item.id }}"
-                            data-item-name="{{ s_item.store_item.name }}">
-                        Use Item
+            <!-- Tabs for item status -->
+            <ul class="nav nav-pills mb-3" id="itemsTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="owned-items-tab" data-bs-toggle="tab" data-bs-target="#owned-items" type="button" role="tab">
+                        <span class="material-symbols-outlined">inventory_2</span> Owned
+                        <span class="badge bg-secondary">{{ student_items|selectattr('status', 'in', ['purchased', 'pending'])|list|length }}</span>
                     </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="used-items-tab" data-bs-toggle="tab" data-bs-target="#used-items" type="button" role="tab">
+                        <span class="material-symbols-outlined">check_circle</span> Used
+                        <span class="badge bg-secondary">{{ student_items|selectattr('status', 'in', ['processing', 'used', 'approved'])|list|length }}</span>
+                    </button>
+                </li>
+            </ul>
+            <div class="tab-content" id="itemsTabContent">
+                <!-- Owned Items Tab -->
+                <div class="tab-pane fade show active" id="owned-items" role="tabpanel">
+                    {% set owned_items = student_items|selectattr('status', 'in', ['purchased', 'pending'])|list %}
+                    {% if owned_items %}
+                        <div class="list-group">
+                            {% for s_item in owned_items %}
+                            <div class="list-group-item d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1">{{ s_item.store_item.name }}</h6>
+                                    <small class="text-muted">
+                                        Purchased: {{ s_item.purchase_date.strftime('%Y-%m-%d') }} |
+                                        <span class="badge bg-primary">{{ s_item.status|title }}</span>
+                                    </small>
+                                </div>
+                                {% if s_item.store_item.item_type == 'delayed' and s_item.status == 'purchased' %}
+                                <button class="btn btn-sm btn-outline-success"
+                                        data-bs-toggle="modal"
+                                        data-bs-target="#useItemModal"
+                                        data-student-item-id="{{ s_item.id }}"
+                                        data-item-name="{{ s_item.store_item.name }}">
+                                    Use Item
+                                </button>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <span class="material-symbols-outlined">info</span> No owned items. <a href="{{ url_for('student.shop') }}">Visit the shop</a> to buy some!
+                        </div>
                     {% endif %}
                 </div>
-                {% endfor %}
+
+                <!-- Used Items Tab -->
+                <div class="tab-pane fade" id="used-items" role="tabpanel">
+                    {% set used_items = student_items|selectattr('status', 'in', ['processing', 'used', 'approved'])|list %}
+                    {% if used_items %}
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead class="table-dark">
+                                    <tr>
+                                        <th>Item</th>
+                                        <th>Purchase Date</th>
+                                        <th>Status</th>
+                                        <th>Details</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for s_item in used_items %}
+                                    <tr>
+                                        <td>{{ s_item.store_item.name }}</td>
+                                        <td>{{ s_item.purchase_date.strftime('%m/%d/%y') if s_item.purchase_date else 'N/A' }}</td>
+                                        <td>
+                                            {% if s_item.status == 'processing' %}
+                                                <span class="badge bg-warning text-dark">Processing</span>
+                                            {% elif s_item.status == 'used' %}
+                                                <span class="badge bg-info">Used</span>
+                                            {% elif s_item.status == 'approved' %}
+                                                <span class="badge bg-success">Approved</span>
+                                            {% else %}
+                                                <span class="badge bg-secondary">{{ s_item.status|title }}</span>
+                                            {% endif %}
+                                        </td>
+                                        <td>{{ s_item.redemption_details or 'N/A' }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-info">
+                            <span class="material-symbols-outlined">info</span> No used items yet.
+                        </div>
+                    {% endif %}
+                </div>
             </div>
         {% else %}
             <p class="text-muted text-center mb-0">You don't own any items yet. <a href="{{ url_for('student.shop') }}">Visit the shop</a> to buy some!</p>

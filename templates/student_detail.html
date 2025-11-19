@@ -1,247 +1,708 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Student Detail</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-</head>
-<body class="p-4">
-    <div id="flashToastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index:1050;"></div>
-    <h2>🧑‍🎓 {{ student.full_name }} (Block {{ student.block }})</h2>
+{% extends "layout_admin.html" %}
+{% set page_title = student.full_name ~ " - Student Detail" %}
+{% block title %}{{ student.full_name }} - Detail{% endblock %}
+{% block page_icon %}person{% endblock %}
 
-    <!-- SECTION 1: STUDENT INFO -->
-    <div class="card mb-4">
-        <div class="card-header bg-info text-white">Student Information</div>
-        <div class="card-body">
-            <p><strong>Checking Balance:</strong> ${{ "%.2f"|format(student.checking_balance) }}</p>
-            <p><strong>Savings Balance:</strong> ${{ "%.2f"|format(student.savings_balance) }}</p>
-            <hr>
-            <h6>⏱️ Recent Attendance</h6>
-            {% if latest_tap_event %}
-              <p><strong>Timestamp:</strong> <span class="local-timestamp" data-timestamp="{{ latest_tap_event.timestamp.isoformat() }}Z"></span></p>
-              <p><strong>Status:</strong> {{ latest_tap_event.status|capitalize }}</p>
-              <p><strong>Period:</strong> {{ latest_tap_event.period|upper }}</p>
-              <p><strong>Reason:</strong> {{ latest_tap_event.reason if latest_tap_event.reason else '—' }}</p>
-            {% else %}
-              <p>—</p>
-            {% endif %}
+{% block extra_styles %}
+<style>
+    .stat-card {
+        transition: transform 0.2s;
+    }
+    .stat-card:hover {
+        transform: translateY(-2px);
+    }
+    .stat-value {
+        font-size: 2rem;
+        font-weight: bold;
+    }
+    .stat-label {
+        color: #6c757d;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+    }
+    .negative-balance {
+        color: #dc3545;
+    }
+    .positive-balance {
+        color: #28a745;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Header with Back Button and Edit -->
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <a href="{{ url_for('admin.students') }}" class="btn btn-outline-secondary mb-2">
+            <i class="bi bi-arrow-left me-1"></i> Back to Students
+        </a>
+        <h2 class="mb-0">
+            <i class="bi bi-person-circle me-2"></i>{{ student.full_name }}
+            <span class="badge bg-primary">Block {{ student.block|upper }}</span>
+        </h2>
+    </div>
+    <div>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#editBasicInfoModal">
+            <i class="bi bi-pencil me-1"></i> Edit Student
+        </button>
+    </div>
+</div>
+
+<!-- Stats Cards Row -->
+<div class="row mb-4">
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="stat-label mb-2">Checking Balance</div>
+                <div class="stat-value {% if student.checking_balance < 0 %}negative-balance{% else %}positive-balance{% endif %}">
+                    ${{ "%.2f"|format(student.checking_balance) }}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="stat-label mb-2">Savings Balance</div>
+                <div class="stat-value positive-balance">
+                    ${{ "%.2f"|format(student.savings_balance) }}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="stat-label mb-2">Total Earnings</div>
+                <div class="stat-value text-success">
+                    ${{ "%.2f"|format(student.total_earnings) }}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-3">
+        <div class="card stat-card shadow-sm h-100">
+            <div class="card-body text-center">
+                <div class="stat-label mb-2">Hall Passes</div>
+                <div class="stat-value text-info">
+                    {{ student.hall_passes }}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content Tabs -->
+<ul class="nav nav-tabs mb-4" id="studentDetailTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="overview-tab" data-bs-toggle="tab" data-bs-target="#overview" type="button" role="tab">
+            <i class="bi bi-info-circle me-1"></i>Overview
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="transactions-tab" data-bs-toggle="tab" data-bs-target="#transactions" type="button" role="tab">
+            <i class="bi bi-receipt me-1"></i>Transactions
+            <span class="badge bg-secondary">{{ transactions|length }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="items-tab" data-bs-toggle="tab" data-bs-target="#items" type="button" role="tab">
+            <i class="bi bi-bag me-1"></i>Items
+            <span class="badge bg-secondary">{{ student_items|length }}</span>
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="attendance-tab" data-bs-toggle="tab" data-bs-target="#attendance" type="button" role="tab">
+            <i class="bi bi-clock-history me-1"></i>Attendance
+        </button>
+    </li>
+    {% if student.is_rent_enabled or student.owns_seat %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="housing-tab" data-bs-toggle="tab" data-bs-target="#housing" type="button" role="tab">
+            <i class="bi bi-house me-1"></i>Housing
+        </button>
+    </li>
+    {% endif %}
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="payroll-tab" data-bs-toggle="tab" data-bs-target="#payroll" type="button" role="tab">
+            <i class="bi bi-cash-coin me-1"></i>Payroll
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings" type="button" role="tab">
+            <i class="bi bi-gear me-1"></i>Settings
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="studentDetailTabContent">
+    <!-- OVERVIEW TAB -->
+    <div class="tab-pane fade show active" id="overview" role="tabpanel">
+        <div class="row">
+            <!-- Student Info Card -->
+            <div class="col-lg-6 mb-4">
+                <div class="card shadow">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="bi bi-person me-2"></i>Student Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-borderless mb-0">
+                            <tr>
+                                <td class="fw-bold">Name:</td>
+                                <td>{{ student.full_name }}</td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">Block:</td>
+                                <td><span class="badge bg-primary">{{ student.block|upper }}</span></td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">Student ID:</td>
+                                <td><code>#{{ student.id }}</code></td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">Setup Status:</td>
+                                <td>
+                                    {% if student.has_completed_setup %}
+                                        <span class="badge bg-success">Complete</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">Pending</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">Insurance Plan:</td>
+                                <td>{{ student.insurance_plan if student.insurance_plan != 'none' else 'None' }}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Stats Card -->
+            <div class="col-lg-6 mb-4">
+                <div class="card shadow">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="bi bi-graph-up me-2"></i>Quick Stats</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-6 mb-3">
+                                <h4 class="text-primary">${{ "%.2f"|format(student.checking_balance + student.savings_balance) }}</h4>
+                                <small class="text-muted">Total Balance</small>
+                            </div>
+                            <div class="col-6 mb-3">
+                                <h4 class="text-success">{{ transactions|selectattr('amount', 'gt', 0)|list|length }}</h4>
+                                <small class="text-muted">Total Deposits</small>
+                            </div>
+                            <div class="col-6">
+                                <h4 class="text-info">{{ student_items|length }}</h4>
+                                <small class="text-muted">Items Owned</small>
+                            </div>
+                            <div class="col-6">
+                                <h4 class="text-warning">{{ student.hall_passes }}</h4>
+                                <small class="text-muted">Hall Passes</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity Card -->
+            <div class="col-lg-12 mb-4">
+                <div class="card shadow">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0"><i class="bi bi-activity me-2"></i>Recent Attendance</h5>
+                    </div>
+                    <div class="card-body">
+                        {% if latest_tap_event %}
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <strong>Timestamp:</strong><br>
+                                    <span class="local-timestamp" data-timestamp="{{ latest_tap_event.timestamp.isoformat() }}Z"></span>
+                                </div>
+                                <div class="col-md-3">
+                                    <strong>Status:</strong><br>
+                                    <span class="badge {% if latest_tap_event.status == 'active' %}bg-success{% else %}bg-secondary{% endif %}">
+                                        {{ latest_tap_event.status|capitalize }}
+                                    </span>
+                                </div>
+                                <div class="col-md-3">
+                                    <strong>Period:</strong><br>
+                                    {{ latest_tap_event.period|upper }}
+                                </div>
+                                <div class="col-md-3">
+                                    <strong>Reason:</strong><br>
+                                    {{ latest_tap_event.reason if latest_tap_event.reason else 'N/A' }}
+                                </div>
+                            </div>
+                        {% else %}
+                            <p class="text-muted mb-0">No attendance records found.</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Hall Pass Management Section -->
-    <div class="card mb-4">
-        <div class="card-header bg-warning text-dark">Hall Pass Management</div>
-        <div class="card-body">
-            <p><strong>Current Hall Passes:</strong> {{ student.hall_passes }}</p>
-            <form action="{{ url_for('admin.set_hall_passes', student_id=student.id) }}" method="post" class="row g-3 align-items-center">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <div class="col-auto">
-                    <label for="hall_passes" class="form-label">Set New Balance:</label>
-                </div>
-                <div class="col-auto">
-                    <input type="number" class="form-control" name="hall_passes" id="hall_passes" value="{{ student.hall_passes }}" min="0" required>
-                </div>
-                <div class="col-auto">
-                    <button type="submit" class="btn btn-primary">Update</button>
-                </div>
-            </form>
+    <!-- TRANSACTIONS TAB -->
+    <div class="tab-pane fade" id="transactions" role="tabpanel">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>Transaction History</h5>
+                <span class="badge bg-light text-dark">{{ transactions|length }} total</span>
+            </div>
+            <div class="card-body">
+                {% if transactions %}
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Account</th>
+                                    <th>Amount</th>
+                                    <th>Description</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tx in transactions %}
+                                <tr {% if tx.is_void %}class="table-secondary text-decoration-line-through"{% endif %}>
+                                    <td>
+                                        <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">{{ tx.type|title if tx.type else 'General' }}</span>
+                                    </td>
+                                    <td>{{ tx.account_type|title }}</td>
+                                    <td class="{% if tx.amount < 0 %}text-danger{% else %}text-success{% endif %}">
+                                        ${{ "%.2f"|format(tx.amount) }}
+                                    </td>
+                                    <td>{{ tx.description or 'N/A' }}</td>
+                                    <td>
+                                        {% if tx.is_void %}
+                                            <span class="badge bg-secondary">Voided</span>
+                                        {% else %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if not tx.is_void and tx.type != 'refund' %}
+                                            <button class="btn btn-sm btn-outline-danger void-btn"
+                                                    data-id="{{ tx.id }}">
+                                                <i class="bi bi-x-circle"></i> Void
+                                            </button>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-info-circle me-2"></i>No transactions found for this student.
+                    </div>
+                {% endif %}
+            </div>
         </div>
     </div>
 
-    <!-- SECTION 2: SETTINGS -->
-    <div class="card mb-4">
-        <div class="card-header bg-secondary text-white">Residency Information</div>
-        <div class="card-body">
-            <p><strong>Homeownership:</strong> {{ 'Yes' if student.owns_seat else 'No' }}</p>
-            <p><strong>Renter:</strong> {{ 'Yes' if student.is_rent_enabled else 'No' }}</p>
+    <!-- ITEMS TAB -->
+    <div class="tab-pane fade" id="items" role="tabpanel">
+        <div class="card shadow">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-bag me-2"></i>Purchased Items</h5>
+            </div>
+            <div class="card-body">
+                {% if student_items %}
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Item Name</th>
+                                    <th>Purchase Date</th>
+                                    <th>Status</th>
+                                    <th>Type</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for s_item in student_items %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ s_item.store_item.name }}</strong>
+                                    </td>
+                                    <td>
+                                        <span class="local-timestamp" data-timestamp="{{ s_item.purchase_date.isoformat() }}Z"></span>
+                                    </td>
+                                    <td>
+                                        {% if s_item.status == 'purchased' %}
+                                            <span class="badge bg-primary">Purchased</span>
+                                        {% elif s_item.status == 'processing' %}
+                                            <span class="badge bg-warning text-dark">Processing</span>
+                                        {% elif s_item.status == 'used' %}
+                                            <span class="badge bg-success">Used</span>
+                                        {% elif s_item.status == 'approved' %}
+                                            <span class="badge bg-success">Approved</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ s_item.status|title }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">{{ s_item.store_item.item_type|title }}</span>
+                                    </td>
+                                    <td>{{ s_item.redemption_details or 'N/A' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-info-circle me-2"></i>This student has not purchased any items yet.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
 
+    <!-- ATTENDANCE TAB -->
+    <div class="tab-pane fade" id="attendance" role="tabpanel">
+        <div class="card shadow">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Attendance History</h5>
+            </div>
+            <div class="card-body">
+                {% set tap_events = student.tap_events|sort(attribute='timestamp', reverse=True) %}
+                {% if tap_events %}
+                    <div class="table-responsive">
+                        <table class="table table-striped table-hover">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Timestamp</th>
+                                    <th>Period</th>
+                                    <th>Status</th>
+                                    <th>Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tap in tap_events[:50] %}
+                                <tr>
+                                    <td>
+                                        <span class="local-timestamp" data-timestamp="{{ tap.timestamp.isoformat() }}Z"></span>
+                                    </td>
+                                    <td><span class="badge bg-primary">{{ tap.period|upper }}</span></td>
+                                    <td>
+                                        {% if tap.status == 'active' %}
+                                            <span class="badge bg-success">Active</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">Inactive</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ tap.reason or 'N/A' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% if tap_events|length > 50 %}
+                        <p class="text-muted text-center mb-0">Showing most recent 50 records out of {{ tap_events|length }} total</p>
+                    {% endif %}
+                {% else %}
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-info-circle me-2"></i>No attendance records found for this student.
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- HOUSING TAB (Only if rent or property tax enabled) -->
+    {% if student.is_rent_enabled or student.owns_seat %}
+    <div class="tab-pane fade" id="housing" role="tabpanel">
+        <div class="row">
+            <!-- Rent Card -->
             {% if student.is_rent_enabled %}
-            <ul>
-              <li><strong>Most Recent Rent Payment:</strong>
-                {% if student.rent_last_paid %}
-                  {{ student.rent_last_paid|format_datetime('%Y-%m-%d') }}
-                {% else %}
-                  —
-                {% endif %}
-              </li>
-              <li><strong>Overdue:</strong>
-                {% if student.rent_overdue %}
-                  Yes (Due Date: {{ student.rent_due_date|format_datetime('%Y-%m-%d') }})
-                {% else %}
-                  No
-                {% endif %}
-              </li>
-            </ul>
+            <div class="col-lg-6 mb-4">
+                <div class="card shadow h-100">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-house-door me-2"></i>Rent Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-borderless">
+                            <tr>
+                                <td class="fw-bold">Status:</td>
+                                <td>
+                                    <span class="badge bg-info">Renter</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">Last Payment:</td>
+                                <td>
+                                    {% if student.rent_last_paid %}
+                                        <span class="local-timestamp" data-timestamp="{{ student.rent_last_paid.isoformat() }}Z"></span>
+                                    {% else %}
+                                        <span class="text-muted">Never</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">Due Date:</td>
+                                <td>{{ student.rent_due_date.strftime('%B %d, %Y') if student.rent_due_date else 'N/A' }}</td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">Overdue:</td>
+                                <td>
+                                    {% if student.rent_overdue %}
+                                        <span class="badge bg-danger">Yes</span>
+                                    {% else %}
+                                        <span class="badge bg-success">No</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
             {% endif %}
 
+            <!-- Property Tax Card -->
             {% if student.owns_seat %}
-            <ul>
-              <li><strong>Most Recent Property Tax Payment:</strong>
-                {% if student.property_tax_last_paid %}
-                  {{ student.property_tax_last_paid|format_datetime('%Y-%m-%d') }}
+            <div class="col-lg-6 mb-4">
+                <div class="card shadow h-100">
+                    <div class="card-header bg-success text-white">
+                        <h5 class="mb-0"><i class="bi bi-house me-2"></i>Property Tax Information</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-borderless">
+                            <tr>
+                                <td class="fw-bold">Status:</td>
+                                <td>
+                                    <span class="badge bg-success">Homeowner</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">Last Payment:</td>
+                                <td>
+                                    {% if student.property_tax_last_paid %}
+                                        <span class="local-timestamp" data-timestamp="{{ student.property_tax_last_paid.isoformat() }}Z"></span>
+                                    {% else %}
+                                        <span class="text-muted">Never</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">Due Date:</td>
+                                <td>{{ student.property_tax_due_date.strftime('%B %d, %Y') if student.property_tax_due_date else 'N/A' }}</td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">Overdue:</td>
+                                <td>
+                                    {% if student.property_tax_overdue %}
+                                        <span class="badge bg-danger">Yes</span>
+                                    {% else %}
+                                        <span class="badge bg-success">No</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- PAYROLL TAB -->
+    <div class="tab-pane fade" id="payroll" role="tabpanel">
+        <div class="card shadow">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="bi bi-cash-coin me-2"></i>Earnings & Payroll</h5>
+            </div>
+            <div class="card-body">
+                <div class="row mb-4">
+                    <div class="col-md-4 text-center">
+                        <h3 class="text-success">${{ "%.2f"|format(student.total_earnings) }}</h3>
+                        <p class="text-muted">Total Earnings</p>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <h3 class="text-info">{{ transactions|selectattr('type', 'equalto', 'payroll')|list|length }}</h3>
+                        <p class="text-muted">Payroll Deposits</p>
+                    </div>
+                    <div class="col-md-4 text-center">
+                        <h3 class="text-primary">{{ transactions|selectattr('type', 'equalto', 'bonus')|list|length }}</h3>
+                        <p class="text-muted">Bonuses Received</p>
+                    </div>
+                </div>
+
+                <h6 class="mb-3">Recent Earnings</h6>
+                {% set earnings = transactions|selectattr('amount', 'gt', 0)|list %}
+                {% if earnings %}
+                    <div class="table-responsive">
+                        <table class="table table-striped">
+                            <thead class="table-dark">
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Type</th>
+                                    <th>Amount</th>
+                                    <th>Description</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tx in earnings[:20] %}
+                                <tr>
+                                    <td>
+                                        <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">{{ tx.type|title if tx.type else 'Deposit' }}</span>
+                                    </td>
+                                    <td class="text-success">${{ "%.2f"|format(tx.amount) }}</td>
+                                    <td>{{ tx.description or 'N/A' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 {% else %}
-                  —
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-info-circle me-2"></i>No earnings recorded yet.
+                    </div>
                 {% endif %}
-              </li>
-              <li><strong>Overdue:</strong>
-                {% if student.property_tax_overdue %}
-                  Yes (Due Date: {{ student.property_tax_due_date|format_datetime('%Y-%m-%d') }})
-                {% else %}
-                  No
-                {% endif %}
-              </li>
-            </ul>
-            {% endif %}
+            </div>
         </div>
     </div>
 
-    <!-- SECTION 3: LOGS -->
-    <div class="card mb-4">
-        <div class="card-header bg-dark text-white">Logs: Transactions & Purchases</div>
-        <div class="card-body">
-            <h6>💳 Transaction History</h6>
-            {% if transactions %}
-            <table class="table table-sm table-striped">
-                <thead>
-                    <tr><th>Timestamp</th><th>Type</th><th>Amount</th><th>Description</th><th>Action</th></tr>
-                </thead>
-                <tbody>
-                    {% for tx in transactions %}
-                    <tr {% if tx.is_void %}class="text-muted text-decoration-line-through"{% endif %}>
-                      <td>
-                          {% if tx.timestamp %}
-                            <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
-                          {% else %}
-                            —
-                          {% endif %}
-                        </td>  
-                      <td>{{ tx.type }}</td>
-                        <td>${{ "%.2f"|format(tx.amount) }}</td>
-                        <td>{{ tx.description }}</td>
-                        
-                        <td>
-                            {% if tx.is_void %}
-                                <span class="badge bg-secondary">Voided</span>
-                            {% elif tx.type == 'refund' %}
-                                <span class="badge bg-secondary">Refund</span>
-                            {% else %}
-                                 <button type="button" 
-                                        class="btn btn-sm btn-outline-danger void-btn" 
-                                        data-id="{{ tx.id }}"
-                                      >❌ Void</button>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <p><em>No transactions recorded.</em></p>
-            {% endif %}
+    <!-- SETTINGS TAB -->
+    <div class="tab-pane fade" id="settings" role="tabpanel">
+        <div class="row">
+            <!-- Hall Passes Card -->
+            <div class="col-lg-6 mb-4">
+                <div class="card shadow">
+                    <div class="card-header bg-warning text-dark">
+                        <h5 class="mb-0"><i class="bi bi-ticket-perforated me-2"></i>Hall Pass Management</h5>
+                    </div>
+                    <div class="card-body">
+                        <p><strong>Current Balance:</strong> <span class="badge bg-primary fs-5">{{ student.hall_passes }}</span></p>
+                        <form action="{{ url_for('admin.set_hall_passes', student_id=student.id) }}" method="post" class="row g-3">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <div class="col-auto">
+                                <label for="hall_passes" class="form-label fw-bold">Set New Balance:</label>
+                            </div>
+                            <div class="col-auto">
+                                <input type="number" class="form-control" name="hall_passes" id="hall_passes" value="{{ student.hall_passes }}" min="0" required>
+                            </div>
+                            <div class="col-auto">
+                                <button type="submit" class="btn btn-warning">
+                                    <i class="bi bi-check-circle me-1"></i>Update
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
 
-            <hr>
-            <h6>🛒 Owned Items</h6>
-            {% if student_items %}
-            <table class="table table-sm table-striped">
-                <thead>
-                    <tr>
-                        <th>Item</th>
-                        <th>Status</th>
-                        <th>Purchased On</th>
-                        <th>Details</th>
-                    </tr>
-                </thead>
-                <tbody>
-                  {% for s_item in student_items %}
-                  <tr>
-                    <td>{{ s_item.store_item.name }}</td>
-                    <td><span class="badge bg-info">{{ s_item.status|title }}</span></td>
-                    <td>
-                      {% if s_item.purchase_date %}
-                        <span class="local-timestamp" data-timestamp="{{ s_item.purchase_date.isoformat() }}Z"></span>
-                      {% else %}
-                        —
-                      {% endif %}
-                    </td>
-                    <td>{{ s_item.redemption_details or 'N/A' }}</td>
-                  </tr>
-                  {% endfor %}
-                </tbody>
-            </table>
-            {% else %}
-            <p><em>This student owns no items.</em></p>
-            {% endif %}
+            <!-- Account Settings Card -->
+            <div class="col-lg-6 mb-4">
+                <div class="card shadow">
+                    <div class="card-header bg-secondary text-white">
+                        <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Account Settings</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-borderless mb-0">
+                            <tr>
+                                <td class="fw-bold">Rent Enabled:</td>
+                                <td>
+                                    {% if student.is_rent_enabled %}
+                                        <span class="badge bg-success">Yes</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">No</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">Homeowner:</td>
+                                <td>
+                                    {% if student.owns_seat %}
+                                        <span class="badge bg-success">Yes</span>
+                                    {% else %}
+                                        <span class="badge bg-secondary">No</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">Insurance Plan:</td>
+                                <td>
+                                    <span class="badge bg-info">{{ student.insurance_plan if student.insurance_plan != 'none' else 'None' }}</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">Setup Complete:</td>
+                                <td>
+                                    {% if student.has_completed_setup %}
+                                        <span class="badge bg-success">Yes</span>
+                                    {% else %}
+                                        <span class="badge bg-warning text-dark">No</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
+</div>
 
-    <!-- SECTION 4: PAYROLL AND BONUSES -->
-    <div class="card mb-4">
-        <div class="card-header bg-success text-white">Payroll & Bonuses</div>
-        <div class="card-body">
-            <p><em>Coming soon: Log of automatic pay and manual bonuses.</em></p>
-        </div>
+<!-- Edit Basic Info Modal -->
+<div class="modal fade" id="editBasicInfoModal" tabindex="-1" aria-labelledby="editBasicInfoModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <form action="{{ url_for('admin.edit_student') }}" method="post">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title" id="editBasicInfoModalLabel">
+                        <i class="bi bi-pencil me-2"></i>Edit Student Information
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="student_id" value="{{ student.id }}">
+
+                    <div class="mb-3">
+                        <label for="edit_first_name" class="form-label fw-bold">First Name</label>
+                        <input type="text" class="form-control" id="edit_first_name" name="first_name" value="{{ student.first_name }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_last_initial" class="form-label fw-bold">Last Initial</label>
+                        <input type="text" class="form-control" id="edit_last_initial" name="last_initial" value="{{ student.last_initial }}" maxlength="1" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_block" class="form-label fw-bold">Block</label>
+                        <input type="text" class="form-control" id="edit_block" name="block" value="{{ student.block }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="edit_dob_sum" class="form-label fw-bold">DOB Sum</label>
+                        <input type="number" class="form-control" id="edit_dob_sum" name="dob_sum" value="{{ student.dob_sum }}">
+                        <div class="form-text">Leave blank to keep unchanged</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Changes</button>
+                </div>
+            </div>
+        </form>
     </div>
+</div>
 
-    <a href="/admin/students?block={{ student.block }}" class="btn btn-outline-secondary">← Back to Block {{ student.block }}</a>
+{% endblock %}
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-  // Helper to show a Bootstrap toast
-  function showToast(category, message) {
-    const container = document.getElementById('flashToastContainer');
-    const toastEl = document.createElement('div');
-    toastEl.className = 'toast align-items-center text-bg-' +
-      (category === 'success' ? 'success' : 'warning') +
-      ' border-0 mb-2';
-    toastEl.setAttribute('role', 'alert');
-    toastEl.setAttribute('aria-live', 'assertive');
-    toastEl.setAttribute('aria-atomic', 'true');
-    toastEl.innerHTML = `
-      <div class="d-flex">
-        <div class="toast-body">${message}</div>
-        <button type="button" class="btn-close btn-close-white me-2 m-auto"
-                data-bs-dismiss="toast" aria-label="Close"></button>
-      </div>`;
-    container.appendChild(toastEl);
-    new bootstrap.Toast(toastEl, { delay: 3000 }).show();
-  }
-
-  // AJAX void transaction
-  function voidTransaction(id) {
-    fetch(`/admin/void-transaction/${id}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Requested-With': 'XMLHttpRequest'
-      },
-      body: JSON.stringify({})
-    })
-    .then(r => r.json())
-    .then(data => {
-  if (data.status === 'success') {
-    showToast('success', data.message);
-    const btn = document.querySelector(`.void-btn[data-id="${id}"]`);
-    const row = btn.closest('tr');
-    row.classList.add('text-muted', 'text-decoration-line-through');
-    // Replace the Action cell contents with a Voided badge
-    const cell = btn.parentElement;
-    cell.innerHTML = '<span class="badge bg-secondary">Voided</span>';
-  } else {
-    showToast('warning', data.message || 'Error voiding transaction');
-  }
-})
-    .catch(() => {
-      showToast('warning', 'Network error');
-    });
-  }
-  document.querySelectorAll('.void-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const id = btn.getAttribute('data-id');
-      if (confirm('Void this transaction?')) {
-        voidTransaction(id);
-      }
-    });
-  });
-</script>
+{% block extra_scripts %}
+<!-- Local Timestamp Conversion -->
 <script>
     document.addEventListener("DOMContentLoaded", () => {
         document.querySelectorAll(".local-timestamp").forEach(el => {
@@ -262,6 +723,65 @@
             }
         });
     });
-  </script>
-</body>
-</html>
+</script>
+
+<!-- Void Transaction AJAX -->
+<script>
+    function showToast(message, isError = false) {
+        const toastContainer = document.getElementById('flashToastContainer') || createToastContainer();
+        const toastEl = document.createElement('div');
+        toastEl.className = 'toast align-items-center text-bg-' + (isError ? 'warning' : 'success') + ' border-0 mb-2';
+        toastEl.setAttribute('role', 'alert');
+        toastEl.setAttribute('aria-live', 'assertive');
+        toastEl.setAttribute('aria-atomic', 'true');
+        toastEl.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>`;
+        toastContainer.appendChild(toastEl);
+        new bootstrap.Toast(toastEl, { delay: 3000 }).show();
+    }
+
+    function createToastContainer() {
+        const container = document.createElement('div');
+        container.id = 'flashToastContainer';
+        container.className = 'position-fixed bottom-0 end-0 p-3';
+        container.style.zIndex = '1050';
+        document.body.appendChild(container);
+        return container;
+    }
+
+    function voidTransaction(id) {
+        if (!confirm('Are you sure you want to void this transaction?')) return;
+
+        fetch(`/admin/void-transaction/${id}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success') {
+                showToast(data.message);
+                setTimeout(() => location.reload(), 1000);
+            } else {
+                showToast(data.message || 'Error voiding transaction', true);
+            }
+        })
+        .catch(() => {
+            showToast('Network error', true);
+        });
+    }
+
+    document.querySelectorAll('.void-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-id');
+            voidTransaction(id);
+        });
+    });
+</script>
+{% endblock %}
