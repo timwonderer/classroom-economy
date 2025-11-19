@@ -99,14 +99,14 @@ The application also recognizes these optional variables for logging:
 Deploy using Gunicorn:
 
 ```bash
-gunicorn --bind=0.0.0.0 --timeout 600 app:app
+gunicorn --bind=0.0.0.0 --timeout 600 wsgi:app
 ```
 
 For DigitalOcean deployments, run migrations, then launch Gunicorn:
 
 ```bash
-FLASK_APP=app flask db upgrade
-gunicorn --bind=0.0.0.0 --timeout 600 app:app
+FLASK_APP=wsgi flask db upgrade
+gunicorn --bind=0.0.0.0 --timeout 600 wsgi:app
 ```
 
 ## Monitoring

@@ -23,7 +23,7 @@ The application is a standard Flask application that can be deployed to any plat
 4.  **Start the Application Server:**
     Use Gunicorn to run the application in a production environment:
     ```bash
-    gunicorn --bind=0.0.0.0 --timeout 600 app:app
+    gunicorn --bind=0.0.0.0 --timeout 600 wsgi:app
     ```
 
 ## Environment Variables
