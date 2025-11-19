@@ -96,7 +96,7 @@
             <p class="text-muted mb-1">Scheduled Date</p>
             <h5>
               {% if next_payroll_date %}
-                <span class="local-timestamp" data-timestamp="{{ next_payroll_date.isoformat() }}Z"></span>
+                <span class="local-timestamp" data-timestamp="{{ next_payroll_date.strftime('%Y-%m-%dT%H:%M:%SZ') }}"></span>
               {% else %}
                 Not scheduled
               {% endif %}

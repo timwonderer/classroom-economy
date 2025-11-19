@@ -87,6 +87,8 @@ def calculate_period_attendance(student_id, period, date):
     """
     Calculates total attendance seconds for a student in a specific period
     on a specific date. Used for daily attendance reporting.
+    NOTE: This uses func.date() which operates on UTC timestamps.
+    For Pacific timezone daily limits, use calculate_period_attendance_utc_range instead.
     """
     from app.models import TapEvent
 
@@ -95,6 +97,44 @@ def calculate_period_attendance(student_id, period, date):
         TapEvent.student_id == student_id,
         TapEvent.period == period,
         func.date(TapEvent.timestamp) == date
+    ).order_by(TapEvent.timestamp.asc()).all()
+
+    total_seconds = 0
+    in_time = None
+
+    for event in events:
+        event_time = _as_utc(event.timestamp)
+        if event.status == "active":
+            in_time = event_time
+        elif event.status == "inactive" and in_time:
+            total_seconds += (event_time - in_time).total_seconds()
+            in_time = None
+
+    return int(total_seconds)
+
+
+def calculate_period_attendance_utc_range(student_id, period, start_utc, end_utc):
+    """
+    Calculates total attendance seconds for a student in a specific period
+    within a UTC datetime range. Use this for timezone-aware daily limits.
+
+    Args:
+        student_id: The student's ID
+        period: The block/period identifier
+        start_utc: Start of period (UTC datetime, inclusive)
+        end_utc: End of period (UTC datetime, exclusive)
+
+    Returns:
+        int: Total seconds of attendance in the range
+    """
+    from app.models import TapEvent
+
+    # Get all events in the UTC range
+    events = TapEvent.query.filter(
+        TapEvent.student_id == student_id,
+        TapEvent.period == period,
+        TapEvent.timestamp >= start_utc,
+        TapEvent.timestamp < end_utc
     ).order_by(TapEvent.timestamp.asc()).all()
 
     total_seconds = 0
