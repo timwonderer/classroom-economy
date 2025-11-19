@@ -718,6 +718,14 @@ def check_and_auto_tapout_if_limit_reached(student):
             return dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
 
+    # Helper function to ensure UTC timezone-aware datetime
+    def _as_utc(dt):
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(timezone.utc)
+
     student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
     now_utc = datetime.now(timezone.utc)
 
