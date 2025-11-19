@@ -40,8 +40,9 @@
 <div class="tab-content" id="rentTabContent">
   <!-- OVERVIEW TAB -->
   <div class="tab-pane fade show active" id="overview" role="tabpanel">
+    {% if settings.is_enabled %}
+    <!-- Statistics Cards (only shown when rent is enabled) -->
     <div class="row">
-      <!-- Statistics Cards -->
       <div class="col-lg-4 mb-4">
         <div class="card shadow">
           <div class="card-body text-center">
@@ -67,10 +68,35 @@
         </div>
       </div>
     </div>
+    {% else %}
+    <!-- System Disabled Message -->
+    <div class="alert alert-warning border-warning">
+      <div class="d-flex align-items-center mb-3">
+        <i class="bi bi-power fs-1 me-3"></i>
+        <div>
+          <h4 class="mb-1">Rent System is Currently Disabled</h4>
+          <p class="mb-0">The rent feature is turned off. Students cannot see or interact with rent-related features.</p>
+        </div>
+      </div>
+      <hr>
+      <p class="mb-2"><strong>What this means:</strong></p>
+      <ul class="mb-0">
+        <li>Rent link is hidden from student navigation</li>
+        <li>No rent collection or payment processing</li>
+        <li>Rent tab hidden in student detail pages</li>
+        <li>All rent-related notifications disabled</li>
+      </ul>
+      <div class="mt-3">
+        <a href="#settings-tab" class="btn btn-primary" data-bs-toggle="tab" data-bs-target="#settings">
+          <i class="bi bi-gear me-2"></i>Go to Settings to Enable
+        </a>
+      </div>
+    </div>
+    {% endif %}
 
     <!-- Current Settings Summary -->
     <div class="card shadow">
-      <div class="card-header bg-info text-white">
+      <div class="card-header {% if settings.is_enabled %}bg-info text-white{% else %}bg-secondary text-white{% endif %}">
         <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i>Current Rent Configuration</h5>
       </div>
       <div class="card-body">
