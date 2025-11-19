@@ -627,7 +627,7 @@
 
 <!-- Edit Basic Info Modal -->
 <div class="modal fade" id="editBasicInfoModal" tabindex="-1" aria-labelledby="editBasicInfoModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <form action="{{ url_for('admin.edit_student') }}" method="post">
             <div class="modal-content">
                 <div class="modal-header bg-primary text-white">
@@ -640,22 +640,80 @@
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="student_id" value="{{ student.id }}">
 
-                    <div class="mb-3">
-                        <label for="edit_first_name" class="form-label fw-bold">First Name</label>
-                        <input type="text" class="form-control" id="edit_first_name" name="first_name" value="{{ student.first_name }}" required>
+                    <!-- Basic Information -->
+                    <div class="card border-primary mb-3">
+                        <div class="card-header bg-primary bg-opacity-10">
+                            <h6 class="mb-0 text-primary"><i class="bi bi-person me-2"></i>Basic Information</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label for="edit_first_name" class="form-label fw-bold">First Name</label>
+                                    <input type="text" class="form-control" id="edit_first_name" name="first_name" value="{{ student.first_name }}" required>
+                                    <div class="form-text">Used for account claim process</div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label for="edit_last_name" class="form-label fw-bold">Last Name</label>
+                                    <input type="text" class="form-control" id="edit_last_name" name="last_name" value="{{ student.last_initial }}" required>
+                                    <div class="form-text">First letter will become last initial</div>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="edit_dob_sum" class="form-label fw-bold">DOB Sum (Optional)</label>
+                                <input type="number" class="form-control" id="edit_dob_sum" name="dob_sum" value="{{ student.dob_sum }}">
+                                <div class="form-text">Sum of DOB components (MM + DD + YYYY). Leave blank to keep unchanged.</div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="edit_last_initial" class="form-label fw-bold">Last Initial</label>
-                        <input type="text" class="form-control" id="edit_last_initial" name="last_initial" value="{{ student.last_initial }}" maxlength="1" required>
+
+                    <!-- Block Assignment -->
+                    <div class="card border-info mb-3">
+                        <div class="card-header bg-info bg-opacity-10">
+                            <h6 class="mb-0 text-info"><i class="bi bi-calendar-week me-2"></i>Block Assignment</h6>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted small mb-2">Select all blocks this student attends (can select multiple):</p>
+                            <div class="row">
+                                {% for block in blocks %}
+                                <div class="col-6 col-md-4 mb-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input block-checkbox" type="checkbox" name="blocks" value="{{ block }}" id="edit_block_{{ block }}"
+                                        {% if block.upper() in student.block.upper().split(',') %}checked{% endif %}>
+                                        <label class="form-check-label" for="edit_block_{{ block }}">
+                                            Block {{ block|upper }}
+                                        </label>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            <div class="form-text">At least one block must be selected</div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="edit_block" class="form-label fw-bold">Block</label>
-                        <input type="text" class="form-control" id="edit_block" name="block" value="{{ student.block }}" required>
+
+                    <!-- Login Management -->
+                    <div class="card border-warning mb-3">
+                        <div class="card-header bg-warning bg-opacity-10">
+                            <h6 class="mb-0 text-warning"><i class="bi bi-key me-2"></i>Login Management</h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <p class="mb-1 fw-bold">Reset Student Login</p>
+                                    <p class="text-muted small mb-0">Forces student to go through account claim process again. Account data will be preserved.</p>
+                                </div>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="edit_reset_login" name="reset_login" role="switch">
+                                    <label class="form-check-label" for="edit_reset_login">Reset</label>
+                                </div>
+                            </div>
+                            <div class="alert alert-warning mt-3 mb-0" id="reset_login_warning" style="display:none;">
+                                <small><i class="bi bi-exclamation-triangle me-2"></i>Student will need to re-claim their account using their name and DOB.</small>
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-3">
-                        <label for="edit_dob_sum" class="form-label fw-bold">DOB Sum</label>
-                        <input type="number" class="form-control" id="edit_dob_sum" name="dob_sum" value="{{ student.dob_sum }}">
-                        <div class="form-text">Leave blank to keep unchanged</div>
+
+                    <div class="alert alert-info mb-0">
+                        <small><i class="bi bi-info-circle me-2"></i><strong>Note:</strong> Changing the name will update what the student needs to enter during the account claim process.</small>
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -691,6 +749,15 @@
             }
         });
     });
+
+    // Edit modal - reset login checkbox toggle warning
+    const resetLoginCheckbox = document.getElementById('edit_reset_login');
+    const resetLoginWarning = document.getElementById('reset_login_warning');
+    if (resetLoginCheckbox && resetLoginWarning) {
+        resetLoginCheckbox.addEventListener('change', function() {
+            resetLoginWarning.style.display = this.checked ? 'block' : 'none';
+        });
+    }
 </script>
 
 <!-- Void Transaction AJAX -->

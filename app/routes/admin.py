@@ -391,7 +391,12 @@ def student_detail(student_id):
     student_items = student.items.order_by(StudentItem.purchase_date.desc()).all()
     # Fetch most recent TapEvent for this student
     latest_tap_event = TapEvent.query.filter_by(student_id=student.id).order_by(TapEvent.timestamp.desc()).first()
-    return render_template('student_detail.html', student=student, transactions=transactions, student_items=student_items, latest_tap_event=latest_tap_event)
+
+    # Get all blocks for the edit modal
+    all_students = Student.query.all()
+    blocks = sorted({b.strip() for s in all_students for b in (s.block or "").split(',') if b.strip()})
+
+    return render_template('student_detail.html', student=student, transactions=transactions, student_items=student_items, latest_tap_event=latest_tap_event, blocks=blocks)
 
 
 @admin_bp.route('/student/<int:student_id>/set-hall-passes', methods=['POST'])
