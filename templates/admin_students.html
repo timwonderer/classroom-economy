@@ -430,6 +430,7 @@
 
 {% block extra_scripts %}
 <script>
+document.addEventListener('DOMContentLoaded', function() {
   // Edit Student Modal
   const editModal = document.getElementById('editStudentModal');
   if (editModal) {
@@ -490,10 +491,44 @@
       const studentId = button.getAttribute('data-student-id');
       const studentName = button.getAttribute('data-student-name');
 
-      deleteModal.querySelector('#delete_student_id').value = studentId;
-      deleteModal.querySelector('#delete_student_name').textContent = studentName;
-      deleteModal.querySelector('#delete_confirmation').value = '';
+      console.log('Delete modal opening:', { studentId, studentName });
+
+      const studentIdField = deleteModal.querySelector('#delete_student_id');
+      const studentNameField = deleteModal.querySelector('#delete_student_name');
+      const confirmationField = deleteModal.querySelector('#delete_confirmation');
+
+      if (studentIdField) {
+        studentIdField.value = studentId;
+        console.log('Set student_id field to:', studentIdField.value);
+      } else {
+        console.error('Could not find #delete_student_id field');
+      }
+
+      if (studentNameField) {
+        studentNameField.textContent = studentName;
+      } else {
+        console.error('Could not find #delete_student_name field');
+      }
+
+      if (confirmationField) {
+        confirmationField.value = '';
+      } else {
+        console.error('Could not find #delete_confirmation field');
+      }
     });
+
+    // Add form submit debugging
+    const deleteForm = deleteModal.querySelector('form');
+    if (deleteForm) {
+      deleteForm.addEventListener('submit', function(e) {
+        const formData = new FormData(deleteForm);
+        console.log('Delete form submitting with data:');
+        for (let [key, value] of formData.entries()) {
+          console.log(`  ${key}: ${value}`);
+        }
+      });
+    }
   }
+});
 </script>
 {% endblock %}
