@@ -207,15 +207,21 @@
                         <div class="alert alert-info mt-2 mb-0">
                             <strong>📝 How to create your name code:</strong>
                             <ol class="mb-0 mt-2">
-                                <li>Write all vowels (a, e, i, o, u) from your full name</li>
-                                <li>Then write all consonants from your full name</li>
+                                <li>Write all vowels (a, e, i, o, u) from your <strong>FIRST NAME</strong> only</li>
+                                <li>Then write all consonants from your <strong>LAST NAME</strong> only</li>
                                 <li>All lowercase, no spaces</li>
                             </ol>
                             <div class="mt-2 p-2 bg-white border rounded">
                                 <strong>Example:</strong> If your name is <strong>"Maria Lopez"</strong><br>
-                                • Vowels: a, i, a, o, e → <code>aiaoe</code><br>
-                                • Consonants: M, r, L, p, z → <code>mrlpz</code><br>
-                                • <strong>Type this: <span class="text-primary">aiaoeMrlpz</span></strong>
+                                • Vowels from "Maria": a, i, a → <code>aia</code><br>
+                                • Consonants from "Lopez": L, p, z → <code>lpz</code><br>
+                                • <strong>Type this: <span class="text-primary">aialpz</span></strong> (all lowercase)
+                            </div>
+                            <div class="mt-2 p-2 bg-light border rounded">
+                                <strong>Another Example:</strong> If your name is <strong>"John Smith"</strong><br>
+                                • Vowels from "John": o → <code>o</code><br>
+                                • Consonants from "Smith": S, m, t, h → <code>smth</code><br>
+                                • <strong>Type this: <span class="text-primary">osmth</span></strong>
                             </div>
                         </div>
                         {% for error in form.first_half.errors %}
