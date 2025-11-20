@@ -1274,84 +1274,9 @@ def process_claim(claim_id):
 @admin_bp.route('/transactions')
 @admin_required
 def transactions():
-    """View and filter all transactions."""
-    # Read filter and pagination parameters
-    student_q = request.args.get('student', '').strip()
-    block_q = request.args.get('block', '')
-    type_q = request.args.get('type', '')
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
-    page = int(request.args.get('page', 1))
-    per_page = 20
-
-    # Base query joining Transaction with Student
-    query = db.session.query(
-        Transaction,
-        Student.first_name.label('student_name'),
-        Student.block.label('student_block')
-    ).join(Student, Transaction.student_id == Student.id)
-
-    # Apply filters
-    if student_q:
-        # Since first_name is encrypted, we cannot use `ilike`.
-        # We must fetch students, decrypt names, and filter in Python.
-        matching_student_ids = []
-        # Handle if the query is a student ID
-        if student_q.isdigit():
-            matching_student_ids.append(int(student_q))
-
-        # Handle if the query is a name
-        all_students = Student.query.all()
-        for s in all_students:
-            # The full_name property will decrypt the first_name
-            if student_q.lower() in s.full_name.lower():
-                matching_student_ids.append(s.id)
-
-        # If there are any matches (by ID or name), filter the query
-        if matching_student_ids:
-            query = query.filter(Student.id.in_(matching_student_ids))
-        else:
-            # If no students match, return no results
-            query = query.filter(sa.false())
-
-    if block_q:
-        query = query.filter(Student.block == block_q)
-    if type_q:
-        query = query.filter(Transaction.type == type_q)
-    if start_date:
-        query = query.filter(Transaction.timestamp >= start_date)
-    if end_date:
-        # include entire end_date
-        query = query.filter(Transaction.timestamp < text(f"'{end_date}'::date + interval '1 day'"))
-
-    # Count and paginate
-    total = query.count()
-    total_pages = math.ceil(total / per_page) if total else 1
-
-    raw = query.order_by(Transaction.timestamp.desc()) \
-               .limit(per_page).offset((page - 1) * per_page).all()
-
-    # Build list of dicts for template
-    transactions = []
-    for tx, name, block in raw:
-        transactions.append({
-            'id': tx.id,
-            'timestamp': tx.timestamp,
-            'student_name': name,
-            'student_block': block,
-            'type': tx.type,
-            'amount': tx.amount,
-            'reason': tx.description,
-            'is_void': tx.is_void
-        })
-
-    return render_template(
-        'admin_transactions.html',
-        transactions=transactions,
-        page=page,
-        total_pages=total_pages,
-        current_page="transactions"
-    )
+    """Redirect to banking page - transactions now under banking."""
+    # Preserve query parameters when redirecting
+    return redirect(url_for('admin.banking', **request.args))
 
 
 @admin_bp.route('/void-transaction/<int:transaction_id>', methods=['POST'])
@@ -2481,13 +2406,63 @@ def banking():
         form.overdraft_fee_progressive_3.data = settings.overdraft_fee_progressive_3
         form.overdraft_fee_progressive_cap.data = settings.overdraft_fee_progressive_cap
 
-    # Get recent transactions (last 50)
+    # Get filter and pagination parameters
+    student_q = request.args.get('student', '').strip()
+    block_q = request.args.get('block', '')
+    account_q = request.args.get('account', '')
+    type_q = request.args.get('type', '')
+    start_date = request.args.get('start_date')
+    end_date = request.args.get('end_date')
+    page = int(request.args.get('page', 1))
+    per_page = 50
+
+    # Base query joining Transaction with Student
+    query = db.session.query(Transaction, Student).join(Student, Transaction.student_id == Student.id)
+
+    # Apply filters
+    if student_q:
+        # Since first_name is encrypted, we cannot use `ilike`.
+        # We must fetch students, decrypt names, and filter in Python.
+        matching_student_ids = []
+        # Handle if the query is a student ID
+        if student_q.isdigit():
+            matching_student_ids.append(int(student_q))
+
+        # Handle if the query is a name
+        all_students = Student.query.all()
+        for s in all_students:
+            # The full_name property will decrypt the first_name
+            if student_q.lower() in s.full_name.lower():
+                matching_student_ids.append(s.id)
+
+        # If there are any matches (by ID or name), filter the query
+        if matching_student_ids:
+            query = query.filter(Student.id.in_(matching_student_ids))
+        else:
+            # If no students match, return no results
+            query = query.filter(sa.false())
+
+    if block_q:
+        query = query.filter(Student.block == block_q)
+    if account_q:
+        query = query.filter(Transaction.account_type == account_q)
+    if type_q:
+        query = query.filter(Transaction.type == type_q)
+    if start_date:
+        query = query.filter(Transaction.timestamp >= start_date)
+    if end_date:
+        # include entire end_date
+        query = query.filter(Transaction.timestamp < text(f"'{end_date}'::date + interval '1 day'"))
+
+    # Count total for pagination
+    total_transactions = query.count()
+    total_pages = math.ceil(total_transactions / per_page) if total_transactions else 1
+
+    # Get paginated results
     recent_transactions = (
-        db.session.query(Transaction, Student)
-        .join(Student, Transaction.student_id == Student.id)
-        .filter(Transaction.is_void == False)
-        .order_by(Transaction.timestamp.desc())
-        .limit(50)
+        query.order_by(Transaction.timestamp.desc())
+        .limit(per_page)
+        .offset((page - 1) * per_page)
         .all()
     )
 
@@ -2518,8 +2493,12 @@ def banking():
     # Count students with savings
     students_with_savings = sum(1 for s in students if s.savings_balance > 0)
 
-    # Get all blocks
+    # Get all blocks for filter
     blocks = sorted(set(s.block for s in students))
+
+    # Get transaction types for filter
+    transaction_types = db.session.query(Transaction.type).distinct().filter(Transaction.type.isnot(None)).all()
+    transaction_types = sorted([t[0] for t in transaction_types if t[0]])
 
     return render_template(
         'admin_banking.html',
@@ -2532,6 +2511,10 @@ def banking():
         students_with_savings=students_with_savings,
         total_students=len(students),
         blocks=blocks,
+        transaction_types=transaction_types,
+        page=page,
+        total_pages=total_pages,
+        total_transactions=total_transactions,
         current_page="banking",
         format_utc_iso=format_utc_iso
     )

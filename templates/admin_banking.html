@@ -172,48 +172,81 @@
       </div>
       <div class="card-body">
         <!-- Filter Controls -->
-        <div class="row mb-3">
-          <div class="col-md-3">
-            <label for="blockFilter" class="form-label fw-bold">Filter by Block:</label>
-            <select id="blockFilter" class="form-select">
-              <option value="">All Blocks</option>
-              {% for block in blocks %}
-                <option value="{{ block }}">{{ block }}</option>
-              {% endfor %}
-            </select>
+        <form method="GET" action="{{ url_for('admin.banking') }}" class="mb-4">
+          <div class="row g-3">
+            <div class="col-md-2">
+              <label for="block" class="form-label fw-bold">Block:</label>
+              <select name="block" id="block" class="form-select form-select-sm">
+                <option value="">All</option>
+                {% for block in blocks %}
+                  <option value="{{ block }}" {% if request.args.get('block') == block %}selected{% endif %}>{{ block }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label for="account" class="form-label fw-bold">Account:</label>
+              <select name="account" id="account" class="form-select form-select-sm">
+                <option value="">All</option>
+                <option value="checking" {% if request.args.get('account') == 'checking' %}selected{% endif %}>Checking</option>
+                <option value="savings" {% if request.args.get('account') == 'savings' %}selected{% endif %}>Savings</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label for="type" class="form-label fw-bold">Type:</label>
+              <select name="type" id="type" class="form-select form-select-sm">
+                <option value="">All</option>
+                {% for tx_type in transaction_types %}
+                  <option value="{{ tx_type }}" {% if request.args.get('type') == tx_type %}selected{% endif %}>{{ tx_type|title }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label for="start_date" class="form-label fw-bold">From:</label>
+              <input type="date" name="start_date" id="start_date" class="form-control form-control-sm" value="{{ request.args.get('start_date', '') }}">
+            </div>
+            <div class="col-md-2">
+              <label for="end_date" class="form-label fw-bold">To:</label>
+              <input type="date" name="end_date" id="end_date" class="form-control form-control-sm" value="{{ request.args.get('end_date', '') }}">
+            </div>
+            <div class="col-md-2">
+              <label for="student" class="form-label fw-bold">Student:</label>
+              <input type="text" name="student" id="student" class="form-control form-control-sm" placeholder="Name..." value="{{ request.args.get('student', '') }}">
+            </div>
           </div>
-          <div class="col-md-3">
-            <label for="accountFilter" class="form-label fw-bold">Filter by Account:</label>
-            <select id="accountFilter" class="form-select">
-              <option value="">All Accounts</option>
-              <option value="checking">Checking</option>
-              <option value="savings">Savings</option>
-            </select>
+          <div class="row mt-3">
+            <div class="col-12">
+              <button type="submit" class="btn btn-primary btn-sm me-2">
+                <i class="bi bi-funnel me-1"></i>Apply Filters
+              </button>
+              <a href="{{ url_for('admin.banking') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="bi bi-x-circle me-1"></i>Clear Filters
+              </a>
+              <span class="ms-3 text-muted">
+                Showing {{ transactions|length }} of {{ total_transactions|default(0) }} transactions
+              </span>
+            </div>
           </div>
-          <div class="col-md-3">
-            <label for="studentSearch" class="form-label fw-bold">Search Student:</label>
-            <input type="text" id="studentSearch" class="form-control" placeholder="Type name...">
-          </div>
-        </div>
+        </form>
 
         <!-- Transactions Table -->
         <div class="table-responsive">
-          <table class="table table-striped table-hover" id="transactionsTable">
+          <table class="table table-striped table-hover table-sm">
             <thead>
               <tr>
-                <th>Date</th>
+                <th width="130">Date</th>
                 <th>Student</th>
-                <th>Block</th>
-                <th>Type</th>
-                <th>Account</th>
-                <th>Amount</th>
+                <th width="80">Block</th>
+                <th width="100">Type</th>
+                <th width="100">Account</th>
+                <th width="100" class="text-end">Amount</th>
                 <th>Description</th>
+                <th width="80">Actions</th>
               </tr>
             </thead>
             <tbody>
               {% if transactions %}
                 {% for tx in transactions %}
-                <tr data-block="{{ tx.student_block }}" data-account="{{ tx.account_type }}" data-student="{{ tx.student_name|lower }}">
+                <tr class="{% if tx.is_void %}table-secondary text-muted{% endif %}">
                   <td>
                     {% if tx.timestamp %}
                       <span class="local-timestamp" data-timestamp="{{ format_utc_iso(tx.timestamp) }}"></span>
@@ -237,18 +270,75 @@
                       {{ tx.account_type|title }}
                     </span>
                   </td>
-                  <td class="{% if tx.amount > 0 %}text-success{% else %}text-danger{% endif %} fw-bold">
+                  <td class="{% if tx.amount > 0 %}text-success{% else %}text-danger{% endif %} fw-bold text-end">
                     ${{ "%.2f"|format(tx.amount) }}
+                    {% if tx.is_void %}
+                      <span class="badge bg-secondary ms-1">VOID</span>
+                    {% endif %}
                   </td>
                   <td>{{ tx.description or '—' }}</td>
+                  <td>
+                    {% if not tx.is_void %}
+                      <button class="btn btn-sm btn-outline-danger" onclick="voidTransaction({{ tx.id }})" title="Void transaction">
+                        <i class="bi bi-x-circle"></i>
+                      </button>
+                    {% else %}
+                      <span class="text-muted small">Voided</span>
+                    {% endif %}
+                  </td>
                 </tr>
                 {% endfor %}
               {% else %}
-                <tr><td colspan="7" class="text-center text-muted">No transactions found.</td></tr>
+                <tr><td colspan="8" class="text-center text-muted">No transactions found.</td></tr>
               {% endif %}
             </tbody>
           </table>
         </div>
+
+        <!-- Pagination -->
+        {% if total_pages > 1 %}
+        <nav aria-label="Transaction pagination">
+          <ul class="pagination pagination-sm justify-content-center mt-3">
+            <!-- Previous Button -->
+            <li class="page-item {% if page <= 1 %}disabled{% endif %}">
+              <a class="page-link" href="{{ url_for('admin.banking', page=page-1, student=request.args.get('student', ''), block=request.args.get('block', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">Previous</a>
+            </li>
+
+            <!-- Page Numbers -->
+            {% set start_page = [1, page - 2]|max %}
+            {% set end_page = [total_pages, page + 2]|min %}
+
+            {% if start_page > 1 %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('admin.banking', page=1, student=request.args.get('student', ''), block=request.args.get('block', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">1</a>
+              </li>
+              {% if start_page > 2 %}
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+              {% endif %}
+            {% endif %}
+
+            {% for p in range(start_page, end_page + 1) %}
+              <li class="page-item {% if p == page %}active{% endif %}">
+                <a class="page-link" href="{{ url_for('admin.banking', page=p, student=request.args.get('student', ''), block=request.args.get('block', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">{{ p }}</a>
+              </li>
+            {% endfor %}
+
+            {% if end_page < total_pages %}
+              {% if end_page < total_pages - 1 %}
+                <li class="page-item disabled"><span class="page-link">...</span></li>
+              {% endif %}
+              <li class="page-item">
+                <a class="page-link" href="{{ url_for('admin.banking', page=total_pages, student=request.args.get('student', ''), block=request.args.get('block', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">{{ total_pages }}</a>
+              </li>
+            {% endif %}
+
+            <!-- Next Button -->
+            <li class="page-item {% if page >= total_pages %}disabled{% endif %}">
+              <a class="page-link" href="{{ url_for('admin.banking', page=page+1, student=request.args.get('student', ''), block=request.args.get('block', ''), account=request.args.get('account', ''), type=request.args.get('type', ''), start_date=request.args.get('start_date', ''), end_date=request.args.get('end_date', '')) }}">Next</a>
+            </li>
+          </ul>
+        </nav>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -428,38 +518,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     });
 
-    // Transaction Filtering
-    const blockFilter = document.getElementById('blockFilter');
-    const accountFilter = document.getElementById('accountFilter');
-    const studentSearch = document.getElementById('studentSearch');
-    const tableRows = document.querySelectorAll('#transactionsTable tbody tr[data-block]');
-
-    function filterTransactions() {
-        const selectedBlock = blockFilter ? blockFilter.value : '';
-        const selectedAccount = accountFilter ? accountFilter.value : '';
-        const searchTerm = studentSearch ? studentSearch.value.toLowerCase() : '';
-
-        tableRows.forEach(row => {
-            const rowBlock = row.dataset.block;
-            const rowAccount = row.dataset.account;
-            const rowStudent = row.dataset.student;
-
-            const blockMatch = !selectedBlock || rowBlock === selectedBlock;
-            const accountMatch = !selectedAccount || rowAccount === selectedAccount;
-            const studentMatch = !searchTerm || rowStudent.includes(searchTerm);
-
-            if (blockMatch && accountMatch && studentMatch) {
-                row.style.display = '';
-            } else {
-                row.style.display = 'none';
-            }
-        });
-    }
-
-    if (blockFilter) blockFilter.addEventListener('change', filterTransactions);
-    if (accountFilter) accountFilter.addEventListener('change', filterTransactions);
-    if (studentSearch) studentSearch.addEventListener('input', filterTransactions);
-
     // Overdraft Fee Toggle
     const overdraftFeeToggle = document.getElementById('overdraftFeeToggle');
     const feeSettings = document.getElementById('feeSettings');
@@ -500,6 +558,34 @@ document.addEventListener("DOMContentLoaded", () => {
         cycleDaysField.style.display = scheduleType.value === 'monthly' ? 'block' : 'none';
     }
 });
+
+// Void Transaction
+async function voidTransaction(transactionId) {
+  if (!confirm('Are you sure you want to void this transaction? This cannot be undone.')) return;
+
+  const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+  try {
+    const resp = await fetch(`/admin/void-transaction/${transactionId}`, {
+      method: 'POST',
+      headers: {
+        'X-CSRFToken': csrfToken,
+        'Content-Type': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    });
+
+    const data = await resp.json();
+    if (data.status === 'success') {
+      showToast('Transaction voided successfully', 'success');
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      showToast(data.message || 'Failed to void transaction', 'error');
+    }
+  } catch (err) {
+    showToast('Error voiding transaction', 'error');
+  }
+}
 
 // Toast notification helper
 function showToast(message, type) {
