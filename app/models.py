@@ -173,6 +173,15 @@ class StoreItem(db.Model):
     auto_expiry_days = db.Column(db.Integer, nullable=True) # days student has to use the item
     is_active = db.Column(db.Boolean, default=True, nullable=False)
 
+    # Bundle settings
+    is_bundle = db.Column(db.Boolean, default=False, nullable=False)
+    bundle_quantity = db.Column(db.Integer, nullable=True) # number of items in bundle (e.g., 5)
+
+    # Bulk discount settings
+    bulk_discount_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    bulk_discount_quantity = db.Column(db.Integer, nullable=True) # minimum quantity for discount
+    bulk_discount_percentage = db.Column(db.Float, nullable=True) # discount percentage (e.g., 10 for 10%)
+
     # Relationship to student items
     student_items = db.relationship('StudentItem', backref='store_item', lazy=True)
 
@@ -188,6 +197,11 @@ class StudentItem(db.Model):
     status = db.Column(db.String(20), default='purchased', nullable=False)
     redemption_details = db.Column(db.Text, nullable=True) # For student notes on usage
     redemption_date = db.Column(db.DateTime, nullable=True) # When student used it
+
+    # Bundle tracking - for items purchased as part of a bundle
+    is_from_bundle = db.Column(db.Boolean, default=False, nullable=False)
+    bundle_remaining = db.Column(db.Integer, nullable=True) # remaining uses in bundle
+    quantity_purchased = db.Column(db.Integer, default=1, nullable=False) # quantity purchased (for bulk discounts)
 
     # Relationships
     student = db.relationship('Student', backref=db.backref('items', lazy='dynamic'))
