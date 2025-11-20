@@ -7,6 +7,7 @@ and other interactive features. Most routes require authentication.
 
 import random
 import string
+import re
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, request, jsonify, session, current_app
@@ -78,12 +79,26 @@ def purchase_item():
 
     if item.limit_per_student is not None:
         if item.item_type == 'hall_pass':
-            # For hall passes, check transaction history since no StudentItem is created
-            purchase_count = Transaction.query.filter_by(
-                student_id=student.id,
-                type='purchase',
-                description=f"Purchase: {item.name}"
-            ).count()
+            # For hall passes, check transaction history and sum quantities
+            # Description format: "Purchase: {name}" or "Purchase: {name} (xN)" or "Purchase: {name} (xN) [discount]"
+            transactions = Transaction.query.filter(
+                Transaction.student_id == student.id,
+                Transaction.type == 'purchase',
+                Transaction.description.like(f"Purchase: {item.name}%")
+            ).all()
+
+            # Parse quantities from transaction descriptions
+            total_purchased = 0
+            for txn in transactions:
+                # Extract quantity from description (e.g., "(x3)" -> 3)
+                match = re.search(r'\(x(\d+)\)', txn.description)
+                if match:
+                    total_purchased += int(match.group(1))
+                else:
+                    # No quantity suffix means quantity was 1
+                    total_purchased += 1
+
+            purchase_count = total_purchased
         else:
             purchase_count = StudentItem.query.filter_by(student_id=student.id, store_item_id=item.id).count()
         if purchase_count + quantity > item.limit_per_student:
