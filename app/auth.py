@@ -8,6 +8,7 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
+import sqlalchemy as sa
 from flask import session, flash, redirect, url_for, request, current_app
 
 
@@ -72,6 +73,15 @@ def admin_required(f):
             encoded_next = urllib.parse.quote(request.path, safe="")
             return redirect(f"{url_for('admin.login')}?next={encoded_next}")
 
+        admin = get_current_admin()
+        if not admin:
+            session.pop("is_admin", None)
+            session.pop("admin_id", None)
+            session.pop("last_activity", None)
+            flash("Admin session is invalid. Please log in again.")
+            encoded_next = urllib.parse.quote(request.path, safe="")
+            return redirect(f"{url_for('admin.login')}?next={encoded_next}")
+
         now = datetime.now(timezone.utc)
         last_activity = session.get('last_activity')
 
@@ -125,3 +135,42 @@ def get_logged_in_student():
     # Import here to avoid circular imports
     from app.models import Student
     return Student.query.get(session['student_id']) if 'student_id' in session else None
+
+
+def get_current_admin():
+    """Return the logged-in admin based on the session state."""
+    if not session.get("is_admin"):
+        return None
+    admin_id = session.get("admin_id")
+    if not admin_id:
+        return None
+    from app.models import Admin  # Imported lazily to avoid circular import
+    return Admin.query.get(admin_id)
+
+
+def get_admin_student_query(include_unassigned=True):
+    """Return a Student query scoped to the current admin's ownership.
+
+    System admins are allowed to see all students. Regular admins only see
+    students they own, with optional access to unassigned students during
+    migration.
+    """
+    from app.models import Student  # Imported lazily to avoid circular import
+
+    if session.get("is_system_admin"):
+        return Student.query
+
+    admin = get_current_admin()
+    if not admin:
+        return Student.query.filter(sa.text("0=1"))
+
+    filters = [Student.teacher_id == admin.id]
+    if include_unassigned:
+        filters.append(Student.teacher_id.is_(None))
+    return Student.query.filter(sa.or_(*filters))
+
+
+def get_student_for_admin(student_id, include_unassigned=True):
+    """Return a student the current admin can access, or None."""
+    query = get_admin_student_query(include_unassigned=include_unassigned)
+    return query.filter_by(id=student_id).first()
