@@ -186,6 +186,10 @@ class StoreItem(db.Model):
     bulk_discount_quantity = db.Column(db.Integer, nullable=True) # minimum quantity for discount
     bulk_discount_percentage = db.Column(db.Float, nullable=True) # discount percentage (e.g., 10 for 10%)
 
+    # Collective goal settings (only for item_type='collective')
+    collective_goal_type = db.Column(db.String(20), nullable=True)  # 'fixed' or 'whole_class'
+    collective_goal_target = db.Column(db.Integer, nullable=True)  # Fixed number of purchases needed (used when type='fixed')
+
     # Relationship to student items
     student_items = db.relationship('StudentItem', backref='store_item', lazy=True)
 

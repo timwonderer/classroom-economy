@@ -32,6 +32,14 @@ class StoreItemForm(FlaskForm):
     bulk_discount_quantity = IntegerField('Minimum Quantity for Discount', validators=[Optional()])
     bulk_discount_percentage = FloatField('Discount Percentage (%)', validators=[Optional()])
 
+    # Collective goal settings (only for item_type='collective')
+    collective_goal_type = SelectField('Collective Goal Type', choices=[
+        ('', 'Select Type'),
+        ('fixed', 'Fixed Number of Purchases'),
+        ('whole_class', 'Whole Class Must Purchase (1 per person)')
+    ], validators=[Optional()])
+    collective_goal_target = IntegerField('Target Number of Purchases (for Fixed type)', validators=[Optional()])
+
     submit = SubmitField('Save Item')
 
     def validate_bundle_quantity(self, field):
@@ -51,6 +59,17 @@ class StoreItemForm(FlaskForm):
                 raise ValidationError('Discount percentage is required and must be greater than 0 when bulk discount is enabled.')
             if field.data > 100:
                 raise ValidationError('Discount percentage cannot exceed 100%.')
+
+    def validate_collective_goal_type(self, field):
+        """Validate collective goal type is set when item type is collective."""
+        if self.item_type.data == 'collective' and not field.data:
+            raise ValidationError('Collective goal type is required when item type is Collective Goal.')
+
+    def validate_collective_goal_target(self, field):
+        """Validate collective goal target when type is fixed."""
+        if self.item_type.data == 'collective' and self.collective_goal_type.data == 'fixed':
+            if not field.data or field.data <= 0:
+                raise ValidationError('Target number of purchases is required and must be greater than 0 when using Fixed collective goal type.')
 
 
 class AdminSignupForm(FlaskForm):

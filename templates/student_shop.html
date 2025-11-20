@@ -61,6 +61,41 @@
                         </div>
                         {% endif %}
 
+                        <!-- Collective Goal Progress -->
+                        {% if item.item_type == 'collective' and item.collective_goal_type %}
+                        <div class="mb-3">
+                            {% set purchases_count = item.student_items|selectattr('status', 'in', ['pending', 'processing', 'purchased', 'redeemed', 'completed'])|list|length %}
+                            {% if item.collective_goal_type == 'whole_class' %}
+                                {% set class_size = student.teacher.students|selectattr('block', 'equalto', student.block)|list|length %}
+                                {% set target = class_size %}
+                                <div class="alert alert-info p-2 mb-2">
+                                    <small><strong>Whole Class Goal:</strong> All {{ class_size }} students must purchase!</small>
+                                </div>
+                            {% elif item.collective_goal_type == 'fixed' %}
+                                {% set target = item.collective_goal_target %}
+                                <div class="alert alert-info p-2 mb-2">
+                                    <small><strong>Collective Goal:</strong> {{ target }} purchases needed to unlock</small>
+                                </div>
+                            {% endif %}
+                            <div class="progress" style="height: 25px;">
+                                {% set progress_percent = (purchases_count / target * 100) if target > 0 else 0 %}
+                                <div class="progress-bar {% if progress_percent >= 100 %}bg-success{% else %}bg-warning{% endif %}"
+                                     role="progressbar"
+                                     style="width: {{ progress_percent }}%;"
+                                     aria-valuenow="{{ purchases_count }}"
+                                     aria-valuemin="0"
+                                     aria-valuemax="{{ target }}">
+                                    {{ purchases_count }}/{{ target }}
+                                </div>
+                            </div>
+                            {% if purchases_count < target %}
+                                <small class="text-muted">{{ target - purchases_count }} more needed!</small>
+                            {% else %}
+                                <small class="text-success"><i class="bi bi-check-circle"></i> Goal reached! Item will unlock soon.</small>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
                         <p class="card-text text-muted flex-grow-1">{{ item.description or 'No description available.' }}</p>
 
                         {% if item.inventory is not none %}
@@ -82,6 +117,7 @@
                                     data-item-id="{{ item.id }}"
                                     data-item-name="{{ item.name }}"
                                     data-item-price="{{ "%.2f"|format(item.price) }}"
+                                    data-item-type="{{ item.item_type }}"
                                     data-is-bundle="{{ 'true' if item.is_bundle else 'false' }}"
                                     data-bundle-quantity="{{ item.bundle_quantity if item.is_bundle else 0 }}"
                                     data-bulk-discount-enabled="{{ 'true' if item.bulk_discount_enabled else 'false' }}"
@@ -220,8 +256,15 @@
                     </span>
                 </div>
 
+                <!-- Item Type Explanation -->
+                <div id="itemTypeExplanation" class="alert mb-3" style="display: none;">
+                    <h6 class="alert-heading mb-2"><i class="bi bi-info-circle me-2"></i>How This Item Works</h6>
+                    <p id="explanationText" class="mb-0"></p>
+                </div>
+
                 <form id="buyItemForm">
                     <input type="hidden" id="modalItemId" name="item_id">
+                    <input type="hidden" id="modalItemType" name="item_type">
                     <input type="hidden" id="modalIsBundle" name="is_bundle">
                     <input type="hidden" id="modalBulkDiscountEnabled" name="bulk_discount_enabled">
                     <input type="hidden" id="modalBulkDiscountQuantity" name="bulk_discount_quantity">
@@ -304,6 +347,7 @@
         currentItemData = {
             itemName: button.getAttribute('data-item-name'),
             itemId: button.getAttribute('data-item-id'),
+            itemType: button.getAttribute('data-item-type'),
             basePrice: parseFloat(button.getAttribute('data-item-price')),
             isBundle: button.getAttribute('data-is-bundle') === 'true',
             bundleQuantity: parseInt(button.getAttribute('data-bundle-quantity')) || 0,
@@ -316,6 +360,7 @@
         // Populate modal
         document.getElementById('modalItemName').textContent = currentItemData.itemName;
         document.getElementById('modalItemId').value = currentItemData.itemId;
+        document.getElementById('modalItemType').value = currentItemData.itemType;
         document.getElementById('modalItemPrice').textContent = currentItemData.basePrice.toFixed(2);
         document.getElementById('modalIsBundle').value = currentItemData.isBundle;
         document.getElementById('modalBulkDiscountEnabled').value = currentItemData.bulkDiscountEnabled;
@@ -339,6 +384,41 @@
             document.getElementById('modalDiscountQuantity').textContent = currentItemData.bulkDiscountQuantity;
         } else {
             document.getElementById('modalDiscountInfo').style.display = 'none';
+        }
+
+        // Show item type explanation
+        const explanationDiv = document.getElementById('itemTypeExplanation');
+        const explanationText = document.getElementById('explanationText');
+        let explanation = '';
+        let alertClass = 'alert-primary';
+
+        switch (currentItemData.itemType) {
+            case 'immediate':
+                explanation = '<strong>Immediate Use:</strong> This item is used instantly upon purchase. You won\'t need to redeem it later - it\'s applied to your account right away.';
+                alertClass = 'alert-success';
+                break;
+            case 'delayed':
+                explanation = '<strong>Delayed Use:</strong> After purchase, this item will appear in your "My Items" tab. You can redeem it whenever you\'re ready by clicking "Use Item" and entering your passphrase.';
+                alertClass = 'alert-info';
+                break;
+            case 'hall_pass':
+                explanation = '<strong>Hall Pass:</strong> This is a special hall pass item. Upon purchase, it\'s added to your hall pass balance and can be used during class when you need to leave.';
+                alertClass = 'alert-warning';
+                break;
+            case 'collective':
+                explanation = '<strong>Collective Goal:</strong> This is a class goal! Multiple students must purchase this item before it unlocks for everyone. Your purchase counts toward the goal, and you\'ll receive the item once enough classmates have also purchased it. Check the progress bar on the item card to see how close you are!';
+                alertClass = 'alert-primary';
+                break;
+            default:
+                explanation = '';
+        }
+
+        if (explanation) {
+            explanationDiv.className = `alert mb-3 ${alertClass}`;
+            explanationText.innerHTML = explanation;
+            explanationDiv.style.display = 'block';
+        } else {
+            explanationDiv.style.display = 'none';
         }
 
         // Set max quantity if inventory limited

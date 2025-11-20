@@ -119,30 +119,31 @@
 
 <!-- Items Redemption Status Card -->
 <div class="card mb-4">
-    <div class="card-header">
-        <span class="material-symbols-outlined">inventory_2</span> Items Redemption Status
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><span class="material-symbols-outlined">inventory_2</span> Items Redemption Status</span>
+        <small class="text-muted">Auto-updates every 30s</small>
     </div>
-    <div class="card-body">
-        {% set pending_items = student_items|selectattr('status', 'equalto', 'pending')|list %}
-        {% set redeemed_items = student_items|selectattr('status', 'equalto', 'redeemed')|list %}
-        {% set rejected_items = student_items|selectattr('status', 'equalto', 'rejected')|list %}
+    <div class="card-body" id="redemptionStatusCard">
+        {% set processing_items = student_items|selectattr('status', 'equalto', 'processing')|list %}
+        {% set redeemed_items = (student_items|selectattr('status', 'equalto', 'redeemed')|list) + (student_items|selectattr('status', 'equalto', 'completed')|list) %}
+        {% set expired_items = student_items|selectattr('status', 'equalto', 'expired')|list %}
 
         <div class="row">
             <div class="col-md-4">
                 <div class="text-center p-3 bg-warning bg-opacity-10 rounded">
-                    <h3 class="mb-1">{{ pending_items|length }}</h3>
-                    <small class="text-muted">Pending</small>
+                    <h3 class="mb-1" id="processingCount">{{ processing_items|length }}</h3>
+                    <small class="text-muted">Awaiting Approval</small>
                 </div>
-                {% if pending_items|length > 0 %}
-                <ul class="list-group list-group-flush mt-2">
-                    {% for item in pending_items[:3] %}
+                {% if processing_items|length > 0 %}
+                <ul class="list-group list-group-flush mt-2" id="processingList">
+                    {% for item in processing_items[:3] %}
                     <li class="list-group-item px-0 py-1">
                         <small>{{ item.store_item.name }}</small>
                     </li>
                     {% endfor %}
-                    {% if pending_items|length > 3 %}
+                    {% if processing_items|length > 3 %}
                     <li class="list-group-item px-0 py-1">
-                        <small class="text-muted">+{{ pending_items|length - 3 }} more</small>
+                        <small class="text-muted">+{{ processing_items|length - 3 }} more</small>
                     </li>
                     {% endif %}
                 </ul>
@@ -150,11 +151,11 @@
             </div>
             <div class="col-md-4">
                 <div class="text-center p-3 bg-success bg-opacity-10 rounded">
-                    <h3 class="mb-1">{{ redeemed_items|length }}</h3>
+                    <h3 class="mb-1" id="redeemedCount">{{ redeemed_items|length }}</h3>
                     <small class="text-muted">Redeemed</small>
                 </div>
                 {% if redeemed_items|length > 0 %}
-                <ul class="list-group list-group-flush mt-2">
+                <ul class="list-group list-group-flush mt-2" id="redeemedList">
                     {% for item in redeemed_items[:3] %}
                     <li class="list-group-item px-0 py-1">
                         <small>{{ item.store_item.name }}</small>
@@ -170,19 +171,19 @@
             </div>
             <div class="col-md-4">
                 <div class="text-center p-3 bg-danger bg-opacity-10 rounded">
-                    <h3 class="mb-1">{{ rejected_items|length }}</h3>
-                    <small class="text-muted">Rejected</small>
+                    <h3 class="mb-1" id="expiredCount">{{ expired_items|length }}</h3>
+                    <small class="text-muted">Expired</small>
                 </div>
-                {% if rejected_items|length > 0 %}
-                <ul class="list-group list-group-flush mt-2">
-                    {% for item in rejected_items[:3] %}
+                {% if expired_items|length > 0 %}
+                <ul class="list-group list-group-flush mt-2" id="expiredList">
+                    {% for item in expired_items[:3] %}
                     <li class="list-group-item px-0 py-1">
                         <small>{{ item.store_item.name }}</small>
                     </li>
                     {% endfor %}
-                    {% if rejected_items|length > 3 %}
+                    {% if expired_items|length > 3 %}
                     <li class="list-group-item px-0 py-1">
-                        <small class="text-muted">+{{ rejected_items|length - 3 }} more</small>
+                        <small class="text-muted">+{{ expired_items|length - 3 }} more</small>
                     </li>
                     {% endif %}
                 </ul>
@@ -370,6 +371,24 @@
 
 <!-- Attendance Script -->
 <script src="/static/js/attendance.js"></script>
+
+<!-- Redemption Status Auto-Refresh -->
+<script>
+    // Auto-refresh redemption status card every 30 seconds
+    setInterval(() => {
+        fetch(window.location.href)
+            .then(response => response.text())
+            .then(html => {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                const newCard = doc.getElementById('redemptionStatusCard');
+                if (newCard) {
+                    document.getElementById('redemptionStatusCard').innerHTML = newCard.innerHTML;
+                }
+            })
+            .catch(error => console.error('Failed to refresh redemption status:', error));
+    }, 30000); // 30 seconds
+</script>
 
 <!-- Server State -->
 <script id="serverState" type="application/json">
