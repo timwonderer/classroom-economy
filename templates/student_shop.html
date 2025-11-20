@@ -64,7 +64,7 @@
                         <!-- Collective Goal Progress -->
                         {% if item.item_type == 'collective' and item.collective_goal_type %}
                         <div class="mb-3">
-                            {% set purchases_count = item.student_items|selectattr('status', 'in', ['pending', 'purchased', 'redeemed', 'completed'])|list|length %}
+                            {% set purchases_count = item.student_items|selectattr('status', 'in', ['pending', 'processing', 'purchased', 'redeemed', 'completed'])|list|length %}
                             {% if item.collective_goal_type == 'whole_class' %}
                                 {% set class_size = student.teacher.students|selectattr('block', 'equalto', student.block)|list|length %}
                                 {% set target = class_size %}
