@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scheduled Maintenance</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --gradient-start: #4c6fff;
+            --gradient-end: #8a4af3;
+            --text-primary: #1f2937;
+            --text-secondary: #4b5563;
+            --card-bg: #ffffff;
+            --muted-bg: #f5f7fb;
+        }
+
+        body {
+            background: linear-gradient(135deg, var(--gradient-start), var(--gradient-end));
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+
+        .card {
+            border: none;
+            border-radius: 18px;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+            max-width: 960px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1.5rem 1.75rem;
+        }
+
+        .status-pill {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: rgba(255, 255, 255, 0.15);
+            color: #fff;
+            padding: 0.4rem 0.85rem;
+            border-radius: 999px;
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+
+        .card-body {
+            padding: 2rem 1.75rem 1.5rem;
+            background: var(--card-bg);
+        }
+
+        .lead {
+            color: var(--text-primary);
+            font-weight: 700;
+            font-size: 1.2rem;
+        }
+
+        .text-secondary {
+            color: var(--text-secondary) !important;
+        }
+
+        .icon-circle {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: rgba(76, 111, 255, 0.12);
+            color: var(--gradient-start);
+            display: grid;
+            place-items: center;
+            font-size: 1.6rem;
+        }
+
+        .info-tile {
+            background: var(--muted-bg);
+            border-radius: 14px;
+            padding: 1rem 1.25rem;
+        }
+
+        .list-group-item {
+            border: none;
+            padding: 0.75rem 0;
+        }
+
+        .footer-note {
+            font-size: 0.95rem;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center text-white">
+            <div>
+                <div class="status-pill">
+                    <span>🚧</span>
+                    <span>Scheduled Maintenance</span>
+                </div>
+                <div class="mt-2 small">Classroom Economy is temporarily unavailable while we finish some updates.</div>
+            </div>
+            <div class="icon-circle" aria-hidden="true">🛠️</div>
+        </div>
+        <div class="card-body">
+            <p class="lead mb-2">We'll be back shortly.</p>
+            <p class="text-secondary mb-4">{{ message or "We're applying updates and running database checks. Thank you for your patience!" }}</p>
+
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="info-tile h-100">
+                        <div class="fw-semibold text-uppercase text-secondary" style="letter-spacing: 0.08em; font-size: 0.8rem;">Planned timeline</div>
+                        <div class="fs-5 fw-bold mt-1">{{ expected_back or "We expect service to resume shortly." }}</div>
+                        <p class="mb-0 text-secondary mt-1">We aim to keep downtime minimal; pages will refresh automatically when we're done.</p>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="info-tile h-100">
+                        <div class="fw-semibold text-uppercase text-secondary" style="letter-spacing: 0.08em; font-size: 0.8rem;">Need help?</div>
+                        <div class="fs-5 fw-bold mt-1">{{ contact_email or "Reach out to your Classroom Economy admin." }}</div>
+                        <p class="mb-0 text-secondary mt-1">If you need to report an urgent issue during this window, please contact us.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row g-3 align-items-center mb-3">
+                <div class="col-md-8">
+                    <ul class="list-group list-group-flush">
+                        <li class="list-group-item text-secondary">• Active sessions will stay signed in; you'll be redirected when maintenance ends.</li>
+                        <li class="list-group-item text-secondary">• No data is lost. We're simply pausing requests while we apply updates.</li>
+                        <li class="list-group-item text-secondary">• You can close this tab and return later if you prefer.</li>
+                    </ul>
+                </div>
+                <div class="col-md-4 text-md-end text-center">
+                    <button id="refreshButton" class="btn btn-primary px-4" type="button">Try now</button>
+                    <div class="footer-note mt-2">We'll retry automatically in <span id="countdown">30</span>s.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const countdownEl = document.getElementById('countdown');
+        const refreshButton = document.getElementById('refreshButton');
+        let seconds = 30;
+
+        refreshButton?.addEventListener('click', () => window.location.reload());
+
+        setInterval(() => {
+            seconds = seconds - 1;
+            if (seconds <= 0) {
+                window.location.reload();
+                return;
+            }
+            if (countdownEl) {
+                countdownEl.textContent = seconds;
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

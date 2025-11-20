@@ -212,6 +212,7 @@ def give_bonus_all():
 def login():
     """Admin login with TOTP authentication."""
     session.pop("is_admin", None)
+    session.pop("admin_id", None)
     session.pop("last_activity", None)
     form = AdminLoginForm()
     if form.validate_on_submit():
@@ -226,6 +227,7 @@ def login():
                 db.session.commit()
 
                 session["is_admin"] = True
+                session["admin_id"] = admin.id
                 session["last_activity"] = datetime.now(timezone.utc).isoformat()
                 current_app.logger.info(f"✅ Admin login success for {username}")
                 flash("Admin login successful.")
@@ -361,6 +363,8 @@ def signup():
 def logout():
     """Admin logout."""
     session.pop("is_admin", None)
+    session.pop("admin_id", None)
+    session.pop("last_activity", None)
     flash("Logged out.")
     return redirect(url_for("admin.login"))
 

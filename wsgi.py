@@ -15,10 +15,13 @@ import os
 
 # -------------------- APPLICATION FACTORY --------------------
 # Import and create the Flask application using the factory pattern
-from app import create_app
+from app import app
 from app.extensions import db, migrate, csrf
 
-app = create_app()
+
+def maintenance_mode_enabled():
+    """Return True when maintenance mode is enabled via environment variable."""
+    return os.getenv("MAINTENANCE_MODE", "").lower() in {"1", "true", "yes", "on"}
 
 
 # -------------------- BACKWARD COMPATIBILITY IMPORTS --------------------
@@ -135,6 +138,9 @@ else:
 @app.context_processor
 def inject_payroll_status():
     """Make payroll settings status available in all templates."""
+    if maintenance_mode_enabled():
+        return dict(has_payroll_settings=False)
+
     has_payroll_settings = PayrollSettings.query.first() is not None
     return dict(has_payroll_settings=has_payroll_settings)
 

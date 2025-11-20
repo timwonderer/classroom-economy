@@ -72,6 +72,15 @@ def admin_required(f):
             encoded_next = urllib.parse.quote(request.path, safe="")
             return redirect(f"{url_for('admin.login')}?next={encoded_next}")
 
+        admin = get_current_admin()
+        if not admin:
+            session.pop("is_admin", None)
+            session.pop("admin_id", None)
+            session.pop("last_activity", None)
+            flash("Admin session is invalid. Please log in again.")
+            encoded_next = urllib.parse.quote(request.path, safe="")
+            return redirect(f"{url_for('admin.login')}?next={encoded_next}")
+
         now = datetime.now(timezone.utc)
         last_activity = session.get('last_activity')
 
@@ -125,3 +134,14 @@ def get_logged_in_student():
     # Import here to avoid circular imports
     from app.models import Student
     return Student.query.get(session['student_id']) if 'student_id' in session else None
+
+
+def get_current_admin():
+    """Return the logged-in admin based on the session state."""
+    if not session.get("is_admin"):
+        return None
+    admin_id = session.get("admin_id")
+    if not admin_id:
+        return None
+    from app.models import Admin  # Imported lazily to avoid circular import
+    return Admin.query.get(admin_id)

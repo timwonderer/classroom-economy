@@ -12,7 +12,7 @@ import pytz
 from datetime import datetime, date, timezone
 from logging.handlers import RotatingFileHandler
 
-from flask import Flask, request, session
+from flask import Flask, request, render_template, session
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -149,10 +149,42 @@ def create_app():
     app.jinja_env.globals['min'] = min
     app.jinja_env.globals['max'] = max
 
+    def is_maintenance_mode_enabled():
+        """Return True when maintenance mode is enabled via environment variable."""
+        return os.getenv("MAINTENANCE_MODE", "").lower() in {"1", "true", "yes", "on"}
+
+    def maintenance_context():
+        """Context for the maintenance page, sourced from environment variables."""
+        return {
+            "message": os.getenv(
+                "MAINTENANCE_MESSAGE",
+                "We're performing scheduled maintenance to keep Classroom Economy running smoothly.",
+            ),
+            "expected_back": os.getenv("MAINTENANCE_EXPECTED_END", ""),
+            "contact_email": os.getenv("MAINTENANCE_CONTACT", os.getenv("SUPPORT_EMAIL", "")),
+        }
+
+    @app.before_request
+    def show_maintenance_page():
+        """Display a friendly maintenance page when maintenance mode is on."""
+        if not is_maintenance_mode_enabled():
+            return None
+
+        if request.endpoint in {"main.health_check"}:
+            return None
+
+        if request.path.startswith("/static/"):
+            return None
+
+        return render_template("maintenance.html", **maintenance_context()), 503
+
     # -------------------- CONTEXT PROCESSORS --------------------
     @app.context_processor
     def inject_global_settings():
         """Inject global settings into all templates."""
+        if is_maintenance_mode_enabled():
+            return {'global_rent_enabled': False}
+
         from app.models import RentSettings
         rent_settings = RentSettings.query.first()
         return {
@@ -173,7 +205,27 @@ def create_app():
     app.register_blueprint(admin_bp)
 
     # -------------------- SCHEDULED TASKS --------------------
-    from app.scheduled_tasks import init_scheduled_tasks
-    init_scheduled_tasks(app)
+    if not app.config.get("TESTING") and app.config.get("ENV") != "testing":
+        from app.scheduled_tasks import init_scheduled_tasks
+        init_scheduled_tasks(app)
 
     return app
+
+
+# Create a default application instance for compatibility with legacy imports
+app = create_app()
+
+# Re-export commonly used objects for convenience/legacy support
+from app.extensions import db  # noqa: E402
+from app.models import Student, TapEvent, Transaction  # noqa: E402
+from app.routes.student import apply_savings_interest  # noqa: E402
+
+__all__ = [
+    "app",
+    "create_app",
+    "db",
+    "Student",
+    "TapEvent",
+    "Transaction",
+    "apply_savings_interest",
+]

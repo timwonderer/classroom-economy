@@ -74,6 +74,11 @@ An interactive banking and classroom management platform for teaching students a
    ENCRYPTION_KEY=<32-byte-base64-key>  # Generate with: openssl rand -base64 32
    PEPPER_KEY=<secret-pepper-string>
    CSRF_SECRET_KEY=<random-string>
+   # Optional maintenance mode banner (503 page)
+   MAINTENANCE_MODE=false
+   MAINTENANCE_MESSAGE="We're applying updates."
+   MAINTENANCE_EXPECTED_END="Back online by <time>"
+   MAINTENANCE_CONTACT="ops@example.com"
    ```
 
 4. **Initialize the database**
