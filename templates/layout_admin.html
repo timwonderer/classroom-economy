@@ -49,16 +49,7 @@
         overflow-y: auto;
         overflow-x: hidden;
         z-index: 1000;
-        width: 70px;
-        transition: width 0.3s ease;
-    }
-
-    .sidebar:hover {
-        width: 260px;
-    }
-
-    .sidebar .sidebar-content {
-        width: 260px;
+        width: 250px;
     }
 
     .sidebar h5 {
@@ -129,10 +120,9 @@
 
     /* Main Content Area */
     .main-content {
-        margin-left: 70px;
+        margin-left: 250px;
         min-height: 100vh;
         padding: 2rem;
-        transition: margin-left 0.3s ease;
     }
 
     /* Modern Page Title */
@@ -306,17 +296,6 @@
         font-size: 32px;
     }
 
-    /* Logo styling */
-    .sidebar .logo-container {
-        text-align: center;
-        white-space: nowrap;
-    }
-
-    .sidebar .logo-container img {
-        max-width: 80%;
-        height: auto;
-        margin-bottom: 1rem;
-    }
 </style>
 
     <title>{{ page_title or "Admin Panel" }}</title>
@@ -329,10 +308,9 @@
     <!-- Flash Toast Container -->
 <div id="flashToastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050;"></div>
     <div class="sidebar border-end vh-100 p-3 d-flex flex-column">
-        <div class="sidebar-content">
-        <div class="mb-4 logo-container">
-            <img src="{{ url_for('static', filename='images/brand-logo.svg') }}" alt="Classroom Token Hub">
-            <h5 class="mb-0 d-flex align-items-center gap-2"><span class="material-symbols-outlined">admin_panel_settings</span> Admin Portal</h5>
+        <div class="mb-4 text-center">
+            <img src="{{ url_for('static', filename='images/brand-logo.svg') }}" alt="Classroom Token Hub" style="max-width: 80%; height: auto; margin-bottom: 1rem;">
+            <h5 class="mb-0 d-flex align-items-center gap-2 justify-content-center"><span class="material-symbols-outlined">admin_panel_settings</span> Admin Portal</h5>
         </div>
         <div class="d-grid gap-2" style="overflow-y: auto;">
             <!-- Dashboard -->
@@ -419,7 +397,6 @@
         </div>
         <div class="mt-auto">
             <a href="{{ url_for('admin.logout') }}" class="btn btn-outline-secondary text-start w-100"><span class="material-symbols-outlined">logout</span> Sign Out</a>
-        </div>
         </div>
     </div>
     <div class="flex-grow-1 main-content">
