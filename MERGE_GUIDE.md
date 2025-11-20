@@ -122,7 +122,9 @@ if (item.bulk_discount_enabled and
 
 ---
 
-## Validation Added
+## Critical P1 Fixes Included
+
+### 1. Bundle/Discount Validation (forms.py)
 
 The merged code includes form-level validation:
 
@@ -142,6 +144,37 @@ def validate_bulk_discount_percentage(self, field):
         if field.data > 100:
             raise ValidationError('Discount percentage cannot exceed 100%.')
 ```
+
+### 2. Hall Pass Limit Bypass Fix (app/routes/api.py)
+
+Fixed critical bug where multi-quantity hall pass purchases bypassed per-student limits:
+
+**Problem:**
+- Old code used exact string match: `description="Purchase: Hall Pass"`
+- New quantity format: `"Purchase: Hall Pass (x3)"`
+- Exact match failed → limit checks counted 0 prior purchases
+- Students could buy unlimited passes in bulk
+
+**Solution:**
+```python
+# Use LIKE query to match description prefix
+transactions = Transaction.query.filter(
+    Transaction.student_id == student.id,
+    Transaction.type == 'purchase',
+    Transaction.description.like(f"Purchase: {item.name}%")
+).all()
+
+# Parse and sum quantities from all matching transactions
+total_purchased = 0
+for txn in transactions:
+    match = re.search(r'\(x(\d+)\)', txn.description)
+    if match:
+        total_purchased += int(match.group(1))
+    else:
+        total_purchased += 1  # No suffix = quantity 1
+```
+
+**Result:** Limits now correctly enforce based on total quantity purchased, not transaction count.
 
 ---
 
