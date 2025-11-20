@@ -41,9 +41,13 @@ def purchase_item():
     data = request.get_json()
     item_id = data.get('item_id')
     passphrase = data.get('passphrase')
+    quantity = int(data.get('quantity', 1))  # Default to 1 if not specified
 
     if not all([item_id, passphrase]):
         return jsonify({"status": "error", "message": "Missing item ID or passphrase."}), 400
+
+    if quantity < 1:
+        return jsonify({"status": "error", "message": "Quantity must be at least 1."}), 400
 
     # 1. Verify passphrase
     if not check_password_hash(student.passphrase_hash or '', passphrase):
@@ -55,11 +59,19 @@ def purchase_item():
     if not item or not item.is_active:
         return jsonify({"status": "error", "message": "This item is not available."}), 404
 
-    if student.checking_balance < item.price:
-        return jsonify({"status": "error", "message": "Insufficient funds."}), 400
+    # Calculate price (with bulk discount if applicable)
+    unit_price = item.price
+    if item.bulk_discount_enabled and quantity >= item.bulk_discount_quantity:
+        discount_multiplier = 1 - (item.bulk_discount_percentage / 100)
+        unit_price = item.price * discount_multiplier
 
-    if item.inventory is not None and item.inventory <= 0:
-        return jsonify({"status": "error", "message": "This item is out of stock."}), 400
+    total_price = unit_price * quantity
+
+    if student.checking_balance < total_price:
+        return jsonify({"status": "error", "message": f"Insufficient funds. You need ${total_price:.2f} but have ${student.checking_balance:.2f}."}), 400
+
+    if item.inventory is not None and item.inventory < quantity:
+        return jsonify({"status": "error", "message": f"Insufficient stock. Only {item.inventory} available."}), 400
 
     if item.limit_per_student is not None:
         if item.item_type == 'hall_pass':
@@ -71,33 +83,39 @@ def purchase_item():
             ).count()
         else:
             purchase_count = StudentItem.query.filter_by(student_id=student.id, store_item_id=item.id).count()
-        if purchase_count >= item.limit_per_student:
-            return jsonify({"status": "error", "message": "You have reached the purchase limit for this item."}), 400
+        if purchase_count + quantity > item.limit_per_student:
+            return jsonify({"status": "error", "message": f"You can only purchase {item.limit_per_student - purchase_count} more of this item."}), 400
 
     # 3. Process the transaction
     try:
         # Deduct from checking account
+        purchase_description = f"Purchase: {item.name}"
+        if quantity > 1:
+            purchase_description += f" (x{quantity})"
+        if item.bulk_discount_enabled and quantity >= item.bulk_discount_quantity:
+            purchase_description += f" [{item.bulk_discount_percentage}% bulk discount]"
+
         purchase_tx = Transaction(
             student_id=student.id,
-            amount=-item.price,
+            amount=-total_price,
             account_type='checking',
             type='purchase',
-            description=f"Purchase: {item.name}"
+            description=purchase_description
         )
         db.session.add(purchase_tx)
 
         # Handle inventory
         if item.inventory is not None:
-            item.inventory -= 1
+            item.inventory -= quantity
 
         # --- Handle special item type: Hall Pass ---
         if item.item_type == 'hall_pass':
-            student.hall_passes += 1
+            student.hall_passes += quantity  # Add all purchased hall passes
             db.session.commit()
-            return jsonify({"status": "success", "message": f"You purchased a Hall Pass! Your new balance is {student.hall_passes}."})
+            return jsonify({"status": "success", "message": f"You purchased {quantity} Hall Pass(es)! Your new balance is {student.hall_passes}."})
 
         # --- Standard Item Logic ---
-        # Create the student's item
+        # Create the student's item(s)
         expiry_date = None
         if item.item_type == 'delayed' and item.auto_expiry_days:
             expiry_date = datetime.now(timezone.utc) + timedelta(days=item.auto_expiry_days)
@@ -110,14 +128,33 @@ def purchase_item():
         else: # delayed
             student_item_status = 'purchased'
 
-        new_student_item = StudentItem(
-            student_id=student.id,
-            store_item_id=item.id,
-            purchase_date=datetime.now(timezone.utc),
-            expiry_date=expiry_date,
-            status=student_item_status
-        )
-        db.session.add(new_student_item)
+        # Handle bundle items - create one StudentItem with bundle tracking
+        if item.is_bundle:
+            new_student_item = StudentItem(
+                student_id=student.id,
+                store_item_id=item.id,
+                purchase_date=datetime.now(timezone.utc),
+                expiry_date=expiry_date,
+                status=student_item_status,
+                is_from_bundle=True,
+                bundle_remaining=item.bundle_quantity * quantity,  # Total uses = bundle_quantity * number of bundles purchased
+                quantity_purchased=quantity
+            )
+            db.session.add(new_student_item)
+        else:
+            # For non-bundle items, create separate StudentItem records for each quantity
+            for _ in range(quantity):
+                new_student_item = StudentItem(
+                    student_id=student.id,
+                    store_item_id=item.id,
+                    purchase_date=datetime.now(timezone.utc),
+                    expiry_date=expiry_date,
+                    status=student_item_status,
+                    is_from_bundle=False,
+                    quantity_purchased=1
+                )
+                db.session.add(new_student_item)
+
         db.session.commit()
 
         # --- Collective Item Logic ---
@@ -142,7 +179,18 @@ def purchase_item():
                 # but it's good for logging/debugging. A more robust solution might use websockets.
                 current_app.logger.info(f"Collective goal '{item.name}' for block {student.block} has been met!")
 
-        return jsonify({"status": "success", "message": f"You purchased {item.name}!"})
+        # Build success message
+        success_message = f"You purchased {item.name}!"
+        if item.is_bundle:
+            total_uses = item.bundle_quantity * quantity
+            success_message = f"You purchased {quantity} bundle(s) of {item.name}! You have {total_uses} uses."
+        elif quantity > 1:
+            success_message = f"You purchased {quantity}x {item.name}!"
+
+        if item.bulk_discount_enabled and quantity >= item.bulk_discount_quantity:
+            success_message += f" (Saved {item.bulk_discount_percentage}% with bulk discount!)"
+
+        return jsonify({"status": "success", "message": success_message})
 
     except SQLAlchemyError as e:
         db.session.rollback()
@@ -173,8 +221,14 @@ def use_item():
         return jsonify({"status": "error", "message": "Invalid item."}), 404
 
     # Validate the item can be used
-    if student_item.status not in ['purchased', 'pending']:
-        return jsonify({"status": "error", "message": "This item has already been used or is not available."}), 400
+    if student_item.is_from_bundle:
+        # For bundle items, check bundle_remaining
+        if student_item.bundle_remaining is None or student_item.bundle_remaining <= 0:
+            return jsonify({"status": "error", "message": "All uses from this bundle have been consumed."}), 400
+    else:
+        # For regular items, check status
+        if student_item.status not in ['purchased', 'pending']:
+            return jsonify({"status": "error", "message": "This item has already been used or is not available."}), 400
 
     # Check expiry
     if student_item.expiry_date and datetime.now(timezone.utc) > student_item.expiry_date:
@@ -184,9 +238,22 @@ def use_item():
 
     # 3. Mark as processing and create redemption transaction
     try:
-        student_item.status = 'processing'
-        student_item.redemption_date = datetime.now(timezone.utc)
-        student_item.redemption_details = details
+        # Handle bundle items differently
+        if student_item.is_from_bundle:
+            # Decrement bundle_remaining
+            student_item.bundle_remaining -= 1
+            if student_item.bundle_remaining == 0:
+                student_item.status = 'redeemed'  # All uses consumed
+            student_item.redemption_date = datetime.now(timezone.utc)
+            if student_item.redemption_details:
+                student_item.redemption_details += f"\n---\n{details}"
+            else:
+                student_item.redemption_details = details
+        else:
+            # Regular item - mark as processing
+            student_item.status = 'processing'
+            student_item.redemption_date = datetime.now(timezone.utc)
+            student_item.redemption_details = details
 
         # Create a redemption transaction (deduct the value from savings or checking)
         # This is a $0 transaction to log the redemption event
@@ -195,12 +262,15 @@ def use_item():
             amount=0.0,
             account_type='checking',
             type='redemption',
-            description=f"Used: {student_item.store_item.name}"
+            description=f"Used: {student_item.store_item.name}" + (f" (bundle: {student_item.bundle_remaining} remaining)" if student_item.is_from_bundle else "")
         )
         db.session.add(redemption_tx)
         db.session.commit()
 
-        return jsonify({"status": "success", "message": f"You have requested to use {student_item.store_item.name}. Awaiting admin approval."})
+        if student_item.is_from_bundle:
+            return jsonify({"status": "success", "message": f"You have used 1 from your bundle of {student_item.store_item.name}. {student_item.bundle_remaining} uses remaining."})
+        else:
+            return jsonify({"status": "success", "message": f"You have requested to use {student_item.store_item.name}. Awaiting admin approval."})
 
     except SQLAlchemyError as e:
         db.session.rollback()

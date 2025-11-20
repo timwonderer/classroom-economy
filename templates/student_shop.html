@@ -12,7 +12,7 @@
 <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
     {% for item in items %}
     <div class="col">
-        <div class="card h-100">
+        <div class="card h-100 {% if item.is_bundle or item.bulk_discount_enabled %}border-primary{% endif %}">
             <div class="card-body d-flex flex-column">
                 <h5 class="card-title">{{ item.name }}</h5>
                 <div class="mb-2">
@@ -27,6 +27,24 @@
                         <span class="badge bg-secondary">Hall Pass</span>
                     {% endif %}
                 </div>
+
+                <!-- Bundle and Discount Badges -->
+                {% if item.is_bundle %}
+                <div class="mb-2">
+                    <span class="badge bg-warning text-dark">
+                        <i class="bi bi-box-seam"></i> Bundle: {{ item.bundle_quantity }} items
+                    </span>
+                </div>
+                {% endif %}
+
+                {% if item.bulk_discount_enabled %}
+                <div class="mb-2">
+                    <span class="badge bg-success">
+                        <i class="bi bi-percent"></i> {{ item.bulk_discount_percentage }}% off when you buy {{ item.bulk_discount_quantity }}+
+                    </span>
+                </div>
+                {% endif %}
+
                 <p class="card-text text-muted flex-grow-1">{{ item.description or 'No description available.' }}</p>
 
                 {% if item.inventory is not none %}
@@ -48,6 +66,12 @@
                             data-item-id="{{ item.id }}"
                             data-item-name="{{ item.name }}"
                             data-item-price="{{ "%.2f"|format(item.price) }}"
+                            data-is-bundle="{{ 'true' if item.is_bundle else 'false' }}"
+                            data-bundle-quantity="{{ item.bundle_quantity if item.is_bundle else 0 }}"
+                            data-bulk-discount-enabled="{{ 'true' if item.bulk_discount_enabled else 'false' }}"
+                            data-bulk-discount-quantity="{{ item.bulk_discount_quantity if item.bulk_discount_enabled else 0 }}"
+                            data-bulk-discount-percentage="{{ item.bulk_discount_percentage if item.bulk_discount_enabled else 0 }}"
+                            data-inventory="{{ item.inventory if item.inventory is not none else 'unlimited' }}"
                             {% if item.inventory is not none and item.inventory <= 0 %}disabled{% endif %}>
                         {% if item.inventory is not none and item.inventory <= 0 %}
                             Out of Stock
@@ -79,13 +103,44 @@
             <div class="modal-body">
                 <div class="alert alert-info">
                     <strong>Item:</strong> <span id="modalItemName"></span><br>
-                    <strong>Price:</strong> $<span id="modalItemPrice"></span>
+                    <strong>Unit Price:</strong> $<span id="modalItemPrice"></span><br>
+                    <span id="modalBundleInfo" style="display: none;">
+                        <strong>Bundle:</strong> <span id="modalBundleQuantity"></span> items per bundle<br>
+                    </span>
+                    <span id="modalDiscountInfo" style="display: none;">
+                        <strong>Bulk Discount:</strong> <span id="modalDiscountPercentage"></span>% off when buying <span id="modalDiscountQuantity"></span>+<br>
+                    </span>
                 </div>
+
                 <form id="buyItemForm">
                     <input type="hidden" id="modalItemId" name="item_id">
+                    <input type="hidden" id="modalIsBundle" name="is_bundle">
+                    <input type="hidden" id="modalBulkDiscountEnabled" name="bulk_discount_enabled">
+                    <input type="hidden" id="modalBulkDiscountQuantity" name="bulk_discount_quantity">
+                    <input type="hidden" id="modalBulkDiscountPercentage" name="bulk_discount_percentage">
+                    <input type="hidden" id="modalBasePrice" name="base_price">
+                    <input type="hidden" id="modalInventory" name="inventory">
+
+                    <div class="mb-3">
+                        <label for="quantity" class="form-label">Quantity:</label>
+                        <div class="input-group">
+                            <button class="btn btn-outline-secondary" type="button" id="decreaseQty">-</button>
+                            <input type="number" class="form-control text-center" id="quantity" name="quantity" value="1" min="1" required>
+                            <button class="btn btn-outline-secondary" type="button" id="increaseQty">+</button>
+                        </div>
+                        <small class="text-muted" id="quantityHint"></small>
+                    </div>
+
+                    <div class="alert alert-success" id="totalPriceDisplay">
+                        <strong>Total Price:</strong> $<span id="totalPrice">0.00</span>
+                        <span id="savingsDisplay" style="display: none;">
+                            <br><small class="text-success"><i class="bi bi-check-circle"></i> You save $<span id="savingsAmount">0.00</span>!</small>
+                        </span>
+                    </div>
+
                     <div class="mb-3">
                         <label for="passphrase" class="form-label">Enter your Passphrase to confirm:</label>
-                        <input type="password" class="form-control" id="passphrase" name="passphrase" autocomplete="current-password" required autofocus>
+                        <input type="password" class="form-control" id="passphrase" name="passphrase" autocomplete="current-password" required>
                     </div>
                 </form>
             </div>
@@ -100,30 +155,149 @@
 
 {% block extra_scripts %}
 <script>
+    let currentItemData = {};
+
     const buyItemModal = document.getElementById('buyItemModal');
     buyItemModal.addEventListener('show.bs.modal', event => {
         const button = event.relatedTarget;
-        const itemName = button.getAttribute('data-item-name');
-        const itemId = button.getAttribute('data-item-id');
-        const itemPrice = button.getAttribute('data-item-price');
 
-        document.getElementById('modalItemName').textContent = itemName;
-        document.getElementById('modalItemId').value = itemId;
-        document.getElementById('modalItemPrice').textContent = itemPrice;
+        // Store item data
+        currentItemData = {
+            itemName: button.getAttribute('data-item-name'),
+            itemId: button.getAttribute('data-item-id'),
+            basePrice: parseFloat(button.getAttribute('data-item-price')),
+            isBundle: button.getAttribute('data-is-bundle') === 'true',
+            bundleQuantity: parseInt(button.getAttribute('data-bundle-quantity')) || 0,
+            bulkDiscountEnabled: button.getAttribute('data-bulk-discount-enabled') === 'true',
+            bulkDiscountQuantity: parseInt(button.getAttribute('data-bulk-discount-quantity')) || 0,
+            bulkDiscountPercentage: parseFloat(button.getAttribute('data-bulk-discount-percentage')) || 0,
+            inventory: button.getAttribute('data-inventory')
+        };
+
+        // Populate modal
+        document.getElementById('modalItemName').textContent = currentItemData.itemName;
+        document.getElementById('modalItemId').value = currentItemData.itemId;
+        document.getElementById('modalItemPrice').textContent = currentItemData.basePrice.toFixed(2);
+        document.getElementById('modalIsBundle').value = currentItemData.isBundle;
+        document.getElementById('modalBulkDiscountEnabled').value = currentItemData.bulkDiscountEnabled;
+        document.getElementById('modalBulkDiscountQuantity').value = currentItemData.bulkDiscountQuantity;
+        document.getElementById('modalBulkDiscountPercentage').value = currentItemData.bulkDiscountPercentage;
+        document.getElementById('modalBasePrice').value = currentItemData.basePrice;
+        document.getElementById('modalInventory').value = currentItemData.inventory;
+
+        // Show bundle info
+        if (currentItemData.isBundle) {
+            document.getElementById('modalBundleInfo').style.display = 'block';
+            document.getElementById('modalBundleQuantity').textContent = currentItemData.bundleQuantity;
+        } else {
+            document.getElementById('modalBundleInfo').style.display = 'none';
+        }
+
+        // Show discount info
+        if (currentItemData.bulkDiscountEnabled) {
+            document.getElementById('modalDiscountInfo').style.display = 'block';
+            document.getElementById('modalDiscountPercentage').textContent = currentItemData.bulkDiscountPercentage;
+            document.getElementById('modalDiscountQuantity').textContent = currentItemData.bulkDiscountQuantity;
+        } else {
+            document.getElementById('modalDiscountInfo').style.display = 'none';
+        }
+
+        // Set max quantity if inventory limited
+        const quantityInput = document.getElementById('quantity');
+        if (currentItemData.inventory !== 'unlimited') {
+            quantityInput.max = currentItemData.inventory;
+        } else {
+            quantityInput.removeAttribute('max');
+        }
+
+        // Reset quantity
+        quantityInput.value = 1;
+        updateTotalPrice();
     });
 
     buyItemModal.addEventListener('shown.bs.modal', function () {
         document.getElementById('passphrase').focus();
     });
 
+    // Quantity controls
+    document.getElementById('decreaseQty').addEventListener('click', () => {
+        const input = document.getElementById('quantity');
+        if (input.value > 1) {
+            input.value = parseInt(input.value) - 1;
+            updateTotalPrice();
+        }
+    });
+
+    document.getElementById('increaseQty').addEventListener('click', () => {
+        const input = document.getElementById('quantity');
+        const max = input.max ? parseInt(input.max) : Infinity;
+        if (parseInt(input.value) < max) {
+            input.value = parseInt(input.value) + 1;
+            updateTotalPrice();
+        }
+    });
+
+    document.getElementById('quantity').addEventListener('input', updateTotalPrice);
+
+    function updateTotalPrice() {
+        const quantity = parseInt(document.getElementById('quantity').value) || 1;
+        let unitPrice = currentItemData.basePrice;
+        let hasDiscount = false;
+
+        // Apply bulk discount if applicable
+        if (currentItemData.bulkDiscountEnabled && quantity >= currentItemData.bulkDiscountQuantity) {
+            const discountMultiplier = 1 - (currentItemData.bulkDiscountPercentage / 100);
+            unitPrice = currentItemData.basePrice * discountMultiplier;
+            hasDiscount = true;
+        }
+
+        const totalPrice = unitPrice * quantity;
+        const originalTotal = currentItemData.basePrice * quantity;
+        const savings = originalTotal - totalPrice;
+
+        document.getElementById('totalPrice').textContent = totalPrice.toFixed(2);
+
+        // Show savings if discount applied
+        if (hasDiscount && savings > 0) {
+            document.getElementById('savingsAmount').textContent = savings.toFixed(2);
+            document.getElementById('savingsDisplay').style.display = 'block';
+        } else {
+            document.getElementById('savingsDisplay').style.display = 'none';
+        }
+
+        // Update quantity hint
+        let hint = '';
+        if (currentItemData.isBundle) {
+            const totalItems = quantity * currentItemData.bundleQuantity;
+            hint = `You will get ${totalItems} total uses (${quantity} bundle${quantity > 1 ? 's' : ''})`;
+        }
+        if (currentItemData.bulkDiscountEnabled) {
+            if (quantity >= currentItemData.bulkDiscountQuantity) {
+                hint += hint ? ' • ' : '';
+                hint += `Bulk discount applied!`;
+            } else {
+                const needed = currentItemData.bulkDiscountQuantity - quantity;
+                hint += hint ? ' • ' : '';
+                hint += `Buy ${needed} more for ${currentItemData.bulkDiscountPercentage}% off`;
+            }
+        }
+        document.getElementById('quantityHint').textContent = hint;
+    }
+
     document.getElementById('confirmPurchaseBtn').addEventListener('click', () => {
         const form = document.getElementById('buyItemForm');
         const itemId = form.querySelector('#modalItemId').value;
         const passphrase = form.querySelector('#passphrase').value;
+        const quantity = parseInt(form.querySelector('#quantity').value);
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
         if (!passphrase) {
             createToast('Please enter your passphrase.', true);
+            return;
+        }
+
+        if (quantity < 1) {
+            createToast('Quantity must be at least 1.', true);
             return;
         }
 
@@ -133,7 +307,11 @@
                 'Content-Type': 'application/json',
                 'X-CSRFToken': csrfToken
             },
-            body: JSON.stringify({ item_id: itemId, passphrase: passphrase })
+            body: JSON.stringify({
+                item_id: itemId,
+                passphrase: passphrase,
+                quantity: quantity
+            })
         })
         .then(response => response.json())
         .then(data => {

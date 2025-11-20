@@ -22,6 +22,16 @@ class StoreItemForm(FlaskForm):
     auto_delist_date = DateField('Auto-Delist Date (optional)', format='%Y-%m-%d', validators=[Optional()])
     auto_expiry_days = IntegerField('Item Expiry in Days (optional, for delayed-use items)', validators=[Optional()])
     is_active = BooleanField('Item is Active', default=True)
+
+    # Bundle settings
+    is_bundle = BooleanField('This is a Bundled Item', default=False)
+    bundle_quantity = IntegerField('Bundle Quantity (number of items in bundle)', validators=[Optional()])
+
+    # Bulk discount settings
+    bulk_discount_enabled = BooleanField('Enable Bulk Discount', default=False)
+    bulk_discount_quantity = IntegerField('Minimum Quantity for Discount', validators=[Optional()])
+    bulk_discount_percentage = FloatField('Discount Percentage (%)', validators=[Optional()])
+
     submit = SubmitField('Save Item')
 
 

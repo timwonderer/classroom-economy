@@ -861,7 +861,14 @@ def store_management():
             limit_per_student=form.limit_per_student.data,
             auto_delist_date=form.auto_delist_date.data,
             auto_expiry_days=form.auto_expiry_days.data,
-            is_active=form.is_active.data
+            is_active=form.is_active.data,
+            # Bundle settings
+            is_bundle=form.is_bundle.data,
+            bundle_quantity=form.bundle_quantity.data if form.is_bundle.data else None,
+            # Bulk discount settings
+            bulk_discount_enabled=form.bulk_discount_enabled.data,
+            bulk_discount_quantity=form.bulk_discount_quantity.data if form.bulk_discount_enabled.data else None,
+            bulk_discount_percentage=form.bulk_discount_percentage.data if form.bulk_discount_enabled.data else None
         )
         db.session.add(new_item)
         db.session.commit()
@@ -869,7 +876,15 @@ def store_management():
         return redirect(url_for('admin.store_management'))
 
     items = StoreItem.query.order_by(StoreItem.name).all()
-    return render_template('admin_store.html', form=form, items=items, current_page="store")
+
+    # Get store statistics for overview tab
+    from app.models import StudentItem
+    total_items = len(items)
+    active_items = len([i for i in items if i.is_active])
+    total_purchases = StudentItem.query.count()
+
+    return render_template('admin_store.html', form=form, items=items, current_page="store",
+                         total_items=total_items, active_items=active_items, total_purchases=total_purchases)
 
 
 @admin_bp.route('/store/edit/<int:item_id>', methods=['GET', 'POST'])
@@ -896,6 +911,28 @@ def delete_store_item(item_id):
     item.is_active = False
     db.session.commit()
     flash(f"'{item.name}' has been deactivated and removed from the store.", "success")
+    return redirect(url_for('admin.store_management'))
+
+
+@admin_bp.route('/store/hard-delete/<int:item_id>', methods=['POST'])
+@admin_required
+def hard_delete_store_item(item_id):
+    """Permanently delete a store item (hard delete)."""
+    item = StoreItem.query.get_or_404(item_id)
+    item_name = item.name
+
+    # Check if there are any student purchases of this item
+    from app.models import StudentItem
+    purchase_count = StudentItem.query.filter_by(store_item_id=item_id).count()
+
+    if purchase_count > 0:
+        flash(f"Cannot permanently delete '{item_name}' because it has {purchase_count} purchase record(s). Please deactivate instead.", "danger")
+        return redirect(url_for('admin.store_management'))
+
+    # Safe to delete - no purchase history
+    db.session.delete(item)
+    db.session.commit()
+    flash(f"'{item_name}' has been permanently deleted from the database.", "success")
     return redirect(url_for('admin.store_management'))
 
 
