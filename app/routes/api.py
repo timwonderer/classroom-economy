@@ -18,7 +18,7 @@ from werkzeug.security import check_password_hash
 from app.extensions import db
 from app.models import (
     Student, StoreItem, StudentItem, Transaction, TapEvent,
-    HallPassLog, InsuranceClaim
+    HallPassLog, InsuranceClaim, BankingSettings
 )
 from app.auth import login_required, admin_required, get_logged_in_student
 
@@ -35,6 +35,71 @@ api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
 # -------------------- STORE API --------------------
+
+def _charge_overdraft_fee_if_needed(student, banking_settings):
+    """
+    Check if student's checking balance is negative and charge overdraft fee if enabled.
+    Returns (fee_charged, fee_amount) tuple.
+    """
+    if not banking_settings or not banking_settings.overdraft_fee_enabled:
+        return False, 0.0
+
+    # Only charge if balance is negative
+    if student.checking_balance >= 0:
+        return False, 0.0
+
+    fee_amount = 0.0
+
+    if banking_settings.overdraft_fee_type == 'flat':
+        fee_amount = banking_settings.overdraft_fee_flat_amount
+    elif banking_settings.overdraft_fee_type == 'progressive':
+        # Count how many overdraft fees charged this month
+        from datetime import datetime, timezone
+        now = datetime.now(timezone.utc)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        overdraft_fee_count = Transaction.query.filter(
+            Transaction.student_id == student.id,
+            Transaction.type == 'overdraft_fee',
+            Transaction.timestamp >= month_start
+        ).count()
+
+        # Determine which tier to use (1st, 2nd, 3rd, or cap)
+        if overdraft_fee_count == 0:
+            fee_amount = banking_settings.overdraft_fee_progressive_1 or 0.0
+        elif overdraft_fee_count == 1:
+            fee_amount = banking_settings.overdraft_fee_progressive_2 or 0.0
+        elif overdraft_fee_count >= 2:
+            fee_amount = banking_settings.overdraft_fee_progressive_3 or 0.0
+
+        # Check if cap is exceeded
+        if banking_settings.overdraft_fee_progressive_cap:
+            total_fees_this_month = db.session.query(func.sum(Transaction.amount)).filter(
+                Transaction.student_id == student.id,
+                Transaction.type == 'overdraft_fee',
+                Transaction.timestamp >= month_start
+            ).scalar() or 0.0
+
+            # total_fees_this_month is negative, so we negate it
+            if abs(total_fees_this_month) + fee_amount > banking_settings.overdraft_fee_progressive_cap:
+                # Don't charge more than the cap
+                fee_amount = max(0, banking_settings.overdraft_fee_progressive_cap - abs(total_fees_this_month))
+
+    if fee_amount > 0:
+        # Charge the fee
+        overdraft_fee_tx = Transaction(
+            student_id=student.id,
+            amount=-fee_amount,
+            account_type='checking',
+            type='overdraft_fee',
+            description=f'Overdraft fee (balance: ${student.checking_balance:.2f})'
+        )
+        db.session.add(overdraft_fee_tx)
+        db.session.flush()  # Update the balance calculation
+        return True, fee_amount
+
+    return False, 0.0
+
 
 @api_bp.route('/purchase-item', methods=['POST'])
 @login_required
@@ -72,8 +137,26 @@ def purchase_item():
 
     total_price = unit_price * quantity
 
+    # Get banking settings for overdraft handling
+    banking_settings = BankingSettings.query.first()
+
+    # Check if student has sufficient funds
     if student.checking_balance < total_price:
-        return jsonify({"status": "error", "message": f"Insufficient funds. You need ${total_price:.2f} but have ${student.checking_balance:.2f}."}), 400
+        # Check if overdraft protection is enabled (savings can cover the difference)
+        if banking_settings and banking_settings.overdraft_protection_enabled:
+            shortfall = total_price - student.checking_balance
+            if student.savings_balance >= shortfall:
+                # Allow transaction - overdraft protection will transfer from savings
+                pass
+            else:
+                return jsonify({"status": "error", "message": f"Insufficient funds in both checking and savings. You need ${total_price:.2f} total but have ${student.checking_balance + student.savings_balance:.2f}."}), 400
+        # Check if overdraft fees are enabled (allows negative balance)
+        elif banking_settings and banking_settings.overdraft_fee_enabled:
+            # Allow transaction - will charge overdraft fee after transaction
+            pass
+        else:
+            # No overdraft options - reject transaction
+            return jsonify({"status": "error", "message": f"Insufficient funds. You need ${total_price:.2f} but have ${student.checking_balance:.2f}."}), 400
 
     if item.inventory is not None and item.inventory < quantity:
         return jsonify({"status": "error", "message": f"Insufficient stock. Only {item.inventory} available."}), 400
@@ -131,6 +214,35 @@ def purchase_item():
         if item.item_type == 'hall_pass':
             student.hall_passes += quantity  # Add all purchased hall passes
             db.session.commit()
+
+            # Check if overdraft protection should transfer funds from savings
+            if banking_settings and banking_settings.overdraft_protection_enabled and student.checking_balance < 0:
+                shortfall = abs(student.checking_balance)
+                if student.savings_balance >= shortfall:
+                    # Transfer from savings to checking
+                    transfer_tx_withdraw = Transaction(
+                        student_id=student.id,
+                        amount=-shortfall,
+                        account_type='savings',
+                        type='Withdrawal',
+                        description='Overdraft protection transfer to checking'
+                    )
+                    transfer_tx_deposit = Transaction(
+                        student_id=student.id,
+                        amount=shortfall,
+                        account_type='checking',
+                        type='Deposit',
+                        description='Overdraft protection transfer from savings'
+                    )
+                    db.session.add(transfer_tx_withdraw)
+                    db.session.add(transfer_tx_deposit)
+                    db.session.commit()
+
+            # Check if overdraft fee should be charged
+            fee_charged, fee_amount = _charge_overdraft_fee_if_needed(student, banking_settings)
+            if fee_charged:
+                db.session.commit()
+
             return jsonify({"status": "success", "message": f"You purchased {quantity} Hall Pass(es)! Your new balance is {student.hall_passes}."})
 
         # --- Standard Item Logic ---
@@ -188,6 +300,35 @@ def purchase_item():
                 db.session.add(new_student_item)
 
         db.session.commit()
+
+        # Handle overdraft protection and fees for regular items
+        # Check if overdraft protection should transfer funds from savings
+        if banking_settings and banking_settings.overdraft_protection_enabled and student.checking_balance < 0:
+            shortfall = abs(student.checking_balance)
+            if student.savings_balance >= shortfall:
+                # Transfer from savings to checking
+                transfer_tx_withdraw = Transaction(
+                    student_id=student.id,
+                    amount=-shortfall,
+                    account_type='savings',
+                    type='Withdrawal',
+                    description='Overdraft protection transfer to checking'
+                )
+                transfer_tx_deposit = Transaction(
+                    student_id=student.id,
+                    amount=shortfall,
+                    account_type='checking',
+                    type='Deposit',
+                    description='Overdraft protection transfer from savings'
+                )
+                db.session.add(transfer_tx_withdraw)
+                db.session.add(transfer_tx_deposit)
+                db.session.commit()
+
+        # Check if overdraft fee should be charged
+        fee_charged, fee_amount = _charge_overdraft_fee_if_needed(student, banking_settings)
+        if fee_charged:
+            db.session.commit()
 
         # --- Collective Item Logic ---
         if item.item_type == 'collective':
@@ -400,7 +541,7 @@ def handle_hall_pass_action(pass_id, action):
         # Create a tap-out event for attendance tracking
         tap_out_event = TapEvent(
             student_id=student.id,
-            period="HALLPASS", # Use a special period for hall pass events
+            period=log_entry.period,
             status='inactive',
             timestamp=now,
             reason=log_entry.reason
@@ -418,7 +559,7 @@ def handle_hall_pass_action(pass_id, action):
         # Create a tap-in event to close the loop
         tap_in_event = TapEvent(
             student_id=student.id,
-            period="HALLPASS",
+            period=log_entry.period,
             status='active',
             timestamp=now,
             reason="Return from hall pass"
@@ -531,7 +672,7 @@ def hall_pass_terminal_use():
     # Create tap-out event for attendance tracking
     tap_out_event = TapEvent(
         student_id=log_entry.student_id,
-        period="HALLPASS",
+        period=log_entry.period,
         status='inactive',
         timestamp=now,
         reason=log_entry.reason
@@ -577,7 +718,7 @@ def hall_pass_terminal_return():
     # Create tap-in event for attendance tracking
     tap_in_event = TapEvent(
         student_id=log_entry.student_id,
-        period="HALLPASS",
+        period=log_entry.period,
         status='active',
         timestamp=now,
         reason="Returned from hall pass"

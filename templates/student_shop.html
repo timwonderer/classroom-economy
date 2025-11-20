@@ -516,8 +516,8 @@
                 'X-CSRFToken': csrfToken
             },
             body: JSON.stringify({
-                item_id: itemId,
-                pin: pin
+                student_item_id: itemId,
+                passphrase: pin
             })
         })
         .then(response => response.json())

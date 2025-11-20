@@ -353,7 +353,7 @@
                 {% for item in items %}
                   {% for student_item in item.student_items %}
                   <tr>
-                    <td>{{ student_item.student.username if student_item.student else 'Unknown' }}</td>
+                    <td>{{ student_item.student.full_name if student_item.student else 'Unknown' }}</td>
                     <td>{{ item.name }}</td>
                     <td>{{ student_item.purchase_date.strftime('%Y-%m-%d %H:%M') if student_item.purchase_date else 'N/A' }}</td>
                     <td><span class="badge bg-{{ 'success' if student_item.status == 'completed' else 'warning' }}">{{ student_item.status|title }}</span></td>
