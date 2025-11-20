@@ -781,12 +781,17 @@ def check_and_auto_tapout_if_limit_reached(student):
                         f"Auto-tapping out student {student.id} from {period_upper} - daily limit of {hours_limit} hours reached (total: {today_attendance/3600:.2f}h)"
                     )
 
-                    # Create tap-out event
+                    # Calculate when they SHOULD have been tapped out (at exactly the limit)
+                    # If they've been active for 90 minutes and limit is 75, tap them out 15 minutes ago
+                    overage_seconds = today_attendance - daily_limit
+                    tapout_timestamp = now_utc - timedelta(seconds=overage_seconds)
+
+                    # Create tap-out event backdated to when they hit the limit
                     tap_out_event = TapEvent(
                         student_id=student.id,
                         period=period_upper,
                         status="inactive",
-                        timestamp=now_utc,
+                        timestamp=tapout_timestamp,
                         reason=f"Daily limit ({hours_limit:.1f}h) reached"
                     )
                     db.session.add(tap_out_event)
