@@ -780,7 +780,12 @@ def shop():
         or_(StoreItem.auto_delist_date == None, StoreItem.auto_delist_date > now)
     ).order_by(StoreItem.name).all()
 
-    return render_template('student_shop.html', student=student, items=items)
+    # Fetch student's purchased items
+    student_items = student.items.filter(
+        StudentItem.status.in_(['purchased', 'pending', 'processing'])
+    ).order_by(StudentItem.purchase_date.desc()).all()
+
+    return render_template('student_shop.html', student=student, items=items, student_items=student_items)
 
 
 # -------------------- RENT --------------------
