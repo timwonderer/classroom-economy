@@ -132,7 +132,8 @@
             border: none;
             padding: 0.75rem;
             font-weight: 500;
-            transition: background 0.3s ease;
+            transition: all 0.3s ease;
+            border-radius: 10px;
         }
 
         .btn-primary:hover {
@@ -272,6 +273,7 @@
             <div class="circle circle-2"></div>
             <div class="circle circle-3"></div>
             <div class="branding-content">
+                <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Portal Logo" style="max-width: 200px; filter: brightness(0) invert(1) drop-shadow(0 4px 12px rgba(0,0,0,0.2)); margin-bottom: 2rem;">
                 <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Portal Logo" style="max-width: 200px; filter: brightness(0) invert(1) drop-shadow(0 4px 12px rgba(0,0,0,0.2)); margin-bottom: 2rem;">
                 <h1>Student Portal</h1>
                 <p class="tagline">Earn, Save, and Spend Your Tokens!</p>
