@@ -20,7 +20,8 @@ import pytz
 from app.extensions import db
 from app.models import (
     Student, Transaction, TapEvent, StoreItem, StudentItem,
-    RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim
+    RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
+    BankingSettings
 )
 from app.auth import login_required, get_logged_in_student, SESSION_TIMEOUT_MINUTES
 from forms import (
@@ -808,14 +809,108 @@ def shop():
 
 # -------------------- RENT --------------------
 
+def _charge_overdraft_fee_if_needed(student, banking_settings):
+    """
+    Check if student's checking balance is negative and charge overdraft fee if enabled.
+    Returns (fee_charged, fee_amount) tuple.
+    """
+    if not banking_settings or not banking_settings.overdraft_fee_enabled:
+        return False, 0.0
+
+    # Only charge if balance is negative
+    if student.checking_balance >= 0:
+        return False, 0.0
+
+    fee_amount = 0.0
+
+    if banking_settings.overdraft_fee_type == 'flat':
+        fee_amount = banking_settings.overdraft_fee_flat_amount
+    elif banking_settings.overdraft_fee_type == 'progressive':
+        # Count how many overdraft fees charged this month
+        now = datetime.now(timezone.utc)
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        overdraft_fee_count = Transaction.query.filter(
+            Transaction.student_id == student.id,
+            Transaction.type == 'overdraft_fee',
+            Transaction.timestamp >= month_start
+        ).count()
+
+        # Determine which tier to use (1st, 2nd, 3rd, or cap)
+        if overdraft_fee_count == 0:
+            fee_amount = banking_settings.overdraft_fee_progressive_1 or 0.0
+        elif overdraft_fee_count == 1:
+            fee_amount = banking_settings.overdraft_fee_progressive_2 or 0.0
+        elif overdraft_fee_count >= 2:
+            fee_amount = banking_settings.overdraft_fee_progressive_3 or 0.0
+
+        # Check if cap is exceeded
+        if banking_settings.overdraft_fee_progressive_cap:
+            total_fees_this_month = db.session.query(func.sum(Transaction.amount)).filter(
+                Transaction.student_id == student.id,
+                Transaction.type == 'overdraft_fee',
+                Transaction.timestamp >= month_start
+            ).scalar() or 0.0
+
+            # total_fees_this_month is negative, so we negate it
+            if abs(total_fees_this_month) + fee_amount > banking_settings.overdraft_fee_progressive_cap:
+                # Don't charge more than the cap
+                fee_amount = max(0, banking_settings.overdraft_fee_progressive_cap - abs(total_fees_this_month))
+
+    if fee_amount > 0:
+        # Charge the fee
+        overdraft_fee_tx = Transaction(
+            student_id=student.id,
+            amount=-fee_amount,
+            account_type='checking',
+            type='overdraft_fee',
+            description=f'Overdraft fee (balance: ${student.checking_balance:.2f})'
+        )
+        db.session.add(overdraft_fee_tx)
+        db.session.flush()  # Update the balance calculation
+        return True, fee_amount
+
+    return False, 0.0
+
+
 def _calculate_rent_deadlines(settings, reference_date=None):
     """Return the due date and grace end date for the active month."""
     reference_date = reference_date or datetime.now()
-    current_year = reference_date.year
-    current_month = reference_date.month
-    last_day_of_month = monthrange(current_year, current_month)[1]
-    due_day = min(settings.due_day_of_month, last_day_of_month)
-    due_date = datetime(current_year, current_month, due_day)
+
+    # If first_rent_due_date is set and we haven't reached it yet, return it
+    if settings.first_rent_due_date:
+        first_due = settings.first_rent_due_date
+        # If we're before the first due date, return the first due date
+        if reference_date < first_due:
+            grace_end_date = first_due + timedelta(days=settings.grace_period_days)
+            return first_due, grace_end_date
+
+        # Calculate due date based on frequency from first_rent_due_date
+        if settings.frequency_type == 'monthly':
+            # Calculate how many months have passed since first due date
+            months_diff = (reference_date.year - first_due.year) * 12 + (reference_date.month - first_due.month)
+            # Calculate the due date for the current period
+            target_year = first_due.year + (first_due.month + months_diff - 1) // 12
+            target_month = (first_due.month + months_diff - 1) % 12 + 1
+            last_day_of_month = monthrange(target_year, target_month)[1]
+            due_day = min(first_due.day, last_day_of_month)
+            due_date = datetime(target_year, target_month, due_day)
+        else:
+            # For non-monthly frequencies, fall back to current logic
+            # TODO: Implement weekly, daily, and custom frequencies properly
+            current_year = reference_date.year
+            current_month = reference_date.month
+            last_day_of_month = monthrange(current_year, current_month)[1]
+            due_day = min(settings.due_day_of_month, last_day_of_month)
+            due_date = datetime(current_year, current_month, due_day)
+    else:
+        # No first_rent_due_date set, use traditional monthly logic
+        current_year = reference_date.year
+        current_month = reference_date.month
+        last_day_of_month = monthrange(current_year, current_month)[1]
+        due_day = min(settings.due_day_of_month, last_day_of_month)
+        due_date = datetime(current_year, current_month, due_day)
+
     grace_end_date = due_date + timedelta(days=settings.grace_period_days)
     return due_date, grace_end_date
 
@@ -842,21 +937,38 @@ def rent():
 
     period_status = {}
     for period in student_blocks:
-        # Check if already paid this month for this period
-        payment = RentPayment.query.filter_by(
+        # Get all payments for this period this month (supports incremental payments)
+        payments = RentPayment.query.filter_by(
             student_id=student.id,
             period=period,
             period_month=current_month,
             period_year=current_year
-        ).first()
+        ).all()
 
-        is_paid = payment is not None
+        # Calculate total paid (sum of all payments)
+        total_paid = sum(p.amount_paid for p in payments) if payments else 0.0
+
+        # Calculate late fee if applicable
+        late_fee = 0.0
+        if now > grace_end_date:
+            late_fee = settings.late_fee
+
+        # Total amount due (rent + late fee if applicable)
+        total_due = settings.rent_amount + late_fee
+
+        # Check if fully paid
+        is_paid = total_paid >= total_due
         is_late = now > grace_end_date and not is_paid
+        remaining_amount = max(0, total_due - total_paid)
 
         period_status[period] = {
             'is_paid': is_paid,
             'is_late': is_late,
-            'payment': payment
+            'payments': payments,
+            'total_paid': total_paid,
+            'total_due': total_due,
+            'remaining_amount': remaining_amount,
+            'late_fee': late_fee
         }
 
     # Get payment history (all periods)
@@ -900,60 +1012,163 @@ def rent_pay(period):
     current_month = now.month
     current_year = now.year
 
-    # Check if already paid this month for this period
-    existing_payment = RentPayment.query.filter_by(
+    # Get all existing payments for this period this month
+    existing_payments = RentPayment.query.filter_by(
         student_id=student.id,
         period=period,
         period_month=current_month,
         period_year=current_year
-    ).first()
+    ).all()
 
-    if existing_payment:
-        flash(f"You have already paid rent for Period {period} this month!", "info")
-        return redirect(url_for('student.rent'))
+    total_paid_so_far = sum(p.amount_paid for p in existing_payments) if existing_payments else 0.0
 
-    # Calculate if late and total amount
+    # Calculate if late and total amount due
     due_date, grace_end_date = _calculate_rent_deadlines(settings, now)
     is_late = now > grace_end_date
 
-    total_amount = settings.rent_amount
+    # Calculate late fee if applicable
     late_fee = 0.0
-
     if is_late:
         late_fee = settings.late_fee
-        total_amount += late_fee
 
-    # Check if student has enough funds
-    if student.checking_balance < total_amount:
-        flash(f"Insufficient funds. You need ${total_amount:.2f} but only have ${student.checking_balance:.2f}.", "error")
+    # Total amount due (rent + late fee if applicable)
+    total_due = settings.rent_amount + late_fee
+
+    # Calculate remaining amount to pay
+    remaining_amount = total_due - total_paid_so_far
+
+    # Check if already fully paid
+    if remaining_amount <= 0:
+        flash(f"You have already paid rent for Period {period} this month!", "info")
         return redirect(url_for('student.rent'))
+
+    # Get payment amount from form (supports incremental payments)
+    payment_amount_input = request.form.get('amount', '').strip()
+
+    # Determine payment amount based on incremental setting
+    if settings.allow_incremental_payment and payment_amount_input:
+        try:
+            payment_amount = float(payment_amount_input)
+            # Validate payment amount
+            if payment_amount <= 0:
+                flash("Payment amount must be greater than 0.", "error")
+                return redirect(url_for('student.rent'))
+            if payment_amount > remaining_amount:
+                flash(f"Payment amount (${payment_amount:.2f}) exceeds remaining balance (${remaining_amount:.2f}). Paying exact remaining amount.", "info")
+                payment_amount = remaining_amount
+        except ValueError:
+            flash("Invalid payment amount.", "error")
+            return redirect(url_for('student.rent'))
+    else:
+        # Full payment required (or no amount specified with incremental disabled)
+        payment_amount = remaining_amount
+
+    # Get banking settings for overdraft handling
+    banking_settings = BankingSettings.query.first()
+
+    # Check if student has enough funds for this payment
+    if student.checking_balance < payment_amount:
+        # Check if overdraft protection is enabled (savings can cover the difference)
+        if banking_settings and banking_settings.overdraft_protection_enabled:
+            shortfall = payment_amount - student.checking_balance
+            if student.savings_balance >= shortfall:
+                # Allow transaction - overdraft protection will transfer from savings
+                pass
+            else:
+                flash(f"Insufficient funds in both checking and savings. You need ${payment_amount:.2f} but have ${student.checking_balance + student.savings_balance:.2f}.", "error")
+                return redirect(url_for('student.rent'))
+        # Check if overdraft fees are enabled (allows negative balance)
+        elif banking_settings and banking_settings.overdraft_fee_enabled:
+            # Allow transaction - will charge overdraft fee after transaction
+            pass
+        else:
+            # No overdraft options - reject transaction
+            flash(f"Insufficient funds. You need ${payment_amount:.2f} but only have ${student.checking_balance:.2f}.", "error")
+            return redirect(url_for('student.rent'))
 
     # Process payment
     # Deduct from checking account
+    is_partial = payment_amount < remaining_amount
+    payment_description = f'Rent for Period {period} - {now.strftime("%B %Y")}'
+    if is_partial and settings.allow_incremental_payment:
+        payment_description += f' (Partial: ${payment_amount:.2f} of ${remaining_amount:.2f})'
+    elif late_fee > 0:
+        payment_description += f' (includes ${late_fee:.2f} late fee)'
+
     transaction = Transaction(
         student_id=student.id,
-        amount=-total_amount,
+        amount=-payment_amount,
         account_type='checking',
         type='Rent Payment',
-        description=f'Rent for Period {period} - {now.strftime("%B %Y")}' + (f' (includes ${late_fee:.2f} late fee)' if is_late else '')
+        description=payment_description
     )
     db.session.add(transaction)
+
+    # Calculate late fee portion for this payment (proportional if partial payment)
+    late_fee_for_this_payment = 0.0
+    if is_late and late_fee > 0:
+        # If this is a partial payment, allocate late fee proportionally
+        if is_partial:
+            late_fee_for_this_payment = (payment_amount / total_due) * late_fee
+        else:
+            late_fee_for_this_payment = late_fee
 
     # Record rent payment
     payment = RentPayment(
         student_id=student.id,
         period=period,
-        amount_paid=total_amount,
+        amount_paid=payment_amount,
         period_month=current_month,
         period_year=current_year,
         was_late=is_late,
-        late_fee_charged=late_fee
+        late_fee_charged=late_fee_for_this_payment
     )
     db.session.add(payment)
 
     db.session.commit()
 
-    flash(f"Rent payment for Period {period} (${total_amount:.2f}) successful!", "success")
+    # Handle overdraft protection and fees
+    # Check if overdraft protection should transfer funds from savings
+    if banking_settings and banking_settings.overdraft_protection_enabled and student.checking_balance < 0:
+        shortfall = abs(student.checking_balance)
+        if student.savings_balance >= shortfall:
+            # Transfer from savings to checking
+            transfer_tx_withdraw = Transaction(
+                student_id=student.id,
+                amount=-shortfall,
+                account_type='savings',
+                type='Withdrawal',
+                description='Overdraft protection transfer to checking'
+            )
+            transfer_tx_deposit = Transaction(
+                student_id=student.id,
+                amount=shortfall,
+                account_type='checking',
+                type='Deposit',
+                description='Overdraft protection transfer from savings'
+            )
+            db.session.add(transfer_tx_withdraw)
+            db.session.add(transfer_tx_deposit)
+            db.session.commit()
+
+    # Check if overdraft fee should be charged
+    fee_charged, fee_amount = _charge_overdraft_fee_if_needed(student, banking_settings)
+    if fee_charged:
+        db.session.commit()
+
+    # Calculate new totals after this payment
+    new_total_paid = total_paid_so_far + payment_amount
+    new_remaining = total_due - new_total_paid
+
+    # Success message
+    if is_partial and settings.allow_incremental_payment:
+        if new_remaining > 0:
+            flash(f"Partial payment of ${payment_amount:.2f} successful! Remaining balance: ${new_remaining:.2f}", "success")
+        else:
+            flash(f"Final payment of ${payment_amount:.2f} successful! Rent for Period {period} is now fully paid.", "success")
+    else:
+        flash(f"Rent payment for Period {period} (${payment_amount:.2f}) successful!", "success")
+
     return redirect(url_for('student.rent'))
 
 
