@@ -117,7 +117,7 @@
             <div class="col">
                 <div class="card h-100">
                     <div class="card-body d-flex flex-column">
-                        <h5 class="card-title">{{ student_item.item.name }}</h5>
+                        <h5 class="card-title">{{ student_item.store_item.name }}</h5>
                         <div class="mb-2">
                             {% if student_item.status == 'purchased' %}
                                 <span class="badge bg-success">Ready to Use</span>
@@ -127,13 +127,13 @@
                                 <span class="badge bg-info">Processing</span>
                             {% endif %}
 
-                            {% if student_item.item.item_type == 'immediate' %}
+                            {% if student_item.store_item.item_type == 'immediate' %}
                                 <span class="badge bg-success">Immediate</span>
-                            {% elif student_item.item.item_type == 'delayed' %}
+                            {% elif student_item.store_item.item_type == 'delayed' %}
                                 <span class="badge bg-warning text-dark">Delayed</span>
-                            {% elif student_item.item.item_type == 'collective' %}
+                            {% elif student_item.store_item.item_type == 'collective' %}
                                 <span class="badge bg-info">Collective</span>
-                            {% elif student_item.item.item_type == 'hall_pass' %}
+                            {% elif student_item.store_item.item_type == 'hall_pass' %}
                                 <span class="badge bg-secondary">Hall Pass</span>
                             {% endif %}
                         </div>
@@ -142,36 +142,36 @@
                             <strong>Purchased:</strong> {{ student_item.purchase_date.strftime('%m/%d/%y %I:%M %p') if student_item.purchase_date else 'N/A' }}
                         </p>
 
-                        {% if student_item.item.expiry_date %}
+                        {% if student_item.expiry_date %}
                         <p class="text-muted small mb-2">
-                            <strong>Expires:</strong> {{ student_item.item.expiry_date.strftime('%m/%d/%y') }}
+                            <strong>Expires:</strong> {{ student_item.expiry_date.strftime('%m/%d/%y') }}
                         </p>
                         {% endif %}
 
-                        <p class="card-text text-muted flex-grow-1">{{ student_item.item.description or 'No description available.' }}</p>
+                        <p class="card-text text-muted flex-grow-1">{{ student_item.store_item.description or 'No description available.' }}</p>
 
                         <div class="mt-auto">
-                            {% if student_item.item.item_type == 'hall_pass' %}
+                            {% if student_item.store_item.item_type == 'hall_pass' %}
                                 <!-- Hall Pass - Use immediately -->
                                 <button class="btn btn-success w-100 use-item-btn"
                                         data-item-id="{{ student_item.id }}"
-                                        data-item-name="{{ student_item.item.name }}"
+                                        data-item-name="{{ student_item.store_item.name }}"
                                         data-item-type="hall_pass">
                                     <span class="material-symbols-outlined">exit_to_app</span> Request Hall Pass
                                 </button>
-                            {% elif student_item.item.item_type == 'immediate' and student_item.status == 'purchased' %}
+                            {% elif student_item.store_item.item_type == 'immediate' and student_item.status == 'purchased' %}
                                 <!-- Immediate use item - redeem now -->
                                 <button class="btn btn-primary w-100 use-item-btn"
                                         data-item-id="{{ student_item.id }}"
-                                        data-item-name="{{ student_item.item.name }}"
+                                        data-item-name="{{ student_item.store_item.name }}"
                                         data-item-type="immediate">
                                     <span class="material-symbols-outlined">redeem</span> Use Now
                                 </button>
-                            {% elif student_item.item.item_type == 'delayed' and student_item.status == 'purchased' %}
+                            {% elif student_item.store_item.item_type == 'delayed' and student_item.status == 'purchased' %}
                                 <!-- Delayed use item - request redemption -->
                                 <button class="btn btn-warning w-100 use-item-btn"
                                         data-item-id="{{ student_item.id }}"
-                                        data-item-name="{{ student_item.item.name }}"
+                                        data-item-name="{{ student_item.store_item.name }}"
                                         data-item-type="delayed">
                                     <span class="material-symbols-outlined">schedule</span> Request Redemption
                                 </button>
