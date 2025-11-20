@@ -165,7 +165,7 @@ def dashboard():
     apply_savings_interest(student)  # Apply savings interest if not already applied
     transactions = Transaction.query.filter_by(student_id=student.id).order_by(Transaction.timestamp.desc()).all()
     student_items = student.items.filter(
-        StudentItem.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'rejected'])
+        StudentItem.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired'])
     ).order_by(StudentItem.purchase_date.desc()).all()
 
     checking_transactions = [tx for tx in transactions if tx.account_type == 'checking']
@@ -801,7 +801,7 @@ def shop():
 
     # Fetch student's purchased items
     student_items = student.items.filter(
-        StudentItem.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'rejected'])
+        StudentItem.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired'])
     ).order_by(StudentItem.purchase_date.desc()).all()
 
     return render_template('student_shop.html', student=student, items=items, student_items=student_items)
