@@ -28,6 +28,7 @@ from attendance import (
     calculate_unpaid_attendance_seconds,
     get_all_block_statuses
 )
+from payroll import get_pay_rate_for_block
 
 # Create blueprint
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -642,7 +643,9 @@ def handle_tap():
         return jsonify({"error": "Invalid PIN"}), 403
 
 
-    valid_periods = [b.strip().upper() for b in student.block.split(',') if b.strip()] if student and isinstance(student.block, str) else []
+    student_blocks_raw = [b.strip() for b in student.block.split(',') if b.strip()] if student and isinstance(student.block, str) else []
+    block_lookup = {b.upper(): b for b in student_blocks_raw}
+    valid_periods = list(block_lookup.keys())
     period = data.get("period", "").upper()
     action = data.get("action")
 
@@ -689,8 +692,8 @@ def handle_tap():
             is_active = True
             last_payroll_time = get_last_payroll_time()
             duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time)
-            RATE_PER_SECOND = 0.25 / 60
-            projected_pay = duration * RATE_PER_SECOND
+            rate_per_second = get_pay_rate_for_block(block_lookup.get(period, period))
+            projected_pay = duration * rate_per_second
 
             return jsonify({
                 "status": "ok",
@@ -800,8 +803,8 @@ def handle_tap():
     last_payroll_time = get_last_payroll_time()
     duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time)
 
-    RATE_PER_SECOND = 0.25 / 60
-    projected_pay = duration * RATE_PER_SECOND
+    rate_per_second = get_pay_rate_for_block(block_lookup.get(period, period))
+    projected_pay = duration * rate_per_second
 
     return jsonify({
         "status": "ok",

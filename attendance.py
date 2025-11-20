@@ -192,15 +192,17 @@ def get_all_block_statuses(student):
     from app.models import TapEvent, HallPassLog
     from sqlalchemy import func
     from datetime import datetime, timezone
+    from payroll import get_pay_rate_for_block
 
     today = datetime.now(timezone.utc).date()
-    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+    student_blocks = [b.strip() for b in student.block.split(',') if b.strip()]
     period_states = {}
 
     last_payroll_time = get_last_payroll_time()
-    RATE_PER_SECOND = 0.25 / 60
 
-    for blk in student_blocks:
+    for block_original in student_blocks:
+        blk = block_original.upper()
+
         latest_event = (
             TapEvent.query
             .filter_by(student_id=student.id, period=blk)
@@ -217,15 +219,18 @@ def get_all_block_statuses(student):
         ).filter(func.lower(TapEvent.reason) == 'done').first() is not None
 
         duration = calculate_unpaid_attendance_seconds(student.id, blk, last_payroll_time)
-        projected_pay = duration * RATE_PER_SECOND
 
-        # Get active hall pass for this period
+        # Use block-specific payroll settings (fallback handled in helper)
+        rate_per_second = get_pay_rate_for_block(block_original)
+        projected_pay = duration * rate_per_second
+
+        # Get latest relevant hall pass for this period
         hall_pass = None
         active_pass = HallPassLog.query.filter_by(
             student_id=student.id,
             period=blk
         ).filter(
-            HallPassLog.status.in_(['pending', 'approved', 'left'])
+            HallPassLog.status.in_(['pending', 'approved', 'left', 'rejected'])
         ).order_by(HallPassLog.request_time.desc()).first()
 
         if active_pass:
