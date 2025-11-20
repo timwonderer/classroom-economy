@@ -40,7 +40,7 @@
 
         .branding-side {
             flex: 1;
-            background: linear-gradient(135deg, #9B7AB8 0%, #A78AC8 50%, #7B6B9B 100%);
+            background: linear-gradient(135deg, #00afdf 0%, #035397 50%, #274174 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -78,7 +78,7 @@
         .circle-1 {
             width: 300px;
             height: 300px;
-            background: #8F6876;
+            background: rgba(0, 175, 223, 0.3);
             top: -100px;
             right: -100px;
         }
@@ -86,7 +86,7 @@
         .circle-2 {
             width: 200px;
             height: 200px;
-            background: #C17B7E;
+            background: rgba(253, 176, 52, 0.25);
             bottom: 50px;
             left: -50px;
         }
@@ -94,7 +94,7 @@
         .circle-3 {
             width: 150px;
             height: 150px;
-            background: #6DB665;
+            background: rgba(3, 83, 151, 0.3);
             top: 50%;
             right: 10%;
         }
@@ -128,7 +128,7 @@
         }
 
         .btn-primary {
-            background: #9B7AB8;
+            background: #035397;
             border: none;
             padding: 0.75rem;
             font-weight: 500;
@@ -136,7 +136,7 @@
         }
 
         .btn-primary:hover {
-            background: #7B6B9B;
+            background: #274174;
         }
 
         .btn-primary:disabled {
@@ -272,8 +272,9 @@
             <div class="circle circle-2"></div>
             <div class="circle circle-3"></div>
             <div class="branding-content">
-                <h1>Classroom<br>Token Hub</h1>
-                <p class="tagline">Empowering Student Engagement</p>
+                <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Portal Logo" style="max-width: 200px; filter: brightness(0) invert(1) drop-shadow(0 4px 12px rgba(0,0,0,0.2)); margin-bottom: 2rem;">
+                <h1>Student Portal</h1>
+                <p class="tagline">Earn, Save, and Spend Your Tokens!</p>
             </div>
         </div>
     </div>
