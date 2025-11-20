@@ -4,13 +4,15 @@
    <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    /* Modern Geometric Design System */
+    /* Modern Geometric Design System - Brighter Student Theme */
     :root {
         --brand-primary: #274174;
         --brand-cyan: #00afdf;
         --brand-gold: #fdb034;
         --brand-blue: #035397;
         --brand-teal: #005e77;
+        --student-light-blue: #4a9eff;
+        --student-bright-cyan: #00d4ff;
         --gray-50: #f8f9fa;
         --gray-100: #f1f3f5;
         --gray-200: #e9ecef;
@@ -18,7 +20,7 @@
         --gray-600: #6c757d;
         --gray-800: #343a40;
         --white: #ffffff;
-        --sidebar-bg: linear-gradient(180deg, #274174 0%, #035397 100%);
+        --sidebar-bg: linear-gradient(180deg, #4a9eff 0%, #00afdf 100%);
         --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
         --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
         --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.12);
@@ -32,12 +34,12 @@
 
     body {
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
+        background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
         color: var(--gray-800);
         line-height: 1.6;
     }
 
-    /* Sleek Sidebar */
+    /* Sleek Sidebar - Brighter */
     .sidebar {
         background: var(--sidebar-bg);
         color: var(--white);
@@ -60,7 +62,7 @@
     }
 
     .sidebar small {
-        color: rgba(255, 255, 255, 0.7);
+        color: rgba(255, 255, 255, 0.9);
         font-size: 0.75rem;
     }
 
@@ -77,45 +79,31 @@
     }
 
     .sidebar .btn-primary {
-        background: rgba(0, 175, 223, 0.2) !important;
-        border: 2px solid var(--brand-cyan) !important;
+        background: rgba(255, 255, 255, 0.3) !important;
+        border: 2px solid var(--white) !important;
         color: var(--white) !important;
-        box-shadow: 0 0 20px rgba(0, 175, 223, 0.3);
+        box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
     }
 
     .sidebar .btn-outline-primary {
-        color: rgba(255, 255, 255, 0.8) !important;
+        color: rgba(255, 255, 255, 0.95) !important;
         border: none !important;
         background: transparent;
     }
 
     .sidebar .btn-outline-primary:hover {
-        background: rgba(255, 255, 255, 0.1) !important;
+        background: rgba(255, 255, 255, 0.2) !important;
         color: var(--white) !important;
-        transform: translateX(4px);
     }
 
     .sidebar .btn-outline-secondary {
-        color: rgba(255, 255, 255, 0.9) !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        color: rgba(255, 255, 255, 0.95) !important;
+        border: 1px solid rgba(255, 255, 255, 0.3) !important;
     }
 
     .sidebar .btn-outline-secondary:hover {
-        background: rgba(239, 68, 68, 0.15) !important;
+        background: rgba(239, 68, 68, 0.2) !important;
         border-color: #ef4444 !important;
-    }
-
-    /* Nav Groups */
-    .nav-group button {
-        position: relative;
-    }
-
-    .nav-group .chevron {
-        transition: transform 0.2s ease;
-    }
-
-    .nav-group button:not(.collapsed) .chevron {
-        transform: rotate(180deg);
     }
 
     /* Main Content Area */
@@ -126,9 +114,9 @@
         transition: margin-left 0.3s ease;
     }
 
-    /* Modern Page Title */
+    /* Modern Page Title - Brighter */
     .page-title-banner {
-        background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
+        background: linear-gradient(135deg, #4a9eff 0%, #00afdf 100%);
         color: var(--white);
         padding: 2rem 2.5rem;
         border-radius: 16px;
@@ -145,7 +133,7 @@
         right: -10%;
         width: 300px;
         height: 300px;
-        background: radial-gradient(circle, rgba(0, 175, 223, 0.2) 0%, transparent 70%);
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.2) 0%, transparent 70%);
         border-radius: 50%;
     }
 
@@ -161,15 +149,18 @@
     }
 
     .page-title-banner .greeting {
-        font-size: 1.5rem;
-        font-weight: 600;
+        font-size: 2.5rem;
+        font-weight: 700;
         margin-bottom: 0.5rem;
         position: relative;
         z-index: 1;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
     }
 
     .page-title-banner time {
-        font-size: 0.9375rem;
+        font-size: 1.125rem;
         opacity: 0.95;
         font-weight: 500;
         position: relative;
@@ -194,7 +185,7 @@
         left: 0;
         right: 0;
         height: 4px;
-        background: linear-gradient(90deg, var(--brand-cyan), var(--brand-gold));
+        background: linear-gradient(90deg, var(--student-bright-cyan), var(--brand-gold));
     }
 
     .card:hover {
@@ -221,7 +212,7 @@
     }
 
     .btn-primary {
-        background: linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-blue) 100%);
+        background: linear-gradient(135deg, var(--student-bright-cyan) 0%, var(--brand-cyan) 100%);
         border: none;
         box-shadow: var(--shadow-sm);
     }
@@ -229,7 +220,7 @@
     .btn-primary:hover {
         transform: translateY(-2px);
         box-shadow: var(--shadow-md);
-        background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-primary) 100%);
+        background: linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-blue) 100%);
     }
 
     .btn-success {
@@ -278,7 +269,7 @@
     }
 
     .table thead {
-        background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
+        background: linear-gradient(135deg, var(--student-light-blue) 0%, var(--brand-cyan) 100%);
         color: var(--white);
     }
 
@@ -299,7 +290,7 @@
 
     .nav-tabs .nav-link {
         border: none;
-        color: var(--gray-600);
+        color: var(--gray-800);
         font-weight: 500;
         padding: 0.75rem 1.5rem;
         transition: all 0.2s ease;
@@ -312,7 +303,7 @@
     }
 
     .nav-tabs .nav-link.active {
-        background: linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-blue) 100%);
+        background: linear-gradient(135deg, var(--student-bright-cyan) 0%, var(--brand-cyan) 100%);
         color: var(--white);
     }
 
@@ -328,6 +319,10 @@
 
     .page-title-banner .material-symbols-outlined {
         font-size: 32px;
+    }
+
+    .page-title-banner .greeting .material-symbols-outlined {
+        font-size: 3rem;
     }
 
     /* Alert Messages */
@@ -357,8 +352,8 @@
     }
 
     .alert-info {
-        background-color: rgba(0, 175, 223, 0.1);
-        border-left-color: var(--brand-cyan);
+        background-color: rgba(0, 212, 255, 0.1);
+        border-left-color: var(--student-bright-cyan);
         color: var(--brand-primary);
     }
 
@@ -370,7 +365,7 @@
     }
 
     .modal-header {
-        background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
+        background: linear-gradient(135deg, var(--student-light-blue) 0%, var(--brand-cyan) 100%);
         color: var(--white);
         border-radius: 16px 16px 0 0;
         border: none;
@@ -404,45 +399,13 @@
             <a href="{{ url_for('student.dashboard') }}"
                class="btn text-start {% if current_page == 'dashboard' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">dashboard</span> Dashboard</a>
 
-            <!-- Finances Group -->
-            <div class="nav-group">
-                <button class="btn btn-outline-primary text-start w-100 d-flex justify-content-between align-items-center collapsed"
-                        type="button"
-                        data-bs-toggle="collapse"
-                        data-bs-target="#financesGroup"
-                        aria-expanded="false">
-                    <span><span class="material-symbols-outlined">account_balance_wallet</span> Finances</span>
-                    <svg width="12" height="12" class="chevron">
-                        <path d="M2 4 L6 8 L10 4" stroke="currentColor" fill="none" stroke-width="2"/>
-                    </svg>
-                </button>
-                <div class="collapse {% if current_page in ['transfer', 'transactions'] %}show{% endif %}" id="financesGroup">
-                    <div class="d-grid gap-1 mt-1 ms-3">
-                        <a href="{{ url_for('student.transfer') }}"
-                           class="btn btn-sm text-start {% if current_page == 'transfer' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">swap_horiz</span> Transfer</a>
-                    </div>
-                </div>
-            </div>
+            <!-- Finances -->
+            <a href="{{ url_for('student.transfer') }}"
+               class="btn text-start {% if current_page == 'transfer' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">account_balance_wallet</span> Finances</a>
 
-            <!-- Payroll Group -->
-            <div class="nav-group">
-                <button class="btn btn-outline-primary text-start w-100 d-flex justify-content-between align-items-center collapsed"
-                        type="button"
-                        data-bs-toggle="collapse"
-                        data-bs-target="#payrollGroup"
-                        aria-expanded="false">
-                    <span><span class="material-symbols-outlined">receipt_long</span> Payroll</span>
-                    <svg width="12" height="12" class="chevron">
-                        <path d="M2 4 L6 8 L10 4" stroke="currentColor" fill="none" stroke-width="2"/>
-                    </svg>
-                </button>
-                <div class="collapse {% if current_page in ['attendance', 'payroll'] %}show{% endif %}" id="payrollGroup">
-                    <div class="d-grid gap-1 mt-1 ms-3">
-                        <a href="#"
-                           class="btn btn-sm text-start btn-outline-secondary disabled"><span class="material-symbols-outlined">work</span> Jobs (Soon)</a>
-                    </div>
-                </div>
-            </div>
+            <!-- Payroll -->
+            <a href="{{ url_for('student.payroll') }}"
+               class="btn text-start {% if current_page == 'payroll' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">receipt_long</span> Payroll</a>
 
             <!-- Insurance -->
             <a href="{{ url_for('student.student_insurance') }}"

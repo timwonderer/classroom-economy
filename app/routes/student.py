@@ -278,6 +278,70 @@ def dashboard():
     )
 
 
+@student_bp.route('/payroll')
+@login_required
+def payroll():
+    """Student payroll page with attendance record, productivity stats, and projected pay."""
+    student = get_logged_in_student()
+
+    # Get student blocks
+    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+
+    # Get unpaid time per block
+    last_payroll_time = get_last_payroll_time()
+    unpaid_seconds_per_block = {
+        blk: calculate_unpaid_attendance_seconds(student.id, blk, last_payroll_time)
+        for blk in student_blocks
+    }
+
+    # Calculate projected pay per block
+    RATE_PER_SECOND = 0.25 / 60
+    projected_pay_per_block = {
+        blk: round(unpaid_seconds_per_block[blk] * RATE_PER_SECOND, 2)
+        for blk in student_blocks
+    }
+
+    # Get period states (active/done status)
+    period_states = {}
+    for blk in student_blocks:
+        latest_event = TapEvent.query.filter_by(student_id=student.id, period=blk).order_by(TapEvent.timestamp.desc()).first()
+        is_active = latest_event.status == 'active' if latest_event else False
+
+        today = datetime.now(timezone.utc).date()
+        is_done = db.session.query(TapEvent.id).filter(
+            TapEvent.student_id == student.id,
+            TapEvent.period == blk,
+            func.date(TapEvent.timestamp) == today,
+            TapEvent.reason.isnot(None)
+        ).first() is not None
+
+        period_states[blk] = {
+            "active": is_active,
+            "done": is_done,
+            "duration": unpaid_seconds_per_block.get(blk, 0)
+        }
+
+    # Get all tap events grouped by block
+    all_tap_events = TapEvent.query.filter_by(student_id=student.id).order_by(TapEvent.timestamp.desc()).all()
+    tap_events_by_block = {}
+    for event in all_tap_events:
+        if event.period not in tap_events_by_block:
+            tap_events_by_block[event.period] = []
+        tap_events_by_block[event.period].append(event)
+
+    return render_template(
+        'student_payroll.html',
+        student=student,
+        student_blocks=student_blocks,
+        unpaid_seconds_per_block=unpaid_seconds_per_block,
+        projected_pay_per_block=projected_pay_per_block,
+        period_states=period_states,
+        all_tap_events=all_tap_events,
+        tap_events_by_block=tap_events_by_block,
+        now=datetime.now(timezone.utc)
+    )
+
+
 # -------------------- FINANCIAL TRANSACTIONS --------------------
 
 @student_bp.route('/transfer', methods=['GET', 'POST'])
