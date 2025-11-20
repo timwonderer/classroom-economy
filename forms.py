@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField
-from wtforms.validators import DataRequired
+from wtforms.validators import DataRequired, ValidationError
 from wtforms import HiddenField, TextAreaField, FloatField, SelectField, IntegerField, DateField, BooleanField
 from wtforms.validators import Optional
 
@@ -33,6 +33,24 @@ class StoreItemForm(FlaskForm):
     bulk_discount_percentage = FloatField('Discount Percentage (%)', validators=[Optional()])
 
     submit = SubmitField('Save Item')
+
+    def validate_bundle_quantity(self, field):
+        """Validate bundle quantity when bundle is enabled."""
+        if self.is_bundle.data and (not field.data or field.data <= 0):
+            raise ValidationError('Bundle quantity is required and must be greater than 0 when creating a bundled item.')
+
+    def validate_bulk_discount_quantity(self, field):
+        """Validate bulk discount quantity when bulk discount is enabled."""
+        if self.bulk_discount_enabled.data and (not field.data or field.data <= 0):
+            raise ValidationError('Minimum quantity is required and must be greater than 0 when bulk discount is enabled.')
+
+    def validate_bulk_discount_percentage(self, field):
+        """Validate bulk discount percentage when bulk discount is enabled."""
+        if self.bulk_discount_enabled.data:
+            if not field.data or field.data <= 0:
+                raise ValidationError('Discount percentage is required and must be greater than 0 when bulk discount is enabled.')
+            if field.data > 100:
+                raise ValidationError('Discount percentage cannot exceed 100%.')
 
 
 class AdminSignupForm(FlaskForm):
