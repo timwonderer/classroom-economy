@@ -67,8 +67,23 @@
                 {% if status.is_paid %}
                 <div class="alert alert-success mb-0">
                     <strong>All set!</strong> Rent paid for Period {{ period|upper }} this month.
-                    <br><small>Paid: {{ status.payment.payment_date.strftime('%b %d, %Y') }}</small>
+                    <br><small>Total Paid: ${{ "%.2f"|format(status.total_paid) }}</small>
+                    {% if status.payments %}
+                    <br><small>Last Payment: {{ status.payments[-1].payment_date.strftime('%b %d, %Y') }}</small>
+                    {% endif %}
                 </div>
+                {% elif status.total_paid > 0 %}
+                <!-- Partial payment made -->
+                <div class="alert alert-warning mb-3">
+                    <strong>Partial Payment Made:</strong> ${{ "%.2f"|format(status.total_paid) }} of ${{ "%.2f"|format(status.total_due) }}
+                    <br><small>Remaining: <strong>${{ "%.2f"|format(status.remaining_amount) }}</strong></small>
+                </div>
+                {% if status.is_late %}
+                <div class="alert alert-danger mb-3">
+                    <strong>Late!</strong> Grace period ended on {{ grace_end_date.strftime('%B %d, %Y') }}.
+                    <br>Late fee of <strong>${{ "%.2f"|format(status.late_fee) }}</strong> has been added to total.
+                </div>
+                {% endif %}
                 {% elif status.is_late %}
                 <div class="alert alert-danger mb-3">
                     <strong>Late!</strong> Grace period ended on {{ grace_end_date.strftime('%B %d, %Y') }}.
@@ -76,7 +91,7 @@
                 </div>
                 <div class="mb-3">
                     <p class="text-muted"><strong>Total Amount Due:</strong></p>
-                    <h4 class="text-danger mb-1">${{ "%.2f"|format(settings.rent_amount + settings.late_fee) }}</h4>
+                    <h4 class="text-danger mb-1">${{ "%.2f"|format(status.total_due) }}</h4>
                     <small class="text-muted">
                         (Rent: ${{ "%.2f"|format(settings.rent_amount) }} + Late Fee: ${{ "%.2f"|format(settings.late_fee) }})
                     </small>
@@ -88,20 +103,31 @@
                 {% endif %}
 
                 {% if not status.is_paid %}
-                {% set total_due = settings.rent_amount + (settings.late_fee if status.is_late else 0) %}
-                {% if student.checking_balance < total_due %}
+                {% if student.checking_balance < status.remaining_amount %}
                 <button class="btn btn-secondary w-100" disabled>
                     Insufficient Funds
                 </button>
                 <p class="text-danger mt-2 mb-0 small">
-                    You need ${{ "%.2f"|format(total_due - student.checking_balance) }} more to pay rent for Period {{ period|upper }}.
+                    You need ${{ "%.2f"|format(status.remaining_amount - student.checking_balance) }} more to pay rent for Period {{ period|upper }}.
                 </p>
                 {% else %}
                 <form action="{{ url_for('student.rent_pay', period=period) }}" method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                    {% if settings.allow_incremental_payment %}
+                    <div class="mb-2">
+                        <label for="amount_{{ period }}" class="form-label"><small>Payment Amount (optional - leave blank for full payment)</small></label>
+                        <input type="number" step="0.01" min="0.01" max="{{ status.remaining_amount }}"
+                               class="form-control" id="amount_{{ period }}" name="amount"
+                               placeholder="Max: ${{ '%.2f'|format(status.remaining_amount) }}">
+                    </div>
+                    {% endif %}
                     <button type="submit" class="btn btn-primary w-100"
-                            onclick="return confirm('Pay rent for Period {{ period|upper }} - ${{ total_due|round(2) }}?');">
-                        Pay Rent (${{ "%.2f"|format(total_due) }})
+                            onclick="return confirm('Pay rent for Period {{ period|upper }}?');">
+                        {% if settings.allow_incremental_payment %}
+                        Pay Rent (Remaining: ${{ "%.2f"|format(status.remaining_amount) }})
+                        {% else %}
+                        Pay Rent (${{ "%.2f"|format(status.remaining_amount) }})
+                        {% endif %}
                     </button>
                 </form>
                 {% endif %}
