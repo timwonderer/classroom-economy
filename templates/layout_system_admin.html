@@ -2,222 +2,250 @@
 <html>
 <head>
    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    /* Custom Color Theme - Light System Admin Theme */
+    /* Modern Geometric Design System - System Admin */
     :root {
-        --primary-blue: #4A7BA7;
-        --primary-blue-light: #6BA3D0;
-        --primary-blue-lighter: #81B9D8;
-        --dark-blue: #2B3E50;
-        --success-teal: #4A9B8E;
-        --success-green: #6DB665;
-        --warning-gold: #E8B856;
-        --danger-red: #C44D3B;
-        --orange-warm: #D9845E;
-        --sidebar-bg: #2B3E50;
-        --sidebar-text: #E8DCC4;
-        --accent-purple: #9B7AB8;
+        --brand-primary: #274174;
+        --brand-cyan: #00afdf;
+        --brand-gold: #fdb034;
+        --brand-blue: #035397;
+        --brand-teal: #005e77;
+        --gray-50: #f8f9fa;
+        --gray-100: #f1f3f5;
+        --gray-200: #e9ecef;
+        --gray-600: #6c757d;
+        --gray-800: #343a40;
+        --white: #ffffff;
+        --sidebar-bg: linear-gradient(180deg, #1a2634 0%, #274174 100%);
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+        --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.12);
     }
 
     body {
-        background-color: #f8f9fa;
-        color: #212529;
-    }
-
-    /* Override Bootstrap colors */
-    .btn-primary {
-        background-color: var(--primary-blue) !important;
-        border-color: var(--primary-blue) !important;
-    }
-
-    .btn-primary:hover {
-        background-color: var(--primary-blue-light) !important;
-        border-color: var(--primary-blue-light) !important;
-    }
-
-    .btn-outline-primary {
-        color: var(--primary-blue) !important;
-        border-color: var(--primary-blue) !important;
-    }
-
-    .btn-outline-primary:hover {
-        background-color: var(--primary-blue) !important;
-        border-color: var(--primary-blue) !important;
-        color: white !important;
-    }
-
-    .btn-success {
-        background-color: var(--success-teal) !important;
-        border-color: var(--success-teal) !important;
-    }
-
-    .btn-danger {
-        background-color: var(--danger-red) !important;
-        border-color: var(--danger-red) !important;
-    }
-
-    .btn-outline-danger {
-        color: var(--danger-red) !important;
-        border-color: var(--danger-red) !important;
-    }
-
-    .btn-outline-danger:hover {
-        background-color: var(--danger-red) !important;
-        border-color: var(--danger-red) !important;
-    }
-
-    .bg-success {
-        background-color: var(--success-teal) !important;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
+        color: var(--gray-800);
     }
 
     .sidebar {
-        background-color: var(--sidebar-bg);
-        color: var(--sidebar-text);
-        box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        background: var(--sidebar-bg);
+        box-shadow: var(--shadow-lg);
+        color: var(--white);
     }
 
     .sidebar h5 {
-        color: var(--sidebar-text);
-        font-weight: 600;
+        color: var(--white);
+        font-weight: 700;
         margin-bottom: 1.5rem;
+        font-size: 1.125rem;
+    }
+
+    .sidebar small {
+        color: rgba(255, 255, 255, 0.7);
     }
 
     .sidebar .btn {
-        border-radius: 0.375rem;
+        border-radius: 10px;
         font-weight: 500;
-        transition: all 0.2s;
+        transition: all 0.2s ease;
         text-align: left;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
     }
 
     .sidebar .btn-primary {
-        background-color: var(--primary-blue) !important;
-        border-color: var(--primary-blue) !important;
+        background: rgba(0, 175, 223, 0.25) !important;
+        border: 2px solid var(--brand-cyan) !important;
+        box-shadow: 0 0 20px rgba(0, 175, 223, 0.4);
     }
 
     .sidebar .btn-outline-primary {
-        color: var(--sidebar-text) !important;
-        border-color: transparent !important;
-        background-color: transparent;
+        color: rgba(255, 255, 255, 0.8) !important;
+        border: none !important;
+        background: transparent;
     }
 
     .sidebar .btn-outline-primary:hover {
-        background-color: rgba(106, 163, 208, 0.15) !important;
-        color: var(--primary-blue-lighter) !important;
+        background: rgba(255, 255, 255, 0.1) !important;
+        color: var(--white) !important;
+        transform: translateX(4px);
     }
 
     .sidebar .btn-outline-secondary {
-        color: var(--sidebar-text) !important;
-        border-color: rgba(255, 255, 255, 0.2) !important;
+        color: rgba(255, 255, 255, 0.9) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
     }
 
     .sidebar .btn-outline-secondary:hover {
-        background-color: rgba(196, 77, 59, 0.2) !important;
-        border-color: var(--danger-red) !important;
+        background: rgba(239, 68, 68, 0.15) !important;
+        border-color: #ef4444 !important;
     }
 
     .card {
-        background-color: #ffffff;
-        border: 1px solid #dee2e6;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        background: var(--white);
+        border: none;
+        border-radius: 16px;
+        box-shadow: var(--shadow-sm);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, var(--brand-cyan), var(--brand-gold));
+    }
+
+    .card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-lg);
     }
 
     .card-header {
-        background-color: #f8f9fa;
-        border-bottom: 2px solid var(--primary-blue);
-        color: var(--dark-blue);
+        background: var(--gray-50);
+        border: none;
+        border-bottom: 2px solid var(--gray-200);
+        color: var(--brand-primary);
         font-weight: 600;
+    }
+
+    .btn {
+        border-radius: 10px;
+        font-weight: 500;
+        padding: 0.625rem 1.25rem;
+        transition: all 0.2s ease;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-blue) 100%);
+        border: none;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-md);
+    }
+
+    .btn-success {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        border: none;
+    }
+
+    .btn-danger {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        border: none;
+    }
+
+    .btn-outline-danger {
+        color: #ef4444;
+        border: 2px solid #ef4444;
     }
 
     .main-content {
-        background-color: #f8f9fa;
+        background: transparent;
     }
 
     h2, h3, h4, h5, h6 {
-        color: var(--dark-blue);
+        color: var(--brand-primary);
     }
 
     .badge {
+        border-radius: 6px;
         font-weight: 600;
     }
 
-    .lock-icon {
-        font-size: 1.2rem;
-    }
-
     .stat-card {
-        background: #ffffff;
-        border: 1px solid #dee2e6;
+        background: var(--white);
+        border: none;
         transition: all 0.3s;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+        box-shadow: var(--shadow-sm);
+        border-radius: 12px;
     }
 
     .stat-card:hover {
         transform: translateY(-5px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        box-shadow: var(--shadow-lg);
     }
 
     .table {
-        color: #212529;
+        border-radius: 12px;
+        overflow: hidden;
     }
 
     .table thead {
-        background-color: #f8f9fa;
-        color: var(--dark-blue);
+        background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
+        color: var(--white);
+    }
+
+    .table thead th {
+        border: none;
+        font-weight: 600;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
     }
 
     .table-striped > tbody > tr:nth-of-type(odd) > * {
-        background-color: rgba(0, 0, 0, 0.02);
-    }
-
-    .alert-dark {
-        background-color: #f8f9fa;
-        border-color: var(--primary-blue);
-        color: #212529;
+        background-color: var(--gray-50);
     }
 
     .text-muted {
-        color: #6c757d !important;
+        color: var(--gray-600) !important;
+    }
+
+    .lock-icon {
+        font-size: 1.2rem;
     }
 </style>
 
     <title>{{ page_title or "System Admin" }}</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
 </head>
-<body style="font-family: 'Noto Sans', sans-serif;" class="d-flex">
+<body style="font-family: 'Inter', sans-serif;" class="d-flex">
     <!-- Flash Toast Container -->
     <div id="flashToastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050;"></div>
 
     <!-- Sidebar -->
     <div class="sidebar border-end vh-100 p-3 d-flex flex-column" style="width: 260px;">
         <div class="text-center mb-3">
-            <h5><span class="lock-icon">🔒</span> System Admin</h5>
-            <small class="text-muted" style="font-size: 0.75rem;">Authorized Access Only</small>
+            <img src="{{ url_for('static', filename='images/brand-logo.svg') }}" alt="Classroom Token Hub" style="max-width: 80%; height: auto; margin-bottom: 1rem; filter: brightness(0) invert(1) opacity(0.95);">
+            <h5><span class="material-symbols-outlined lock-icon">lock</span> System Admin</h5>
+            <small>Authorized Access Only</small>
         </div>
 
         <div class="d-grid gap-2">
             <a href="{{ url_for('sysadmin.dashboard') }}"
                class="btn text-start {% if current_page == 'dashboard' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
-               <i class="bi bi-speedometer2 me-2"></i>Dashboard
+               <span class="material-symbols-outlined">dashboard</span>Dashboard
             </a>
 
             <a href="{{ url_for('sysadmin.manage_teachers') }}"
                class="btn text-start {% if current_page == 'teachers' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
-               <i class="bi bi-people-fill me-2"></i>Teacher Management
+               <span class="material-symbols-outlined">group</span>Teacher Management
             </a>
 
             <a href="{{ url_for('sysadmin.logs_testing') }}"
                class="btn text-start {% if current_page == 'logs' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
-               <i class="bi bi-file-text-fill me-2"></i>Logs & Testing
+               <span class="material-symbols-outlined">description</span>Logs & Testing
             </a>
         </div>
 
         <div class="mt-auto">
             <hr style="border-color: rgba(255, 255, 255, 0.1);">
             <a href="{{ url_for('sysadmin.logout') }}" class="btn btn-outline-secondary text-start w-100">
-                <i class="bi bi-box-arrow-right me-2"></i>Sign Out
+                <span class="material-symbols-outlined me-2">logout</span>Sign Out
             </a>
         </div>
     </div>

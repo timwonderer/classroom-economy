@@ -2,73 +2,46 @@
 <html>
 <head>
    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-    /* Custom Color Theme */
+    /* Modern Geometric Design System */
     :root {
-        --primary-blue: #4A7BA7;
-        --primary-blue-light: #6BA3D0;
-        --primary-blue-lighter: #81B9D8;
-        --dark-blue: #2B3E50;
-        --success-teal: #4A9B8E;
-        --success-green: #6DB665;
-        --warning-gold: #E8B856;
-        --danger-red: #C44D3B;
-        --orange-warm: #D9845E;
-        --sidebar-bg: #2B3E50;
-        --sidebar-text: #E8DCC4;
-        --accent-purple: #9B7AB8;
+        --brand-primary: #274174;
+        --brand-cyan: #00afdf;
+        --brand-gold: #fdb034;
+        --brand-blue: #035397;
+        --brand-teal: #005e77;
+        --gray-50: #f8f9fa;
+        --gray-100: #f1f3f5;
+        --gray-200: #e9ecef;
+        --gray-300: #dee2e6;
+        --gray-600: #6c757d;
+        --gray-800: #343a40;
+        --white: #ffffff;
+        --sidebar-bg: linear-gradient(180deg, #274174 0%, #035397 100%);
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+        --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.12);
     }
 
-    /* Override Bootstrap primary color */
-    .btn-primary {
-        background-color: var(--primary-blue) !important;
-        border-color: var(--primary-blue) !important;
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
     }
 
-    .btn-primary:hover {
-        background-color: var(--primary-blue-light) !important;
-        border-color: var(--primary-blue-light) !important;
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
+        color: var(--gray-800);
+        line-height: 1.6;
     }
 
-    .btn-outline-primary {
-        color: var(--primary-blue) !important;
-        border-color: var(--primary-blue) !important;
-    }
-
-    .btn-outline-primary:hover {
-        background-color: var(--primary-blue) !important;
-        border-color: var(--primary-blue) !important;
-        color: white !important;
-    }
-
-    .btn-success {
-        background-color: var(--success-teal) !important;
-        border-color: var(--success-teal) !important;
-    }
-
-    .btn-danger {
-        background-color: var(--danger-red) !important;
-        border-color: var(--danger-red) !important;
-    }
-
-    .btn-outline-danger {
-        color: var(--danger-red) !important;
-        border-color: var(--danger-red) !important;
-    }
-
-    .btn-outline-danger:hover {
-        background-color: var(--danger-red) !important;
-        border-color: var(--danger-red) !important;
-    }
-
-    .bg-success {
-        background-color: var(--success-teal) !important;
-    }
-
+    /* Sleek Sidebar */
     .sidebar {
-        background-color: var(--sidebar-bg);
-        color: var(--sidebar-text);
+        background: var(--sidebar-bg);
+        color: var(--white);
+        box-shadow: var(--shadow-lg);
         position: fixed;
         left: 0;
         top: 0;
@@ -77,64 +50,60 @@
         z-index: 1000;
     }
 
-    .main-content {
-        margin-left: 260px;
-        height: 100vh;
-        overflow-y: auto;
-    }
-
     .sidebar h5 {
-        color: var(--sidebar-text);
-        font-weight: 600;
-        margin-bottom: 1.5rem;
+        color: var(--white);
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        font-size: 1.125rem;
     }
 
+    .sidebar small {
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 0.75rem;
+    }
+
+    /* Modern Navigation Buttons */
     .sidebar .btn {
-        border-radius: 0.375rem;
+        border-radius: 10px;
         font-weight: 500;
-        transition: all 0.2s;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        font-size: 0.9375rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
     }
 
     .sidebar .btn-primary {
-        background-color: var(--primary-blue) !important;
-        border-color: var(--primary-blue) !important;
+        background: rgba(0, 175, 223, 0.2) !important;
+        border: 2px solid var(--brand-cyan) !important;
+        color: var(--white) !important;
+        box-shadow: 0 0 20px rgba(0, 175, 223, 0.3);
     }
 
     .sidebar .btn-outline-primary {
-        color: var(--sidebar-text) !important;
-        border-color: transparent !important;
-        background-color: transparent;
+        color: rgba(255, 255, 255, 0.8) !important;
+        border: none !important;
+        background: transparent;
     }
 
     .sidebar .btn-outline-primary:hover {
-        background-color: rgba(106, 163, 208, 0.15) !important;
-        color: var(--primary-blue-lighter) !important;
+        background: rgba(255, 255, 255, 0.1) !important;
+        color: var(--white) !important;
+        transform: translateX(4px);
     }
 
     .sidebar .btn-outline-secondary {
-        color: var(--sidebar-text) !important;
-        border-color: rgba(255, 255, 255, 0.2) !important;
+        color: rgba(255, 255, 255, 0.9) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
     }
 
     .sidebar .btn-outline-secondary:hover {
-        background-color: rgba(255, 255, 255, 0.1) !important;
+        background: rgba(239, 68, 68, 0.15) !important;
+        border-color: #ef4444 !important;
     }
 
-    .card-header {
-        background-color: #f8f9fa;
-        border-bottom: 2px solid var(--primary-blue);
-    }
-
-    .text-bg-success {
-        background-color: var(--success-teal) !important;
-    }
-
-    .text-bg-warning {
-        background-color: var(--warning-gold) !important;
-        color: #000 !important;
-    }
-
-    /* Collapsible Navigation Styling */
+    /* Nav Groups */
     .nav-group button {
         position: relative;
     }
@@ -147,63 +116,182 @@
         transform: rotate(180deg);
     }
 
-    .nav-group .collapse {
-        transition: all 0.3s ease;
+    /* Main Content Area */
+    .main-content {
+        margin-left: 260px;
+        min-height: 100vh;
+        padding: 2rem;
     }
 
-    /* Modern Title Banner */
+    /* Modern Page Title */
     .page-title-banner {
-        background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-blue-light) 100%);
-        color: white;
-        padding: 1.5rem 2rem;
-        border-radius: 12px;
+        background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
+        color: var(--white);
+        padding: 2rem 2.5rem;
+        border-radius: 16px;
         margin-bottom: 2rem;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
+        box-shadow: var(--shadow-lg);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .page-title-banner::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -10%;
+        width: 300px;
+        height: 300px;
+        background: radial-gradient(circle, rgba(0, 175, 223, 0.2) 0%, transparent 70%);
+        border-radius: 50%;
     }
 
     .page-title-banner h2 {
         margin: 0;
-        font-weight: 600;
-        font-size: 1.75rem;
+        font-weight: 700;
+        font-size: 1.875rem;
         display: flex;
         align-items: center;
-        gap: 0.75rem;
+        gap: 1rem;
+        position: relative;
+        z-index: 1;
     }
 
     .page-title-banner time {
-        font-size: 0.95rem;
+        font-size: 0.9375rem;
         opacity: 0.95;
         font-weight: 500;
+        position: relative;
+        z-index: 1;
     }
 
-    /* Material Symbols Styling */
+    /* Geometric Cards */
+    .card {
+        background: var(--white);
+        border: none;
+        border-radius: 16px;
+        box-shadow: var(--shadow-sm);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        overflow: hidden;
+        position: relative;
+    }
+
+    .card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, var(--brand-cyan), var(--brand-gold));
+    }
+
+    .card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .card-header {
+        background: var(--gray-50);
+        border: none;
+        border-bottom: 2px solid var(--gray-200);
+        font-weight: 600;
+        padding: 1.25rem 1.5rem;
+        color: var(--brand-primary);
+    }
+
+    /* Buttons */
+    .btn {
+        border-radius: 10px;
+        font-weight: 500;
+        padding: 0.625rem 1.25rem;
+        transition: all 0.2s ease;
+        font-size: 0.9375rem;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-blue) 100%);
+        border: none;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-md);
+        background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-primary) 100%);
+    }
+
+    .btn-success {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        border: none;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .btn-danger {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        border: none;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .btn-outline-danger {
+        color: #ef4444;
+        border: 2px solid #ef4444;
+    }
+
+    .btn-outline-danger:hover {
+        background: #ef4444;
+        transform: translateY(-2px);
+    }
+
+    /* Badges */
+    .badge {
+        border-radius: 6px;
+        font-weight: 600;
+        padding: 0.375rem 0.75rem;
+        font-size: 0.75rem;
+    }
+
+    .text-bg-success {
+        background: #10b981 !important;
+    }
+
+    .text-bg-warning {
+        background: var(--brand-gold) !important;
+        color: var(--gray-800) !important;
+    }
+
+    /* Tables */
+    .table {
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .table thead {
+        background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
+        color: var(--white);
+    }
+
+    .table thead th {
+        border: none;
+        font-weight: 600;
+        padding: 1rem;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+    }
+
+    /* Material Icons */
     .material-symbols-outlined {
-        font-family: 'Material Symbols Outlined';
-        font-weight: normal;
-        font-style: normal;
-        font-size: 20px;
-        line-height: 1;
-        letter-spacing: normal;
-        text-transform: none;
-        display: inline-block;
-        white-space: nowrap;
-        word-wrap: normal;
-        direction: ltr;
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
         vertical-align: middle;
-        -webkit-font-feature-settings: 'liga';
-        -webkit-font-smoothing: antialiased;
     }
 
     .sidebar .material-symbols-outlined {
-        font-size: 18px;
-        margin-right: 8px;
+        font-size: 20px;
     }
 
     .page-title-banner .material-symbols-outlined {
-        font-size: 28px;
+        font-size: 32px;
     }
 </style>
 
@@ -212,13 +300,13 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
 </head>
-<body style="font-family:noto sans" class="d-flex">
+<body class="d-flex">
     <!-- Flash Toast Container -->
 <div id="flashToastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050;"></div>
     <div class="sidebar border-end vh-100 p-3 d-flex flex-column" style="width: 260px;">
         <div class="mb-4">
+            <img src="{{ url_for('static', filename='images/brand-logo.svg') }}" alt="Classroom Token Hub" style="max-width: 80%; height: auto; margin-bottom: 1rem; filter: brightness(0) invert(1) opacity(0.95);">
             <h5 class="mb-0 d-flex align-items-center gap-2"><span class="material-symbols-outlined">admin_panel_settings</span> Admin Portal</h5>
-            <small class="text-muted" style="font-size: 0.75rem;">Classroom Economy</small>
         </div>
         <div class="d-grid gap-2" style="overflow-y: auto;">
             <!-- Dashboard -->
@@ -307,7 +395,7 @@
             <a href="{{ url_for('admin.logout') }}" class="btn btn-outline-secondary text-start w-100"><span class="material-symbols-outlined">logout</span> Sign Out</a>
         </div>
     </div>
-    <div class="flex-grow-1 main-content p-4">
+    <div class="flex-grow-1 main-content">
         <!-- Modern Title Banner -->
         <div class="page-title-banner">
             <h2><span class="material-symbols-outlined">{% block page_icon %}dashboard{% endblock %}</span> {{ page_title or "Admin Panel" }}</h2>
