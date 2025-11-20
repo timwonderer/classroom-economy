@@ -9,13 +9,13 @@
 {% set current_hour = now.hour %}
 <div class="greeting">
     {% if current_hour < 12 %}
-        <span class="material-symbols-outlined" style="font-size: 2rem;">light_mode</span>
+        <span class="material-symbols-outlined">light_mode</span>
         Good morning{% if student_name %}, {{ student_name }}{% endif %}!
     {% elif current_hour < 18 %}
-        <span class="material-symbols-outlined" style="font-size: 2rem;">wb_sunny</span>
+        <span class="material-symbols-outlined">wb_sunny</span>
         Good afternoon{% if student_name %}, {{ student_name }}{% endif %}!
     {% else %}
-        <span class="material-symbols-outlined" style="font-size: 2rem;">nights_stay</span>
+        <span class="material-symbols-outlined">nights_stay</span>
         Good evening{% if student_name %}, {{ student_name }}{% endif %}!
     {% endif %}
 </div>
@@ -131,7 +131,8 @@
                         data-bs-toggle="tab"
                         data-bs-target="#tab-{{ blk }}"
                         type="button"
-                        role="tab">
+                        role="tab"
+                        style="{% if not loop.first %}color: #343a40;{% endif %}">
                     Block {{ blk|upper }}
                 </button>
             </li>

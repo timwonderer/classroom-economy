@@ -39,7 +39,7 @@
 
         .branding-side {
             flex: 1;
-            background: linear-gradient(135deg, #5FB890 0%, #4A9B8E 50%, #2B3E50 100%);
+            background: linear-gradient(135deg, #4a9eff 0%, #00afdf 50%, #00d4ff 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -77,7 +77,7 @@
         .circle-1 {
             width: 300px;
             height: 300px;
-            background: #6DB665;
+            background: linear-gradient(135deg, #00d4ff 0%, #00afdf 100%);
             top: -100px;
             right: -100px;
         }
@@ -119,15 +119,18 @@
         }
 
         .btn-primary {
-            background: #4A9B8E;
+            background: linear-gradient(135deg, #00d4ff 0%, #00afdf 100%);
             border: none;
             padding: 0.75rem;
             font-weight: 500;
-            transition: background 0.3s ease;
+            transition: all 0.3s ease;
+            border-radius: 10px;
         }
 
         .btn-primary:hover {
-            background: #2B3E50;
+            background: linear-gradient(135deg, #00afdf 0%, #035397 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(74, 158, 255, 0.3);
         }
 
         .back-to-login {
@@ -160,8 +163,8 @@
         }
 
         .form-control:focus {
-            border-color: #4A9B8E;
-            box-shadow: 0 0 0 0.2rem rgba(74, 155, 142, 0.25);
+            border-color: #4a9eff;
+            box-shadow: 0 0 0 0.2rem rgba(74, 158, 255, 0.25);
         }
 
         .form-group {
@@ -258,6 +261,7 @@
             <div class="circle circle-2"></div>
             <div class="circle circle-3"></div>
             <div class="branding-content">
+                <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Portal Logo" style="max-width: 200px; filter: brightness(0) invert(1) drop-shadow(0 4px 12px rgba(0,0,0,0.2)); margin-bottom: 2rem;">
                 <h1>Classroom<br>Token Hub</h1>
                 <p class="tagline">Empowering Student Engagement</p>
             </div>
