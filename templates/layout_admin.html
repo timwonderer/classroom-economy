@@ -299,6 +299,10 @@
                 </div>
             </div>
 
+            <!-- Banking -->
+            <a href="{{ url_for('admin.banking') }}"
+               class="btn text-start {% if current_page == 'banking' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">account_balance</span> Banking</a>
+
             <!-- Transactions -->
             <a href="{{ url_for('admin.transactions') }}"
                class="btn text-start {% if current_page == 'transactions' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">account_balance_wallet</span> Transactions</a>

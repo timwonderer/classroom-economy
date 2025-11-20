@@ -440,3 +440,40 @@ class PayrollFine(db.Model):
 
     def __repr__(self):
         return f'<PayrollFine {self.name}: -${self.amount}>'
+
+
+# ---- Banking Settings Model ----
+class BankingSettings(db.Model):
+    __tablename__ = 'banking_settings'
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Interest settings for savings
+    savings_apy = db.Column(db.Float, default=0.0)  # Annual Percentage Yield (e.g., 5.0 for 5%)
+    savings_monthly_rate = db.Column(db.Float, default=0.0)  # Monthly rate (calculated or custom)
+
+    # Interest payout schedule
+    interest_schedule_type = db.Column(db.String(20), default='monthly')  # 'weekly', 'monthly'
+    interest_schedule_cycle_days = db.Column(db.Integer, default=30)  # For monthly: 30 day cycle
+    interest_payout_start_date = db.Column(db.DateTime, nullable=True)  # Starting date for payouts
+
+    # Overdraft protection
+    overdraft_protection_enabled = db.Column(db.Boolean, default=False)  # If enabled, savings covers checking
+
+    # Overdraft/NSF fees
+    overdraft_fee_enabled = db.Column(db.Boolean, default=False)  # Enable/disable overdraft fees
+    overdraft_fee_type = db.Column(db.String(20), default='flat')  # 'flat' or 'progressive'
+    overdraft_fee_flat_amount = db.Column(db.Float, default=0.0)  # Flat fee per transaction
+
+    # Progressive fee settings
+    overdraft_fee_progressive_1 = db.Column(db.Float, default=0.0)  # First tier fee
+    overdraft_fee_progressive_2 = db.Column(db.Float, default=0.0)  # Second tier fee
+    overdraft_fee_progressive_3 = db.Column(db.Float, default=0.0)  # Third tier fee
+    overdraft_fee_progressive_cap = db.Column(db.Float, nullable=True)  # Maximum total fees per period
+
+    # Metadata
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f'<BankingSettings APY:{self.savings_apy}% OD:{self.overdraft_protection_enabled}>'
