@@ -944,26 +944,28 @@ def rent():
     period_status = {}
     for period in student_blocks:
         # Get all payments for this period this month (supports incremental payments)
-        # Exclude voided payments by joining with transactions
-        payments = db.session.query(RentPayment).join(
-            Transaction,
-            db.and_(
-                Transaction.student_id == RentPayment.student_id,
-                Transaction.type == 'Rent Payment',
-                Transaction.description.like(f'Rent for Period {period} - %'),
-                Transaction.timestamp.between(
-                    datetime(current_year, current_month, 1),
-                    datetime(current_year, current_month, 28) if current_month < 12
-                    else datetime(current_year + 1, 1, 28)
-                )
-            )
-        ).filter(
-            RentPayment.student_id == student.id,
-            RentPayment.period == period,
-            RentPayment.period_month == current_month,
-            RentPayment.period_year == current_year,
-            Transaction.is_void == False  # Exclude voided transactions
+        all_payments_for_period = RentPayment.query.filter_by(
+            student_id=student.id,
+            period=period,
+            period_month=current_month,
+            period_year=current_year
         ).all()
+
+        # Filter out payments where the corresponding transaction was voided
+        payments = []
+        for payment in all_payments_for_period:
+            # Find the transaction for this payment
+            txn = Transaction.query.filter(
+                Transaction.student_id == student.id,
+                Transaction.type == 'Rent Payment',
+                Transaction.timestamp >= payment.payment_date - timedelta(seconds=5),
+                Transaction.timestamp <= payment.payment_date + timedelta(seconds=5),
+                Transaction.amount == -payment.amount_paid
+            ).first()
+
+            # Only include if transaction exists and is not voided
+            if txn and not txn.is_void:
+                payments.append(payment)
 
         # Calculate total paid (sum of all non-voided payments)
         total_paid = sum(p.amount_paid for p in payments) if payments else 0.0
@@ -1040,26 +1042,28 @@ def rent_pay(period):
     current_year = now.year
 
     # Get all existing payments for this period this month
-    # Exclude voided payments by joining with transactions
-    existing_payments = db.session.query(RentPayment).join(
-        Transaction,
-        db.and_(
-            Transaction.student_id == RentPayment.student_id,
-            Transaction.type == 'Rent Payment',
-            Transaction.description.like(f'Rent for Period {period} - %'),
-            Transaction.timestamp.between(
-                datetime(current_year, current_month, 1),
-                datetime(current_year, current_month, 28) if current_month < 12
-                else datetime(current_year + 1, 1, 28)
-            )
-        )
-    ).filter(
-        RentPayment.student_id == student.id,
-        RentPayment.period == period,
-        RentPayment.period_month == current_month,
-        RentPayment.period_year == current_year,
-        Transaction.is_void == False  # Exclude voided transactions
+    all_payments = RentPayment.query.filter_by(
+        student_id=student.id,
+        period=period,
+        period_month=current_month,
+        period_year=current_year
     ).all()
+
+    # Filter out payments where the corresponding transaction was voided
+    existing_payments = []
+    for payment in all_payments:
+        # Find the transaction for this payment
+        txn = Transaction.query.filter(
+            Transaction.student_id == student.id,
+            Transaction.type == 'Rent Payment',
+            Transaction.timestamp >= payment.payment_date - timedelta(seconds=5),
+            Transaction.timestamp <= payment.payment_date + timedelta(seconds=5),
+            Transaction.amount == -payment.amount_paid
+        ).first()
+
+        # Only include if transaction exists and is not voided
+        if txn and not txn.is_void:
+            existing_payments.append(payment)
 
     total_paid_so_far = sum(p.amount_paid for p in existing_payments) if existing_payments else 0.0
 
