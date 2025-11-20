@@ -1,7 +1,7 @@
 """Add bundle and bulk discount fields to store items
 
 Revision ID: m0n1o2p3q4r5
-Revises: merge_001
+Revises: l9m0n1o2p3q4
 Create Date: 2025-11-20 12:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'm0n1o2p3q4r5'
-down_revision = 'merge_001'
+down_revision = 'l9m0n1o2p3q4'
 branch_labels = None
 depends_on = None
 
