@@ -376,22 +376,49 @@ def transfer():
     checking_transactions = [t for t in transactions if t.account_type == 'checking']
     savings_transactions = [t for t in transactions if t.account_type == 'savings']
 
-    # Calculate forecast interest
-    forecast_interest = student.savings_balance * 0.045 / 12
+    # Get banking settings for interest rate display
+    from app.models import BankingSettings
+    settings = BankingSettings.query.first()
+    annual_rate = settings.savings_apy / 100 if settings else 0.045
+    calculation_type = settings.interest_calculation_type if settings else 'simple'
+    compound_frequency = settings.compound_frequency if settings else 'monthly'
+
+    # Calculate forecast interest based on settings
+    if calculation_type == 'compound':
+        if compound_frequency == 'daily':
+            periods_per_month = 30
+            rate_per_period = annual_rate / 365
+            forecast_interest = student.savings_balance * ((1 + rate_per_period) ** periods_per_month - 1)
+        elif compound_frequency == 'weekly':
+            periods_per_month = 4.33
+            rate_per_period = annual_rate / 52
+            forecast_interest = student.savings_balance * ((1 + rate_per_period) ** periods_per_month - 1)
+        else:  # monthly
+            forecast_interest = student.savings_balance * (annual_rate / 12)
+    else:
+        # Simple interest: calculate only on principal (excluding interest earnings)
+        principal = sum(tx.amount for tx in savings_transactions if tx.type != 'Interest' and 'Interest' not in (tx.description or ''))
+        forecast_interest = principal * (annual_rate / 12)
 
     return render_template('student_transfer.html',
                          student=student,
                          transactions=transactions,
                          checking_transactions=checking_transactions,
                          savings_transactions=savings_transactions,
-                         forecast_interest=forecast_interest)
+                         forecast_interest=forecast_interest,
+                         settings=settings,
+                         calculation_type=calculation_type,
+                         compound_frequency=compound_frequency)
 
 
 def apply_savings_interest(student, annual_rate=0.045):
     """
-    Apply monthly savings interest for a student.
+    Apply savings interest for a student based on banking settings.
+    Supports both simple and compound interest with configurable frequency.
     All time calculations are in UTC.
     """
+    from app.models import BankingSettings
+
     now = datetime.now(timezone.utc)
     this_month = now.month
     this_year = now.year
@@ -402,6 +429,16 @@ def apply_savings_interest(student, annual_rate=0.045):
         if dt.tzinfo is None:
             return dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
+
+    # Get banking settings
+    settings = BankingSettings.query.first()
+    if not settings:
+        # Use default simple interest if no settings
+        calculation_type = 'simple'
+        compound_frequency = 'monthly'
+    else:
+        calculation_type = settings.interest_calculation_type or 'simple'
+        compound_frequency = settings.compound_frequency or 'monthly'
 
     # Check if interest was already applied this month
     for tx in student.transactions:
@@ -422,15 +459,44 @@ def apply_savings_interest(student, annual_rate=0.045):
         if tx_timestamp and tx_timestamp.date() == now.date():
             return
 
-    eligible_balance = 0
-    for tx in student.transactions:
-        if tx.account_type != 'savings' or tx.is_void or tx.amount <= 0:
-            continue
-        available_at = _as_utc(tx.date_funds_available)
-        if available_at and (now - available_at).days >= 30:
-            eligible_balance += tx.amount
-    monthly_rate = annual_rate / 12
-    interest = round((eligible_balance or 0.0) * monthly_rate, 2)
+    # Calculate interest based on type
+    if calculation_type == 'compound':
+        # For compound interest, use current total balance (including previous interest)
+        balance = student.savings_balance
+
+        # Determine the rate based on compound frequency
+        if compound_frequency == 'daily':
+            # Daily compounding: rate = (1 + annual_rate/365)^365 - 1 ≈ annual_rate for small rates
+            # For monthly payout with daily compounding: (1 + annual_rate/365)^30
+            periods_per_year = 365
+            periods_per_month = 30
+            rate_per_period = annual_rate / periods_per_year
+            interest = round(balance * ((1 + rate_per_period) ** periods_per_month - 1), 2)
+        elif compound_frequency == 'weekly':
+            # Weekly compounding: (1 + annual_rate/52)^4.33 (approx weeks per month)
+            periods_per_year = 52
+            periods_per_month = 4.33
+            rate_per_period = annual_rate / periods_per_year
+            interest = round(balance * ((1 + rate_per_period) ** periods_per_month - 1), 2)
+        else:  # monthly
+            # Monthly compounding
+            monthly_rate = annual_rate / 12
+            interest = round(balance * monthly_rate, 2)
+    else:
+        # Simple interest: only calculate on original deposits (not including previous interest)
+        eligible_balance = 0
+        for tx in student.transactions:
+            if tx.account_type != 'savings' or tx.is_void or tx.amount <= 0:
+                continue
+            # Exclude interest transactions from principal calculation
+            if tx.type == 'Interest' or 'Interest' in (tx.description or ''):
+                continue
+            available_at = _as_utc(tx.date_funds_available)
+            if available_at and (now - available_at).days >= 30:
+                eligible_balance += tx.amount
+
+        monthly_rate = annual_rate / 12
+        interest = round((eligible_balance or 0.0) * monthly_rate, 2)
 
     if interest > 0:
         interest_tx = Transaction(

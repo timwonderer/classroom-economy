@@ -2550,6 +2550,8 @@ def banking():
     if settings:
         form.savings_apy.data = settings.savings_apy
         form.savings_monthly_rate.data = settings.savings_monthly_rate
+        form.interest_calculation_type.data = settings.interest_calculation_type or 'simple'
+        form.compound_frequency.data = settings.compound_frequency or 'monthly'
         form.interest_schedule_type.data = settings.interest_schedule_type
         form.interest_schedule_cycle_days.data = settings.interest_schedule_cycle_days
         form.interest_payout_start_date.data = settings.interest_payout_start_date
@@ -2697,6 +2699,8 @@ def banking_settings_update():
         # Update settings from form
         settings.savings_apy = form.savings_apy.data or 0.0
         settings.savings_monthly_rate = form.savings_monthly_rate.data or 0.0
+        settings.interest_calculation_type = form.interest_calculation_type.data or 'simple'
+        settings.compound_frequency = form.compound_frequency.data or 'monthly'
         settings.interest_schedule_type = form.interest_schedule_type.data
         settings.interest_schedule_cycle_days = form.interest_schedule_cycle_days.data or 30
         settings.interest_payout_start_date = form.interest_payout_start_date.data

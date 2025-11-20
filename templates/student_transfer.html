@@ -188,7 +188,16 @@
                 </div>
 
                 <div class="alert alert-info mt-3">
-                    <span class="material-symbols-outlined">info</span> <strong>Tip:</strong> Your savings account earns 4.5% annual interest (approximately ${{ '%.2f'|format(forecast_interest) }}/month).
+                    <span class="material-symbols-outlined">info</span> <strong>Tip:</strong> Your savings account earns
+                    {% if settings %}
+                        {{ '%.2f'|format(settings.savings_apy) }}% annual {{ calculation_type }} interest
+                        {% if calculation_type == 'compound' %}
+                            (compounded {{ compound_frequency }})
+                        {% endif %}
+                    {% else %}
+                        4.5% annual simple interest
+                    {% endif %}
+                    (approximately ${{ '%.2f'|format(forecast_interest) }}/month).
                 </div>
             </div>
         </div>
