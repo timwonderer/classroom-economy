@@ -21,7 +21,7 @@ os.environ.setdefault("PEPPER_KEY", "test-pepper-key")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
-from app import Student, app, db
+from app import app, db, Student
 
 
 @pytest.fixture
@@ -30,6 +30,7 @@ def client():
         TESTING=True,
         WTF_CSRF_ENABLED=False,
         SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
+        ENV="testing",
     )
     ctx = app.app_context()
     ctx.push()

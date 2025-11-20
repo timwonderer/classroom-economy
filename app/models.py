@@ -26,6 +26,10 @@ class Student(db.Model):
     second_half_hash = db.Column(db.String(64), unique=True, nullable=True)
     username_hash = db.Column(db.String(64), unique=True, nullable=True)
 
+    # Ownership / tenancy
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
+    teacher = db.relationship('Admin', backref=db.backref('students', lazy='dynamic'))
+
     pin_hash = db.Column(db.Text, nullable=True)
     passphrase_hash = db.Column(db.Text, nullable=True)
 
