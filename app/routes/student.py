@@ -32,7 +32,7 @@ from forms import (
 from app.utils.helpers import is_safe_url
 from app.utils.constants import THEME_PROMPTS
 from hash_utils import hash_hmac, hash_username
-from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
+from attendance import get_all_block_statuses
 
 # Create blueprint
 student_bp = Blueprint('student', __name__, url_prefix='/student')
@@ -172,44 +172,18 @@ def dashboard():
 
     forecast_interest = round(student.savings_balance * (0.045 / 12), 2)
 
-    # --- Refactored logic to use unpaid seconds since last payroll ---
-    last_payroll_time = get_last_payroll_time()
-    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-
-    unpaid_seconds_per_block = {
-        blk: calculate_unpaid_attendance_seconds(student.id, blk, last_payroll_time)
-        for blk in student_blocks
-    }
-
-    # Simplified status logic, removing dependency on get_session_status
-    period_states = {}
-    for blk in student_blocks:
-        latest_event = TapEvent.query.filter_by(student_id=student.id, period=blk).order_by(TapEvent.timestamp.desc()).first()
-        is_active = latest_event.status == 'active' if latest_event else False
-
-        # Correctly check if the student has finished for *today* by looking for
-        # any tap-out event with a reason on the current date.
-        today = datetime.now(timezone.utc).date()
-        is_done = db.session.query(TapEvent.id).filter(
-            TapEvent.student_id == student.id,
-            TapEvent.period == blk,
-            func.date(TapEvent.timestamp) == today,
-            TapEvent.reason.isnot(None)
-        ).first() is not None
-
-        period_states[blk] = {
-            "active": is_active,
-            "done": is_done,
-            "duration": unpaid_seconds_per_block.get(blk, 0)  # Use the correct unpaid seconds
-        }
-
+    period_states = get_all_block_statuses(student)
+    student_blocks = list(period_states.keys())
     period_states_json = json.dumps(period_states, separators=(',', ':'))
 
-    # Calculate projected pay based on unpaid seconds
-    RATE_PER_SECOND = 0.25 / 60
+    unpaid_seconds_per_block = {
+        blk: state.get("duration", 0)
+        for blk, state in period_states.items()
+    }
+
     projected_pay_per_block = {
-        blk: unpaid_seconds_per_block.get(blk, 0) * RATE_PER_SECOND
-        for blk in student_blocks
+        blk: state.get("projected_pay", 0)
+        for blk, state in period_states.items()
     }
 
     # Compute total unpaid seconds and format as HH:MM:SS for display
@@ -284,47 +258,25 @@ def payroll():
     """Student payroll page with attendance record, productivity stats, and projected pay."""
     student = get_logged_in_student()
 
-    # Get student blocks
-    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+    period_states = get_all_block_statuses(student)
+    student_blocks = list(period_states.keys())
 
-    # Get unpaid time per block
-    last_payroll_time = get_last_payroll_time()
     unpaid_seconds_per_block = {
-        blk: calculate_unpaid_attendance_seconds(student.id, blk, last_payroll_time)
-        for blk in student_blocks
+        blk: state.get("duration", 0)
+        for blk, state in period_states.items()
     }
 
-    # Calculate projected pay per block
-    RATE_PER_SECOND = 0.25 / 60
     projected_pay_per_block = {
-        blk: round(unpaid_seconds_per_block[blk] * RATE_PER_SECOND, 2)
-        for blk in student_blocks
+        blk: round(state.get("projected_pay", 0), 2)
+        for blk, state in period_states.items()
     }
-
-    # Get period states (active/done status)
-    period_states = {}
-    for blk in student_blocks:
-        latest_event = TapEvent.query.filter_by(student_id=student.id, period=blk).order_by(TapEvent.timestamp.desc()).first()
-        is_active = latest_event.status == 'active' if latest_event else False
-
-        today = datetime.now(timezone.utc).date()
-        is_done = db.session.query(TapEvent.id).filter(
-            TapEvent.student_id == student.id,
-            TapEvent.period == blk,
-            func.date(TapEvent.timestamp) == today,
-            TapEvent.reason.isnot(None)
-        ).first() is not None
-
-        period_states[blk] = {
-            "active": is_active,
-            "done": is_done,
-            "duration": unpaid_seconds_per_block.get(blk, 0)
-        }
 
     # Get all tap events grouped by block
     all_tap_events = TapEvent.query.filter_by(student_id=student.id).order_by(TapEvent.timestamp.desc()).all()
     tap_events_by_block = {}
     for event in all_tap_events:
+        # Normalize to the action labels used by the template
+        event.action = 'tap_in' if event.status == 'active' else 'tap_out'
         if event.period not in tap_events_by_block:
             tap_events_by_block[event.period] = []
         tap_events_by_block[event.period].append(event)

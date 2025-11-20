@@ -121,6 +121,15 @@
             text-align: center;
         }
 
+        .form-logo {
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .form-logo img {
+            max-height: 64px;
+        }
+
         .login-subtitle {
             text-align: center;
             color: #6c757d;
@@ -202,13 +211,16 @@
     </style>
 </head>
 
-<body>
-    <div class="login-wrapper">
-        <!-- Left side: Login Form -->
-        <div class="login-form-side">
-            <div class="login-container">
-                <h2><span class="material-symbols-outlined text-primary me-2" style="vertical-align: middle;">admin_panel_settings</span>System Administrator</h2>
-                <p class="login-subtitle">Secure access for authorized personnel only</p>
+    <body>
+        <div class="login-wrapper">
+            <!-- Left side: Login Form -->
+            <div class="login-form-side">
+                <div class="login-container">
+                    <div class="form-logo">
+                        <img src="{{ url_for('static', filename='images/sys-admin-logo.svg') }}" alt="System Admin Logo">
+                    </div>
+                    <h2><span class="material-symbols-outlined text-primary me-2" style="vertical-align: middle;">admin_panel_settings</span>System Administrator</h2>
+                    <p class="login-subtitle">Secure access for authorized personnel only</p>
 
                 <div class="security-notice">
                     <span class="material-symbols-outlined" style="vertical-align: middle;">warning</span>

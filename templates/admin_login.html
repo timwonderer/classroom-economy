@@ -110,6 +110,15 @@
             text-align: center;
         }
 
+        .form-logo {
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .form-logo img {
+            max-height: 64px;
+        }
+
         .nav-tabs {
             border-bottom: 2px solid #e9ecef;
             margin-bottom: 2rem;
@@ -200,14 +209,17 @@
     </style>
 </head>
 
-<body>
-    <div class="login-wrapper">
-        <!-- Left side: Login Form -->
-        <div class="login-form-side">
-            <div class="login-container">
-                <h2>Welcome Back</h2>
+    <body>
+        <div class="login-wrapper">
+            <!-- Left side: Login Form -->
+            <div class="login-form-side">
+                <div class="login-container">
+                    <div class="form-logo">
+                        <img src="{{ url_for('static', filename='images/admin-logo.svg') }}" alt="Admin Portal Logo">
+                    </div>
+                    <h2>Welcome Back</h2>
 
-                <!-- Tabs for Student/Teacher -->
+                    <!-- Tabs for Student/Teacher -->
                 <ul class="nav nav-tabs" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="student-tab" data-bs-toggle="tab" data-bs-target="#student-login" type="button" role="tab" onclick="window.location.href='{{ url_for('student.login') }}'">
