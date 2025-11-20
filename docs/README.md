@@ -90,13 +90,24 @@ Resources for active development:
 
 ---
 
-### 🚀 Deployment
+### 🚀 Deployment & Operations
 
 - **[Deployment Guide](DEPLOYMENT.md)** - How to deploy the application
   - Environment variables
   - Deployment platforms
   - CI/CD workflows
   - Production checklist
+
+- **[Operations Guides](operations/)** - Operational procedures and troubleshooting
+  - Cleanup duplicate students
+  - Database maintenance
+  - Production issue resolution
+
+- **[Changelog](../CHANGELOG.md)** - Version history and notable changes
+  - Recent updates
+  - Feature additions
+  - Bug fixes
+  - Breaking changes
 
 ---
 
@@ -118,6 +129,12 @@ Resources for active development:
 - **Where are the API endpoints?** → [API Reference](technical-reference/api_reference.md)
 - **What should I work on next?** → [TODO](development/TODO.md)
 - **How do I create a migration?** → [Migration Guide](development/MIGRATION_GUIDE.md)
+- **What changed recently?** → [Changelog](../CHANGELOG.md)
+
+### For Operations/DevOps
+- **How do I clean up duplicate students?** → [Operations - Cleanup Duplicates](operations/CLEANUP_DUPLICATES.md)
+- **What are the deployment steps?** → [Deployment Guide](DEPLOYMENT.md)
+- **What's new in this version?** → [Changelog](../CHANGELOG.md)
 
 ---
 
@@ -176,6 +193,8 @@ When making changes to the codebase:
 | [Deployment Guide](DEPLOYMENT.md) | DevOps | Deployment instructions | 2025-11-18 |
 | [Multi-Tenancy Roadmap](development/MULTI_TENANCY_TODO.md) | Developers | Multi-teacher feature plan | 2025-11-18 |
 | [Migration Guide](development/MIGRATION_GUIDE.md) | Developers | Database migration help | 2025-11-18 |
+| [Operations Guides](operations/) | DevOps/Operations | Operational procedures | 2025-11-20 |
+| [Changelog](../CHANGELOG.md) | All | Version history and changes | 2025-11-20 |
 
 ---
 
@@ -203,6 +222,6 @@ See [TODO.md](development/TODO.md) for complete task list and priorities.
 
 ---
 
-**Last Updated:** 2025-11-19
+**Last Updated:** 2025-11-20
 **Maintained by:** Project maintainers and AI agents
 **Questions?** Check the relevant documentation above or review the main README.

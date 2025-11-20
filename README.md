@@ -115,10 +115,12 @@ An interactive banking and classroom management platform for teaching students a
 - **[Database Schema](docs/technical-reference/database_schema.md)** - Complete database reference
 - **[API Reference](docs/technical-reference/api_reference.md)** - REST API documentation
 - **[Development TODO](docs/development/TODO.md)** - Current tasks and priorities
+- **[Changelog](CHANGELOG.md)** - Version history and notable changes
 
-### Deployment
+### Deployment & Operations
 
 - **[Deployment Guide](docs/DEPLOYMENT.md)** - Production deployment instructions
+- **[Operations Guides](docs/operations/)** - Operational procedures and troubleshooting
 - **[Contributing Guide](CONTRIBUTING.md)** - How to contribute to the project
 
 ---
@@ -287,4 +289,4 @@ This project is licensed under the [PolyForm Noncommercial License 1.0.0](https:
 
 Built for educators and students to make learning about finance engaging and practical.
 
-**Last Updated:** 2025-11-19
+**Last Updated:** 2025-11-20
