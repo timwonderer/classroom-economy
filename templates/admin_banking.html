@@ -572,9 +572,15 @@ document.addEventListener("DOMContentLoaded", () => {
         if (modeAPY.checked) {
             apyInputSection.style.display = 'block';
             monthlyInputSection.style.display = 'none';
+            // Disable monthly input to prevent validation errors on hidden field
+            monthlyInput.disabled = true;
+            apyInput.disabled = false;
         } else {
             apyInputSection.style.display = 'none';
             monthlyInputSection.style.display = 'block';
+            // Disable APY input to prevent validation errors on hidden field
+            apyInput.disabled = true;
+            monthlyInput.disabled = false;
         }
         updateInterestPreview();
     }
@@ -677,6 +683,16 @@ document.addEventListener("DOMContentLoaded", () => {
         apyInput.dispatchEvent(new Event('input'));
     } else if (parseFloat(monthlyInput.value) > 0) {
         monthlyInput.dispatchEvent(new Event('input'));
+    }
+
+    // Re-enable all fields before form submission to ensure values are sent
+    const bankingForm = document.getElementById('bankingSettingsForm');
+    if (bankingForm) {
+        bankingForm.addEventListener('submit', function(e) {
+            // Temporarily enable both fields so their values are submitted
+            apyInput.disabled = false;
+            monthlyInput.disabled = false;
+        });
     }
 
     // Overdraft Fee Toggle
