@@ -61,7 +61,10 @@ def purchase_item():
 
     # Calculate price (with bulk discount if applicable)
     unit_price = item.price
-    if item.bulk_discount_enabled and quantity >= item.bulk_discount_quantity:
+    if (item.bulk_discount_enabled and
+        item.bulk_discount_quantity is not None and
+        item.bulk_discount_percentage is not None and
+        quantity >= item.bulk_discount_quantity):
         discount_multiplier = 1 - (item.bulk_discount_percentage / 100)
         unit_price = item.price * discount_multiplier
 
@@ -129,7 +132,7 @@ def purchase_item():
             student_item_status = 'purchased'
 
         # Handle bundle items - create one StudentItem with bundle tracking
-        if item.is_bundle:
+        if item.is_bundle and item.bundle_quantity is not None:
             new_student_item = StudentItem(
                 student_id=student.id,
                 store_item_id=item.id,
@@ -138,6 +141,19 @@ def purchase_item():
                 status=student_item_status,
                 is_from_bundle=True,
                 bundle_remaining=item.bundle_quantity * quantity,  # Total uses = bundle_quantity * number of bundles purchased
+                quantity_purchased=quantity
+            )
+            db.session.add(new_student_item)
+        elif item.is_bundle and item.bundle_quantity is None:
+            # Safety: if bundle is enabled but quantity is missing, treat as regular item
+            current_app.logger.error(f"Bundle item {item.id} has is_bundle=True but bundle_quantity=None. Treating as regular item.")
+            new_student_item = StudentItem(
+                student_id=student.id,
+                store_item_id=item.id,
+                purchase_date=datetime.now(timezone.utc),
+                expiry_date=expiry_date,
+                status=student_item_status,
+                is_from_bundle=False,
                 quantity_purchased=quantity
             )
             db.session.add(new_student_item)
@@ -181,13 +197,16 @@ def purchase_item():
 
         # Build success message
         success_message = f"You purchased {item.name}!"
-        if item.is_bundle:
+        if item.is_bundle and item.bundle_quantity is not None:
             total_uses = item.bundle_quantity * quantity
             success_message = f"You purchased {quantity} bundle(s) of {item.name}! You have {total_uses} uses."
         elif quantity > 1:
             success_message = f"You purchased {quantity}x {item.name}!"
 
-        if item.bulk_discount_enabled and quantity >= item.bulk_discount_quantity:
+        if (item.bulk_discount_enabled and
+            item.bulk_discount_quantity is not None and
+            item.bulk_discount_percentage is not None and
+            quantity >= item.bulk_discount_quantity):
             success_message += f" (Saved {item.bulk_discount_percentage}% with bulk discount!)"
 
         return jsonify({"status": "success", "message": success_message})
