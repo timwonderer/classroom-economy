@@ -189,7 +189,7 @@ def get_all_block_statuses(student):
     """
     Gets the status for all blocks assigned to a student for the /api/student-status endpoint.
     """
-    from app.models import TapEvent
+    from app.models import TapEvent, HallPassLog
     from sqlalchemy import func
     from datetime import datetime, timezone
 
@@ -218,10 +218,29 @@ def get_all_block_statuses(student):
 
         duration = calculate_unpaid_attendance_seconds(student.id, blk, last_payroll_time)
         projected_pay = duration * RATE_PER_SECOND
+
+        # Get active hall pass for this period
+        hall_pass = None
+        active_pass = HallPassLog.query.filter_by(
+            student_id=student.id,
+            period=blk
+        ).filter(
+            HallPassLog.status.in_(['pending', 'approved', 'left'])
+        ).order_by(HallPassLog.request_time.desc()).first()
+
+        if active_pass:
+            hall_pass = {
+                'id': active_pass.id,
+                'status': active_pass.status,
+                'reason': active_pass.reason,
+                'pass_number': active_pass.pass_number
+            }
+
         period_states[blk] = {
             "active": is_active,
             "done": done,
             "duration": duration,
-            "projected_pay": projected_pay
+            "projected_pay": projected_pay,
+            "hall_pass": hall_pass
         }
     return period_states

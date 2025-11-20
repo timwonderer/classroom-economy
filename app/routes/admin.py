@@ -55,10 +55,47 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 # -------------------- DASHBOARD & QUICK ACTIONS --------------------
 
+def auto_tapout_all_over_limit():
+    """
+    Checks all active students and auto-taps them out if they've exceeded their daily limit.
+    This is called when admin views the dashboard to ensure limits are enforced.
+    """
+    from app.routes.api import check_and_auto_tapout_if_limit_reached
+
+    # Get all students
+    students = Student.query.all()
+    tapped_out_count = 0
+
+    for student in students:
+        try:
+            # Get the student's current active sessions
+            student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+            for period in student_blocks:
+                latest_event = (
+                    TapEvent.query
+                    .filter_by(student_id=student.id, period=period)
+                    .order_by(TapEvent.timestamp.desc())
+                    .first()
+                )
+
+                # If student is active, run the auto-tapout check
+                if latest_event and latest_event.status == "active":
+                    check_and_auto_tapout_if_limit_reached(student)
+                    tapped_out_count += 1
+                    break  # Only need to run once per student
+        except Exception as e:
+            current_app.logger.error(f"Error checking auto-tapout for student {student.id}: {e}")
+            continue
+
+    return tapped_out_count
+
 @admin_bp.route('/')
 @admin_required
 def dashboard():
     """Admin dashboard with statistics, pending actions, and recent activity."""
+    # Auto-tapout students who have exceeded their daily limit
+    auto_tapout_all_over_limit()
+
     # Get all students for calculations
     students = Student.query.order_by(Student.first_name).all()
     student_lookup = {s.id: s for s in students}
@@ -2348,6 +2385,76 @@ def export_students():
 
 
 # -------------------- ADMIN TAP OUT --------------------
+
+@admin_bp.route('/enforce-daily-limits', methods=['POST'])
+@admin_required
+def enforce_daily_limits():
+    """
+    Manually trigger auto tap-out for all students who have exceeded their daily limit.
+    Returns a report of students who were auto-tapped out.
+    """
+    from app.routes.api import check_and_auto_tapout_if_limit_reached
+    import pytz
+    from payroll import get_daily_limit_seconds
+
+    students = Student.query.all()
+    tapped_out = []
+    checked = 0
+    errors = []
+
+    pacific = pytz.timezone('America/Los_Angeles')
+    now_utc = datetime.now(timezone.utc)
+
+    for student in students:
+        try:
+            # Get the student's current active sessions
+            student_blocks = [b.strip() for b in student.block.split(',') if b.strip()]
+            for block_original in student_blocks:
+                period_upper = block_original.upper()
+                latest_event = (
+                    TapEvent.query
+                    .filter_by(student_id=student.id, period=period_upper)
+                    .order_by(TapEvent.timestamp.desc())
+                    .first()
+                )
+
+                # If student is active, check their limit
+                if latest_event and latest_event.status == "active":
+                    checked += 1
+                    daily_limit = get_daily_limit_seconds(block_original)
+
+                    if daily_limit:
+                        # Log the check for debugging
+                        current_app.logger.info(
+                            f"Checking student {student.id} ({student.full_name}) in period {period_upper} - limit: {daily_limit/3600:.1f}h"
+                        )
+                        check_and_auto_tapout_if_limit_reached(student)
+
+                        # Check if they were tapped out (latest event changed)
+                        new_latest = (
+                            TapEvent.query
+                            .filter_by(student_id=student.id, period=period_upper)
+                            .order_by(TapEvent.timestamp.desc())
+                            .first()
+                        )
+                        if new_latest and new_latest.status == "inactive" and new_latest.id != latest_event.id:
+                            tapped_out.append(f"{student.full_name} (Period {period_upper})")
+                    break  # Only check once per student
+        except Exception as e:
+            errors.append(f"{student.full_name}: {str(e)}")
+            current_app.logger.error(f"Error enforcing limits for student {student.id}: {e}", exc_info=True)
+            continue
+
+    message = f"Checked {checked} active students. Auto-tapped out {len(tapped_out)} student(s)."
+
+    return jsonify({
+        "status": "success",
+        "message": message,
+        "checked": checked,
+        "tapped_out": tapped_out,
+        "errors": errors
+    })
+
 
 @admin_bp.route('/tap-out-students', methods=['POST'])
 @admin_required

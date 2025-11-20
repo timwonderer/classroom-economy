@@ -172,4 +172,8 @@ def create_app():
     app.register_blueprint(student_bp)
     app.register_blueprint(admin_bp)
 
+    # -------------------- SCHEDULED TASKS --------------------
+    from app.scheduled_tasks import init_scheduled_tasks
+    init_scheduled_tasks(app)
+
     return app

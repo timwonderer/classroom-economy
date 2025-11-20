@@ -36,4 +36,5 @@ Flask-WTF==1.2.1
 python-dotenv==1.0.1
 
 qrcode[pil]
+APScheduler==3.10.4
 
