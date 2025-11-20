@@ -40,4 +40,13 @@ touch wsgi.py
 
 echo ""
 echo "=== Deployment Complete ==="
+echo ""
+echo "✅ Changes Deployed:"
+echo "  - New tabbed store layout (Overview, Manage Items, Purchase History)"
+echo "  - Bundle items support (e.g., 5-pack items)"
+echo "  - Bulk discount pricing"
+echo "  - Hard delete option for items without purchase history"
+echo "  - Form validation to prevent incomplete bundle/discount configurations"
+echo "  - API guards to prevent crashes from malformed data"
+echo ""
 echo "The store revamp is now live!"
