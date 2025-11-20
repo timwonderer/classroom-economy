@@ -873,7 +873,10 @@ def store_management():
             # Bulk discount settings
             bulk_discount_enabled=form.bulk_discount_enabled.data,
             bulk_discount_quantity=form.bulk_discount_quantity.data if form.bulk_discount_enabled.data else None,
-            bulk_discount_percentage=form.bulk_discount_percentage.data if form.bulk_discount_enabled.data else None
+            bulk_discount_percentage=form.bulk_discount_percentage.data if form.bulk_discount_enabled.data else None,
+            # Collective goal settings
+            collective_goal_type=form.collective_goal_type.data if form.item_type.data == 'collective' else None,
+            collective_goal_target=form.collective_goal_target.data if form.item_type.data == 'collective' and form.collective_goal_type.data == 'fixed' else None
         )
         db.session.add(new_item)
         db.session.commit()
