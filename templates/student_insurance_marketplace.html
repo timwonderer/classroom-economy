@@ -1,12 +1,10 @@
 {% extends "layout_student.html" %}
-
-{% block title %}Insurance Marketplace{% endblock %}
+{% set page_title = "Insurance" %}
+{% set current_page = "insurance" %}
+{% block title %}Insurance{% endblock %}
+{% block page_icon %}shield{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>🛡️ Insurance Marketplace</h1>
-    <p class="subtitle">Protect yourself with comprehensive coverage</p>
-</div>
 
 <!-- My Active Policies -->
 {% if my_policies %}

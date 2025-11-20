@@ -355,7 +355,20 @@ def transfer():
             flash("Transfer completed successfully!", "transfer_success")
             return redirect(url_for('student.dashboard'))
 
-    return render_template('student_transfer.html', student=student)
+    # Get transactions for display
+    transactions = Transaction.query.filter_by(student_id=student.id, is_void=False).order_by(Transaction.timestamp.desc()).all()
+    checking_transactions = [t for t in transactions if t.account_type == 'checking']
+    savings_transactions = [t for t in transactions if t.account_type == 'savings']
+
+    # Calculate forecast interest
+    forecast_interest = student.savings_balance * 0.045 / 12
+
+    return render_template('student_transfer.html',
+                         student=student,
+                         transactions=transactions,
+                         checking_transactions=checking_transactions,
+                         savings_transactions=savings_transactions,
+                         forecast_interest=forecast_interest)
 
 
 def apply_savings_interest(student, annual_rate=0.045):

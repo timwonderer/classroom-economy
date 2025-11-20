@@ -1,12 +1,10 @@
 {% extends 'layout_student.html' %}
-
-{% block title %}Rent Payment{% endblock %}
+{% set page_title = "Rent" %}
+{% set current_page = "rent" %}
+{% block title %}Rent{% endblock %}
+{% block page_icon %}home{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>🏠 Rent Payment</h1>
-    <p class="subtitle">Manage your monthly rent for each period</p>
-</div>
 
 <div class="alert alert-info mb-4">
     <strong>💡 Multi-Period Rent:</strong> You are enrolled in <strong>{{ student_blocks|length }} period(s)</strong>.

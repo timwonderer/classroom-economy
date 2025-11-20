@@ -1,449 +1,530 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
+<!DOCTYPE html>
+<html>
+<head>
+   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+    /* Modern Geometric Design System */
+    :root {
+        --brand-primary: #274174;
+        --brand-cyan: #00afdf;
+        --brand-gold: #fdb034;
+        --brand-blue: #035397;
+        --brand-teal: #005e77;
+        --gray-50: #f8f9fa;
+        --gray-100: #f1f3f5;
+        --gray-200: #e9ecef;
+        --gray-300: #dee2e6;
+        --gray-600: #6c757d;
+        --gray-800: #343a40;
+        --white: #ffffff;
+        --sidebar-bg: linear-gradient(180deg, #274174 0%, #035397 100%);
+        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+        --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.12);
+    }
+
+    * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+
+    body {
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
+        color: var(--gray-800);
+        line-height: 1.6;
+    }
+
+    /* Sleek Sidebar */
+    .sidebar {
+        background: var(--sidebar-bg);
+        color: var(--white);
+        box-shadow: var(--shadow-lg);
+        position: fixed;
+        left: 0;
+        top: 0;
+        height: 100vh;
+        overflow-y: auto;
+        overflow-x: hidden;
+        z-index: 1000;
+        width: 250px;
+    }
+
+    .sidebar h5 {
+        color: var(--white);
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+        font-size: 1.125rem;
+    }
+
+    .sidebar small {
+        color: rgba(255, 255, 255, 0.7);
+        font-size: 0.75rem;
+    }
+
+    /* Modern Navigation Buttons */
+    .sidebar .btn {
+        border-radius: 10px;
+        font-weight: 500;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+        font-size: 0.9375rem;
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+    }
+
+    .sidebar .btn-primary {
+        background: rgba(0, 175, 223, 0.2) !important;
+        border: 2px solid var(--brand-cyan) !important;
+        color: var(--white) !important;
+        box-shadow: 0 0 20px rgba(0, 175, 223, 0.3);
+    }
+
+    .sidebar .btn-outline-primary {
+        color: rgba(255, 255, 255, 0.8) !important;
+        border: none !important;
+        background: transparent;
+    }
+
+    .sidebar .btn-outline-primary:hover {
+        background: rgba(255, 255, 255, 0.1) !important;
+        color: var(--white) !important;
+        transform: translateX(4px);
+    }
+
+    .sidebar .btn-outline-secondary {
+        color: rgba(255, 255, 255, 0.9) !important;
+        border: 1px solid rgba(255, 255, 255, 0.2) !important;
+    }
+
+    .sidebar .btn-outline-secondary:hover {
+        background: rgba(239, 68, 68, 0.15) !important;
+        border-color: #ef4444 !important;
+    }
+
+    /* Nav Groups */
+    .nav-group button {
+        position: relative;
+    }
+
+    .nav-group .chevron {
+        transition: transform 0.2s ease;
+    }
+
+    .nav-group button:not(.collapsed) .chevron {
+        transform: rotate(180deg);
+    }
+
+    /* Main Content Area */
+    .main-content {
+        margin-left: 250px;
+        min-height: 100vh;
+        padding: 2rem;
+        transition: margin-left 0.3s ease;
+    }
+
+    /* Modern Page Title */
+    .page-title-banner {
+        background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
+        color: var(--white);
+        padding: 2rem 2.5rem;
+        border-radius: 16px;
+        margin-bottom: 2rem;
+        box-shadow: var(--shadow-lg);
+        position: relative;
+        overflow: hidden;
+    }
+
+    .page-title-banner::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        right: -10%;
+        width: 300px;
+        height: 300px;
+        background: radial-gradient(circle, rgba(0, 175, 223, 0.2) 0%, transparent 70%);
+        border-radius: 50%;
+    }
+
+    .page-title-banner h2 {
+        margin: 0;
+        font-weight: 700;
+        font-size: 1.875rem;
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        position: relative;
+        z-index: 1;
+    }
+
+    .page-title-banner .greeting {
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+        position: relative;
+        z-index: 1;
+    }
+
+    .page-title-banner time {
+        font-size: 0.9375rem;
+        opacity: 0.95;
+        font-weight: 500;
+        position: relative;
+        z-index: 1;
+    }
+
+    /* Geometric Cards */
+    .card {
+        background: var(--white);
+        border: none;
+        border-radius: 16px;
+        box-shadow: var(--shadow-sm);
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        overflow: hidden;
+        position: relative;
+    }
+
+    .card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, var(--brand-cyan), var(--brand-gold));
+    }
+
+    .card:hover {
+        transform: translateY(-4px);
+        box-shadow: var(--shadow-lg);
+    }
+
+    .card-header {
+        background: var(--gray-50);
+        border: none;
+        border-bottom: 2px solid var(--gray-200);
+        font-weight: 600;
+        padding: 1.25rem 1.5rem;
+        color: var(--brand-primary);
+    }
+
+    /* Buttons */
+    .btn {
+        border-radius: 10px;
+        font-weight: 500;
+        padding: 0.625rem 1.25rem;
+        transition: all 0.2s ease;
+        font-size: 0.9375rem;
+    }
+
+    .btn-primary {
+        background: linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-blue) 100%);
+        border: none;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .btn-primary:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-md);
+        background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-primary) 100%);
+    }
+
+    .btn-success {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        border: none;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .btn-danger {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+        border: none;
+        box-shadow: var(--shadow-sm);
+    }
+
+    .btn-outline-danger {
+        color: #ef4444;
+        border: 2px solid #ef4444;
+    }
+
+    .btn-outline-danger:hover {
+        background: #ef4444;
+        transform: translateY(-2px);
+    }
+
+    /* Badges */
+    .badge {
+        border-radius: 6px;
+        font-weight: 600;
+        padding: 0.375rem 0.75rem;
+        font-size: 0.75rem;
+    }
+
+    .text-bg-success {
+        background: #10b981 !important;
+    }
+
+    .text-bg-warning {
+        background: var(--brand-gold) !important;
+        color: var(--gray-800) !important;
+    }
+
+    /* Tables */
+    .table {
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .table thead {
+        background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
+        color: var(--white);
+    }
+
+    .table thead th {
+        border: none;
+        font-weight: 600;
+        padding: 1rem;
+        font-size: 0.875rem;
+        text-transform: uppercase;
+        letter-spacing: 0.025em;
+    }
+
+    /* Tabs */
+    .nav-tabs {
+        border-bottom: 2px solid var(--gray-200);
+        margin-bottom: 1.5rem;
+    }
+
+    .nav-tabs .nav-link {
+        border: none;
+        color: var(--gray-600);
+        font-weight: 500;
+        padding: 0.75rem 1.5rem;
+        transition: all 0.2s ease;
+        border-radius: 8px 8px 0 0;
+    }
+
+    .nav-tabs .nav-link:hover {
+        background: var(--gray-100);
+        color: var(--brand-primary);
+    }
+
+    .nav-tabs .nav-link.active {
+        background: linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-blue) 100%);
+        color: var(--white);
+    }
+
+    /* Material Icons */
+    .material-symbols-outlined {
+        font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        vertical-align: middle;
+    }
+
+    .sidebar .material-symbols-outlined {
+        font-size: 20px;
+    }
+
+    .page-title-banner .material-symbols-outlined {
+        font-size: 32px;
+    }
+
+    /* Alert Messages */
+    .alert {
+        border-radius: 12px;
+        border: none;
+        padding: 1rem 1.25rem;
+        border-left: 4px solid;
+    }
+
+    .alert-success {
+        background-color: rgba(16, 185, 129, 0.1);
+        border-left-color: #10b981;
+        color: #065f46;
+    }
+
+    .alert-warning {
+        background-color: rgba(253, 176, 52, 0.1);
+        border-left-color: var(--brand-gold);
+        color: #92400e;
+    }
+
+    .alert-danger {
+        background-color: rgba(239, 68, 68, 0.1);
+        border-left-color: #ef4444;
+        color: #991b1b;
+    }
+
+    .alert-info {
+        background-color: rgba(0, 175, 223, 0.1);
+        border-left-color: var(--brand-cyan);
+        color: var(--brand-primary);
+    }
+
+    /* Modal */
+    .modal-content {
+        border-radius: 16px;
+        border: none;
+        box-shadow: var(--shadow-lg);
+    }
+
+    .modal-header {
+        background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
+        color: var(--white);
+        border-radius: 16px 16px 0 0;
+        border: none;
+        padding: 1.5rem;
+    }
+
+    .modal-header .btn-close {
+        filter: brightness(0) invert(1);
+    }
+
+</style>
+
+    <title>{{ page_title or "Student Portal" }}</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
-    <title>{% block title %}Student Portal{% endblock %} | Classroom Token Hub</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-T3c6CoIi6uLrA9TneNEoa7RxnatzjcDSCmG1MXxSR1GAsXEV/Dwwykc2MPK8M2HN" crossorigin="anonymous">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
-    <style>
-      /* Modern Geometric Design System */
-      :root {
-          --brand-primary: #274174;
-          --brand-cyan: #00afdf;
-          --brand-gold: #fdb034;
-          --brand-blue: #035397;
-          --brand-teal: #005e77;
-          --gray-50: #f8f9fa;
-          --gray-100: #f1f3f5;
-          --gray-200: #e9ecef;
-          --gray-300: #dee2e6;
-          --gray-600: #6c757d;
-          --gray-800: #343a40;
-          --white: #ffffff;
-          --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
-          --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-          --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.12);
-      }
-
-      * {
-          margin: 0;
-          padding: 0;
-          box-sizing: border-box;
-      }
-
-      body {
-          font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-          background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
-          min-height: 100vh;
-          color: var(--gray-800);
-          line-height: 1.6;
-      }
-
-      /* Navbar - Sleek and Minimal */
-      .navbar-dark {
-          background: var(--white);
-          box-shadow: var(--shadow-sm);
-          border-bottom: 3px solid var(--brand-cyan);
-          padding: 0.5rem 0;
-          position: sticky;
-          top: 0;
-          z-index: 1030;
-      }
-
-      .navbar-brand {
-          font-weight: 700;
-          color: var(--brand-primary) !important;
-          font-size: 1.125rem;
-          letter-spacing: -0.025em;
-          transition: all 0.2s ease;
-      }
-
-      .navbar-brand:hover {
-          color: var(--brand-cyan) !important;
-      }
-
-      .navbar-nav .nav-link {
-          color: var(--gray-600) !important;
-          transition: all 0.2s ease;
-          border-radius: 8px;
-          padding: 0.5rem 1rem !important;
-          margin: 0 0.25rem;
-          font-weight: 500;
-          font-size: 0.9375rem;
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-      }
-
-      .navbar-nav .nav-link:hover {
-          background-color: var(--gray-100);
-          color: var(--brand-primary) !important;
-          transform: translateY(-1px);
-      }
-
-      .navbar-nav .nav-link.active {
-          background: linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-blue) 100%);
-          color: var(--white) !important;
-          box-shadow: var(--shadow-md);
-      }
-
-      /* Geometric Card Design */
-      .card {
-          background: var(--white);
-          border: none;
-          border-radius: 16px;
-          box-shadow: var(--shadow-sm);
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          overflow: hidden;
-          position: relative;
-      }
-
-      .card::before {
-          content: '';
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          height: 4px;
-          background: linear-gradient(90deg, var(--brand-cyan), var(--brand-gold));
-      }
-
-      .card:hover {
-          transform: translateY(-4px);
-          box-shadow: var(--shadow-lg);
-      }
-
-      .card-header {
-          background: var(--gray-50);
-          border: none;
-          border-bottom: 2px solid var(--gray-200);
-          font-weight: 600;
-          padding: 1.25rem 1.5rem;
-          font-size: 1.125rem;
-          color: var(--brand-primary);
-      }
-
-      .card-body {
-          padding: 1.5rem;
-      }
-
-      /* Modern Buttons */
-      .btn {
-          border-radius: 10px;
-          font-weight: 500;
-          padding: 0.625rem 1.25rem;
-          transition: all 0.2s ease;
-          border: none;
-          font-size: 0.9375rem;
-      }
-
-      .btn-primary {
-          background: linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-blue) 100%);
-          box-shadow: var(--shadow-sm);
-      }
-
-      .btn-primary:hover {
-          transform: translateY(-2px);
-          box-shadow: var(--shadow-md);
-          background: linear-gradient(135deg, var(--brand-blue) 0%, var(--brand-primary) 100%);
-      }
-
-      .btn-success {
-          background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-          box-shadow: var(--shadow-sm);
-      }
-
-      .btn-success:hover {
-          transform: translateY(-2px);
-          box-shadow: var(--shadow-md);
-      }
-
-      .btn-danger {
-          background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-          box-shadow: var(--shadow-sm);
-      }
-
-      .btn-outline-primary {
-          color: var(--brand-cyan);
-          border: 2px solid var(--brand-cyan);
-          background: transparent;
-      }
-
-      .btn-outline-primary:hover {
-          background: var(--brand-cyan);
-          color: var(--white);
-          transform: translateY(-2px);
-      }
-
-      /* Badges - Geometric */
-      .badge {
-          border-radius: 6px;
-          font-weight: 600;
-          padding: 0.375rem 0.75rem;
-          font-size: 0.75rem;
-          letter-spacing: 0.025em;
-      }
-
-      .badge.bg-primary {
-          background: var(--brand-cyan) !important;
-      }
-
-      .badge.bg-success {
-          background: #10b981 !important;
-      }
-
-      .badge.bg-warning {
-          background: var(--brand-gold) !important;
-          color: var(--gray-800) !important;
-      }
-
-      .badge.bg-danger {
-          background: #ef4444 !important;
-      }
-
-      /* Alert Messages - Modern */
-      .alert {
-          border-radius: 12px;
-          border: none;
-          padding: 1rem 1.25rem;
-          border-left: 4px solid;
-      }
-
-      .alert-success {
-          background-color: rgba(16, 185, 129, 0.1);
-          border-left-color: #10b981;
-          color: #065f46;
-      }
-
-      .alert-warning {
-          background-color: rgba(253, 176, 52, 0.1);
-          border-left-color: var(--brand-gold);
-          color: #92400e;
-      }
-
-      .alert-danger {
-          background-color: rgba(239, 68, 68, 0.1);
-          border-left-color: #ef4444;
-          color: #991b1b;
-      }
-
-      .alert-info {
-          background-color: rgba(0, 175, 223, 0.1);
-          border-left-color: var(--brand-cyan);
-          color: var(--brand-primary);
-      }
-
-      /* Tables - Clean */
-      .table {
-          border-radius: 12px;
-          overflow: hidden;
-      }
-
-      .table thead {
-          background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
-          color: var(--white);
-      }
-
-      .table thead th {
-          border: none;
-          font-weight: 600;
-          padding: 1rem;
-          font-size: 0.875rem;
-          letter-spacing: 0.025em;
-          text-transform: uppercase;
-      }
-
-      .table tbody tr {
-          transition: all 0.2s ease;
-      }
-
-      .table tbody tr:hover {
-          background-color: var(--gray-50);
-          transform: scale(1.01);
-      }
-
-      .table-striped tbody tr:nth-of-type(odd) {
-          background-color: var(--gray-50);
-      }
-
-      /* Page Title Banner - Geometric */
-      .page-title-banner {
-          background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
-          color: var(--white);
-          padding: 2rem 2.5rem;
-          border-radius: 16px;
-          margin-bottom: 2rem;
-          box-shadow: var(--shadow-lg);
-          position: relative;
-          overflow: hidden;
-      }
-
-      .page-title-banner::before {
-          content: '';
-          position: absolute;
-          top: -50%;
-          right: -10%;
-          width: 300px;
-          height: 300px;
-          background: radial-gradient(circle, rgba(0, 175, 223, 0.2) 0%, transparent 70%);
-          border-radius: 50%;
-      }
-
-      .page-title-banner h1 {
-          margin: 0;
-          font-weight: 700;
-          font-size: 2rem;
-          display: flex;
-          align-items: center;
-          gap: 1rem;
-          position: relative;
-          z-index: 1;
-      }
-
-      .page-title-banner .subtitle {
-          margin: 0.75rem 0 0 0;
-          opacity: 0.95;
-          font-size: 1rem;
-          font-weight: 400;
-          position: relative;
-          z-index: 1;
-      }
-
-      /* Material Icons */
-      .material-symbols-outlined {
-          font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
-          vertical-align: middle;
-      }
-
-      .navbar-nav .material-symbols-outlined {
-          font-size: 20px;
-      }
-
-      .page-title-banner .material-symbols-outlined {
-          font-size: 32px;
-      }
-
-      /* Container */
-      .container-fluid {
-          padding: 2rem 3rem;
-      }
-
-      @media (max-width: 768px) {
-          .container-fluid {
-              padding: 1rem;
-          }
-
-          .page-title-banner {
-              padding: 1.5rem;
-          }
-      }
-
-      /* Animations */
-      @keyframes fadeIn {
-          from {
-              opacity: 0;
-              transform: translateY(10px);
-          }
-          to {
-              opacity: 1;
-              transform: translateY(0);
-          }
-      }
-
-      .content-container {
-          animation: fadeIn 0.4s ease-out;
-      }
-
-      /* Toast/Modal Styling */
-      .modal-content {
-          border-radius: 16px;
-          border: none;
-          box-shadow: var(--shadow-lg);
-      }
-
-      .modal-header {
-          background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
-          color: var(--white);
-          border-radius: 16px 16px 0 0;
-          border: none;
-          padding: 1.5rem;
-      }
-
-      .modal-header .btn-close {
-          filter: brightness(0) invert(1);
-      }
-    </style>
     {% block extra_styles %}{% endblock %}
-  </head>
-  <body>
-    <nav class="navbar navbar-expand-lg navbar-dark mb-4">
-      <div class="container">
-          <a class="navbar-brand d-flex align-items-center" href="{{ url_for('student.dashboard') }}">
-            <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Portal Logo" style="height: 28px; margin-right: 0.5rem;">
-            Token Hub
-          </a>
-          <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation" style="border: none;">
-            <span class="navbar-toggler-icon"></span>
-          </button>
-        <div class="collapse navbar-collapse" id="navbarNav">
-          <ul class="navbar-nav ms-auto">
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.dashboard' %}active{% endif %}" href="{{ url_for('student.dashboard') }}"><span class="material-symbols-outlined">dashboard</span> Dashboard</a></li>
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.transfer' %}active{% endif %}" href="{{ url_for('student.transfer') }}"><span class="material-symbols-outlined">account_balance_wallet</span> Accounts</a></li>
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.student_insurance' %}active{% endif %}" href="{{ url_for('student.student_insurance') }}"><span class="material-symbols-outlined">shield</span> Insurance</a></li>
-              <li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.shop' %}active{% endif %}" href="{{ url_for('student.shop') }}"><span class="material-symbols-outlined">storefront</span> Shop</a></li>
-              {% if global_rent_enabled %}<li class="nav-item"><a class="nav-link {% if request.endpoint == 'student.rent' %}active{% endif %}" href="{{ url_for('student.rent') }}"><span class="material-symbols-outlined">home</span> Rent</a></li>{% endif %}
-              <li class="nav-item"><a class="nav-link" href="{{ url_for('student.logout') }}"><span class="material-symbols-outlined">logout</span> Logout</a></li>
-          </ul>
+</head>
+<body class="d-flex">
+    <!-- Flash Toast Container -->
+    <div id="flashToastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050;"></div>
+
+    <div class="sidebar border-end vh-100 p-3 d-flex flex-column">
+        <div class="mb-4 text-center">
+            <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Portal Logo" style="max-width: 80%; height: auto; margin-bottom: 1rem;">
+            <h5 class="mb-0 d-flex align-items-center gap-2 justify-content-center"><span class="material-symbols-outlined">school</span> Student Portal</h5>
         </div>
-      </div>
-    </nav>
+        <div class="d-grid gap-2" style="overflow-y: auto;">
+            <!-- Dashboard -->
+            <a href="{{ url_for('student.dashboard') }}"
+               class="btn text-start {% if current_page == 'dashboard' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">dashboard</span> Dashboard</a>
 
-    {% block session_timer %}{% endblock %}
-
-    <div class="container-fluid content-container">
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          {% for category, message in messages %}
-            <div class="alert alert-{{ category.replace('transfer_', '').replace('_', '-') }} alert-dismissible fade show" role="alert">
-              {{ message }}
-              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            <!-- Finances Group -->
+            <div class="nav-group">
+                <button class="btn btn-outline-primary text-start w-100 d-flex justify-content-between align-items-center collapsed"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#financesGroup"
+                        aria-expanded="false">
+                    <span><span class="material-symbols-outlined">account_balance_wallet</span> Finances</span>
+                    <svg width="12" height="12" class="chevron">
+                        <path d="M2 4 L6 8 L10 4" stroke="currentColor" fill="none" stroke-width="2"/>
+                    </svg>
+                </button>
+                <div class="collapse {% if current_page in ['transfer', 'transactions'] %}show{% endif %}" id="financesGroup">
+                    <div class="d-grid gap-1 mt-1 ms-3">
+                        <a href="{{ url_for('student.transfer') }}"
+                           class="btn btn-sm text-start {% if current_page == 'transfer' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">swap_horiz</span> Transfer</a>
+                    </div>
+                </div>
             </div>
-          {% endfor %}
-        {% endif %}
-      {% endwith %}
 
-      {% block content %}{% endblock %}
+            <!-- Payroll Group -->
+            <div class="nav-group">
+                <button class="btn btn-outline-primary text-start w-100 d-flex justify-content-between align-items-center collapsed"
+                        type="button"
+                        data-bs-toggle="collapse"
+                        data-bs-target="#payrollGroup"
+                        aria-expanded="false">
+                    <span><span class="material-symbols-outlined">receipt_long</span> Payroll</span>
+                    <svg width="12" height="12" class="chevron">
+                        <path d="M2 4 L6 8 L10 4" stroke="currentColor" fill="none" stroke-width="2"/>
+                    </svg>
+                </button>
+                <div class="collapse {% if current_page in ['attendance', 'payroll'] %}show{% endif %}" id="payrollGroup">
+                    <div class="d-grid gap-1 mt-1 ms-3">
+                        <a href="#"
+                           class="btn btn-sm text-start btn-outline-secondary disabled"><span class="material-symbols-outlined">work</span> Jobs (Soon)</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Insurance -->
+            <a href="{{ url_for('student.student_insurance') }}"
+               class="btn text-start {% if current_page == 'insurance' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">shield</span> Insurance</a>
+
+            <!-- Store -->
+            <a href="{{ url_for('student.shop') }}"
+               class="btn text-start {% if current_page == 'store' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">storefront</span> Store</a>
+
+            <!-- Rent (conditional) -->
+            {% if global_rent_enabled %}
+            <a href="{{ url_for('student.rent') }}"
+               class="btn text-start {% if current_page == 'rent' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">home</span> Rent</a>
+            {% endif %}
+        </div>
+        <div class="mt-auto">
+            <a href="{{ url_for('student.logout') }}" class="btn btn-outline-secondary text-start w-100"><span class="material-symbols-outlined">logout</span> Sign Out</a>
+        </div>
     </div>
 
-    <!-- Toast Container -->
-    <div id="toast-container" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1100"></div>
+    <div class="flex-grow-1 main-content">
+        <!-- Modern Title Banner -->
+        <div class="page-title-banner">
+            {% block page_header %}
+            <h2><span class="material-symbols-outlined">{% block page_icon %}dashboard{% endblock %}</span> {{ page_title or "Student Portal" }}</h2>
+            <time id="current-time"></time>
+            {% endblock %}
+        </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js" integrity="sha384-C6RzsynM9kWDrMNeT87bh95OGNyZPhcTNXj1NW7RuBCsyN/o0jlpcV8Qyq46cDfL" crossorigin="anonymous"></script>
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category.replace('transfer_', '').replace('_', '-') }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </div>
+
     <script>
-        // Helper function for Bootstrap toast messages
-        function createToast(message, isError = false) {
-            const toastContainer = document.getElementById("toast-container");
-            const toast = document.createElement("div");
-            toast.className = `toast align-items-center text-white ${isError ? "bg-danger" : "bg-success"} border-0`;
-            toast.role = "alert";
-            toast.setAttribute('aria-live', 'assertive');
-            toast.setAttribute('aria-atomic', 'true');
-            toast.innerHTML = `
-                <div class="d-flex">
-                    <div class="toast-body">${message}</div>
-                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
-                </div>`;
-            toastContainer.appendChild(toast);
-            const bsToast = new bootstrap.Toast(toast, { delay: 3000 });
-            bsToast.show();
-            toast.addEventListener("hidden.bs.toast", () => toast.remove());
+        function updateTime() {
+            const now = new Date();
+            const timeElement = document.getElementById('current-time');
+            if (timeElement) {
+                const optionsDate = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
+                const optionsTime = { hour: 'numeric', minute: 'numeric', hour12: true };
+                timeElement.textContent = now.toLocaleDateString(undefined, optionsDate) + ' ' +
+                                          now.toLocaleTimeString(undefined, optionsTime);
+            }
         }
+        setInterval(updateTime, 1000);
+        updateTime();
     </script>
-    {% block extra_scripts %}{% endblock %}
-  </body>
+    <script type="application/json" id="flashMessages">
+  {{ get_flashed_messages(with_categories=true) | tojson }}
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const container = document.getElementById('flashToastContainer');
+  const msgs = JSON.parse(document.getElementById('flashMessages').textContent);
+  msgs.forEach(([category, message]) => {
+    const toastEl = document.createElement('div');
+    toastEl.className = 'toast align-items-center text-bg-' + (category==='success'?'success':'warning') + ' border-0 mb-2';
+    toastEl.setAttribute('role','alert');
+    toastEl.setAttribute('aria-live','assertive');
+    toastEl.setAttribute('aria-atomic','true');
+    toastEl.innerHTML = `
+      <div class="d-flex">
+        <div class="toast-body">${message}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>`;
+    container.appendChild(toastEl);
+    new bootstrap.Toast(toastEl, { delay: 3000 }).show();
+  });
+});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{% block extra_scripts %}{% endblock %}
+</body>
 </html>
