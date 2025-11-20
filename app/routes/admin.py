@@ -2611,6 +2611,9 @@ def banking():
     # Count students with savings
     students_with_savings = sum(1 for s in students if s.savings_balance > 0)
 
+    # Calculate average savings balance (across all students, including those with 0)
+    average_savings_balance = total_savings / len(students) if len(students) > 0 else 0
+
     # Get all blocks for filter
     blocks = sorted(set(s.block for s in students))
 
@@ -2629,6 +2632,7 @@ def banking():
         total_deposits=total_deposits,
         students_with_savings=students_with_savings,
         total_students=len(students),
+        average_savings_balance=average_savings_balance,
         blocks=blocks,
         transaction_types=transaction_types,
         page=page,

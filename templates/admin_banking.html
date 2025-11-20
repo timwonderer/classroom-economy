@@ -356,22 +356,60 @@
               <h5 class="mb-0"><i class="bi bi-percent me-2"></i>Interest Settings</h5>
             </div>
             <div class="card-body">
-              <div class="mb-3">
-                {{ form.savings_apy.label(class="form-label fw-bold") }}
+              <!-- Rate Input Mode Toggle -->
+              <div class="mb-4">
+                <label class="form-label fw-bold">Choose how you want to set the interest rate:</label>
+                <div class="btn-group w-100" role="group" aria-label="Interest rate input mode">
+                  <input type="radio" class="btn-check" name="rate_input_mode" id="mode_apy" value="apy" {% if not settings or settings.savings_apy >= settings.savings_monthly_rate or form.rate_input_mode.data == 'apy' %}checked{% endif %}>
+                  <label class="btn btn-outline-primary" for="mode_apy">
+                    <i class="bi bi-calendar-year me-1"></i>Annual Rate (APY)
+                  </label>
+
+                  <input type="radio" class="btn-check" name="rate_input_mode" id="mode_monthly" value="monthly" {% if settings and settings.savings_monthly_rate > settings.savings_apy and form.rate_input_mode.data != 'apy' %}checked{% endif %}>
+                  <label class="btn btn-outline-primary" for="mode_monthly">
+                    <i class="bi bi-calendar-month me-1"></i>Monthly Rate
+                  </label>
+                </div>
+              </div>
+
+              <!-- APY Input (shown when mode is APY) -->
+              <div class="mb-3" id="apyInputSection">
+                <label for="savings_apy" class="form-label fw-bold">Annual Percentage Yield (APY %)</label>
                 <div class="input-group">
-                  {{ form.savings_apy(class="form-control", placeholder="5.0") }}
+                  <input type="number" step="0.01" class="form-control" name="savings_apy" id="savings_apy" placeholder="5.0" value="{{ form.savings_apy.data or 0 }}">
                   <span class="input-group-text">%</span>
                 </div>
                 <small class="text-muted">Annual Percentage Yield for savings accounts</small>
+                <div id="apyToMonthlyHint" class="mt-2 p-2 bg-light border rounded" style="display: none;">
+                  <small class="text-info">
+                    <i class="bi bi-arrow-right-circle me-1"></i>
+                    <strong>Calculated Monthly Rate:</strong> <span id="calculatedMonthlyFromAPY">0.00</span>%
+                  </small>
+                </div>
               </div>
 
-              <div class="mb-3">
-                {{ form.savings_monthly_rate.label(class="form-label fw-bold") }}
+              <!-- Monthly Rate Input (shown when mode is Monthly) -->
+              <div class="mb-3" id="monthlyInputSection" style="display: none;">
+                <label for="savings_monthly_rate" class="form-label fw-bold">Monthly Interest Rate (%)</label>
                 <div class="input-group">
-                  {{ form.savings_monthly_rate(class="form-control", placeholder="0.42") }}
+                  <input type="number" step="0.0001" class="form-control" name="savings_monthly_rate" id="savings_monthly_rate" placeholder="0.42" value="{{ form.savings_monthly_rate.data or 0 }}">
                   <span class="input-group-text">%</span>
                 </div>
-                <small class="text-muted">Monthly interest rate (can be calculated from APY or set manually)</small>
+                <small class="text-muted">Monthly interest rate</small>
+                <div id="monthlyToAPYHint" class="mt-2 p-2 bg-light border rounded" style="display: none;">
+                  <small class="text-info">
+                    <i class="bi bi-arrow-right-circle me-1"></i>
+                    <strong>Calculated APY:</strong> <span id="calculatedAPYFromMonthly">0.00</span>%
+                  </small>
+                </div>
+              </div>
+
+              <!-- Interest Preview -->
+              <div class="alert alert-info" id="interestPreview">
+                <h6 class="mb-2"><i class="bi bi-calculator me-1"></i>Interest Preview</h6>
+                <div id="previewContent">
+                  <small class="text-muted">Enter an interest rate to see estimated payouts</small>
+                </div>
               </div>
 
               <hr>
@@ -517,6 +555,129 @@ document.addEventListener("DOMContentLoaded", () => {
             el.textContent = '—';
         }
     });
+
+    // -------------------- INTEREST RATE CALCULATIONS --------------------
+    const avgSavingsBalance = {{ average_savings_balance|default(0) }};
+    const totalSavings = {{ total_savings|default(0) }};
+
+    // Toggle between APY and Monthly input modes
+    const modeAPY = document.getElementById('mode_apy');
+    const modeMonthly = document.getElementById('mode_monthly');
+    const apyInputSection = document.getElementById('apyInputSection');
+    const monthlyInputSection = document.getElementById('monthlyInputSection');
+    const apyInput = document.getElementById('savings_apy');
+    const monthlyInput = document.getElementById('savings_monthly_rate');
+
+    function toggleInputMode() {
+        if (modeAPY.checked) {
+            apyInputSection.style.display = 'block';
+            monthlyInputSection.style.display = 'none';
+        } else {
+            apyInputSection.style.display = 'none';
+            monthlyInputSection.style.display = 'block';
+        }
+        updateInterestPreview();
+    }
+
+    // APY to Monthly Rate: monthly = (1 + APY/100)^(1/12) - 1
+    function apyToMonthly(apy) {
+        if (!apy || apy <= 0) return 0;
+        const monthly = (Math.pow(1 + apy / 100, 1 / 12) - 1) * 100;
+        return monthly;
+    }
+
+    // Monthly Rate to APY: APY = (1 + monthly/100)^12 - 1
+    function monthlyToAPY(monthly) {
+        if (!monthly || monthly <= 0) return 0;
+        const apy = (Math.pow(1 + monthly / 100, 12) - 1) * 100;
+        return apy;
+    }
+
+    // Update calculations when APY changes
+    apyInput.addEventListener('input', function() {
+        const apy = parseFloat(this.value) || 0;
+        const monthly = apyToMonthly(apy);
+
+        document.getElementById('calculatedMonthlyFromAPY').textContent = monthly.toFixed(4);
+        document.getElementById('apyToMonthlyHint').style.display = apy > 0 ? 'block' : 'none';
+
+        // Update the monthly rate field with calculated value
+        monthlyInput.value = monthly.toFixed(6);
+
+        updateInterestPreview();
+    });
+
+    // Update calculations when Monthly Rate changes
+    monthlyInput.addEventListener('input', function() {
+        const monthly = parseFloat(this.value) || 0;
+        const apy = monthlyToAPY(monthly);
+
+        document.getElementById('calculatedAPYFromMonthly').textContent = apy.toFixed(4);
+        document.getElementById('monthlyToAPYHint').style.display = monthly > 0 ? 'block' : 'none';
+
+        // Update the APY field with calculated value
+        apyInput.value = apy.toFixed(6);
+
+        updateInterestPreview();
+    });
+
+    // Update interest preview
+    function updateInterestPreview() {
+        const previewContent = document.getElementById('previewContent');
+        let monthlyRate = 0;
+        let apyRate = 0;
+
+        if (modeAPY.checked) {
+            apyRate = parseFloat(apyInput.value) || 0;
+            monthlyRate = apyToMonthly(apyRate);
+        } else {
+            monthlyRate = parseFloat(monthlyInput.value) || 0;
+            apyRate = monthlyToAPY(monthlyRate);
+        }
+
+        if (monthlyRate <= 0 || avgSavingsBalance <= 0) {
+            previewContent.innerHTML = '<small class="text-muted">Enter an interest rate to see estimated payouts</small>';
+            return;
+        }
+
+        const monthlyInterestPerStudent = avgSavingsBalance * (monthlyRate / 100);
+        const weeklyInterestPerStudent = monthlyInterestPerStudent / 4.33; // Approximate weeks per month
+        const totalMonthlyInterest = totalSavings * (monthlyRate / 100);
+
+        previewContent.innerHTML = `
+            <div class="row text-center">
+                <div class="col-6">
+                    <strong>Average Student</strong><br>
+                    <span class="text-success">$${avgSavingsBalance.toFixed(2)}</span> balance<br>
+                    <small class="text-muted">
+                        Weekly: <strong class="text-primary">$${weeklyInterestPerStudent.toFixed(2)}</strong><br>
+                        Monthly: <strong class="text-primary">$${monthlyInterestPerStudent.toFixed(2)}</strong>
+                    </small>
+                </div>
+                <div class="col-6">
+                    <strong>Entire Class</strong><br>
+                    <span class="text-success">$${totalSavings.toFixed(2)}</span> total<br>
+                    <small class="text-muted">
+                        Monthly payout: <strong class="text-primary">$${totalMonthlyInterest.toFixed(2)}</strong>
+                    </small>
+                </div>
+            </div>
+        `;
+    }
+
+    // Mode toggle listeners
+    modeAPY.addEventListener('change', toggleInputMode);
+    modeMonthly.addEventListener('change', toggleInputMode);
+
+    // Initialize
+    toggleInputMode();
+
+    // If there are existing values, trigger calculation
+    if (parseFloat(apyInput.value) > 0) {
+        apyInput.dispatchEvent(new Event('input'));
+    } else if (parseFloat(monthlyInput.value) > 0) {
+        monthlyInput.dispatchEvent(new Event('input'));
+    }
 
     // Overdraft Fee Toggle
     const overdraftFeeToggle = document.getElementById('overdraftFeeToggle');

@@ -173,6 +173,10 @@ class ManualPaymentForm(FlaskForm):
 # -------------------- BANKING FORMS --------------------
 class BankingSettingsForm(FlaskForm):
     # Interest settings
+    rate_input_mode = SelectField('Interest Rate Input Mode', choices=[
+        ('apy', 'Annual Percentage Yield (APY)'),
+        ('monthly', 'Monthly Interest Rate')
+    ], default='apy')
     savings_apy = FloatField('Annual Percentage Yield (APY %)', validators=[Optional()], default=0.0)
     savings_monthly_rate = FloatField('Monthly Interest Rate (%)', validators=[Optional()], default=0.0)
 
