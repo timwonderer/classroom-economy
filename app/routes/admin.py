@@ -2171,7 +2171,18 @@ def upload_students():
             name_code = ''.join(vowels + consonants).lower()
 
             # Generate dob_sum
-            mm, dd, yyyy = map(int, dob_str.split('/'))
+            # Handle both mm/dd/yy and mm/dd/yyyy formats
+            date_parts = dob_str.split('/')
+            mm = int(date_parts[0])
+            dd = int(date_parts[1])
+            year = int(date_parts[2])
+
+            # If year is 2 digits, convert to 4 digits by adding 2000
+            if year < 100:
+                yyyy = year + 2000
+            else:
+                yyyy = year
+
             dob_sum = mm + dd + yyyy
 
             # Generate salt
@@ -2499,6 +2510,7 @@ def banking():
     # Get transaction types for filter
     transaction_types = db.session.query(Transaction.type).distinct().filter(Transaction.type.isnot(None)).all()
     transaction_types = sorted([t[0] for t in transaction_types if t[0]])
+
 
     return render_template(
         'admin_banking.html',
