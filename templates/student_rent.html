@@ -52,6 +52,13 @@
                 </h5>
             </div>
             <div class="card-body">
+                {% if not status.rent_is_active %}
+                <!-- Rent not yet active - first due date is in the future -->
+                <div class="alert alert-info mb-0">
+                    <strong>Not Yet Due</strong>
+                    <br>Rent will be due starting {{ due_date.strftime('%B %d, %Y') }}
+                </div>
+                {% else %}
                 <div class="mb-3">
                     <p class="mb-1 text-muted"><strong>Monthly Rent:</strong></p>
                     <h3 class="text-primary mb-0">${{ "%.2f"|format(settings.rent_amount) }}</h3>
@@ -130,6 +137,7 @@
                         {% endif %}
                     </button>
                 </form>
+                {% endif %}
                 {% endif %}
                 {% endif %}
             </div>

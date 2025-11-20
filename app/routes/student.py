@@ -931,6 +931,12 @@ def rent():
 
     # Calculate rent status for each period
     now = datetime.now()
+
+    # Check if rent is even due yet (if first_rent_due_date is in the future)
+    rent_is_active = True
+    if settings.first_rent_due_date and now < settings.first_rent_due_date:
+        rent_is_active = False
+
     due_date, grace_end_date = _calculate_rent_deadlines(settings, now)
     current_month = now.month
     current_year = now.year
@@ -938,28 +944,42 @@ def rent():
     period_status = {}
     for period in student_blocks:
         # Get all payments for this period this month (supports incremental payments)
-        payments = RentPayment.query.filter_by(
-            student_id=student.id,
-            period=period,
-            period_month=current_month,
-            period_year=current_year
+        # Exclude voided payments by joining with transactions
+        payments = db.session.query(RentPayment).join(
+            Transaction,
+            db.and_(
+                Transaction.student_id == RentPayment.student_id,
+                Transaction.type == 'Rent Payment',
+                Transaction.description.like(f'Rent for Period {period} - %'),
+                Transaction.timestamp.between(
+                    datetime(current_year, current_month, 1),
+                    datetime(current_year, current_month, 28) if current_month < 12
+                    else datetime(current_year + 1, 1, 28)
+                )
+            )
+        ).filter(
+            RentPayment.student_id == student.id,
+            RentPayment.period == period,
+            RentPayment.period_month == current_month,
+            RentPayment.period_year == current_year,
+            Transaction.is_void == False  # Exclude voided transactions
         ).all()
 
-        # Calculate total paid (sum of all payments)
+        # Calculate total paid (sum of all non-voided payments)
         total_paid = sum(p.amount_paid for p in payments) if payments else 0.0
 
-        # Calculate late fee if applicable
+        # Calculate late fee if applicable (only if rent is active)
         late_fee = 0.0
-        if now > grace_end_date:
+        if rent_is_active and now > grace_end_date:
             late_fee = settings.late_fee
 
         # Total amount due (rent + late fee if applicable)
-        total_due = settings.rent_amount + late_fee
+        total_due = settings.rent_amount + late_fee if rent_is_active else 0.0
 
         # Check if fully paid
-        is_paid = total_paid >= total_due
-        is_late = now > grace_end_date and not is_paid
-        remaining_amount = max(0, total_due - total_paid)
+        is_paid = total_paid >= total_due if rent_is_active else False
+        is_late = now > grace_end_date and not is_paid if rent_is_active else False
+        remaining_amount = max(0, total_due - total_paid) if rent_is_active else 0.0
 
         period_status[period] = {
             'is_paid': is_paid,
@@ -968,7 +988,8 @@ def rent():
             'total_paid': total_paid,
             'total_due': total_due,
             'remaining_amount': remaining_amount,
-            'late_fee': late_fee
+            'late_fee': late_fee,
+            'rent_is_active': rent_is_active
         }
 
     # Get payment history (all periods)
@@ -1009,15 +1030,35 @@ def rent_pay(period):
         return redirect(url_for('student.rent'))
 
     now = datetime.now()
+
+    # Check if rent is even due yet (if first_rent_due_date is in the future)
+    if settings.first_rent_due_date and now < settings.first_rent_due_date:
+        flash(f"Rent is not due yet. First payment due on {settings.first_rent_due_date.strftime('%B %d, %Y')}.", "info")
+        return redirect(url_for('student.rent'))
+
     current_month = now.month
     current_year = now.year
 
     # Get all existing payments for this period this month
-    existing_payments = RentPayment.query.filter_by(
-        student_id=student.id,
-        period=period,
-        period_month=current_month,
-        period_year=current_year
+    # Exclude voided payments by joining with transactions
+    existing_payments = db.session.query(RentPayment).join(
+        Transaction,
+        db.and_(
+            Transaction.student_id == RentPayment.student_id,
+            Transaction.type == 'Rent Payment',
+            Transaction.description.like(f'Rent for Period {period} - %'),
+            Transaction.timestamp.between(
+                datetime(current_year, current_month, 1),
+                datetime(current_year, current_month, 28) if current_month < 12
+                else datetime(current_year + 1, 1, 28)
+            )
+        )
+    ).filter(
+        RentPayment.student_id == student.id,
+        RentPayment.period == period,
+        RentPayment.period_month == current_month,
+        RentPayment.period_year == current_year,
+        Transaction.is_void == False  # Exclude voided transactions
     ).all()
 
     total_paid_so_far = sum(p.amount_paid for p in existing_payments) if existing_payments else 0.0
