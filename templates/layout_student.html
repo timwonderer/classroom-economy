@@ -351,7 +351,10 @@
   <body>
     <nav class="navbar navbar-expand-lg navbar-dark mb-4">
       <div class="container">
-          <a class="navbar-brand" href="{{ url_for('student.dashboard') }}"><span class="material-symbols-outlined" style="font-size: 24px;">account_balance</span> Classroom Token Hub</a>
+          <a class="navbar-brand d-flex align-items-center" href="{{ url_for('student.dashboard') }}">
+            <img src="{{ url_for('static', filename='images/brand-logo.svg') }}" alt="Classroom Token Hub" style="height: 40px; margin-right: 0.75rem;">
+            Classroom Token Hub
+          </a>
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
             <span class="navbar-toggler-icon"></span>
           </button>
