@@ -502,11 +502,12 @@ def edit_student():
 
     # If name changed, recalculate name code and hashes
     if name_changed:
-        # Generate new name code (vowels + consonants from first name + last initial)
-        full_name_for_code = (new_first_name + new_last_initial).lower()
-        vowels = ''.join(c for c in full_name_for_code if c in 'aeiou')
-        consonants = ''.join(c for c in full_name_for_code if c.isalpha() and c not in 'aeiou')
-        name_code = vowels + consonants
+        # Generate new name code (MUST match original algorithm for consistency)
+        # vowels from first_name + consonants from last_name
+        # Note: We only have last_initial, so we reconstruct using last_name_input
+        vowels = re.findall(r'[AEIOUaeiou]', new_first_name)
+        consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name_input)
+        name_code = ''.join(vowels + consonants).lower()
 
         # Regenerate first_half_hash (name code hash)
         student.first_half_hash = hash_hmac(name_code.encode(), student.salt)
@@ -694,8 +695,8 @@ def add_individual_student():
 
         # Generate salt and hashes
         salt = get_random_salt()
-        first_half_hash = hash_hmac(name_code, salt)
-        second_half_hash = hash_hmac(str(dob_sum), salt)
+        first_half_hash = hash_hmac(name_code.encode(), salt)
+        second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
         # Check for duplicates - need to check ALL students with same last_initial and block
         # because we can't distinguish based on last_initial alone
@@ -716,7 +717,7 @@ def add_individual_student():
                 test_name_code = ''.join(test_vowels + test_consonants).lower()
 
                 # Try to verify with the stored hash
-                test_hash = hash_hmac(test_name_code, existing_student.salt)
+                test_hash = hash_hmac(test_name_code.encode(), existing_student.salt)
                 if test_hash == existing_student.first_half_hash:
                     flash(f"Student {first_name} {last_name} in block {block} already exists.", "warning")
                     return redirect(url_for('admin.students'))
@@ -783,8 +784,8 @@ def add_manual_student():
 
         # Generate salt and hashes
         salt = get_random_salt()
-        first_half_hash = hash_hmac(name_code, salt)
-        second_half_hash = hash_hmac(str(dob_sum), salt)
+        first_half_hash = hash_hmac(name_code.encode(), salt)
+        second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
         # Check for duplicates - same logic as add_individual_student
         potential_duplicates = Student.query.filter_by(
@@ -800,7 +801,7 @@ def add_manual_student():
                 test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
                 test_name_code = ''.join(test_vowels + test_consonants).lower()
 
-                test_hash = hash_hmac(test_name_code, existing_student.salt)
+                test_hash = hash_hmac(test_name_code.encode(), existing_student.salt)
                 if test_hash == existing_student.first_half_hash:
                     flash(f"Student {first_name} {last_name} in block {block} already exists.", "warning")
                     return redirect(url_for('admin.students'))
