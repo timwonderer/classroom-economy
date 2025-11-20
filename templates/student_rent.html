@@ -73,7 +73,7 @@
 
                 {% if status.is_paid %}
                 <div class="alert alert-success mb-0">
-                    <strong>All set!</strong> Rent paid for Period {{ period|upper }} this month.
+                    <strong>All set, {{ student.first_name }}!</strong> Rent paid for Period {{ period|upper }} this month.
                     <br><small>Total Paid: ${{ "%.2f"|format(status.total_paid) }}</small>
                     {% if status.payments %}
                     <br><small>Last Payment: {{ status.payments[-1].payment_date.strftime('%b %d, %Y') }}</small>

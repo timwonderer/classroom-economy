@@ -100,12 +100,12 @@
     <div class="col-lg-3 col-md-6 mb-3">
         <div class="card">
             <div class="card-body text-center">
-                <span class="material-symbols-outlined {% if student.insurance_paid %}text-info{% else %}text-danger{% endif %}" style="font-size: 2.5rem;">shield</span>
+                <span class="material-symbols-outlined {% if insurance_paid %}text-info{% else %}text-danger{% endif %}" style="font-size: 2.5rem;">shield</span>
                 <h6 class="text-muted text-uppercase mt-2 mb-1">Insurance</h6>
                 <h3 class="mb-0">
                     {% if student.insurance_plan == 'none' %}
                         <span class="badge bg-secondary">None</span>
-                    {% elif student.insurance_paid %}
+                    {% elif insurance_paid %}
                         <span class="badge bg-success">Active</span>
                     {% else %}
                         <span class="badge bg-danger">Overdue</span>
@@ -113,6 +113,86 @@
                 </h3>
                 <small class="text-muted">Plan: {{ student.insurance_plan|title if student.insurance_plan != 'none' else 'N/A' }}</small>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Items Redemption Status Card -->
+<div class="card mb-4">
+    <div class="card-header">
+        <span class="material-symbols-outlined">inventory_2</span> Items Redemption Status
+    </div>
+    <div class="card-body">
+        {% set pending_items = student_items|selectattr('status', 'equalto', 'pending')|list %}
+        {% set redeemed_items = student_items|selectattr('status', 'equalto', 'redeemed')|list %}
+        {% set rejected_items = student_items|selectattr('status', 'equalto', 'rejected')|list %}
+
+        <div class="row">
+            <div class="col-md-4">
+                <div class="text-center p-3 bg-warning bg-opacity-10 rounded">
+                    <h3 class="mb-1">{{ pending_items|length }}</h3>
+                    <small class="text-muted">Pending</small>
+                </div>
+                {% if pending_items|length > 0 %}
+                <ul class="list-group list-group-flush mt-2">
+                    {% for item in pending_items[:3] %}
+                    <li class="list-group-item px-0 py-1">
+                        <small>{{ item.store_item.name }}</small>
+                    </li>
+                    {% endfor %}
+                    {% if pending_items|length > 3 %}
+                    <li class="list-group-item px-0 py-1">
+                        <small class="text-muted">+{{ pending_items|length - 3 }} more</small>
+                    </li>
+                    {% endif %}
+                </ul>
+                {% endif %}
+            </div>
+            <div class="col-md-4">
+                <div class="text-center p-3 bg-success bg-opacity-10 rounded">
+                    <h3 class="mb-1">{{ redeemed_items|length }}</h3>
+                    <small class="text-muted">Redeemed</small>
+                </div>
+                {% if redeemed_items|length > 0 %}
+                <ul class="list-group list-group-flush mt-2">
+                    {% for item in redeemed_items[:3] %}
+                    <li class="list-group-item px-0 py-1">
+                        <small>{{ item.store_item.name }}</small>
+                    </li>
+                    {% endfor %}
+                    {% if redeemed_items|length > 3 %}
+                    <li class="list-group-item px-0 py-1">
+                        <small class="text-muted">+{{ redeemed_items|length - 3 }} more</small>
+                    </li>
+                    {% endif %}
+                </ul>
+                {% endif %}
+            </div>
+            <div class="col-md-4">
+                <div class="text-center p-3 bg-danger bg-opacity-10 rounded">
+                    <h3 class="mb-1">{{ rejected_items|length }}</h3>
+                    <small class="text-muted">Rejected</small>
+                </div>
+                {% if rejected_items|length > 0 %}
+                <ul class="list-group list-group-flush mt-2">
+                    {% for item in rejected_items[:3] %}
+                    <li class="list-group-item px-0 py-1">
+                        <small>{{ item.store_item.name }}</small>
+                    </li>
+                    {% endfor %}
+                    {% if rejected_items|length > 3 %}
+                    <li class="list-group-item px-0 py-1">
+                        <small class="text-muted">+{{ rejected_items|length - 3 }} more</small>
+                    </li>
+                    {% endif %}
+                </ul>
+                {% endif %}
+            </div>
+        </div>
+        <div class="mt-3 text-center">
+            <a href="{{ url_for('student.shop') }}" class="btn btn-sm btn-primary">
+                <span class="material-symbols-outlined">visibility</span> View All Items
+            </a>
         </div>
     </div>
 </div>

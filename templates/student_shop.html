@@ -277,7 +277,7 @@
                     <input type="hidden" id="useModalItemId" name="item_id">
                     <input type="hidden" id="useModalItemType" name="item_type">
                     <div class="mb-3">
-                        <label for="usePassphrase" class="form-label">Enter your PIN to confirm:</label>
+                        <label for="usePassphrase" class="form-label">Enter your Passphrase to confirm:</label>
                         <input type="password" class="form-control" id="usePassphrase" name="pin" inputmode="numeric" pattern="[0-9]*" required>
                     </div>
                 </form>
@@ -465,7 +465,7 @@
         })
         .catch(error => {
             console.error('Purchase error:', error);
-            alert('An unexpected error occurred.');
+            alert('An unexpected error occurred. Please try again or contact your teacher if the problem persists. Error details have been logged.');
         });
     });
 
