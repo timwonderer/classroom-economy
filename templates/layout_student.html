@@ -49,7 +49,10 @@
           background: var(--white);
           box-shadow: var(--shadow-sm);
           border-bottom: 3px solid var(--brand-cyan);
-          padding: 0.75rem 0;
+          padding: 0.5rem 0;
+          position: sticky;
+          top: 0;
+          z-index: 1030;
       }
 
       .navbar-brand {
@@ -381,8 +384,8 @@
     <nav class="navbar navbar-expand-lg navbar-dark mb-4">
       <div class="container">
           <a class="navbar-brand d-flex align-items-center" href="{{ url_for('student.dashboard') }}">
-            <img src="{{ url_for('static', filename='images/brand-logo.svg') }}" alt="Classroom Token Hub" style="height: 32px; margin-right: 0.75rem;">
-            Classroom Token Hub
+            <img src="{{ url_for('static', filename='images/brand-logo.svg') }}" alt="Classroom Token Hub" style="height: 28px; margin-right: 0.5rem;">
+            Token Hub
           </a>
           <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation" style="border: none;">
             <span class="navbar-toggler-icon"></span>
