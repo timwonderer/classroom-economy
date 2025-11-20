@@ -414,6 +414,25 @@
 
               <hr>
 
+              <h6 class="fw-bold mb-3">Interest Calculation Method</h6>
+
+              <div class="mb-3">
+                {{ form.interest_calculation_type.label(class="form-label fw-bold") }}
+                {{ form.interest_calculation_type(class="form-select") }}
+                <small class="text-muted">
+                  <strong>Simple:</strong> Interest calculated on principal only.<br>
+                  <strong>Compound:</strong> Interest calculated on principal + previously earned interest.
+                </small>
+              </div>
+
+              <div class="mb-3" id="compoundFrequencyField">
+                {{ form.compound_frequency.label(class="form-label fw-bold") }}
+                {{ form.compound_frequency(class="form-select") }}
+                <small class="text-muted">How often interest compounds (only applies to compound interest)</small>
+              </div>
+
+              <hr>
+
               <h6 class="fw-bold mb-3">Interest Payout Schedule</h6>
 
               <div class="mb-3">
@@ -733,6 +752,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Initialize visibility
         cycleDaysField.style.display = scheduleType.value === 'monthly' ? 'block' : 'none';
+    }
+
+    // Interest Calculation Type Toggle
+    const calculationType = document.getElementById('interest_calculation_type');
+    const compoundFrequencyField = document.getElementById('compoundFrequencyField');
+
+    if (calculationType) {
+        calculationType.addEventListener('change', function() {
+            compoundFrequencyField.style.display = this.value === 'compound' ? 'block' : 'none';
+        });
+
+        // Initialize visibility
+        compoundFrequencyField.style.display = calculationType.value === 'compound' ? 'block' : 'none';
     }
 });
 

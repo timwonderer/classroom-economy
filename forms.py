@@ -207,6 +207,15 @@ class BankingSettingsForm(FlaskForm):
     ], default='apy')
     savings_apy = FloatField('Annual Percentage Yield (APY %)', validators=[Optional()], default=0.0)
     savings_monthly_rate = FloatField('Monthly Interest Rate (%)', validators=[Optional()], default=0.0)
+    interest_calculation_type = SelectField('Interest Calculation Type', choices=[
+        ('simple', 'Simple Interest'),
+        ('compound', 'Compound Interest')
+    ], default='simple', validators=[DataRequired()])
+    compound_frequency = SelectField('Compounding Frequency', choices=[
+        ('daily', 'Daily'),
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly')
+    ], default='monthly', validators=[Optional()])
 
     # Interest payout schedule
     interest_schedule_type = SelectField('Interest Payout Schedule', choices=[

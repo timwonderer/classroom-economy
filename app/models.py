@@ -464,6 +464,8 @@ class BankingSettings(db.Model):
     # Interest settings for savings
     savings_apy = db.Column(db.Float, default=0.0)  # Annual Percentage Yield (e.g., 5.0 for 5%)
     savings_monthly_rate = db.Column(db.Float, default=0.0)  # Monthly rate (calculated or custom)
+    interest_calculation_type = db.Column(db.String(20), default='simple')  # 'simple' or 'compound'
+    compound_frequency = db.Column(db.String(20), default='monthly')  # 'daily', 'weekly', 'monthly'
 
     # Interest payout schedule
     interest_schedule_type = db.Column(db.String(20), default='monthly')  # 'weekly', 'monthly'
