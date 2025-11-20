@@ -81,7 +81,7 @@ function performTap(period, action, pin, reason = null) {
     .then(r => r.json())
     .then(data => {
         if (data.status === "ok") {
-            updateBlockUI(period, data.active, data.duration, data.projected_pay);
+            updateBlockUI(period, data.active, data.duration, data.projected_pay, data.hall_pass);
             let message = `Tap ${action === "tap_in" ? "In" : "Out"} successful`;
             if (action === 'tap_out') {
               message = "Hall pass request submitted!";
@@ -104,9 +104,12 @@ setInterval(() => {
   fetch("/api/student-status")
     .then(r => r.json())
     .then(data => {
-      Object.keys(data).forEach(period => {
-        updateBlockUI(period, data[period].active, data[period].duration, data[period].projected_pay, data[period].hall_pass);
-      });
+      if (data.status === 'ok' && data.periods) {
+        Object.keys(data.periods).forEach(period => {
+          const periodData = data.periods[period];
+          updateBlockUI(period, periodData.active, periodData.duration, periodData.projected_pay, periodData.hall_pass);
+        });
+      }
     })
     .catch(err => console.error("Status polling error:", err));
 }, 10000);
@@ -201,7 +204,10 @@ function cancelHallPass(passId, period) {
       fetch("/api/student-status")
         .then(r => r.json())
         .then(statusData => {
-          updateBlockUI(period, statusData[period].active, statusData[period].duration, statusData[period].projected_pay, statusData[period].hall_pass);
+          if (statusData.status === 'ok' && statusData.periods && statusData.periods[period]) {
+            const periodData = statusData.periods[period];
+            updateBlockUI(period, periodData.active, periodData.duration, periodData.projected_pay, periodData.hall_pass);
+          }
         });
     } else {
       createToast(data.message || 'Failed to cancel request.', true);

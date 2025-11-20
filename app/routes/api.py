@@ -542,7 +542,8 @@ def hall_pass_terminal_use():
         return jsonify({
             "status": "success",
             "message": f"{log_entry.student.full_name} has left for {log_entry.reason}.",
-            "student_name": log_entry.student.full_name
+            "student_name": log_entry.student.full_name,
+            "destination": log_entry.reason
         })
     except SQLAlchemyError as e:
         db.session.rollback()
@@ -696,7 +697,13 @@ def handle_tap():
                 "message": "Hall pass requested.",
                 "active": is_active,
                 "duration": duration,
-                "projected_pay": projected_pay
+                "projected_pay": projected_pay,
+                "hall_pass": {
+                    "id": hall_pass_log.id,
+                    "status": hall_pass_log.status,
+                    "reason": hall_pass_log.reason,
+                    "pass_number": hall_pass_log.pass_number
+                }
             })
 
     # --- Standard Tap In/Out Logic ---
