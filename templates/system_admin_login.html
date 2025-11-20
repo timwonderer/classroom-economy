@@ -8,7 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
         * {
@@ -18,7 +18,7 @@
         }
 
         body {
-            font-family: 'Noto Sans', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
             height: 100vh;
             overflow: hidden;
         }
@@ -40,7 +40,7 @@
 
         .branding-side {
             flex: 1;
-            background: linear-gradient(135deg, #4A7BA7 0%, #2B3E50 50%, #1a2634 100%);
+            background: linear-gradient(135deg, #035397 0%, #274174 50%, #1a2634 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -88,7 +88,7 @@
         .circle-1 {
             width: 300px;
             height: 300px;
-            background: #81B9D8;
+            background: rgba(0, 175, 223, 0.2);
             top: -100px;
             right: -100px;
         }
@@ -96,7 +96,7 @@
         .circle-2 {
             width: 200px;
             height: 200px;
-            background: #6BA3D0;
+            background: rgba(253, 176, 52, 0.15);
             bottom: 50px;
             left: -50px;
         }
@@ -104,7 +104,7 @@
         .circle-3 {
             width: 150px;
             height: 150px;
-            background: #4A9B8E;
+            background: rgba(3, 83, 151, 0.25);
             top: 50%;
             right: 10%;
         }
@@ -117,7 +117,7 @@
         .login-container h2 {
             margin-bottom: 0.5rem;
             font-weight: 600;
-            color: #2B3E50;
+            color: #274174;
             text-align: center;
         }
 
@@ -144,15 +144,18 @@
         }
 
         .btn-primary {
-            background: #4A7BA7;
+            background: linear-gradient(135deg, #00afdf 0%, #035397 100%);
             border: none;
             padding: 0.75rem;
             font-weight: 500;
-            transition: background 0.3s ease;
+            transition: all 0.3s ease;
+            border-radius: 10px;
         }
 
         .btn-primary:hover {
-            background: #2B3E50;
+            background: linear-gradient(135deg, #035397 0%, #274174 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 175, 223, 0.3);
         }
 
         .back-link {
@@ -163,13 +166,13 @@
         }
 
         .back-link a {
-            color: #4A7BA7;
+            color: #00afdf;
             text-decoration: none;
             font-weight: 500;
         }
 
         .back-link a:hover {
-            color: #2B3E50;
+            color: #035397;
             text-decoration: underline;
         }
 
@@ -179,8 +182,8 @@
         }
 
         .form-control:focus {
-            border-color: #4A7BA7;
-            box-shadow: 0 0 0 0.2rem rgba(74, 123, 167, 0.25);
+            border-color: #00afdf;
+            box-shadow: 0 0 0 0.2rem rgba(0, 175, 223, 0.25);
         }
 
         .alert {
