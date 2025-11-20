@@ -23,6 +23,25 @@ function createToast(message, isError = false) {
 document.addEventListener("DOMContentLoaded", () => {
     const hallPassModal = new bootstrap.Modal(document.getElementById('hallPassModal'));
 
+    // Apply initial server-rendered state (for hall passes + timers) before polling kicks in
+    const serverStateEl = document.getElementById('serverState');
+    if (serverStateEl && serverStateEl.textContent) {
+      try {
+        const initialState = JSON.parse(serverStateEl.textContent);
+        Object.entries(initialState || {}).forEach(([period, state]) => {
+          updateBlockUI(
+            period,
+            state.active,
+            state.duration,
+            state.projected_pay,
+            state.hall_pass
+          );
+        });
+      } catch (e) {
+        console.error('Failed to parse initial attendance state', e);
+      }
+    }
+
     // Handle Tap In and Tap Out button clicks
     document.querySelectorAll(".tap-btn").forEach(button => {
         button.addEventListener("click", () => {
@@ -176,6 +195,13 @@ function updateHallPassOverlay(period, hallPass) {
           <strong>📍 Currently Out</strong><br>
           <span class="badge bg-info" style="font-size: 1.1rem;">Pass #${hallPass.pass_number}</span><br>
           <small>Destination: ${hallPass.reason}</small>
+        </div>
+      `;
+    } else if (hallPass.status === 'rejected') {
+      passInfoDisplay.innerHTML = `
+        <div class="alert alert-danger mb-2">
+          <strong>❌ Hall Pass Denied</strong><br>
+          <small>Reason: ${hallPass.reason}</small>
         </div>
       `;
     } else {

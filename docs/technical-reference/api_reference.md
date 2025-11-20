@@ -159,7 +159,7 @@ These endpoints require an active student login session.
 ### Get Student Status
 
 -   **Endpoint**: `GET /api/student-status`
--   **Description**: Retrieves the current attendance status (active, done, duration) for all of a student's class blocks.
+-   **Description**: Retrieves the current attendance status (active, done, duration), projected pay (respecting block-level payroll settings), and current hall pass state for all of a student's class blocks.
 -   **Authentication**: Student.
 -   **Request Body**: None.
 -   **Responses**:
@@ -169,12 +169,21 @@ These endpoints require an active student login session.
           "A": {
             "active": true,
             "done": false,
-            "duration": 3600
+            "duration": 3600,
+            "projected_pay": 2.5,
+            "hall_pass": {
+              "id": 123,
+              "status": "approved",
+              "reason": "Restroom",
+              "pass_number": "A12"
+            }
           },
           "B": {
             "active": false,
             "done": true,
-            "duration": 7200
+            "duration": 7200,
+            "projected_pay": 5.0,
+            "hall_pass": null
           }
         }
         ```

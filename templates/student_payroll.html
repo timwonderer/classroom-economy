@@ -73,8 +73,9 @@
                                 <tr>
                                     <td>{{ event.timestamp.strftime('%m/%d/%y') if event.timestamp else 'N/A' }}</td>
                                     <td>
-                                        <span class="badge {% if event.action == 'tap_in' %}bg-success{% else %}bg-danger{% endif %}">
-                                            {{ event.action|replace('_', ' ')|title }}
+                                        {% set is_tap_in = event.status == 'active' %}
+                                        <span class="badge {% if is_tap_in %}bg-success{% else %}bg-danger{% endif %}">
+                                            {{ 'Tap In' if is_tap_in else 'Tap Out' }}
                                         </span>
                                     </td>
                                     <td>{{ event.timestamp.strftime('%I:%M %p') if event.timestamp else 'N/A' }}</td>

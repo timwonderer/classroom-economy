@@ -52,19 +52,26 @@
             text-align: center;
             z-index: 2;
             padding: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        .branding-content h1 {
-            font-size: 3.5rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        .branding-logo-card {
+            background: rgba(255, 255, 255, 0.96);
+            border-radius: 24px;
+            padding: 2rem;
+            width: 230px;
+            height: 230px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 18px 40px rgba(0, 0, 0, 0.18);
         }
 
-        .branding-content .tagline {
-            font-size: 1.2rem;
-            font-weight: 300;
-            opacity: 0.9;
+        .branding-logo-card img {
+            max-width: 160px;
+            height: auto;
         }
 
         /* Decorative circles */
@@ -108,6 +115,15 @@
             font-weight: 600;
             color: #274174;
             text-align: center;
+        }
+
+        .form-logo {
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .form-logo img {
+            max-height: 64px;
         }
 
         .nav-tabs {
@@ -200,14 +216,14 @@
     </style>
 </head>
 
-<body>
-    <div class="login-wrapper">
-        <!-- Left side: Login Form -->
-        <div class="login-form-side">
-            <div class="login-container">
-                <h2>Welcome Back</h2>
+    <body>
+        <div class="login-wrapper">
+            <!-- Left side: Login Form -->
+            <div class="login-form-side">
+                <div class="login-container">
+                    <h2>Welcome Back</h2>
 
-                <!-- Tabs for Student/Teacher -->
+                    <!-- Tabs for Student/Teacher -->
                 <ul class="nav nav-tabs" role="tablist">
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="student-tab" data-bs-toggle="tab" data-bs-target="#student-login" type="button" role="tab" onclick="window.location.href='{{ url_for('student.login') }}'">
@@ -283,7 +299,9 @@
             <div class="circle circle-2"></div>
             <div class="circle circle-3"></div>
             <div class="branding-content">
-                <img src="{{ url_for('static', filename='images/admin-logo.svg') }}" alt="Admin Portal Logo" style="max-width: 200px; filter: brightness(0) invert(1) drop-shadow(0 4px 12px rgba(0,0,0,0.2));">
+                <div class="branding-logo-card">
+                    <img src="{{ url_for('static', filename='images/admin-logo.svg') }}" alt="Admin Portal Logo">
+                </div>
             </div>
         </div>
     </div>
