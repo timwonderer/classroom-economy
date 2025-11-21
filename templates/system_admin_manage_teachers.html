@@ -170,7 +170,7 @@ if (deleteModal) {
         const teacherName = button.getAttribute('data-teacher-name');
 
         document.getElementById('modalTeacherName').textContent = teacherName;
-        document.getElementById('deleteForm').action = `/system-admin/manage-teachers/delete/${teacherId}`;
+        document.getElementById('deleteForm').action = `/sysadmin/manage-teachers/delete/${teacherId}`;
     });
 }
 </script>
