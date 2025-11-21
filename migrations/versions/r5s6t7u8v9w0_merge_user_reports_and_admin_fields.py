@@ -7,7 +7,7 @@ and this merge keeps the Alembic history linear without generating multiple
 heads.
 
 Revision ID: r5s6t7u8v9w0
-Revises: c4d5e6f7a8b9, c5f3a8d9e1b4
+Revises: q4r5s6t7u8v9, c5f3a8d9e1b4
 Create Date: 2025-11-21 08:00:00.000000
 
 """
@@ -17,7 +17,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'r5s6t7u8v9w0'
-down_revision = ('c4d5e6f7a8b9', 'c5f3a8d9e1b4')
+down_revision = ('q4r5s6t7u8v9', 'c5f3a8d9e1b4')
 branch_labels = None
 depends_on = None
 
