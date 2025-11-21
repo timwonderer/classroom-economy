@@ -2221,38 +2221,7 @@ def upload_students():
             # Generate last_initial
             last_initial = last_name[0].upper()
 
-            # Efficiently check for duplicates.
-            # 1. Filter by unencrypted fields (`last_initial`, `block`) to get a small candidate pool.
-            potential_matches = Student.query.filter_by(last_initial=last_initial, block=block).all()
-
-            # 2. Iterate through the small pool and compare first name AND full last name via hash
-            is_duplicate = False
-            for student in potential_matches:
-                if student.first_name == first_name:
-                    # Same first name and last initial - verify full last name matches too
-                    # MUST use original algorithm: vowels from first_name + consonants from last_name
-                    test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
-                    test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-                    test_name_code = ''.join(test_vowels + test_consonants).lower()
-
-                    # Check if this matches the existing student's hash
-                    test_hash = hash_hmac(test_name_code.encode(), student.salt)
-                    if test_hash == student.first_half_hash:
-                        is_duplicate = True
-                        break
-
-            if is_duplicate:
-                current_app.logger.info(f"Duplicate detected: {first_name} {last_name} in block {block}, skipping.")
-                duplicated += 1
-                continue  # skip this duplicate
-
-            # Generate name_code (MUST match original algorithm for consistency)
-            # vowels from first_name + consonants from last_name
-            vowels = re.findall(r'[AEIOUaeiou]', first_name)
-            consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-            name_code = ''.join(vowels + consonants).lower()
-
-            # Generate dob_sum
+            # Parse and calculate dob_sum early (needed for duplicate detection)
             # Handle both mm/dd/yy and mm/dd/yyyy formats
             date_parts = dob_str.split('/')
             mm = int(date_parts[0])
@@ -2266,6 +2235,41 @@ def upload_students():
                 yyyy = year
 
             dob_sum = mm + dd + yyyy
+
+            # Efficiently check for duplicates.
+            # 1. Filter by unencrypted fields (`last_initial`, `block`) to get a small candidate pool.
+            potential_matches = Student.query.filter_by(last_initial=last_initial, block=block).all()
+
+            # 2. Iterate through the small pool and compare first name, full last name, AND date of birth via hash
+            is_duplicate = False
+            for student in potential_matches:
+                if student.first_name == first_name:
+                    # Same first name and last initial - verify full last name matches too
+                    # MUST use original algorithm: vowels from first_name + consonants from last_name
+                    test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
+                    test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
+                    test_name_code = ''.join(test_vowels + test_consonants).lower()
+
+                    # Check if this matches the existing student's name hash
+                    test_name_hash = hash_hmac(test_name_code.encode(), student.salt)
+                    if test_name_hash == student.first_half_hash:
+                        # Name matches - now verify date of birth also matches
+                        test_dob_hash = hash_hmac(str(dob_sum).encode(), student.salt)
+                        if test_dob_hash == student.second_half_hash:
+                            # Both name AND date of birth match - this is a true duplicate
+                            is_duplicate = True
+                            break
+
+            if is_duplicate:
+                current_app.logger.info(f"Duplicate detected: {first_name} {last_name} (DOB sum: {dob_sum}) in block {block}, skipping.")
+                duplicated += 1
+                continue  # skip this duplicate
+
+            # Generate name_code (MUST match original algorithm for consistency)
+            # vowels from first_name + consonants from last_name
+            vowels = re.findall(r'[AEIOUaeiou]', first_name)
+            consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
+            name_code = ''.join(vowels + consonants).lower()
 
             # Generate salt
             salt = get_random_salt()
