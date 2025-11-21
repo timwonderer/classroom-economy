@@ -762,6 +762,42 @@ def cancel_hall_pass(pass_id):
     return jsonify({"status": "success", "message": "Hall pass request cancelled."})
 
 
+@api_bp.route('/hall-pass/queue', methods=['GET'])
+def get_hall_pass_queue():
+    """Get current hall pass queue (approved but not yet checked out) and currently out count"""
+    # Get all approved passes that haven't been used yet (not left, not returned)
+    queue = HallPassLog.query.filter_by(status='approved').order_by(HallPassLog.decision_time.asc()).all()
+
+    # Get count of students currently out (status = 'left')
+    currently_out_count = HallPassLog.query.filter_by(status='left').count()
+
+    # Helper function to ensure times are marked as UTC
+    def format_utc_time(dt):
+        if not dt:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+
+    queue_data = []
+    for log_entry in queue:
+        student = log_entry.student
+        queue_data.append({
+            "student_name": student.full_name,
+            "destination": log_entry.reason,
+            "pass_number": log_entry.pass_number,
+            "approved_time": format_utc_time(log_entry.decision_time),
+            "period": log_entry.period
+        })
+
+    return jsonify({
+        "status": "success",
+        "queue": queue_data,
+        "currently_out": currently_out_count,
+        "total": len(queue_data) + currently_out_count
+    })
+
+
 # -------------------- ATTENDANCE API --------------------
 
 @api_bp.route('/tap', methods=['POST'])
