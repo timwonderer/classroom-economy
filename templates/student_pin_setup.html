@@ -53,50 +53,24 @@
             text-align: center;
             z-index: 2;
             padding: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        .branding-content h1 {
-            font-size: 3.5rem;
-            font-weight: 700;
-            margin-bottom: 1rem;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-        }
-
-        .branding-content .tagline {
-            font-size: 1.2rem;
-            font-weight: 300;
-            opacity: 0.9;
-        }
-
-        /* Decorative circles */
-        .circle {
-            position: absolute;
-            border-radius: 50%;
-            opacity: 0.1;
-        }
-
-        .circle-1 {
+        .branding-logo-card {
+            background: rgba(255, 255, 255, 0.96);
+            padding: 2rem;
             width: 300px;
             height: 300px;
-            background: rgba(0, 175, 223, 0.3);
-            top: -100px;
-            right: -100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        .circle-2 {
-            width: 200px;
-            height: 200px;
-            background: rgba(253, 176, 52, 0.25);
-            bottom: 50px;
-            left: -50px;
-        }
-
-        .circle-3 {
-            width: 150px;
-            height: 150px;
-            background: rgba(3, 83, 151, 0.3);
-            top: 50%;
-            right: 10%;
+        .branding-logo-card img {
+            max-width: 300px;
+            height: 300px;
         }
 
         .setup-container {
@@ -269,14 +243,10 @@
 
         <!-- Right side: Branding -->
         <div class="branding-side">
-            <div class="circle circle-1"></div>
-            <div class="circle circle-2"></div>
-            <div class="circle circle-3"></div>
             <div class="branding-content">
-                <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Portal Logo" style="max-width: 200px; filter: brightness(0) invert(1) drop-shadow(0 4px 12px rgba(0,0,0,0.2)); margin-bottom: 2rem;">
-                <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Portal Logo" style="max-width: 200px; filter: brightness(0) invert(1) drop-shadow(0 4px 12px rgba(0,0,0,0.2)); margin-bottom: 2rem;">
-                <h1>Student Portal</h1>
-                <p class="tagline">Earn, Save, and Spend Your Tokens!</p>
+                <div class="branding-logo-card">
+                    <img src="{{ url_for('static', filename='images/brand-logo.svg') }}" alt="Brand Logo">
+                </div>
             </div>
         </div>
     </div>
