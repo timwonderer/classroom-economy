@@ -1,7 +1,7 @@
 import pyotp
 
 from app import db
-from app.models import Admin, Student
+from app.models import Admin, Student, StudentTeacher
 from hash_utils import get_random_salt, hash_username
 
 
@@ -25,6 +25,8 @@ def _create_student(first_name: str, teacher: Admin) -> Student:
         teacher_id=teacher.id,
     )
     db.session.add(student)
+    db.session.flush()
+    db.session.add(StudentTeacher(student_id=student.id, admin_id=teacher.id))
     db.session.commit()
     return student
 
@@ -64,3 +66,21 @@ def test_student_detail_forbids_cross_tenant_access(client):
     response = client.get(f"/admin/students/{student_b.id}")
 
     assert response.status_code == 404
+
+
+def test_shared_student_accessible_to_multiple_teachers(client):
+    teacher_a, secret_a = _create_admin("teacher-a")
+    teacher_b, secret_b = _create_admin("teacher-b")
+    shared_student = _create_student("Shared", teacher_a)
+
+    # Grant teacher B access to the shared student without changing the primary teacher
+    db.session.add(StudentTeacher(student_id=shared_student.id, admin_id=teacher_b.id))
+    db.session.commit()
+
+    _login_admin(client, teacher_b, secret_b)
+
+    detail_response = client.get(f"/admin/students/{shared_student.id}")
+    list_response = client.get("/admin/students")
+
+    assert detail_response.status_code == 200
+    assert "Shared" in list_response.get_data(as_text=True)

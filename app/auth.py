@@ -155,7 +155,7 @@ def get_admin_student_query(include_unassigned=True):
     students they own, with optional access to unassigned students during
     migration.
     """
-    from app.models import Student  # Imported lazily to avoid circular import
+    from app.models import Student, StudentTeacher  # Imported lazily to avoid circular import
 
     if session.get("is_system_admin"):
         return Student.query
@@ -164,7 +164,16 @@ def get_admin_student_query(include_unassigned=True):
     if not admin:
         return Student.query.filter(sa.text("0=1"))
 
-    filters = [Student.teacher_id == admin.id]
+    shared_student_ids = (
+        StudentTeacher.query.with_entities(StudentTeacher.student_id)
+        .filter(StudentTeacher.admin_id == admin.id)
+        .subquery()
+    )
+
+    filters = [
+        Student.teacher_id == admin.id,
+        Student.id.in_(shared_student_ids),
+    ]
     if include_unassigned:
         filters.append(Student.teacher_id.is_(None))
     return Student.query.filter(sa.or_(*filters))

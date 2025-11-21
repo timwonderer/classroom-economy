@@ -29,7 +29,7 @@ import pytz
 
 from app.extensions import db
 from app.models import (
-    Student, Admin, AdminInviteCode, Transaction, TapEvent, StoreItem, StudentItem,
+    Student, Admin, AdminInviteCode, StudentTeacher, Transaction, TapEvent, StoreItem, StudentItem,
     RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
     HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings
 )
@@ -76,6 +76,15 @@ def _get_student_or_404(student_id, include_unassigned=True):
     if not student:
         abort(404)
     return student
+
+
+def _link_student_to_admin(student: Student, admin_id):
+    """Ensure the given admin is associated with the student."""
+    if not admin_id:
+        return
+    existing_link = StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin_id).first()
+    if not existing_link:
+        db.session.add(StudentTeacher(student_id=student.id, admin_id=admin_id))
 
 def auto_tapout_all_over_limit():
     """
@@ -818,6 +827,8 @@ def add_individual_student():
         )
 
         db.session.add(new_student)
+        db.session.flush()
+        _link_student_to_admin(new_student, session.get("admin_id"))
         db.session.commit()
 
         flash(f"Successfully added {first_name} {last_initial}. to block {block}.", "success")
@@ -917,6 +928,8 @@ def add_manual_student():
             new_student.passphrase_hash = generate_password_hash(passphrase)
 
         db.session.add(new_student)
+        db.session.flush()
+        _link_student_to_admin(new_student, session.get("admin_id"))
         db.session.commit()
 
         flash(f"Successfully created {first_name} {last_initial}. in block {block} (manual mode).", "success")
@@ -2477,6 +2490,8 @@ def upload_students():
                 teacher_id=session.get("admin_id"),
             )
             db.session.add(student)
+            db.session.flush()
+            _link_student_to_admin(student, session.get("admin_id"))
             added_count += 1
 
         except Exception as e:
