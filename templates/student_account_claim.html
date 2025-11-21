@@ -221,10 +221,10 @@
             <!-- Left side: Setup Form -->
             <div class="setup-form-side">
                 <div class="setup-container">
-                    <h1>Welcome! <span style="font-weight:300">Let's get you started.</span></h1>
-                    <p class="subtitle">If your teacher has already created an account for you, enter the following information to look up your account.
-                        <p class="subtitle">If you are not sure, please ask your teacher for further instructions</p>
-                    </p>
+                    <h1 style="margin-bottom:1rem">Welcome! <span style="font-weight:300"><br>Let's get you started.</span></h1>
+                    <p >If your teacher has already created an account for you, enter the following information to look up your account.</p>
+                        <p >If you are not sure or if you are having trouble locating your account, please ask your teacher for further instructions</p>
+                  
 
                 {% with messages = get_flashed_messages(category_filter=["claim"]) %}
                     {% if messages %}
@@ -239,7 +239,7 @@
                 <form method="POST">
                     {{ form.hidden_tag() }}
 
-                    <div class="form-group mb-3">
+                    <div class="form-group mb-3" style="margin:1rem 1rem 1rem 1rem">
                         <label class="form-label fw-bold">Name Code</label>
                         {{ form.first_half(class="form-control form-control-lg", placeholder="Example: aialpz") }}
                         <small class="form-text text-muted">
@@ -251,7 +251,7 @@
                         {% endfor %}
                     </div>
 
-                    <div class="form-group mb-3">
+                    <div class="form-group mb-3" style="margin:1rem 1rem 1rem 1rem">
                         <label class="form-label fw-bold">Birthday Sum</label>
                         {{ form.second_half(class="form-control form-control-lg", placeholder="Example: 2028") }}
                         <small class="form-text text-muted">
