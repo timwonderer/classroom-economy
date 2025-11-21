@@ -1669,6 +1669,24 @@ def void_transaction(transaction_id):
     """Void a transaction."""
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
     tx = Transaction.query.get_or_404(transaction_id)
+
+    # Check if this is a hall pass purchase that needs to be reversed
+    if tx.type == 'purchase' and tx.description and not tx.is_void:
+        # Parse item name from description (format: "Purchase: {item_name}" or "Purchase: {item_name} (x{quantity})")
+        match = re.match(r'Purchase: (.+?)(?:\s*\(x(\d+)\))?(?:\s*\[.+\])?$', tx.description)
+        if match:
+            item_name = match.group(1)
+            quantity = int(match.group(2)) if match.group(2) else 1
+
+            # Look up the item to check if it's a hall pass
+            item = StoreItem.query.filter_by(name=item_name).first()
+            if item and item.item_type == 'hall_pass':
+                # Decrement the student's hall passes
+                student = Student.query.get(tx.student_id)
+                if student:
+                    student.hall_passes = max(0, student.hall_passes - quantity)
+                    current_app.logger.info(f"Removed {quantity} hall pass(es) from student {student.id} due to voided transaction {transaction_id}")
+
     tx.is_void = True
     try:
         db.session.commit()

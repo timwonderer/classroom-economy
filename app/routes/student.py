@@ -1341,7 +1341,7 @@ def setup_complete():
     student = get_logged_in_student()
     student.has_completed_setup = True
     db.session.commit()
-    return render_template('student_setup_complete.html')
+    return render_template('student_setup_complete.html', student_name=student.first_name)
 
 
 # -------------------- HELP AND SUPPORT --------------------
