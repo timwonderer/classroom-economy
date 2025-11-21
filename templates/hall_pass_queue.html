@@ -229,7 +229,7 @@
         </div>
 
         <div id="limitWarning" class="limit-warning" style="display: none;">
-            <span class="material-symbols-outlined">warning</span> Queue limit reached! Restroom, Locker, and Office passes are temporarily unavailable.
+            <span class="material-symbols-outlined">warning</span> <span id="limitWarningText">Queue limit reached! Restroom, Locker, and Office passes are temporarily unavailable.</span>
         </div>
 
         <div class="queue-list-container">
@@ -270,11 +270,14 @@
             const outNowCount = document.getElementById('outNowCount');
             const availableSlots = document.getElementById('availableSlots');
             const limitWarning = document.getElementById('limitWarning');
+            const limitWarningText = document.getElementById('limitWarningText');
 
             const queueSize = data.queue.length;
             const outCount = data.currently_out;
             const totalOccupied = queueSize + outCount;
-            const available = Math.max(0, 10 - totalOccupied);
+            const queueLimit = data.queue_limit || 10;
+            const available = Math.max(0, queueLimit - totalOccupied);
+            const queueEnabled = data.queue_enabled !== false;
 
             // Update stats
             queueCount.textContent = queueSize;
@@ -287,8 +290,12 @@
             availableSlots.className = 'stat-number' + (available === 0 ? ' danger' : available <= 3 ? ' warning' : '');
 
             // Show/hide warning
-            if (totalOccupied >= 10) {
+            if (!queueEnabled) {
                 limitWarning.style.display = 'block';
+                limitWarningText.textContent = 'Queue System Disabled! Only Summon and Nurse passes are available.';
+            } else if (totalOccupied >= queueLimit) {
+                limitWarning.style.display = 'block';
+                limitWarningText.textContent = 'Queue limit reached! Restroom, Locker, and Office passes are temporarily unavailable.';
             } else {
                 limitWarning.style.display = 'none';
             }

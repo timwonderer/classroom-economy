@@ -419,7 +419,7 @@
                 </div>
 
                 <div id="limitWarning" class="limit-warning" style="display: none;">
-                    <span class="material-symbols-outlined">warning</span> Queue Full! Restroom, Locker, and Office passes unavailable.
+                    <span class="material-symbols-outlined">warning</span> <span id="limitWarningText">Queue Full! Restroom, Locker, and Office passes unavailable.</span>
                 </div>
 
                 <div class="queue-list" id="queueList"></div>
@@ -601,11 +601,14 @@
             const outNowCount = document.getElementById('outNowCount');
             const availableSlots = document.getElementById('availableSlots');
             const limitWarning = document.getElementById('limitWarning');
+            const limitWarningText = document.getElementById('limitWarningText');
 
             const queueSize = data.queue.length;
             const outCount = data.currently_out;
             const totalOccupied = queueSize + outCount;
-            const available = Math.max(0, 10 - totalOccupied);
+            const queueLimit = data.queue_limit || 10;
+            const available = Math.max(0, queueLimit - totalOccupied);
+            const queueEnabled = data.queue_enabled !== false;
 
             // Update stats
             queueCount.textContent = queueSize;
@@ -621,7 +624,15 @@
             availableSlots.parentElement.className = 'stat-box' + (available === 0 ? ' danger' : available <= 3 ? ' warning' : '');
 
             // Show/hide warning
-            limitWarning.style.display = totalOccupied >= 10 ? 'block' : 'none';
+            if (!queueEnabled) {
+                limitWarning.style.display = 'block';
+                limitWarningText.textContent = 'Queue System Disabled! Only Summon and Nurse passes are available.';
+            } else if (totalOccupied >= queueLimit) {
+                limitWarning.style.display = 'block';
+                limitWarningText.textContent = 'Queue Full! Restroom, Locker, and Office passes unavailable.';
+            } else {
+                limitWarning.style.display = 'none';
+            }
 
             // Render queue
             if (data.queue.length === 0) {

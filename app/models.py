@@ -163,6 +163,20 @@ class HallPassLog(db.Model):
     student = db.relationship('Student', backref='hall_pass_logs')
 
 
+class HallPassSettings(db.Model):
+    __tablename__ = 'hall_pass_settings'
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Queue system toggle
+    queue_enabled = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Queue limit (when queue + currently out >= this number, restrict certain passes)
+    queue_limit = db.Column(db.Integer, default=10, nullable=False)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # -------------------- STORE MODELS --------------------
 class StoreItem(db.Model):
     __tablename__ = 'store_items'

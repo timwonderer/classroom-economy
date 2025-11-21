@@ -409,6 +409,7 @@
 <!-- Queue Status and Limit Logic -->
 <script>
     let currentQueueTotal = 0;
+    let queueEnabled = true;
 
     function updateQueueStatus() {
         fetch('/api/hall-pass/queue')
@@ -418,9 +419,11 @@
                     const queueCount = data.queue.length;
                     const outNow = data.currently_out;
                     const total = queueCount + outNow;
-                    const available = Math.max(0, 10 - total);
+                    const queueLimit = data.queue_limit || 10;
+                    const available = Math.max(0, queueLimit - total);
 
                     currentQueueTotal = total;
+                    queueEnabled = data.queue_enabled;
 
                     // Update dashboard display
                     document.getElementById('queueCountDash').textContent = queueCount;
@@ -429,20 +432,24 @@
 
                     // Show/hide warning
                     const warning = document.getElementById('queueLimitWarning');
-                    if (total >= 10) {
+                    if (!queueEnabled) {
                         warning.style.display = 'block';
+                        warning.innerHTML = '<strong><span class="material-symbols-outlined">block</span> Queue System Disabled!</strong><br>Only Summon and Nurse passes are available at this time.';
+                    } else if (total >= queueLimit) {
+                        warning.style.display = 'block';
+                        warning.innerHTML = '<strong><span class="material-symbols-outlined">warning</span> Queue Limit Reached!</strong><br>Restroom, Locker, and Office passes are temporarily unavailable. Please wait for the queue to clear.';
                     } else {
                         warning.style.display = 'none';
                     }
 
                     // Update hall pass modal options
-                    updateHallPassOptions(total >= 10);
+                    updateHallPassOptions(!queueEnabled || total >= queueLimit);
                 }
             })
             .catch(error => console.error('Failed to fetch queue status:', error));
     }
 
-    function updateHallPassOptions(isQueueFull) {
+    function updateHallPassOptions(isRestricted) {
         const reasonSelect = document.getElementById('hallPassReason');
         if (!reasonSelect) return;
 
@@ -451,9 +458,13 @@
 
         options.forEach(option => {
             if (restrictedReasons.includes(option.value)) {
-                if (isQueueFull) {
+                if (isRestricted) {
                     option.disabled = true;
-                    option.textContent = option.value + ' (Unavailable - Queue Full)';
+                    if (!queueEnabled) {
+                        option.textContent = option.value + ' (Queue System Disabled)';
+                    } else {
+                        option.textContent = option.value + ' (Unavailable - Queue Full)';
+                    }
                 } else {
                     option.disabled = false;
                     option.textContent = option.value;

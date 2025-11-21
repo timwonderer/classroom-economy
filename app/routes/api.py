@@ -19,7 +19,7 @@ from werkzeug.security import check_password_hash
 from app.extensions import db
 from app.models import (
     Student, StoreItem, StudentItem, Transaction, TapEvent,
-    HallPassLog, InsuranceClaim, BankingSettings
+    HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings
 )
 from app.auth import login_required, admin_required, get_logged_in_student
 
@@ -766,6 +766,13 @@ def cancel_hall_pass(pass_id):
 @api_bp.route('/hall-pass/queue', methods=['GET'])
 def get_hall_pass_queue():
     """Get current hall pass queue (approved but not yet checked out) and currently out count"""
+    # Get hall pass settings (or create with defaults if doesn't exist)
+    settings = HallPassSettings.query.first()
+    if not settings:
+        settings = HallPassSettings(queue_enabled=True, queue_limit=10)
+        db.session.add(settings)
+        db.session.commit()
+
     # Get user's timezone from session, default to Pacific Time
     tz_name = session.get('timezone', 'America/Los_Angeles')
     try:
@@ -818,7 +825,53 @@ def get_hall_pass_queue():
         "status": "success",
         "queue": queue_data,
         "currently_out": currently_out_count,
-        "total": len(queue_data) + currently_out_count
+        "total": len(queue_data) + currently_out_count,
+        "queue_enabled": settings.queue_enabled,
+        "queue_limit": settings.queue_limit
+    })
+
+
+@api_bp.route('/hall-pass/settings', methods=['GET', 'POST'])
+@admin_required
+def hall_pass_settings():
+    """Get or update hall pass settings (admin only)"""
+    settings = HallPassSettings.query.first()
+    if not settings:
+        settings = HallPassSettings(queue_enabled=True, queue_limit=10)
+        db.session.add(settings)
+        db.session.commit()
+
+    if request.method == 'GET':
+        return jsonify({
+            "status": "success",
+            "settings": {
+                "queue_enabled": settings.queue_enabled,
+                "queue_limit": settings.queue_limit
+            }
+        })
+
+    # POST - update settings
+    data = request.get_json()
+
+    if 'queue_enabled' in data:
+        settings.queue_enabled = bool(data['queue_enabled'])
+
+    if 'queue_limit' in data:
+        queue_limit = int(data['queue_limit'])
+        if queue_limit < 1 or queue_limit > 50:
+            return jsonify({"status": "error", "message": "Queue limit must be between 1 and 50"}), 400
+        settings.queue_limit = queue_limit
+
+    settings.updated_at = datetime.now(timezone.utc)
+    db.session.commit()
+
+    return jsonify({
+        "status": "success",
+        "message": "Settings updated successfully",
+        "settings": {
+            "queue_enabled": settings.queue_enabled,
+            "queue_limit": settings.queue_limit
+        }
     })
 
 
