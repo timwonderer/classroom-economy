@@ -765,11 +765,21 @@ def cancel_hall_pass(pass_id):
 @api_bp.route('/hall-pass/queue', methods=['GET'])
 def get_hall_pass_queue():
     """Get current hall pass queue (approved but not yet checked out) and currently out count"""
-    # Get all approved passes that haven't been used yet (not left, not returned)
-    queue = HallPassLog.query.filter_by(status='approved').order_by(HallPassLog.decision_time.asc()).all()
+    # Get start of today (midnight) in UTC to filter for only today's passes
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
-    # Get count of students currently out (status = 'left')
-    currently_out_count = HallPassLog.query.filter_by(status='left').count()
+    # Get approved passes from today that haven't been used yet (not left, not returned)
+    queue = HallPassLog.query.filter(
+        HallPassLog.status == 'approved',
+        HallPassLog.decision_time >= today_start
+    ).order_by(HallPassLog.decision_time.asc()).all()
+
+    # Get count of students currently out from today (status = 'left')
+    currently_out_count = HallPassLog.query.filter(
+        HallPassLog.status == 'left',
+        HallPassLog.left_time >= today_start
+    ).count()
 
     # Helper function to ensure times are marked as UTC
     def format_utc_time(dt):
