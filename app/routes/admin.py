@@ -61,6 +61,15 @@ def _scoped_students(include_unassigned=True):
     return get_admin_student_query(include_unassigned=include_unassigned)
 
 
+def _student_scope_subquery(include_unassigned=True):
+    """Return a subquery of student IDs the current admin can access."""
+    return (
+        _scoped_students(include_unassigned=include_unassigned)
+        .with_entities(Student.id)
+        .subquery()
+    )
+
+
 def _get_student_or_404(student_id, include_unassigned=True):
     """Fetch a student the current admin can access or 404."""
     student = get_student_for_admin(student_id, include_unassigned=include_unassigned)
@@ -106,6 +115,7 @@ def auto_tapout_all_over_limit():
 @admin_required
 def dashboard():
     """Admin dashboard with statistics, pending actions, and recent activity."""
+    student_ids_subq = _student_scope_subquery()
     # Auto-tapout students who have exceeded their daily limit
     auto_tapout_all_over_limit()
 
@@ -119,22 +129,76 @@ def dashboard():
     avg_balance = total_balance / total_students if total_students > 0 else 0
 
     # Pending actions - count all types of pending approvals
-    pending_redemptions_count = StudentItem.query.filter_by(status='processing').count()
-    pending_hall_passes_count = HallPassLog.query.filter_by(status='pending').count()
-    pending_insurance_claims_count = InsuranceClaim.query.filter_by(status='pending').count()
+    pending_redemptions_count = (
+        StudentItem.query
+        .join(Student, StudentItem.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(StudentItem.status == 'processing')
+        .count()
+    )
+    pending_hall_passes_count = (
+        HallPassLog.query
+        .join(Student, HallPassLog.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(HallPassLog.status == 'pending')
+        .count()
+    )
+    pending_insurance_claims_count = (
+        InsuranceClaim.query
+        .join(Student, InsuranceClaim.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(InsuranceClaim.status == 'pending')
+        .count()
+    )
     total_pending_actions = pending_redemptions_count + pending_hall_passes_count + pending_insurance_claims_count
 
     # Get recent items for each pending type (limited for display)
-    recent_redemptions = StudentItem.query.filter_by(status='processing').order_by(StudentItem.redemption_date.desc()).limit(5).all()
-    recent_hall_passes = HallPassLog.query.filter_by(status='pending').order_by(HallPassLog.request_time.desc()).limit(5).all()
-    recent_insurance_claims = InsuranceClaim.query.filter_by(status='pending').order_by(InsuranceClaim.filed_date.desc()).limit(5).all()
+    recent_redemptions = (
+        StudentItem.query
+        .join(Student, StudentItem.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(StudentItem.status == 'processing')
+        .order_by(StudentItem.redemption_date.desc())
+        .limit(5)
+        .all()
+    )
+    recent_hall_passes = (
+        HallPassLog.query
+        .join(Student, HallPassLog.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(HallPassLog.status == 'pending')
+        .order_by(HallPassLog.request_time.desc())
+        .limit(5)
+        .all()
+    )
+    recent_insurance_claims = (
+        InsuranceClaim.query
+        .join(Student, InsuranceClaim.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(InsuranceClaim.status == 'pending')
+        .order_by(InsuranceClaim.filed_date.desc())
+        .limit(5)
+        .all()
+    )
 
     # Recent transactions (limited to 5 for display)
-    recent_transactions = Transaction.query.filter_by(is_void=False).order_by(Transaction.timestamp.desc()).limit(5).all()
-    total_transactions_today = Transaction.query.filter(
-        Transaction.timestamp >= datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0),
-        Transaction.is_void == False
-    ).count()
+    recent_transactions = (
+        Transaction.query
+        .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter_by(is_void=False)
+        .order_by(Transaction.timestamp.desc())
+        .limit(5)
+        .all()
+    )
+    total_transactions_today = (
+        Transaction.query
+        .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter(
+            Transaction.timestamp >= datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0),
+            Transaction.is_void == False,
+        )
+        .count()
+    )
 
     # Recent attendance logs (limited to 5 for display)
     raw_logs = (
@@ -144,6 +208,7 @@ def dashboard():
             Student.last_initial
         )
         .join(Student, TapEvent.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
         .order_by(TapEvent.timestamp.desc())
         .limit(5)
         .all()
@@ -870,6 +935,7 @@ def add_manual_student():
 @admin_required
 def store_management():
     """Manage store items - view, create, edit, delete."""
+    student_ids_subq = _student_scope_subquery()
     form = StoreItemForm()
     if form.validate_on_submit():
         new_item = StoreItem(
@@ -901,7 +967,12 @@ def store_management():
     from app.models import StudentItem
     total_items = len(items)
     active_items = len([i for i in items if i.is_active])
-    total_purchases = StudentItem.query.count()
+    total_purchases = (
+        StudentItem.query
+        .join(Student, StudentItem.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .count()
+    )
 
     return render_template('admin_store.html', form=form, items=items, current_page="store",
                          total_items=total_items, active_items=active_items, total_purchases=total_purchases)
@@ -943,7 +1014,13 @@ def hard_delete_store_item(item_id):
 
     # Check if there are any student purchases of this item
     from app.models import StudentItem
-    purchase_count = StudentItem.query.filter_by(store_item_id=item_id).count()
+    purchase_count = (
+        StudentItem.query
+        .join(Student, StudentItem.student_id == Student.id)
+        .filter(Student.id.in_(_student_scope_subquery()))
+        .filter_by(store_item_id=item_id)
+        .count()
+    )
 
     if purchase_count > 0:
         flash(f"Cannot permanently delete '{item_name}' because it has {purchase_count} purchase record(s). Please deactivate instead.", "danger")
@@ -962,6 +1039,7 @@ def hard_delete_store_item(item_id):
 @admin_required
 def rent_settings():
     """Configure rent settings."""
+    student_ids_subq = _student_scope_subquery()
     # Get or create rent settings (singleton)
     settings = RentSettings.query.first()
     if not settings:
@@ -1017,16 +1095,22 @@ def rent_settings():
     total_students = _scoped_students().filter_by(is_rent_enabled=True).count()
     current_month = datetime.now().month
     current_year = datetime.now().year
-    paid_this_month = RentPayment.query.filter_by(
-        period_month=current_month,
-        period_year=current_year
-    ).count()
+    paid_this_month = (
+        RentPayment.query
+        .filter(RentPayment.student_id.in_(student_ids_subq))
+        .filter_by(period_month=current_month, period_year=current_year)
+        .count()
+    )
 
     # Get active waivers
     now = datetime.now(timezone.utc)
-    active_waivers = RentWaiver.query.filter(
-        RentWaiver.waiver_end_date >= now
-    ).all()
+    active_waivers = (
+        RentWaiver.query
+        .join(Student, RentWaiver.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(RentWaiver.waiver_end_date >= now)
+        .all()
+    )
 
     # Get all students for waiver form
     all_students = _scoped_students().order_by(Student.first_name).all()
@@ -1155,6 +1239,7 @@ def remove_rent_waiver(waiver_id):
 @admin_required
 def insurance_management():
     """Main insurance management dashboard."""
+    student_ids_subq = _student_scope_subquery()
     form = InsurancePolicyForm()
 
     if request.method == 'POST' and form.validate_on_submit():
@@ -1186,12 +1271,36 @@ def insurance_management():
     policies = InsurancePolicy.query.all()
 
     # Get all student enrollments
-    active_enrollments = StudentInsurance.query.filter_by(status='active').all()
-    cancelled_enrollments = StudentInsurance.query.filter_by(status='cancelled').all()
+    active_enrollments = (
+        StudentInsurance.query
+        .join(Student, StudentInsurance.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(StudentInsurance.status == 'active')
+        .all()
+    )
+    cancelled_enrollments = (
+        StudentInsurance.query
+        .join(Student, StudentInsurance.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(StudentInsurance.status == 'cancelled')
+        .all()
+    )
 
     # Get all claims
-    claims = InsuranceClaim.query.order_by(InsuranceClaim.filed_date.desc()).all()
-    pending_claims_count = InsuranceClaim.query.filter_by(status='pending').count()
+    claims = (
+        InsuranceClaim.query
+        .join(Student, InsuranceClaim.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .order_by(InsuranceClaim.filed_date.desc())
+        .all()
+    )
+    pending_claims_count = (
+        InsuranceClaim.query
+        .join(Student, InsuranceClaim.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(InsuranceClaim.status == 'pending')
+        .count()
+    )
 
     return render_template('admin_insurance.html',
                           form=form,
@@ -1258,7 +1367,13 @@ def deactivate_insurance_policy(policy_id):
 @admin_required
 def view_student_policy(enrollment_id):
     """View student's policy enrollment details and claims history."""
-    enrollment = StudentInsurance.query.get_or_404(enrollment_id)
+    enrollment = (
+        StudentInsurance.query
+        .join(Student, StudentInsurance.student_id == Student.id)
+        .filter(StudentInsurance.id == enrollment_id)
+        .filter(Student.id.in_(_student_scope_subquery()))
+        .first_or_404()
+    )
 
     # Get claims for this enrollment
     claims = InsuranceClaim.query.filter_by(student_insurance_id=enrollment.id).order_by(
@@ -1276,7 +1391,13 @@ def view_student_policy(enrollment_id):
 @admin_required
 def process_claim(claim_id):
     """Process insurance claim with auto-deposit for monetary claims."""
-    claim = InsuranceClaim.query.get_or_404(claim_id)
+    claim = (
+        InsuranceClaim.query
+        .join(Student, InsuranceClaim.student_id == Student.id)
+        .filter(InsuranceClaim.id == claim_id)
+        .filter(Student.id.in_(_student_scope_subquery()))
+        .first_or_404()
+    )
     form = AdminClaimProcessForm(obj=claim)
 
     # Get enrollment details
@@ -1379,7 +1500,13 @@ def transactions():
 def void_transaction(transaction_id):
     """Void a transaction."""
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
-    tx = Transaction.query.get_or_404(transaction_id)
+    tx = (
+        Transaction.query
+        .join(Student, Transaction.student_id == Student.id)
+        .filter(Transaction.id == transaction_id)
+        .filter(Student.id.in_(_student_scope_subquery()))
+        .first_or_404()
+    )
     tx.is_void = True
     try:
         db.session.commit()
@@ -1403,9 +1530,31 @@ def void_transaction(transaction_id):
 @admin_required
 def hall_pass():
     """Manage hall pass requests and active passes."""
-    pending_requests = HallPassLog.query.filter_by(status='pending').order_by(HallPassLog.request_time.asc()).all()
-    approved_queue = HallPassLog.query.filter_by(status='approved').order_by(HallPassLog.decision_time.asc()).all()
-    out_of_class = HallPassLog.query.filter_by(status='left').order_by(HallPassLog.left_time.asc()).all()
+    student_ids_subq = _student_scope_subquery()
+    pending_requests = (
+        HallPassLog.query
+        .join(Student, HallPassLog.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(HallPassLog.status == 'pending')
+        .order_by(HallPassLog.request_time.asc())
+        .all()
+    )
+    approved_queue = (
+        HallPassLog.query
+        .join(Student, HallPassLog.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(HallPassLog.status == 'approved')
+        .order_by(HallPassLog.decision_time.asc())
+        .all()
+    )
+    out_of_class = (
+        HallPassLog.query
+        .join(Student, HallPassLog.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(HallPassLog.status == 'left')
+        .order_by(HallPassLog.left_time.asc())
+        .all()
+    )
 
     return render_template(
         'admin_hall_pass.html',
@@ -1423,6 +1572,7 @@ def hall_pass():
 def payroll_history():
     """View payroll history with filtering."""
     current_app.logger.info("🧭 Entered admin_payroll_history route")
+    student_ids_subq = _student_scope_subquery()
 
     block = request.args.get("block")
     current_app.logger.info(f"📊 Block filter: {block}")
@@ -1430,7 +1580,10 @@ def payroll_history():
     end_date_str = request.args.get("end_date")
     current_app.logger.info(f"📅 Date filters: start={start_date_str}, end={end_date_str}")
 
-    query = Transaction.query.filter_by(type="payroll")
+    query = Transaction.query.filter(
+        Transaction.student_id.in_(student_ids_subq),
+        Transaction.type == "payroll",
+    )
 
     if block:
         # Stream students in batches for this block
@@ -1594,7 +1747,14 @@ def payroll():
     next_pay_date_utc = _compute_next_pay_date(default_setting, now_utc)
 
     # Recent payroll activity
-    recent_payrolls = Transaction.query.filter_by(type='payroll').order_by(Transaction.timestamp.desc()).limit(20).all()
+    recent_payrolls = (
+        Transaction.query
+        .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter_by(type='payroll')
+        .order_by(Transaction.timestamp.desc())
+        .limit(20)
+        .all()
+    )
 
     # Calculate payroll estimates
     payroll_summary = calculate_payroll(students, last_payroll_time)
@@ -1666,9 +1826,14 @@ def payroll():
     avg_payout = total_payroll_estimate / len(students) if students else 0
 
     # Payroll history for History tab (all transaction types, not just payroll)
-    payroll_history_transactions = Transaction.query.filter(
-        Transaction.type.in_(['payroll', 'reward', 'fine', 'manual_payment'])
-    ).order_by(Transaction.timestamp.desc()).limit(100).all()
+    payroll_history_transactions = (
+        Transaction.query
+        .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter(Transaction.type.in_(['payroll', 'reward', 'fine', 'manual_payment']))
+        .order_by(Transaction.timestamp.desc())
+        .limit(100)
+        .all()
+    )
     student_lookup = {s.id: s for s in students}
     payroll_history = []
     for tx in payroll_history_transactions:
@@ -2015,7 +2180,13 @@ def payroll_edit_fine(fine_id):
 def void_payroll_transaction(transaction_id):
     """Void a single transaction from payroll interface."""
     try:
-        transaction = Transaction.query.get_or_404(transaction_id)
+        transaction = (
+            Transaction.query
+            .join(Student, Transaction.student_id == Student.id)
+            .filter(Transaction.id == transaction_id)
+            .filter(Student.id.in_(_student_scope_subquery()))
+            .first_or_404()
+        )
 
         if transaction.is_void:
             return jsonify({'success': False, 'message': 'Transaction is already voided'}), 400
@@ -2041,9 +2212,16 @@ def void_transactions_bulk():
         if not transaction_ids:
             return jsonify({'success': False, 'message': 'No transactions selected'}), 400
 
+        student_ids_subq = _student_scope_subquery()
         count = 0
         for tx_id in transaction_ids:
-            transaction = Transaction.query.get(int(tx_id))
+            transaction = (
+                Transaction.query
+                .join(Student, Transaction.student_id == Student.id)
+                .filter(Transaction.id == int(tx_id))
+                .filter(Student.id.in_(student_ids_subq))
+                .first()
+            )
             if transaction and not transaction.is_void:
                 transaction.is_void = True
                 count += 1
