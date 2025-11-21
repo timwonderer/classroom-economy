@@ -350,12 +350,8 @@ def purchase_item():
                 # but it's good for logging/debugging. A more robust solution might use websockets.
                 current_app.logger.info(f"Collective goal '{item.name}' for block {student.block} has been met!")
 
-        # Ensure purchases are persisted for collective items even before the threshold is met
-        if item.item_type == 'collective':
-            db.session.commit()
-        else:
-            # For non-collective items, commit here
-            db.session.commit()
+        # Commit purchases for both collective and non-collective items
+        db.session.commit()
 
         # Build success message
         success_message = f"You purchased {item.name}!"
