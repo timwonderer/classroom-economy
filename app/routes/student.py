@@ -34,6 +34,7 @@ from forms import (
 # Import utility functions
 from app.utils.helpers import is_safe_url
 from app.utils.constants import THEME_PROMPTS
+from app.utils.turnstile import verify_turnstile_token
 from hash_utils import hash_hmac, hash_username
 from attendance import get_all_block_statuses
 
@@ -1263,6 +1264,16 @@ def login():
     form = StudentLoginForm()
     if form.validate_on_submit():
         is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+        # Verify Turnstile token
+        turnstile_token = request.form.get('cf-turnstile-response')
+        if not verify_turnstile_token(turnstile_token, request.remote_addr):
+            current_app.logger.warning(f"Turnstile verification failed for student login attempt")
+            if is_json:
+                return jsonify(status="error", message="CAPTCHA verification failed. Please try again."), 403
+            flash("CAPTCHA verification failed. Please try again.", "error")
+            return redirect(url_for('student.login', next=request.args.get('next')))
+
         username = form.username.data.strip()
         pin = form.pin.data.strip()
         # Efficiently find the student by querying for the hash of all possible salts.

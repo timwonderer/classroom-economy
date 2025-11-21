@@ -44,6 +44,7 @@ from forms import (
 
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso
+from app.utils.turnstile import verify_turnstile_token
 from hash_utils import get_random_salt, hash_hmac, hash_username
 from payroll import calculate_payroll
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
@@ -294,6 +295,13 @@ def login():
     session.pop("last_activity", None)
     form = AdminLoginForm()
     if form.validate_on_submit():
+        # Verify Turnstile token
+        turnstile_token = request.form.get('cf-turnstile-response')
+        if not verify_turnstile_token(turnstile_token, request.remote_addr):
+            current_app.logger.warning(f"Turnstile verification failed for admin login attempt")
+            flash("CAPTCHA verification failed. Please try again.", "error")
+            return redirect(url_for('admin.login', next=request.args.get('next')))
+
         username = form.username.data.strip()
         totp_code = form.totp_code.data.strip()
         admin = Admin.query.filter_by(username=username).first()

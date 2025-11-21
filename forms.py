@@ -85,6 +85,7 @@ class AdminTOTPConfirmForm(FlaskForm):
 class SystemAdminLoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
     totp_code = StringField('TOTP Code', validators=[DataRequired()])
+    turnstile_token = HiddenField('cf-turnstile-response')
     submit = SubmitField('Login')
 class SystemAdminInviteForm(FlaskForm):
     code = StringField('Custom Code')
@@ -109,11 +110,13 @@ class StudentPinPassphraseForm(FlaskForm):
 class StudentLoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
     pin = StringField('PIN', validators=[DataRequired()])
+    turnstile_token = HiddenField('cf-turnstile-response')
     submit = SubmitField('Login')
 
 class AdminLoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
     totp_code = StringField('TOTP Code', validators=[DataRequired()])
+    turnstile_token = HiddenField('cf-turnstile-response')
     submit = SubmitField('Log In')
 
 
