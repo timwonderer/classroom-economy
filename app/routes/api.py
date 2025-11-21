@@ -925,6 +925,60 @@ def handle_tap():
             pass
         else:
             # All other reasons go through the hall pass approval flow
+            # Check hall pass settings and queue limits
+            settings = HallPassSettings.query.first()
+            if not settings:
+                settings = HallPassSettings(queue_enabled=True, queue_limit=10)
+                db.session.add(settings)
+                db.session.commit()
+
+            # Define restricted pass types (affected by queue system)
+            restricted_reasons = ['Restroom', 'Office', 'Locker']
+            emergency_reasons = ['Summon', 'Nurse']
+
+            # Check if this is a restricted pass type
+            is_restricted = reason in restricted_reasons
+            is_emergency = reason in emergency_reasons
+
+            # If queue is disabled, only allow emergency passes
+            if not settings.queue_enabled and is_restricted:
+                return jsonify({
+                    "error": "Queue system is currently disabled. Only Summon and Nurse passes are available."
+                }), 403
+
+            # If queue is enabled, check capacity for restricted passes
+            if settings.queue_enabled and is_restricted:
+                # Get user's timezone from session for today's count
+                tz_name = session.get('timezone', 'America/Los_Angeles')
+                try:
+                    user_tz = pytz.timezone(tz_name)
+                except pytz.UnknownTimeZoneError:
+                    user_tz = pytz.timezone('America/Los_Angeles')
+
+                now_user_tz = datetime.now(user_tz)
+                today_start_user_tz = now_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
+                today_start_utc = today_start_user_tz.astimezone(pytz.utc).replace(tzinfo=None)
+
+                # Count approved (waiting) passes from today
+                queue_count = HallPassLog.query.filter(
+                    HallPassLog.status == 'approved',
+                    HallPassLog.decision_time >= today_start_utc
+                ).count()
+
+                # Count currently out students from today
+                out_count = HallPassLog.query.filter(
+                    HallPassLog.status == 'left',
+                    HallPassLog.left_time >= today_start_utc
+                ).count()
+
+                total_occupied = queue_count + out_count
+
+                # Check if queue is at capacity
+                if total_occupied >= settings.queue_limit:
+                    return jsonify({
+                        "error": f"Queue is full ({total_occupied}/{settings.queue_limit}). Please wait for the queue to clear."
+                    }), 403
+
             # Check if hall pass is required (not for Office/Summons/Done for the day)
             should_require_pass = reason.lower() not in ['office', 'summons', 'done for the day']
 
