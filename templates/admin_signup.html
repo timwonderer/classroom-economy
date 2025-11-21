@@ -17,29 +17,32 @@
         }
 
         body {
-            font-family: 'Noto Sans', sans-serif;
+            font-family: 'Inter', sans-serif;
             height: 100vh;
             overflow: hidden;
+            background: #fffaf5;
         }
 
         .setup-wrapper {
             display: flex;
-            height: 100vh;
+            min-height: 100vh;
         }
 
         .setup-form-side {
-            flex: 1;
+            flex: 1 1 60%;
             display: flex;
             align-items: center;
             justify-content: center;
             background: #ffffff;
-            padding: 2rem;
+            padding: 2.5rem 3rem;
             overflow-y: auto;
+            min-width: 0;
         }
 
         .branding-side {
-            flex: 1;
-            background: linear-gradient(135deg, #00afdf 0%, #035397 50%, #274174 100%);
+            flex: 0 0 40%;
+            max-width: 460px;
+            background: linear-gradient(135deg, #ffc965 0%, #f6a43b 50%, #e07b00 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -74,30 +77,30 @@
 
         .setup-container {
             width: 100%;
-            max-width: 500px;
+            max-width: 520px;
         }
 
         .setup-container h1 {
             margin-bottom: 1rem;
-            font-weight: 600;
-            color: #2B3E50;
+            font-weight: 700;
+            color: #c15f00;
             text-align: center;
             font-size: 2rem;
         }
 
         .setup-container .subtitle {
             text-align: center;
-            color: #6c757d;
+            color: #7a5130;
             margin-bottom: 2rem;
             font-size: 0.95rem;
         }
 
         .info-box {
-            border: 2px solid #00afdf;
+            border: 2px solid #f6a43b;
             padding: 1rem;
             border-radius: 8px;
             margin-bottom: 1.5rem;
-            background-color: #f0f9ff;
+            background-color: #fff4e2;
         }
 
         .info-box p {
@@ -111,15 +114,18 @@
         }
 
         .btn-primary {
-            background: #035397;
+            background: linear-gradient(135deg, #fccc63 0%, #f19a23 100%);
             border: none;
-            padding: 0.75rem;
-            font-weight: 500;
-            transition: background 0.3s ease;
+            padding: 0.85rem;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(243, 168, 54, 0.35);
         }
 
         .btn-primary:hover {
-            background: #274174;
+            background: linear-gradient(135deg, #e99f11 0%, #cc7a00 100%);
+            transform: translateY(-2px);
         }
 
         .back-to-login {
@@ -130,13 +136,13 @@
         }
 
         .back-to-login a {
-            color: #D47B6F;
+            color: #e07b00;
             text-decoration: none;
             font-weight: 500;
         }
 
         .back-to-login a:hover {
-            color: #C44D3B;
+            color: #b35d00;
             text-decoration: underline;
         }
 
@@ -158,8 +164,8 @@
         }
 
         .form-control:focus {
-            border-color: #D47B6F;
-            box-shadow: 0 0 0 0.2rem rgba(212, 123, 111, 0.25);
+            border-color: #f6a43b;
+            box-shadow: 0 0 0 0.2rem rgba(246, 164, 59, 0.25);
         }
 
         .form-group {

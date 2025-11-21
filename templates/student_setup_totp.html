@@ -3,89 +3,158 @@
 <head>
     <meta charset="UTF-8">
     <title>Finish TOTP Setup</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f4f7fa;
-            color: #333;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
+            background: linear-gradient(135deg, #4a9eff 0%, #00afdf 50%, #00d4ff 100%);
+            color: #1f2d3d;
+            min-height: 100vh;
             margin: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
         }
-        .container {
-            background-color: white;
-            padding: 2rem 2.5rem;
-            border-radius: 10px;
-            box-shadow: 0 0 15px rgba(0,0,0,0.05);
-            max-width: 500px;
+
+        .totp-card {
+            background: #ffffff;
+            padding: 2rem;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0, 79, 158, 0.25);
             width: 100%;
+            max-width: 720px;
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 1.5rem;
         }
-        h2 {
-            font-size: 1.5rem;
-            margin-bottom: 0.5rem;
+
+        .totp-card header h2 {
+            font-size: 1.75rem;
+            margin: 0 0 0.5rem;
+            color: #274174;
         }
-        p {
-            font-size: 0.95rem;
-            color: #555;
+
+        .totp-card header p {
+            margin: 0;
+            color: #516173;
+            line-height: 1.5;
         }
-        .qr-container {
+
+        .qr-panel {
+            background: #f5f9ff;
+            border-radius: 12px;
+            padding: 1.25rem;
             text-align: center;
-            margin: 1.5rem 0;
+            border: 1px solid #e5f0ff;
         }
-        .qr-container img {
-            border-radius: 8px;
+
+        .qr-panel img {
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 79, 158, 0.15);
         }
-        input[type="text"] {
-            width: 100%;
-            padding: 0.6rem;
-            border: 1px solid #ccc;
-            border-radius: 5px;
-            margin: 0.5rem 0 1rem;
-        }
-        button {
-            background-color: #035397;
-            color: white;
-            padding: 0.6rem 1.2rem;
-            border: none;
-            border-radius: 5px;
+
+        .manual-code {
+            margin-top: 1rem;
             font-size: 1rem;
+            color: #274174;
+            background: #eef6ff;
+            border-radius: 10px;
+            padding: 0.75rem 1rem;
+            display: inline-block;
+            letter-spacing: 0.08em;
+        }
+
+        form label {
+            font-weight: 700;
+            color: #1f2d3d;
+        }
+
+        .code-input {
+            width: 100%;
+            padding: 0.85rem 0.9rem;
+            border: 1px solid #cdd9ed;
+            border-radius: 12px;
+            margin: 0.5rem 0 1.25rem;
+            font-size: 1.05rem;
+            letter-spacing: 0.15em;
+            text-align: center;
+        }
+
+        .code-input:focus {
+            outline: none;
+            border-color: #4a9eff;
+            box-shadow: 0 0 0 0.2rem rgba(74, 158, 255, 0.25);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #00d4ff 0%, #00afdf 100%);
+            color: #ffffff;
+            border: none;
+            padding: 0.9rem 1rem;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 700;
             cursor: pointer;
+            width: 100%;
+            box-shadow: 0 10px 30px rgba(74, 158, 255, 0.3);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
-        button:hover {
-            background-color: #274174;
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 36px rgba(74, 158, 255, 0.35);
         }
+
         .error {
-            color: red;
+            color: #d62828;
             margin-bottom: 1rem;
-        }
-        .code-label {
             font-weight: 600;
+        }
+
+        @media (max-width: 900px) {
+            .totp-card {
+                grid-template-columns: 1fr;
+                max-width: 540px;
+            }
+        }
+
+        @media (max-width: 576px) {
+            body {
+                padding: 1rem;
+            }
+
+            .totp-card {
+                padding: 1.5rem;
+                border-radius: 14px;
+            }
         }
     </style>
 </head>
 <body>
-<div class="container">
-    <h2>One Last Step, {{ student_name }}</h2>
-    <p>Scan the QR code below using your authenticator app (like Google Authenticator or Authy), or enter the code manually.</p>
+<div class="totp-card">
+    <header>
+        <h2>Secure Your Account, {{ student_name }}</h2>
+        <p>Scan the QR code with your authenticator app (Google Authenticator, Authy, or similar) or enter the manual code below to finish setup.</p>
+        {% if error %}
+            <p class="error">{{ error }}</p>
+        {% endif %}
+    </header>
 
-    {% if error %}
-        <p class="error">{{ error }}</p>
-    {% endif %}
-
-    <div class="qr-container">
-        <img src="https://api.qrserver.com/v1/create-qr-code/?data={{ totp_uri|urlencode }}&size=200x200" alt="TOTP QR Code">
+    <div class="qr-panel">
+        <div class="qr-container">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?data={{ totp_uri|urlencode }}&size=220x220" alt="TOTP QR Code">
+        </div>
+        <div>
+            <span class="code-label">Manual code:</span>
+            <div class="manual-code">{{ totp_uri.split('secret=')[1].split('&')[0] }}</div>
+        </div>
     </div>
-
-    <p class="code-label">Manual code:</p>
-    <p><strong>{{ totp_uri.split('secret=')[1].split('&')[0] }}</strong></p>
 
     <form method="POST">
         <label for="code" class="code-label">Enter the 6-digit code from your app:</label>
-        <input type="text" id="code" name="code" placeholder="123456" required>
-        <button type="submit">Verify</button>
+        <input type="text" id="code" name="code" class="code-input" placeholder="123456" inputmode="numeric" pattern="\d{6}" maxlength="6" required>
+        <button type="submit" class="btn-primary">Verify and finish</button>
     </form>
 </div>
 </body>
