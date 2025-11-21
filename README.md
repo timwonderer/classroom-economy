@@ -76,7 +76,8 @@ An interactive banking and classroom management platform for teaching students a
    PEPPER_KEY=<secret-pepper-string>
    CSRF_SECRET_KEY=<random-string>
 
-   # Cloudflare Turnstile (CAPTCHA)
+   # Cloudflare Turnstile (CAPTCHA) - Optional for development/testing
+   # Leave unset to bypass Turnstile verification in testing environments
    TURNSTILE_SITE_KEY=<your-turnstile-site-key>
    TURNSTILE_SECRET_KEY=<your-turnstile-secret-key>
 
@@ -87,13 +88,18 @@ An interactive banking and classroom management platform for teaching students a
    MAINTENANCE_CONTACT="ops@example.com"
    ```
 
-   **Getting Turnstile Keys:**
+   **Getting Turnstile Keys (Optional):**
+
+   Turnstile keys are optional for development and testing. If not configured, CAPTCHA verification will be automatically bypassed.
+
+   For production deployment:
    1. Visit [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile)
    2. Create a new site widget
    3. Copy the Site Key and Secret Key
-   4. For testing, you can use Turnstile's test keys (always pass):
-      - Site Key: `1x00000000000000000000AA`
-      - Secret Key: `1x0000000000000000000000000000000AA`
+
+   For testing with CAPTCHA enabled, you can use Turnstile's test keys (always pass):
+   - Site Key: `1x00000000000000000000AA`
+   - Secret Key: `1x0000000000000000000000000000000AA`
 
 4. **Initialize the database**
    ```bash

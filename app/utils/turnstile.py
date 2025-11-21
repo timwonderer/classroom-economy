@@ -24,15 +24,24 @@ def verify_turnstile_token(token, remote_ip=None):
     Notes:
         - Tokens expire after 5 minutes (300 seconds)
         - Each token can only be validated once
-        - Server-side validation is mandatory for security
+        - Server-side validation is mandatory for security in production
+        - Bypasses verification if TURNSTILE_SECRET_KEY is not configured (for testing)
+        - Bypasses verification in testing environments
     """
+    secret_key = current_app.config.get('TURNSTILE_SECRET_KEY')
+
+    # Bypass verification if Turnstile is not configured (testing/development)
+    if not secret_key:
+        current_app.logger.info("Turnstile verification bypassed: TURNSTILE_SECRET_KEY not configured")
+        return True
+
+    # Bypass verification in testing environments
+    if current_app.config.get('TESTING') or current_app.config.get('ENV') == 'testing':
+        current_app.logger.info("Turnstile verification bypassed: Testing environment")
+        return True
+
     if not token:
         current_app.logger.warning("Turnstile verification failed: No token provided")
-        return False
-
-    secret_key = current_app.config.get('TURNSTILE_SECRET_KEY')
-    if not secret_key:
-        current_app.logger.error("Turnstile verification failed: TURNSTILE_SECRET_KEY not configured")
         return False
 
     # Cloudflare Turnstile siteverify endpoint
