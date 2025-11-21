@@ -30,6 +30,7 @@
             <p class="mb-0">There are no orphaned students in the system. You're ready to go!</p>
           </div>
           <form method="POST" action="{{ url_for('admin.claim_students') }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <button type="submit" class="btn btn-primary">
               <span class="material-symbols-outlined" style="vertical-align: middle;">check</span>
               Complete Setup
@@ -37,6 +38,7 @@
           </form>
         {% else %}
           <form method="POST" action="{{ url_for('admin.claim_students') }}" id="claimForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
             <!-- Select All Controls -->
             <div class="mb-3 d-flex justify-content-between align-items-center">
               <div>
