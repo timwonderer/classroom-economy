@@ -177,49 +177,27 @@
 
 ## 🟡 MEDIUM PRIORITY - Multi-Tenancy System
 
-### Database Schema Changes
-- **Status:** Planned (see MULTI_TENANCY_TODO.md for full details)
-- [ ] Add `teacher_id` foreign key to Student model
-- [ ] Create migration for existing data (assign students to admins)
-- [ ] Add `teacher` relationship to Student model
-- [ ] Add `students` backref to Admin model
+**Status:** Core implementation shipped (shared student accounts, scoped queries, system-admin ownership UI). Follow-up tasks remain for hardening and deployment. See `development/MULTI_TENANCY_TODO.md` for full detail.
 
-### Code Changes
-- [ ] Create helper functions:
-  - `get_current_admin()` - Get logged-in admin object
-  - `get_accessible_students()` - Filter students by teacher
-- [ ] Update ALL student queries with teacher filtering (27+ routes):
-  - Admin dashboard
-  - Student management
-  - Payroll (all routes)
-  - Transactions
-  - Attendance
-  - Insurance
-  - Store
-  - Hall pass
-  - Rent
-- [ ] Add session variables:
-  - `admin_id` in addition to `admin_username`
-  - `is_system_admin` flag for filtering logic
-- [ ] Update CSV student upload:
-  - Auto-assign to current admin
-  - System admin can choose teacher
+### Remaining Database Tasks
+- [ ] Add NOT NULL enforcement for `teacher_id` after final data mapping
+- [ ] Add unique constraint to `student_teachers` on (`student_id`, `admin_id`)
+- [ ] Decide on ON DELETE strategy for primary teacher removal
 
-### System Admin Features
-- [ ] Student-teacher assignment interface
-- [ ] Transfer students between teachers
-- [ ] Bulk assignment tools
-- [ ] Teacher selector on student creation
-- [ ] Filter students by teacher in system admin view
+### Remaining Code Tasks
+- [ ] Audit/replace any direct `Student.query.get` usage outside scoped helpers
+- [ ] Add reconciliation/CLI job to relink students if future imports bypass UI
+
+### UI/UX Follow-ups
+- [ ] Optional system-admin filters by primary/shared teacher
+- [ ] Clarify UI messaging when students have multiple teachers
 
 ### Security & Testing
-- [ ] Unit tests for teacher data isolation
-- [ ] Integration tests for multi-teacher scenarios
-- [ ] Security tests (URL manipulation, unauthorized access)
-- [ ] Verify payroll only affects teacher's students
-- [ ] Verify transaction filtering
+- [ ] Extend tests for payroll/attendance flows with shared students
+- [ ] Add DB-level uniqueness test once constraint exists
+- [ ] Add audit logging for ownership changes
 
-**Estimated Effort:** 20-28 hours (see MULTI_TENANCY_TODO.md)
+**Estimated Effort:** 8-12 hours for remaining hardening
 
 ---
 
