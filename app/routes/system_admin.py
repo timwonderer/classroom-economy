@@ -8,6 +8,7 @@ system logs, error monitoring, and debug/testing tools.
 import os
 import re
 import secrets
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app
@@ -19,7 +20,7 @@ from app.extensions import db
 from app.models import (
     SystemAdmin, Admin, Student, AdminInviteCode, ErrorLog,
     Transaction, TapEvent, HallPassLog, StudentItem, RentPayment,
-    StudentInsurance, InsuranceClaim
+    StudentInsurance, InsuranceClaim, UserReport
 )
 from app.auth import system_admin_required
 from forms import SystemAdminLoginForm, SystemAdminInviteForm
@@ -401,3 +402,137 @@ def delete_teacher(admin_id):
         flash(f"❌ Error deleting teacher: {str(e)}", "error")
 
     return redirect(url_for('sysadmin.manage_teachers'))
+
+
+# -------------------- USER REPORTS MANAGEMENT --------------------
+
+@sysadmin_bp.route('/user-reports')
+@system_admin_required
+def user_reports():
+    """View all user-submitted bug reports, suggestions, and feedback."""
+    # Get filter parameters
+    status_filter = request.args.get('status', 'all')
+    report_type_filter = request.args.get('type', 'all')
+
+    # Base query
+    query = UserReport.query
+
+    # Apply filters
+    if status_filter != 'all':
+        query = query.filter_by(status=status_filter)
+
+    if report_type_filter != 'all':
+        query = query.filter_by(report_type=report_type_filter)
+
+    # Order by submission date (newest first)
+    reports = query.order_by(UserReport.submitted_at.desc()).all()
+
+    # Get counts for badges
+    new_count = UserReport.query.filter_by(status='new').count()
+    reviewed_count = UserReport.query.filter_by(status='reviewed').count()
+    rewarded_count = UserReport.query.filter_by(status='rewarded').count()
+
+    return render_template('sysadmin_user_reports.html',
+                         reports=reports,
+                         status_filter=status_filter,
+                         report_type_filter=report_type_filter,
+                         new_count=new_count,
+                         reviewed_count=reviewed_count,
+                         rewarded_count=rewarded_count)
+
+
+@sysadmin_bp.route('/user-reports/<int:report_id>')
+@system_admin_required
+def view_user_report(report_id):
+    """View detailed information about a specific user report."""
+    report = UserReport.query.get_or_404(report_id)
+    return render_template('sysadmin_user_report_detail.html', report=report)
+
+
+@sysadmin_bp.route('/user-reports/<int:report_id>/update', methods=['POST'])
+@system_admin_required
+def update_user_report(report_id):
+    """Update status and add notes to a user report."""
+    report = UserReport.query.get_or_404(report_id)
+
+    try:
+        # Get form data
+        status = request.form.get('status')
+        admin_notes = request.form.get('admin_notes', '').strip()
+
+        # Update report
+        if status and status in ['new', 'reviewed', 'rewarded', 'closed', 'spam']:
+            report.status = status
+
+        if admin_notes:
+            report.admin_notes = admin_notes
+
+        report.reviewed_at = datetime.utcnow()
+        # Note: reviewed_by_sysadmin_id is nullable, set to None for now
+        # Could be extended to track specific sysadmin if needed
+
+        db.session.commit()
+        flash("Report updated successfully!", "success")
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating report {report_id}: {str(e)}")
+        flash("Error updating report. Please try again.", "error")
+
+    return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+
+
+@sysadmin_bp.route('/user-reports/<int:report_id>/send-reward', methods=['POST'])
+@system_admin_required
+def send_reward_to_reporter(report_id):
+    """Send anonymous reward to bug reporter (students only)."""
+    report = UserReport.query.get_or_404(report_id)
+
+    try:
+        # Validate this is a student report
+        if not report._student_id:
+            flash("Cannot send reward: This report is not from a student.", "error")
+            return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+
+        # Get reward amount from form
+        reward_amount = float(request.form.get('reward_amount', 0))
+
+        if reward_amount <= 0:
+            flash("Reward amount must be greater than zero.", "error")
+            return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+
+        # Get the student
+        student = Student.query.get(report._student_id)
+
+        if not student:
+            flash("Error: Student not found.", "error")
+            return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+
+        # Create transaction for reward
+        transaction = Transaction(
+            student_id=student.id,
+            amount=reward_amount,
+            account_type='checking',
+            type='bug_bounty',
+            description=f'Bug bounty reward for report #{report.id}'
+        )
+        db.session.add(transaction)
+
+        # Update report status
+        report.reward_amount = reward_amount
+        report.reward_sent_at = datetime.utcnow()
+        report.status = 'rewarded'
+
+        db.session.commit()
+
+        flash(f"Reward of ${reward_amount:.2f} sent anonymously to reporter!", "success")
+        current_app.logger.info(f"Bug bounty reward of ${reward_amount} sent to student {student.id} for report #{report.id}")
+
+    except ValueError:
+        flash("Invalid reward amount.", "error")
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error sending reward for report {report_id}: {str(e)}")
+        flash(f"Error sending reward: {str(e)}", "error")
+
+    return redirect(url_for('sysadmin.view_user_report', report_id=report_id))

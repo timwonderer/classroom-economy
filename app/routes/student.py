@@ -8,6 +8,7 @@ financial transactions, shopping, insurance, and rent payment.
 import json
 import random
 import re
+import hashlib
 from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
@@ -21,7 +22,7 @@ from app.extensions import db
 from app.models import (
     Student, Transaction, TapEvent, StoreItem, StudentItem,
     RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    BankingSettings
+    BankingSettings, UserReport
 )
 from app.auth import login_required, get_logged_in_student, SESSION_TIMEOUT_MINUTES
 from forms import (
@@ -1304,3 +1305,67 @@ def setup_complete():
     student.has_completed_setup = True
     db.session.commit()
     return render_template('student_setup_complete.html')
+
+
+# -------------------- HELP AND SUPPORT --------------------
+
+@student_bp.route('/help-support', methods=['GET', 'POST'])
+@login_required
+def help_support():
+    """Help and Support page with bug reporting, suggestions, and documentation."""
+    student = get_logged_in_student()
+
+    if request.method == 'POST':
+        # Handle bug report submission
+        report_type = request.form.get('report_type', 'bug')
+        error_code = request.form.get('error_code', '')
+        title = request.form.get('title', '').strip()
+        description = request.form.get('description', '').strip()
+        steps_to_reproduce = request.form.get('steps_to_reproduce', '').strip()
+        expected_behavior = request.form.get('expected_behavior', '').strip()
+        page_url = request.form.get('page_url', '').strip()
+
+        # Validation
+        if not title or not description:
+            flash("Please provide both a title and description for your report.", "error")
+            return redirect(url_for('student.help_support'))
+
+        # Generate anonymous code (SHA256 of student ID + salt)
+        salt = "classroom_economy_anon_2024"
+        anonymous_code = hashlib.sha256(f"{student.id}{salt}".encode()).hexdigest()
+
+        # Create report
+        try:
+            report = UserReport(
+                anonymous_code=anonymous_code,
+                user_type='student',
+                report_type=report_type,
+                error_code=error_code if error_code else None,
+                title=title,
+                description=description,
+                steps_to_reproduce=steps_to_reproduce if steps_to_reproduce else None,
+                expected_behavior=expected_behavior if expected_behavior else None,
+                page_url=page_url if page_url else None,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent'),
+                _student_id=student.id,  # Hidden from sysadmin, used only for rewards
+                status='new'
+            )
+            db.session.add(report)
+            db.session.commit()
+
+            flash("Thank you for your report! If it's a legitimate bug, you may receive a reward.", "success")
+            return redirect(url_for('student.help_support'))
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error submitting report: {str(e)}")
+            flash("An error occurred while submitting your report. Please try again.", "error")
+            return redirect(url_for('student.help_support'))
+
+    # Get student's previous reports (last 10)
+    my_reports = UserReport.query.filter_by(_student_id=student.id).order_by(UserReport.submitted_at.desc()).limit(10).all()
+
+    return render_template('student_help_support.html',
+                         current_page='help',
+                         page_title='Help & Support',
+                         my_reports=my_reports)

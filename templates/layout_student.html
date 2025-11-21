@@ -420,6 +420,10 @@
             <a href="{{ url_for('student.rent') }}"
                class="btn text-start {% if current_page == 'rent' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">home</span> Rent</a>
             {% endif %}
+
+            <!-- Help and Support -->
+            <a href="{{ url_for('student.help_support') }}"
+               class="btn text-start {% if current_page == 'help' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">help</span> Help & Support</a>
         </div>
         <div class="mt-auto">
             <a href="{{ url_for('student.logout') }}" class="btn btn-outline-secondary text-start w-100"><span class="material-symbols-outlined">logout</span> Sign Out</a>

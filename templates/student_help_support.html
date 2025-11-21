@@ -1,0 +1,172 @@
+{% extends "layout_student.html" %}
+
+{% block page_icon %}help{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row g-4">
+        <!-- Left Column: Report a Bug/Issue -->
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0"><i class="bi bi-bug-fill me-2"></i>Report a Bug, Suggestion, or Issue</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        <strong>Earn Rewards!</strong> If you report a legitimate bug, you may receive a reward from the sysadmin. All reports are anonymous to protect your privacy.
+                    </div>
+
+                    <form method="POST" action="{{ url_for('student.help_support') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        <!-- Report Type -->
+                        <div class="mb-3">
+                            <label for="report_type" class="form-label">What would you like to report?</label>
+                            <select class="form-select" id="report_type" name="report_type" required>
+                                <option value="bug">Bug / Error</option>
+                                <option value="suggestion">Suggestion / Feature Request</option>
+                                <option value="comment">General Comment / Feedback</option>
+                            </select>
+                        </div>
+
+                        <!-- Error Code (Optional) -->
+                        <div class="mb-3" id="error_code_container">
+                            <label for="error_code" class="form-label">Error Code (if applicable)</label>
+                            <select class="form-select" id="error_code" name="error_code">
+                                <option value="">-- Select Error Code (Optional) --</option>
+                                <option value="404">404 - Page Not Found</option>
+                                <option value="500">500 - Internal Server Error</option>
+                                <option value="503">503 - Service Unavailable</option>
+                                <option value="403">403 - Forbidden</option>
+                                <option value="401">401 - Unauthorized</option>
+                                <option value="400">400 - Bad Request</option>
+                                <option value="other">Other Error</option>
+                            </select>
+                        </div>
+
+                        <!-- Title -->
+                        <div class="mb-3">
+                            <label for="title" class="form-label">Title <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="title" name="title"
+                                   placeholder="Brief summary of the issue" required maxlength="200">
+                        </div>
+
+                        <!-- Description -->
+                        <div class="mb-3">
+                            <label for="description" class="form-label">Description <span class="text-danger">*</span></label>
+                            <textarea class="form-control" id="description" name="description" rows="4"
+                                      placeholder="Please describe what happened in detail" required></textarea>
+                        </div>
+
+                        <!-- Steps to Reproduce -->
+                        <div class="mb-3">
+                            <label for="steps_to_reproduce" class="form-label">Steps to Reproduce (for bugs)</label>
+                            <textarea class="form-control" id="steps_to_reproduce" name="steps_to_reproduce" rows="3"
+                                      placeholder="What did you do right before the error occurred? Please be specific:
+1. I went to the Store page
+2. I clicked on an item
+3. I saw an error message"></textarea>
+                        </div>
+
+                        <!-- Expected Behavior -->
+                        <div class="mb-3">
+                            <label for="expected_behavior" class="form-label">Expected Behavior</label>
+                            <textarea class="form-control" id="expected_behavior" name="expected_behavior" rows="2"
+                                      placeholder="What did you expect to happen instead?"></textarea>
+                        </div>
+
+                        <!-- Page URL -->
+                        <div class="mb-3">
+                            <label for="page_url" class="form-label">Page URL (where the issue occurred)</label>
+                            <input type="text" class="form-control" id="page_url" name="page_url"
+                                   placeholder="e.g., /student/shop">
+                        </div>
+
+                        <button type="submit" class="btn btn-primary">
+                            <i class="bi bi-send-fill me-2"></i>Submit Report
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: My Reports & Support Resources -->
+        <div class="col-lg-4">
+            <!-- Support Resources -->
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-info text-white">
+                    <h5 class="mb-0"><i class="bi bi-book-fill me-2"></i>Support Resources</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="#" class="btn btn-outline-primary text-start">
+                            <i class="bi bi-file-text me-2"></i>User Guide
+                        </a>
+                        <a href="#" class="btn btn-outline-primary text-start">
+                            <i class="bi bi-question-circle me-2"></i>FAQs
+                        </a>
+                        <a href="#" class="btn btn-outline-primary text-start">
+                            <i class="bi bi-lightbulb me-2"></i>Tips & Tricks
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- My Reports -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>My Recent Reports</h5>
+                </div>
+                <div class="card-body">
+                    {% if my_reports %}
+                        <div class="list-group">
+                            {% for report in my_reports %}
+                            <div class="list-group-item">
+                                <div class="d-flex justify-content-between align-items-start">
+                                    <div>
+                                        <h6 class="mb-1">{{ report.title }}</h6>
+                                        <small class="text-muted">
+                                            {{ report.submitted_at.strftime('%m/%d/%Y %I:%M %p') }}
+                                        </small>
+                                    </div>
+                                    <span class="badge
+                                        {% if report.status == 'new' %}bg-primary
+                                        {% elif report.status == 'reviewed' %}bg-info
+                                        {% elif report.status == 'rewarded' %}bg-success
+                                        {% elif report.status == 'closed' %}bg-secondary
+                                        {% else %}bg-warning{% endif %}">
+                                        {{ report.status|title }}
+                                    </span>
+                                </div>
+                                <p class="mb-1 mt-2 text-muted small">{{ report.description[:100] }}{% if report.description|length > 100 %}...{% endif %}</p>
+                                {% if report.reward_amount and report.reward_amount > 0 %}
+                                <div class="alert alert-success py-1 px-2 mt-2 mb-0">
+                                    <i class="bi bi-gift-fill me-1"></i> Reward: ${{ "%.2f"|format(report.reward_amount) }}
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <p class="text-muted mb-0">No reports submitted yet.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Show/hide error code field based on report type
+    document.getElementById('report_type').addEventListener('change', function() {
+        const errorCodeContainer = document.getElementById('error_code_container');
+        if (this.value === 'bug') {
+            errorCodeContainer.style.display = 'block';
+        } else {
+            errorCodeContainer.style.display = 'none';
+            document.getElementById('error_code').value = '';
+        }
+    });
+</script>
+{% endblock %}

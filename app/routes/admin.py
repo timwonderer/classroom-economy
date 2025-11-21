@@ -10,6 +10,7 @@ import io
 import os
 import re
 import base64
+import hashlib
 import math
 import random
 import string
@@ -31,7 +32,7 @@ from app.extensions import db
 from app.models import (
     Student, Admin, AdminInviteCode, Transaction, TapEvent, StoreItem, StudentItem,
     RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings
+    HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings, UserReport
 )
 from app.auth import admin_required
 from forms import (
@@ -2854,3 +2855,69 @@ def banking_settings_update():
                 flash(f'{field}: {error}', 'error')
 
     return redirect(url_for('admin.banking'))
+
+
+# -------------------- HELP AND SUPPORT --------------------
+
+@admin_bp.route('/help-support', methods=['GET', 'POST'])
+@admin_required
+def help_support():
+    """Help and Support page for teachers/admins with bug reporting and suggestions."""
+    admin_id = session.get('admin_id')
+    admin = Admin.query.get(admin_id)
+
+    if request.method == 'POST':
+        # Handle bug report submission
+        report_type = request.form.get('report_type', 'bug')
+        error_code = request.form.get('error_code', '')
+        title = request.form.get('title', '').strip()
+        description = request.form.get('description', '').strip()
+        steps_to_reproduce = request.form.get('steps_to_reproduce', '').strip()
+        expected_behavior = request.form.get('expected_behavior', '').strip()
+        page_url = request.form.get('page_url', '').strip()
+
+        # Validation
+        if not title or not description:
+            flash("Please provide both a title and description for your report.", "error")
+            return redirect(url_for('admin.help_support'))
+
+        # Generate anonymous code (SHA256 of admin ID + salt)
+        salt = "classroom_economy_anon_2024"
+        anonymous_code = hashlib.sha256(f"admin_{admin.id}{salt}".encode()).hexdigest()
+
+        # Create report
+        try:
+            report = UserReport(
+                anonymous_code=anonymous_code,
+                user_type='teacher',
+                report_type=report_type,
+                error_code=error_code if error_code else None,
+                title=title,
+                description=description,
+                steps_to_reproduce=steps_to_reproduce if steps_to_reproduce else None,
+                expected_behavior=expected_behavior if expected_behavior else None,
+                page_url=page_url if page_url else None,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent'),
+                _student_id=None,  # No student ID for teachers
+                status='new'
+            )
+            db.session.add(report)
+            db.session.commit()
+
+            flash("Thank you for your report! It will be reviewed by the system administrator.", "success")
+            return redirect(url_for('admin.help_support'))
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error submitting report: {str(e)}")
+            flash("An error occurred while submitting your report. Please try again.", "error")
+            return redirect(url_for('admin.help_support'))
+
+    # Get teacher's previous reports (last 10) - use anonymous code to find them
+    salt = "classroom_economy_anon_2024"
+    anonymous_code = hashlib.sha256(f"admin_{admin.id}{salt}".encode()).hexdigest()
+    my_reports = UserReport.query.filter_by(anonymous_code=anonymous_code).order_by(UserReport.submitted_at.desc()).limit(10).all()
+
+    return render_template('admin_help_support.html',
+                         current_page='help',
+                         my_reports=my_reports)

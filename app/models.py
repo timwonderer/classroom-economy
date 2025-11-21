@@ -385,6 +385,46 @@ class ErrorLog(db.Model):
     stack_trace = db.Column(db.Text, nullable=True)  # Full stack trace
 
 
+# ---- User Report Model (Bug Reports, Suggestions, Comments) ----
+class UserReport(db.Model):
+    __tablename__ = 'user_reports'
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Anonymous user identification (hashed student ID or admin ID)
+    anonymous_code = db.Column(db.String(64), nullable=False, index=True)  # SHA256 hash for anonymity
+    user_type = db.Column(db.String(20), nullable=False)  # 'student', 'teacher', 'anonymous'
+
+    # Report details
+    report_type = db.Column(db.String(20), nullable=False, default='bug')  # 'bug', 'suggestion', 'comment'
+    error_code = db.Column(db.String(10), nullable=True)  # HTTP error code (404, 500, etc.) if applicable
+    title = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.Text, nullable=False)  # What happened
+    steps_to_reproduce = db.Column(db.Text, nullable=True)  # What they did before the error
+    expected_behavior = db.Column(db.Text, nullable=True)  # What they expected to happen
+    page_url = db.Column(db.String(500), nullable=True)  # URL where error occurred
+
+    # Metadata
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    ip_address = db.Column(db.String(50), nullable=True)
+    user_agent = db.Column(db.String(500), nullable=True)
+
+    # Admin management
+    status = db.Column(db.String(20), default='new', nullable=False)  # 'new', 'reviewed', 'rewarded', 'closed', 'spam'
+    admin_notes = db.Column(db.Text, nullable=True)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    reviewed_by_sysadmin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id'), nullable=True)
+
+    # Reward tracking (for legitimate bugs)
+    reward_amount = db.Column(db.Float, nullable=True, default=0.0)
+    reward_sent_at = db.Column(db.DateTime, nullable=True)
+
+    # Internal student ID (hidden from sysadmin, used only for reward routing)
+    _student_id = db.Column('student_id', db.Integer, db.ForeignKey('students.id'), nullable=True)
+    student = db.relationship('Student', backref='reports', foreign_keys=[_student_id])
+
+    reviewed_by = db.relationship('SystemAdmin', backref='reviewed_reports', foreign_keys=[reviewed_by_sysadmin_id])
+
+
 # ---- Admin Model ----
 class Admin(db.Model):
     __tablename__ = 'admins'
