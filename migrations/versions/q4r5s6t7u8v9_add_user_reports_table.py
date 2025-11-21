@@ -18,7 +18,15 @@ depends_on = None
 
 
 def upgrade():
-    # Create user_reports table
+    # Create user_reports table (skip if already exists from c4d5e6f7a8b9)
+    from sqlalchemy import inspect
+    conn = op.get_bind()
+    inspector = inspect(conn)
+
+    if 'user_reports' in inspector.get_table_names():
+        # Table already exists (from c4d5e6f7a8b9), skip creation
+        return
+
     op.create_table('user_reports',
         sa.Column('id', sa.Integer(), nullable=False),
         sa.Column('anonymous_code', sa.String(length=64), nullable=False),

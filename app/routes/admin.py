@@ -677,6 +677,7 @@ def delete_student():
         RentPayment.query.filter_by(student_id=student.id).delete()
         StudentInsurance.query.filter_by(student_id=student.id).delete()
         HallPassLog.query.filter_by(student_id=student.id).delete()
+        UserReport.query.filter_by(student_id=student.id).delete()
 
         # Delete the student
         db.session.delete(student)
@@ -714,6 +715,7 @@ def bulk_delete_students():
                 StudentInsurance.query.filter_by(student_id=student.id).delete()
                 InsuranceClaim.query.filter_by(student_id=student.id).delete()
                 HallPassLog.query.filter_by(student_id=student.id).delete()
+                UserReport.query.filter_by(student_id=student.id).delete()
 
                 # Delete the student
                 db.session.delete(student)
@@ -753,6 +755,7 @@ def delete_block():
             StudentInsurance.query.filter_by(student_id=student.id).delete()
             InsuranceClaim.query.filter_by(student_id=student.id).delete()
             HallPassLog.query.filter_by(student_id=student.id).delete()
+            UserReport.query.filter_by(student_id=student.id).delete()
 
             # Delete the student
             db.session.delete(student)
