@@ -11,7 +11,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app
-from sqlalchemy import delete
+from sqlalchemy import delete, or_
 from werkzeug.exceptions import BadRequest, Unauthorized, Forbidden, NotFound, ServiceUnavailable
 import pyotp
 
@@ -19,7 +19,7 @@ from app.extensions import db
 from app.models import (
     SystemAdmin, Admin, Student, AdminInviteCode, ErrorLog,
     Transaction, TapEvent, HallPassLog, StudentItem, RentPayment,
-    StudentInsurance, InsuranceClaim
+    StudentInsurance, InsuranceClaim, StudentTeacher
 )
 from app.auth import system_admin_required
 from forms import SystemAdminLoginForm, SystemAdminInviteForm
@@ -364,6 +364,73 @@ def manage_teachers():
     )
 
 
+@sysadmin_bp.route('/student-ownership', methods=['GET', 'POST'])
+@system_admin_required
+def student_ownership():
+    """Manage which teachers have access to each student account."""
+    action = request.form.get("action") if request.method == "POST" else None
+
+    if action:
+        student_id = request.form.get("student_id", type=int)
+        admin_id = request.form.get("admin_id", type=int)
+        student = Student.query.get_or_404(student_id)
+        admin = Admin.query.get_or_404(admin_id)
+
+        if action == "add":
+            existing_link = StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin.id).first()
+            if existing_link:
+                flash(f"{admin.username} already has access to {student.full_name}.", "info")
+            else:
+                db.session.add(StudentTeacher(student_id=student.id, admin_id=admin.id))
+                if request.form.get("make_primary") == "on":
+                    student.teacher_id = admin.id
+                db.session.commit()
+                flash(f"Added {admin.username} to {student.full_name}'s teacher list.", "success")
+            return redirect(url_for('sysadmin.student_ownership'))
+
+        if action == "remove":
+            link = StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin.id).first()
+            if not link:
+                flash("No matching teacher link found for removal.", "error")
+                return redirect(url_for('sysadmin.student_ownership'))
+
+            db.session.delete(link)
+            # If removing the primary teacher, fall back to another linked teacher if available
+            if student.teacher_id == admin.id:
+                fallback = (
+                    StudentTeacher.query
+                    .filter(StudentTeacher.student_id == student.id, StudentTeacher.admin_id != admin.id)
+                    .order_by(StudentTeacher.created_at.asc())
+                    .first()
+                )
+                student.teacher_id = fallback.admin_id if fallback else None
+
+            db.session.commit()
+            flash(f"Removed {admin.username} from {student.full_name}.", "success")
+            return redirect(url_for('sysadmin.student_ownership'))
+
+        flash("Unsupported action.", "error")
+        return redirect(url_for('sysadmin.student_ownership'))
+
+    # GET request: render the mapping table
+    students = Student.query.order_by(Student.first_name.asc(), Student.last_initial.asc()).all()
+    teachers = Admin.query.order_by(Admin.username.asc()).all()
+    teacher_lookup = {t.id: t for t in teachers}
+
+    student_links = {}
+    for link in StudentTeacher.query.all():
+        student_links.setdefault(link.student_id, []).append(link.admin_id)
+
+    return render_template(
+        "system_admin_student_ownership.html",
+        students=students,
+        teachers=teachers,
+        student_links=student_links,
+        teacher_lookup=teacher_lookup,
+        current_page="student_ownership",
+    )
+
+
 @sysadmin_bp.route('/manage-teachers/delete/<int:admin_id>', methods=['POST'])
 @system_admin_required
 def delete_teacher(admin_id):
@@ -374,26 +441,37 @@ def delete_teacher(admin_id):
     admin = Admin.query.get_or_404(admin_id)
 
     try:
-        # Count students for feedback message
-        student_count = Student.query.count()  # TODO: After multi-tenancy, filter by teacher_id
+        linked_student_ids = (
+            db.session.query(StudentTeacher.student_id)
+            .filter(StudentTeacher.admin_id == admin.id)
+            .subquery()
+        )
 
-        # Delete all students and their associated data
-        for student in Student.query.all():  # TODO: Filter by teacher_id
-            Transaction.query.filter_by(student_id=student.id).delete()
-            TapEvent.query.filter_by(student_id=student.id).delete()
-            HallPassLog.query.filter_by(student_id=student.id).delete()
-            StudentItem.query.filter_by(student_id=student.id).delete()
-            RentPayment.query.filter_by(student_id=student.id).delete()
-            db.session.execute(delete(StudentInsurance).where(StudentInsurance.student_id == student.id))
-            InsuranceClaim.query.filter_by(student_id=student.id).delete()
+        affected_students = Student.query.filter(
+            or_(Student.teacher_id == admin.id, Student.id.in_(linked_student_ids))
+        ).all()
+        student_count = len(affected_students)
 
-        Student.query.delete()  # TODO: Filter by teacher_id
+        for student in affected_students:
+            StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin.id).delete()
+
+            if student.teacher_id == admin.id:
+                fallback = (
+                    StudentTeacher.query
+                    .filter(StudentTeacher.student_id == student.id)
+                    .order_by(StudentTeacher.created_at.asc())
+                    .first()
+                )
+                student.teacher_id = fallback.admin_id if fallback else None
 
         admin_username = admin.username
         db.session.delete(admin)
         db.session.commit()
 
-        flash(f"✅ Teacher '{admin_username}' and {student_count} students deleted successfully.", "success")
+        flash(
+            f"✅ Teacher '{admin_username}' deleted. Updated {student_count} student ownership records.",
+            "success",
+        )
 
     except Exception as e:
         db.session.rollback()

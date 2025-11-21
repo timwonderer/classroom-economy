@@ -26,6 +26,16 @@ class Student(db.Model):
     second_half_hash = db.Column(db.String(64), unique=True, nullable=True)
     username_hash = db.Column(db.String(64), unique=True, nullable=True)
 
+    # Ownership / tenancy
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
+    teacher = db.relationship('Admin', backref=db.backref('students', lazy='dynamic'))
+    shared_teachers = db.relationship(
+        'Admin',
+        secondary='student_teachers',
+        backref=db.backref('shared_students', lazy='dynamic'),
+        lazy='dynamic',
+    )
+
     pin_hash = db.Column(db.Text, nullable=True)
     passphrase_hash = db.Column(db.Text, nullable=True)
 
@@ -103,6 +113,20 @@ class AdminInviteCode(db.Model):
     used = db.Column(db.Boolean, default=False)
     # All times stored as UTC (see header note)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+
+class StudentTeacher(db.Model):
+    __tablename__ = 'student_teachers'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    admin_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('student_id', 'admin_id', name='uq_student_teachers_student_admin'),
+        db.Index('ix_student_teachers_student_id', 'student_id'),
+        db.Index('ix_student_teachers_admin_id', 'admin_id'),
+    )
 
 
 # -------------------- SYSTEM ADMIN MODEL --------------------
