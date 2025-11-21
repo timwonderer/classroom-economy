@@ -932,12 +932,26 @@ def rent():
     # Calculate rent status for each period
     now = datetime.now()
 
-    # Check if rent is even due yet (if first_rent_due_date is in the future)
-    rent_is_active = True
-    if settings.first_rent_due_date and now < settings.first_rent_due_date:
-        rent_is_active = False
-
+    # Calculate due dates
     due_date, grace_end_date = _calculate_rent_deadlines(settings, now)
+
+    # Calculate preview start date if preview is enabled
+    preview_start_date = None
+    if settings.bill_preview_enabled and settings.bill_preview_days:
+        preview_start_date = due_date - timedelta(days=settings.bill_preview_days)
+
+    # Check if rent is active (due date has arrived or preview period has started)
+    rent_is_active = True
+    is_preview_period = False
+    if settings.first_rent_due_date and now < settings.first_rent_due_date:
+        # Check if we're in preview period before first due date
+        if preview_start_date and now >= preview_start_date:
+            rent_is_active = True
+            is_preview_period = True
+        else:
+            rent_is_active = False
+    elif preview_start_date and now >= preview_start_date and now < due_date:
+        is_preview_period = True
     current_month = now.month
     current_year = now.year
 
@@ -991,7 +1005,8 @@ def rent():
             'total_due': total_due,
             'remaining_amount': remaining_amount,
             'late_fee': late_fee,
-            'rent_is_active': rent_is_active
+            'rent_is_active': rent_is_active,
+            'is_preview_period': is_preview_period
         }
 
     # Get payment history (all periods)
@@ -1006,6 +1021,7 @@ def rent():
                           period_status=period_status,
                           due_date=due_date,
                           grace_end_date=grace_end_date,
+                          preview_start_date=preview_start_date,
                           payment_history=payment_history)
 
 
@@ -1033,10 +1049,18 @@ def rent_pay(period):
 
     now = datetime.now()
 
-    # Check if rent is even due yet (if first_rent_due_date is in the future)
+    # Calculate due dates and preview period
+    due_date, grace_end_date = _calculate_rent_deadlines(settings, now)
+    preview_start_date = None
+    if settings.bill_preview_enabled and settings.bill_preview_days:
+        preview_start_date = due_date - timedelta(days=settings.bill_preview_days)
+
+    # Check if rent is even due yet (if first_rent_due_date is in the future and not in preview period)
     if settings.first_rent_due_date and now < settings.first_rent_due_date:
-        flash(f"Rent is not due yet. First payment due on {settings.first_rent_due_date.strftime('%B %d, %Y')}.", "info")
-        return redirect(url_for('student.rent'))
+        # Allow payment if we're in the preview period
+        if not (preview_start_date and now >= preview_start_date):
+            flash(f"Rent is not due yet. First payment due on {settings.first_rent_due_date.strftime('%B %d, %Y')}.", "info")
+            return redirect(url_for('student.rent'))
 
     current_month = now.month
     current_year = now.year
@@ -1170,7 +1194,7 @@ def rent_pay(period):
     )
     db.session.add(payment)
 
-    db.session.commit()
+    db.session.flush()  # Flush to update balances without committing yet
 
     # Handle overdraft protection and fees
     # Check if overdraft protection should transfer funds from savings
@@ -1194,12 +1218,13 @@ def rent_pay(period):
             )
             db.session.add(transfer_tx_withdraw)
             db.session.add(transfer_tx_deposit)
-            db.session.commit()
+            db.session.flush()  # Flush to update balances
 
-    # Check if overdraft fee should be charged
+    # Check if overdraft fee should be charged (after overdraft protection)
     fee_charged, fee_amount = _charge_overdraft_fee_if_needed(student, banking_settings)
-    if fee_charged:
-        db.session.commit()
+
+    # Commit all transactions together
+    db.session.commit()
 
     # Calculate new totals after this payment
     new_total_paid = total_paid_so_far + payment_amount
