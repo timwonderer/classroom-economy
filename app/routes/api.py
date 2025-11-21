@@ -8,6 +8,7 @@ and other interactive features. Most routes require authentication.
 import random
 import string
 import re
+import pytz
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, request, jsonify, session, current_app
@@ -765,20 +766,33 @@ def cancel_hall_pass(pass_id):
 @api_bp.route('/hall-pass/queue', methods=['GET'])
 def get_hall_pass_queue():
     """Get current hall pass queue (approved but not yet checked out) and currently out count"""
-    # Get start of today (midnight) in UTC to filter for only today's passes
-    now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    # Get user's timezone from session, default to Pacific Time
+    tz_name = session.get('timezone', 'America/Los_Angeles')
+    try:
+        user_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        current_app.logger.warning(f"Invalid timezone '{tz_name}' in session, defaulting to Pacific Time.")
+        user_tz = pytz.timezone('America/Los_Angeles')
+
+    # Get current time in user's timezone
+    now_user_tz = datetime.now(user_tz)
+
+    # Get start of today (midnight) in user's timezone
+    today_start_user_tz = now_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Convert to UTC for database comparison (database stores times in UTC)
+    today_start_utc = today_start_user_tz.astimezone(pytz.utc).replace(tzinfo=None)
 
     # Get approved passes from today that haven't been used yet (not left, not returned)
     queue = HallPassLog.query.filter(
         HallPassLog.status == 'approved',
-        HallPassLog.decision_time >= today_start
+        HallPassLog.decision_time >= today_start_utc
     ).order_by(HallPassLog.decision_time.asc()).all()
 
     # Get count of students currently out from today (status = 'left')
     currently_out_count = HallPassLog.query.filter(
         HallPassLog.status == 'left',
-        HallPassLog.left_time >= today_start
+        HallPassLog.left_time >= today_start_utc
     ).count()
 
     # Helper function to ensure times are marked as UTC
