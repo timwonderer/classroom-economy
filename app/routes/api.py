@@ -346,10 +346,13 @@ def purchase_item():
                     StudentItem.store_item_id == item.id,
                     StudentItem.status == 'pending'
                 ).update({"status": "processing"})
-                db.session.commit()
                 # This flash won't be seen by the user due to the JSON response,
                 # but it's good for logging/debugging. A more robust solution might use websockets.
                 current_app.logger.info(f"Collective goal '{item.name}' for block {student.block} has been met!")
+
+        # Ensure purchases are persisted for collective items even before the threshold is met
+        if item.item_type == 'collective':
+            db.session.commit()
         else:
             # For non-collective items, commit here
             db.session.commit()
