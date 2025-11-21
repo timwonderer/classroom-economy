@@ -171,6 +171,13 @@
             font-weight: 500;
         }
 
+        .disabled-fields {
+            opacity: 0.55;
+            filter: grayscale(0.35);
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+        }
+
         @media (max-width: 768px) {
             .branding-side {
                 display: none;
@@ -192,6 +199,13 @@
                 <p class="subtitle" style="font-size:14pt">Your username is: <strong>{{ username }}</strong><br></p>
                 <p style="font-weight:bold">Please write it down if you haven't already, as it will not be shown again after setup is complete.</p>
 
+                <div class="form-check mb-4">
+                    <input class="form-check-input" type="checkbox" value="" id="username-ack">
+                    <label class="form-check-label" for="username-ack">
+                        I have written down my username and I know it won't be shown to me again.
+                    </label>
+                </div>
+
                 {% with messages = get_flashed_messages(category_filter=['setup']) %}
                   {% if messages %}
                     <div class="alert alert-danger">
@@ -207,31 +221,33 @@
                 <form method="POST" onsubmit="return validateForm()">
                     {{ form.hidden_tag() }}
 
-                    <div class="form-group">
-                        {{ form.pin.label(class="form-label") }}
-                        {{ form.pin(class="form-control", id="pin", placeholder="e.g. 938291") }}
-                        <div class="hint">Use 4-8 digits number that you will remember. You will sign in using this PIN</div>
-                        {% for error in form.pin.errors %}
-                            <div class="text-danger small">{{ error }}</div>
-                        {% endfor %}
-                    </div>
-
-                    <div class="form-group">
-                        {{ form.passphrase.label(class="form-label") }}
-                        {{ form.passphrase(class="form-control", id="passphrase", placeholder="e.g. Surprised!Banana!2!You!") }}
-                        <div class="hint">A good passphrase is at least four words long with symbols and numbers within. It should be something easy for you to remember but hard for someone else to guess</div>
-                        {% for error in form.passphrase.errors %}
-                            <div class="text-danger small">{{ error }}</div>
-                        {% endfor %}
-                        <div class="strength-meter">
-                            <div class="strength-meter-fill" id="strength-bar"></div>
+                    <fieldset id="setup-fields" class="disabled-fields" disabled>
+                        <div class="form-group">
+                            {{ form.pin.label(class="form-label") }}
+                            {{ form.pin(class="form-control", id="pin", placeholder="e.g. 938291") }}
+                            <div class="hint">Use 4-8 digits number that you will remember. You will sign in using this PIN</div>
+                            {% for error in form.pin.errors %}
+                                <div class="text-danger small">{{ error }}</div>
+                            {% endfor %}
                         </div>
-                        <div id="strength-feedback" class="hint"></div>
-                    </div>
 
-                    <div class="form-group">
-                        {{ form.submit(class="btn btn-primary w-100", id="submit-button", disabled=True) }}
-                    </div>
+                        <div class="form-group">
+                            {{ form.passphrase.label(class="form-label") }}
+                            {{ form.passphrase(class="form-control", id="passphrase", placeholder="e.g. Surprised!Banana!2!You!") }}
+                            <div class="hint">A good passphrase is at least four words long with symbols and numbers within. It should be something easy for you to remember but hard for someone else to guess</div>
+                            {% for error in form.passphrase.errors %}
+                                <div class="text-danger small">{{ error }}</div>
+                            {% endfor %}
+                            <div class="strength-meter">
+                                <div class="strength-meter-fill" id="strength-bar"></div>
+                            </div>
+                            <div id="strength-feedback" class="hint"></div>
+                        </div>
+
+                        <div class="form-group">
+                            {{ form.submit(class="btn btn-primary w-100", id="submit-button", disabled=True) }}
+                        </div>
+                    </fieldset>
                 </form>
 
                 <div class="footer-info text-center">
@@ -261,6 +277,8 @@
         const strengthBar = document.getElementById('strength-bar');
         const feedback = document.getElementById('strength-feedback');
         const submitBtn = document.getElementById('submit-button');
+        const ackCheckbox = document.getElementById('username-ack');
+        const setupFields = document.getElementById('setup-fields');
 
         passInput.addEventListener('input', () => {
             const result = zxcvbn(passInput.value);
@@ -281,6 +299,21 @@
 
             submitBtn.disabled = score < 3;
         });
+
+        function updateAcknowledgementState() {
+            const acknowledged = ackCheckbox.checked;
+            setupFields.disabled = !acknowledged;
+            setupFields.classList.toggle('disabled-fields', !acknowledged);
+
+            if (!acknowledged) {
+                submitBtn.disabled = true;
+            } else {
+                passInput.dispatchEvent(new Event('input'));
+            }
+        }
+
+        ackCheckbox.addEventListener('change', updateAcknowledgementState);
+        updateAcknowledgementState();
 
         function validateForm() {
             const pin = document.getElementById('pin').value;
