@@ -420,7 +420,11 @@ class UserReport(db.Model):
 
     # Internal student ID (hidden from sysadmin, used only for reward routing)
     _student_id = db.Column('student_id', db.Integer, db.ForeignKey('students.id'), nullable=True)
-    student = db.relationship('Student', backref='reports', foreign_keys=[_student_id])
+    student = db.relationship(
+        'Student',
+        backref=db.backref('reports', cascade='all, delete-orphan'),
+        foreign_keys=[_student_id],
+    )
 
     reviewed_by = db.relationship('SystemAdmin', backref='reviewed_reports', foreign_keys=[reviewed_by_sysadmin_id])
 
