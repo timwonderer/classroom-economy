@@ -950,6 +950,117 @@ def add_manual_student():
     return redirect(url_for('admin.students'))
 
 
+# -------------------- TRANSACTION CLEARING --------------------
+
+@admin_bp.route('/student/<int:student_id>/clear-transactions', methods=['POST'])
+@admin_required
+def clear_student_transactions(student_id):
+    """Clear all transactions for a specific student (only for students assigned to current teacher)."""
+    from app.auth import get_current_admin
+
+    current_admin = get_current_admin()
+    student = Student.query.get_or_404(student_id)
+
+    # Verify the student belongs to this teacher (or is orphaned for backwards compatibility)
+    if student.teacher_id and student.teacher_id != current_admin.id:
+        flash("You can only clear transactions for your own students.", "error")
+        return redirect(url_for('admin.students'))
+
+    try:
+        # Delete all transactions for this student
+        deleted_count = Transaction.query.filter_by(student_id=student.id).delete()
+
+        # Delete all rent payments for this student
+        RentPayment.query.filter_by(student_id=student.id).delete()
+
+        db.session.commit()
+
+        flash(f"Successfully cleared {deleted_count} transaction(s) for {student.full_name}.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error clearing transactions: {str(e)}", "error")
+
+    return redirect(url_for('admin.student_detail', student_id=student_id))
+
+
+@admin_bp.route('/students/clear-period-transactions', methods=['POST'])
+@admin_required
+def clear_period_transactions():
+    """Clear all transactions for all students in a specific period/block."""
+    from app.auth import get_current_admin
+
+    current_admin = get_current_admin()
+    period = request.form.get('period', '').strip().upper()
+
+    if not period:
+        flash("Please specify a period.", "error")
+        return redirect(url_for('admin.students'))
+
+    try:
+        # Get all students in this period assigned to this teacher
+        all_students = Student.query.filter(
+            (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
+        ).all()
+
+        students_in_period = [
+            s for s in all_students
+            if s.block and period.upper() in [b.strip().upper() for b in s.block.split(',')]
+        ]
+
+        if not students_in_period:
+            flash(f"No students found in period {period}.", "warning")
+            return redirect(url_for('admin.students'))
+
+        total_deleted = 0
+        for student in students_in_period:
+            deleted_count = Transaction.query.filter_by(student_id=student.id).delete()
+            RentPayment.query.filter_by(student_id=student.id).delete()
+            total_deleted += deleted_count
+
+        db.session.commit()
+
+        flash(f"Successfully cleared {total_deleted} transaction(s) for {len(students_in_period)} student(s) in period {period}.", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error clearing transactions: {str(e)}", "error")
+
+    return redirect(url_for('admin.students'))
+
+
+@admin_bp.route('/students/clear-all-transactions', methods=['POST'])
+@admin_required
+def clear_all_transactions():
+    """Clear all transactions for all students assigned to the current teacher."""
+    from app.auth import get_current_admin
+
+    current_admin = get_current_admin()
+
+    try:
+        # Get all students assigned to this teacher (include orphaned for backwards compatibility)
+        students = Student.query.filter(
+            (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
+        ).all()
+
+        if not students:
+            flash("No students found.", "warning")
+            return redirect(url_for('admin.students'))
+
+        total_deleted = 0
+        for student in students:
+            deleted_count = Transaction.query.filter_by(student_id=student.id).delete()
+            RentPayment.query.filter_by(student_id=student.id).delete()
+            total_deleted += deleted_count
+
+        db.session.commit()
+
+        flash(f"Successfully cleared {total_deleted} transaction(s) for {len(students)} student(s).", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error clearing transactions: {str(e)}", "error")
+
+    return redirect(url_for('admin.students'))
+
+
 # -------------------- STORE MANAGEMENT --------------------
 
 @admin_bp.route('/store', methods=['GET', 'POST'])
@@ -1111,6 +1222,70 @@ def rent_settings():
         period_year=current_year
     ).count()
 
+    # Calculate unpaid students (students who haven't paid rent for current month/period)
+    unpaid_students = []
+    if settings.is_enabled:
+        from app.routes.student import _calculate_rent_deadlines
+        now = datetime.now()
+        due_date, grace_end_date = _calculate_rent_deadlines(settings, now)
+
+        # Check if rent is active for the current month
+        rent_is_active = True
+        if settings.first_rent_due_date and now < settings.first_rent_due_date:
+            # Check if we're in preview period
+            if settings.bill_preview_enabled and settings.bill_preview_days:
+                preview_start_date = due_date - timedelta(days=settings.bill_preview_days)
+                rent_is_active = now >= preview_start_date
+            else:
+                rent_is_active = False
+
+        if rent_is_active:
+            all_rent_enabled_students = Student.query.filter_by(is_rent_enabled=True).all()
+            for student in all_rent_enabled_students:
+                student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+                for period in student_blocks:
+                    # Get payments for this student/period/month
+                    payments = RentPayment.query.filter_by(
+                        student_id=student.id,
+                        period=period,
+                        period_month=current_month,
+                        period_year=current_year
+                    ).all()
+
+                    # Filter out voided payments
+                    valid_payments = []
+                    for payment in payments:
+                        txn = Transaction.query.filter(
+                            Transaction.student_id == student.id,
+                            Transaction.type == 'Rent Payment',
+                            Transaction.timestamp >= payment.payment_date - timedelta(seconds=5),
+                            Transaction.timestamp <= payment.payment_date + timedelta(seconds=5),
+                            Transaction.amount == -payment.amount_paid
+                        ).first()
+                        if txn and not txn.is_void:
+                            valid_payments.append(payment)
+
+                    total_paid = sum(p.amount_paid for p in valid_payments) if valid_payments else 0.0
+
+                    # Calculate late fee if applicable
+                    late_fee = 0.0
+                    is_late = now > grace_end_date
+                    if is_late:
+                        late_fee = settings.late_penalty_amount
+
+                    total_due = settings.rent_amount + late_fee
+
+                    # Check if not fully paid
+                    if total_paid < total_due:
+                        unpaid_students.append({
+                            'student': student,
+                            'period': period,
+                            'total_paid': total_paid,
+                            'total_due': total_due,
+                            'remaining': total_due - total_paid,
+                            'is_late': is_late
+                        })
+
     # Get active waivers
     now = datetime.now(timezone.utc)
     active_waivers = RentWaiver.query.filter(
@@ -1152,6 +1327,7 @@ def rent_settings():
                           settings=settings,
                           total_students=total_students,
                           paid_this_month=paid_this_month,
+                          unpaid_students=unpaid_students,
                           active_waivers=active_waivers,
                           all_students=all_students,
                           payroll_warning=payroll_warning)

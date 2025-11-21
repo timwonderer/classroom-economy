@@ -59,6 +59,12 @@
                     <br>Rent will be due starting {{ due_date.strftime('%B %d, %Y') }}
                 </div>
                 {% else %}
+                {% if status.is_preview_period and not status.is_paid %}
+                <div class="alert alert-success mb-3">
+                    <strong>📅 Preview Period</strong>
+                    <br>You can now pay rent early! Due date: {{ due_date.strftime('%B %d, %Y') }}
+                </div>
+                {% endif %}
                 <div class="mb-3">
                     <p class="mb-1 text-muted"><strong>Monthly Rent:</strong></p>
                     <h3 class="text-primary mb-0">${{ "%.2f"|format(settings.rent_amount) }}</h3>
@@ -180,6 +186,14 @@
                         <span class="badge bg-success">Enabled</span>
                         {% else %}
                         <span class="badge bg-secondary">Full Payment Required</span>
+                        {% endif %}
+                    </li>
+                    <li class="mb-2">
+                        <strong>Bill Preview:</strong>
+                        {% if settings.bill_preview_enabled and settings.bill_preview_days %}
+                        <span class="badge bg-success">{{ settings.bill_preview_days }} days early</span>
+                        {% else %}
+                        <span class="badge bg-secondary">Disabled</span>
                         {% endif %}
                     </li>
                 </ul>
