@@ -93,11 +93,17 @@ def auto_tapout_all_over_limit():
 @admin_required
 def dashboard():
     """Admin dashboard with statistics, pending actions, and recent activity."""
+    from app.auth import get_current_admin
+
     # Auto-tapout students who have exceeded their daily limit
     auto_tapout_all_over_limit()
 
-    # Get all students for calculations
-    students = Student.query.order_by(Student.first_name).all()
+    current_admin = get_current_admin()
+
+    # Get students for this teacher (include orphaned for backwards compatibility)
+    students = Student.query.filter(
+        (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
+    ).order_by(Student.first_name).all()
     student_lookup = {s.id: s for s in students}
 
     # Quick Stats
@@ -187,6 +193,65 @@ def dashboard():
     )
 
 
+@admin_bp.route('/claim-students', methods=['GET', 'POST'])
+@admin_required
+def claim_students():
+    """One-time setup: Allow teacher to claim orphaned students."""
+    from app.auth import get_current_admin
+
+    current_admin = get_current_admin()
+    if not current_admin:
+        flash("Unable to identify current admin", "error")
+        return redirect(url_for('admin.dashboard'))
+
+    # If already completed setup, redirect
+    if current_admin.has_assigned_students:
+        flash("You have already completed student assignment.", "info")
+        return redirect(url_for('admin.students'))
+
+    # Get all orphaned students (teacher_id is None)
+    orphaned_students = Student.query.filter_by(teacher_id=None).order_by(Student.first_name, Student.last_initial).all()
+
+    if request.method == 'POST':
+        # Get selected student IDs from form
+        selected_ids = request.form.getlist('student_ids')
+
+        if not selected_ids:
+            # If no students selected, just mark as completed
+            current_admin.has_assigned_students = True
+            db.session.commit()
+            flash("Student assignment completed. No students were claimed.", "success")
+            return redirect(url_for('admin.students'))
+
+        # Assign selected students to current teacher
+        claimed_count = 0
+        for student_id in selected_ids:
+            student = Student.query.get(int(student_id))
+            if student and student.teacher_id is None:  # Verify it's still orphaned
+                student.teacher_id = current_admin.id
+                claimed_count += 1
+
+        # Mark admin as having completed student assignment
+        current_admin.has_assigned_students = True
+
+        try:
+            db.session.commit()
+            flash(f"Successfully claimed {claimed_count} student(s)!", "admin_success")
+            return redirect(url_for('admin.students'))
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error claiming students: {e}", exc_info=True)
+            flash(f"Error claiming students: {e}", "admin_error")
+            return redirect(url_for('admin.claim_students'))
+
+    # GET request - show claim page
+    return render_template(
+        'admin_claim_students.html',
+        orphaned_students=orphaned_students,
+        current_page="claim_students"
+    )
+
+
 @admin_bp.route('/bonuses', methods=['POST'])
 @admin_required
 def give_bonus_all():
@@ -231,6 +296,18 @@ def login():
                 session["last_activity"] = datetime.now(timezone.utc).isoformat()
                 current_app.logger.info(f"✅ Admin login success for {username}")
                 flash("Admin login successful.")
+
+                # Check if admin needs to claim students (one-time setup)
+                if not admin.has_assigned_students:
+                    orphaned_count = Student.query.filter_by(teacher_id=None).count()
+                    if orphaned_count > 0:
+                        flash(f"Please select the students that belong to your class ({orphaned_count} unclaimed).", "info")
+                        return redirect(url_for("admin.claim_students"))
+                    else:
+                        # No orphaned students, mark as completed
+                        admin.has_assigned_students = True
+                        db.session.commit()
+
                 next_url = request.args.get("next")
                 if not is_safe_url(next_url):
                     return redirect(url_for("admin.dashboard"))
@@ -375,7 +452,14 @@ def logout():
 @admin_required
 def students():
     """View all students with basic information organized by block."""
-    all_students = Student.query.order_by(Student.block, Student.first_name).all()
+    from app.auth import get_current_admin
+
+    current_admin = get_current_admin()
+
+    # Filter students by teacher_id (include orphaned students for backwards compatibility)
+    all_students = Student.query.filter(
+        (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
+    ).order_by(Student.block, Student.first_name).all()
 
     # Get unique blocks - split comma-separated blocks into individual blocks
     blocks = sorted({b.strip() for s in all_students for b in (s.block or "").split(',') if b.strip()})
@@ -674,7 +758,14 @@ def delete_block():
 @admin_required
 def add_individual_student():
     """Add a single student (same as bulk upload but for one student)."""
+    from app.auth import get_current_admin
+
     try:
+        current_admin = get_current_admin()
+        if not current_admin:
+            flash("Unable to identify current admin", "error")
+            return redirect(url_for('admin.students'))
+
         first_name = request.form.get('first_name', '').strip()
         last_name = request.form.get('last_name', '').strip()
         dob_str = request.form.get('dob', '').strip()
@@ -702,11 +793,11 @@ def add_individual_student():
         first_half_hash = hash_hmac(name_code.encode(), salt)
         second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
-        # Check for duplicates - need to check ALL students with same last_initial and block
-        # because we can't distinguish based on last_initial alone
-        potential_duplicates = Student.query.filter_by(
-            last_initial=last_initial,
-            block=block
+        # Check for duplicates within this teacher's students (and orphaned)
+        potential_duplicates = Student.query.filter(
+            Student.last_initial == last_initial,
+            Student.block == block,
+            (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
         ).all()
 
         # Check if any existing student has BOTH the same first name AND full last name
@@ -735,6 +826,7 @@ def add_individual_student():
             first_half_hash=first_half_hash,
             second_half_hash=second_half_hash,
             dob_sum=dob_sum,
+            teacher_id=current_admin.id,  # Assign to current teacher
             has_completed_setup=False
         )
 
@@ -755,8 +847,15 @@ def add_individual_student():
 @admin_required
 def add_manual_student():
     """Add a student with full manual configuration (advanced mode)."""
+    from app.auth import get_current_admin
+
     try:
         from werkzeug.security import generate_password_hash
+
+        current_admin = get_current_admin()
+        if not current_admin:
+            flash("Unable to identify current admin", "error")
+            return redirect(url_for('admin.students'))
 
         first_name = request.form.get('first_name', '').strip()
         last_name = request.form.get('last_name', '').strip()
@@ -791,10 +890,11 @@ def add_manual_student():
         first_half_hash = hash_hmac(name_code.encode(), salt)
         second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
-        # Check for duplicates - same logic as add_individual_student
-        potential_duplicates = Student.query.filter_by(
-            last_initial=last_initial,
-            block=block
+        # Check for duplicates within this teacher's students (and orphaned)
+        potential_duplicates = Student.query.filter(
+            Student.last_initial == last_initial,
+            Student.block == block,
+            (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
         ).all()
 
         for existing_student in potential_duplicates:
@@ -819,6 +919,7 @@ def add_manual_student():
             first_half_hash=first_half_hash,
             second_half_hash=second_half_hash,
             dob_sum=dob_sum,
+            teacher_id=current_admin.id,  # Assign to current teacher
             hall_passes=hall_passes,
             is_rent_enabled=rent_enabled,
             has_completed_setup=setup_complete
@@ -2193,9 +2294,17 @@ def attendance_log():
 @admin_required
 def upload_students():
     """Upload students from CSV file."""
+    from app.auth import get_current_admin
+
     file = request.files.get('csv_file')
     if not file:
         flash("No file provided", "admin_error")
+        return redirect(url_for('admin.students'))
+
+    # Get current admin for teacher_id assignment
+    current_admin = get_current_admin()
+    if not current_admin:
+        flash("Unable to identify current admin", "admin_error")
         return redirect(url_for('admin.students'))
 
     # Read file content and remove BOM if present
@@ -2221,38 +2330,7 @@ def upload_students():
             # Generate last_initial
             last_initial = last_name[0].upper()
 
-            # Efficiently check for duplicates.
-            # 1. Filter by unencrypted fields (`last_initial`, `block`) to get a small candidate pool.
-            potential_matches = Student.query.filter_by(last_initial=last_initial, block=block).all()
-
-            # 2. Iterate through the small pool and compare first name AND full last name via hash
-            is_duplicate = False
-            for student in potential_matches:
-                if student.first_name == first_name:
-                    # Same first name and last initial - verify full last name matches too
-                    # MUST use original algorithm: vowels from first_name + consonants from last_name
-                    test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
-                    test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-                    test_name_code = ''.join(test_vowels + test_consonants).lower()
-
-                    # Check if this matches the existing student's hash
-                    test_hash = hash_hmac(test_name_code.encode(), student.salt)
-                    if test_hash == student.first_half_hash:
-                        is_duplicate = True
-                        break
-
-            if is_duplicate:
-                current_app.logger.info(f"Duplicate detected: {first_name} {last_name} in block {block}, skipping.")
-                duplicated += 1
-                continue  # skip this duplicate
-
-            # Generate name_code (MUST match original algorithm for consistency)
-            # vowels from first_name + consonants from last_name
-            vowels = re.findall(r'[AEIOUaeiou]', first_name)
-            consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-            name_code = ''.join(vowels + consonants).lower()
-
-            # Generate dob_sum
+            # Parse and calculate dob_sum early (needed for duplicate detection)
             # Handle both mm/dd/yy and mm/dd/yyyy formats
             date_parts = dob_str.split('/')
             mm = int(date_parts[0])
@@ -2266,6 +2344,46 @@ def upload_students():
                 yyyy = year
 
             dob_sum = mm + dd + yyyy
+
+            # Efficiently check for duplicates within this teacher's students
+            # 1. Filter by unencrypted fields (`last_initial`, `block`) AND (teacher_id OR orphaned students).
+            # Include orphaned students (teacher_id=None) for backwards compatibility.
+            potential_matches = Student.query.filter(
+                Student.last_initial == last_initial,
+                Student.block == block,
+                (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
+            ).all()
+
+            # 2. Iterate through the small pool and compare first name, full last name, AND date of birth via hash
+            is_duplicate = False
+            for student in potential_matches:
+                if student.first_name == first_name:
+                    # Same first name and last initial - verify full last name matches too
+                    # MUST use original algorithm: vowels from first_name + consonants from last_name
+                    test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
+                    test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
+                    test_name_code = ''.join(test_vowels + test_consonants).lower()
+
+                    # Check if this matches the existing student's name hash
+                    test_name_hash = hash_hmac(test_name_code.encode(), student.salt)
+                    if test_name_hash == student.first_half_hash:
+                        # Name matches - now verify date of birth also matches
+                        test_dob_hash = hash_hmac(str(dob_sum).encode(), student.salt)
+                        if test_dob_hash == student.second_half_hash:
+                            # Both name AND date of birth match - this is a true duplicate
+                            is_duplicate = True
+                            break
+
+            if is_duplicate:
+                current_app.logger.info(f"Duplicate detected: {first_name} {last_name} (DOB sum: {dob_sum}) in block {block}, skipping.")
+                duplicated += 1
+                continue  # skip this duplicate
+
+            # Generate name_code (MUST match original algorithm for consistency)
+            # vowels from first_name + consonants from last_name
+            vowels = re.findall(r'[AEIOUaeiou]', first_name)
+            consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
+            name_code = ''.join(vowels + consonants).lower()
 
             # Generate salt
             salt = get_random_salt()
@@ -2282,6 +2400,7 @@ def upload_students():
                 first_half_hash=first_half_hash,
                 second_half_hash=second_half_hash,
                 dob_sum=dob_sum,
+                teacher_id=current_admin.id,  # Assign to current teacher
                 has_completed_setup=False
             )
             db.session.add(student)
