@@ -1,7 +1,7 @@
 """Add teacher_id column to students for tenancy
 
 Revision ID: b73c4d92eadd
-Revises: ('8a4ca17f506f', 'f5a1e3e4d7c8', 'n1o2p3q4r5s6')
+Revises: n1o2p3q4r5s6
 Create Date: 2025-01-16 00:00:00.000000
 """
 from alembic import op
@@ -9,7 +9,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'b73c4d92eadd'
-down_revision = ('8a4ca17f506f', 'f5a1e3e4d7c8', 'n1o2p3q4r5s6')
+down_revision = 'n1o2p3q4r5s6'
 branch_labels = None
 depends_on = None
 
