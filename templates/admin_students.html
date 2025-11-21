@@ -49,9 +49,15 @@
       <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><span class="material-symbols-outlined me-2" style="vertical-align: middle;">groups</span>Student Roster by Block</h5>
         <div>
-          <a href="{{ url_for('admin.export_students') }}" class="btn btn-light btn-sm">
+          <a href="{{ url_for('admin.export_students') }}" class="btn btn-light btn-sm me-2">
             <span class="material-symbols-outlined me-1" style="vertical-align: middle;">download</span> Export All
           </a>
+          <form action="{{ url_for('admin.clear_all_transactions') }}" method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to clear ALL transactions for ALL students? This action cannot be undone!');">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+            <button type="submit" class="btn btn-warning btn-sm">
+              <span class="material-symbols-outlined me-1" style="vertical-align: middle;">clear_all</span> Clear All Transactions
+            </button>
+          </form>
         </div>
       </div>
       <div class="card-body">
@@ -108,9 +114,18 @@
               </div>
 
               <div class="mb-2">
-                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteEntireBlock('{{ block }}')">
+                <button type="button" class="btn btn-sm btn-outline-danger me-2" onclick="deleteEntireBlock('{{ block }}')">
                   <span class="material-symbols-outlined" style="vertical-align: middle;">delete_forever</span> Delete All Students in Block {{ block|upper }}
                 </button>
+                {% if block != "Unassigned" %}
+                <form action="{{ url_for('admin.clear_period_transactions') }}" method="POST" style="display: inline;" onsubmit="return confirm('Are you sure you want to clear ALL transactions for all students in Block {{ block }}? This action cannot be undone!');">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+                  <input type="hidden" name="period" value="{{ block }}"/>
+                  <button type="submit" class="btn btn-sm btn-outline-warning">
+                    <span class="material-symbols-outlined" style="vertical-align: middle;">clear_all</span> Clear Block {{ block|upper }} Transactions
+                  </button>
+                </form>
+                {% endif %}
               </div>
 
               <div class="table-responsive">

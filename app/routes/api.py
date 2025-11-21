@@ -213,7 +213,7 @@ def purchase_item():
         # --- Handle special item type: Hall Pass ---
         if item.item_type == 'hall_pass':
             student.hall_passes += quantity  # Add all purchased hall passes
-            db.session.commit()
+            db.session.flush()  # Flush to update balances without committing yet
 
             # Check if overdraft protection should transfer funds from savings
             if banking_settings and banking_settings.overdraft_protection_enabled and student.checking_balance < 0:
@@ -236,12 +236,13 @@ def purchase_item():
                     )
                     db.session.add(transfer_tx_withdraw)
                     db.session.add(transfer_tx_deposit)
-                    db.session.commit()
+                    db.session.flush()  # Flush to update balances
 
-            # Check if overdraft fee should be charged
+            # Check if overdraft fee should be charged (after overdraft protection)
             fee_charged, fee_amount = _charge_overdraft_fee_if_needed(student, banking_settings)
-            if fee_charged:
-                db.session.commit()
+
+            # Commit all transactions together
+            db.session.commit()
 
             return jsonify({"status": "success", "message": f"You purchased {quantity} Hall Pass(es)! Your new balance is {student.hall_passes}."})
 
@@ -299,7 +300,7 @@ def purchase_item():
                 )
                 db.session.add(new_student_item)
 
-        db.session.commit()
+        db.session.flush()  # Flush to update balances without committing yet
 
         # Handle overdraft protection and fees for regular items
         # Check if overdraft protection should transfer funds from savings
@@ -323,12 +324,10 @@ def purchase_item():
                 )
                 db.session.add(transfer_tx_withdraw)
                 db.session.add(transfer_tx_deposit)
-                db.session.commit()
+                db.session.flush()  # Flush to update balances
 
-        # Check if overdraft fee should be charged
+        # Check if overdraft fee should be charged (after overdraft protection)
         fee_charged, fee_amount = _charge_overdraft_fee_if_needed(student, banking_settings)
-        if fee_charged:
-            db.session.commit()
 
         # --- Collective Item Logic ---
         if item.item_type == 'collective':
@@ -347,10 +346,16 @@ def purchase_item():
                     StudentItem.store_item_id == item.id,
                     StudentItem.status == 'pending'
                 ).update({"status": "processing"})
-                db.session.commit()
                 # This flash won't be seen by the user due to the JSON response,
                 # but it's good for logging/debugging. A more robust solution might use websockets.
                 current_app.logger.info(f"Collective goal '{item.name}' for block {student.block} has been met!")
+        else:
+            # For non-collective items, commit here
+            db.session.commit()
+
+        # Ensure purchases are persisted for collective items even before the threshold is met
+        if item.item_type == 'collective':
+            db.session.commit()
 
         # Build success message
         success_message = f"You purchased {item.name}!"
