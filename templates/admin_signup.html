@@ -25,21 +25,23 @@
 
         .setup-wrapper {
             display: flex;
-            height: 100vh;
+            min-height: 100vh;
         }
 
         .setup-form-side {
-            flex: 1;
+            flex: 1 1 60%;
             display: flex;
             align-items: center;
             justify-content: center;
             background: #ffffff;
-            padding: 2rem;
+            padding: 2.5rem 3rem;
             overflow-y: auto;
+            min-width: 0;
         }
 
         .branding-side {
-            flex: 1;
+            flex: 0 0 40%;
+            max-width: 460px;
             background: linear-gradient(135deg, #ffc965 0%, #f6a43b 50%, #e07b00 100%);
             display: flex;
             align-items: center;
