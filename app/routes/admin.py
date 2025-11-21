@@ -984,14 +984,17 @@ def clear_student_transactions(student_id):
 
     try:
         # Delete all transactions for this student
-        deleted_count = Transaction.query.filter_by(student_id=student.id).delete()
+        deleted_transactions = Transaction.query.filter_by(student_id=student.id).delete()
 
         # Delete all rent payments for this student
         RentPayment.query.filter_by(student_id=student.id).delete()
 
+        # Delete all tap events (attendance) for this student to prevent payroll recalculation
+        deleted_taps = TapEvent.query.filter_by(student_id=student.id).delete()
+
         db.session.commit()
 
-        flash(f"Successfully cleared {deleted_count} transaction(s) for {student.full_name}.", "success")
+        flash(f"Successfully cleared {deleted_transactions} transaction(s) and {deleted_taps} attendance record(s) for {student.full_name}.", "success")
     except Exception as e:
         db.session.rollback()
         flash(f"Error clearing transactions: {str(e)}", "error")
@@ -1027,15 +1030,18 @@ def clear_period_transactions():
             flash(f"No students found in period {period}.", "warning")
             return redirect(url_for('admin.students'))
 
-        total_deleted = 0
+        total_transactions = 0
+        total_taps = 0
         for student in students_in_period:
-            deleted_count = Transaction.query.filter_by(student_id=student.id).delete()
+            deleted_transactions = Transaction.query.filter_by(student_id=student.id).delete()
             RentPayment.query.filter_by(student_id=student.id).delete()
-            total_deleted += deleted_count
+            deleted_taps = TapEvent.query.filter_by(student_id=student.id).delete()
+            total_transactions += deleted_transactions
+            total_taps += deleted_taps
 
         db.session.commit()
 
-        flash(f"Successfully cleared {total_deleted} transaction(s) for {len(students_in_period)} student(s) in period {period}.", "success")
+        flash(f"Successfully cleared {total_transactions} transaction(s) and {total_taps} attendance record(s) for {len(students_in_period)} student(s) in period {period}.", "success")
     except Exception as e:
         db.session.rollback()
         flash(f"Error clearing transactions: {str(e)}", "error")
@@ -1061,15 +1067,18 @@ def clear_all_transactions():
             flash("No students found.", "warning")
             return redirect(url_for('admin.students'))
 
-        total_deleted = 0
+        total_transactions = 0
+        total_taps = 0
         for student in students:
-            deleted_count = Transaction.query.filter_by(student_id=student.id).delete()
+            deleted_transactions = Transaction.query.filter_by(student_id=student.id).delete()
             RentPayment.query.filter_by(student_id=student.id).delete()
-            total_deleted += deleted_count
+            deleted_taps = TapEvent.query.filter_by(student_id=student.id).delete()
+            total_transactions += deleted_transactions
+            total_taps += deleted_taps
 
         db.session.commit()
 
-        flash(f"Successfully cleared {total_deleted} transaction(s) for {len(students)} student(s).", "success")
+        flash(f"Successfully cleared {total_transactions} transaction(s) and {total_taps} attendance record(s) for {len(students)} student(s).", "success")
     except Exception as e:
         db.session.rollback()
         flash(f"Error clearing transactions: {str(e)}", "error")
