@@ -1,4 +1,10 @@
-"""Merge user_reports and has_assigned_students migrations
+"""Merge user_reports and has_assigned_students migrations.
+
+This merge resolves the duplicate `user_reports` table creation that was
+introduced when `q4r5s6t7u8v9_add_user_reports_table` was created alongside
+`c4d5e6f7a8b9_add_user_reports_table`. The duplicate migration has been removed,
+and this merge keeps the Alembic history linear without generating multiple
+heads.
 
 Revision ID: r5s6t7u8v9w0
 Revises: c4d5e6f7a8b9, c5f3a8d9e1b4
