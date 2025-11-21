@@ -1174,17 +1174,18 @@ def hard_delete_store_item(item_id):
     non_voided_count = 0
     for si in student_items:
         # Try to find the corresponding transaction for this purchase
-        # Match by: student_id, purchase type, timestamp within 5 seconds, and item name in description
+        # Match by: student_id, purchase type, timestamp within 5 seconds
+        # NOTE: Do NOT filter by item name - items can be renamed after purchase
         txn = Transaction.query.filter(
             Transaction.student_id == si.student_id,
             Transaction.type == 'purchase',
             Transaction.timestamp >= si.purchase_date - timedelta(seconds=5),
-            Transaction.timestamp <= si.purchase_date + timedelta(seconds=5),
-            Transaction.description.like(f'Purchase: {item_name}%')
+            Transaction.timestamp <= si.purchase_date + timedelta(seconds=5)
         ).first()
 
         # If we found a transaction and it's not voided, count it
-        if txn and not txn.is_void:
+        # If we can't find a transaction at all, assume it's valid and count it (safer)
+        if not txn or not txn.is_void:
             non_voided_count += 1
 
     if non_voided_count > 0:
