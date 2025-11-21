@@ -217,14 +217,16 @@
 </head>
 
 <body>
-        <div class="setup-wrapper">
+        <div class="setup-wrapper" >
             <!-- Left side: Setup Form -->
-            <div class="setup-form-side">
-                <div class="setup-container">
+            <div class="setup-form-side" >
+                <div class="setup-container" style="margin:1rem 1rem 1rem 1rem">
+                    
                     <h1 style="margin-bottom:1rem">Welcome! <span style="font-weight:300"><br>Let's get you started.</span></h1>
-                    <p >If your teacher has already created an account for you, enter the following information to look up your account.</p>
-                        <p >If you are not sure or if you are having trouble locating your account, please ask your teacher for further instructions</p>
-                  
+                    <div style="background-color:#d2ddf7; width:fit-content; padding:10px; margin-bottom:0.5rem; border-radius:5px">
+                    You should only set up your account if your teacher has already created one for you.<br><br>
+                        If you are not sure or if you are having trouble locating your account, please ask your teacher for further instructions
+                    </div>
 
                 {% with messages = get_flashed_messages(category_filter=["claim"]) %}
                     {% if messages %}
