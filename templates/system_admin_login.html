@@ -25,21 +25,23 @@
 
         .login-wrapper {
             display: flex;
-            height: 100vh;
+            min-height: 100vh;
         }
 
         .login-form-side {
-            flex: 1;
+            flex: 1 1 60%;
             display: flex;
             align-items: center;
             justify-content: center;
             background: #ffffff;
-            padding: 2rem;
+            padding: 2.5rem 3rem;
             overflow-y: auto;
+            min-width: 0;
         }
 
         .branding-side {
-            flex: 1;
+            flex: 0 0 40%;
+            max-width: 460px;
             background: linear-gradient(135deg, #035397 0%, #274174 50%, #1a2634 100%);
             display: flex;
             align-items: center;
@@ -108,7 +110,7 @@
 
         .login-container {
             width: 100%;
-            max-width: 450px;
+            max-width: 520px;
         }
 
         .login-container h2 {

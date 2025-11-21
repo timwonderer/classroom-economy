@@ -394,6 +394,7 @@ class Admin(db.Model):
     totp_secret = db.Column(db.String(32), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)  # Nullable for existing records
     last_login = db.Column(db.DateTime, nullable=True)
+    has_assigned_students = db.Column(db.Boolean, default=False, nullable=False)  # One-time setup flag
 
 
 # ---- Payroll Settings Model ----
