@@ -19,7 +19,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Validate required environment variables
-required_env_vars = ["SECRET_KEY", "DATABASE_URL", "FLASK_ENV", "ENCRYPTION_KEY", "PEPPER_KEY"]
+required_env_vars = ["SECRET_KEY", "DATABASE_URL", "FLASK_ENV", "ENCRYPTION_KEY", "PEPPER_KEY", "TURNSTILE_SITE_KEY", "TURNSTILE_SECRET_KEY"]
 missing_vars = [var for var in required_env_vars if not os.getenv(var)]
 if missing_vars:
     raise RuntimeError(
@@ -104,6 +104,8 @@ def create_app():
         SESSION_COOKIE_SECURE=True,
         SESSION_COOKIE_SAMESITE="Lax",
         TEMPLATES_AUTO_RELOAD=True,
+        TURNSTILE_SITE_KEY=os.environ["TURNSTILE_SITE_KEY"],
+        TURNSTILE_SECRET_KEY=os.environ["TURNSTILE_SECRET_KEY"],
     )
 
     # Enable Jinja2 template hot reloading without server restart
@@ -183,12 +185,16 @@ def create_app():
     def inject_global_settings():
         """Inject global settings into all templates."""
         if is_maintenance_mode_enabled():
-            return {'global_rent_enabled': False}
+            return {
+                'global_rent_enabled': False,
+                'turnstile_site_key': app.config.get('TURNSTILE_SITE_KEY')
+            }
 
         from app.models import RentSettings
         rent_settings = RentSettings.query.first()
         return {
-            'global_rent_enabled': rent_settings.is_enabled if rent_settings else False
+            'global_rent_enabled': rent_settings.is_enabled if rent_settings else False,
+            'turnstile_site_key': app.config.get('TURNSTILE_SITE_KEY')
         }
 
     # -------------------- REGISTER BLUEPRINTS --------------------

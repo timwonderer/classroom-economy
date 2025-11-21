@@ -36,6 +36,7 @@ An interactive banking and classroom management platform for teaching students a
 - **TOTP for Admins** - Time-based one-time passwords required
 - **CSRF Protection** - Protection against cross-site request forgery
 - **Credential Hashing** - Salted and peppered password hashing
+- **Cloudflare Turnstile** - Bot protection on all login forms
 - **Database Error Logging** - Automatic error tracking and monitoring
 - **Custom Error Pages** - User-friendly error handling (400, 401, 403, 404, 500, 503)
 
@@ -74,12 +75,25 @@ An interactive banking and classroom management platform for teaching students a
    ENCRYPTION_KEY=<32-byte-base64-key>  # Generate with: openssl rand -base64 32
    PEPPER_KEY=<secret-pepper-string>
    CSRF_SECRET_KEY=<random-string>
+
+   # Cloudflare Turnstile (CAPTCHA)
+   TURNSTILE_SITE_KEY=<your-turnstile-site-key>
+   TURNSTILE_SECRET_KEY=<your-turnstile-secret-key>
+
    # Optional maintenance mode banner (503 page)
    MAINTENANCE_MODE=false
    MAINTENANCE_MESSAGE="We're applying updates."
    MAINTENANCE_EXPECTED_END="Back online by <time>"
    MAINTENANCE_CONTACT="ops@example.com"
    ```
+
+   **Getting Turnstile Keys:**
+   1. Visit [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile)
+   2. Create a new site widget
+   3. Copy the Site Key and Secret Key
+   4. For testing, you can use Turnstile's test keys (always pass):
+      - Site Key: `1x00000000000000000000AA`
+      - Secret Key: `1x0000000000000000000000000000000AA`
 
 4. **Initialize the database**
    ```bash

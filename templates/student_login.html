@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     <style>
         * {
             margin: 0;
@@ -253,6 +254,9 @@
                                 {% for error in form.pin.errors %}
                                     <div class="text-danger small">{{ error }}</div>
                                 {% endfor %}
+                            </div>
+                            <div class="mb-3">
+                                <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
                             </div>
                             {{ form.submit(class="btn btn-primary w-100") }}
                         </form>
