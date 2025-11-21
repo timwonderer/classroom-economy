@@ -11,6 +11,7 @@ import os
 import re
 import base64
 import hashlib
+import hmac
 import math
 import random
 import string
@@ -52,6 +53,17 @@ PACIFIC = pytz.timezone('America/Los_Angeles')
 
 # Create blueprint
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
+
+
+def _generate_anonymous_code(user_identifier: str) -> str:
+    """Return an HMAC-based anonymous code for the given user identifier."""
+
+    secret = current_app.config.get("USER_REPORT_SECRET") or current_app.config.get("SECRET_KEY")
+    if not secret:
+        raise RuntimeError("USER_REPORT_SECRET or SECRET_KEY must be configured for anonymous reporting")
+
+    secret_bytes = secret if isinstance(secret, (bytes, bytearray)) else str(secret).encode()
+    return hmac.new(secret_bytes, user_identifier.encode(), hashlib.sha256).hexdigest()
 
 
 # -------------------- DASHBOARD & QUICK ACTIONS --------------------
@@ -2881,9 +2893,8 @@ def help_support():
             flash("Please provide both a title and description for your report.", "error")
             return redirect(url_for('admin.help_support'))
 
-        # Generate anonymous code (SHA256 of admin ID + salt)
-        salt = "classroom_economy_anon_2024"
-        anonymous_code = hashlib.sha256(f"admin_{admin.id}{salt}".encode()).hexdigest()
+        # Generate anonymous code derived from a secret to prevent reversal by admins
+        anonymous_code = _generate_anonymous_code(f"admin:{admin.id}")
 
         # Create report
         try:
@@ -2914,8 +2925,7 @@ def help_support():
             return redirect(url_for('admin.help_support'))
 
     # Get teacher's previous reports (last 10) - use anonymous code to find them
-    salt = "classroom_economy_anon_2024"
-    anonymous_code = hashlib.sha256(f"admin_{admin.id}{salt}".encode()).hexdigest()
+    anonymous_code = _generate_anonymous_code(f"admin:{admin.id}")
     my_reports = UserReport.query.filter_by(anonymous_code=anonymous_code).order_by(UserReport.submitted_at.desc()).limit(10).all()
 
     return render_template('admin_help_support.html',

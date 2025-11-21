@@ -390,8 +390,8 @@ class UserReport(db.Model):
     __tablename__ = 'user_reports'
     id = db.Column(db.Integer, primary_key=True)
 
-    # Anonymous user identification (hashed student ID or admin ID)
-    anonymous_code = db.Column(db.String(64), nullable=False, index=True)  # SHA256 hash for anonymity
+    # Anonymous user identification (HMAC of user identifier)
+    anonymous_code = db.Column(db.String(64), nullable=False, index=True)
     user_type = db.Column(db.String(20), nullable=False)  # 'student', 'teacher', 'anonymous'
 
     # Report details
