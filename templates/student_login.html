@@ -209,13 +209,24 @@
             box-shadow: 0 0 0 0.2rem rgba(74, 158, 255, 0.25);
         }
 
-        @media (max-width: 400px) {
+        @media (max-width: 768px) {
             .branding-side {
                 display: none;
             }
 
             .login-form-side {
-                flex: 1;
+                flex: 1 1 100%;
+                width: 100%;
+                max-width: 100%;
+                padding: 1.5rem;
+            }
+
+            .login-wrapper {
+                flex-direction: column;
+            }
+
+            .login-container {
+                width: 100%;
             }
         }
     </style>
