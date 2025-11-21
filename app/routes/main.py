@@ -61,6 +61,12 @@ def hall_pass_verification():
     return render_template('hall_pass_verification.html')
 
 
+@main_bp.route('/hall-pass/queue')
+def hall_pass_queue():
+    """Hall Pass Queue display page (no login required)."""
+    return render_template('hall_pass_queue.html')
+
+
 # -------------------- DEBUG ROUTES --------------------
 
 @main_bp.route('/debug/filters')

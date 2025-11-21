@@ -1,199 +1,674 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
+    <title>Hall Pass Terminal</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
 
-{% block title %}Hall Pass Check in/out{% endblock %}
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: #1a202c;
+            min-height: 100vh;
+            padding: 2rem;
+        }
 
-{% block content %}
-<h1 class="mb-4">Hall Pass Check in/out</h1>
+        .page-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
 
-<div id="inputScreen">
-    <div class="mb-3">
-        <label for="passNumber" class="form-label">Enter your pass number:</label>
-        <input type="text" class="form-control form-control-lg text-center" id="passNumber"
-               placeholder="e.g., A42" maxlength="3" style="text-transform: uppercase; font-size: 2rem;">
+        .page-header h1 {
+            font-weight: 800;
+            font-size: 2.5rem;
+            color: white;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            margin-bottom: 0.5rem;
+        }
+
+        .page-header p {
+            font-size: 1.1rem;
+            color: rgba(255, 255, 255, 0.9);
+            font-weight: 500;
+        }
+
+        .terminal-container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .two-column-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+        }
+
+        @media (max-width: 992px) {
+            .two-column-layout {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: white;
+            border-radius: 24px;
+            padding: 3rem;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            border: none;
+        }
+
+        .card-title {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+
+        .form-label {
+            font-weight: 600;
+            font-size: 1.1rem;
+            color: #2d3748;
+            margin-bottom: 0.8rem;
+        }
+
+        .form-control {
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1rem;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+        }
+
+        .form-control:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-control-lg {
+            font-size: 2rem;
+            padding: 1.5rem;
+            text-align: center;
+            font-weight: 700;
+        }
+
+        .btn {
+            border-radius: 12px;
+            padding: 1rem 2rem;
+            font-weight: 600;
+            font-size: 1.1rem;
+            border: none;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+
+        .btn-success {
+            background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            box-shadow: 0 4px 15px rgba(72, 187, 120, 0.4);
+        }
+
+        .btn-success:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(72, 187, 120, 0.6);
+        }
+
+        .btn-warning {
+            background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+            color: white;
+            box-shadow: 0 4px 15px rgba(237, 137, 54, 0.4);
+        }
+
+        .btn-warning:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(237, 137, 54, 0.6);
+        }
+
+        .btn-secondary {
+            background: #718096;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #4a5568;
+            transform: translateY(-2px);
+        }
+
+        .alert {
+            border-radius: 16px;
+            border: none;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .alert h4 {
+            font-weight: 700;
+            margin-bottom: 1rem;
+            font-size: 1.5rem;
+        }
+
+        .alert p {
+            margin-bottom: 0.5rem;
+            font-size: 1.05rem;
+        }
+
+        .alert-info {
+            background: linear-gradient(135deg, #e6fffa 0%, #b2f5ea 100%);
+            color: #234e52;
+        }
+
+        .alert-success {
+            background: linear-gradient(135deg, #f0fff4 0%, #c6f6d5 100%);
+            color: #22543d;
+        }
+
+        .alert-danger {
+            background: linear-gradient(135deg, #fff5f5 0%, #fed7d7 100%);
+            color: #742a2a;
+        }
+
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+        }
+
+        .info-row strong {
+            color: #2d3748;
+        }
+
+        /* Queue Styles */
+        .queue-stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-box {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 1rem;
+            text-align: center;
+            border-left: 4px solid #667eea;
+        }
+
+        .stat-box.warning {
+            border-left-color: #ed8936;
+        }
+
+        .stat-box.danger {
+            border-left-color: #f56565;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #667eea;
+        }
+
+        .stat-number.warning {
+            color: #ed8936;
+        }
+
+        .stat-number.danger {
+            color: #f56565;
+        }
+
+        .stat-label {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: #4a5568;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-top: 0.3rem;
+        }
+
+        .queue-list {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .queue-item {
+            background: #f7fafc;
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 0.8rem;
+            border-left: 4px solid #667eea;
+            display: grid;
+            grid-template-columns: 40px 1fr auto;
+            gap: 0.8rem;
+            align-items: center;
+        }
+
+        .queue-position {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #667eea;
+            text-align: center;
+        }
+
+        .queue-student-name {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .queue-destination {
+            font-size: 0.85rem;
+            color: #718096;
+        }
+
+        .queue-time {
+            font-size: 0.8rem;
+            color: #a0aec0;
+            text-align: right;
+        }
+
+        .empty-queue {
+            text-align: center;
+            padding: 2rem;
+            color: #718096;
+        }
+
+        .empty-queue-icon {
+            font-size: 3rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .limit-warning {
+            background: linear-gradient(135deg, #fff5f5 0%, #fed7d7 100%);
+            color: #742a2a;
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            text-align: center;
+            font-weight: 600;
+            font-size: 0.95rem;
+            border: 2px solid #fc8181;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card {
+            animation: slideIn 0.4s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="terminal-container">
+        <div class="page-header">
+            <h1>🚪 Hall Pass Terminal</h1>
+            <p>Check In/Out & View Current Queue</p>
+        </div>
+
+        <div class="two-column-layout">
+            <!-- Left Column: Check In/Out -->
+            <div class="card">
+                <h2 class="card-title">Check In / Check Out</h2>
+
+                <div id="inputScreen">
+                    <div class="mb-4">
+                        <label for="passNumber" class="form-label">Enter your pass number:</label>
+                        <input type="text" class="form-control form-control-lg" id="passNumber"
+                               placeholder="e.g., A42" maxlength="3" style="text-transform: uppercase;">
+                    </div>
+                    <button class="btn btn-primary btn-lg w-100" onclick="lookupPass()">Submit</button>
+                </div>
+
+                <div id="infoScreen" style="display: none;">
+                    <div class="alert alert-info">
+                        <h4>Student Information</h4>
+                        <div class="info-row">
+                            <strong>Name:</strong>
+                            <span id="studentName"></span>
+                        </div>
+                        <div class="info-row">
+                            <strong>Period:</strong>
+                            <span id="period"></span>
+                        </div>
+                        <div class="info-row">
+                            <strong>Destination:</strong>
+                            <span id="destination"></span>
+                        </div>
+                        <div class="info-row">
+                            <strong>Request Time:</strong>
+                            <span id="requestTime"></span>
+                        </div>
+                    </div>
+                    <button id="usePassBtn" class="btn btn-success btn-lg w-100 mb-3" style="display: none;" onclick="usePass()">
+                        ✓ Use Hall Pass (Check Out)
+                    </button>
+                    <button id="returnBtn" class="btn btn-warning btn-lg w-100 mb-3" style="display: none;" onclick="returnFromPass()">
+                        ← Return (Check In)
+                    </button>
+                    <button class="btn btn-secondary w-100" onclick="resetForm()">Cancel</button>
+                </div>
+
+                <div id="successScreen" style="display: none;">
+                    <div class="alert alert-success">
+                        <h4 id="successTitle">Success!</h4>
+                        <p id="successMessage"></p>
+                    </div>
+                    <button class="btn btn-primary w-100" onclick="resetForm()">Done</button>
+                </div>
+
+                <div id="errorScreen" style="display: none;">
+                    <div class="alert alert-danger">
+                        <h4>❌ Error</h4>
+                        <p id="errorMessage"></p>
+                    </div>
+                    <button class="btn btn-primary w-100" onclick="resetForm()">Try Again</button>
+                </div>
+            </div>
+
+            <!-- Right Column: Queue Display -->
+            <div class="card">
+                <h2 class="card-title">Current Queue Status</h2>
+
+                <div class="queue-stats">
+                    <div class="stat-box">
+                        <div class="stat-number" id="queueCount">0</div>
+                        <div class="stat-label">In Queue</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number" id="outNowCount">0</div>
+                        <div class="stat-label">Out Now</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="stat-number" id="availableSlots">10</div>
+                        <div class="stat-label">Available</div>
+                    </div>
+                </div>
+
+                <div id="limitWarning" class="limit-warning" style="display: none;">
+                    ⚠️ Queue Full! Restroom, Locker, and Office passes unavailable.
+                </div>
+
+                <div class="queue-list" id="queueList"></div>
+                <div id="emptyQueue" class="empty-queue" style="display: none;">
+                    <div class="empty-queue-icon">✅</div>
+                    <div>No one in queue</div>
+                </div>
+            </div>
+        </div>
     </div>
-    <button class="btn btn-primary btn-lg w-100" onclick="lookupPass()">Submit</button>
-</div>
 
-<div id="infoScreen" style="display: none;">
-    <div class="alert alert-info">
-        <h4>Student Information</h4>
-        <p><strong>Name:</strong> <span id="studentName"></span></p>
-        <p><strong>Period:</strong> <span id="period"></span></p>
-        <p><strong>Destination:</strong> <span id="destination"></span></p>
-        <p><strong>Request Time:</strong> <span id="requestTime"></span></p>
-    </div>
-    <button id="usePassBtn" class="btn btn-success btn-lg w-100 mb-2" style="display: none;" onclick="usePass()">
-        Use Hall Pass
-    </button>
-    <button id="returnBtn" class="btn btn-warning btn-lg w-100 mb-2" style="display: none;" onclick="returnFromPass()">
-        Returned
-    </button>
-    <button class="btn btn-secondary w-100" onclick="resetForm()">Cancel</button>
-</div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let currentPassNumber = '';
 
-<div id="successScreen" style="display: none;">
-    <div class="alert alert-success">
-        <h4 id="successTitle">Success!</h4>
-        <p id="successMessage"></p>
-    </div>
-    <button class="btn btn-primary w-100" onclick="resetForm()">Done</button>
-</div>
+        // Check In/Out Functions
+        function resetForm() {
+            document.getElementById('inputScreen').style.display = 'block';
+            document.getElementById('infoScreen').style.display = 'none';
+            document.getElementById('successScreen').style.display = 'none';
+            document.getElementById('errorScreen').style.display = 'none';
+            document.getElementById('passNumber').value = '';
+            currentPassNumber = '';
+            document.getElementById('passNumber').focus();
+        }
 
-<div id="errorScreen" style="display: none;">
-    <div class="alert alert-danger">
-        <h4>Error</h4>
-        <p id="errorMessage"></p>
-    </div>
-    <button class="btn btn-primary w-100" onclick="resetForm()">Try Again</button>
-</div>
+        function showError(message) {
+            document.getElementById('inputScreen').style.display = 'none';
+            document.getElementById('infoScreen').style.display = 'none';
+            document.getElementById('successScreen').style.display = 'none';
+            document.getElementById('errorScreen').style.display = 'block';
+            document.getElementById('errorMessage').textContent = message;
+        }
 
-<script>
-let currentPassNumber = '';
+        function showSuccess(title, message) {
+            document.getElementById('inputScreen').style.display = 'none';
+            document.getElementById('infoScreen').style.display = 'none';
+            document.getElementById('successScreen').style.display = 'block';
+            document.getElementById('errorScreen').style.display = 'none';
+            document.getElementById('successTitle').textContent = title;
+            document.getElementById('successMessage').textContent = message;
+        }
 
-function resetForm() {
-    document.getElementById('inputScreen').style.display = 'block';
-    document.getElementById('infoScreen').style.display = 'none';
-    document.getElementById('successScreen').style.display = 'none';
-    document.getElementById('errorScreen').style.display = 'none';
-    document.getElementById('passNumber').value = '';
-    currentPassNumber = '';
-}
+        function lookupPass() {
+            const passNumber = document.getElementById('passNumber').value.trim().toUpperCase();
 
-function showError(message) {
-    document.getElementById('inputScreen').style.display = 'none';
-    document.getElementById('infoScreen').style.display = 'none';
-    document.getElementById('successScreen').style.display = 'none';
-    document.getElementById('errorScreen').style.display = 'block';
-    document.getElementById('errorMessage').textContent = message;
-}
-
-function showSuccess(title, message) {
-    document.getElementById('inputScreen').style.display = 'none';
-    document.getElementById('infoScreen').style.display = 'none';
-    document.getElementById('successScreen').style.display = 'block';
-    document.getElementById('errorScreen').style.display = 'none';
-    document.getElementById('successTitle').textContent = title;
-    document.getElementById('successMessage').textContent = message;
-}
-
-function lookupPass() {
-    const passNumber = document.getElementById('passNumber').value.trim().toUpperCase();
-
-    if (!passNumber) {
-        showError('Please enter a pass number.');
-        return;
-    }
-
-    currentPassNumber = passNumber;
-
-    fetch(`/api/hall-pass/lookup/${passNumber}`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.status === 'error') {
-                showError(data.message);
+            if (!passNumber) {
+                showError('Please enter a pass number.');
                 return;
             }
 
-            // Extract pass data from nested structure
-            const pass = data.pass;
+            currentPassNumber = passNumber;
 
-            // Show student information
-            document.getElementById('studentName').textContent = pass.student_name;
-            document.getElementById('period').textContent = pass.period;
-            document.getElementById('destination').textContent = pass.destination;
-            // Format time in local timezone (browser will convert from UTC)
-            const requestDate = new Date(pass.request_time);
-            const options = {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
+            fetch(`/api/hall-pass/lookup/${passNumber}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'error') {
+                        showError(data.message);
+                        return;
+                    }
+
+                    const pass = data.pass;
+
+                    document.getElementById('studentName').textContent = pass.student_name;
+                    document.getElementById('period').textContent = pass.period;
+                    document.getElementById('destination').textContent = pass.destination;
+
+                    const requestDate = new Date(pass.request_time);
+                    const options = {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                    };
+                    document.getElementById('requestTime').textContent = requestDate.toLocaleString(undefined, options);
+
+                    document.getElementById('usePassBtn').style.display = 'none';
+                    document.getElementById('returnBtn').style.display = 'none';
+
+                    if (pass.pass_status === 'approved') {
+                        document.getElementById('usePassBtn').style.display = 'block';
+                    } else if (pass.pass_status === 'left') {
+                        document.getElementById('returnBtn').style.display = 'block';
+                    } else {
+                        showError(`Pass status is "${pass.pass_status}". Cannot use this pass.`);
+                        return;
+                    }
+
+                    document.getElementById('inputScreen').style.display = 'none';
+                    document.getElementById('infoScreen').style.display = 'block';
+                })
+                .catch(error => {
+                    showError('Failed to lookup pass number. Please try again.');
+                    console.error('Error:', error);
+                });
+        }
+
+        function usePass() {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            fetch('/api/hall-pass/terminal/use', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ pass_number: currentPassNumber })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'error') {
+                    showError(data.message);
+                    return;
+                }
+
+                showSuccess('✓ Hall Pass Activated!', `${data.student_name} has left the class to ${data.destination}.`);
+                // Refresh queue immediately
+                fetchQueue();
+            })
+            .catch(error => {
+                showError('Failed to activate hall pass. Please try again.');
+                console.error('Error:', error);
+            });
+        }
+
+        function returnFromPass() {
+            const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+            fetch('/api/hall-pass/terminal/return', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({ pass_number: currentPassNumber })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'error') {
+                    showError(data.message);
+                    return;
+                }
+
+                showSuccess('✓ Welcome Back!', `${data.student_name} has returned to class.`);
+                // Refresh queue immediately
+                fetchQueue();
+            })
+            .catch(error => {
+                showError('Failed to process return. Please try again.');
+                console.error('Error:', error);
+            });
+        }
+
+        // Queue Functions
+        function formatTime(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleTimeString(undefined, {
                 hour: 'numeric',
                 minute: '2-digit',
                 hour12: true
-            };
-            document.getElementById('requestTime').textContent = requestDate.toLocaleString(undefined, options);
+            });
+        }
 
-            // Show appropriate button based on pass status
-            document.getElementById('usePassBtn').style.display = 'none';
-            document.getElementById('returnBtn').style.display = 'none';
+        function getTimeElapsed(isoString) {
+            const approvedTime = new Date(isoString);
+            const now = new Date();
+            const diffMs = now - approvedTime;
+            const diffMins = Math.floor(diffMs / 60000);
 
-            if (pass.pass_status === 'approved') {
-                document.getElementById('usePassBtn').style.display = 'block';
-            } else if (pass.pass_status === 'left') {
-                document.getElementById('returnBtn').style.display = 'block';
-            } else {
-                showError(`Pass status is "${pass.pass_status}". Cannot use this pass.`);
+            if (diffMins < 1) return 'Just now';
+            if (diffMins === 1) return '1 min ago';
+            return `${diffMins} mins ago`;
+        }
+
+        function renderQueue(data) {
+            const queueList = document.getElementById('queueList');
+            const emptyQueue = document.getElementById('emptyQueue');
+            const queueCount = document.getElementById('queueCount');
+            const outNowCount = document.getElementById('outNowCount');
+            const availableSlots = document.getElementById('availableSlots');
+            const limitWarning = document.getElementById('limitWarning');
+
+            const queueSize = data.queue.length;
+            const outCount = data.currently_out;
+            const totalOccupied = queueSize + outCount;
+            const available = Math.max(0, 10 - totalOccupied);
+
+            // Update stats
+            queueCount.textContent = queueSize;
+            queueCount.className = 'stat-number' + (queueSize >= 7 ? ' warning' : '');
+            queueCount.parentElement.className = 'stat-box' + (queueSize >= 7 ? ' warning' : '');
+
+            outNowCount.textContent = outCount;
+            outNowCount.className = 'stat-number' + (outCount >= 7 ? ' warning' : '');
+            outNowCount.parentElement.className = 'stat-box' + (outCount >= 7 ? ' warning' : '');
+
+            availableSlots.textContent = available;
+            availableSlots.className = 'stat-number' + (available === 0 ? ' danger' : available <= 3 ? ' warning' : '');
+            availableSlots.parentElement.className = 'stat-box' + (available === 0 ? ' danger' : available <= 3 ? ' warning' : '');
+
+            // Show/hide warning
+            limitWarning.style.display = totalOccupied >= 10 ? 'block' : 'none';
+
+            // Render queue
+            if (data.queue.length === 0) {
+                queueList.innerHTML = '';
+                emptyQueue.style.display = 'block';
                 return;
             }
 
-            // Show info screen
-            document.getElementById('inputScreen').style.display = 'none';
-            document.getElementById('infoScreen').style.display = 'block';
-        })
-        .catch(error => {
-            showError('Failed to lookup pass number. Please try again.');
-            console.error('Error:', error);
+            emptyQueue.style.display = 'none';
+
+            const html = data.queue.map((item, index) => {
+                return `
+                <div class="queue-item">
+                    <div class="queue-position">#${index + 1}</div>
+                    <div>
+                        <div class="queue-student-name">${item.student_name}</div>
+                        <div class="queue-destination">🚻 ${item.destination} • Pass ${item.pass_number}</div>
+                    </div>
+                    <div class="queue-time">${getTimeElapsed(item.approved_time)}</div>
+                </div>
+            `;
+            }).join('');
+
+            queueList.innerHTML = html;
+        }
+
+        function fetchQueue() {
+            fetch('/api/hall-pass/queue')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        renderQueue(data);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching queue:', error);
+                });
+        }
+
+        // Enter key to submit
+        document.getElementById('passNumber').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                lookupPass();
+            }
         });
-}
 
-function usePass() {
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    fetch('/api/hall-pass/terminal/use', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrfToken
-        },
-        body: JSON.stringify({ pass_number: currentPassNumber })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'error') {
-            showError(data.message);
-            return;
-        }
+        // Auto-focus on pass number input
+        document.getElementById('passNumber').focus();
 
-        showSuccess('Hall Pass Activated!', `${data.student_name} has left the class to ${data.destination}.`);
-    })
-    .catch(error => {
-        showError('Failed to activate hall pass. Please try again.');
-        console.error('Error:', error);
-    });
-}
+        // Initial queue fetch
+        fetchQueue();
 
-function returnFromPass() {
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-    fetch('/api/hall-pass/terminal/return', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'X-CSRFToken': csrfToken
-        },
-        body: JSON.stringify({ pass_number: currentPassNumber })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'error') {
-            showError(data.message);
-            return;
-        }
-
-        showSuccess('Welcome Back!', `${data.student_name} has returned to class.`);
-    })
-    .catch(error => {
-        showError('Failed to process return. Please try again.');
-        console.error('Error:', error);
-    });
-}
-
-// Allow Enter key to submit
-document.getElementById('passNumber').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') {
-        lookupPass();
-    }
-});
-
-// Auto-focus on pass number input
-document.getElementById('passNumber').focus();
-</script>
-{% endblock %}
+        // Refresh queue every 5 seconds
+        setInterval(fetchQueue, 5000);
+    </script>
+</body>
+</html>

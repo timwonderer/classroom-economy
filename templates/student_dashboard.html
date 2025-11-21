@@ -28,6 +28,111 @@
     <span class="material-symbols-outlined">schedule</span> Session expires in <span id="countdown">10:00</span>
 </div>
 
+<!-- Tap In/Out Card (Moved to top for quick access) -->
+<div class="card mb-4">
+    <div class="card-header">
+        <span class="material-symbols-outlined">fact_check</span> Attendance - Quick Access
+    </div>
+    <div class="card-body">
+        <ul class="nav nav-tabs mb-3" id="attendanceTabs" role="tablist">
+            {% for blk in student_blocks %}
+            <li class="nav-item" role="presentation">
+                <button class="nav-link {% if loop.first %}active{% endif %}"
+                        id="tab-{{ blk }}-tab"
+                        data-bs-toggle="tab"
+                        data-bs-target="#tab-{{ blk }}"
+                        type="button"
+                        role="tab"
+                        style="{% if not loop.first %}color: #343a40;{% endif %}">
+                    Block {{ blk|upper }}
+                </button>
+            </li>
+            {% endfor %}
+        </ul>
+        <div class="tab-content" id="attendanceTabContent">
+            {% for blk in student_blocks %}
+            <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
+                 id="tab-{{ blk }}"
+                 role="tabpanel"
+                 data-block-row="{{ blk }}">
+                {% set state = period_states[blk] %}
+
+                <!-- Hall Pass Info Display -->
+                <div id="hallPassInfo-{{ blk }}" style="display: none;" class="mb-3"></div>
+
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <div class="d-flex align-items-center gap-3 mb-3">
+                            <span id="status-{{ blk }}" class="block-status badge {% if state['active'] and not state['done'] %}bg-success{% else %}bg-secondary{% endif %} fs-6 px-3 py-2">
+                                {{ 'Active' if state['active'] and not state['done'] else 'Inactive' }}
+                            </span>
+                            <div>
+                                <strong>Unpaid Time:</strong>
+                                <span class="block-duration text-primary fs-5">{{ (unpaid_seconds_per_block[blk] // 3600)|string + 'h ' + ((unpaid_seconds_per_block[blk] % 3600) // 60)|string + 'm ' + (unpaid_seconds_per_block[blk] % 60)|string + 's' }}</span>
+                            </div>
+                        </div>
+                        <div>
+                            <strong>Projected Paycheck:</strong>
+                            <span class="text-success fs-4">$<span class="block-pay" data-period="{{ blk }}">{{ '%.2f'|format(projected_pay_per_block[blk]) }}</span></span>
+                        </div>
+                    </div>
+                    <div class="col-md-4 text-md-end mt-3 mt-md-0">
+                        <button class="btn btn-success btn-lg me-2 mb-2 tap-btn"
+                                id="tapIn-{{ blk }}"
+                                data-period="{{ blk }}"
+                                data-action="tap_in"
+                                {% if state['active'] or state['done'] %}disabled{% endif %}>
+                            <span class="material-symbols-outlined">login</span> Tap In
+                        </button>
+                        <button class="btn btn-danger btn-lg mb-2 tap-btn"
+                                id="tapOut-{{ blk }}"
+                                data-period="{{ blk }}"
+                                data-action="tap_out"
+                                {% if not state['active'] %}disabled{% endif %}>
+                            <span class="material-symbols-outlined">logout</span> Tap Out
+                        </button>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Restroom Queue Card -->
+<div class="card mb-4">
+    <div class="card-header d-flex justify-content-between align-items-center">
+        <span><span class="material-symbols-outlined">group</span> Restroom Queue Status</span>
+        <small class="text-muted">Auto-updates every 10s</small>
+    </div>
+    <div class="card-body">
+        <div class="row text-center">
+            <div class="col-md-4">
+                <div class="p-3 bg-info bg-opacity-10 rounded">
+                    <h3 class="mb-1" id="queueCountDash">-</h3>
+                    <small class="text-muted">In Queue</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-3 bg-warning bg-opacity-10 rounded">
+                    <h3 class="mb-1" id="outNowCountDash">-</h3>
+                    <small class="text-muted">Currently Out</small>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="p-3 bg-success bg-opacity-10 rounded">
+                    <h3 class="mb-1" id="availableSlotsDash">-</h3>
+                    <small class="text-muted">Available Slots</small>
+                </div>
+            </div>
+        </div>
+        <div id="queueLimitWarning" class="alert alert-danger mt-3 mb-0" style="display: none;">
+            <strong>⚠️ Queue Limit Reached!</strong><br>
+            Restroom, Locker, and Office passes are temporarily unavailable. Please wait for the queue to clear.
+        </div>
+    </div>
+</div>
+
 <!-- Session Timeout Modal -->
 <div class="modal fade" id="timeoutModal" tabindex="-1" aria-labelledby="timeoutModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
@@ -198,77 +303,6 @@
     </div>
 </div>
 
-<!-- Tap In/Out Card -->
-<div class="card mb-4">
-    <div class="card-header">
-        <span class="material-symbols-outlined">fact_check</span> Attendance
-    </div>
-    <div class="card-body">
-        <ul class="nav nav-tabs mb-3" id="attendanceTabs" role="tablist">
-            {% for blk in student_blocks %}
-            <li class="nav-item" role="presentation">
-                <button class="nav-link {% if loop.first %}active{% endif %}"
-                        id="tab-{{ blk }}-tab"
-                        data-bs-toggle="tab"
-                        data-bs-target="#tab-{{ blk }}"
-                        type="button"
-                        role="tab"
-                        style="{% if not loop.first %}color: #343a40;{% endif %}">
-                    Block {{ blk|upper }}
-                </button>
-            </li>
-            {% endfor %}
-        </ul>
-        <div class="tab-content" id="attendanceTabContent">
-            {% for blk in student_blocks %}
-            <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
-                 id="tab-{{ blk }}"
-                 role="tabpanel"
-                 data-block-row="{{ blk }}">
-                {% set state = period_states[blk] %}
-
-                <!-- Hall Pass Info Display -->
-                <div id="hallPassInfo-{{ blk }}" style="display: none;" class="mb-3"></div>
-
-                <div class="row align-items-center">
-                    <div class="col-md-8">
-                        <div class="d-flex align-items-center gap-3 mb-3">
-                            <span id="status-{{ blk }}" class="block-status badge {% if state['active'] and not state['done'] %}bg-success{% else %}bg-secondary{% endif %} fs-6 px-3 py-2">
-                                {{ 'Active' if state['active'] and not state['done'] else 'Inactive' }}
-                            </span>
-                            <div>
-                                <strong>Unpaid Time:</strong>
-                                <span class="block-duration text-primary fs-5">{{ (unpaid_seconds_per_block[blk] // 3600)|string + 'h ' + ((unpaid_seconds_per_block[blk] % 3600) // 60)|string + 'm ' + (unpaid_seconds_per_block[blk] % 60)|string + 's' }}</span>
-                            </div>
-                        </div>
-                        <div>
-                            <strong>Projected Paycheck:</strong>
-                            <span class="text-success fs-4">$<span class="block-pay" data-period="{{ blk }}">{{ '%.2f'|format(projected_pay_per_block[blk]) }}</span></span>
-                        </div>
-                    </div>
-                    <div class="col-md-4 text-md-end mt-3 mt-md-0">
-                        <button class="btn btn-success btn-lg me-2 mb-2 tap-btn"
-                                id="tapIn-{{ blk }}"
-                                data-period="{{ blk }}"
-                                data-action="tap_in"
-                                {% if state['active'] or state['done'] %}disabled{% endif %}>
-                            <span class="material-symbols-outlined">login</span> Tap In
-                        </button>
-                        <button class="btn btn-danger btn-lg mb-2 tap-btn"
-                                id="tapOut-{{ blk }}"
-                                data-period="{{ blk }}"
-                                data-action="tap_out"
-                                {% if not state['active'] %}disabled{% endif %}>
-                            <span class="material-symbols-outlined">logout</span> Tap Out
-                        </button>
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
-    </div>
-</div>
-
 <!-- Quick Links -->
 <div class="row">
     <div class="col-md-4 mb-3">
@@ -371,6 +405,69 @@
 
 <!-- Attendance Script -->
 <script src="/static/js/attendance.js"></script>
+
+<!-- Queue Status and Limit Logic -->
+<script>
+    let currentQueueTotal = 0;
+
+    function updateQueueStatus() {
+        fetch('/api/hall-pass/queue')
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    const queueCount = data.queue.length;
+                    const outNow = data.currently_out;
+                    const total = queueCount + outNow;
+                    const available = Math.max(0, 10 - total);
+
+                    currentQueueTotal = total;
+
+                    // Update dashboard display
+                    document.getElementById('queueCountDash').textContent = queueCount;
+                    document.getElementById('outNowCountDash').textContent = outNow;
+                    document.getElementById('availableSlotsDash').textContent = available;
+
+                    // Show/hide warning
+                    const warning = document.getElementById('queueLimitWarning');
+                    if (total >= 10) {
+                        warning.style.display = 'block';
+                    } else {
+                        warning.style.display = 'none';
+                    }
+
+                    // Update hall pass modal options
+                    updateHallPassOptions(total >= 10);
+                }
+            })
+            .catch(error => console.error('Failed to fetch queue status:', error));
+    }
+
+    function updateHallPassOptions(isQueueFull) {
+        const reasonSelect = document.getElementById('hallPassReason');
+        if (!reasonSelect) return;
+
+        const restrictedReasons = ['Restroom', 'Office', 'Locker'];
+        const options = reasonSelect.querySelectorAll('option');
+
+        options.forEach(option => {
+            if (restrictedReasons.includes(option.value)) {
+                if (isQueueFull) {
+                    option.disabled = true;
+                    option.textContent = option.value + ' (Unavailable - Queue Full)';
+                } else {
+                    option.disabled = false;
+                    option.textContent = option.value;
+                }
+            }
+        });
+    }
+
+    // Initial fetch
+    updateQueueStatus();
+
+    // Refresh every 10 seconds
+    setInterval(updateQueueStatus, 10000);
+</script>
 
 <!-- Redemption Status Auto-Refresh -->
 <script>

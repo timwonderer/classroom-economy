@@ -8,6 +8,7 @@ and other interactive features. Most routes require authentication.
 import random
 import string
 import re
+import pytz
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, request, jsonify, session, current_app
@@ -760,6 +761,65 @@ def cancel_hall_pass(pass_id):
 
     db.session.commit()
     return jsonify({"status": "success", "message": "Hall pass request cancelled."})
+
+
+@api_bp.route('/hall-pass/queue', methods=['GET'])
+def get_hall_pass_queue():
+    """Get current hall pass queue (approved but not yet checked out) and currently out count"""
+    # Get user's timezone from session, default to Pacific Time
+    tz_name = session.get('timezone', 'America/Los_Angeles')
+    try:
+        user_tz = pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        current_app.logger.warning(f"Invalid timezone '{tz_name}' in session, defaulting to Pacific Time.")
+        user_tz = pytz.timezone('America/Los_Angeles')
+
+    # Get current time in user's timezone
+    now_user_tz = datetime.now(user_tz)
+
+    # Get start of today (midnight) in user's timezone
+    today_start_user_tz = now_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    # Convert to UTC for database comparison (database stores times in UTC)
+    today_start_utc = today_start_user_tz.astimezone(pytz.utc).replace(tzinfo=None)
+
+    # Get approved passes from today that haven't been used yet (not left, not returned)
+    queue = HallPassLog.query.filter(
+        HallPassLog.status == 'approved',
+        HallPassLog.decision_time >= today_start_utc
+    ).order_by(HallPassLog.decision_time.asc()).all()
+
+    # Get count of students currently out from today (status = 'left')
+    currently_out_count = HallPassLog.query.filter(
+        HallPassLog.status == 'left',
+        HallPassLog.left_time >= today_start_utc
+    ).count()
+
+    # Helper function to ensure times are marked as UTC
+    def format_utc_time(dt):
+        if not dt:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+
+    queue_data = []
+    for log_entry in queue:
+        student = log_entry.student
+        queue_data.append({
+            "student_name": student.full_name,
+            "destination": log_entry.reason,
+            "pass_number": log_entry.pass_number,
+            "approved_time": format_utc_time(log_entry.decision_time),
+            "period": log_entry.period
+        })
+
+    return jsonify({
+        "status": "success",
+        "queue": queue_data,
+        "currently_out": currently_out_count,
+        "total": len(queue_data) + currently_out_count
+    })
 
 
 # -------------------- ATTENDANCE API --------------------
