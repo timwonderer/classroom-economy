@@ -11,9 +11,45 @@
             <a href="/hall-pass/verification" target="_blank" class="btn btn-primary me-2">
                 <span class="material-symbols-outlined">tv</span> Verification Display
             </a>
-            <a href="/hall-pass/terminal" target="_blank" class="btn btn-secondary">
+            <a href="/hall-pass/terminal" target="_blank" class="btn btn-secondary me-2">
                 <span class="material-symbols-outlined">computer</span> Terminal
             </a>
+            <a href="/hall-pass/queue" target="_blank" class="btn btn-info">
+                <span class="material-symbols-outlined">list_alt</span> Queue Display
+            </a>
+        </div>
+    </div>
+
+    <!-- Queue Settings -->
+    <div class="card shadow mb-4">
+        <div class="card-header bg-primary text-white fw-bold d-flex justify-content-between align-items-center">
+            <span><span class="material-symbols-outlined">settings</span> Queue Settings</span>
+            <span id="settingsSavedIndicator" class="badge bg-success" style="display: none;">Saved!</span>
+        </div>
+        <div class="card-body">
+            <div class="row align-items-center">
+                <div class="col-md-6 mb-3 mb-md-0">
+                    <div class="d-flex align-items-center">
+                        <div class="form-check form-switch me-3">
+                            <input class="form-check-input" type="checkbox" id="queueEnabledSwitch" style="cursor: pointer; width: 3em; height: 1.5em;">
+                            <label class="form-check-label ms-2" for="queueEnabledSwitch" style="cursor: pointer; font-size: 1.1rem;">
+                                <strong id="queueStatusLabel">Queue System Enabled</strong>
+                            </label>
+                        </div>
+                    </div>
+                    <small class="text-muted ms-2">
+                        When disabled, only Summon and Nurse passes are available
+                    </small>
+                </div>
+                <div class="col-md-6">
+                    <label for="queueLimitInput" class="form-label fw-bold">Queue Limit</label>
+                    <div class="input-group" style="max-width: 200px;">
+                        <input type="number" class="form-control" id="queueLimitInput" min="1" max="50" value="10">
+                        <span class="input-group-text">students</span>
+                    </div>
+                    <small class="text-muted">Maximum combined queue + currently out (1-50)</small>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -125,5 +161,91 @@ function handlePassAction(passId, action) {
         alert('An unexpected error occurred.');
     });
 }
+
+// Queue Settings Management
+const queueEnabledSwitch = document.getElementById('queueEnabledSwitch');
+const queueLimitInput = document.getElementById('queueLimitInput');
+const queueStatusLabel = document.getElementById('queueStatusLabel');
+const settingsSavedIndicator = document.getElementById('settingsSavedIndicator');
+
+// Load current settings on page load
+function loadQueueSettings() {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    fetch('/api/hall-pass/settings', {
+        method: 'GET',
+        headers: {
+            'X-CSRFToken': csrfToken
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            queueEnabledSwitch.checked = data.settings.queue_enabled;
+            queueLimitInput.value = data.settings.queue_limit;
+            updateQueueStatusLabel(data.settings.queue_enabled);
+        }
+    })
+    .catch(error => {
+        console.error('Error loading queue settings:', error);
+    });
+}
+
+// Update the status label text based on queue state
+function updateQueueStatusLabel(enabled) {
+    queueStatusLabel.textContent = enabled ? 'Queue System Enabled' : 'Queue System Disabled';
+    queueStatusLabel.style.color = enabled ? '#198754' : '#dc3545';
+}
+
+// Save queue settings
+function saveQueueSettings() {
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+    const queueEnabled = queueEnabledSwitch.checked;
+    const queueLimit = parseInt(queueLimitInput.value);
+
+    // Validate queue limit
+    if (queueLimit < 1 || queueLimit > 50) {
+        alert('Queue limit must be between 1 and 50');
+        loadQueueSettings(); // Reset to previous value
+        return;
+    }
+
+    fetch('/api/hall-pass/settings', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+            queue_enabled: queueEnabled,
+            queue_limit: queueLimit
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            updateQueueStatusLabel(queueEnabled);
+            // Show "Saved!" indicator
+            settingsSavedIndicator.style.display = 'inline-block';
+            setTimeout(() => {
+                settingsSavedIndicator.style.display = 'none';
+            }, 2000);
+        } else {
+            alert('Error: ' + data.message);
+            loadQueueSettings(); // Reset to previous values
+        }
+    })
+    .catch(error => {
+        console.error('Error saving queue settings:', error);
+        alert('Failed to save settings. Please try again.');
+        loadQueueSettings(); // Reset to previous values
+    });
+}
+
+// Event listeners
+queueEnabledSwitch.addEventListener('change', saveQueueSettings);
+queueLimitInput.addEventListener('change', saveQueueSettings);
+
+// Load settings on page load
+document.addEventListener('DOMContentLoaded', loadQueueSettings);
 </script>
 {% endblock %}
