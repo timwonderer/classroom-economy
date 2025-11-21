@@ -1,7 +1,7 @@
 """Add hall_pass_settings table
 
 Revision ID: h1p2s3t4u5v6
-Revises: c5f3a8d9e1b4
+Revises: r5s6t7u8v9w0
 Create Date: 2025-11-21
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'h1p2s3t4u5v6'
-down_revision = 'c5f3a8d9e1b4'
+down_revision = 'r5s6t7u8v9w0'
 branch_labels = None
 depends_on = None
 
