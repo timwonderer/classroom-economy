@@ -236,6 +236,11 @@
                <span class="material-symbols-outlined">group</span>Teacher Management
             </a>
 
+            <a href="{{ url_for('sysadmin.student_ownership') }}"
+               class="btn text-start {% if current_page == 'student_ownership' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
+               <span class="material-symbols-outlined">hub</span>Student Ownership
+            </a>
+
             <a href="{{ url_for('sysadmin.logs_testing') }}"
                class="btn text-start {% if current_page == 'logs' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
                <span class="material-symbols-outlined">description</span>Logs & Testing
