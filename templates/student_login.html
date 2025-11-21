@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Classroom Token Hub - Login</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -110,8 +110,8 @@
         }
 
         .login-container {
-            width: 50%;
-          
+            width: 100%;
+            max-width: 700px;
         }
 
         .login-container h2 {
@@ -119,6 +119,7 @@
             font-weight: 600;
             color: #274174;
             text-align: center;
+            font-family: 'IBM Plex Sans', sans-serif;
         }
 
         .form-logo {
@@ -225,7 +226,7 @@
             <!-- Left side: Login Form -->
             <div class="login-form-side">
                 <div class="login-container">
-                    <h2>Welcome Back</h2>
+                    <h2><span style="font-weight:300; font-color:#479ef5">Hello! </span>Please select your role</h2>
 
                     <!-- Tabs for Student/Teacher -->
                 <ul class="nav nav-tabs" role="tablist">
@@ -246,7 +247,7 @@
                     <!-- Student Login -->
                     <div class="tab-pane fade show active" id="student-login" role="tabpanel">
                         {% if error %}
-                            <div class="alert alert-danger">{{ error }}</div>
+                            <div class="alert alert-danger" style="margin:1rem 1rem 1rem 1rem">{{ error }}</div>
                         {% endif %}
 
                         <form method="POST">
@@ -279,8 +280,9 @@
 
                 <div class="footer-info text-center">
                     <p class="dev-notice">
-                        This web app is currently under active development.<br>
-                        Some features may be unstable or crash unexpectedly.
+                        You are currently using an app that is actively being developed.<br>
+                        Some features and/or layout may be added, removed, or modified rapidly.<br>
+                        
                     </p>
 
                     <p class="mt-3 small">
@@ -289,12 +291,12 @@
                     </p>
 
                     <div class="mt-2">
-                        <a href="{{ url_for('main.privacy') }}" class="small">Privacy Policy</a>
+                        <a href="{{ url_for('main.privacy') }}" class="small">Click here to learn about how we use your information</a>
                         <span class="mx-2">|</span>
-                        <a href="{{ url_for('main.terms') }}" class="small">Terms of Service</a>
+                        <a href="{{ url_for('main.terms') }}" class="small">Click here to read our terms of service</a>
                     </div>
 
-                    <small class="text-muted d-block mt-3">BETA Stable Release v0.9.0</small>
+                    <small class="text-muted d-block mt-3">Pre-Release Testing v0.10.0</small>
                 </div>
             </div>
 
@@ -305,7 +307,7 @@
                 <div class="circle circle-3"></div>
                 <div class="branding-content">
                     <div class="branding-logo-card">
-                        <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Portal Logo">
+                        <img src="{{ url_for('static', filename='images/brand-logo.svg') }}" alt="Brand Logo">
                     </div>
                 </div>
             </div>
