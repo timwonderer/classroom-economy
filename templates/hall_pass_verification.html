@@ -8,6 +8,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+    </style>
     <style>
         * {
             margin: 0;
@@ -36,8 +43,33 @@
             text-align: center;
             font-size: 1.3rem;
             color: rgba(255, 255, 255, 0.9);
-            margin-bottom: 2.5rem;
+            margin-bottom: 1rem;
             font-weight: 500;
+        }
+
+        .refresh-btn {
+            display: block;
+            margin: 0 auto 2rem;
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 0.8rem 2rem;
+            border-radius: 50px;
+            font-weight: 700;
+            font-size: 1.1rem;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .refresh-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .refresh-btn .material-symbols-outlined {
+            font-size: 1.3rem;
+            margin-right: 0.5rem;
         }
 
         .verification-container {
@@ -190,8 +222,12 @@
 </head>
 <body>
     <div class="verification-container">
-        <h1>🎫 Hall Pass Verification</h1>
+        <h1><span class="material-symbols-outlined" style="font-size: 3rem;">badge</span> Hall Pass Verification</h1>
         <p class="subtitle">Last 10 Students Who Used Hall Passes</p>
+        <button class="refresh-btn" onclick="fetchActivePasses()">
+            <span class="material-symbols-outlined">refresh</span>
+            Refresh
+        </button>
         <div id="passesList"></div>
         <div id="noPassesMessage" class="no-passes" style="display: none;">
             No recent hall pass activity
@@ -284,8 +320,7 @@
         // Initial fetch
         fetchActivePasses();
 
-        // Refresh every 5 seconds
-        setInterval(fetchActivePasses, 5000);
+        // Manual refresh only - no auto-polling
     </script>
 </body>
 </html>

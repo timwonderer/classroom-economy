@@ -9,6 +9,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+    </style>
     <style>
         * {
             margin: 0;
@@ -328,14 +335,14 @@
 <body>
     <div class="terminal-container">
         <div class="page-header">
-            <h1>🚪 Hall Pass Terminal</h1>
+            <h1><span class="material-symbols-outlined" style="font-size: 2.5rem;">meeting_room</span> Hall Pass Terminal</h1>
             <p>Check In/Out & View Current Queue</p>
         </div>
 
         <div class="two-column-layout">
-            <!-- Left Column: Check In/Out -->
+            <!-- Left Column: Hall Pass Control -->
             <div class="card">
-                <h2 class="card-title">Check In / Check Out</h2>
+                <h2 class="card-title">Hall Pass Control</h2>
 
                 <div id="inputScreen">
                     <div class="mb-4">
@@ -367,17 +374,17 @@
                         </div>
                     </div>
                     <button id="usePassBtn" class="btn btn-success btn-lg w-100 mb-3" style="display: none;" onclick="usePass()">
-                        ✓ Use Hall Pass (Check Out)
+                        <span class="material-symbols-outlined">logout</span> Use Hall Pass (Check Out)
                     </button>
                     <button id="returnBtn" class="btn btn-warning btn-lg w-100 mb-3" style="display: none;" onclick="returnFromPass()">
-                        ← Return (Check In)
+                        <span class="material-symbols-outlined">login</span> Return (Check In)
                     </button>
                     <button class="btn btn-secondary w-100" onclick="resetForm()">Cancel</button>
                 </div>
 
                 <div id="successScreen" style="display: none;">
                     <div class="alert alert-success">
-                        <h4 id="successTitle">Success!</h4>
+                        <h4><span class="material-symbols-outlined">check_circle</span> <span id="successTitle">Success!</span></h4>
                         <p id="successMessage"></p>
                     </div>
                     <button class="btn btn-primary w-100" onclick="resetForm()">Done</button>
@@ -385,7 +392,7 @@
 
                 <div id="errorScreen" style="display: none;">
                     <div class="alert alert-danger">
-                        <h4>❌ Error</h4>
+                        <h4><span class="material-symbols-outlined">error</span> Error</h4>
                         <p id="errorMessage"></p>
                     </div>
                     <button class="btn btn-primary w-100" onclick="resetForm()">Try Again</button>
@@ -412,12 +419,12 @@
                 </div>
 
                 <div id="limitWarning" class="limit-warning" style="display: none;">
-                    ⚠️ Queue Full! Restroom, Locker, and Office passes unavailable.
+                    <span class="material-symbols-outlined">warning</span> Queue Full! Restroom, Locker, and Office passes unavailable.
                 </div>
 
                 <div class="queue-list" id="queueList"></div>
                 <div id="emptyQueue" class="empty-queue" style="display: none;">
-                    <div class="empty-queue-icon">✅</div>
+                    <div class="empty-queue-icon"><span class="material-symbols-outlined" style="font-size: 3rem;">check_circle</span></div>
                     <div>No one in queue</div>
                 </div>
             </div>
@@ -529,7 +536,7 @@
                     return;
                 }
 
-                showSuccess('✓ Hall Pass Activated!', `${data.student_name} has left the class to ${data.destination}.`);
+                showSuccess('Hall Pass Activated!', `${data.student_name} has left the class to ${data.destination}.`);
                 // Refresh queue immediately
                 fetchQueue();
             })
@@ -556,7 +563,7 @@
                     return;
                 }
 
-                showSuccess('✓ Welcome Back!', `${data.student_name} has returned to class.`);
+                showSuccess('Welcome Back!', `${data.student_name} has returned to class.`);
                 // Refresh queue immediately
                 fetchQueue();
             })
@@ -631,7 +638,7 @@
                     <div class="queue-position">#${index + 1}</div>
                     <div>
                         <div class="queue-student-name">${item.student_name}</div>
-                        <div class="queue-destination">🚻 ${item.destination} • Pass ${item.pass_number}</div>
+                        <div class="queue-destination">${item.destination} • Pass ${item.pass_number}</div>
                     </div>
                     <div class="queue-time">${getTimeElapsed(item.approved_time)}</div>
                 </div>
@@ -667,8 +674,8 @@
         // Initial queue fetch
         fetchQueue();
 
-        // Refresh queue every 5 seconds
-        setInterval(fetchQueue, 5000);
+        // Refresh queue every 30 seconds
+        setInterval(fetchQueue, 30000);
     </script>
 </body>
 </html>
