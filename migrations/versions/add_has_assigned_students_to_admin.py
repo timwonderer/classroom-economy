@@ -1,7 +1,7 @@
 """Add has_assigned_students column to admins table
 
 Revision ID: c5f3a8d9e1b4
-Revises:
+Revises: p3q4r5s6t7u8
 Create Date: 2025-11-21
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'c5f3a8d9e1b4'
-down_revision = None  # Set this to the latest migration ID if needed
+down_revision = 'p3q4r5s6t7u8'
 branch_labels = None
 depends_on = None
 
