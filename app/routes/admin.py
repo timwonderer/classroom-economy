@@ -1166,15 +1166,36 @@ def hard_delete_store_item(item_id):
     item = StoreItem.query.get_or_404(item_id)
     item_name = item.name
 
-    # Check if there are any student purchases of this item
+    # Check if there are any student purchases of this item with non-voided transactions
     from app.models import StudentItem
-    purchase_count = StudentItem.query.filter_by(store_item_id=item_id).count()
+    student_items = StudentItem.query.filter_by(store_item_id=item_id).all()
 
-    if purchase_count > 0:
-        flash(f"Cannot permanently delete '{item_name}' because it has {purchase_count} purchase record(s). Please deactivate instead.", "danger")
+    # Count non-voided purchases by checking corresponding transactions
+    non_voided_count = 0
+    for si in student_items:
+        # Try to find the corresponding transaction for this purchase
+        # Match by: student_id, purchase type, timestamp within 5 seconds, and item name in description
+        txn = Transaction.query.filter(
+            Transaction.student_id == si.student_id,
+            Transaction.type == 'purchase',
+            Transaction.timestamp >= si.purchase_date - timedelta(seconds=5),
+            Transaction.timestamp <= si.purchase_date + timedelta(seconds=5),
+            Transaction.description.like(f'Purchase: {item_name}%')
+        ).first()
+
+        # If we found a transaction and it's not voided, count it
+        if txn and not txn.is_void:
+            non_voided_count += 1
+
+    if non_voided_count > 0:
+        flash(f"Cannot permanently delete '{item_name}' because it has {non_voided_count} non-voided purchase record(s). Please deactivate instead.", "danger")
         return redirect(url_for('admin.store_management'))
 
-    # Safe to delete - no purchase history
+    # Safe to delete - no non-voided purchase history
+    # Also delete the StudentItem records (which should all be from voided transactions)
+    for si in student_items:
+        db.session.delete(si)
+
     db.session.delete(item)
     db.session.commit()
     flash(f"'{item_name}' has been permanently deleted from the database.", "success")
