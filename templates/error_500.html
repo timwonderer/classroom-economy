@@ -213,6 +213,9 @@
             <div class="actions">
                 <a href="/" class="btn-primary-custom">Go to Home</a>
                 <a href="javascript:history.back()" class="btn-primary-custom">Go Back</a>
+                <a href="/student/help-support" class="btn-primary-custom" style="background: linear-gradient(135deg, #f5576c 0%, #f093fb 100%);">
+                    🐛 Report This Error
+                </a>
                 {% if support_email %}
                 <a href="mailto:{{ support_email }}?subject=Error Report - ID {{ error_id }}&body=Error ID: {{ error_id }}%0D%0AError Type: {{ error_type }}%0D%0AError Message: {{ error_message }}%0D%0A%0D%0ALog Output:%0D%0A{{ log_output | urlencode }}"
                    class="btn-primary-custom">Email Support</a>
