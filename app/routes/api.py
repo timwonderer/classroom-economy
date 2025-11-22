@@ -383,7 +383,7 @@ def use_item():
     data = request.get_json()
     student_item_id = data.get('student_item_id')
     passphrase = data.get('passphrase')
-    details = data.get('details', '')  # optional notes from student
+    details = data.get('redemption_details', data.get('details', ''))  # optional notes from student
 
     if not all([student_item_id, passphrase]):
         return jsonify({"status": "error", "message": "Missing item ID or passphrase."}), 400

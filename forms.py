@@ -40,6 +40,9 @@ class StoreItemForm(FlaskForm):
     ], validators=[Optional()])
     collective_goal_target = IntegerField('Target Number of Purchases (for Fixed type)', validators=[Optional()])
 
+    # Redemption settings (for delayed-use items)
+    redemption_prompt = TextAreaField('Redemption Prompt (optional, for delayed-use items)', validators=[Optional()])
+
     submit = SubmitField('Save Item')
 
     def validate_bundle_quantity(self, field):

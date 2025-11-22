@@ -192,7 +192,8 @@
                                 <button class="btn btn-success w-100 use-item-btn"
                                         data-item-id="{{ student_item.id }}"
                                         data-item-name="{{ student_item.store_item.name }}"
-                                        data-item-type="hall_pass">
+                                        data-item-type="hall_pass"
+                                        data-redemption-prompt="">
                                     <span class="material-symbols-outlined">exit_to_app</span> Request Hall Pass
                                 </button>
                             {% elif student_item.store_item.item_type == 'immediate' and student_item.status == 'purchased' %}
@@ -200,7 +201,8 @@
                                 <button class="btn btn-primary w-100 use-item-btn"
                                         data-item-id="{{ student_item.id }}"
                                         data-item-name="{{ student_item.store_item.name }}"
-                                        data-item-type="immediate">
+                                        data-item-type="immediate"
+                                        data-redemption-prompt="">
                                     <span class="material-symbols-outlined">redeem</span> Use Now
                                 </button>
                             {% elif student_item.store_item.item_type == 'delayed' and student_item.status == 'purchased' %}
@@ -208,7 +210,8 @@
                                 <button class="btn btn-warning w-100 use-item-btn"
                                         data-item-id="{{ student_item.id }}"
                                         data-item-name="{{ student_item.store_item.name }}"
-                                        data-item-type="delayed">
+                                        data-item-type="delayed"
+                                        data-redemption-prompt="{{ student_item.store_item.redemption_prompt or '' }}">
                                     <span class="material-symbols-outlined">schedule</span> Request Redemption
                                 </button>
                             {% elif student_item.status == 'pending' %}
@@ -319,6 +322,13 @@
                 <form id="useItemForm">
                     <input type="hidden" id="useModalItemId" name="item_id">
                     <input type="hidden" id="useModalItemType" name="item_type">
+                    <div class="mb-3" id="redemptionDetailsDiv" style="display: none;">
+                        <label for="redemptionDetails" class="form-label fw-bold">
+                            <span id="redemptionPromptLabel">Additional Information</span>
+                        </label>
+                        <textarea class="form-control" id="redemptionDetails" name="redemption_details" rows="3" placeholder="Please provide details about your redemption request..."></textarea>
+                        <small class="text-muted">This information will be sent to your teacher for review.</small>
+                    </div>
                     <div class="mb-3">
                         <label for="usePassphrase" class="form-label">Enter your Passphrase to confirm:</label>
                         <input type="password" class="form-control" id="usePassphrase" name="pin" inputmode="numeric" pattern="[0-9]*" required>
@@ -556,17 +566,39 @@
             const itemId = this.getAttribute('data-item-id');
             const itemName = this.getAttribute('data-item-name');
             const itemType = this.getAttribute('data-item-type');
+            const redemptionPrompt = this.getAttribute('data-redemption-prompt');
 
             document.getElementById('useModalItemId').value = itemId;
             document.getElementById('useModalItemName').textContent = itemName;
             document.getElementById('useModalItemType').value = itemType;
 
-            if (itemType === 'hall_pass') {
-                document.getElementById('useModalMessage').textContent = 'This will request a hall pass. Your teacher will be notified.';
-            } else if (itemType === 'immediate') {
-                document.getElementById('useModalMessage').textContent = 'This item will be redeemed immediately upon confirmation.';
-            } else if (itemType === 'delayed') {
+            // Show/hide redemption details based on item type
+            const redemptionDetailsDiv = document.getElementById('redemptionDetailsDiv');
+            const redemptionDetailsTextarea = document.getElementById('redemptionDetails');
+            const redemptionPromptLabel = document.getElementById('redemptionPromptLabel');
+
+            if (itemType === 'delayed') {
+                // Show redemption details for delayed items
+                redemptionDetailsDiv.style.display = 'block';
+
+                // Set custom prompt if provided, otherwise use default
+                if (redemptionPrompt && redemptionPrompt.trim() !== '') {
+                    redemptionPromptLabel.textContent = redemptionPrompt;
+                } else {
+                    redemptionPromptLabel.textContent = 'Additional Information';
+                }
+
                 document.getElementById('useModalMessage').textContent = 'This will request redemption. Your teacher will review and approve it.';
+            } else {
+                // Hide for other item types
+                redemptionDetailsDiv.style.display = 'none';
+                redemptionDetailsTextarea.value = ''; // Clear previous value
+
+                if (itemType === 'hall_pass') {
+                    document.getElementById('useModalMessage').textContent = 'This will request a hall pass. Your teacher will be notified.';
+                } else if (itemType === 'immediate') {
+                    document.getElementById('useModalMessage').textContent = 'This item will be redeemed immediately upon confirmation.';
+                }
             }
 
             const modal = new bootstrap.Modal(useItemModal);
@@ -582,11 +614,22 @@
         const form = document.getElementById('useItemForm');
         const itemId = form.querySelector('#useModalItemId').value;
         const pin = form.querySelector('#usePassphrase').value;
+        const redemptionDetails = form.querySelector('#redemptionDetails').value;
         const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
         if (!pin) {
             alert('Please enter your PIN.');
             return;
+        }
+
+        const requestBody = {
+            student_item_id: itemId,
+            passphrase: pin
+        };
+
+        // Include redemption details if provided
+        if (redemptionDetails && redemptionDetails.trim() !== '') {
+            requestBody.redemption_details = redemptionDetails.trim();
         }
 
         fetch('/api/use-item', {
@@ -595,10 +638,7 @@
                 'Content-Type': 'application/json',
                 'X-CSRFToken': csrfToken
             },
-            body: JSON.stringify({
-                student_item_id: itemId,
-                passphrase: pin
-            })
+            body: JSON.stringify(requestBody)
         })
         .then(response => response.json())
         .then(data => {

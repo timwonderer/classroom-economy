@@ -138,6 +138,11 @@
                             <small class="text-muted">Days before item expires (for delayed-use items)</small>
                         </div>
                     </div>
+                    <div class="mb-3">
+                        {{ form.redemption_prompt.label(class="form-label fw-bold") }}
+                        {{ form.redemption_prompt(class="form-control", rows=3, placeholder="e.g., Please describe when and where you'd like to use this item.") }}
+                        <small class="text-muted">Optional prompt shown to students when redeeming delayed-use items. This helps you gather specific information when students request to use their item.</small>
+                    </div>
                 </div>
             </div>
 

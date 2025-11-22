@@ -204,6 +204,9 @@ class StoreItem(db.Model):
     collective_goal_type = db.Column(db.String(20), nullable=True)  # 'fixed' or 'whole_class'
     collective_goal_target = db.Column(db.Integer, nullable=True)  # Fixed number of purchases needed (used when type='fixed')
 
+    # Redemption prompt (for delayed use items)
+    redemption_prompt = db.Column(db.Text, nullable=True)  # Optional prompt shown to students when redeeming delayed items
+
     # Relationship to student items
     student_items = db.relationship('StudentItem', backref='store_item', lazy=True)
 

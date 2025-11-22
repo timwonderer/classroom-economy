@@ -1121,7 +1121,9 @@ def store_management():
             bulk_discount_percentage=form.bulk_discount_percentage.data if form.bulk_discount_enabled.data else None,
             # Collective goal settings
             collective_goal_type=form.collective_goal_type.data if form.item_type.data == 'collective' else None,
-            collective_goal_target=form.collective_goal_target.data if form.item_type.data == 'collective' and form.collective_goal_type.data == 'fixed' else None
+            collective_goal_target=form.collective_goal_target.data if form.item_type.data == 'collective' and form.collective_goal_type.data == 'fixed' else None,
+            # Redemption settings
+            redemption_prompt=form.redemption_prompt.data
         )
         db.session.add(new_item)
         db.session.commit()
