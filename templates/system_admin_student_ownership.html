@@ -1,0 +1,130 @@
+{% extends "layout_system_admin.html" %}
+{% set page_title = "Student Ownership" %}
+{% set page_subtitle = "Share student accounts across teachers with minimal disruption" %}
+{% set current_page = current_page or "student_ownership" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-lg-6">
+            <div class="card shadow-sm">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <h5 class="mb-0">Add Teacher Access</h5>
+                        <small class="text-muted">Link another teacher to an existing student account.</small>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <form method="POST" class="row g-3">
+                        <input type="hidden" name="action" value="add">
+                        <div class="col-md-6">
+                            <label class="form-label">Student</label>
+                            <select name="student_id" class="form-select" required>
+                                <option value="" disabled selected>Select a student</option>
+                                {% for student in students %}
+                                <option value="{{ student.id }}">{{ student.full_name }} (Block {{ student.block|upper }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Teacher to Add</label>
+                            <select name="admin_id" class="form-select" required>
+                                <option value="" disabled selected>Select a teacher</option>
+                                {% for teacher in teachers %}
+                                <option value="{{ teacher.id }}">{{ teacher.username }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-12 form-check">
+                            <input class="form-check-input" type="checkbox" name="make_primary" id="make_primary">
+                            <label class="form-check-label" for="make_primary">Make this teacher the primary owner</label>
+                        </div>
+                        <div class="col-12 d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary">
+                                <span class="material-symbols-outlined" style="vertical-align: middle;">link</span>
+                                Share Student
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="alert alert-info h-100 mb-0 d-flex align-items-center">
+                <div>
+                    <h6 class="mb-2"><span class="material-symbols-outlined align-middle">info</span> Guidance for low-disruption changes</h6>
+                    <ul class="mb-0">
+                        <li>Sharing keeps a single student account and ledger while allowing multiple teachers to manage it.</li>
+                        <li>Switching the primary teacher updates future defaults without touching balances or history.</li>
+                        <li>Removing a teacher reassigns the primary slot to the next linked teacher when available.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Student ↔ Teacher Links</h5>
+            <small class="text-muted">Primary owners are highlighted.</small>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th style="width: 28%;">Student</th>
+                        <th style="width: 30%;">Linked Teachers</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for student in students %}
+                    {% set linked_ids = student_links.get(student.id, []) %}
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">{{ student.full_name }}</div>
+                            <div class="text-muted small">Block {{ student.block|upper }}</div>
+                        </td>
+                        <td>
+                            {% if linked_ids %}
+                                {% for teacher_id in linked_ids %}
+                                    {% set teacher = teacher_lookup.get(teacher_id) %}
+                                    {% if teacher %}
+                                    <span class="badge {% if student.teacher_id == teacher.id %}bg-primary{% else %}bg-secondary{% endif %} me-1">
+                                        {{ teacher.username }}{% if student.teacher_id == teacher.id %} (primary){% endif %}
+                                    </span>
+                                    {% endif %}
+                                {% endfor %}
+                            {% else %}
+                                <span class="text-muted">No teacher linked</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-2">
+                                {% for teacher_id in linked_ids %}
+                                    {% set teacher = teacher_lookup.get(teacher_id) %}
+                                    {% if teacher %}
+                                    <form method="POST" class="d-inline">
+                                        <input type="hidden" name="action" value="remove">
+                                        <input type="hidden" name="student_id" value="{{ student.id }}">
+                                        <input type="hidden" name="admin_id" value="{{ teacher.id }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                                            <span class="material-symbols-outlined" style="vertical-align: middle;">link_off</span>
+                                            Remove {{ teacher.username }}
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                {% endfor %}
+                                {% if not linked_ids %}
+                                    <span class="text-muted">Add a teacher to enable actions.</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

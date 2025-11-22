@@ -8,11 +8,10 @@ system logs, error monitoring, and debug/testing tools.
 import os
 import re
 import secrets
-import hashlib
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app
-from sqlalchemy import delete
+from sqlalchemy import delete, or_
 from werkzeug.exceptions import BadRequest, Unauthorized, Forbidden, NotFound, ServiceUnavailable
 import pyotp
 
@@ -20,14 +19,13 @@ from app.extensions import db
 from app.models import (
     SystemAdmin, Admin, Student, AdminInviteCode, ErrorLog,
     Transaction, TapEvent, HallPassLog, StudentItem, RentPayment,
-    StudentInsurance, InsuranceClaim, UserReport
+    StudentInsurance, InsuranceClaim, StudentTeacher
 )
 from app.auth import system_admin_required
 from forms import SystemAdminLoginForm, SystemAdminInviteForm
 
 # Import utility functions
 from app.utils.helpers import is_safe_url
-from app.utils.turnstile import verify_turnstile_token
 
 # Create blueprint
 sysadmin_bp = Blueprint('sysadmin', __name__, url_prefix='/sysadmin')
@@ -42,13 +40,6 @@ def login():
     session.pop("last_activity", None)
     form = SystemAdminLoginForm()
     if form.validate_on_submit():
-        # Verify Turnstile token
-        turnstile_token = request.form.get('cf-turnstile-response')
-        if not verify_turnstile_token(turnstile_token, request.remote_addr):
-            current_app.logger.warning(f"Turnstile verification failed for system admin login attempt")
-            flash("CAPTCHA verification failed. Please try again.", "error")
-            return redirect(url_for('sysadmin.login'))
-
         username = form.username.data.strip()
         totp_code = form.totp_code.data.strip()
         admin = SystemAdmin.query.filter_by(username=username).first()
@@ -373,6 +364,73 @@ def manage_teachers():
     )
 
 
+@sysadmin_bp.route('/student-ownership', methods=['GET', 'POST'])
+@system_admin_required
+def student_ownership():
+    """Manage which teachers have access to each student account."""
+    action = request.form.get("action") if request.method == "POST" else None
+
+    if action:
+        student_id = request.form.get("student_id", type=int)
+        admin_id = request.form.get("admin_id", type=int)
+        student = Student.query.get_or_404(student_id)
+        admin = Admin.query.get_or_404(admin_id)
+
+        if action == "add":
+            existing_link = StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin.id).first()
+            if existing_link:
+                flash(f"{admin.username} already has access to {student.full_name}.", "info")
+            else:
+                db.session.add(StudentTeacher(student_id=student.id, admin_id=admin.id))
+                if request.form.get("make_primary") == "on":
+                    student.teacher_id = admin.id
+                db.session.commit()
+                flash(f"Added {admin.username} to {student.full_name}'s teacher list.", "success")
+            return redirect(url_for('sysadmin.student_ownership'))
+
+        if action == "remove":
+            link = StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin.id).first()
+            if not link:
+                flash("No matching teacher link found for removal.", "error")
+                return redirect(url_for('sysadmin.student_ownership'))
+
+            db.session.delete(link)
+            # If removing the primary teacher, fall back to another linked teacher if available
+            if student.teacher_id == admin.id:
+                fallback = (
+                    StudentTeacher.query
+                    .filter(StudentTeacher.student_id == student.id, StudentTeacher.admin_id != admin.id)
+                    .order_by(StudentTeacher.created_at.asc())
+                    .first()
+                )
+                student.teacher_id = fallback.admin_id if fallback else None
+
+            db.session.commit()
+            flash(f"Removed {admin.username} from {student.full_name}.", "success")
+            return redirect(url_for('sysadmin.student_ownership'))
+
+        flash("Unsupported action.", "error")
+        return redirect(url_for('sysadmin.student_ownership'))
+
+    # GET request: render the mapping table
+    students = Student.query.order_by(Student.first_name.asc(), Student.last_initial.asc()).all()
+    teachers = Admin.query.order_by(Admin.username.asc()).all()
+    teacher_lookup = {t.id: t for t in teachers}
+
+    student_links = {}
+    for link in StudentTeacher.query.all():
+        student_links.setdefault(link.student_id, []).append(link.admin_id)
+
+    return render_template(
+        "system_admin_student_ownership.html",
+        students=students,
+        teachers=teachers,
+        student_links=student_links,
+        teacher_lookup=teacher_lookup,
+        current_page="student_ownership",
+    )
+
+
 @sysadmin_bp.route('/manage-teachers/delete/<int:admin_id>', methods=['POST'])
 @system_admin_required
 def delete_teacher(admin_id):
@@ -383,26 +441,37 @@ def delete_teacher(admin_id):
     admin = Admin.query.get_or_404(admin_id)
 
     try:
-        # Count students for feedback message
-        student_count = Student.query.count()  # TODO: After multi-tenancy, filter by teacher_id
+        linked_student_ids = (
+            db.session.query(StudentTeacher.student_id)
+            .filter(StudentTeacher.admin_id == admin.id)
+            .subquery()
+        )
 
-        # Delete all students and their associated data
-        for student in Student.query.all():  # TODO: Filter by teacher_id
-            Transaction.query.filter_by(student_id=student.id).delete()
-            TapEvent.query.filter_by(student_id=student.id).delete()
-            HallPassLog.query.filter_by(student_id=student.id).delete()
-            StudentItem.query.filter_by(student_id=student.id).delete()
-            RentPayment.query.filter_by(student_id=student.id).delete()
-            db.session.execute(delete(StudentInsurance).where(StudentInsurance.student_id == student.id))
-            InsuranceClaim.query.filter_by(student_id=student.id).delete()
+        affected_students = Student.query.filter(
+            or_(Student.teacher_id == admin.id, Student.id.in_(linked_student_ids))
+        ).all()
+        student_count = len(affected_students)
 
-        Student.query.delete()  # TODO: Filter by teacher_id
+        for student in affected_students:
+            StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin.id).delete()
+
+            if student.teacher_id == admin.id:
+                fallback = (
+                    StudentTeacher.query
+                    .filter(StudentTeacher.student_id == student.id)
+                    .order_by(StudentTeacher.created_at.asc())
+                    .first()
+                )
+                student.teacher_id = fallback.admin_id if fallback else None
 
         admin_username = admin.username
         db.session.delete(admin)
         db.session.commit()
 
-        flash(f"✅ Teacher '{admin_username}' and {student_count} students deleted successfully.", "success")
+        flash(
+            f"✅ Teacher '{admin_username}' deleted. Updated {student_count} student ownership records.",
+            "success",
+        )
 
     except Exception as e:
         db.session.rollback()
@@ -410,137 +479,3 @@ def delete_teacher(admin_id):
         flash(f"❌ Error deleting teacher: {str(e)}", "error")
 
     return redirect(url_for('sysadmin.manage_teachers'))
-
-
-# -------------------- USER REPORTS MANAGEMENT --------------------
-
-@sysadmin_bp.route('/user-reports')
-@system_admin_required
-def user_reports():
-    """View all user-submitted bug reports, suggestions, and feedback."""
-    # Get filter parameters
-    status_filter = request.args.get('status', 'all')
-    report_type_filter = request.args.get('type', 'all')
-
-    # Base query
-    query = UserReport.query
-
-    # Apply filters
-    if status_filter != 'all':
-        query = query.filter_by(status=status_filter)
-
-    if report_type_filter != 'all':
-        query = query.filter_by(report_type=report_type_filter)
-
-    # Order by submission date (newest first)
-    reports = query.order_by(UserReport.submitted_at.desc()).all()
-
-    # Get counts for badges
-    new_count = UserReport.query.filter_by(status='new').count()
-    reviewed_count = UserReport.query.filter_by(status='reviewed').count()
-    rewarded_count = UserReport.query.filter_by(status='rewarded').count()
-
-    return render_template('sysadmin_user_reports.html',
-                         reports=reports,
-                         status_filter=status_filter,
-                         report_type_filter=report_type_filter,
-                         new_count=new_count,
-                         reviewed_count=reviewed_count,
-                         rewarded_count=rewarded_count)
-
-
-@sysadmin_bp.route('/user-reports/<int:report_id>')
-@system_admin_required
-def view_user_report(report_id):
-    """View detailed information about a specific user report."""
-    report = UserReport.query.get_or_404(report_id)
-    return render_template('sysadmin_user_report_detail.html', report=report)
-
-
-@sysadmin_bp.route('/user-reports/<int:report_id>/update', methods=['POST'])
-@system_admin_required
-def update_user_report(report_id):
-    """Update status and add notes to a user report."""
-    report = UserReport.query.get_or_404(report_id)
-
-    try:
-        # Get form data
-        status = request.form.get('status')
-        admin_notes = request.form.get('admin_notes', '').strip()
-
-        # Update report
-        if status and status in ['new', 'reviewed', 'rewarded', 'closed', 'spam']:
-            report.status = status
-
-        if admin_notes:
-            report.admin_notes = admin_notes
-
-        report.reviewed_at = datetime.utcnow()
-        # Note: reviewed_by_sysadmin_id is nullable, set to None for now
-        # Could be extended to track specific sysadmin if needed
-
-        db.session.commit()
-        flash("Report updated successfully!", "success")
-
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error updating report {report_id}: {str(e)}")
-        flash("Error updating report. Please try again.", "error")
-
-    return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
-
-
-@sysadmin_bp.route('/user-reports/<int:report_id>/send-reward', methods=['POST'])
-@system_admin_required
-def send_reward_to_reporter(report_id):
-    """Send anonymous reward to bug reporter (students only)."""
-    report = UserReport.query.get_or_404(report_id)
-
-    try:
-        # Validate this is a student report
-        if not report._student_id:
-            flash("Cannot send reward: This report is not from a student.", "error")
-            return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
-
-        # Get reward amount from form
-        reward_amount = float(request.form.get('reward_amount', 0))
-
-        if reward_amount <= 0:
-            flash("Reward amount must be greater than zero.", "error")
-            return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
-
-        # Get the student
-        student = Student.query.get(report._student_id)
-
-        if not student:
-            flash("Error: Student not found.", "error")
-            return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
-
-        # Create transaction for reward
-        transaction = Transaction(
-            student_id=student.id,
-            amount=reward_amount,
-            account_type='checking',
-            type='bug_bounty',
-            description=f'Bug bounty reward for report #{report.id}'
-        )
-        db.session.add(transaction)
-
-        # Update report status
-        report.reward_amount = reward_amount
-        report.reward_sent_at = datetime.utcnow()
-        report.status = 'rewarded'
-
-        db.session.commit()
-
-        flash(f"Reward of ${reward_amount:.2f} sent anonymously to reporter!", "success")
-        current_app.logger.info(f"Bug bounty reward of ${reward_amount} sent to student {student.id} for report #{report.id}")
-
-    except ValueError:
-        flash("Invalid reward amount.", "error")
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error sending reward for report {report_id}: {str(e)}")
-        flash(f"Error sending reward: {str(e)}", "error")
-
-    return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
