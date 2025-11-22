@@ -43,7 +43,9 @@ jobs:
         EXPECTED_END="${{ inputs.expected_end }}"
         CONTACT="${{ inputs.contact }}"
 
-        ssh -o StrictHostKeyChecking=no root@24.199.127.184 << EOF
+        SSH_ENV_VARS="MODE_VALUE=$(printf %q "${MODE_VALUE}") MESSAGE=$(printf %q "${MESSAGE}") EXPECTED_END=$(printf %q "${EXPECTED_END}") CONTACT=$(printf %q "${CONTACT}")"
+
+        ssh -o StrictHostKeyChecking=no root@24.199.127.184 "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
           set -e
 
           echo 'Navigating to project directory...'
