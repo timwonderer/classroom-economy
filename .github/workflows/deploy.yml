@@ -21,14 +21,11 @@ jobs:
 
 
     - name: Deploy to DO Production Server
-      env:
-        MAINT_MODE: ${{ vars.MAINTENANCE_MODE || 'false' }}
-        MAINT_MESSAGE: ${{ vars.MAINTENANCE_MESSAGE || 'We are performing scheduled maintenance.' }}
-        MAINT_END: ${{ vars.MAINTENANCE_EXPECTED_END || '' }}
-        MAINT_CONTACT: ${{ vars.MAINTENANCE_CONTACT || '' }}
       run: |
-        # Prepare escaped environment variables to avoid local shell expansion
-        SSH_ENV_VARS="MAINT_MODE=$(printf %q "${MAINT_MODE}") MAINT_MESSAGE=$(printf %q "${MAINT_MESSAGE}") MAINT_END=$(printf %q "${MAINT_END}") MAINT_CONTACT=$(printf %q "${MAINT_CONTACT}") DATABASE_URL=$(printf %q '${{ secrets.PRODUCTION_DATABASE_URL }}')"
+        MAINT_MODE="${{ vars.MAINTENANCE_MODE || 'false' }}"
+        MAINT_MESSAGE="${{ vars.MAINTENANCE_MESSAGE || 'We are performing scheduled maintenance.' }}"
+        MAINT_END="${{ vars.MAINTENANCE_EXPECTED_END || '' }}"
+        MAINT_CONTACT="${{ vars.MAINTENANCE_CONTACT || '' }}"
 
         # Connect to the production server and deploy
         ssh -o StrictHostKeyChecking=no \

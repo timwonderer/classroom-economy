@@ -59,10 +59,10 @@ jobs:
           sed -i '/^MAINTENANCE_CONTACT=/d' .env 2>/dev/null || true
 
           # Add new maintenance mode variables
-          echo "MAINTENANCE_MODE=${MODE_VALUE}" >> .env
-          echo "MAINTENANCE_MESSAGE=\"${MESSAGE}\"" >> .env
-          echo "MAINTENANCE_EXPECTED_END=\"${EXPECTED_END}\"" >> .env
-          echo "MAINTENANCE_CONTACT=\"${CONTACT}\"" >> .env
+          echo "MAINTENANCE_MODE=$MODE_VALUE" >> .env
+          echo "MAINTENANCE_MESSAGE=\"$MESSAGE\"" >> .env
+          echo "MAINTENANCE_EXPECTED_END=\"$EXPECTED_END\"" >> .env
+          echo "MAINTENANCE_CONTACT=\"$CONTACT\"" >> .env
 
           echo 'Restarting Gunicorn to apply changes...'
           sudo systemctl restart gunicorn
