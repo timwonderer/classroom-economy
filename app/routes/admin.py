@@ -2431,7 +2431,12 @@ def attendance_log():
 @admin_bp.route('/upload-students', methods=['POST'])
 @admin_required
 def upload_students():
-    """Upload students from CSV file."""
+    """
+    Upload student roster from CSV file.
+
+    Creates TeacherBlock seats (unclaimed accounts) with join codes.
+    Students later claim their seat by providing the join code + credentials.
+    """
     file = request.files.get('csv_file')
     if not file:
         flash("No file provided", "admin_error")
@@ -2444,6 +2449,14 @@ def upload_students():
     added_count = 0
     errors = 0
     duplicated = 0
+
+    # Track join codes for each block
+    from app.models import TeacherBlock
+    from app.utils.join_code import generate_join_code
+    teacher_id = session.get("admin_id")
+
+    # Get or generate join codes for each block in this upload
+    join_codes_by_block = {}
 
     for row in csv_input:
         try:
@@ -2460,67 +2473,41 @@ def upload_students():
             # Generate last_initial
             last_initial = last_name[0].upper()
 
-            # Efficiently check for duplicates GLOBALLY (not scoped to teacher).
-            # This prevents creating duplicate accounts when multiple teachers have the same student.
-            # 1. Filter by unencrypted fields (`last_initial`, `block`) to get a small candidate pool.
-            potential_matches = Student.query.filter_by(last_initial=last_initial, block=block).all()
-
-            # 2. Iterate through the small pool and compare first name AND full last name via hash
-            # Try exact match first, then fuzzy match
-            existing_student = None
-            for student in potential_matches:
-                if student.first_name == first_name:
-                    # Same first name and last initial - verify full last name matches
-
-                    # Method 1: Exact name_code match
-                    test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
-                    test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-                    test_name_code = ''.join(test_vowels + test_consonants).lower()
-                    test_hash = hash_hmac(test_name_code.encode(), student.salt)
-
-                    exact_match = (test_hash == student.first_half_hash)
-
-                    # Method 2: Fuzzy last name matching
-                    fuzzy_match = False
-                    if student.last_name_hash_by_part:
-                        from app.utils.name_utils import verify_last_name_parts
-                        fuzzy_match = verify_last_name_parts(
-                            last_name,
-                            student.last_name_hash_by_part,
-                            student.salt
-                        )
-
-                    # Match if EITHER exact OR fuzzy succeeds
-                    if exact_match or fuzzy_match:
-                        existing_student = student
-                        break
-
-            if existing_student:
-                # Student already exists - link to this teacher instead of creating duplicate
-                current_admin_id = session.get("admin_id")
-
-                # Check if already linked
-                from app.models import StudentTeacher
-                existing_link = StudentTeacher.query.filter_by(
-                    student_id=existing_student.id,
-                    admin_id=current_admin_id
+            # Get or generate join code for this teacher-block combination
+            if block not in join_codes_by_block:
+                # Check if this teacher already has a join code for this block
+                existing_seat = TeacherBlock.query.filter_by(
+                    teacher_id=teacher_id,
+                    block=block
                 ).first()
 
-                if not existing_link:
-                    _link_student_to_admin(existing_student, current_admin_id)
-                    current_app.logger.info(f"Linked existing student {first_name} {last_name} to teacher {current_admin_id}")
-                    added_count += 1  # Count as added since we linked them
+                if existing_seat:
+                    # Reuse existing join code
+                    join_codes_by_block[block] = existing_seat.join_code
                 else:
-                    current_app.logger.info(f"Student {first_name} {last_name} already linked to teacher, skipping.")
-                    duplicated += 1
+                    # Generate new unique join code
+                    while True:
+                        new_code = generate_join_code()
+                        # Ensure uniqueness across all teachers
+                        if not TeacherBlock.query.filter_by(join_code=new_code).first():
+                            join_codes_by_block[block] = new_code
+                            break
 
-                continue  # Move to next row
+            join_code = join_codes_by_block[block]
 
-            # Generate name_code (MUST match original algorithm for consistency)
-            # vowels from first_name + consonants from last_name
-            vowels = re.findall(r'[AEIOUaeiou]', first_name)
-            consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-            name_code = ''.join(vowels + consonants).lower()
+            # Check if this seat already exists for this teacher
+            # Duplicate detection: same teacher + block + first_name + last_initial
+            existing_seat = TeacherBlock.query.filter_by(
+                teacher_id=teacher_id,
+                block=block,
+                first_name=first_name,
+                last_initial=last_initial
+            ).first()
+
+            if existing_seat:
+                current_app.logger.info(f"Seat for {first_name} {last_name} already exists in block {block}, skipping.")
+                duplicated += 1
+                continue
 
             # Generate dob_sum
             # Handle both mm/dd/yy and mm/dd/yyyy formats
@@ -2540,29 +2527,29 @@ def upload_students():
             # Generate salt
             salt = get_random_salt()
 
-            # Compute first_half_hash and second_half_hash using HMAC
-            first_half_hash = hash_hmac(name_code.encode(), salt)
-            second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
+            # Compute first_half_hash: CONCAT(first_initial, DOB_sum)
+            # Simpler credential: student just needs to know their initial and birthday
+            credential = f"{last_initial}{dob_sum}"  # e.g., "S2025"
+            first_half_hash = hash_hmac(credential.encode(), salt)
 
             # Compute last_name_hash_by_part for fuzzy matching
             from app.utils.name_utils import hash_last_name_parts
             last_name_parts = hash_last_name_parts(last_name, salt)
 
-            student = Student(
+            # Create TeacherBlock seat (unclaimed account)
+            seat = TeacherBlock(
+                teacher_id=teacher_id,
+                block=block,
                 first_name=first_name,
                 last_initial=last_initial,
-                block=block,
+                last_name_hash_by_part=last_name_parts,
+                dob_sum=dob_sum,
                 salt=salt,
                 first_half_hash=first_half_hash,
-                second_half_hash=second_half_hash,
-                dob_sum=dob_sum,
-                last_name_hash_by_part=last_name_parts,
-                has_completed_setup=False,
-                teacher_id=session.get("admin_id"),
+                join_code=join_code,
+                is_claimed=False,
             )
-            db.session.add(student)
-            db.session.flush()
-            _link_student_to_admin(student, session.get("admin_id"))
+            db.session.add(seat)
             added_count += 1
 
         except Exception as e:
@@ -2572,7 +2559,22 @@ def upload_students():
 
     try:
         db.session.commit()
-        flash(f"{added_count} students added successfully<br>{errors} students cannot be added<br>{duplicated} duplicated students skipped.", "admin_success")
+
+        # Build success message with join codes
+        success_msg = f"{added_count} roster seats created successfully"
+        if errors > 0:
+            success_msg += f"<br>{errors} rows could not be processed"
+        if duplicated > 0:
+            success_msg += f"<br>{duplicated} duplicate seats skipped"
+
+        # Display join codes for each block
+        if join_codes_by_block:
+            success_msg += "<br><br><strong>Join Codes by Period:</strong><br>"
+            for period, code in sorted(join_codes_by_block.items()):
+                success_msg += f"Period {period}: <strong>{code}</strong><br>"
+            success_msg += "<br>Share these codes with your students so they can claim their accounts."
+
+        flash(success_msg, "admin_success")
     except Exception as e:
         db.session.rollback()
         flash(f"Upload failed: {e}", "admin_error")

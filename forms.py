@@ -1,6 +1,6 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField
-from wtforms.validators import DataRequired, ValidationError
+from wtforms.validators import DataRequired, ValidationError, Length
 from wtforms import HiddenField, TextAreaField, FloatField, SelectField, IntegerField, DateField, BooleanField
 from wtforms.validators import Optional
 
@@ -97,8 +97,10 @@ class SystemAdminInviteForm(FlaskForm):
     submit = SubmitField('Generate Invite Code')
 
 class StudentClaimAccountForm(FlaskForm):
-    first_half = StringField('First Half', validators=[DataRequired()])
-    second_half = StringField('Second Half', validators=[DataRequired()])
+    join_code = StringField('Join Code (from your teacher)', validators=[DataRequired()])
+    first_initial = StringField('First Initial (e.g., J)', validators=[DataRequired(), Length(min=1, max=1)])
+    last_name = StringField('Last Name', validators=[DataRequired()])
+    dob_sum = StringField('DOB Sum (MM + DD + YYYY)', validators=[DataRequired()])
     submit = SubmitField('Claim Account')
 
 class StudentCreateUsernameForm(FlaskForm):

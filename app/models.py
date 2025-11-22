@@ -13,6 +13,67 @@ from app.utils.encryption import PIIEncryptedType
 
 # -------------------- MODELS --------------------
 
+class TeacherBlock(db.Model):
+    """
+    Represents an unclaimed seat in a teacher's class roster.
+
+    When a teacher uploads a roster, each student creates a TeacherBlock entry (a "seat").
+    Students claim their seat by providing the period join code + their credentials.
+    Once claimed, the seat links to a Student record via student_id.
+
+    This model enables:
+    - Join code-based account claiming (eliminates need for students to know teacher name)
+    - Multi-school support (join codes implicitly partition schools)
+    - Duplicate prevention (same student claiming across multiple teachers)
+    """
+    __tablename__ = 'teacher_blocks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    block = db.Column(db.String(10), nullable=False)
+
+    # Student identifiers (used for matching during claim)
+    first_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
+    last_initial = db.Column(db.String(1), nullable=False)
+
+    # Fuzzy name matching - stores hash of each last name part separately
+    # Example: "Smith-Jones" → ["hash(smith)", "hash(jones)"]
+    last_name_hash_by_part = db.Column(db.JSON, nullable=False)
+
+    # Privacy-aligned DOB sum for verification (non-reversible)
+    dob_sum = db.Column(db.Integer, nullable=False)
+
+    # Hashing
+    salt = db.Column(db.LargeBinary(16), nullable=False)
+    first_half_hash = db.Column(db.String(64), nullable=False)  # Hash of CONCAT(first_initial, DOB_sum) - e.g., "S2025"
+
+    # Join code for this period (shared across all students in same teacher-block)
+    join_code = db.Column(db.String(20), nullable=False)
+
+    # Claim status
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
+    is_claimed = db.Column(db.Boolean, default=False, nullable=False)
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    claimed_at = db.Column(db.DateTime, nullable=True)
+
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('roster_seats', lazy='dynamic'))
+    student = db.relationship('Student', backref='roster_seats')
+
+    # Indexes for efficient lookups
+    __table_args__ = (
+        db.Index('ix_teacher_blocks_join_code', 'join_code'),
+        db.Index('ix_teacher_blocks_teacher_block', 'teacher_id', 'block'),
+        db.Index('ix_teacher_blocks_claimed', 'is_claimed'),
+    )
+
+    def __repr__(self):
+        status = "claimed" if self.is_claimed else "unclaimed"
+        return f'<TeacherBlock {self.first_name} {self.last_initial}. - {self.teacher_id}/{self.block} - {status}>'
+
+
 class Student(db.Model):
     __tablename__ = 'students'
     id = db.Column(db.Integer, primary_key=True)
@@ -21,9 +82,10 @@ class Student(db.Model):
     block = db.Column(db.String(10), nullable=False)
 
     # Hash and credential fields
+    # Credential: CONCAT(first_initial, DOB_sum) - simpler than old name_code system
     salt = db.Column(db.LargeBinary(16), nullable=False)
-    first_half_hash = db.Column(db.String(64), unique=True, nullable=True)
-    second_half_hash = db.Column(db.String(64), unique=True, nullable=True)
+    first_half_hash = db.Column(db.String(64), unique=True, nullable=True)  # Hash of "FirstInitial + DOBSum" (e.g., "S2025")
+    second_half_hash = db.Column(db.String(64), unique=True, nullable=True)  # Hash of DOB sum (backward compat)
     username_hash = db.Column(db.String(64), unique=True, nullable=True)
 
     # Fuzzy name matching - stores hash of each last name part separately
@@ -32,12 +94,17 @@ class Student(db.Model):
     last_name_hash_by_part = db.Column(db.JSON, nullable=True)
 
     # Ownership / tenancy
+    # DEPRECATED: teacher_id will be removed in future migration
+    # Students are now linked to teachers via student_teachers table only
+    # This column kept temporarily for backwards compatibility during migration
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
     teacher = db.relationship('Admin', backref=db.backref('students', lazy='dynamic'))
-    shared_teachers = db.relationship(
+
+    # Teachers associated with this student (many-to-many)
+    teachers = db.relationship(
         'Admin',
         secondary='student_teachers',
-        backref=db.backref('shared_students', lazy='dynamic'),
+        backref=db.backref('linked_students', lazy='dynamic'),
         lazy='dynamic',
     )
 
@@ -93,12 +160,13 @@ class Student(db.Model):
         ), 2)
 
     def get_all_teachers(self):
-        """Get list of all teachers this student is associated with."""
-        teachers = []
-        if self.teacher:
-            teachers.append(self.teacher)
-        teachers.extend(list(self.shared_teachers.all()))
-        return teachers
+        """
+        Get list of all teachers this student is associated with.
+
+        Uses the student_teachers many-to-many relationship.
+        DEPRECATED teacher_id is ignored in favor of explicit links only.
+        """
+        return list(self.teachers.all())
 
     @property
     def total_earnings(self):
