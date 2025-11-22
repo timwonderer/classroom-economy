@@ -1042,7 +1042,6 @@ def handle_tap():
 
         # Check daily limit when tapping IN
         if action == "tap_in":
-            import pytz
             from payroll import get_daily_limit_seconds
             from attendance import calculate_period_attendance_utc_range
 
