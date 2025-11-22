@@ -1,5 +1,5 @@
 from flask_wtf import FlaskForm
-from wtforms import StringField
+from wtforms import StringField, PasswordField
 from wtforms.validators import DataRequired, ValidationError
 from wtforms import HiddenField, TextAreaField, FloatField, SelectField, IntegerField, DateField, BooleanField
 from wtforms.validators import Optional
@@ -103,13 +103,13 @@ class StudentCreateUsernameForm(FlaskForm):
     submit = SubmitField('Generate Username')
 
 class StudentPinPassphraseForm(FlaskForm):
-    pin = StringField('PIN', validators=[DataRequired()])
-    passphrase = StringField('Passphrase', validators=[DataRequired()])
+    pin = PasswordField('PIN', validators=[DataRequired()])
+    passphrase = PasswordField('Passphrase', validators=[DataRequired()])
     submit = SubmitField('Finish Setup')
 
 class StudentLoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
-    pin = StringField('PIN', validators=[DataRequired()])
+    pin = PasswordField('PIN', validators=[DataRequired()])
     turnstile_token = HiddenField('cf-turnstile-response')
     submit = SubmitField('Login')
 
