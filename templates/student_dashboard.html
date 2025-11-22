@@ -168,167 +168,178 @@
 </div>
 {% endif %}
 
-<!-- At-a-Glance Stats -->
+<!-- Main Dashboard Content -->
 <div class="row mb-3">
-    <!-- Total Balance -->
-    <div class="col-lg-3 col-md-6 mb-3">
-        <div class="card">
-            <div class="card-body text-center p-3">
-                <span class="material-symbols-outlined text-primary" style="font-size: 2rem;">account_balance_wallet</span>
-                <h6 class="text-muted text-uppercase mt-1 mb-1" style="font-size: 0.75rem;">Total Balance</h6>
-                <h4 class="mb-0 text-primary">${{ "%.2f"|format(student.checking_balance + student.savings_balance) }}</h4>
-                <small class="text-muted" style="font-size: 0.7rem;">C: ${{ "%.2f"|format(student.checking_balance) }} | S: ${{ "%.2f"|format(student.savings_balance) }}</small>
+    <!-- Left Column: Stacked Info Cards -->
+    <div class="col-lg-6 mb-3">
+        <!-- Balances Card -->
+        <div class="card mb-2">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">Balances</h6>
+                        <div class="d-flex gap-3">
+                            <div>
+                                <small class="text-muted d-block" style="font-size: 0.7rem;">Checking</small>
+                                <strong class="text-primary">${{ "%.2f"|format(student.checking_balance) }}</strong>
+                            </div>
+                            <div>
+                                <small class="text-muted d-block" style="font-size: 0.7rem;">Savings</small>
+                                <strong class="text-success">${{ "%.2f"|format(student.savings_balance) }}</strong>
+                            </div>
+                            <div>
+                                <small class="text-muted d-block" style="font-size: 0.7rem;">Total</small>
+                                <strong>${{ "%.2f"|format(student.checking_balance + student.savings_balance) }}</strong>
+                            </div>
+                        </div>
+                    </div>
+                    <a href="{{ url_for('student.transfer') }}" class="btn btn-sm btn-primary">Manage</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Hall Pass Card -->
+        <div class="card mb-2">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">Hall Pass</h6>
+                        <div>
+                            <span class="text-warning fs-5" id="hall-pass-balance">{{ student.hall_passes }}</span>
+                            <small class="text-muted ms-2">remaining</small>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-warning" style="font-size: 2rem;">confirmation_number</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Insurance Card -->
+        <div class="card mb-2">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">Insurance</h6>
+                        <div>
+                            {% if student.insurance_plan == 'none' %}
+                                <span class="badge bg-secondary">None</span>
+                            {% elif insurance_paid %}
+                                <span class="badge bg-success">Active</span>
+                                <small class="text-muted ms-2">{{ student.insurance_plan|title }}</small>
+                            {% else %}
+                                <span class="badge bg-danger">Overdue</span>
+                                <small class="text-muted ms-2">{{ student.insurance_plan|title }}</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <a href="{{ url_for('student.student_insurance') }}" class="btn btn-sm btn-outline-primary">View</a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Rent Card (if enabled) -->
+        {% if student.teacher.is_rent_enabled %}
+        <div class="card mb-2">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">Rent</h6>
+                        <div>
+                            {% if student.rent_paid %}
+                                <span class="badge bg-success">Paid</span>
+                            {% else %}
+                                <span class="badge bg-danger">Due</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <a href="{{ url_for('student.rent') }}" class="btn btn-sm btn-outline-primary">Manage</a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Job Card -->
+        <div class="card mb-2">
+            <div class="card-body p-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-1">Jobs</h6>
+                        <div>
+                            <span class="badge bg-secondary">Student</span>
+                            <small class="text-muted ms-2">Current Role</small>
+                        </div>
+                    </div>
+                    <span class="material-symbols-outlined text-success" style="font-size: 2rem;">work</span>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- Finances -->
-    <div class="col-lg-3 col-md-6 mb-3">
-        <div class="card">
-            <div class="card-body text-center p-3">
-                <span class="material-symbols-outlined text-primary" style="font-size: 2rem;">account_balance_wallet</span>
-                <h6 class="text-muted text-uppercase mt-1 mb-1" style="font-size: 0.75rem;">Finances</h6>
-                <h4 class="mb-0">
-                    <a href="{{ url_for('student.transfer') }}" class="text-decoration-none">
-                        <span class="badge bg-primary">Manage</span>
+    <!-- Right Column: Item Status -->
+    <div class="col-lg-6 mb-3">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span><span class="material-symbols-outlined">inventory_2</span> Item Status</span>
+                <small class="text-muted" style="font-size: 0.7rem;">Updates every 30s</small>
+            </div>
+            <div class="card-body p-3" id="redemptionStatusCard">
+                {% set processing_items = student_items|selectattr('status', 'equalto', 'processing')|list %}
+                {% set redeemed_items = (student_items|selectattr('status', 'equalto', 'redeemed')|list) + (student_items|selectattr('status', 'equalto', 'completed')|list) %}
+                {% set expired_items = student_items|selectattr('status', 'equalto', 'expired')|list %}
+
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <div class="text-center p-2 bg-warning bg-opacity-10 rounded">
+                            <h4 class="mb-0" id="processingCount">{{ processing_items|length }}</h4>
+                            <small class="text-muted" style="font-size: 0.7rem;">Pending</small>
+                        </div>
+                        {% if processing_items|length > 0 and processing_items|length <= 2 %}
+                        <ul class="list-group list-group-flush mt-1" id="processingList">
+                            {% for item in processing_items[:2] %}
+                            <li class="list-group-item px-0 py-1 border-0">
+                                <small style="font-size: 0.7rem;">{{ item.store_item.name }}</small>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-2 bg-success bg-opacity-10 rounded">
+                            <h4 class="mb-0" id="redeemedCount">{{ redeemed_items|length }}</h4>
+                            <small class="text-muted" style="font-size: 0.7rem;">Redeemed</small>
+                        </div>
+                        {% if redeemed_items|length > 0 and redeemed_items|length <= 2 %}
+                        <ul class="list-group list-group-flush mt-1" id="redeemedList">
+                            {% for item in redeemed_items[:2] %}
+                            <li class="list-group-item px-0 py-1 border-0">
+                                <small style="font-size: 0.7rem;">{{ item.store_item.name }}</small>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-4">
+                        <div class="text-center p-2 bg-danger bg-opacity-10 rounded">
+                            <h4 class="mb-0" id="expiredCount">{{ expired_items|length }}</h4>
+                            <small class="text-muted" style="font-size: 0.7rem;">Expired</small>
+                        </div>
+                        {% if expired_items|length > 0 and expired_items|length <= 2 %}
+                        <ul class="list-group list-group-flush mt-1" id="expiredList">
+                            {% for item in expired_items[:2] %}
+                            <li class="list-group-item px-0 py-1 border-0">
+                                <small style="font-size: 0.7rem;">{{ item.store_item.name }}</small>
+                            </li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="mt-2 text-center">
+                    <a href="{{ url_for('student.shop') }}" class="btn btn-sm btn-primary">
+                        <span class="material-symbols-outlined" style="font-size: 1rem;">visibility</span> View All
                     </a>
-                </h4>
-                <small class="text-muted" style="font-size: 0.7rem;">Transfers & History</small>
-            </div>
-        </div>
-    </div>
-
-    <!-- Hall Passes -->
-    <div class="col-lg-3 col-md-6 mb-3">
-        <div class="card">
-            <div class="card-body text-center p-3">
-                <span class="material-symbols-outlined text-warning" style="font-size: 2rem;">confirmation_number</span>
-                <h6 class="text-muted text-uppercase mt-1 mb-1" style="font-size: 0.75rem;">Hall Passes</h6>
-                <h4 class="mb-0 text-warning" id="hall-pass-balance">{{ student.hall_passes }}</h4>
-                <small class="text-muted" style="font-size: 0.7rem;">Block: {{ student.block|upper }}</small>
-            </div>
-        </div>
-    </div>
-
-    <!-- Insurance Status -->
-    <div class="col-lg-3 col-md-6 mb-3">
-        <div class="card">
-            <div class="card-body text-center p-3">
-                <span class="material-symbols-outlined {% if insurance_paid %}text-info{% else %}text-danger{% endif %}" style="font-size: 2rem;">shield</span>
-                <h6 class="text-muted text-uppercase mt-1 mb-1" style="font-size: 0.75rem;">Insurance</h6>
-                <h4 class="mb-0">
-                    {% if student.insurance_plan == 'none' %}
-                        <span class="badge bg-secondary">None</span>
-                    {% elif insurance_paid %}
-                        <span class="badge bg-success">Active</span>
-                    {% else %}
-                        <span class="badge bg-danger">Overdue</span>
-                    {% endif %}
-                </h4>
-                <small class="text-muted" style="font-size: 0.7rem;">{{ student.insurance_plan|title if student.insurance_plan != 'none' else 'N/A' }}</small>
-            </div>
-        </div>
-    </div>
-
-    <!-- Rent (if enabled) -->
-    {% if student.teacher.is_rent_enabled %}
-    <div class="col-lg-3 col-md-6 mb-3">
-        <div class="card">
-            <div class="card-body text-center p-3">
-                <span class="material-symbols-outlined text-info" style="font-size: 2rem;">home</span>
-                <h6 class="text-muted text-uppercase mt-1 mb-1" style="font-size: 0.75rem;">Rent</h6>
-                <h4 class="mb-0">
-                    {% if student.rent_paid %}
-                        <span class="badge bg-success">Paid</span>
-                    {% else %}
-                        <span class="badge bg-danger">Due</span>
-                    {% endif %}
-                </h4>
-                <small class="text-muted" style="font-size: 0.7rem;">
-                    <a href="{{ url_for('student.rent') }}" class="text-decoration-none text-muted">Manage</a>
-                </small>
-            </div>
-        </div>
-    </div>
-    {% endif %}
-
-    <!-- Job -->
-    <div class="col-lg-3 col-md-6 mb-3">
-        <div class="card">
-            <div class="card-body text-center p-3">
-                <span class="material-symbols-outlined text-success" style="font-size: 2rem;">work</span>
-                <h6 class="text-muted text-uppercase mt-1 mb-1" style="font-size: 0.75rem;">Job</h6>
-                <h4 class="mb-0">
-                    <span class="badge bg-secondary">Student</span>
-                </h4>
-                <small class="text-muted" style="font-size: 0.7rem;">Current Role</small>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Items Redemption Status Card -->
-<div class="card mb-3">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <span><span class="material-symbols-outlined">inventory_2</span> Items Status</span>
-        <small class="text-muted" style="font-size: 0.7rem;">Updates every 30s</small>
-    </div>
-    <div class="card-body p-3" id="redemptionStatusCard">
-        {% set processing_items = student_items|selectattr('status', 'equalto', 'processing')|list %}
-        {% set redeemed_items = (student_items|selectattr('status', 'equalto', 'redeemed')|list) + (student_items|selectattr('status', 'equalto', 'completed')|list) %}
-        {% set expired_items = student_items|selectattr('status', 'equalto', 'expired')|list %}
-
-        <div class="row g-2">
-            <div class="col-md-4">
-                <div class="text-center p-2 bg-warning bg-opacity-10 rounded">
-                    <h4 class="mb-0" id="processingCount">{{ processing_items|length }}</h4>
-                    <small class="text-muted" style="font-size: 0.7rem;">Pending</small>
                 </div>
-                {% if processing_items|length > 0 and processing_items|length <= 2 %}
-                <ul class="list-group list-group-flush mt-1" id="processingList">
-                    {% for item in processing_items[:2] %}
-                    <li class="list-group-item px-0 py-1 border-0">
-                        <small style="font-size: 0.7rem;">{{ item.store_item.name }}</small>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% endif %}
             </div>
-            <div class="col-md-4">
-                <div class="text-center p-2 bg-success bg-opacity-10 rounded">
-                    <h4 class="mb-0" id="redeemedCount">{{ redeemed_items|length }}</h4>
-                    <small class="text-muted" style="font-size: 0.7rem;">Redeemed</small>
-                </div>
-                {% if redeemed_items|length > 0 and redeemed_items|length <= 2 %}
-                <ul class="list-group list-group-flush mt-1" id="redeemedList">
-                    {% for item in redeemed_items[:2] %}
-                    <li class="list-group-item px-0 py-1 border-0">
-                        <small style="font-size: 0.7rem;">{{ item.store_item.name }}</small>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% endif %}
-            </div>
-            <div class="col-md-4">
-                <div class="text-center p-2 bg-danger bg-opacity-10 rounded">
-                    <h4 class="mb-0" id="expiredCount">{{ expired_items|length }}</h4>
-                    <small class="text-muted" style="font-size: 0.7rem;">Expired</small>
-                </div>
-                {% if expired_items|length > 0 and expired_items|length <= 2 %}
-                <ul class="list-group list-group-flush mt-1" id="expiredList">
-                    {% for item in expired_items[:2] %}
-                    <li class="list-group-item px-0 py-1 border-0">
-                        <small style="font-size: 0.7rem;">{{ item.store_item.name }}</small>
-                    </li>
-                    {% endfor %}
-                </ul>
-                {% endif %}
-            </div>
-        </div>
-        <div class="mt-2 text-center">
-            <a href="{{ url_for('student.shop') }}" class="btn btn-sm btn-primary">
-                <span class="material-symbols-outlined" style="font-size: 1rem;">visibility</span> View All
-            </a>
         </div>
     </div>
 </div>
