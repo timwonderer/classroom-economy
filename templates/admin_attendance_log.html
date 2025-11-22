@@ -173,6 +173,14 @@ let totalPages = 1;
 let totalRecords = 0;
 const pageSize = 50;
 
+// HTML escape function to prevent XSS
+function escapeHtml(text) {
+    if (text == null) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // Convert UTC timestamps to local time display
 function formatTimestamp(utcString) {
     if (!utcString) return '—';
@@ -188,14 +196,15 @@ function formatTimestamp(utcString) {
     return date.toLocaleString(undefined, options);
 }
 
-// Get status badge HTML
+// Get status badge HTML (status is validated server-side but we escape for defense in depth)
 function getStatusBadge(status) {
+    const escapedStatus = escapeHtml(status);
     if (status === 'active') {
         return '<span class="badge bg-success"><span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: text-bottom;">login</span> Tap In</span>';
     } else if (status === 'inactive') {
         return '<span class="badge bg-danger"><span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: text-bottom;">logout</span> Tap Out</span>';
     }
-    return '<span class="badge bg-secondary">' + status + '</span>';
+    return '<span class="badge bg-secondary">' + escapedStatus + '</span>';
 }
 
 // Load attendance history with filters
@@ -266,14 +275,14 @@ function renderAttendanceTable(records) {
             <td class="ps-4">
                 <div class="d-flex align-items-center">
                     <span class="material-symbols-outlined me-2 text-muted" style="font-size: 1.25rem;">person</span>
-                    <span class="fw-medium">${record.student_name}</span>
+                    <span class="fw-medium">${escapeHtml(record.student_name)}</span>
                 </div>
             </td>
-            <td><span class="badge bg-primary bg-opacity-10 text-primary">${record.student_block || '—'}</span></td>
-            <td><span class="badge bg-info bg-opacity-10 text-info">${record.period}</span></td>
+            <td><span class="badge bg-primary bg-opacity-10 text-primary">${escapeHtml(record.student_block) || '—'}</span></td>
+            <td><span class="badge bg-info bg-opacity-10 text-info">${escapeHtml(record.period)}</span></td>
             <td><span class="text-muted small">${formatTimestamp(record.timestamp)}</span></td>
             <td>${getStatusBadge(record.status)}</td>
-            <td class="text-muted small">${record.reason || '—'}</td>
+            <td class="text-muted small">${escapeHtml(record.reason) || '—'}</td>
         </tr>
     `).join('');
 }
