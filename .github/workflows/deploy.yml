@@ -39,6 +39,18 @@ jobs:
           echo 'Activating virtual environment...'
           source venv/bin/activate
 
+          echo 'Updating maintenance mode settings...'
+          # Remove old maintenance mode variables if they exist
+          sed -i '/^MAINTENANCE_MODE=/d' .env 2>/dev/null || true
+          sed -i '/^MAINTENANCE_MESSAGE=/d' .env 2>/dev/null || true
+          sed -i '/^MAINTENANCE_EXPECTED_END=/d' .env 2>/dev/null || true
+          sed -i '/^MAINTENANCE_CONTACT=/d' .env 2>/dev/null || true
+
+          # Add updated maintenance mode variables from GitHub
+          echo 'MAINTENANCE_MODE=${{ vars.MAINTENANCE_MODE || 'false' }}' >> .env
+          echo 'MAINTENANCE_MESSAGE="${{ vars.MAINTENANCE_MESSAGE || 'We'\''re performing scheduled maintenance.' }}"' >> .env
+          echo 'MAINTENANCE_EXPECTED_END="${{ vars.MAINTENANCE_EXPECTED_END || '' }}"' >> .env
+          echo 'MAINTENANCE_CONTACT="${{ vars.MAINTENANCE_CONTACT || '' }}"' >> .env
 
           echo 'Installing dependencies...'
           pip install -r requirements.txt
