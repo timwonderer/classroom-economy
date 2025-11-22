@@ -182,15 +182,18 @@
         </div>
     </div>
 
-    <!-- Unpaid Time -->
+    <!-- Finances -->
     <div class="col-lg-3 col-md-6 mb-3">
         <div class="card">
             <div class="card-body text-center p-3">
-                <span class="material-symbols-outlined text-success" style="font-size: 2rem;">schedule</span>
-                <h6 class="text-muted text-uppercase mt-1 mb-1" style="font-size: 0.75rem;">Unpaid Time</h6>
-                {% set total_unpaid = unpaid_seconds_per_block.values()|sum %}
-                <h4 class="mb-0 text-success">{{ (total_unpaid // 3600)|int }}h {{ ((total_unpaid % 3600) // 60)|int }}m</h4>
-                <small class="text-muted" style="font-size: 0.7rem;">Projected: ${{ "%.2f"|format(projected_pay_per_block.values()|sum) }}</small>
+                <span class="material-symbols-outlined text-primary" style="font-size: 2rem;">account_balance_wallet</span>
+                <h6 class="text-muted text-uppercase mt-1 mb-1" style="font-size: 0.75rem;">Finances</h6>
+                <h4 class="mb-0">
+                    <a href="{{ url_for('student.transfer') }}" class="text-decoration-none">
+                        <span class="badge bg-primary">Manage</span>
+                    </a>
+                </h4>
+                <small class="text-muted" style="font-size: 0.7rem;">Transfers & History</small>
             </div>
         </div>
     </div>
@@ -223,6 +226,42 @@
                     {% endif %}
                 </h4>
                 <small class="text-muted" style="font-size: 0.7rem;">{{ student.insurance_plan|title if student.insurance_plan != 'none' else 'N/A' }}</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rent (if enabled) -->
+    {% if student.teacher.is_rent_enabled %}
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card">
+            <div class="card-body text-center p-3">
+                <span class="material-symbols-outlined text-info" style="font-size: 2rem;">home</span>
+                <h6 class="text-muted text-uppercase mt-1 mb-1" style="font-size: 0.75rem;">Rent</h6>
+                <h4 class="mb-0">
+                    {% if student.rent_paid %}
+                        <span class="badge bg-success">Paid</span>
+                    {% else %}
+                        <span class="badge bg-danger">Due</span>
+                    {% endif %}
+                </h4>
+                <small class="text-muted" style="font-size: 0.7rem;">
+                    <a href="{{ url_for('student.rent') }}" class="text-decoration-none text-muted">Manage</a>
+                </small>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Job -->
+    <div class="col-lg-3 col-md-6 mb-3">
+        <div class="card">
+            <div class="card-body text-center p-3">
+                <span class="material-symbols-outlined text-success" style="font-size: 2rem;">work</span>
+                <h6 class="text-muted text-uppercase mt-1 mb-1" style="font-size: 0.75rem;">Job</h6>
+                <h4 class="mb-0">
+                    <span class="badge bg-secondary">Student</span>
+                </h4>
+                <small class="text-muted" style="font-size: 0.7rem;">Current Role</small>
             </div>
         </div>
     </div>
@@ -290,46 +329,6 @@
             <a href="{{ url_for('student.shop') }}" class="btn btn-sm btn-primary">
                 <span class="material-symbols-outlined" style="font-size: 1rem;">visibility</span> View All
             </a>
-        </div>
-    </div>
-</div>
-
-<!-- Quick Links -->
-<div class="row">
-    <div class="col-md-4 mb-3">
-        <div class="card h-100">
-            <div class="card-body text-center p-3">
-                <span class="material-symbols-outlined text-primary" style="font-size: 2rem;">account_balance_wallet</span>
-                <h6 class="mt-2 mb-1">Finances</h6>
-                <p class="text-muted mb-2" style="font-size: 0.8rem;">Manage transactions & transfers</p>
-                <a href="{{ url_for('student.transfer') }}" class="btn btn-sm btn-primary">
-                    <span class="material-symbols-outlined" style="font-size: 1rem;">swap_horiz</span> Manage
-                </a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4 mb-3">
-        <div class="card h-100">
-            <div class="card-body text-center p-3">
-                <span class="material-symbols-outlined text-info" style="font-size: 2rem;">storefront</span>
-                <h6 class="mt-2 mb-1">Store</h6>
-                <p class="text-muted mb-2" style="font-size: 0.8rem;">Browse & purchase items</p>
-                <a href="{{ url_for('student.shop') }}" class="btn btn-sm btn-primary">
-                    <span class="material-symbols-outlined" style="font-size: 1rem;">shopping_cart</span> Visit
-                </a>
-            </div>
-        </div>
-    </div>
-    <div class="col-md-4 mb-3">
-        <div class="card h-100">
-            <div class="card-body text-center p-3">
-                <span class="material-symbols-outlined text-success" style="font-size: 2rem;">shield</span>
-                <h6 class="mt-2 mb-1">Insurance</h6>
-                <p class="text-muted mb-2" style="font-size: 0.8rem;">Manage policies & claims</p>
-                <a href="{{ url_for('student.student_insurance') }}" class="btn btn-sm btn-primary">
-                    <span class="material-symbols-outlined" style="font-size: 1rem;">security</span> View
-                </a>
-            </div>
         </div>
     </div>
 </div>
