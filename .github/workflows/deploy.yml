@@ -28,7 +28,12 @@ jobs:
         MAINT_CONTACT: ${{ vars.MAINTENANCE_CONTACT || '' }}
       run: |
         # Connect to the production server and deploy
-        ssh -o StrictHostKeyChecking=no root@24.199.127.184 << EOF
+        ssh -o StrictHostKeyChecking=no \
+          MAINT_MODE="$(printf '%s' "$MAINT_MODE")" \
+          MAINT_MESSAGE="$(printf '%s' "$MAINT_MESSAGE")" \
+          MAINT_END="$(printf '%s' "$MAINT_END")" \
+          MAINT_CONTACT="$(printf '%s' "$MAINT_CONTACT")" \
+          root@24.199.127.184 << 'EOF'
 
           set -e  # Exit immediately if a command exits with a non-zero status
 
