@@ -31,7 +31,12 @@ jobs:
         SSH_ENV_VARS="MAINT_MODE=$(printf %q "${MAINT_MODE}") MAINT_MESSAGE=$(printf %q "${MAINT_MESSAGE}") MAINT_END=$(printf %q "${MAINT_END}") MAINT_CONTACT=$(printf %q "${MAINT_CONTACT}") DATABASE_URL=$(printf %q '${{ secrets.PRODUCTION_DATABASE_URL }}')"
 
         # Connect to the production server and deploy
-        ssh -o StrictHostKeyChecking=no root@24.199.127.184 "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
+        ssh -o StrictHostKeyChecking=no \
+          MAINT_MODE="$(printf '%s' "$MAINT_MODE")" \
+          MAINT_MESSAGE="$(printf '%s' "$MAINT_MESSAGE")" \
+          MAINT_END="$(printf '%s' "$MAINT_END")" \
+          MAINT_CONTACT="$(printf '%s' "$MAINT_CONTACT")" \
+          root@24.199.127.184 << 'EOF'
 
           set -e  # Exit immediately if a command exits with a non-zero status
 
