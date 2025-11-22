@@ -59,8 +59,8 @@ def verify_last_name_parts(entered_last_name, stored_part_hashes, salt):
     """
     Verify if entered last name matches stored part hashes.
 
-    Uses subset matching: All entered parts must exist in stored parts.
-    This handles cases where teacher entered more name parts than student.
+    Uses lenient matching: At least one part must overlap.
+    Combined with DOB verification, this is secure enough.
 
     Args:
         entered_last_name: What student entered (e.g., "Smith Jones")
@@ -68,20 +68,20 @@ def verify_last_name_parts(entered_last_name, stored_part_hashes, salt):
         salt: Salt bytes used for hashing
 
     Returns:
-        bool: True if all entered parts match stored parts
+        bool: True if at least one part overlaps
 
     Examples:
-        Teacher entered: "Smith-Jones" → stored: [hash("smith"), hash("jones")]
-        Student enters: "Smith Jones" → entered: [hash("smith"), hash("jones")]
-        → All entered parts in stored parts ✅
+        Teacher A: "Smith-Jones" → stored: [hash("smith"), hash("jones")]
+        Teacher B: "Smith" → student enters "Smith"
+        → hash("smith") overlaps ✅
 
-        Teacher entered: "Smith-Jones"
-        Student enters: "Smith" → entered: [hash("smith")]
-        → Only partial match ❌ (need full name)
+        Teacher A: "Van Der Berg"
+        Student enters: "VanDerBerg" → No overlap in parts ❌
+        Student enters: "Van Berg" → hash("van"), hash("berg") overlap ✅
 
-        Teacher entered: "Smith"
-        Student enters: "Smith Jones" → entered: [hash("smith"), hash("jones")]
-        → Entered has parts not in stored ❌
+        Teacher A: "Smith"
+        Teacher B: "Smith-Jones"
+        Student enters: "Smith" → Matches both ✅
     """
     if not entered_last_name or not stored_part_hashes:
         return False
@@ -93,9 +93,9 @@ def verify_last_name_parts(entered_last_name, stored_part_hashes, salt):
     entered_set = set(entered_hashes)
     stored_set = set(stored_part_hashes)
 
-    # All entered parts must be in stored parts (subset check)
-    # This prevents partial matches while allowing exact matches regardless of delimiters
-    return len(entered_set) > 0 and entered_set.issubset(stored_set)
+    # At least one part must overlap (lenient matching)
+    # DOB sum provides primary security, name just confirms identity
+    return len(entered_set & stored_set) > 0
 
 
 def fuzzy_match_last_name(entered_last_name, stored_part_hashes, salt):
