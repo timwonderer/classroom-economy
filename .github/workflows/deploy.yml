@@ -27,6 +27,9 @@ jobs:
         MAINT_END: ${{ vars.MAINTENANCE_EXPECTED_END || '' }}
         MAINT_CONTACT: ${{ vars.MAINTENANCE_CONTACT || '' }}
       run: |
+        # Prepare escaped environment variables to avoid local shell expansion
+        SSH_ENV_VARS="MAINT_MODE=$(printf %q "${MAINT_MODE}") MAINT_MESSAGE=$(printf %q "${MAINT_MESSAGE}") MAINT_END=$(printf %q "${MAINT_END}") MAINT_CONTACT=$(printf %q "${MAINT_CONTACT}") DATABASE_URL=$(printf %q '${{ secrets.PRODUCTION_DATABASE_URL }}')"
+
         # Connect to the production server and deploy
         ssh -o StrictHostKeyChecking=no \
           MAINT_MODE="$(printf '%s' "$MAINT_MODE")" \
@@ -67,7 +70,6 @@ jobs:
 
           # Ensure DATABASE_URL is set for migrations
           echo 'Exporting DATABASE_URL for production migrations...'
-          export DATABASE_URL='${{ secrets.PRODUCTION_DATABASE_URL }}'
 
           echo 'Running database migrations...'
           flask db upgrade
