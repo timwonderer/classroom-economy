@@ -789,6 +789,10 @@ def add_individual_student():
         first_half_hash = hash_hmac(name_code.encode(), salt)
         second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
+        # Compute last_name_hash_by_part for fuzzy matching
+        from app.utils.name_utils import hash_last_name_parts
+        last_name_parts = hash_last_name_parts(last_name, salt)
+
         # Check for duplicates - need to check ALL students GLOBALLY (not scoped to teacher)
         # This prevents creating duplicate accounts when multiple teachers have the same student
         potential_duplicates = Student.query.filter_by(
@@ -797,19 +801,32 @@ def add_individual_student():
         ).all()
 
         # Check if any existing student has BOTH the same first name AND full last name
-        # Since we don't store full last name, we check if the name code matches
+        # Try exact name_code match first, then fall back to fuzzy last name matching
+        from app.utils.name_utils import verify_last_name_parts
+
         for existing_student in potential_duplicates:
             if existing_student.first_name == first_name:
                 # Same first name and last initial - need to verify it's truly the same person
-                # by comparing the full last name through the name code
-                # MUST use same algorithm: vowels from first_name + consonants from last_name
+
+                # Method 1: Exact name_code match (vowels + consonants)
                 test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
                 test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
                 test_name_code = ''.join(test_vowels + test_consonants).lower()
-
-                # Try to verify with the stored hash
                 test_hash = hash_hmac(test_name_code.encode(), existing_student.salt)
-                if test_hash == existing_student.first_half_hash:
+
+                exact_match = (test_hash == existing_student.first_half_hash)
+
+                # Method 2: Fuzzy last name matching (handles "Smith" vs "Smith-Jones")
+                fuzzy_match = False
+                if existing_student.last_name_hash_by_part:
+                    fuzzy_match = verify_last_name_parts(
+                        last_name,
+                        existing_student.last_name_hash_by_part,
+                        existing_student.salt
+                    )
+
+                # Match if EITHER exact OR fuzzy match succeeds
+                if exact_match or fuzzy_match:
                     # Student already exists - link to this teacher instead of creating duplicate
                     current_admin_id = session.get("admin_id")
 
@@ -839,6 +856,7 @@ def add_individual_student():
             first_half_hash=first_half_hash,
             second_half_hash=second_half_hash,
             dob_sum=dob_sum,
+            last_name_hash_by_part=last_name_parts,
             has_completed_setup=False,
             teacher_id=session.get("admin_id"),
         )
@@ -2442,30 +2460,61 @@ def upload_students():
             # Generate last_initial
             last_initial = last_name[0].upper()
 
-            # Efficiently check for duplicates.
+            # Efficiently check for duplicates GLOBALLY (not scoped to teacher).
+            # This prevents creating duplicate accounts when multiple teachers have the same student.
             # 1. Filter by unencrypted fields (`last_initial`, `block`) to get a small candidate pool.
-            potential_matches = _scoped_students().filter_by(last_initial=last_initial, block=block).all()
+            potential_matches = Student.query.filter_by(last_initial=last_initial, block=block).all()
 
             # 2. Iterate through the small pool and compare first name AND full last name via hash
-            is_duplicate = False
+            # Try exact match first, then fuzzy match
+            existing_student = None
             for student in potential_matches:
                 if student.first_name == first_name:
-                    # Same first name and last initial - verify full last name matches too
-                    # MUST use original algorithm: vowels from first_name + consonants from last_name
+                    # Same first name and last initial - verify full last name matches
+
+                    # Method 1: Exact name_code match
                     test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
                     test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
                     test_name_code = ''.join(test_vowels + test_consonants).lower()
-
-                    # Check if this matches the existing student's hash
                     test_hash = hash_hmac(test_name_code.encode(), student.salt)
-                    if test_hash == student.first_half_hash:
-                        is_duplicate = True
+
+                    exact_match = (test_hash == student.first_half_hash)
+
+                    # Method 2: Fuzzy last name matching
+                    fuzzy_match = False
+                    if student.last_name_hash_by_part:
+                        from app.utils.name_utils import verify_last_name_parts
+                        fuzzy_match = verify_last_name_parts(
+                            last_name,
+                            student.last_name_hash_by_part,
+                            student.salt
+                        )
+
+                    # Match if EITHER exact OR fuzzy succeeds
+                    if exact_match or fuzzy_match:
+                        existing_student = student
                         break
 
-            if is_duplicate:
-                current_app.logger.info(f"Duplicate detected: {first_name} {last_name} in block {block}, skipping.")
-                duplicated += 1
-                continue  # skip this duplicate
+            if existing_student:
+                # Student already exists - link to this teacher instead of creating duplicate
+                current_admin_id = session.get("admin_id")
+
+                # Check if already linked
+                from app.models import StudentTeacher
+                existing_link = StudentTeacher.query.filter_by(
+                    student_id=existing_student.id,
+                    admin_id=current_admin_id
+                ).first()
+
+                if not existing_link:
+                    _link_student_to_admin(existing_student, current_admin_id)
+                    current_app.logger.info(f"Linked existing student {first_name} {last_name} to teacher {current_admin_id}")
+                    added_count += 1  # Count as added since we linked them
+                else:
+                    current_app.logger.info(f"Student {first_name} {last_name} already linked to teacher, skipping.")
+                    duplicated += 1
+
+                continue  # Move to next row
 
             # Generate name_code (MUST match original algorithm for consistency)
             # vowels from first_name + consonants from last_name
@@ -2495,6 +2544,10 @@ def upload_students():
             first_half_hash = hash_hmac(name_code.encode(), salt)
             second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
+            # Compute last_name_hash_by_part for fuzzy matching
+            from app.utils.name_utils import hash_last_name_parts
+            last_name_parts = hash_last_name_parts(last_name, salt)
+
             student = Student(
                 first_name=first_name,
                 last_initial=last_initial,
@@ -2503,6 +2556,7 @@ def upload_students():
                 first_half_hash=first_half_hash,
                 second_half_hash=second_half_hash,
                 dob_sum=dob_sum,
+                last_name_hash_by_part=last_name_parts,
                 has_completed_setup=False,
                 teacher_id=session.get("admin_id"),
             )

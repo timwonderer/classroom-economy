@@ -26,6 +26,11 @@ class Student(db.Model):
     second_half_hash = db.Column(db.String(64), unique=True, nullable=True)
     username_hash = db.Column(db.String(64), unique=True, nullable=True)
 
+    # Fuzzy name matching - stores hash of each last name part separately
+    # Example: "Smith-Jones" → ["hash(smith)", "hash(jones)"]
+    # Allows matching when teachers enter names with different delimiters
+    last_name_hash_by_part = db.Column(db.JSON, nullable=True)
+
     # Ownership / tenancy
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
     teacher = db.relationship('Admin', backref=db.backref('students', lazy='dynamic'))
