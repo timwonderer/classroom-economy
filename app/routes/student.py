@@ -42,6 +42,46 @@ from attendance import get_all_block_statuses
 student_bp = Blueprint('student', __name__, url_prefix='/student')
 
 
+# -------------------- PERIOD SELECTION HELPERS --------------------
+
+def get_current_teacher_id():
+    """Get the currently selected teacher ID from session.
+
+    Returns the teacher_id for the period/class the student is currently viewing.
+    If no period is selected, defaults to the student's primary teacher.
+    """
+    student = get_logged_in_student()
+    if not student:
+        return None
+
+    # Check if a period is already selected in session
+    current_teacher_id = session.get('current_teacher_id')
+
+    # If no period selected, default to primary teacher
+    if not current_teacher_id:
+        if student.teacher:
+            current_teacher_id = student.teacher.id
+        elif student.shared_teachers.first():
+            current_teacher_id = student.shared_teachers.first().id
+        else:
+            return None
+
+        # Store in session for future requests
+        session['current_teacher_id'] = current_teacher_id
+
+    # Verify student still has access to this teacher
+    teacher_ids = [t.id for t in student.get_all_teachers()]
+    if current_teacher_id not in teacher_ids:
+        # Teacher no longer accessible, reset to primary
+        if student.teacher:
+            current_teacher_id = student.teacher.id
+            session['current_teacher_id'] = current_teacher_id
+        else:
+            return None
+
+    return current_teacher_id
+
+
 def _generate_anonymous_code(user_identifier: str) -> str:
     """Return an HMAC-based anonymous code for the given user identifier."""
 
@@ -1340,6 +1380,30 @@ def logout():
     session.pop('student_id', None)
     flash("You've been logged out.")
     return redirect(url_for('student.login'))
+
+
+@student_bp.route('/switch-period/<int:teacher_id>', methods=['POST'])
+@login_required
+def switch_period(teacher_id):
+    """Switch to a different period/teacher's class economy."""
+    student = get_logged_in_student()
+
+    # Verify student has access to this teacher
+    teacher_ids = [t.id for t in student.get_all_teachers()]
+    if teacher_id not in teacher_ids:
+        flash("You don't have access to that class.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    # Update session with new teacher
+    session['current_teacher_id'] = teacher_id
+
+    # Get teacher name for flash message
+    from app.models import Admin
+    teacher = Admin.query.get(teacher_id)
+    if teacher:
+        flash(f"Switched to {teacher.username}'s class")
+
+    return redirect(url_for('student.dashboard'))
 
 
 # -------------------- SETUP COMPLETE --------------------

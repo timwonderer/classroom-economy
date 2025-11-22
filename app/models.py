@@ -65,6 +65,36 @@ class Student(db.Model):
     def savings_balance(self):
         return round(sum(tx.amount for tx in self.transactions if tx.account_type == 'savings' and not tx.is_void), 2)
 
+    def get_checking_balance(self, teacher_id):
+        """Get checking balance scoped to a specific teacher's economy."""
+        return round(sum(
+            tx.amount for tx in self.transactions
+            if tx.account_type == 'checking' and not tx.is_void and tx.teacher_id == teacher_id
+        ), 2)
+
+    def get_savings_balance(self, teacher_id):
+        """Get savings balance scoped to a specific teacher's economy."""
+        return round(sum(
+            tx.amount for tx in self.transactions
+            if tx.account_type == 'savings' and not tx.is_void and tx.teacher_id == teacher_id
+        ), 2)
+
+    def get_total_earnings(self, teacher_id):
+        """Get total earnings scoped to a specific teacher's economy."""
+        return round(sum(
+            tx.amount for tx in self.transactions
+            if tx.teacher_id == teacher_id and tx.amount > 0 and not tx.is_void
+            and not (tx.description or "").startswith("Transfer")
+        ), 2)
+
+    def get_all_teachers(self):
+        """Get list of all teachers this student is associated with."""
+        teachers = []
+        if self.teacher:
+            teachers.append(self.teacher)
+        teachers.extend(list(self.shared_teachers.all()))
+        return teachers
+
     @property
     def total_earnings(self):
         return round(sum(tx.amount for tx in self.transactions if tx.amount > 0 and not tx.is_void and not tx.description.startswith("Transfer")), 2)
@@ -140,6 +170,7 @@ class SystemAdmin(db.Model):
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
     amount = db.Column(db.Float, nullable=False)
     # All times stored as UTC (see header note)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
@@ -149,6 +180,9 @@ class Transaction(db.Model):
     type = db.Column(db.String(50))  # optional field to describe the transaction type
     # All times stored as UTC
     date_funds_available = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationship to track which teacher created this transaction
+    teacher = db.relationship('Admin', backref=db.backref('transactions', lazy='dynamic'))
 
 
 # ---- TapEvent Model (append-only) ----
