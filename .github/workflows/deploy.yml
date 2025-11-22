@@ -21,9 +21,14 @@ jobs:
 
 
     - name: Deploy to DO Production Server
+      env:
+        MAINT_MODE: ${{ vars.MAINTENANCE_MODE || 'false' }}
+        MAINT_MESSAGE: ${{ vars.MAINTENANCE_MESSAGE || 'We'\''re performing scheduled maintenance.' }}
+        MAINT_END: ${{ vars.MAINTENANCE_EXPECTED_END || '' }}
+        MAINT_CONTACT: ${{ vars.MAINTENANCE_CONTACT || '' }}
       run: |
         # Connect to the production server and deploy
-        ssh -o StrictHostKeyChecking=no root@24.199.127.184 << 'EOF'
+        ssh -o StrictHostKeyChecking=no root@24.199.127.184 << EOF
 
           set -e  # Exit immediately if a command exits with a non-zero status
 
@@ -47,10 +52,10 @@ jobs:
           sed -i '/^MAINTENANCE_CONTACT=/d' .env 2>/dev/null || true
 
           # Add updated maintenance mode variables from GitHub
-          echo 'MAINTENANCE_MODE=${{ vars.MAINTENANCE_MODE || 'false' }}' >> .env
-          echo 'MAINTENANCE_MESSAGE="${{ vars.MAINTENANCE_MESSAGE || 'We'\''re performing scheduled maintenance.' }}"' >> .env
-          echo 'MAINTENANCE_EXPECTED_END="${{ vars.MAINTENANCE_EXPECTED_END || '' }}"' >> .env
-          echo 'MAINTENANCE_CONTACT="${{ vars.MAINTENANCE_CONTACT || '' }}"' >> .env
+          echo "MAINTENANCE_MODE=${MAINT_MODE}" >> .env
+          echo "MAINTENANCE_MESSAGE=\"${MAINT_MESSAGE}\"" >> .env
+          echo "MAINTENANCE_EXPECTED_END=\"${MAINT_END}\"" >> .env
+          echo "MAINTENANCE_CONTACT=\"${MAINT_CONTACT}\"" >> .env
 
           echo 'Installing dependencies...'
           pip install -r requirements.txt
