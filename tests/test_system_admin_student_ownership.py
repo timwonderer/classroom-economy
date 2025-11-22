@@ -1,6 +1,6 @@
 import pyotp
 
-from app import db
+from app import app, db
 from app.models import Admin, Student, StudentTeacher, SystemAdmin
 from hash_utils import get_random_salt, hash_username
 
@@ -69,6 +69,21 @@ def test_sysadmin_can_add_teacher_and_set_primary(client):
     assert response.status_code == 200
     assert StudentTeacher.query.filter_by(student_id=student.id, admin_id=teacher_b.id).first()
     assert Student.query.get(student.id).teacher_id == teacher_b.id
+
+
+def test_student_ownership_forms_include_csrf_token(client):
+    sys_admin, sys_secret = _create_sysadmin()
+    _login_sysadmin(client, sys_admin, sys_secret)
+
+    previous_csrf_setting = app.config.get("WTF_CSRF_ENABLED")
+    app.config["WTF_CSRF_ENABLED"] = True
+    try:
+        response = client.get("/sysadmin/student-ownership")
+    finally:
+        app.config["WTF_CSRF_ENABLED"] = previous_csrf_setting
+
+    assert response.status_code == 200
+    assert b'name="csrf_token"' in response.data
 
 
 def test_removing_primary_teacher_reassigns_when_available(client):
