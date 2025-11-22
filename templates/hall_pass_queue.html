@@ -123,7 +123,7 @@
 
         .queue-item {
             display: grid;
-            grid-template-columns: 60px 1fr 150px 120px;
+            grid-template-columns: 60px 1fr 120px;
             gap: 1rem;
             align-items: center;
             padding: 1.5rem;
@@ -317,7 +317,6 @@
                         <div class="queue-student-name">${item.student_name}</div>
                         <div class="queue-destination">${item.destination}</div>
                     </div>
-                    <div class="queue-destination">Pass: ${item.pass_number}</div>
                     <div class="queue-time">${getTimeElapsed(item.approved_time)}</div>
                 </div>
             `;

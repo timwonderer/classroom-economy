@@ -875,6 +875,87 @@ def hall_pass_settings():
     })
 
 
+@api_bp.route('/hall-pass/history', methods=['GET'])
+@admin_required
+def hall_pass_history():
+    """Get paginated hall pass history with filters (admin only)"""
+    try:
+        # Get pagination parameters
+        page = int(request.args.get('page', 1))
+        page_size = min(int(request.args.get('page_size', 25)), 100)  # Max 100 per page
+
+        # Get filter parameters
+        period = request.args.get('period', '').strip()
+        pass_type = request.args.get('type', '').strip()
+        start_date = request.args.get('start_date', '').strip()
+        end_date = request.args.get('end_date', '').strip()
+
+        # Build query
+        query = HallPassLog.query
+
+        # Apply filters
+        if period:
+            query = query.filter(HallPassLog.period == period)
+
+        if pass_type:
+            query = query.filter(HallPassLog.reason == pass_type)
+
+        if start_date:
+            try:
+                start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+                query = query.filter(HallPassLog.request_time >= start_datetime)
+            except ValueError:
+                return jsonify({"status": "error", "message": "Invalid start date format"}), 400
+
+        if end_date:
+            try:
+                # End date should include the entire day
+                end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
+                end_datetime = end_datetime.replace(hour=23, minute=59, second=59)
+                query = query.filter(HallPassLog.request_time <= end_datetime)
+            except ValueError:
+                return jsonify({"status": "error", "message": "Invalid end date format"}), 400
+
+        # Order by most recent first
+        query = query.order_by(HallPassLog.request_time.desc())
+
+        # Get total count for pagination
+        total = query.count()
+
+        # Apply pagination
+        offset = (page - 1) * page_size
+        records = query.offset(offset).limit(page_size).all()
+
+        # Format records for response
+        records_data = []
+        for record in records:
+            records_data.append({
+                "id": record.id,
+                "student_name": record.student.full_name if record.student else "Unknown",
+                "period": record.period,
+                "reason": record.reason,
+                "pass_number": record.pass_number,
+                "status": record.status,
+                "request_time": record.request_time.isoformat() if record.request_time else None,
+                "decision_time": record.decision_time.isoformat() if record.decision_time else None,
+                "left_time": record.left_time.isoformat() if record.left_time else None,
+                "return_time": record.return_time.isoformat() if record.return_time else None
+            })
+
+        return jsonify({
+            "status": "success",
+            "records": records_data,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total + page_size - 1) // page_size
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"Error fetching hall pass history: {e}")
+        return jsonify({"status": "error", "message": "Failed to fetch history"}), 500
+
+
 # -------------------- ATTENDANCE API --------------------
 
 @api_bp.route('/tap', methods=['POST'])
