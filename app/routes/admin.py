@@ -778,15 +778,13 @@ def add_individual_student():
         month, day, year = map(int, dob_str.split('/'))
         dob_sum = month + day + year
 
-        # Generate name code (MUST match original algorithm for consistency)
-        # vowels from first_name + consonants from last_name
-        vowels = re.findall(r'[AEIOUaeiou]', first_name)
-        consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-        name_code = ''.join(vowels + consonants).lower()
-
-        # Generate salt and hashes
+        # Generate salt
         salt = get_random_salt()
-        first_half_hash = hash_hmac(name_code.encode(), salt)
+
+        # Compute first_half_hash: CONCAT(last_initial, DOB_sum)
+        # Updated to match new credential system
+        credential = f"{last_initial}{dob_sum}"  # e.g., "S2025"
+        first_half_hash = hash_hmac(credential.encode(), salt)
         second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
         # Compute last_name_hash_by_part for fuzzy matching
@@ -797,26 +795,19 @@ def add_individual_student():
         # This prevents creating duplicate accounts when multiple teachers have the same student
         potential_duplicates = Student.query.filter_by(
             last_initial=last_initial,
-            block=block
+            dob_sum=dob_sum
         ).all()
 
-        # Check if any existing student has BOTH the same first name AND full last name
-        # Try exact name_code match first, then fall back to fuzzy last name matching
+        # Check if any existing student matches (using new credential system)
         from app.utils.name_utils import verify_last_name_parts
 
         for existing_student in potential_duplicates:
             if existing_student.first_name == first_name:
-                # Same first name and last initial - need to verify it's truly the same person
+                # Verify credential matches
+                test_credential = f"{last_initial}{dob_sum}"
+                credential_matches = existing_student.first_half_hash == hash_hmac(test_credential.encode(), existing_student.salt)
 
-                # Method 1: Exact name_code match (vowels + consonants)
-                test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
-                test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-                test_name_code = ''.join(test_vowels + test_consonants).lower()
-                test_hash = hash_hmac(test_name_code.encode(), existing_student.salt)
-
-                exact_match = (test_hash == existing_student.first_half_hash)
-
-                # Method 2: Fuzzy last name matching (handles "Smith" vs "Smith-Jones")
+                # Also check fuzzy last name matching
                 fuzzy_match = False
                 if existing_student.last_name_hash_by_part:
                     fuzzy_match = verify_last_name_parts(
@@ -825,8 +816,8 @@ def add_individual_student():
                         existing_student.salt
                     )
 
-                # Match if EITHER exact OR fuzzy match succeeds
-                if exact_match or fuzzy_match:
+                # Match if BOTH credential AND last name match
+                if credential_matches and fuzzy_match:
                     # Student already exists - link to this teacher instead of creating duplicate
                     current_admin_id = session.get("admin_id")
 
@@ -905,34 +896,52 @@ def add_manual_student():
         month, day, year = map(int, dob_str.split('/'))
         dob_sum = month + day + year
 
-        # Generate name code (MUST match original algorithm for consistency)
-        # vowels from first_name + consonants from last_name
-        vowels = re.findall(r'[AEIOUaeiou]', first_name)
-        consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-        name_code = ''.join(vowels + consonants).lower()
-
-        # Generate salt and hashes
+        # Generate salt
         salt = get_random_salt()
-        first_half_hash = hash_hmac(name_code.encode(), salt)
+
+        # Compute first_half_hash: CONCAT(last_initial, DOB_sum)
+        # Updated to match new credential system
+        credential = f"{last_initial}{dob_sum}"  # e.g., "S2025"
+        first_half_hash = hash_hmac(credential.encode(), salt)
         second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
-        # Check for duplicates - same logic as add_individual_student
-        potential_duplicates = _scoped_students().filter_by(
+        # Compute last_name_hash_by_part for fuzzy matching
+        from app.utils.name_utils import hash_last_name_parts, verify_last_name_parts
+        last_name_parts = hash_last_name_parts(last_name, salt)
+
+        # Check for duplicates GLOBALLY (not scoped to teacher)
+        potential_duplicates = Student.query.filter_by(
             last_initial=last_initial,
-            block=block
+            dob_sum=dob_sum
         ).all()
 
         for existing_student in potential_duplicates:
             if existing_student.first_name == first_name:
-                # Same first name and last initial - verify full last name matches
-                # MUST use same algorithm: vowels from first_name + consonants from last_name
-                test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
-                test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-                test_name_code = ''.join(test_vowels + test_consonants).lower()
+                # Verify credential matches
+                test_credential = f"{last_initial}{dob_sum}"
+                credential_matches = existing_student.first_half_hash == hash_hmac(test_credential.encode(), existing_student.salt)
 
-                test_hash = hash_hmac(test_name_code.encode(), existing_student.salt)
-                if test_hash == existing_student.first_half_hash:
-                    flash(f"Student {first_name} {last_name} in block {block} already exists.", "warning")
+                # Also check fuzzy last name matching
+                fuzzy_match = False
+                if existing_student.last_name_hash_by_part:
+                    fuzzy_match = verify_last_name_parts(
+                        last_name,
+                        existing_student.last_name_hash_by_part,
+                        existing_student.salt
+                    )
+
+                if credential_matches and fuzzy_match:
+                    flash(f"Student {first_name} {last_name} already exists. Linking to your class.", "warning")
+                    # Link to this teacher
+                    from app.models import StudentTeacher
+                    current_admin_id = session.get("admin_id")
+                    existing_link = StudentTeacher.query.filter_by(
+                        student_id=existing_student.id,
+                        admin_id=current_admin_id
+                    ).first()
+                    if not existing_link:
+                        _link_student_to_admin(existing_student, current_admin_id)
+                        db.session.commit()
                     return redirect(url_for('admin.students'))
 
         # Create student
@@ -944,6 +953,7 @@ def add_manual_student():
             first_half_hash=first_half_hash,
             second_half_hash=second_half_hash,
             dob_sum=dob_sum,
+            last_name_hash_by_part=last_name_parts,
             hall_passes=hall_passes,
             is_rent_enabled=rent_enabled,
             has_completed_setup=setup_complete,
