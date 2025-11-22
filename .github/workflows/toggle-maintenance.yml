@@ -1,0 +1,83 @@
+name: Toggle Maintenance Mode
+
+on:
+  workflow_dispatch:
+    inputs:
+      enabled:
+        description: 'Enable maintenance mode'
+        required: true
+        type: boolean
+        default: false
+      message:
+        description: 'Maintenance message'
+        required: false
+        default: "We're performing scheduled maintenance."
+      expected_end:
+        description: 'Expected end time (e.g., "Back online by 3:00 PM")'
+        required: false
+        default: ''
+      contact:
+        description: 'Contact email'
+        required: false
+        default: ''
+
+jobs:
+  toggle:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+    - name: Set up SSH
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.DO_DEPLOY_KEY }}
+
+    - name: Update maintenance mode on server
+      run: |
+        ENABLED="${{ inputs.enabled }}"
+        MODE_VALUE="false"
+        if [ "$ENABLED" = "true" ]; then
+          MODE_VALUE="true"
+        fi
+
+        MESSAGE="${{ inputs.message }}"
+        EXPECTED_END="${{ inputs.expected_end }}"
+        CONTACT="${{ inputs.contact }}"
+
+        ssh -o StrictHostKeyChecking=no root@24.199.127.184 << EOF
+          set -e
+
+          echo 'Navigating to project directory...'
+          cd ~/classroom-economy
+
+          echo 'Updating maintenance mode settings...'
+          # Remove old maintenance mode variables
+          sed -i '/^MAINTENANCE_MODE=/d' .env 2>/dev/null || true
+          sed -i '/^MAINTENANCE_MESSAGE=/d' .env 2>/dev/null || true
+          sed -i '/^MAINTENANCE_EXPECTED_END=/d' .env 2>/dev/null || true
+          sed -i '/^MAINTENANCE_CONTACT=/d' .env 2>/dev/null || true
+
+          # Add new maintenance mode variables
+          echo "MAINTENANCE_MODE=$MODE_VALUE" >> .env
+          echo 'MAINTENANCE_MESSAGE="$MESSAGE"' >> .env
+          echo 'MAINTENANCE_EXPECTED_END="$EXPECTED_END"' >> .env
+          echo 'MAINTENANCE_CONTACT="$CONTACT"' >> .env
+
+          echo 'Restarting Gunicorn to apply changes...'
+          sudo systemctl restart gunicorn
+
+          echo "✅ Maintenance mode updated: $MODE_VALUE"
+          if [ "$MODE_VALUE" = "true" ]; then
+            echo "📝 Message: $MESSAGE"
+            echo "⏰ Expected end: $EXPECTED_END"
+            echo "📧 Contact: $CONTACT"
+          fi
+        EOF
+
+    - name: Summary
+      run: |
+        if [ "${{ inputs.enabled }}" = "true" ]; then
+          echo "🔧 Maintenance mode ENABLED"
+          echo "Message: ${{ inputs.message }}"
+        else
+          echo "✅ Maintenance mode DISABLED - Site is live"
+        fi
