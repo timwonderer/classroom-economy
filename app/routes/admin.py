@@ -789,9 +789,9 @@ def add_individual_student():
         first_half_hash = hash_hmac(name_code.encode(), salt)
         second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
-        # Check for duplicates - need to check ALL students with same last_initial and block
-        # because we can't distinguish based on last_initial alone
-        potential_duplicates = _scoped_students().filter_by(
+        # Check for duplicates - need to check ALL students GLOBALLY (not scoped to teacher)
+        # This prevents creating duplicate accounts when multiple teachers have the same student
+        potential_duplicates = Student.query.filter_by(
             last_initial=last_initial,
             block=block
         ).all()
@@ -810,7 +810,24 @@ def add_individual_student():
                 # Try to verify with the stored hash
                 test_hash = hash_hmac(test_name_code.encode(), existing_student.salt)
                 if test_hash == existing_student.first_half_hash:
-                    flash(f"Student {first_name} {last_name} in block {block} already exists.", "warning")
+                    # Student already exists - link to this teacher instead of creating duplicate
+                    current_admin_id = session.get("admin_id")
+
+                    # Check if this teacher is already linked to this student
+                    from app.models import StudentTeacher
+                    existing_link = StudentTeacher.query.filter_by(
+                        student_id=existing_student.id,
+                        admin_id=current_admin_id
+                    ).first()
+
+                    if existing_link:
+                        flash(f"Student {first_name} {last_name} is already in your class.", "info")
+                    else:
+                        # Link this teacher to the existing student
+                        _link_student_to_admin(existing_student, current_admin_id)
+                        db.session.commit()
+                        flash(f"Student {first_name} {last_name} already exists. Added to your class.", "success")
+
                     return redirect(url_for('admin.students'))
 
         # Create student
