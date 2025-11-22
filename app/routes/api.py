@@ -956,6 +956,97 @@ def hall_pass_history():
         return jsonify({"status": "error", "message": "Failed to fetch history"}), 500
 
 
+@api_bp.route('/attendance/history', methods=['GET'])
+@admin_required
+def attendance_history():
+    """Get paginated attendance history with filters (admin only)"""
+    try:
+        # Get pagination parameters
+        page = int(request.args.get('page', 1))
+        page_size = min(int(request.args.get('page_size', 50)), 100)  # Max 100 per page
+
+        # Get filter parameters
+        period = request.args.get('period', '').strip()
+        block = request.args.get('block', '').strip()
+        status = request.args.get('status', '').strip()  # 'active' or 'inactive'
+        start_date = request.args.get('start_date', '').strip()
+        end_date = request.args.get('end_date', '').strip()
+
+        # Build query
+        query = TapEvent.query
+
+        # Apply filters
+        if period:
+            query = query.filter(TapEvent.period == period)
+
+        if status:
+            query = query.filter(TapEvent.status == status)
+
+        if start_date:
+            try:
+                start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+                query = query.filter(TapEvent.timestamp >= start_datetime)
+            except ValueError:
+                return jsonify({"status": "error", "message": "Invalid start date format"}), 400
+
+        if end_date:
+            try:
+                # End date should include the entire day
+                end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
+                end_datetime = end_datetime.replace(hour=23, minute=59, second=59)
+                query = query.filter(TapEvent.timestamp <= end_datetime)
+            except ValueError:
+                return jsonify({"status": "error", "message": "Invalid end date format"}), 400
+
+        # Filter by block (need to join with Student)
+        if block:
+            query = query.join(Student, TapEvent.student_id == Student.id)
+            # Use LIKE to match comma-separated blocks
+            query = query.filter(Student.block.like(f'%{block}%'))
+
+        # Order by most recent first
+        query = query.order_by(TapEvent.timestamp.desc())
+
+        # Get total count for pagination
+        total = query.count()
+
+        # Apply pagination
+        offset = (page - 1) * page_size
+        records = query.offset(offset).limit(page_size).all()
+
+        # Build student lookup for names and blocks
+        student_ids = [r.student_id for r in records]
+        students = {s.id: {'name': s.full_name, 'block': s.block} for s in Student.query.filter(Student.id.in_(student_ids)).all()}
+
+        # Format records for response
+        records_data = []
+        for record in records:
+            student_info = students.get(record.student_id, {'name': 'Unknown', 'block': 'Unknown'})
+            records_data.append({
+                "id": record.id,
+                "student_id": record.student_id,
+                "student_name": student_info['name'],
+                "student_block": student_info['block'],
+                "period": record.period,
+                "status": record.status,
+                "reason": record.reason if record.reason else None,
+                "timestamp": record.timestamp.isoformat() + 'Z' if record.timestamp else None
+            })
+
+        return jsonify({
+            "status": "success",
+            "records": records_data,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (total + page_size - 1) // page_size
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"Error fetching attendance history: {e}")
+        return jsonify({"status": "error", "message": "Failed to fetch attendance history"}), 500
+
+
 # -------------------- ATTENDANCE API --------------------
 
 @api_bp.route('/tap', methods=['POST'])
