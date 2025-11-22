@@ -23,7 +23,7 @@ jobs:
     - name: Deploy to DO Production Server
       env:
         MAINT_MODE: ${{ vars.MAINTENANCE_MODE || 'false' }}
-        MAINT_MESSAGE: ${{ vars.MAINTENANCE_MESSAGE || 'We'\''re performing scheduled maintenance.' }}
+        MAINT_MESSAGE: ${{ vars.MAINTENANCE_MESSAGE || 'We are performing scheduled maintenance.' }}
         MAINT_END: ${{ vars.MAINTENANCE_EXPECTED_END || '' }}
         MAINT_CONTACT: ${{ vars.MAINTENANCE_CONTACT || '' }}
       run: |
