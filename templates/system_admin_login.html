@@ -248,9 +248,11 @@
                             <span class="material-symbols-outlined me-1" style="vertical-align: middle; font-size: 16px;">info</span>Enter the code from your authenticator app
                         </small>
                     </div>
+                    {% if turnstile_site_key %}
                     <div class="mb-3">
                         <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
                     </div>
+                    {% endif %}
                     <div class="d-grid">
                         {{ form.submit(class="btn btn-primary") }}
                     </div>

@@ -255,9 +255,11 @@
                                     <div class="text-danger small">{{ error }}</div>
                                 {% endfor %}
                             </div>
+                            {% if turnstile_site_key %}
                             <div class="mb-3">
                                 <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
                             </div>
+                            {% endif %}
                             {{ form.submit(class="btn btn-primary w-100") }}
                         </form>
 
