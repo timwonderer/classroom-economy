@@ -33,7 +33,7 @@ from app.models import (
     RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
     HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings
 )
-from app.auth import admin_required, get_admin_student_query, get_student_for_admin
+from app.auth import admin_required, system_admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
     AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, StoreItemForm,
     InsurancePolicyForm, AdminClaimProcessForm, PayrollSettingsForm,
@@ -1312,6 +1312,7 @@ def insurance_management():
             max_claims_count=form.max_claims_count.data,
             max_claims_period=form.max_claims_period.data,
             max_claim_amount=form.max_claim_amount.data,
+            max_payout_per_period=form.max_payout_per_period.data,
             is_monetary=form.is_monetary.data,
             no_repurchase_after_cancel=form.no_repurchase_after_cancel.data,
             repurchase_wait_days=form.repurchase_wait_days.data,
@@ -1386,6 +1387,7 @@ def edit_insurance_policy(policy_id):
         policy.max_claims_count = form.max_claims_count.data
         policy.max_claims_period = form.max_claims_period.data
         policy.max_claim_amount = form.max_claim_amount.data
+        policy.max_payout_per_period = form.max_payout_per_period.data
         policy.is_monetary = form.is_monetary.data
         policy.no_repurchase_after_cancel = form.no_repurchase_after_cancel.data
         policy.enable_repurchase_cooldown = form.enable_repurchase_cooldown.data
@@ -1422,9 +1424,12 @@ def deactivate_insurance_policy(policy_id):
 
 
 @admin_bp.route('/insurance/delete/<int:policy_id>', methods=['POST'])
-@admin_required
+@system_admin_required
 def delete_insurance_policy(policy_id):
-    """Delete an insurance policy and optionally cancel all student enrollments."""
+    """Delete an insurance policy and optionally cancel all student enrollments.
+
+    Requires system admin privileges to prevent cross-tenant data deletion.
+    """
     policy = InsurancePolicy.query.get_or_404(policy_id)
     force_delete = request.form.get('force_delete') == 'true'
 
@@ -1483,32 +1488,30 @@ def mass_remove_policy(policy_id):
     # Get list of student IDs to remove (or 'all')
     student_ids_raw = request.form.get('student_ids', 'all')
 
+    # Get scoped student IDs subquery
+    student_ids_subq = _student_scope_subquery()
+
     if student_ids_raw == 'all':
-        # Cancel for all active students
-        query = StudentInsurance.query.filter_by(
-            policy_id=policy_id,
-            status='active'
-        )
+        # Cancel for all active students in scope
+        count = StudentInsurance.query.filter(
+            StudentInsurance.policy_id == policy_id,
+            StudentInsurance.status == 'active',
+            StudentInsurance.student_id.in_(student_ids_subq)
+        ).update({'status': 'cancelled'}, synchronize_session=False)
     else:
         # Cancel for specific students
         try:
             student_ids = [int(sid.strip()) for sid in student_ids_raw.split(',') if sid.strip()]
-            query = StudentInsurance.query.filter(
+            count = StudentInsurance.query.filter(
                 StudentInsurance.policy_id == policy_id,
                 StudentInsurance.student_id.in_(student_ids),
+                StudentInsurance.student_id.in_(student_ids_subq),
                 StudentInsurance.status == 'active'
-            )
+            ).update({'status': 'cancelled'}, synchronize_session=False)
         except ValueError:
             flash("Invalid student IDs provided.", "danger")
             return redirect(url_for('admin.insurance_management'))
 
-    # Scope to teacher's students
-    query = query.join(Student, StudentInsurance.student_id == Student.id).filter(
-        Student.id.in_(_student_scope_subquery())
-    )
-
-    # Update to cancelled
-    count = query.update({'status': 'cancelled'}, synchronize_session=False)
     db.session.commit()
 
     if student_ids_raw == 'all':
