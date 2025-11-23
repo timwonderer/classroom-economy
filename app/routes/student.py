@@ -1623,17 +1623,16 @@ def demo_login(session_id):
 
         if not demo_session:
             flash("Demo session not found or has expired.", "error")
-            return redirect(url_for('student.login'))
+            return redirect(url_for('admin.dashboard'))
 
         # Check if session has expired
         now = datetime.now(timezone.utc)
         if now > demo_session.expires_at:
             # Mark as inactive and cleanup
-            demo_session.is_active = False
-            demo_session.ended_at = now
+            cleanup_demo_student_records(demo_session)
             db.session.commit()
             flash("Demo session has expired (10 minute limit).", "error")
-            return redirect(url_for('student.login'))
+            return redirect(url_for('admin.dashboard'))
 
         # SECURITY: Verify the user is logged in as the admin who created this demo
         # This prevents privilege escalation via demo links
