@@ -325,6 +325,53 @@
     </div>
 </div>
 {% endfor %}
+
+        <!-- Ungrouped Policies (not in any tier) -->
+        {% if available_policies %}
+        <div class="row">
+            {% for policy in available_policies %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">{{ policy.title }}</h5>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="text-primary mb-3">
+                            ${{ "%.2f"|format(policy.premium) }}<small class="text-muted fs-6"> / {{ policy.charge_frequency }}</small>
+                        </h3>
+                        <div class="mb-3">{{ (policy.description or 'Comprehensive coverage for your needs.') | markdown }}</div>
+
+                        <ul class="small mb-3">
+                            <li>Up to {% if policy.max_claims_count %}{{ policy.max_claims_count }}{% else %}unlimited{% endif %} claims</li>
+                            <li>{{ policy.waiting_period_days }} day waiting period</li>
+                            {% if policy.is_monetary and policy.max_claim_amount %}
+                            <li>Max claim: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
+                            {% endif %}
+                        </ul>
+
+                        {% if can_purchase[policy.id] %}
+                        <form action="{{ url_for('student.purchase_insurance', policy_id=policy.id) }}" method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <span class="material-symbols-outlined">shopping_cart</span> Purchase
+                            </button>
+                        </form>
+                        {% else %}
+                        <button class="btn btn-secondary w-100" disabled>
+                            {% if repurchase_blocks.get(policy.id) %}
+                                Can't Repurchase ({{ repurchase_blocks[policy.id] }} days)
+                            {% else %}
+                                Already Enrolled
+                            {% endif %}
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
         {% else %}
         <div class="alert alert-info">
             <h5>No Insurance Plans Available</h5>
