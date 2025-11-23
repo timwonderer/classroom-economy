@@ -1553,15 +1553,18 @@ def login():
         try:
             # Fallback for legacy accounts without deterministic lookup hashes
             if not student:
-                students_with_matching_username_structure = Student.query.filter(
-                    Student.username_hash.isnot(None)
-                ).yield_per(50)
+                legacy_students_missing_lookup_hash = Student.query.filter(
+                    Student.username_lookup_hash.is_(None),
+                    Student.username_hash.isnot(None),
+                )
 
-                for s in students_with_matching_username_structure:
-                    candidate_hash = hash_username(username, s.salt)
-                    if candidate_hash == s.username_hash:
-                        student = s
-                        break
+                # Short-circuit if there are no legacy rows to scan
+                if legacy_students_missing_lookup_hash.limit(1).first():
+                    for s in legacy_students_missing_lookup_hash.yield_per(50):
+                        candidate_hash = hash_username(username, s.salt)
+                        if candidate_hash == s.username_hash:
+                            student = s
+                            break
 
             if not student or not check_password_hash(student.pin_hash or '', pin):
                 if is_json:
