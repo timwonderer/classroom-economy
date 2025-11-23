@@ -1602,11 +1602,97 @@ def login():
     return render_template('student_login.html', setup_cta=setup_cta, form=form)
 
 
+@student_bp.route('/demo-login/<string:session_id>')
+def demo_login(session_id):
+    """Auto-login for demo student sessions created by admins."""
+    from app.models import DemoStudent
+
+    try:
+        # Find the demo session
+        demo_session = DemoStudent.query.filter_by(
+            session_id=session_id,
+            is_active=True
+        ).first()
+
+        if not demo_session:
+            flash("Demo session not found or has expired.", "error")
+            return redirect(url_for('student.login'))
+
+        # Check if session has expired
+        now = datetime.now(timezone.utc)
+        if now > demo_session.expires_at:
+            # Mark as inactive and cleanup
+            demo_session.is_active = False
+            demo_session.ended_at = now
+            db.session.commit()
+            flash("Demo session has expired (10 minute limit).", "error")
+            return redirect(url_for('student.login'))
+
+        # Set up student session
+        student = demo_session.student
+        session.clear()  # Clear any existing session data
+        session['student_id'] = student.id
+        session['login_time'] = datetime.now(timezone.utc).isoformat()
+        session['last_activity'] = session['login_time']
+        session['is_demo'] = True
+        session['demo_session_id'] = session_id
+        session['view_as_student'] = True  # Mark as admin viewing as student
+        session['is_admin'] = True  # Maintain admin privileges
+        session['admin_id'] = demo_session.admin_id  # Keep admin ID for tracking
+
+        current_app.logger.info(f"Demo student session {session_id} logged in (student_id={student.id}, admin_id={demo_session.admin_id})")
+
+        flash("Demo session started! Session will expire in 10 minutes.", "success")
+        return redirect(url_for('student.dashboard'))
+
+    except Exception as e:
+        current_app.logger.error(f"Error during demo login: {e}", exc_info=True)
+        flash("An error occurred starting the demo session.", "error")
+        return redirect(url_for('student.login'))
+
+
 @student_bp.route('/logout')
 @login_required
 def logout():
     """Student logout."""
-    session.pop('student_id', None)
+    # Check if this is a demo session
+    is_demo = session.get('is_demo', False)
+    demo_session_id = session.get('demo_session_id')
+
+    if is_demo and demo_session_id:
+        # Clean up demo session
+        from app.models import DemoStudent
+        try:
+            demo_session = DemoStudent.query.filter_by(session_id=demo_session_id).first()
+            if demo_session:
+                demo_session.is_active = False
+                demo_session.ended_at = datetime.now(timezone.utc)
+
+                # Delete the demo student and all associated data
+                student_id = demo_session.student_id
+
+                # Delete transactions
+                Transaction.query.filter_by(student_id=student_id).delete()
+
+                # Delete tap events
+                TapEvent.query.filter_by(student_id=student_id).delete()
+
+                # Delete student items
+                StudentItem.query.filter_by(student_id=student_id).delete()
+
+                # Delete the student
+                Student.query.filter_by(id=student_id).delete()
+
+                # Delete the demo session record
+                db.session.delete(demo_session)
+
+                db.session.commit()
+                current_app.logger.info(f"Demo session {demo_session_id} ended and cleaned up")
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error cleaning up demo session: {e}", exc_info=True)
+
+    session.clear()
     flash("You've been logged out.")
     return redirect(url_for('student.login'))
 

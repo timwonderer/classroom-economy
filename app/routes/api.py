@@ -1435,22 +1435,106 @@ def set_timezone():
 
 # -------------------- VIEW AS STUDENT API --------------------
 
-@api_bp.route('/admin/toggle-view-as-student', methods=['POST'])
+@api_bp.route('/admin/create-demo-student', methods=['POST'])
 @admin_required
-def toggle_view_as_student():
-    """Toggle the view-as-student mode for admins"""
-    current_mode = session.get('view_as_student', False)
-    new_mode = not current_mode
+def create_demo_student():
+    """Create a demo student session with custom configuration"""
+    from app.models import DemoStudent
+    from werkzeug.security import generate_password_hash
+    import secrets
 
-    session['view_as_student'] = new_mode
+    try:
+        admin_id = session.get('admin_id')
+        data = request.get_json()
 
-    current_app.logger.info(f"Admin {session.get('admin_id')} toggled view-as-student mode to {new_mode}")
+        # Extract configuration
+        checking_balance = float(data.get('checking_balance', 0))
+        savings_balance = float(data.get('savings_balance', 0))
+        hall_passes = int(data.get('hall_passes', 3))
+        insurance_plan = data.get('insurance_plan', 'none')
+        period = data.get('period', 'A')
+        rent_enabled = bool(data.get('rent_enabled', True))
 
-    return jsonify({
-        "status": "success",
-        "view_as_student": new_mode,
-        "message": "View as student mode enabled" if new_mode else "View as student mode disabled"
-    })
+        # Generate a unique session ID for this demo
+        demo_session_id = secrets.token_urlsafe(32)
+
+        # Create a temporary demo student record
+        # Use encrypted first name for demo student
+        demo_student = Student(
+            first_name='Demo',
+            last_initial='S',
+            block=period,
+            salt=secrets.token_bytes(16),
+            pin_hash=generate_password_hash('1234'),  # Default PIN for demo
+            passphrase_hash=generate_password_hash('demo'),  # Default passphrase for demo
+            hall_passes=hall_passes,
+            is_rent_enabled=rent_enabled,
+            insurance_plan=insurance_plan,
+            has_completed_setup=True,
+            teacher_id=admin_id
+        )
+        demo_student.first_half_hash = secrets.token_hex(32)
+        demo_student.second_half_hash = secrets.token_hex(32)
+
+        db.session.add(demo_student)
+        db.session.flush()  # Get the student ID
+
+        # Create initial balance transactions
+        if checking_balance > 0:
+            checking_tx = Transaction(
+                student_id=demo_student.id,
+                teacher_id=admin_id,
+                amount=checking_balance,
+                account_type='checking',
+                type='admin_adjustment',
+                description='Demo student initial balance'
+            )
+            db.session.add(checking_tx)
+
+        if savings_balance > 0:
+            savings_tx = Transaction(
+                student_id=demo_student.id,
+                teacher_id=admin_id,
+                amount=savings_balance,
+                account_type='savings',
+                type='admin_adjustment',
+                description='Demo student initial balance'
+            )
+            db.session.add(savings_tx)
+
+        # Create demo session record
+        demo_session = DemoStudent(
+            admin_id=admin_id,
+            student_id=demo_student.id,
+            session_id=demo_session_id,
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            config_checking_balance=checking_balance,
+            config_savings_balance=savings_balance,
+            config_hall_passes=hall_passes,
+            config_insurance_plan=insurance_plan,
+            config_is_rent_enabled=rent_enabled,
+            config_period=period
+        )
+        db.session.add(demo_session)
+        db.session.commit()
+
+        current_app.logger.info(f"Admin {admin_id} created demo student session {demo_session_id} with student_id={demo_student.id}")
+
+        # Return success with the session ID
+        return jsonify({
+            "status": "success",
+            "message": "Demo student session created successfully",
+            "session_id": demo_session_id,
+            "redirect_url": f"/student/demo-login/{demo_session_id}"
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Failed to create demo student: {e}", exc_info=True)
+        return jsonify({
+            "status": "error",
+            "message": "Failed to create demo student session. Please try again."
+        }), 500
 
 
 @api_bp.route('/admin/view-as-student-status', methods=['GET'])
