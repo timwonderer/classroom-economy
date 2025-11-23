@@ -473,6 +473,10 @@
                class="btn text-start {% if current_page == 'banking' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">account_balance</span> Banking</a>
         </div>
         <div class="mt-auto">
+            <button id="viewAsStudentToggle" class="btn text-start w-100 mb-2" style="background: rgba(253, 176, 52, 0.2); border: 2px solid var(--brand-gold); color: var(--white);">
+                <span class="material-symbols-outlined">visibility</span>
+                <span id="toggleText">View as Student</span>
+            </button>
             <a href="{{ url_for('admin.logout') }}" class="btn btn-outline-secondary text-start w-100"><span class="material-symbols-outlined">logout</span> Sign Out</a>
         </div>
         </div>
@@ -519,6 +523,41 @@ document.addEventListener('DOMContentLoaded', () => {
     container.appendChild(toastEl);
     new bootstrap.Toast(toastEl, { delay: 3000 }).show();
   });
+});
+</script>
+<script>
+// View as Student toggle functionality
+document.addEventListener('DOMContentLoaded', () => {
+    const toggleBtn = document.getElementById('viewAsStudentToggle');
+    const toggleText = document.getElementById('toggleText');
+
+    // Get CSRF token
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
+
+    toggleBtn.addEventListener('click', async () => {
+        try {
+            const response = await fetch('/api/admin/toggle-view-as-student', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                }
+            });
+
+            const data = await response.json();
+
+            if (data.status === 'success' && data.view_as_student) {
+                // Redirect to student dashboard when enabled
+                window.location.href = '/student/dashboard';
+            } else if (data.status === 'success' && !data.view_as_student) {
+                // Update button text when disabled (though this shouldn't happen in admin view)
+                toggleText.textContent = 'View as Student';
+            }
+        } catch (error) {
+            console.error('Error toggling view mode:', error);
+            alert('Failed to toggle view mode. Please try again.');
+        }
+    });
 });
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>

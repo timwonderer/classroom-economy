@@ -1431,3 +1431,33 @@ def set_timezone():
     current_app.logger.info(f"Timezone set to {timezone_name} for session")
 
     return jsonify({"status": "success", "message": f"Timezone set to {timezone_name}."})
+
+
+# -------------------- VIEW AS STUDENT API --------------------
+
+@api_bp.route('/admin/toggle-view-as-student', methods=['POST'])
+@admin_required
+def toggle_view_as_student():
+    """Toggle the view-as-student mode for admins"""
+    current_mode = session.get('view_as_student', False)
+    new_mode = not current_mode
+
+    session['view_as_student'] = new_mode
+
+    current_app.logger.info(f"Admin {session.get('admin_id')} toggled view-as-student mode to {new_mode}")
+
+    return jsonify({
+        "status": "success",
+        "view_as_student": new_mode,
+        "message": "View as student mode enabled" if new_mode else "View as student mode disabled"
+    })
+
+
+@api_bp.route('/admin/view-as-student-status', methods=['GET'])
+@admin_required
+def view_as_student_status():
+    """Get the current view-as-student mode status"""
+    return jsonify({
+        "status": "success",
+        "view_as_student": session.get('view_as_student', False)
+    })

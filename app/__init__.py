@@ -198,6 +198,14 @@ def create_app():
             'turnstile_site_key': app.config.get('TURNSTILE_SITE_KEY')
         }
 
+    @app.context_processor
+    def inject_view_as_student_status():
+        """Inject view-as-student mode status into all templates."""
+        from app.auth import is_viewing_as_student
+        return {
+            'is_viewing_as_student': is_viewing_as_student()
+        }
+
     # -------------------- REGISTER BLUEPRINTS --------------------
     from app.routes.main import main_bp
     from app.routes.api import api_bp

@@ -23,11 +23,19 @@ def login_required(f):
     """
     Decorator to require student authentication for a route.
 
-    Enforces a strict 10-minute timeout from login time.
+    Enforces a strict 10-minute timeout from login time for students.
+    Also allows admins in view-as-student mode to access student routes.
     Redirects to student.login if not authenticated or session expired.
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # Allow access if admin is viewing as student
+        if is_viewing_as_student():
+            # Update admin's last activity
+            session['last_activity'] = datetime.now(timezone.utc).isoformat()
+            return f(*args, **kwargs)
+
+        # Regular student authentication check
         if 'student_id' not in session:
             encoded_next = urllib.parse.quote(request.path, safe="")
             return redirect(f"{url_for('student.login')}?next={encoded_next}")
@@ -183,3 +191,27 @@ def get_student_for_admin(student_id, include_unassigned=True):
     """Return a student the current admin can access, or None."""
     query = get_admin_student_query(include_unassigned=include_unassigned)
     return query.filter_by(id=student_id).first()
+
+
+def is_viewing_as_student():
+    """
+    Check if the current user is an admin viewing as a student.
+
+    Returns:
+        bool: True if admin is in view-as-student mode, False otherwise.
+    """
+    return session.get("is_admin") and session.get("view_as_student", False)
+
+
+def can_access_student_routes():
+    """
+    Check if the current user can access student routes.
+
+    Returns True if:
+    - User is a logged-in student, OR
+    - User is an admin in view-as-student mode
+
+    Returns:
+        bool: True if user can access student routes, False otherwise.
+    """
+    return 'student_id' in session or is_viewing_as_student()
