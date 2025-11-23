@@ -1327,6 +1327,7 @@ def insurance_management():
             auto_cancel_nonpay_days=form.auto_cancel_nonpay_days.data,
             claim_time_limit_days=form.claim_time_limit_days.data,
             bundle_discount_percent=form.bundle_discount_percent.data,
+            marketing_badge=form.marketing_badge.data if form.marketing_badge.data else None,
             is_active=form.is_active.data
         )
         db.session.add(policy)
@@ -1411,6 +1412,7 @@ def edit_insurance_policy(policy_id):
         policy.bundle_with_policy_ids = form.bundle_with_policy_ids.data
         policy.bundle_discount_percent = form.bundle_discount_percent.data
         policy.bundle_discount_amount = form.bundle_discount_amount.data
+        policy.marketing_badge = form.marketing_badge.data if form.marketing_badge.data else None
         policy.is_active = form.is_active.data
 
         db.session.commit()

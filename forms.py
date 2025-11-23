@@ -161,6 +161,27 @@ class InsurancePolicyForm(FlaskForm):
     bundle_discount_percent = FloatField('Bundle Discount %', default=0, validators=[Optional()])
     bundle_discount_amount = FloatField('Bundle Discount Amount ($)', default=0, validators=[Optional()])
 
+    # Marketing badge
+    marketing_badge = SelectField('Marketing Badge (optional)', choices=[
+        ('', 'None'),
+        ('best_value', 'Best Value!'),
+        ('most_popular', 'Most Popular'),
+        ('recommended', 'Recommended'),
+        ('premium', 'Premium Coverage'),
+        ('limited_time', 'Limited Time Offer'),
+        ('new', 'New!'),
+        ('fan_favorite', 'Fan Favorite'),
+        ('yolo', 'YOLO Protection'),
+        ('trust_me', 'Trust Me Bro'),
+        ('definitely_not_scam', 'Definitely Not a Scam'),
+        ('parents_approved', 'Your Parents Would Approve'),
+        ('as_seen_on_tv', 'As Seen on TV'),
+        ('industry_leading', 'Industry Leading*'),
+        ('chaos_insurance', 'Chaos Insurance'),
+        ('responsible_choice', 'The Responsible Choice™'),
+        ('your_friend_has_it', 'The One Your Friend Has')
+    ], validators=[Optional()])
+
     is_active = BooleanField('Policy is Active', default=True)
     submit = SubmitField('Save Policy')
 

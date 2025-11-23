@@ -460,6 +460,9 @@ class InsurancePolicy(db.Model):
     bundle_discount_percent = db.Column(db.Float, default=0)  # Discount % for bundle
     bundle_discount_amount = db.Column(db.Float, default=0)  # Discount $ amount for bundle
 
+    # Marketing badge for student-facing display
+    marketing_badge = db.Column(db.String(50), nullable=True)  # Predefined badge options
+
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

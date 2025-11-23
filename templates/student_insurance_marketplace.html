@@ -60,18 +60,33 @@
 {% if available_policies %}
 <div class="row g-4">
     {% for policy in available_policies %}
+    {% set badge_config = {
+        'best_value': {'color': 'warning', 'text': 'Best Value!', 'border': True},
+        'most_popular': {'color': 'primary', 'text': 'Most Popular', 'border': True},
+        'recommended': {'color': 'success', 'text': 'Recommended', 'border': False},
+        'premium': {'color': 'dark', 'text': 'Premium Coverage', 'border': True},
+        'limited_time': {'color': 'danger', 'text': 'Limited Time Offer', 'border': True},
+        'new': {'color': 'info', 'text': 'New!', 'border': False},
+        'fan_favorite': {'color': 'primary', 'text': 'Fan Favorite', 'border': False},
+        'yolo': {'color': 'danger', 'text': 'YOLO Protection 🎲', 'border': True},
+        'trust_me': {'color': 'warning', 'text': 'Trust Me Bro 🤝', 'border': True},
+        'definitely_not_scam': {'color': 'success', 'text': 'Definitely Not a Scam ✓', 'border': False},
+        'parents_approved': {'color': 'info', 'text': 'Your Parents Would Approve 👍', 'border': False},
+        'as_seen_on_tv': {'color': 'primary', 'text': 'As Seen on TV 📺', 'border': True},
+        'industry_leading': {'color': 'dark', 'text': 'Industry Leading* 🏆', 'border': True},
+        'chaos_insurance': {'color': 'danger', 'text': 'Chaos Insurance 🌀', 'border': True},
+        'responsible_choice': {'color': 'success', 'text': 'The Responsible Choice™', 'border': False},
+        'your_friend_has_it': {'color': 'info', 'text': 'The One Your Friend Has 🤫', 'border': False}
+    } %}
+    {% set badge = badge_config.get(policy.marketing_badge, {'color': 'secondary', 'text': None, 'border': False}) %}
     <div class="col-md-4">
-        <div class="card h-100 {% if loop.index == 3 %}border-warning{% endif %}">
-            <div class="card-header
-                {% if loop.index == 1 %}bg-primary text-white
-                {% elif loop.index == 2 %}bg-success text-white
-                {% elif loop.index == 3 %}bg-warning text-dark
-                {% else %}bg-secondary text-white{% endif %}">
+        <div class="card h-100 {% if badge.border %}border-{{ badge.color }} border-3{% endif %}">
+            <div class="card-header bg-{{ badge.color }} {% if badge.color in ['warning', 'info'] %}text-dark{% else %}text-white{% endif %}">
                 <h5 class="mb-0">{{ policy.title }}</h5>
-                {% if loop.index == 3 %}<small>Best Value!</small>{% endif %}
+                {% if badge.text %}<small class="badge bg-white text-{{ badge.color }} mt-1">{{ badge.text }}</small>{% endif %}
             </div>
             <div class="card-body d-flex flex-column">
-                <h3 class="{% if loop.index == 1 %}text-primary{% elif loop.index == 2 %}text-success{% elif loop.index == 3 %}text-warning{% endif %} mb-3">
+                <h3 class="text-{{ badge.color }} mb-3">
                     ${{ "%.2f"|format(policy.premium) }}<small class="text-muted">/ {{ policy.charge_frequency }}</small>
                 </h3>
 
@@ -97,7 +112,7 @@
                 {% if can_purchase[policy.id] %}
                     <form action="{{ url_for('student.purchase_insurance', policy_id=policy.id) }}" method="POST">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                        <button type="submit" class="btn {% if loop.index == 1 %}btn-primary{% elif loop.index == 2 %}btn-success{% elif loop.index == 3 %}btn-warning{% else %}btn-secondary{% endif %} w-100">
+                        <button type="submit" class="btn btn-{{ badge.color }} w-100">
                             Purchase Plan
                         </button>
                     </form>
