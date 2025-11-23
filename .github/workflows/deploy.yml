@@ -1,4 +1,4 @@
-name: Deploy to DO on push to main
+name: Production Deployment
 
 on:
   push:
