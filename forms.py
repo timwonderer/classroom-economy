@@ -144,6 +144,7 @@ class InsurancePolicyForm(FlaskForm):
         ('year', 'Per Year')
     ], default='month')
     max_claim_amount = FloatField('Max Claim Amount $ (leave blank for unlimited)', validators=[Optional()])
+    max_payout_per_period = FloatField('Max Total Payout per Period $ (leave blank for unlimited)', validators=[Optional()])
 
     # Claim type
     is_monetary = BooleanField('Monetary Claims (students claim dollar amounts)', default=True)

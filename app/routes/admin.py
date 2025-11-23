@@ -1488,6 +1488,43 @@ def process_claim(claim_id):
         if approved_claims >= claim.policy.max_claims_count:
             validation_errors.append(f"Maximum claims limit reached ({claim.policy.max_claims_count} per {claim.policy.max_claims_period})")
 
+    # Check max payout per period
+    if claim.policy.max_payout_per_period:
+        # Calculate period boundaries
+        now = datetime.utcnow()
+        if claim.policy.max_claims_period == 'month':
+            period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            next_month = period_start.replace(day=28) + timedelta(days=4)
+            period_end = next_month.replace(day=1) - timedelta(seconds=1)
+        elif claim.policy.max_claims_period == 'year':
+            period_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            period_end = now.replace(month=12, day=31, hour=23, minute=59, second=59)
+        elif claim.policy.max_claims_period == 'semester':
+            # Simplified: Jan-Jun or Jul-Dec
+            if now.month <= 6:
+                period_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                period_end = now.replace(month=6, day=30, hour=23, minute=59, second=59)
+            else:
+                period_start = now.replace(month=7, day=1, hour=0, minute=0, second=0, microsecond=0)
+                period_end = now.replace(month=12, day=31, hour=23, minute=59, second=59)
+        else:
+            period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            period_end = now
+
+        # Sum approved payouts in current period
+        period_payouts = db.session.query(func.sum(InsuranceClaim.approved_amount)).filter(
+            InsuranceClaim.student_insurance_id == enrollment.id,
+            InsuranceClaim.status.in_(['approved', 'paid']),
+            InsuranceClaim.processed_date >= period_start,
+            InsuranceClaim.processed_date <= period_end,
+            InsuranceClaim.approved_amount.isnot(None)
+        ).scalar() or 0.0
+
+        # Check if new claim would exceed limit
+        requested_amount = claim.claim_amount or 0.0
+        if period_payouts + requested_amount > claim.policy.max_payout_per_period:
+            validation_errors.append(f"Maximum payout limit would be exceeded (${period_payouts:.2f} paid + ${requested_amount:.2f} requested > ${claim.policy.max_payout_per_period:.2f} limit per {claim.policy.max_claims_period})")
+
     # Get claims statistics
     claims_stats = {
         'pending': InsuranceClaim.query.filter_by(student_insurance_id=enrollment.id, status='pending').count(),
@@ -1511,6 +1548,43 @@ def process_claim(claim_id):
             # Use approved amount or requested amount
             deposit_amount = form.approved_amount.data if form.approved_amount.data else claim.claim_amount
             claim.approved_amount = deposit_amount
+
+            # Final check: Verify max payout per period won't be exceeded
+            if claim.policy.max_payout_per_period:
+                # Recalculate period boundaries (same logic as above)
+                now = datetime.utcnow()
+                if claim.policy.max_claims_period == 'month':
+                    period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    next_month = period_start.replace(day=28) + timedelta(days=4)
+                    period_end = next_month.replace(day=1) - timedelta(seconds=1)
+                elif claim.policy.max_claims_period == 'year':
+                    period_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                    period_end = now.replace(month=12, day=31, hour=23, minute=59, second=59)
+                elif claim.policy.max_claims_period == 'semester':
+                    if now.month <= 6:
+                        period_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+                        period_end = now.replace(month=6, day=30, hour=23, minute=59, second=59)
+                    else:
+                        period_start = now.replace(month=7, day=1, hour=0, minute=0, second=0, microsecond=0)
+                        period_end = now.replace(month=12, day=31, hour=23, minute=59, second=59)
+                else:
+                    period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+                    period_end = now
+
+                # Sum approved payouts in current period (excluding this claim)
+                period_payouts = db.session.query(func.sum(InsuranceClaim.approved_amount)).filter(
+                    InsuranceClaim.student_insurance_id == enrollment.id,
+                    InsuranceClaim.status.in_(['approved', 'paid']),
+                    InsuranceClaim.processed_date >= period_start,
+                    InsuranceClaim.processed_date <= period_end,
+                    InsuranceClaim.approved_amount.isnot(None),
+                    InsuranceClaim.id != claim.id  # Exclude current claim
+                ).scalar() or 0.0
+
+                if period_payouts + deposit_amount > claim.policy.max_payout_per_period:
+                    flash(f"Cannot approve claim: Would exceed maximum payout limit of ${claim.policy.max_payout_per_period:.2f} per {claim.policy.max_claims_period} (${period_payouts:.2f} already paid)", "danger")
+                    db.session.rollback()
+                    return redirect(url_for('admin.process_claim', claim_id=claim_id))
 
             # Auto-deposit to student's checking account via transaction
             student = claim.student

@@ -227,13 +227,21 @@
                       <small class="text-muted">Period type</small>
                     </div>
                   </div>
-                  <div class="mb-0">
+                  <div class="mb-3">
                     {{ form.max_claim_amount.label(class="form-label fw-bold") }}
                     <div class="input-group">
                       <span class="input-group-text">$</span>
                       {{ form.max_claim_amount(class="form-control", placeholder="0.00") }}
                     </div>
                     <small class="text-muted">Max payout per claim (0 = ∞)</small>
+                  </div>
+                  <div class="mb-0">
+                    {{ form.max_payout_per_period.label(class="form-label fw-bold") }}
+                    <div class="input-group">
+                      <span class="input-group-text">$</span>
+                      {{ form.max_payout_per_period(class="form-control", placeholder="0.00") }}
+                    </div>
+                    <small class="text-muted">Max total payout per period (0 = ∞)</small>
                   </div>
                 </div>
               </div>
