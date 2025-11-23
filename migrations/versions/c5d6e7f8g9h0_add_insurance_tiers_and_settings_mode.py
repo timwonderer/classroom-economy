@@ -11,6 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'c5d6e7f8g9h0'
+# Build directly on the last merged head so Alembic can locate the parent.
 down_revision = 'z1a2b3c4d5e6'
 branch_labels = None
 depends_on = None
