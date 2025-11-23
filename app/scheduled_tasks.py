@@ -101,24 +101,24 @@ def cleanup_expired_demo_sessions_job():
         cleaned_count = 0
         for demo_session in expired_sessions:
             try:
-                # Mark as inactive
-                demo_session.is_active = False
-                demo_session.ended_at = now
-
                 student_id = demo_session.student_id
+                session_id = demo_session.session_id
 
-                # Delete all associated data
+                # Delete all associated data in correct order to avoid FK violations
+                # 1. Delete child records first
                 Transaction.query.filter_by(student_id=student_id).delete()
                 TapEvent.query.filter_by(student_id=student_id).delete()
                 StudentItem.query.filter_by(student_id=student_id).delete()
-                Student.query.filter_by(id=student_id).delete()
 
-                # Keep the demo session record for audit purposes
-                # db.session.delete(demo_session)
+                # 2. Delete demo_session record (has FK to student)
+                db.session.delete(demo_session)
+
+                # 3. Finally delete the student record
+                Student.query.filter_by(id=student_id).delete()
 
                 db.session.commit()
                 cleaned_count += 1
-                logger.info(f"Cleaned up expired demo session {demo_session.session_id} (student_id={student_id})")
+                logger.info(f"Cleaned up expired demo session {session_id} (student_id={student_id})")
 
             except Exception as e:
                 db.session.rollback()

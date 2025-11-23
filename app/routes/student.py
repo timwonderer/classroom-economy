@@ -1604,8 +1604,13 @@ def login():
 
 @student_bp.route('/demo-login/<string:session_id>')
 def demo_login(session_id):
-    """Auto-login for demo student sessions created by admins."""
-    from app.models import DemoStudent
+    """Auto-login for demo student sessions created by admins.
+
+    SECURITY: This route requires the user to already be logged in as the admin
+    who created the demo session. Demo links cannot be used by anonymous users
+    or other admins.
+    """
+    from app.models import DemoStudent, Admin
 
     try:
         # Find the demo session
@@ -1628,19 +1633,38 @@ def demo_login(session_id):
             flash("Demo session has expired (10 minute limit).", "error")
             return redirect(url_for('student.login'))
 
-        # Set up student session
+        # SECURITY: Verify the user is logged in as the admin who created this demo
+        # This prevents privilege escalation via demo links
+        if not session.get('is_admin') or session.get('admin_id') != demo_session.admin_id:
+            current_app.logger.warning(
+                f"Unauthorized demo login attempt for session {session_id}. "
+                f"Current admin_id={session.get('admin_id')}, required={demo_session.admin_id}"
+            )
+            flash("You must be logged in as the admin who created this demo session.", "error")
+            return redirect(url_for('admin.login'))
+
+        # Set up student session (preserving admin authentication)
         student = demo_session.student
-        session.clear()  # Clear any existing session data
+
+        # Clear student-specific keys only, preserve admin session
+        session.pop('student_id', None)
+        session.pop('login_time', None)
+        session.pop('last_activity', None)
+        session.pop('is_demo', None)
+        session.pop('demo_session_id', None)
+
+        # Set student session variables
         session['student_id'] = student.id
         session['login_time'] = datetime.now(timezone.utc).isoformat()
         session['last_activity'] = session['login_time']
         session['is_demo'] = True
         session['demo_session_id'] = session_id
-        session['view_as_student'] = True  # Mark as admin viewing as student
-        session['is_admin'] = True  # Maintain admin privileges
-        session['admin_id'] = demo_session.admin_id  # Keep admin ID for tracking
+        session['view_as_student'] = True
 
-        current_app.logger.info(f"Demo student session {session_id} logged in (student_id={student.id}, admin_id={demo_session.admin_id})")
+        current_app.logger.info(
+            f"Admin {demo_session.admin_id} accessed demo session {session_id} "
+            f"(student_id={student.id})"
+        )
 
         flash("Demo session started! Session will expire in 10 minutes.", "success")
         return redirect(url_for('student.dashboard'))
