@@ -1967,6 +1967,9 @@ def payroll():
 
     now_utc = datetime.now(timezone.utc)
 
+    # Get student scope subquery for filtering
+    student_ids_subq = _student_scope_subquery()
+
     # Get all students
     students = _scoped_students().all()
 
