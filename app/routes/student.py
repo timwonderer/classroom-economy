@@ -36,7 +36,7 @@ from app.utils.helpers import is_safe_url
 from app.utils.constants import THEME_PROMPTS
 from app.utils.turnstile import verify_turnstile_token
 from app.utils.demo_sessions import cleanup_demo_student_data
-from hash_utils import hash_hmac, hash_username
+from hash_utils import hash_hmac, hash_username, hash_username_lookup
 from attendance import get_all_block_statuses
 
 # Create blueprint
@@ -281,6 +281,7 @@ def create_username():
         session['generated_username'] = username
         # Hash and store in DB
         student.username_hash = hash_username(username, student.salt)
+        student.username_lookup_hash = hash_username_lookup(username)
         db.session.commit()
         # Clear theme prompt from session
         session.pop('theme_prompt', None)
@@ -1546,27 +1547,33 @@ def login():
 
         username = form.username.data.strip()
         pin = form.pin.data.strip()
-        # Efficiently find the student by querying for the hash of all possible salts.
-        # This is still not ideal, but better than loading all students.
-        # A better long-term solution is a dedicated username table or a different auth method.
-        student = None
-        students_with_matching_username_structure = Student.query.filter(
-            Student.username_hash.isnot(None)
-        ).all()
+        lookup_hash = hash_username_lookup(username)
+        student = Student.query.filter_by(username_lookup_hash=lookup_hash).first()
 
         try:
-            for s in students_with_matching_username_structure:
-                candidate_hash = hash_username(username, s.salt)
-                if candidate_hash == s.username_hash:
-                    student = s
-                    break
+            # Fallback for legacy accounts without deterministic lookup hashes
+            if not student:
+                students_with_matching_username_structure = Student.query.filter(
+                    Student.username_hash.isnot(None)
+                ).yield_per(50)
+
+                for s in students_with_matching_username_structure:
+                    candidate_hash = hash_username(username, s.salt)
+                    if candidate_hash == s.username_hash:
+                        student = s
+                        break
 
             if not student or not check_password_hash(student.pin_hash or '', pin):
                 if is_json:
                     return jsonify(status="error", message="Invalid credentials"), 401
                 flash("Invalid credentials", "error")
                 return redirect(url_for('student.login', next=request.args.get('next')))
+
+            if not student.username_lookup_hash:
+                student.username_lookup_hash = lookup_hash
+                db.session.commit()
         except Exception as e:
+            db.session.rollback()
             current_app.logger.error(f"Error during student login authentication: {str(e)}")
             if is_json:
                 return jsonify(status="error", message="An error occurred during login. Please try again."), 500

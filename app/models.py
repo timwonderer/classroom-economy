@@ -87,6 +87,7 @@ class Student(db.Model):
     first_half_hash = db.Column(db.String(64), unique=True, nullable=True)  # Hash of "FirstInitial + DOBSum" (e.g., "S2025")
     second_half_hash = db.Column(db.String(64), unique=True, nullable=True)  # Hash of DOB sum (backward compat)
     username_hash = db.Column(db.String(64), unique=True, nullable=True)
+    username_lookup_hash = db.Column(db.String(64), unique=True, nullable=True)
 
     # Fuzzy name matching - stores hash of each last name part separately
     # Example: "Smith-Jones" → ["hash(smith)", "hash(jones)"]

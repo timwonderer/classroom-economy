@@ -31,6 +31,28 @@ from app.utils.helpers import is_safe_url
 sysadmin_bp = Blueprint('sysadmin', __name__, url_prefix='/sysadmin')
 
 
+def _tail_log_lines(file_path: str, max_lines: int = 200, chunk_size: int = 8192):
+    """Return the last ``max_lines`` from a log file without loading the entire file."""
+
+    if not os.path.exists(file_path):
+        return []
+
+    lines = []
+    buffer = b""
+    with open(file_path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        position = f.tell()
+
+        while len(lines) <= max_lines and position > 0:
+            read_size = min(chunk_size, position)
+            position -= read_size
+            f.seek(position)
+            buffer = f.read(read_size) + buffer
+            lines = buffer.splitlines()
+
+    return [line.decode(errors="ignore") for line in lines[-max_lines:]]
+
+
 # -------------------- AUTHENTICATION --------------------
 
 @sysadmin_bp.route('/login', methods=['GET', 'POST'])
@@ -114,8 +136,7 @@ def logs():
     log_file = os.getenv("LOG_FILE", "app.log")
     structured_logs = []
     try:
-        with open(log_file, "r") as f:
-            lines = f.readlines()[-200:]
+        lines = _tail_log_lines(log_file, max_lines=200)
         log_pattern = re.compile(r'\[(.*?)\]\s+(\w+)\s+in\s+(\w+):\s+(.*)')
         current_log = None
         for line in lines:
@@ -297,31 +318,66 @@ def delete_admin(admin_id):
     admin = Admin.query.get_or_404(admin_id)
 
     try:
-        # Count students for feedback message
-        # TODO: After multi-tenancy, filter by teacher_id
-        student_count = Student.query.count()
+        primary_student_ids = [s.id for s in Student.query.filter_by(teacher_id=admin.id)]
+        linked_student_ids = [
+            st.student_id for st in StudentTeacher.query.filter_by(admin_id=admin.id)
+        ]
 
-        # Delete all students and their associated data
-        # TODO: After multi-tenancy, filter by: Student.query.filter_by(teacher_id=admin_id).all()
-        for student in Student.query.all():
-            # Delete all related data for each student
-            Transaction.query.filter_by(student_id=student.id).delete()
-            TapEvent.query.filter_by(student_id=student.id).delete()
-            HallPassLog.query.filter_by(student_id=student.id).delete()
-            StudentItem.query.filter_by(student_id=student.id).delete()
-            RentPayment.query.filter_by(student_id=student.id).delete()
-            db.session.execute(delete(StudentInsurance).where(StudentInsurance.student_id == student.id))
-            InsuranceClaim.query.filter_by(student_id=student.id).delete()
+        candidate_student_ids = set(primary_student_ids + linked_student_ids)
 
-        # Delete all students
-        Student.query.delete()
+        shared_student_ids = set()
+        if candidate_student_ids:
+            shared_student_ids = set(
+                sid for (sid,) in db.session.query(StudentTeacher.student_id)
+                .filter(
+                    StudentTeacher.student_id.in_(candidate_student_ids),
+                    StudentTeacher.admin_id != admin.id,
+                )
+            )
+            shared_student_ids.update([
+                sid for (sid,) in db.session.query(Student.id)
+                .filter(
+                    Student.id.in_(candidate_student_ids),
+                    Student.teacher_id.isnot(None),
+                    Student.teacher_id != admin.id,
+                )
+            ])
 
-        # Delete the admin
+        exclusive_student_ids = candidate_student_ids - shared_student_ids
+
+        if shared_student_ids:
+            StudentTeacher.query.filter(
+                StudentTeacher.admin_id == admin.id,
+                StudentTeacher.student_id.in_(shared_student_ids),
+            ).delete(synchronize_session=False)
+            Student.query.filter(
+                Student.id.in_(shared_student_ids),
+                Student.teacher_id == admin.id,
+            ).update({Student.teacher_id: None}, synchronize_session=False)
+
+        if exclusive_student_ids:
+            Transaction.query.filter(Transaction.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
+            TapEvent.query.filter(TapEvent.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
+            HallPassLog.query.filter(HallPassLog.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
+            StudentItem.query.filter(StudentItem.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
+            RentPayment.query.filter(RentPayment.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
+            db.session.execute(delete(StudentInsurance).where(StudentInsurance.student_id.in_(exclusive_student_ids)))
+            InsuranceClaim.query.filter(InsuranceClaim.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
+            StudentTeacher.query.filter(StudentTeacher.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
+            Student.query.filter(Student.id.in_(exclusive_student_ids)).delete(synchronize_session=False)
+
         admin_username = admin.username
         db.session.delete(admin)
         db.session.commit()
 
-        flash(f"Admin '{admin_username}' and {student_count} students deleted successfully.", "success")
+        shared_notice = ""
+        if shared_student_ids:
+            shared_notice = f" Detached {len(shared_student_ids)} shared students without deleting their records."
+
+        flash(
+            f"Admin '{admin_username}' deleted. Removed {len(exclusive_student_ids)} exclusively-owned students.{shared_notice}",
+            "success",
+        )
 
     except Exception as e:
         db.session.rollback()
