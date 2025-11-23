@@ -57,6 +57,11 @@
                   {{ form.description(class="form-control", rows=6, placeholder="Describe what this policy covers...") }}
                   <small class="text-muted">Clear description of coverage and benefits</small>
                 </div>
+                <div class="mb-3">
+                  {{ form.marketing_badge.label(class="form-label fw-bold") }}
+                  {{ form.marketing_badge(class="form-select") }}
+                  <small class="text-muted">Add a fun marketing badge to attract students</small>
+                </div>
                 <div class="mb-0">
                   <div class="form-check form-switch">
                     {{ form.is_monetary(class="form-check-input", role="switch", id="isMonetaryToggle") }}
