@@ -37,6 +37,35 @@ def login_required(f):
                 flash("Select a student before viewing the student experience.")
                 return redirect(url_for('admin.dashboard'))
 
+            # Enforce demo session expiry for admins viewing as demo students
+            if session.get('is_demo'):
+                demo_session_id = session.get('demo_session_id')
+                if not demo_session_id:
+                    session['view_as_student'] = False
+                    flash("Demo session expired. Start a new demo to continue.")
+                    return redirect(url_for('admin.dashboard'))
+
+                from app.models import DemoStudent  # Imported lazily to avoid circular import
+                demo_session = DemoStudent.query.filter_by(session_id=demo_session_id).first()
+                now = datetime.now(timezone.utc)
+
+                if not demo_session or not demo_session.is_active or now > demo_session.expires_at:
+                    if demo_session:
+                        demo_session.is_active = False
+                        demo_session.ended_at = now
+                    session.pop('student_id', None)
+                    session.pop('login_time', None)
+                    session.pop('last_activity', None)
+                    session.pop('is_demo', None)
+                    session.pop('demo_session_id', None)
+                    session['view_as_student'] = False
+
+                    from app.extensions import db  # Imported lazily to avoid circular import
+                    db.session.commit()
+
+                    flash("Demo session expired. Start a new demo to continue.")
+                    return redirect(url_for('admin.dashboard'))
+
             # Update admin's last activity
             session['last_activity'] = datetime.now(timezone.utc).isoformat()
             return f(*args, **kwargs)

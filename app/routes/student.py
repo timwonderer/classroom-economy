@@ -25,7 +25,7 @@ from app.models import (
     RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
     BankingSettings, UserReport
 )
-from app.auth import login_required, get_logged_in_student, SESSION_TIMEOUT_MINUTES
+from app.auth import admin_required, login_required, get_logged_in_student, SESSION_TIMEOUT_MINUTES
 from forms import (
     StudentClaimAccountForm, StudentCreateUsernameForm, StudentPinPassphraseForm,
     StudentLoginForm, InsuranceClaimForm
@@ -35,6 +35,7 @@ from forms import (
 from app.utils.helpers import is_safe_url
 from app.utils.constants import THEME_PROMPTS
 from app.utils.turnstile import verify_turnstile_token
+from app.utils.demo_sessions import cleanup_demo_student_data
 from hash_utils import hash_hmac, hash_username
 from attendance import get_all_block_statuses
 
@@ -1603,6 +1604,7 @@ def login():
 
 
 @student_bp.route('/demo-login/<string:session_id>')
+@admin_required
 def demo_login(session_id):
     """Auto-login for demo student sessions created by admins.
 
@@ -1692,23 +1694,7 @@ def logout():
                 demo_session.is_active = False
                 demo_session.ended_at = datetime.now(timezone.utc)
 
-                # Delete the demo student and all associated data
-                student_id = demo_session.student_id
-
-                # Delete transactions
-                Transaction.query.filter_by(student_id=student_id).delete()
-
-                # Delete tap events
-                TapEvent.query.filter_by(student_id=student_id).delete()
-
-                # Delete student items
-                StudentItem.query.filter_by(student_id=student_id).delete()
-
-                # Delete the student
-                Student.query.filter_by(id=student_id).delete()
-
-                # Delete the demo session record
-                db.session.delete(demo_session)
+                cleanup_demo_student_data(demo_session)
 
                 db.session.commit()
                 current_app.logger.info(f"Demo session {demo_session_id} ended and cleaned up")
