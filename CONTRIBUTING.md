@@ -6,23 +6,28 @@ Thank you for your interest in contributing to the Classroom Token Hub project!
 
 1.  **Fork the repository** on GitHub.
 2.  **Clone your fork** to your local machine.
-3.  **Set up the development environment:**
+3.  **Install git hooks** (required for migration safety checks):
+    ```bash
+    bash scripts/setup-hooks.sh
+    ```
+    This installs a pre-push hook that prevents migration conflicts.
+4.  **Set up the development environment:**
     ```bash
     python3 -m venv venv
     source venv/bin/activate
     pip install -r requirements.txt
     ```
-4.  **Configure your environment variables:**
+5.  **Configure your environment variables:**
     Create a `.env` file and populate it with the required variables listed in `DEPLOYMENT.md`.
-5.  **Run the database migrations:**
+6.  **Run the database migrations:**
     ```bash
     flask db upgrade
     ```
-6.  **Create a system admin account:**
+7.  **Create a system admin account:**
     ```bash
     flask create-sysadmin
     ```
-7.  **Run the application:**
+8.  **Run the application:**
     ```bash
     flask run
     ```
@@ -100,7 +105,12 @@ flask db migrate -m "Your change description"
 
 ### Pre-Push Hook:
 
-A pre-push hook is installed at `.git/hooks/pre-push` that automatically checks for multiple migration heads before pushing. This prevents most migration conflicts from reaching the repository.
+A pre-push hook is automatically installed via `scripts/setup-hooks.sh` (see [Getting Started](#getting-started) step 3) that checks for multiple migration heads before pushing. This prevents most migration conflicts from reaching the repository.
+
+If you haven't run the setup script yet:
+```bash
+bash scripts/setup-hooks.sh
+```
 
 To bypass the check (not recommended):
 ```bash
