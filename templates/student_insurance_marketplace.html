@@ -61,29 +61,34 @@
 <div class="row g-4">
     {% for policy in available_policies %}
     {% set badge_config = {
-        'best_value': {'color': 'warning', 'text': 'Best Value!', 'border': True},
-        'most_popular': {'color': 'primary', 'text': 'Most Popular', 'border': True},
-        'recommended': {'color': 'success', 'text': 'Recommended', 'border': False},
-        'premium': {'color': 'dark', 'text': 'Premium Coverage', 'border': True},
-        'limited_time': {'color': 'danger', 'text': 'Limited Time Offer', 'border': True},
-        'new': {'color': 'info', 'text': 'New!', 'border': False},
-        'fan_favorite': {'color': 'primary', 'text': 'Fan Favorite', 'border': False},
-        'yolo': {'color': 'danger', 'text': 'YOLO Protection 🎲', 'border': True},
-        'trust_me': {'color': 'warning', 'text': 'Trust Me Bro 🤝', 'border': True},
-        'definitely_not_scam': {'color': 'success', 'text': 'Definitely Not a Scam ✓', 'border': False},
-        'parents_approved': {'color': 'info', 'text': 'Your Parents Would Approve 👍', 'border': False},
-        'as_seen_on_tv': {'color': 'primary', 'text': 'As Seen on TV 📺', 'border': True},
-        'industry_leading': {'color': 'dark', 'text': 'Industry Leading* 🏆', 'border': True},
-        'chaos_insurance': {'color': 'danger', 'text': 'Chaos Insurance 🌀', 'border': True},
-        'responsible_choice': {'color': 'success', 'text': 'The Responsible Choice™', 'border': False},
-        'your_friend_has_it': {'color': 'info', 'text': 'The One Your Friend Has 🤫', 'border': False}
+        'best_value': {'color': 'warning', 'text': 'Best Value!', 'icon': 'grade', 'border': True},
+        'most_popular': {'color': 'primary', 'text': 'Most Popular', 'icon': 'trending_up', 'border': True},
+        'recommended': {'color': 'success', 'text': 'Recommended', 'icon': 'verified', 'border': False},
+        'premium': {'color': 'dark', 'text': 'Premium Coverage', 'icon': 'workspace_premium', 'border': True},
+        'limited_time': {'color': 'danger', 'text': 'Limited Time Offer', 'icon': 'schedule', 'border': True},
+        'new': {'color': 'info', 'text': 'New!', 'icon': 'new_releases', 'border': False},
+        'fan_favorite': {'color': 'primary', 'text': 'Fan Favorite', 'icon': 'favorite', 'border': False},
+        'yolo': {'color': 'danger', 'text': 'YOLO Protection', 'icon': 'casino', 'border': True},
+        'trust_me': {'color': 'warning', 'text': 'Trust Me Bro', 'icon': 'handshake', 'border': True},
+        'definitely_not_scam': {'color': 'success', 'text': 'Definitely Not a Scam', 'icon': 'verified_user', 'border': False},
+        'parents_approved': {'color': 'info', 'text': 'Your Parents Would Approve', 'icon': 'family_restroom', 'border': False},
+        'as_seen_on_tv': {'color': 'primary', 'text': 'As Seen on TV', 'icon': 'live_tv', 'border': True},
+        'industry_leading': {'color': 'dark', 'text': 'Industry Leading*', 'icon': 'emoji_events', 'border': True},
+        'chaos_insurance': {'color': 'danger', 'text': 'Chaos Insurance', 'icon': 'tornado', 'border': True},
+        'responsible_choice': {'color': 'success', 'text': 'The Responsible Choice™', 'icon': 'check_circle', 'border': False},
+        'your_friend_has_it': {'color': 'info', 'text': 'The One Your Friend Has', 'icon': 'groups', 'border': False}
     } %}
     {% set badge = badge_config.get(policy.marketing_badge, {'color': 'secondary', 'text': None, 'border': False}) %}
     <div class="col-md-4">
         <div class="card h-100 {% if badge.border %}border-{{ badge.color }} border-3{% endif %}">
             <div class="card-header bg-{{ badge.color }} {% if badge.color in ['warning', 'info'] %}text-dark{% else %}text-white{% endif %}">
                 <h5 class="mb-0">{{ policy.title }}</h5>
-                {% if badge.text %}<small class="badge bg-white text-{{ badge.color }} mt-1">{{ badge.text }}</small>{% endif %}
+                {% if badge.text %}
+                <small class="badge bg-white text-{{ badge.color }} mt-1 d-inline-flex align-items-center gap-1">
+                    {% if badge.icon %}<span class="material-symbols-outlined" style="font-size: 1rem;">{{ badge.icon }}</span>{% endif %}
+                    {{ badge.text }}
+                </small>
+                {% endif %}
             </div>
             <div class="card-body d-flex flex-column">
                 <h3 class="text-{{ badge.color }} mb-3">

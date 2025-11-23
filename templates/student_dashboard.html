@@ -283,70 +283,52 @@
         </div>
     </div>
 
-    <!-- Right Column: Item Status -->
+    <!-- Right Column: Recent Transactions -->
     <div class="col-lg-6 mb-3">
         <div class="card h-100">
             <div class="card-header d-flex justify-content-between align-items-center">
-                <span><span class="material-symbols-outlined">inventory_2</span> Item Status</span>
-                <small class="text-muted" style="font-size: 0.7rem;">Updates every 30s</small>
+                <span><span class="material-symbols-outlined">receipt_long</span> Recent Transactions</span>
             </div>
-            <div class="card-body p-3" id="redemptionStatusCard">
-                {% set processing_items = student_items|selectattr('status', 'equalto', 'processing')|list %}
-                {% set redeemed_items = (student_items|selectattr('status', 'equalto', 'redeemed')|list) + (student_items|selectattr('status', 'equalto', 'completed')|list) %}
-                {% set expired_items = student_items|selectattr('status', 'equalto', 'expired')|list %}
-
-                <div class="row g-2">
-                    <div class="col-md-4">
-                        <div class="text-center p-2 bg-warning bg-opacity-10 rounded">
-                            <h4 class="mb-0" id="processingCount">{{ processing_items|length }}</h4>
-                            <small class="text-muted" style="font-size: 0.7rem;">Pending</small>
+            <div class="card-body p-2">
+                {% if recent_transactions %}
+                    <div class="list-group list-group-flush">
+                        {% for tx in recent_transactions %}
+                        <div class="list-group-item px-2 py-2 border-0 border-bottom">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="d-flex align-items-start" style="flex: 1;">
+                                    <span class="material-symbols-outlined me-2 {% if tx.amount > 0 %}text-success{% else %}text-danger{% endif %}" style="font-size: 1.2rem;">
+                                        {% if tx.amount > 0 %}add_circle{% else %}remove_circle{% endif %}
+                                    </span>
+                                    <div style="flex: 1; min-width: 0;">
+                                        <div class="fw-medium" style="font-size: 0.85rem;">{{ tx.description }}</div>
+                                        <small class="text-muted" style="font-size: 0.7rem;">
+                                            {{ tx.timestamp.strftime('%b %d, %I:%M %p') }}
+                                            {% if tx.account_type %}
+                                                <span class="badge bg-secondary" style="font-size: 0.6rem;">{{ tx.account_type }}</span>
+                                            {% endif %}
+                                        </small>
+                                    </div>
+                                </div>
+                                <div class="text-end ms-2">
+                                    <span class="fw-bold {% if tx.amount > 0 %}text-success{% else %}text-danger{% endif %}" style="font-size: 0.85rem;">
+                                        {% if tx.amount > 0 %}+{% endif %}${{ "%.2f"|format(tx.amount) }}
+                                    </span>
+                                </div>
+                            </div>
                         </div>
-                        {% if processing_items|length > 0 and processing_items|length <= 2 %}
-                        <ul class="list-group list-group-flush mt-1" id="processingList">
-                            {% for item in processing_items[:2] %}
-                            <li class="list-group-item px-0 py-1 border-0">
-                                <small style="font-size: 0.7rem;">{{ item.store_item.name }}</small>
-                            </li>
-                            {% endfor %}
-                        </ul>
-                        {% endif %}
+                        {% endfor %}
                     </div>
-                    <div class="col-md-4">
-                        <div class="text-center p-2 bg-success bg-opacity-10 rounded">
-                            <h4 class="mb-0" id="redeemedCount">{{ redeemed_items|length }}</h4>
-                            <small class="text-muted" style="font-size: 0.7rem;">Redeemed</small>
-                        </div>
-                        {% if redeemed_items|length > 0 and redeemed_items|length <= 2 %}
-                        <ul class="list-group list-group-flush mt-1" id="redeemedList">
-                            {% for item in redeemed_items[:2] %}
-                            <li class="list-group-item px-0 py-1 border-0">
-                                <small style="font-size: 0.7rem;">{{ item.store_item.name }}</small>
-                            </li>
-                            {% endfor %}
-                        </ul>
-                        {% endif %}
+                    <div class="mt-2 text-center">
+                        <a href="{{ url_for('student.finances') }}" class="btn btn-sm btn-primary">
+                            <span class="material-symbols-outlined" style="font-size: 1rem;">account_balance_wallet</span> View All Transactions
+                        </a>
                     </div>
-                    <div class="col-md-4">
-                        <div class="text-center p-2 bg-danger bg-opacity-10 rounded">
-                            <h4 class="mb-0" id="expiredCount">{{ expired_items|length }}</h4>
-                            <small class="text-muted" style="font-size: 0.7rem;">Expired</small>
-                        </div>
-                        {% if expired_items|length > 0 and expired_items|length <= 2 %}
-                        <ul class="list-group list-group-flush mt-1" id="expiredList">
-                            {% for item in expired_items[:2] %}
-                            <li class="list-group-item px-0 py-1 border-0">
-                                <small style="font-size: 0.7rem;">{{ item.store_item.name }}</small>
-                            </li>
-                            {% endfor %}
-                        </ul>
-                        {% endif %}
+                {% else %}
+                    <div class="text-center text-muted py-4">
+                        <span class="material-symbols-outlined" style="font-size: 3rem; opacity: 0.3;">receipt_long</span>
+                        <p class="mb-0 mt-2" style="font-size: 0.85rem;">No transactions yet</p>
                     </div>
-                </div>
-                <div class="mt-2 text-center">
-                    <a href="{{ url_for('student.shop') }}" class="btn btn-sm btn-primary">
-                        <span class="material-symbols-outlined" style="font-size: 1rem;">visibility</span> View All
-                    </a>
-                </div>
+                {% endif %}
             </div>
         </div>
     </div>

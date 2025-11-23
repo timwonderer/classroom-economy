@@ -470,6 +470,7 @@ def dashboard():
         checking_transactions=checking_transactions,
         savings_transactions=savings_transactions,
         student_items=student_items,
+        recent_transactions=transactions[:5],  # Most recent 5 transactions
         now=local_now,
         forecast_interest=forecast_interest,
         recent_deposit=recent_deposit,
