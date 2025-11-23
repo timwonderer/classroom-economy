@@ -15,6 +15,7 @@ import random
 import string
 import secrets
 import qrcode
+import hashlib
 from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
@@ -32,7 +33,7 @@ from app.extensions import db
 from app.models import (
     Student, Admin, AdminInviteCode, StudentTeacher, Transaction, TapEvent, StoreItem, StudentItem,
     RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings
+    HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings, TeacherBlock
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
@@ -1300,6 +1301,39 @@ def remove_rent_waiver(waiver_id):
 
 # -------------------- INSURANCE MANAGEMENT --------------------
 
+
+def _get_tier_namespace_seed(teacher_id):
+    """Return a stable seed for tenant-scoped tier IDs using the teacher's join code."""
+    join_code_row = (
+        TeacherBlock.query
+        .filter_by(teacher_id=teacher_id)
+        .with_entities(TeacherBlock.join_code)
+        .order_by(TeacherBlock.join_code)
+        .first()
+    )
+
+    return join_code_row[0] if join_code_row else f"teacher-{teacher_id}"
+
+
+def _generate_tenant_scoped_tier_id(seed, sequence):
+    """Create a globally unique tier ID by hashing the teacher join code with a sequence."""
+    digest = hashlib.blake2b(f"{seed}:{sequence}".encode(), digest_size=8).digest()
+    candidate = int.from_bytes(digest, byteorder='big') % 2_000_000_000
+    return candidate or sequence
+
+
+def _next_tenant_scoped_tier_id(seed, existing_ids):
+    """Return the next available tier ID that won't collide across teachers."""
+    sequence = len(existing_ids) + 1
+    candidate = _generate_tenant_scoped_tier_id(seed, sequence)
+
+    while candidate in existing_ids:
+        sequence += 1
+        candidate = _generate_tenant_scoped_tier_id(seed, sequence)
+
+    return candidate
+
+
 @admin_bp.route('/insurance', methods=['GET', 'POST'])
 @admin_required
 def insurance_management():
@@ -1325,7 +1359,9 @@ def insurance_management():
             tier_groups_map[category_id]['policies'].append(policy.title)
 
     tier_groups = sorted(tier_groups_map.values(), key=lambda g: g['id'])
-    next_tier_category_id = (max(tier_groups_map.keys()) + 1) if tier_groups_map else 1
+    tier_namespace_seed = _get_tier_namespace_seed(current_teacher_id)
+    existing_tier_ids = set(tier_groups_map.keys())
+    next_tier_category_id = _next_tenant_scoped_tier_id(tier_namespace_seed, existing_tier_ids)
 
     if request.method == 'POST' and form.validate_on_submit():
         # Generate unique policy code
@@ -1444,7 +1480,9 @@ def edit_insurance_policy(policy_id):
             tier_groups_map[category_id]['policies'].append(teacher_policy.title)
 
     tier_groups = sorted(tier_groups_map.values(), key=lambda g: g['id'])
-    next_tier_category_id = (max(tier_groups_map.keys()) + 1) if tier_groups_map else 1
+    tier_namespace_seed = _get_tier_namespace_seed(policy.teacher_id)
+    existing_tier_ids = set(tier_groups_map.keys())
+    next_tier_category_id = _next_tenant_scoped_tier_id(tier_namespace_seed, existing_tier_ids)
 
     if request.method == 'POST' and form.validate_on_submit():
         policy.title = form.title.data
