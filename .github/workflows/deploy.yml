@@ -54,8 +54,6 @@ jobs:
           sed -i '/^MAINTENANCE_MESSAGE=/d' .env 2>/dev/null || true
           sed -i '/^MAINTENANCE_EXPECTED_END=/d' .env 2>/dev/null || true
           sed -i '/^MAINTENANCE_CONTACT=/d' .env 2>/dev/null || true
-          sed -i '/^TURNSTILE_SITE_KEY=/d' .env 2>/dev/null || true
-          sed -i '/^TURNSTILE_SECRET_KEY=/d' .env 2>/dev/null || true
 
           # Add updated variables from GitHub
           echo "MAINTENANCE_MODE=${MAINT_MODE}" >> .env
@@ -63,14 +61,21 @@ jobs:
           echo "MAINTENANCE_EXPECTED_END=\"${MAINT_END}\"" >> .env
           echo "MAINTENANCE_CONTACT=\"${MAINT_CONTACT}\"" >> .env
 
-          # Add Turnstile keys if provided
+          # Add Turnstile keys if provided (preserve existing values when secrets are unset)
           if [ -n "${TURNSTILE_SITE}" ]; then
+            sed -i '/^TURNSTILE_SITE_KEY=/d' .env 2>/dev/null || true
             echo "TURNSTILE_SITE_KEY=${TURNSTILE_SITE}" >> .env
             echo "✓ Turnstile site key configured"
+          else
+            echo "⚠️ Turnstile site key not provided; keeping existing .env value if present"
           fi
+
           if [ -n "${TURNSTILE_SECRET}" ]; then
+            sed -i '/^TURNSTILE_SECRET_KEY=/d' .env 2>/dev/null || true
             echo "TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET}" >> .env
             echo "✓ Turnstile secret key configured"
+          else
+            echo "⚠️ Turnstile secret key not provided; keeping existing .env value if present"
           fi
 
           echo 'Installing dependencies...'
