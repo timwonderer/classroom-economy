@@ -270,9 +270,11 @@
                                 {{ form.totp_code.label(text="6-digit Authenticator Code", class="form-label") }}
                                 {{ form.totp_code(class="form-control", inputmode="numeric", pattern="\\d{6}", maxlength="6", placeholder="Enter 6-digit code", required=True) }}
                             </div>
+                            {% if turnstile_site_key %}
                             <div class="mb-3">
                                 <div class="cf-turnstile" data-sitekey="{{ turnstile_site_key }}" data-theme="light"></div>
                             </div>
+                            {% endif %}
                             {{ form.submit(class="btn btn-primary w-100") }}
                         </form>
 
