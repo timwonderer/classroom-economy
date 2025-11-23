@@ -83,8 +83,9 @@ def cleanup_expired_demo_sessions_job():
     Runs every 5 minutes to remove demo sessions that have exceeded the 10-minute timeout.
     """
     # Import here to avoid circular imports
-    from app.models import DemoStudent, Student, Transaction, TapEvent, StudentItem
+    from app.models import DemoStudent
     from app.extensions import db
+    from app.demo_cleanup import cleanup_demo_student_records
 
     logger = logging.getLogger('scheduled_tasks')
     logger.info("Starting demo session cleanup job")
@@ -101,24 +102,15 @@ def cleanup_expired_demo_sessions_job():
         cleaned_count = 0
         for demo_session in expired_sessions:
             try:
-                student_id = demo_session.student_id
-                session_id = demo_session.session_id
-
-                # Delete all associated data in correct order to avoid FK violations
-                # 1. Delete child records first
-                Transaction.query.filter_by(student_id=student_id).delete()
-                TapEvent.query.filter_by(student_id=student_id).delete()
-                StudentItem.query.filter_by(student_id=student_id).delete()
-
-                # 2. Delete demo_session record (has FK to student)
-                db.session.delete(demo_session)
-
-                # 3. Finally delete the student record
-                Student.query.filter_by(id=student_id).delete()
+                cleanup_demo_student_records(demo_session)
 
                 db.session.commit()
                 cleaned_count += 1
-                logger.info(f"Cleaned up expired demo session {session_id} (student_id={student_id})")
+                logger.info(
+                    "Cleaned up expired demo session %s (student_id=%s)",
+                    demo_session.session_id,
+                    demo_session.student_id,
+                )
 
             except Exception as e:
                 db.session.rollback()

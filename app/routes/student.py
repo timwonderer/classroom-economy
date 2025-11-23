@@ -25,7 +25,8 @@ from app.models import (
     RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
     BankingSettings, UserReport
 )
-from app.auth import login_required, get_logged_in_student, SESSION_TIMEOUT_MINUTES
+from app.auth import admin_required, login_required, get_logged_in_student, SESSION_TIMEOUT_MINUTES
+from app.demo_cleanup import cleanup_demo_student_records
 from forms import (
     StudentClaimAccountForm, StudentCreateUsernameForm, StudentPinPassphraseForm,
     StudentLoginForm, InsuranceClaimForm
@@ -1603,6 +1604,7 @@ def login():
 
 
 @student_bp.route('/demo-login/<string:session_id>')
+@admin_required
 def demo_login(session_id):
     """Auto-login for demo student sessions created by admins.
 
@@ -1621,17 +1623,16 @@ def demo_login(session_id):
 
         if not demo_session:
             flash("Demo session not found or has expired.", "error")
-            return redirect(url_for('student.login'))
+            return redirect(url_for('admin.dashboard'))
 
         # Check if session has expired
         now = datetime.now(timezone.utc)
         if now > demo_session.expires_at:
             # Mark as inactive and cleanup
-            demo_session.is_active = False
-            demo_session.ended_at = now
+            cleanup_demo_student_records(demo_session)
             db.session.commit()
             flash("Demo session has expired (10 minute limit).", "error")
-            return redirect(url_for('student.login'))
+            return redirect(url_for('admin.dashboard'))
 
         # SECURITY: Verify the user is logged in as the admin who created this demo
         # This prevents privilege escalation via demo links
@@ -1689,27 +1690,7 @@ def logout():
         try:
             demo_session = DemoStudent.query.filter_by(session_id=demo_session_id).first()
             if demo_session:
-                demo_session.is_active = False
-                demo_session.ended_at = datetime.now(timezone.utc)
-
-                # Delete the demo student and all associated data
-                student_id = demo_session.student_id
-
-                # Delete transactions
-                Transaction.query.filter_by(student_id=student_id).delete()
-
-                # Delete tap events
-                TapEvent.query.filter_by(student_id=student_id).delete()
-
-                # Delete student items
-                StudentItem.query.filter_by(student_id=student_id).delete()
-
-                # Delete the student
-                Student.query.filter_by(id=student_id).delete()
-
-                # Delete the demo session record
-                db.session.delete(demo_session)
-
+                cleanup_demo_student_records(demo_session)
                 db.session.commit()
                 current_app.logger.info(f"Demo session {demo_session_id} ended and cleaned up")
         except Exception as e:
