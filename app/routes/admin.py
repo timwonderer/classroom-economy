@@ -33,7 +33,7 @@ from app.models import (
     RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
     HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings
 )
-from app.auth import admin_required, system_admin_required, get_admin_student_query, get_student_for_admin
+from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
     AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, StoreItemForm,
     InsurancePolicyForm, AdminClaimProcessForm, PayrollSettingsForm,
@@ -1424,57 +1424,76 @@ def deactivate_insurance_policy(policy_id):
 
 
 @admin_bp.route('/insurance/delete/<int:policy_id>', methods=['POST'])
-@system_admin_required
+@admin_required
 def delete_insurance_policy(policy_id):
-    """Delete an insurance policy and optionally cancel all student enrollments.
+    """Delete an insurance policy scoped to current teacher's students.
 
-    Requires system admin privileges to prevent cross-tenant data deletion.
+    Only deletes enrollments/claims for the current teacher's students.
+    The policy itself is only deleted if no other teachers have students enrolled.
     """
     policy = InsurancePolicy.query.get_or_404(policy_id)
     force_delete = request.form.get('force_delete') == 'true'
 
-    # Check for active enrollments
-    active_enrollments = StudentInsurance.query.filter_by(
-        policy_id=policy_id,
-        status='active'
+    # Get scoped student IDs for this teacher
+    student_ids_subq = _student_scope_subquery()
+
+    # Check for active enrollments (only for THIS teacher's students)
+    my_active_enrollments = StudentInsurance.query.filter(
+        StudentInsurance.policy_id == policy_id,
+        StudentInsurance.status == 'active',
+        StudentInsurance.student_id.in_(student_ids_subq)
     ).count()
 
-    total_enrollments = StudentInsurance.query.filter_by(
-        policy_id=policy_id
+    # Check for pending claims (only for THIS teacher's students)
+    my_pending_claims = InsuranceClaim.query.filter(
+        InsuranceClaim.policy_id == policy_id,
+        InsuranceClaim.status == 'pending',
+        InsuranceClaim.student_id.in_(student_ids_subq)
     ).count()
 
-    pending_claims = InsuranceClaim.query.filter_by(
-        policy_id=policy_id,
-        status='pending'
-    ).count()
-
-    if not force_delete and (active_enrollments > 0 or pending_claims > 0):
-        flash(f"Cannot delete policy '{policy.title}': {active_enrollments} active enrollments and {pending_claims} pending claims. Cancel all enrollments first or use force delete.", "danger")
+    if not force_delete and (my_active_enrollments > 0 or my_pending_claims > 0):
+        flash(f"Cannot delete policy '{policy.title}': {my_active_enrollments} active enrollments and {my_pending_claims} pending claims from your students. Cancel all enrollments first or use force delete.", "danger")
         return redirect(url_for('admin.insurance_management'))
 
     try:
-        # Cancel all active enrollments if force delete
-        if force_delete and active_enrollments > 0:
-            StudentInsurance.query.filter_by(
-                policy_id=policy_id,
-                status='active'
-            ).update({'status': 'cancelled'})
-            flash(f"Cancelled {active_enrollments} active enrollments.", "info")
+        # Cancel active enrollments if force delete (only THIS teacher's students)
+        if force_delete and my_active_enrollments > 0:
+            cancelled_count = StudentInsurance.query.filter(
+                StudentInsurance.policy_id == policy_id,
+                StudentInsurance.status == 'active',
+                StudentInsurance.student_id.in_(student_ids_subq)
+            ).update({'status': 'cancelled'}, synchronize_session=False)
+            flash(f"Cancelled {cancelled_count} active enrollments from your students.", "info")
 
-        # Delete all claims (or mark as archived)
-        claims_deleted = InsuranceClaim.query.filter_by(policy_id=policy_id).delete()
+        # Delete claims (only for THIS teacher's students)
+        claims_deleted = InsuranceClaim.query.filter(
+            InsuranceClaim.policy_id == policy_id,
+            InsuranceClaim.student_id.in_(student_ids_subq)
+        ).delete(synchronize_session=False)
 
-        # Delete all student enrollments
-        enrollments_deleted = StudentInsurance.query.filter_by(policy_id=policy_id).delete()
+        # Delete enrollments (only for THIS teacher's students)
+        enrollments_deleted = StudentInsurance.query.filter(
+            StudentInsurance.policy_id == policy_id,
+            StudentInsurance.student_id.in_(student_ids_subq)
+        ).delete(synchronize_session=False)
 
-        # Delete the policy
-        db.session.delete(policy)
+        # Check if other teachers have students enrolled in this policy
+        other_enrollments = StudentInsurance.query.filter(
+            StudentInsurance.policy_id == policy_id,
+            ~StudentInsurance.student_id.in_(student_ids_subq)
+        ).count()
+
+        # Only delete the policy if no other teachers use it
+        if other_enrollments == 0:
+            db.session.delete(policy)
+            flash(f"Successfully deleted policy '{policy.title}' ({enrollments_deleted} enrollments and {claims_deleted} claims removed from your students).", "success")
+        else:
+            flash(f"Removed your students from policy '{policy.title}' ({enrollments_deleted} enrollments and {claims_deleted} claims). Policy retained because {other_enrollments} enrollments from other teachers exist.", "info")
+
         db.session.commit()
-
-        flash(f"Successfully deleted policy '{policy.title}' ({enrollments_deleted} enrollments and {claims_deleted} claims removed).", "success")
     except Exception as e:
         db.session.rollback()
-        flash(f"Error deleting policy: {str(e)}", "danger")
+        flash(f"Error deleting policy data: {str(e)}", "danger")
 
     return redirect(url_for('admin.insurance_management'))
 
