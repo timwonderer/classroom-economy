@@ -157,7 +157,7 @@
 </div>
 
 <!-- Announcements Section -->
-{% if not student.insurance_paid and student.insurance_plan != 'none' %}
+{% if active_insurance and not active_insurance.payment_current %}
 <div class="alert alert-danger mb-4">
     <span class="material-symbols-outlined">warning</span> <strong>Action Required:</strong> Your insurance payment is past due.
 </div>
@@ -221,14 +221,15 @@
                     <div>
                         <h6 class="mb-1">Insurance</h6>
                         <div>
-                            {% if student.insurance_plan == 'none' %}
-                                <span class="badge bg-secondary">None</span>
-                            {% elif insurance_paid %}
-                                <span class="badge bg-success">Active</span>
-                                <small class="text-muted ms-2">{{ student.insurance_plan|title }}</small>
+                            {% if active_insurance %}
+                                {% if active_insurance.payment_current %}
+                                    <span class="badge bg-success">Active</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Overdue</span>
+                                {% endif %}
+                                <small class="text-muted ms-2">{{ active_insurance.policy.title }}</small>
                             {% else %}
-                                <span class="badge bg-danger">Overdue</span>
-                                <small class="text-muted ms-2">{{ student.insurance_plan|title }}</small>
+                                <span class="badge bg-secondary">None</span>
                             {% endif %}
                         </div>
                     </div>

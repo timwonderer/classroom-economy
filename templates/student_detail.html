@@ -173,8 +173,11 @@
                             <tr>
                                 <td class="fw-bold">Insurance:</td>
                                 <td>
-                                    {% if student.insurance_plan and student.insurance_plan != 'none' %}
-                                        <span class="badge bg-info">{{ student.insurance_plan|title }}</span>
+                                    {% if active_insurance %}
+                                        <span class="badge bg-info">{{ active_insurance.policy.title }}</span>
+                                        {% if not active_insurance.payment_current %}
+                                            <span class="badge bg-danger ms-1">Overdue</span>
+                                        {% endif %}
                                     {% else %}
                                         <span class="text-muted">None</span>
                                     {% endif %}

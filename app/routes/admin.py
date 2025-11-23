@@ -536,11 +536,17 @@ def student_detail(student_id):
     # Fetch most recent TapEvent for this student
     latest_tap_event = TapEvent.query.filter_by(student_id=student.id).order_by(TapEvent.timestamp.desc()).first()
 
+    # Get student's active insurance policy
+    active_insurance = StudentInsurance.query.filter_by(
+        student_id=student.id,
+        status='active'
+    ).first()
+
     # Get all blocks for the edit modal
     all_students = _scoped_students().all()
     blocks = sorted({b.strip() for s in all_students for b in (s.block or "").split(',') if b.strip()})
 
-    return render_template('student_detail.html', student=student, transactions=transactions, student_items=student_items, latest_tap_event=latest_tap_event, blocks=blocks)
+    return render_template('student_detail.html', student=student, transactions=transactions, student_items=student_items, latest_tap_event=latest_tap_event, active_insurance=active_insurance, blocks=blocks)
 
 
 @admin_bp.route('/student/<int:student_id>/set-hall-passes', methods=['POST'])
@@ -2839,6 +2845,13 @@ def export_students():
     # Write student data
     students = _scoped_students().order_by(Student.first_name, Student.last_initial).all()
     for student in students:
+        # Get active insurance for this student
+        active_insurance = StudentInsurance.query.filter_by(
+            student_id=student.id,
+            status='active'
+        ).first()
+        insurance_name = active_insurance.policy.title if active_insurance else 'None'
+
         writer.writerow([
             student.first_name,
             student.last_initial,
@@ -2846,7 +2859,7 @@ def export_students():
             f"{student.checking_balance:.2f}",
             f"{student.savings_balance:.2f}",
             f"{student.total_earnings:.2f}",
-            student.insurance_plan if student.insurance_plan != 'none' else 'None',
+            insurance_name,
             'Yes' if student.is_rent_enabled else 'No',
             'Yes' if student.has_completed_setup else 'No'
         ])

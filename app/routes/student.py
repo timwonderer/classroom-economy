@@ -378,7 +378,11 @@ def dashboard():
         # Don't show if already seen
         recent_deposit = None
 
-    insurance_paid = bool(student.insurance_last_paid)
+    # Get student's active insurance policies
+    active_insurance = StudentInsurance.query.filter_by(
+        student_id=student.id,
+        status='active'
+    ).first()  # Get first active policy for dashboard display
 
     rent_status = None
     rent_settings = RentSettings.query.first()
@@ -474,7 +478,7 @@ def dashboard():
         now=local_now,
         forecast_interest=forecast_interest,
         recent_deposit=recent_deposit,
-        insurance_paid=insurance_paid,
+        active_insurance=active_insurance,
         rent_status=rent_status,
         unpaid_seconds_per_block=unpaid_seconds_per_block,
         projected_pay_per_block=projected_pay_per_block,
