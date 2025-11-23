@@ -1,7 +1,7 @@
 """add marketing badge to insurance
 
 Revision ID: b3c4d5e6f7g8
-Revises: z1a2b3c4d5e6
+Revises: a3b4c5d6e7f8
 Create Date: 2025-11-23 10:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'b3c4d5e6f7g8'
-down_revision = 'z1a2b3c4d5e6'
+down_revision = 'a3b4c5d6e7f8'
 branch_labels = None
 depends_on = None
 
