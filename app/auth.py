@@ -31,6 +31,12 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         # Allow access if admin is viewing as student
         if is_viewing_as_student():
+            # Admins must also have a student context when bypassing login_required
+            if 'student_id' not in session:
+                session['view_as_student'] = False
+                flash("Select a student before viewing the student experience.")
+                return redirect(url_for('admin.dashboard'))
+
             # Update admin's last activity
             session['last_activity'] = datetime.now(timezone.utc).isoformat()
             return f(*args, **kwargs)
