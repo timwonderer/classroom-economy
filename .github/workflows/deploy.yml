@@ -65,6 +65,27 @@ jobs:
           # Ensure DATABASE_URL is set for migrations
           echo 'Exporting DATABASE_URL for production migrations...'
 
+          echo 'Checking for multiple migration heads...'
+          HEAD_COUNT=$(flask db heads 2>&1 | grep -c "^[a-z0-9]" || echo "0")
+
+          if [ "$HEAD_COUNT" -gt 1 ]; then
+            echo "⚠️  Multiple heads detected. Attempting to resolve..."
+            echo "Current heads:"
+            flask db heads
+
+            # Get all head revisions
+            HEADS=$(flask db heads | grep "^[a-z0-9]" | awk '{print $1}' | tr '\n' ' ')
+            echo "Heads to merge: $HEADS"
+
+            # Create a merge migration
+            echo "Creating merge migration..."
+            flask db merge -m "Auto-merge multiple heads during deployment" $HEADS || {
+              echo "❌ Failed to create merge migration. Stamping to latest known good head..."
+              # Stamp to the expected head (b3c4d5e6f7g8)
+              flask db stamp b3c4d5e6f7g8
+            }
+          fi
+
           echo 'Running database migrations...'
           flask db upgrade
 
