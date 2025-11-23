@@ -179,7 +179,7 @@
                     <br>
                     <small class="text-muted">{{ req.store_item.name }}</small>
                     {% if req.redemption_details %}
-                      <br><small class="text-muted">{{ req.redemption_details }}</small>
+                      <br><div class="small text-muted">{{ req.redemption_details | markdown }}</div>
                     {% endif %}
                   </div>
                   <button class="btn btn-sm btn-success approve-redemption-btn" data-student-item-id="{{ req.id }}">

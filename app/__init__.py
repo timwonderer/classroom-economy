@@ -29,7 +29,7 @@ if missing_vars:
 
 # -------------------- UTILITIES --------------------
 from app.utils.encryption import PIIEncryptedType
-from app.utils.helpers import format_utc_iso, is_safe_url
+from app.utils.helpers import format_utc_iso, is_safe_url, render_markdown
 from app.utils.constants import THEME_PROMPTS
 
 
@@ -146,6 +146,7 @@ def create_app():
     app.jinja_env.filters['url_encode'] = url_encode_filter
     app.jinja_env.filters['urlencode'] = url_encode_filter
     app.jinja_env.filters['format_datetime'] = format_datetime
+    app.jinja_env.filters['markdown'] = render_markdown
 
     # Add built-in functions to Jinja2 globals
     app.jinja_env.globals['min'] = min

@@ -17,7 +17,7 @@
             </div>
             <div class="card-body">
                 <h5>{{ enrollment.policy.title }}</h5>
-                <p class="text-muted">{{ enrollment.policy.description }}</p>
+                <div class="text-muted">{{ enrollment.policy.description | markdown }}</div>
 
                 <hr>
 

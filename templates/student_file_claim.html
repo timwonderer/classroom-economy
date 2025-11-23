@@ -2,6 +2,21 @@
 
 {% block title %}File Insurance Claim{% endblock %}
 
+{% block extra_styles %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+<style>
+    .EasyMDEContainer .CodeMirror {
+        min-height: 120px;
+    }
+    .editor-toolbar {
+        border-radius: 4px 4px 0 0;
+    }
+    .CodeMirror {
+        border-radius: 0 0 4px 4px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="page-header">
     <h1>File Insurance Claim</h1>
@@ -93,7 +108,7 @@
             </div>
             <div class="card-body">
                 <h6>{{ policy.title }}</h6>
-                <p class="small text-muted">{{ policy.description }}</p>
+                <div class="small text-muted">{{ policy.description | markdown }}</div>
 
                 <hr>
 
@@ -164,4 +179,35 @@
     </div>
 </div>
 
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+<script>
+  // Initialize markdown editors for claim form
+  document.addEventListener('DOMContentLoaded', function() {
+    const descriptionField = document.getElementById('description');
+    const commentsField = document.getElementById('comments');
+
+    if (descriptionField) {
+      new EasyMDE({
+        element: descriptionField,
+        spellChecker: false,
+        toolbar: ["bold", "italic", "heading", "|", "unordered-list", "ordered-list", "|", "link", "quote", "|", "preview", "guide"],
+        status: false,
+        placeholder: "Describe the incident in detail (Markdown supported)...",
+      });
+    }
+
+    if (commentsField) {
+      new EasyMDE({
+        element: commentsField,
+        spellChecker: false,
+        toolbar: ["bold", "italic", "|", "unordered-list", "ordered-list", "|", "link", "|", "preview"],
+        status: false,
+        placeholder: "Any additional information (Markdown supported)...",
+      });
+    }
+  });
+</script>
 {% endblock %}

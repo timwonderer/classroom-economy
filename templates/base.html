@@ -61,6 +61,7 @@
             -webkit-font-smoothing: antialiased;
         }
     </style>
+    {% block extra_head %}{% endblock %}
 </head>
 
 <body>
@@ -106,6 +107,7 @@
             }
         });
     </script>
+    {% block extra_scripts %}{% endblock %}
 </body>
 
 </html>

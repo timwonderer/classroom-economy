@@ -2,6 +2,22 @@
 {% set page_title = "Edit Insurance Policy" %}
 {% set current_page = "insurance" %}
 {% block title %}Edit Policy{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+<style>
+    .EasyMDEContainer .CodeMirror {
+        min-height: 150px;
+    }
+    .editor-toolbar {
+        border-radius: 4px 4px 0 0;
+    }
+    .CodeMirror {
+        border-radius: 0 0 4px 4px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="container-fluid">
@@ -387,6 +403,24 @@ document.addEventListener('DOMContentLoaded', function() {
     updateRepurchaseRestrictions(); // Initialize on load
   }
 });
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+<script>
+  // Initialize markdown editor for policy description
+  document.addEventListener('DOMContentLoaded', function() {
+    const descriptionField = document.getElementById('description');
+
+    if (descriptionField) {
+      new EasyMDE({
+        element: descriptionField,
+        spellChecker: false,
+        toolbar: ["bold", "italic", "heading", "|", "unordered-list", "ordered-list", "|", "link", "quote", "|", "preview", "side-by-side", "fullscreen", "|", "guide"],
+        status: false,
+        placeholder: "Describe what this policy covers (Markdown supported)...",
+      });
+    }
+  });
 </script>
 
 {% endblock %}

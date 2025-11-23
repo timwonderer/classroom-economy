@@ -96,7 +96,7 @@
                         </div>
                         {% endif %}
 
-                        <p class="card-text text-muted flex-grow-1">{{ item.description or 'No description available.' }}</p>
+                        <div class="card-text text-muted flex-grow-1">{{ (item.description or 'No description available.') | markdown }}</div>
 
                         {% if item.inventory is not none %}
                             <p class="text-muted small mb-2">
@@ -184,7 +184,7 @@
                         </p>
                         {% endif %}
 
-                        <p class="card-text text-muted flex-grow-1">{{ student_item.store_item.description or 'No description available.' }}</p>
+                        <div class="card-text text-muted flex-grow-1">{{ (student_item.store_item.description or 'No description available.') | markdown }}</div>
 
                         <div class="mt-auto">
                             {% if student_item.store_item.item_type == 'hall_pass' %}

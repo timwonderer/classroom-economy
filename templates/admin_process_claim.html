@@ -54,21 +54,21 @@
         <hr>
 
         <h6>Claim Description:</h6>
-        <p class="bg-light p-3 rounded">{{ claim.description }}</p>
+        <div class="bg-light p-3 rounded">{{ claim.description | markdown }}</div>
 
         {% if claim.comments %}
         <h6>Student Comments:</h6>
-        <p class="bg-light p-3 rounded">{{ claim.comments }}</p>
+        <div class="bg-light p-3 rounded">{{ claim.comments | markdown }}</div>
         {% endif %}
 
         {% if claim.rejection_reason %}
         <h6>Rejection Reason:</h6>
-        <p class="bg-danger bg-opacity-10 p-3 rounded text-danger">{{ claim.rejection_reason }}</p>
+        <div class="bg-danger bg-opacity-10 p-3 rounded text-danger">{{ claim.rejection_reason | markdown }}</div>
         {% endif %}
 
         {% if claim.admin_notes %}
         <h6>Admin Notes:</h6>
-        <p class="bg-info bg-opacity-10 p-3 rounded">{{ claim.admin_notes }}</p>
+        <div class="bg-info bg-opacity-10 p-3 rounded">{{ claim.admin_notes | markdown }}</div>
         {% endif %}
       </div>
     </div>

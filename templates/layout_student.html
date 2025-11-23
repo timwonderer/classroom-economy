@@ -376,6 +376,81 @@
         filter: brightness(0) invert(1);
     }
 
+    /* Markdown Content Styling */
+    .card-text h1, .card-text h2, .card-text h3,
+    .card-text h4, .card-text h5, .card-text h6,
+    .text-muted h1, .text-muted h2, .text-muted h3,
+    .text-muted h4, .text-muted h5, .text-muted h6 {
+        margin-top: 0.75rem;
+        margin-bottom: 0.5rem;
+        font-weight: 600;
+    }
+    .card-text h1 { font-size: 1.5rem; }
+    .card-text h2 { font-size: 1.3rem; }
+    .card-text h3 { font-size: 1.1rem; }
+    .text-muted h1 { font-size: 1.5rem; }
+    .text-muted h2 { font-size: 1.3rem; }
+    .text-muted h3 { font-size: 1.1rem; }
+
+    .card-text p, .text-muted p {
+        margin-bottom: 0.75rem;
+    }
+    .card-text ul, .card-text ol, .text-muted ul, .text-muted ol {
+        margin-bottom: 0.75rem;
+        padding-left: 1.5rem;
+    }
+    .card-text li, .text-muted li {
+        margin-bottom: 0.25rem;
+    }
+    .card-text code, .text-muted code {
+        background-color: rgba(0, 0, 0, 0.08);
+        padding: 0.125rem 0.25rem;
+        border-radius: 3px;
+        font-family: monospace;
+        font-size: 0.9em;
+    }
+    .card-text pre, .text-muted pre {
+        background-color: rgba(0, 0, 0, 0.08);
+        padding: 0.75rem;
+        border-radius: 4px;
+        overflow-x: auto;
+        margin-bottom: 0.75rem;
+    }
+    .card-text pre code, .text-muted pre code {
+        background-color: transparent;
+        padding: 0;
+    }
+    .card-text blockquote, .text-muted blockquote {
+        border-left: 3px solid var(--brand-primary);
+        padding-left: 1rem;
+        margin-left: 0;
+        font-style: italic;
+    }
+    .card-text table, .text-muted table {
+        width: 100%;
+        margin-bottom: 0.75rem;
+        border-collapse: collapse;
+    }
+    .card-text th, .card-text td, .text-muted th, .text-muted td {
+        border: 1px solid var(--border-color);
+        padding: 0.5rem;
+        text-align: left;
+    }
+    .card-text th, .text-muted th {
+        background-color: rgba(0, 0, 0, 0.05);
+        font-weight: 600;
+    }
+    .card-text a, .text-muted a {
+        color: var(--brand-primary);
+        text-decoration: underline;
+    }
+    .card-text strong, .text-muted strong {
+        font-weight: 600;
+    }
+    .card-text em, .text-muted em {
+        font-style: italic;
+    }
+
 </style>
 
     <title>{{ page_title or "Student Portal" }}</title>

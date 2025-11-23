@@ -18,7 +18,7 @@
             <div class="row align-items-center">
                 <div class="col-md-8">
                     <h5 class="mb-1">{{ enrollment.policy.title }}</h5>
-                    <p class="text-muted small mb-2">{{ enrollment.policy.description }}</p>
+                    <div class="text-muted small mb-2">{{ enrollment.policy.description | markdown }}</div>
                     <p class="mb-0">
                         <span class="badge bg-primary">${{ "%.2f"|format(enrollment.policy.premium) }}/{{ enrollment.policy.charge_frequency }}</span>
                         <span class="badge {{ 'bg-info' if enrollment.policy.is_monetary else 'bg-warning text-dark' }}">
@@ -75,7 +75,7 @@
                     ${{ "%.2f"|format(policy.premium) }}<small class="text-muted">/ {{ policy.charge_frequency }}</small>
                 </h3>
 
-                <p class="flex-grow-1">{{ policy.description or 'Comprehensive coverage for your needs.' }}</p>
+                <div class="flex-grow-1">{{ (policy.description or 'Comprehensive coverage for your needs.') | markdown }}</div>
 
                 <div class="mb-3">
                     <h6>Policy Details:</h6>
