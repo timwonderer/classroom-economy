@@ -39,22 +39,22 @@ def upgrade():
     # Backfill existing transactions with student's primary teacher
     # For students with a teacher_id, assign all their transactions to that teacher
     op.execute("""
-        UPDATE transactions
+        UPDATE transaction
         SET teacher_id = (
             SELECT teacher_id
             FROM students
-            WHERE students.id = transactions.student_id
+            WHERE students.id = transaction.student_id
         )
         WHERE teacher_id IS NULL
         AND EXISTS (
             SELECT 1 FROM students
-            WHERE students.id = transactions.student_id
+            WHERE students.id = transaction.student_id
             AND students.teacher_id IS NOT NULL
         )
     """)
 
 
 def downgrade():
-    op.drop_index('ix_transactions_teacher_id', table_name='transactions')
-    op.drop_constraint('fk_transactions_teacher_id_admins', 'transactions', type_='foreignkey')
-    op.drop_column('transactions', 'teacher_id')
+    op.drop_index('ix_transaction_teacher_id', table_name='transaction')
+    op.drop_constraint('fk_transaction_teacher_id_admins', 'transaction', type_='foreignkey')
+    op.drop_column('transaction', 'teacher_id')
