@@ -23,89 +23,121 @@ def generate_policy_code():
 
 
 def upgrade():
-    # Add teacher_id column
-    op.add_column('insurance_policies', sa.Column('teacher_id', sa.Integer(), nullable=True))
-    op.create_foreign_key(
-        'fk_insurance_policies_teacher_id',
-        'insurance_policies', 'admins',
-        ['teacher_id'], ['id'],
-        ondelete='SET NULL'
-    )
-
-    # Add policy_code column (nullable first for backfill)
-    op.add_column('insurance_policies', sa.Column('policy_code', sa.String(16), nullable=True))
-
-    # Backfill existing policies with unique policy codes
-    # Note: In production, you might want to generate these more carefully
+    # Add teacher_id column (check if it exists first)
     connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    columns = [col['name'] for col in inspector.get_columns('insurance_policies')]
 
-    # Get all existing policies
-    policies = connection.execute(sa.text("SELECT id FROM insurance_policies")).fetchall()
-
-    # Generate unique codes for each
-    for policy in policies:
-        policy_id = policy[0]
-        # Generate unique code
-        while True:
-            code = generate_policy_code()
-            # Check if code already exists
-            existing = connection.execute(
-                sa.text("SELECT id FROM insurance_policies WHERE policy_code = :code"),
-                {"code": code}
-            ).fetchone()
-            if not existing:
-                break
-
-        # Update the policy with the code
-        connection.execute(
-            sa.text("UPDATE insurance_policies SET policy_code = :code WHERE id = :id"),
-            {"code": code, "id": policy_id}
+    if 'teacher_id' not in columns:
+        op.add_column('insurance_policies', sa.Column('teacher_id', sa.Integer(), nullable=True))
+        op.create_foreign_key(
+            'fk_insurance_policies_teacher_id',
+            'insurance_policies', 'admins',
+            ['teacher_id'], ['id'],
+            ondelete='SET NULL'
         )
-        connection.commit()
+
+    # Add policy_code column (nullable first for backfill) (check if it exists first)
+    policy_code_existed = 'policy_code' in columns
+    if not policy_code_existed:
+        op.add_column('insurance_policies', sa.Column('policy_code', sa.String(16), nullable=True))
+
+    # Backfill existing policies with unique policy codes (only if column was just added)
+    if not policy_code_existed:
+        # Get all existing policies
+        policies = connection.execute(sa.text("SELECT id FROM insurance_policies")).fetchall()
+
+        # Generate unique codes for each
+        for policy in policies:
+            policy_id = policy[0]
+            # Generate unique code
+            while True:
+                code = generate_policy_code()
+                # Check if code already exists
+                existing = connection.execute(
+                    sa.text("SELECT id FROM insurance_policies WHERE policy_code = :code"),
+                    {"code": code}
+                ).fetchone()
+                if not existing:
+                    break
+
+            # Update the policy with the code
+            connection.execute(
+                sa.text("UPDATE insurance_policies SET policy_code = :code WHERE id = :id"),
+                {"code": code, "id": policy_id}
+            )
+            connection.commit()
 
     # Backfill teacher_id for existing policies using enrolled students' primary teacher
-    # Choose the most frequent teacher_id among students attached to each policy
-    teacher_counts = connection.execute(
-        sa.text(
-            """
-            SELECT si.policy_id, s.teacher_id, COUNT(*) AS cnt
-            FROM student_insurance si
-            JOIN students s ON s.id = si.student_id
-            WHERE s.teacher_id IS NOT NULL
-            GROUP BY si.policy_id, s.teacher_id
-            """
-        )
-    ).fetchall()
-
-    teacher_by_policy = {}
-    for policy_id, teacher_id, count in teacher_counts:
-        current = teacher_by_policy.get(policy_id)
-        if current is None or count > current[1]:
-            teacher_by_policy[policy_id] = (teacher_id, count)
-
-    for policy_id, (teacher_id, _) in teacher_by_policy.items():
-        connection.execute(
+    # Only run if teacher_id column was just added
+    if 'teacher_id' not in columns:
+        # Choose the most frequent teacher_id among students attached to each policy
+        teacher_counts = connection.execute(
             sa.text(
-                "UPDATE insurance_policies SET teacher_id = :teacher_id "
-                "WHERE id = :policy_id AND teacher_id IS NULL"
-            ),
-            {"teacher_id": teacher_id, "policy_id": policy_id},
-        )
+                """
+                SELECT si.policy_id, s.teacher_id, COUNT(*) AS cnt
+                FROM student_insurance si
+                JOIN students s ON s.id = si.student_id
+                WHERE s.teacher_id IS NOT NULL
+                GROUP BY si.policy_id, s.teacher_id
+                """
+            )
+        ).fetchall()
 
-    connection.commit()
+        teacher_by_policy = {}
+        for policy_id, teacher_id, count in teacher_counts:
+            current = teacher_by_policy.get(policy_id)
+            if current is None or count > current[1]:
+                teacher_by_policy[policy_id] = (teacher_id, count)
 
-    # Now make policy_code non-nullable and unique
-    op.alter_column('insurance_policies', 'policy_code', nullable=False)
-    op.create_unique_constraint('uq_insurance_policies_policy_code', 'insurance_policies', ['policy_code'])
-    op.create_index('ix_insurance_policies_policy_code', 'insurance_policies', ['policy_code'])
+        for policy_id, (teacher_id, _) in teacher_by_policy.items():
+            connection.execute(
+                sa.text(
+                    "UPDATE insurance_policies SET teacher_id = :teacher_id "
+                    "WHERE id = :policy_id AND teacher_id IS NULL"
+                ),
+                {"teacher_id": teacher_id, "policy_id": policy_id},
+            )
+
+        connection.commit()
+
+    # Now make policy_code non-nullable and unique (only if it was just added)
+    if not policy_code_existed:
+        op.alter_column('insurance_policies', 'policy_code', nullable=False)
+
+    # Check if constraint and index already exist before creating
+    constraints = [c['name'] for c in inspector.get_unique_constraints('insurance_policies')]
+    indexes = [idx['name'] for idx in inspector.get_indexes('insurance_policies')]
+
+    if 'uq_insurance_policies_policy_code' not in constraints:
+        op.create_unique_constraint('uq_insurance_policies_policy_code', 'insurance_policies', ['policy_code'])
+
+    if 'ix_insurance_policies_policy_code' not in indexes:
+        op.create_index('ix_insurance_policies_policy_code', 'insurance_policies', ['policy_code'])
 
 
 def downgrade():
-    # Remove indexes and constraints
-    op.drop_index('ix_insurance_policies_policy_code', table_name='insurance_policies')
-    op.drop_constraint('uq_insurance_policies_policy_code', 'insurance_policies', type_='unique')
-    op.drop_column('insurance_policies', 'policy_code')
+    # Check what exists before removing
+    connection = op.get_bind()
+    inspector = sa.inspect(connection)
+    columns = [col['name'] for col in inspector.get_columns('insurance_policies')]
+    constraints = {c['name'] for c in inspector.get_unique_constraints('insurance_policies')}
+    foreign_keys = {fk['name'] for fk in inspector.get_foreign_keys('insurance_policies')}
+    indexes = {idx['name'] for idx in inspector.get_indexes('insurance_policies')}
+
+    # Remove indexes and constraints for policy_code
+    if 'ix_insurance_policies_policy_code' in indexes:
+        op.drop_index('ix_insurance_policies_policy_code', table_name='insurance_policies')
+
+    if 'uq_insurance_policies_policy_code' in constraints:
+        op.drop_constraint('uq_insurance_policies_policy_code', 'insurance_policies', type_='unique')
+
+    if 'policy_code' in columns:
+        op.drop_column('insurance_policies', 'policy_code')
 
     # Remove teacher_id
-    op.drop_constraint('fk_insurance_policies_teacher_id', 'insurance_policies', type_='foreignkey')
-    op.drop_column('insurance_policies', 'teacher_id')
+    if 'fk_insurance_policies_teacher_id' in foreign_keys:
+        op.drop_constraint('fk_insurance_policies_teacher_id', 'insurance_policies', type_='foreignkey')
+
+    if 'teacher_id' in columns:
+        op.drop_column('insurance_policies', 'teacher_id')
