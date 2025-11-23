@@ -182,6 +182,26 @@ class InsurancePolicyForm(FlaskForm):
         ('your_friend_has_it', 'The One Your Friend Has')
     ], validators=[Optional()])
 
+    # Tier/Category settings
+    tier_category_id = IntegerField('Tier Category ID (for grouping)', validators=[Optional()])
+    tier_name = StringField('Tier Name (e.g., "Paycheck Protection")', validators=[Optional()])
+    tier_color = SelectField('Tier Color Theme', choices=[
+        ('', 'None'),
+        ('primary', 'Blue (Primary)'),
+        ('success', 'Green (Success)'),
+        ('info', 'Cyan (Info)'),
+        ('warning', 'Yellow (Warning)'),
+        ('danger', 'Red (Danger)'),
+        ('secondary', 'Gray (Secondary)'),
+        ('dark', 'Dark')
+    ], validators=[Optional()])
+
+    # Settings mode
+    settings_mode = SelectField('Settings Mode', choices=[
+        ('simple', 'Simple'),
+        ('advanced', 'Advanced')
+    ], default='advanced')
+
     is_active = BooleanField('Policy is Active', default=True)
     submit = SubmitField('Save Policy')
 

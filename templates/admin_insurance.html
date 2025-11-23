@@ -123,13 +123,86 @@
   <div class="tab-pane fade" id="add-policy" role="tabpanel">
     <!-- Add New Policy Form -->
     <div class="card shadow mb-4">
-      <div class="card-header bg-primary text-white">
+      <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
         <h5 class="mb-0"><i class="bi bi-plus-circle me-2"></i>Add New Insurance Policy</h5>
+        <!-- Mode Toggle -->
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="insuranceModeToggle" role="switch">
+          <label class="form-check-label text-white" for="insuranceModeToggle">Advanced Mode</label>
+        </div>
       </div>
       <div class="card-body">
-        <form method="POST" action="{{ url_for('admin.insurance_management') }}">
+        <form method="POST" action="{{ url_for('admin.insurance_management') }}" id="insuranceForm">
           {{ form.hidden_tag() }}
+          <input type="hidden" name="settings_mode" id="settingsModeInput" value="simple">
 
+          <!-- SIMPLE MODE -->
+          <div id="simpleModeFields">
+            <div class="alert alert-info">
+              <i class="bi bi-info-circle me-2"></i>
+              <strong>Simple Mode:</strong> Easy setup for basic insurance policies. For advanced features like tiers and bundles, switch to Advanced Mode.
+            </div>
+
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                {{ form.title.label(class="form-label fw-bold") }}
+                {{ form.title(class="form-control", placeholder="e.g., Basic Coverage", id="simple_title") }}
+              </div>
+              <div class="col-md-6 mb-3">
+                {{ form.premium.label(class="form-label fw-bold", for="simple_premium") }}
+                <div class="input-group">
+                  <span class="input-group-text">$</span>
+                  {{ form.premium(class="form-control", placeholder="10.00", id="simple_premium") }}
+                  <span class="input-group-text">/{{ form.charge_frequency(class="form-select", id="simple_charge_frequency", style="width: auto;") }}</span>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              {{ form.description.label(class="form-label fw-bold") }}
+              {{ form.description(class="form-control", rows=3, placeholder="What does this insurance cover?", id="simple_description") }}
+            </div>
+
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                <label class="form-label fw-bold">Claim Amount (Flat Rate)</label>
+                <div class="input-group">
+                  <span class="input-group-text">$</span>
+                  {{ form.max_claim_amount(class="form-control", placeholder="50.00", id="simple_max_claim_amount") }}
+                </div>
+                <small class="text-muted">Amount paid per approved claim</small>
+              </div>
+              <div class="col-md-6 mb-3">
+                <label class="form-label fw-bold">Max Payout Per Period</label>
+                <div class="input-group">
+                  <span class="input-group-text">$</span>
+                  {{ form.max_payout_per_period(class="form-control", placeholder="200.00", id="simple_max_payout_per_period") }}
+                  <span class="input-group-text">/{{ form.max_claims_period(class="form-select", id="simple_max_claims_period", style="width: auto;") }}</span>
+                </div>
+                <small class="text-muted">Maximum total payout in the period</small>
+              </div>
+            </div>
+
+            <div class="row">
+              <div class="col-md-6 mb-3">
+                {{ form.waiting_period_days.label(class="form-label fw-bold") }}
+                <div class="input-group">
+                  {{ form.waiting_period_days(class="form-control", placeholder="7", id="simple_waiting_period_days") }}
+                  <span class="input-group-text">days</span>
+                </div>
+                <small class="text-muted">Waiting period before coverage starts</small>
+              </div>
+              <div class="col-md-6 mb-3">
+                <div class="form-check form-switch mt-4">
+                  {{ form.is_active(class="form-check-input", role="switch", id="simple_is_active") }}
+                  {{ form.is_active.label(class="form-check-label fw-bold") }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ADVANCED MODE (hidden by default) -->
+          <div id="advancedModeFields" style="display:none;">
           <!-- 2x2 Card Grid -->
           <div class="row">
             <!-- Top Left: Basic Information -->
@@ -340,6 +413,31 @@
             </div>
           </div>
 
+          <!-- Tier Settings (Advanced Mode Only) -->
+          <div class="alert alert-warning">
+            <h6 class="fw-bold mb-2"><i class="bi bi-layers me-2"></i>Insurance Tiers</h6>
+            <p class="mb-2 small">Group related insurance policies into tiers. Students can only select ONE policy from each tier. Perfect for creating tiered coverage like "Basic", "Standard", and "Premium" plans.</p>
+
+            <div class="row">
+              <div class="col-md-4 mb-2">
+                {{ form.tier_category_id.label(class="form-label fw-bold small") }}
+                {{ form.tier_category_id(class="form-control form-control-sm", placeholder="e.g., 1") }}
+                <small class="text-muted">Use same ID for policies in the same tier</small>
+              </div>
+              <div class="col-md-4 mb-2">
+                {{ form.tier_name.label(class="form-label fw-bold small") }}
+                {{ form.tier_name(class="form-control form-control-sm", placeholder="e.g., Paycheck Protection") }}
+                <small class="text-muted">Display name for the tier</small>
+              </div>
+              <div class="col-md-4 mb-2">
+                {{ form.tier_color.label(class="form-label fw-bold small") }}
+                {{ form.tier_color(class="form-select form-select-sm") }}
+                <small class="text-muted">Color theme for this tier</small>
+              </div>
+            </div>
+          </div>
+          </div><!-- End Advanced Mode Fields -->
+
           <div class="d-grid">
             {{ form.submit(class="btn btn-primary btn-lg", value="💾 Create Policy") }}
           </div>
@@ -348,8 +446,30 @@
     </div>
 
     <script>
-    // Handle mutually exclusive repurchase restrictions for new policy form
+    // Handle simple/advanced mode toggle
     document.addEventListener('DOMContentLoaded', function() {
+      const insuranceModeToggle = document.getElementById('insuranceModeToggle');
+      const settingsModeInput = document.getElementById('settingsModeInput');
+      const simpleModeFields = document.getElementById('simpleModeFields');
+      const advancedModeFields = document.getElementById('advancedModeFields');
+
+      if (insuranceModeToggle) {
+        insuranceModeToggle.addEventListener('change', function() {
+          if (this.checked) {
+            // Advanced mode
+            simpleModeFields.style.display = 'none';
+            advancedModeFields.style.display = 'block';
+            settingsModeInput.value = 'advanced';
+          } else {
+            // Simple mode
+            simpleModeFields.style.display = 'block';
+            advancedModeFields.style.display = 'none';
+            settingsModeInput.value = 'simple';
+          }
+        });
+      }
+
+      // Handle mutually exclusive repurchase restrictions for new policy form
       const permanentBlockToggleNew = document.getElementById('permanentBlockToggleNew');
       const cooldownToggleNew = document.getElementById('cooldownToggleNew');
       const cooldownSectionNew = document.getElementById('cooldownSectionNew');

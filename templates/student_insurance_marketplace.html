@@ -4,6 +4,27 @@
 {% block title %}Insurance{% endblock %}
 {% block page_icon %}shield{% endblock %}
 
+{% block extra_head %}
+<style>
+    /* Glow effect for selected insurance policy */
+    .policy-item.active {
+        background-color: transparent !important;
+        border: 2px solid #0d6efd;
+        box-shadow: 0 0 20px rgba(13, 110, 253, 0.5), 0 0 40px rgba(13, 110, 253, 0.3);
+        animation: pulse-glow 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-glow {
+        0%, 100% {
+            box-shadow: 0 0 20px rgba(13, 110, 253, 0.5), 0 0 40px rgba(13, 110, 253, 0.3);
+        }
+        50% {
+            box-shadow: 0 0 25px rgba(13, 110, 253, 0.7), 0 0 50px rgba(13, 110, 253, 0.4);
+        }
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <!-- Tabs Navigation -->
@@ -139,7 +160,25 @@
 
     <!-- Available Plans Tab -->
     <div class="tab-pane fade" id="available-plans" role="tabpanel">
-        {% if available_policies %}
+        {% if available_policies or tier_groups %}
+
+        <!-- Tier Groups (if any) -->
+        {% for tier_id, tier_data in tier_groups.items() %}
+        <div class="card mb-4 border-{{ tier_data.color }} border-2">
+            <div class="card-header bg-{{ tier_data.color }} bg-opacity-10">
+                <h5 class="mb-0 text-{{ tier_data.color }}">
+                    <span class="material-symbols-outlined align-middle">layers</span>
+                    {{ tier_data.name }}
+                </h5>
+                <small class="text-muted">
+                    {% if tier_id in enrolled_tiers %}
+                        ✓ You have selected a policy from this tier
+                    {% else %}
+                        Select ONE policy from this tier
+                    {% endif %}
+                </small>
+            </div>
+            <div class="card-body">
         <div class="row">
             <!-- Left Column: Policy List -->
             <div class="col-md-4">
@@ -172,9 +211,6 @@
                                 <h6 class="mb-1">{{ policy.title }}</h6>
                                 <div class="text-primary fw-bold">${{ "%.2f"|format(policy.premium) }}<small class="text-muted">/{{ policy.charge_frequency }}</small></div>
                             </div>
-                            {% if policy.marketing_badge %}
-                            <span class="material-symbols-outlined text-{{ badge.color }} ms-2" style="font-size: 1.5rem;">{{ badge.icon }}</span>
-                            {% endif %}
                         </div>
                     </button>
                     {% endfor %}

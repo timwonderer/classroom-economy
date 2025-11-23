@@ -463,6 +463,14 @@ class InsurancePolicy(db.Model):
     # Marketing badge for student-facing display
     marketing_badge = db.Column(db.String(50), nullable=True)  # Predefined badge options
 
+    # Tier/Category support for grouped insurance (e.g., paycheck protection tiers)
+    tier_category_id = db.Column(db.Integer, nullable=True)  # Groups policies that are mutually exclusive
+    tier_name = db.Column(db.String(100), nullable=True)  # Display name for the tier (e.g., "Paycheck Protection")
+    tier_color = db.Column(db.String(20), nullable=True)  # Color theme for the tier (e.g., "primary", "success", "warning")
+
+    # Settings mode: simple or advanced
+    settings_mode = db.Column(db.String(20), nullable=True, default='advanced')  # simple or advanced
+
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

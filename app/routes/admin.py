@@ -1328,6 +1328,10 @@ def insurance_management():
             claim_time_limit_days=form.claim_time_limit_days.data,
             bundle_discount_percent=form.bundle_discount_percent.data,
             marketing_badge=form.marketing_badge.data if form.marketing_badge.data else None,
+            tier_category_id=form.tier_category_id.data if form.tier_category_id.data else None,
+            tier_name=form.tier_name.data if form.tier_name.data else None,
+            tier_color=form.tier_color.data if form.tier_color.data else None,
+            settings_mode=request.form.get('settings_mode', 'advanced'),
             is_active=form.is_active.data
         )
         db.session.add(policy)
@@ -1413,6 +1417,9 @@ def edit_insurance_policy(policy_id):
         policy.bundle_discount_percent = form.bundle_discount_percent.data
         policy.bundle_discount_amount = form.bundle_discount_amount.data
         policy.marketing_badge = form.marketing_badge.data if form.marketing_badge.data else None
+        policy.tier_category_id = form.tier_category_id.data if form.tier_category_id.data else None
+        policy.tier_name = form.tier_name.data if form.tier_name.data else None
+        policy.tier_color = form.tier_color.data if form.tier_color.data else None
         policy.is_active = form.is_active.data
 
         db.session.commit()

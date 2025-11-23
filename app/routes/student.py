@@ -800,10 +800,33 @@ def insurance_marketplace():
     # Get claims for my policies
     my_claims = InsuranceClaim.query.filter_by(student_id=student.id).all()
 
+    # Group policies by tier for display
+    tier_groups = {}
+    ungrouped_policies = []
+    for policy in available_policies:
+        if policy.tier_category_id:
+            if policy.tier_category_id not in tier_groups:
+                tier_groups[policy.tier_category_id] = {
+                    'name': policy.tier_name or f"Tier {policy.tier_category_id}",
+                    'color': policy.tier_color or 'primary',
+                    'policies': []
+                }
+            tier_groups[policy.tier_category_id]['policies'].append(policy)
+        else:
+            ungrouped_policies.append(policy)
+
+    # Check which tier the student has already selected from
+    enrolled_tiers = set()
+    for enrollment in my_policies:
+        if enrollment.policy.tier_category_id:
+            enrolled_tiers.add(enrollment.policy.tier_category_id)
+
     return render_template('student_insurance_marketplace.html',
                           student=student,
                           my_policies=my_policies,
-                          available_policies=available_policies,
+                          available_policies=ungrouped_policies,
+                          tier_groups=tier_groups,
+                          enrolled_tiers=enrolled_tiers,
                           can_purchase=can_purchase,
                           repurchase_blocks=repurchase_blocks,
                           my_claims=my_claims,
@@ -853,6 +876,20 @@ def purchase_insurance(policy_id):
             if days_since_cancel < policy.repurchase_wait_days:
                 flash(f"You must wait {policy.repurchase_wait_days - days_since_cancel} more days before repurchasing this policy.", "warning")
                 return redirect(url_for('student.student_insurance'))
+
+    # Check tier restrictions - can only have one policy per tier
+    if policy.tier_category_id:
+        existing_tier_enrollment = StudentInsurance.query.join(
+            InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id
+        ).filter(
+            StudentInsurance.student_id == student.id,
+            StudentInsurance.status == 'active',
+            InsurancePolicy.tier_category_id == policy.tier_category_id
+        ).first()
+
+        if existing_tier_enrollment:
+            flash(f"You already have a policy from the '{policy.tier_name or 'this'}' tier. You can only have one policy per tier.", "warning")
+            return redirect(url_for('student.student_insurance'))
 
     # Check sufficient funds
     if student.checking_balance < policy.premium:
