@@ -432,6 +432,8 @@ class RentWaiver(db.Model):
 class InsurancePolicy(db.Model):
     __tablename__ = 'insurance_policies'
     id = db.Column(db.Integer, primary_key=True)
+    policy_code = db.Column(db.String(16), unique=True, nullable=False, index=True)  # Unique code per teacher's policy
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)  # Owner teacher
     title = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
     premium = db.Column(db.Float, nullable=False)  # Monthly cost
@@ -463,6 +465,7 @@ class InsurancePolicy(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
+    teacher = db.relationship('Admin', foreign_keys=[teacher_id], backref='insurance_policies_owned')
     student_policies = db.relationship('StudentInsurance', backref='policy', lazy='dynamic')
     claims = db.relationship('InsuranceClaim', backref='policy', lazy='dynamic')
 

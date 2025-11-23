@@ -13,6 +13,7 @@ import base64
 import math
 import random
 import string
+import secrets
 import qrcode
 from calendar import monthrange
 from datetime import datetime, timedelta, timezone
@@ -1301,8 +1302,15 @@ def insurance_management():
     form = InsurancePolicyForm()
 
     if request.method == 'POST' and form.validate_on_submit():
+        # Generate unique policy code
+        policy_code = secrets.token_urlsafe(12)[:16]
+        while InsurancePolicy.query.filter_by(policy_code=policy_code).first():
+            policy_code = secrets.token_urlsafe(12)[:16]
+
         # Create new insurance policy
         policy = InsurancePolicy(
+            policy_code=policy_code,
+            teacher_id=session.get('admin_id'),
             title=form.title.data,
             description=form.description.data,
             premium=form.premium.data,
@@ -1326,8 +1334,9 @@ def insurance_management():
         flash(f"Insurance policy '{policy.title}' created successfully!", "success")
         return redirect(url_for('admin.insurance_management'))
 
-    # Get all policies
-    policies = InsurancePolicy.query.all()
+    # Get policies for current teacher only
+    current_teacher_id = session.get('admin_id')
+    policies = InsurancePolicy.query.filter_by(teacher_id=current_teacher_id).all()
 
     # Get all student enrollments
     active_enrollments = (
@@ -1375,6 +1384,11 @@ def insurance_management():
 def edit_insurance_policy(policy_id):
     """Edit existing insurance policy."""
     policy = InsurancePolicy.query.get_or_404(policy_id)
+
+    # Verify this policy belongs to the current teacher
+    if policy.teacher_id != session.get('admin_id'):
+        abort(403)
+
     form = InsurancePolicyForm(obj=policy)
 
     if request.method == 'POST' and form.validate_on_submit():
@@ -1417,6 +1431,11 @@ def edit_insurance_policy(policy_id):
 def deactivate_insurance_policy(policy_id):
     """Deactivate an insurance policy."""
     policy = InsurancePolicy.query.get_or_404(policy_id)
+
+    # Verify this policy belongs to the current teacher
+    if policy.teacher_id != session.get('admin_id'):
+        abort(403)
+
     policy.is_active = False
     db.session.commit()
     flash(f"Insurance policy '{policy.title}' has been deactivated.", "success")
@@ -1426,74 +1445,59 @@ def deactivate_insurance_policy(policy_id):
 @admin_bp.route('/insurance/delete/<int:policy_id>', methods=['POST'])
 @admin_required
 def delete_insurance_policy(policy_id):
-    """Delete an insurance policy scoped to current teacher's students.
+    """Delete an insurance policy and all associated data.
 
-    Only deletes enrollments/claims for the current teacher's students.
-    The policy itself is only deleted if no other teachers have students enrolled.
+    Since each teacher has their own policy instances (identified by policy_code),
+    this safely deletes only the current teacher's policy data without affecting
+    other teachers.
     """
     policy = InsurancePolicy.query.get_or_404(policy_id)
+
+    # Verify this policy belongs to the current teacher
+    if policy.teacher_id != session.get('admin_id'):
+        abort(403)
+
     force_delete = request.form.get('force_delete') == 'true'
 
-    # Get scoped student IDs for this teacher
-    student_ids_subq = _student_scope_subquery()
-
-    # Check for active enrollments (only for THIS teacher's students)
-    my_active_enrollments = StudentInsurance.query.filter(
-        StudentInsurance.policy_id == policy_id,
-        StudentInsurance.status == 'active',
-        StudentInsurance.student_id.in_(student_ids_subq)
+    # Check for active enrollments
+    active_enrollments = StudentInsurance.query.filter_by(
+        policy_id=policy_id,
+        status='active'
     ).count()
 
-    # Check for pending claims (only for THIS teacher's students)
-    my_pending_claims = InsuranceClaim.query.filter(
-        InsuranceClaim.policy_id == policy_id,
-        InsuranceClaim.status == 'pending',
-        InsuranceClaim.student_id.in_(student_ids_subq)
+    # Check for pending claims
+    pending_claims = InsuranceClaim.query.filter_by(
+        policy_id=policy_id,
+        status='pending'
     ).count()
 
-    if not force_delete and (my_active_enrollments > 0 or my_pending_claims > 0):
-        flash(f"Cannot delete policy '{policy.title}': {my_active_enrollments} active enrollments and {my_pending_claims} pending claims from your students. Cancel all enrollments first or use force delete.", "danger")
+    if not force_delete and (active_enrollments > 0 or pending_claims > 0):
+        flash(f"Cannot delete policy '{policy.title}': {active_enrollments} active enrollments and {pending_claims} pending claims. Cancel all enrollments first or use force delete.", "danger")
         return redirect(url_for('admin.insurance_management'))
 
     try:
-        # Cancel active enrollments if force delete (only THIS teacher's students)
-        if force_delete and my_active_enrollments > 0:
-            cancelled_count = StudentInsurance.query.filter(
-                StudentInsurance.policy_id == policy_id,
-                StudentInsurance.status == 'active',
-                StudentInsurance.student_id.in_(student_ids_subq)
+        # Cancel active enrollments if force delete
+        if force_delete and active_enrollments > 0:
+            cancelled_count = StudentInsurance.query.filter_by(
+                policy_id=policy_id,
+                status='active'
             ).update({'status': 'cancelled'}, synchronize_session=False)
-            flash(f"Cancelled {cancelled_count} active enrollments from your students.", "info")
+            flash(f"Cancelled {cancelled_count} active enrollments.", "info")
 
-        # Delete claims (only for THIS teacher's students)
-        claims_deleted = InsuranceClaim.query.filter(
-            InsuranceClaim.policy_id == policy_id,
-            InsuranceClaim.student_id.in_(student_ids_subq)
-        ).delete(synchronize_session=False)
+        # Delete all claims for this policy
+        claims_deleted = InsuranceClaim.query.filter_by(policy_id=policy_id).delete()
 
-        # Delete enrollments (only for THIS teacher's students)
-        enrollments_deleted = StudentInsurance.query.filter(
-            StudentInsurance.policy_id == policy_id,
-            StudentInsurance.student_id.in_(student_ids_subq)
-        ).delete(synchronize_session=False)
+        # Delete all enrollments for this policy
+        enrollments_deleted = StudentInsurance.query.filter_by(policy_id=policy_id).delete()
 
-        # Check if other teachers have students enrolled in this policy
-        other_enrollments = StudentInsurance.query.filter(
-            StudentInsurance.policy_id == policy_id,
-            ~StudentInsurance.student_id.in_(student_ids_subq)
-        ).count()
-
-        # Only delete the policy if no other teachers use it
-        if other_enrollments == 0:
-            db.session.delete(policy)
-            flash(f"Successfully deleted policy '{policy.title}' ({enrollments_deleted} enrollments and {claims_deleted} claims removed from your students).", "success")
-        else:
-            flash(f"Removed your students from policy '{policy.title}' ({enrollments_deleted} enrollments and {claims_deleted} claims). Policy retained because {other_enrollments} enrollments from other teachers exist.", "info")
-
+        # Delete the policy itself
+        db.session.delete(policy)
         db.session.commit()
+
+        flash(f"Successfully deleted policy '{policy.title}' ({enrollments_deleted} enrollments and {claims_deleted} claims removed).", "success")
     except Exception as e:
         db.session.rollback()
-        flash(f"Error deleting policy data: {str(e)}", "danger")
+        flash(f"Error deleting policy: {str(e)}", "danger")
 
     return redirect(url_for('admin.insurance_management'))
 
@@ -1503,6 +1507,10 @@ def delete_insurance_policy(policy_id):
 def mass_remove_policy(policy_id):
     """Cancel insurance policy for multiple or all students."""
     policy = InsurancePolicy.query.get_or_404(policy_id)
+
+    # Verify this policy belongs to the current teacher
+    if policy.teacher_id != session.get('admin_id'):
+        abort(403)
 
     # Get list of student IDs to remove (or 'all')
     student_ids_raw = request.form.get('student_ids', 'all')
