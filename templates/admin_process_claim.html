@@ -2,6 +2,22 @@
 {% set page_title = "Process Insurance Claim" %}
 {% set current_page = "insurance" %}
 {% block title %}Process Claim{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+<style>
+    .EasyMDEContainer .CodeMirror {
+        min-height: 100px;
+    }
+    .editor-toolbar {
+        border-radius: 4px 4px 0 0;
+    }
+    .CodeMirror {
+        border-radius: 0 0 4px 4px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <div class="row">
@@ -204,5 +220,34 @@
     </form>
   </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+<script>
+  // Initialize markdown editors for rejection reason and admin notes
+  document.addEventListener('DOMContentLoaded', function() {
+    const rejectionReasonField = document.getElementById('rejection_reason');
+    const adminNotesField = document.getElementById('admin_notes');
+
+    if (rejectionReasonField) {
+      new EasyMDE({
+        element: rejectionReasonField,
+        spellChecker: false,
+        toolbar: ["bold", "italic", "|", "unordered-list", "ordered-list", "|", "link", "|", "preview"],
+        status: false,
+        placeholder: "Explain why this claim is being rejected (Markdown supported)...",
+      });
+    }
+
+    if (adminNotesField) {
+      new EasyMDE({
+        element: adminNotesField,
+        spellChecker: false,
+        toolbar: ["bold", "italic", "|", "unordered-list", "ordered-list", "|", "link", "|", "preview"],
+        status: false,
+        placeholder: "Internal notes about this claim (Markdown supported)...",
+      });
+    }
+  });
+</script>
 
 {% endblock %}

@@ -2,6 +2,22 @@
 {% set page_title = "Store Management" %}
 {% block title %}Store Management{% endblock %}
 {% block page_icon %}storefront{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+<style>
+    .EasyMDEContainer .CodeMirror {
+        min-height: 120px;
+    }
+    .editor-toolbar {
+        border-radius: 4px 4px 0 0;
+    }
+    .CodeMirror {
+        border-radius: 0 0 4px 4px;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 
 <!-- Nav Tabs -->
@@ -570,6 +586,35 @@
     // Initial state
     updateCollectiveGoalTypeVisibility();
   }
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+<script>
+  // Initialize markdown editors for description and redemption_prompt fields
+  document.addEventListener('DOMContentLoaded', function() {
+    const descriptionField = document.getElementById('description');
+    const redemptionPromptField = document.getElementById('redemption_prompt');
+
+    if (descriptionField) {
+      new EasyMDE({
+        element: descriptionField,
+        spellChecker: false,
+        toolbar: ["bold", "italic", "heading", "|", "unordered-list", "ordered-list", "|", "link", "quote", "|", "preview", "side-by-side", "fullscreen", "|", "guide"],
+        status: false,
+        placeholder: "Enter item description (Markdown supported)...",
+      });
+    }
+
+    if (redemptionPromptField) {
+      new EasyMDE({
+        element: redemptionPromptField,
+        spellChecker: false,
+        toolbar: ["bold", "italic", "heading", "|", "unordered-list", "ordered-list", "|", "link", "quote", "|", "preview", "side-by-side", "fullscreen", "|", "guide"],
+        status: false,
+        placeholder: "Enter redemption prompt (Markdown supported)...",
+      });
+    }
+  });
 </script>
 
 {% endblock %}
