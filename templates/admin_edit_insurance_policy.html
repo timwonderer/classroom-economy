@@ -263,25 +263,82 @@
                   </div>
                 </div>
 
-                <!-- Tier Settings -->
+                <!-- Group Settings -->
                 <hr>
-                <div>
-                  <h6 class="fw-bold mb-2"><i class="bi bi-layers me-2"></i>Insurance Tiers</h6>
-                  <p class="mb-2 small text-muted">Group related policies into tiers. Students can only select ONE policy from each tier.</p>
+                <div class="card border-warning bg-light-subtle">
+                  <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <div>
+                        <h6 class="fw-bold mb-0"><i class="bi bi-layers me-2"></i>Grouped Insurance</h6>
+                        <small class="text-muted">Students can select <strong>one policy</strong> per group. <span class="ms-1" data-bs-toggle="tooltip" title="Grouped insurance policies are mutually exclusive—students choose only one from a group."><i class="bi bi-info-circle"></i></span></small>
+                      </div>
+                      <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="tierToggleEdit" {% if form.tier_category_id.data %}checked{% endif %}>
+                        <label class="form-check-label fw-bold" for="tierToggleEdit">This insurance is grouped</label>
+                      </div>
+                    </div>
 
-                  <div class="row">
-                    <div class="col-md-12 mb-2">
-                      {{ form.tier_category_id.label(class="form-label fw-bold small") }}
-                      {{ form.tier_category_id(class="form-control form-control-sm", placeholder="e.g., 1") }}
-                      <small class="text-muted">Policies with the same category ID belong to the same tier</small>
+                    <div id="tierSelectionEdit" class="mt-2" style="{% if not form.tier_category_id.data %}display:none;{% endif %}">
+                      <div class="alert alert-info py-2 px-3 {% if not form.tier_category_id.data %}d-none{% endif %}" id="tierSummaryEdit">
+                        {% if form.tier_category_id.data %}
+                          Currently grouped in <strong>{{ form.tier_name.data or ('Group ' ~ form.tier_category_id.data) }}</strong> · select one only
+                        {% endif %}
+                      </div>
+
+                      <div class="d-flex align-items-center gap-2 mb-3" id="tierActionsEdit" {% if not form.tier_category_id.data %}style="display:none;"{% endif %}>
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="removeGroupBtn">Remove insurance from group</button>
+                      </div>
+
+                      {% if tier_groups %}
+                      <div class="row g-3 mb-3">
+                        {% for group in tier_groups %}
+                        <div class="col-md-6">
+                            <div class="card h-100 border-{{ group.color }}">
+                              <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start mb-2">
+                                  <div>
+                                    <span class="badge bg-{{ group.color }} text-white">{{ group.name }}</span>
+                                    <div class="small text-muted">Students choose one option in this group</div>
+                                  </div>
+                                  <button type="button" class="btn btn-outline-primary btn-sm select-tier-btn-edit" data-tier-id="{{ group.id }}" data-tier-name="{{ group.name }}" data-tier-color="{{ group.color }}">
+                                    Add this insurance to group
+                                  </button>
+                              </div>
+                              <div class="small text-muted">{{ group.policies|length }} policy{{ 'ies' if group.policies|length != 1 else '' }} in this group</div>
+                            </div>
+                          </div>
+                        </div>
+                        {% endfor %}
+                      </div>
+                      <div class="mb-3">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="startNewGroupBtnEdit">Create a new group</button>
+                      </div>
+                      {% else %}
+                        <div class="alert alert-warning d-flex align-items-center" role="alert">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <div>No grouped insurance exists yet. Name your first group to create a "select one only" group.</div>
+                      </div>
+                      {% endif %}
+
+                      <div id="newGroupFieldsEdit" class="card card-body border-0 bg-white shadow-sm {% if not form.tier_category_id.data and tier_groups %}d-none{% endif %}">
+                        <div class="d-flex align-items-center mb-3">
+                          <small class="text-muted">Students can choose one policy per group.</small>
+                        </div>
+                        <div class="row g-2">
+                          <div class="col-md-7">
+                            {{ form.tier_name.label(class="form-label fw-bold small") }}
+                            {{ form.tier_name(class="form-control form-control-sm", id="tier_name") }}
+                          </div>
+                          <div class="col-md-5">
+                            {{ form.tier_color.label(class="form-label fw-bold small") }}
+                            {{ form.tier_color(class="form-select form-select-sm", id="tier_color") }}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div class="col-md-6 mb-2">
-                      {{ form.tier_name.label(class="form-label fw-bold small") }}
-                      {{ form.tier_name(class="form-control form-control-sm", placeholder="e.g., Paycheck Protection") }}
-                    </div>
-                    <div class="col-md-6 mb-2">
-                      {{ form.tier_color.label(class="form-label fw-bold small") }}
-                      {{ form.tier_color(class="form-select form-select-sm") }}
+
+                    <div class="d-none">
+                      {{ form.tier_category_id(id="tier_category_id") }}
                     </div>
                   </div>
                 </div>
@@ -430,6 +487,120 @@ document.addEventListener('DOMContentLoaded', function() {
     cooldownToggle.addEventListener('change', updateRepurchaseRestrictions);
     updateRepurchaseRestrictions(); // Initialize on load
   }
+
+  // Tier grouping flow (edit mode)
+  const tierToggleEdit = document.getElementById('tierToggleEdit');
+  const tierSelectionEdit = document.getElementById('tierSelectionEdit');
+  const tierCategoryInput = document.getElementById('tier_category_id');
+  const tierNameInput = document.getElementById('tier_name');
+  const tierColorInput = document.getElementById('tier_color');
+  const tierSummaryEdit = document.getElementById('tierSummaryEdit');
+  const newGroupFieldsEdit = document.getElementById('newGroupFieldsEdit');
+  const startNewGroupBtnEdit = document.getElementById('startNewGroupBtnEdit');
+  const selectTierButtonsEdit = document.querySelectorAll('.select-tier-btn-edit');
+  const removeGroupBtn = document.getElementById('removeGroupBtn');
+  const tierActionsEdit = document.getElementById('tierActionsEdit');
+
+  function clearTierFields() {
+    if (tierCategoryInput) tierCategoryInput.value = '';
+    if (tierNameInput) tierNameInput.value = '';
+    if (tierColorInput) tierColorInput.value = '';
+  }
+
+  function showTierSelection() {
+    if (tierSelectionEdit) tierSelectionEdit.style.display = 'block';
+  }
+
+  function hideTierSelection() {
+    if (tierSelectionEdit) tierSelectionEdit.style.display = 'none';
+    if (tierSummaryEdit) tierSummaryEdit.classList.add('d-none');
+    if (tierActionsEdit) tierActionsEdit.style.display = 'none';
+    if (newGroupFieldsEdit) newGroupFieldsEdit.classList.add('d-none');
+    clearTierFields();
+  }
+
+  function setTierValues(tier) {
+    if (tierCategoryInput) tierCategoryInput.value = tier.id;
+    if (tierNameInput) tierNameInput.value = tier.name || '';
+    if (tierColorInput) tierColorInput.value = tier.color || 'primary';
+    if (tierSummaryEdit) {
+      tierSummaryEdit.innerHTML = `<strong>Grouped:</strong> ${tier.name || 'Untitled Group'} · select one only`;
+      tierSummaryEdit.classList.remove('d-none');
+    }
+    if (tierActionsEdit) tierActionsEdit.style.display = 'flex';
+    if (newGroupFieldsEdit) newGroupFieldsEdit.classList.remove('d-none');
+  }
+
+  function startNewGroup() {
+    showTierSelection();
+    if (tierCategoryInput) tierCategoryInput.value = '';
+    if (tierSummaryEdit) tierSummaryEdit.classList.add('d-none');
+    if (tierActionsEdit) tierActionsEdit.style.display = 'flex';
+    if (newGroupFieldsEdit) newGroupFieldsEdit.classList.remove('d-none');
+    if (tierColorInput && !tierColorInput.value) tierColorInput.value = 'primary';
+  }
+
+  selectTierButtonsEdit.forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (tierToggleEdit) tierToggleEdit.checked = true;
+      showTierSelection();
+      setTierValues({
+        id: btn.dataset.tierId,
+        name: btn.dataset.tierName,
+        color: btn.dataset.tierColor
+      });
+    });
+  });
+
+  if (startNewGroupBtnEdit) {
+    startNewGroupBtnEdit.addEventListener('click', () => {
+      if (tierToggleEdit) tierToggleEdit.checked = true;
+      startNewGroup();
+    });
+  }
+
+  if (removeGroupBtn) {
+    removeGroupBtn.addEventListener('click', () => {
+      hideTierSelection();
+      if (tierToggleEdit) tierToggleEdit.checked = false;
+    });
+  }
+
+  if (tierToggleEdit) {
+    tierToggleEdit.addEventListener('change', () => {
+      if (tierToggleEdit.checked) {
+        showTierSelection();
+        if (!selectTierButtonsEdit.length) {
+          startNewGroup();
+        } else if (tierCategoryInput && tierCategoryInput.value) {
+          setTierValues({
+            id: tierCategoryInput.value,
+            name: tierNameInput ? tierNameInput.value : '',
+            color: tierColorInput ? tierColorInput.value : 'primary'
+          });
+        }
+      } else {
+        hideTierSelection();
+      }
+    });
+  }
+
+  // Initialize selection if already grouped
+  if (tierCategoryInput && tierCategoryInput.value) {
+    if (tierToggleEdit) tierToggleEdit.checked = true;
+    showTierSelection();
+    setTierValues({
+      id: tierCategoryInput.value,
+      name: tierNameInput ? tierNameInput.value : '',
+      color: tierColorInput ? tierColorInput.value : 'primary'
+    });
+  }
+
+  // Enable tooltips for grouped insurance info
+  const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+  tooltipTriggerList.map(function (tooltipTriggerEl) {
+    return new bootstrap.Tooltip(tooltipTriggerEl);
+  });
 });
 </script>
 

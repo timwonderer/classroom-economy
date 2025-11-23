@@ -15,6 +15,7 @@ import random
 import string
 import secrets
 import qrcode
+import hashlib
 from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
@@ -32,7 +33,7 @@ from app.extensions import db
 from app.models import (
     Student, Admin, AdminInviteCode, StudentTeacher, Transaction, TapEvent, StoreItem, StudentItem,
     RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings
+    HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings, TeacherBlock
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
@@ -1300,6 +1301,39 @@ def remove_rent_waiver(waiver_id):
 
 # -------------------- INSURANCE MANAGEMENT --------------------
 
+
+def _get_tier_namespace_seed(teacher_id):
+    """Return a stable seed for tenant-scoped tier IDs using the teacher's join code."""
+    join_code_row = (
+        TeacherBlock.query
+        .filter_by(teacher_id=teacher_id)
+        .with_entities(TeacherBlock.join_code)
+        .order_by(TeacherBlock.join_code)
+        .first()
+    )
+
+    return join_code_row[0] if join_code_row else f"teacher-{teacher_id}"
+
+
+def _generate_tenant_scoped_tier_id(seed, sequence):
+    """Create a globally unique tier ID by hashing the teacher join code with a sequence."""
+    digest = hashlib.blake2b(f"{seed}:{sequence}".encode(), digest_size=8).digest()
+    candidate = int.from_bytes(digest, byteorder='big') % 2_000_000_000
+    return candidate or sequence
+
+
+def _next_tenant_scoped_tier_id(seed, existing_ids):
+    """Return the next available tier ID that won't collide across teachers."""
+    sequence = len(existing_ids) + 1
+    candidate = _generate_tenant_scoped_tier_id(seed, sequence)
+
+    while candidate in existing_ids:
+        sequence += 1
+        candidate = _generate_tenant_scoped_tier_id(seed, sequence)
+
+    return candidate
+
+
 @admin_bp.route('/insurance', methods=['GET', 'POST'])
 @admin_required
 def insurance_management():
@@ -1307,11 +1341,39 @@ def insurance_management():
     student_ids_subq = _student_scope_subquery()
     form = InsurancePolicyForm()
 
+    current_teacher_id = session.get('admin_id')
+    existing_policies = InsurancePolicy.query.filter_by(teacher_id=current_teacher_id).all()
+
+    # Collect existing tier groups for the current teacher
+    tier_groups_map = {}
+    for policy in existing_policies:
+        if policy.tier_category_id:
+            category_id = policy.tier_category_id
+            if category_id not in tier_groups_map:
+                tier_groups_map[category_id] = {
+                    'id': category_id,
+                    'name': policy.tier_name or f"Group {category_id}",
+                    'color': policy.tier_color or 'primary',
+                    'policies': []
+                }
+            tier_groups_map[category_id]['policies'].append(policy.title)
+
+    tier_groups = sorted(tier_groups_map.values(), key=lambda g: g['id'])
+    tier_namespace_seed = _get_tier_namespace_seed(current_teacher_id)
+    existing_tier_ids = set(tier_groups_map.keys())
+    next_tier_category_id = _next_tenant_scoped_tier_id(tier_namespace_seed, existing_tier_ids)
+
     if request.method == 'POST' and form.validate_on_submit():
         # Generate unique policy code
         policy_code = secrets.token_urlsafe(12)[:16]
         while InsurancePolicy.query.filter_by(policy_code=policy_code).first():
             policy_code = secrets.token_urlsafe(12)[:16]
+
+        tier_category_id = None
+        if form.tier_category_id.data:
+            tier_category_id = form.tier_category_id.data
+        elif form.tier_name.data or form.tier_color.data:
+            tier_category_id = next_tier_category_id
 
         # Create new insurance policy
         policy = InsurancePolicy(
@@ -1334,7 +1396,7 @@ def insurance_management():
             claim_time_limit_days=form.claim_time_limit_days.data,
             bundle_discount_percent=form.bundle_discount_percent.data,
             marketing_badge=form.marketing_badge.data if form.marketing_badge.data else None,
-            tier_category_id=form.tier_category_id.data if form.tier_category_id.data else None,
+            tier_category_id=tier_category_id,
             tier_name=form.tier_name.data if form.tier_name.data else None,
             tier_color=form.tier_color.data if form.tier_color.data else None,
             settings_mode=request.form.get('settings_mode', 'advanced'),
@@ -1346,8 +1408,7 @@ def insurance_management():
         return redirect(url_for('admin.insurance_management'))
 
     # Get policies for current teacher only
-    current_teacher_id = session.get('admin_id')
-    policies = InsurancePolicy.query.filter_by(teacher_id=current_teacher_id).all()
+    policies = existing_policies
 
     # Get all student enrollments
     active_enrollments = (
@@ -1387,7 +1448,9 @@ def insurance_management():
                           active_enrollments=active_enrollments,
                           cancelled_enrollments=cancelled_enrollments,
                           claims=claims,
-                          pending_claims_count=pending_claims_count)
+                          pending_claims_count=pending_claims_count,
+                          tier_groups=tier_groups,
+                          next_tier_category_id=next_tier_category_id)
 
 
 @admin_bp.route('/insurance/edit/<int:policy_id>', methods=['GET', 'POST'])
@@ -1401,6 +1464,25 @@ def edit_insurance_policy(policy_id):
         abort(403)
 
     form = InsurancePolicyForm(obj=policy)
+
+    teacher_policies = InsurancePolicy.query.filter_by(teacher_id=session.get('admin_id')).all()
+    tier_groups_map = {}
+    for teacher_policy in teacher_policies:
+        if teacher_policy.tier_category_id:
+            category_id = teacher_policy.tier_category_id
+            if category_id not in tier_groups_map:
+                tier_groups_map[category_id] = {
+                    'id': category_id,
+                    'name': teacher_policy.tier_name or f"Group {category_id}",
+                    'color': teacher_policy.tier_color or 'primary',
+                    'policies': []
+                }
+            tier_groups_map[category_id]['policies'].append(teacher_policy.title)
+
+    tier_groups = sorted(tier_groups_map.values(), key=lambda g: g['id'])
+    tier_namespace_seed = _get_tier_namespace_seed(policy.teacher_id)
+    existing_tier_ids = set(tier_groups_map.keys())
+    next_tier_category_id = _next_tenant_scoped_tier_id(tier_namespace_seed, existing_tier_ids)
 
     if request.method == 'POST' and form.validate_on_submit():
         policy.title = form.title.data
@@ -1423,7 +1505,12 @@ def edit_insurance_policy(policy_id):
         policy.bundle_discount_percent = form.bundle_discount_percent.data
         policy.bundle_discount_amount = form.bundle_discount_amount.data
         policy.marketing_badge = form.marketing_badge.data if form.marketing_badge.data else None
-        policy.tier_category_id = form.tier_category_id.data if form.tier_category_id.data else None
+        if form.tier_category_id.data:
+            policy.tier_category_id = form.tier_category_id.data
+        elif form.tier_name.data or form.tier_color.data:
+            policy.tier_category_id = next_tier_category_id
+        else:
+            policy.tier_category_id = None
         policy.tier_name = form.tier_name.data if form.tier_name.data else None
         policy.tier_color = form.tier_color.data if form.tier_color.data else None
         policy.is_active = form.is_active.data
@@ -1438,7 +1525,14 @@ def edit_insurance_policy(policy_id):
         InsurancePolicy.id != policy_id
     ).all()
 
-    return render_template('admin_edit_insurance_policy.html', form=form, policy=policy, available_policies=available_policies)
+    return render_template(
+        'admin_edit_insurance_policy.html',
+        form=form,
+        policy=policy,
+        available_policies=available_policies,
+        tier_groups=tier_groups,
+        next_tier_category_id=next_tier_category_id
+    )
 
 
 @admin_bp.route('/insurance/deactivate/<int:policy_id>', methods=['POST'])
