@@ -17,44 +17,44 @@ depends_on = None
 
 
 def upgrade():
-    # Add teacher_id column to transactions table
-    op.add_column('transactions',
+    # Add teacher_id column to transaction table (singular)
+    op.add_column('transaction',
         sa.Column('teacher_id', sa.Integer(), nullable=True))
 
     # Add foreign key constraint
     op.create_foreign_key(
-        'fk_transactions_teacher_id_admins',
-        'transactions', 'admins',
+        'fk_transaction_teacher_id_admins',
+        'transaction', 'admins',
         ['teacher_id'], ['id'],
         ondelete='SET NULL'
     )
 
     # Add index for performance
     op.create_index(
-        'ix_transactions_teacher_id',
-        'transactions',
+        'ix_transaction_teacher_id',
+        'transaction',
         ['teacher_id']
     )
 
     # Backfill existing transactions with student's primary teacher
     # For students with a teacher_id, assign all their transactions to that teacher
     op.execute("""
-        UPDATE transactions
+        UPDATE transaction
         SET teacher_id = (
             SELECT teacher_id
             FROM students
-            WHERE students.id = transactions.student_id
+            WHERE students.id = transaction.student_id
         )
         WHERE teacher_id IS NULL
         AND EXISTS (
             SELECT 1 FROM students
-            WHERE students.id = transactions.student_id
+            WHERE students.id = transaction.student_id
             AND students.teacher_id IS NOT NULL
         )
     """)
 
 
 def downgrade():
-    op.drop_index('ix_transactions_teacher_id', table_name='transactions')
-    op.drop_constraint('fk_transactions_teacher_id_admins', 'transactions', type_='foreignkey')
-    op.drop_column('transactions', 'teacher_id')
+    op.drop_index('ix_transaction_teacher_id', table_name='transaction')
+    op.drop_constraint('fk_transaction_teacher_id_admins', 'transaction', type_='foreignkey')
+    op.drop_column('transaction', 'teacher_id')
