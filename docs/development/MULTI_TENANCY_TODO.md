@@ -1,7 +1,7 @@
 # Multi-Tenancy Implementation - TODO
 
 ## Overview
-The multi-teacher model is live: students can be shared across teachers through `student_teachers`, scoped query helpers enforce isolation, and system admins can manage ownership. Primary ownership now lives in the link table; the legacy `students.teacher_id` column remains only for backward compatibility during cleanup.
+The multi-teacher model is live: students can be shared across teachers through `student_teachers`, scoped query helpers enforce isolation, and system admins can manage ownership. Primary ownership is still stored on `students.teacher_id`, and scoped helpers consider that column the source of truth while the migration to move primary ownership into the link table is in progress.
 
 ## Current State
 - ✅ Admin (teacher) accounts with TOTP-only authentication
@@ -10,7 +10,7 @@ The multi-teacher model is live: students can be shared across teachers through 
 - ✅ Scoped helpers in `app/auth.py` (`get_admin_student_query`, `get_student_for_admin`) used across admin routes
 - ✅ CSV/manual creation auto-links the creating teacher; system admins can manage sharing and primary ownership via `/sysadmin/student-ownership`
 - ✅ Maintenance-mode banner/page available for low-disruption migrations
-- ⚠️ `students.teacher_id` is deprecated; referenced only to support legacy data before removal
+- ⚠️ `students.teacher_id` remains the authoritative primary owner column; code still scopes access off this field alongside `student_teachers`
 
 ## Goals
 - Teachers should only see/manage their own students (including shared students)
@@ -20,7 +20,7 @@ The multi-teacher model is live: students can be shared across teachers through 
 
 ## Database Notes
 - `student_teachers` enforces uniqueness on (`student_id`, `admin_id`) and cascades deletes
-- Legacy `students.teacher_id` must be retired after all records are mapped to links
+- `students.teacher_id` is currently the primary owner marker and must be retired after all records are mapped to links and access control is updated to treat the link as authoritative
 - Consider ON DELETE behavior for admins that are primary owners before dropping the column
 
 ## Code Notes
