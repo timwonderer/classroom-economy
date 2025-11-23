@@ -31,11 +31,18 @@ def login_required(f):
     def decorated_function(*args, **kwargs):
         # Allow access if admin is viewing as student
         if is_viewing_as_student():
-            # Admins must also have a student context when bypassing login_required
+            # Admins need a student context when bypassing login_required; populate one automatically
             if 'student_id' not in session:
-                session['view_as_student'] = False
-                flash("Select a student before viewing the student experience.")
-                return redirect(url_for('admin.dashboard'))
+                # Import lazily to avoid circular dependencies
+                from app.models import Student
+
+                student = get_admin_student_query().order_by(Student.id).first()
+                if not student:
+                    session['view_as_student'] = False
+                    flash("Create a student before viewing the student experience.")
+                    return redirect(url_for('admin.dashboard'))
+
+                session['student_id'] = student.id
 
             # Update admin's last activity
             session['last_activity'] = datetime.now(timezone.utc).isoformat()
