@@ -44,7 +44,7 @@ from forms import (
 
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso
-from hash_utils import get_random_salt, hash_hmac, hash_username
+from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
 
@@ -70,6 +70,18 @@ def _student_scope_subquery(include_unassigned=True):
         .with_entities(Student.id)
         .subquery()
     )
+
+
+def _sanitize_csv_field(value):
+    """Prevent CSV injection by prefixing risky leading characters."""
+
+    if value is None:
+        return ""
+
+    text = str(value)
+    if text.startswith(("=", "+", "-", "@")):
+        return f"'{text}"
+    return text
 
 
 def _get_student_or_404(student_id, include_unassigned=True):
@@ -625,6 +637,7 @@ def edit_student():
     if reset_login:
         # Clear login credentials but keep account data
         student.username_hash = None
+        student.username_lookup_hash = None
         student.pin_hash = None
         student.passphrase_hash = None
         student.has_completed_setup = False
@@ -971,6 +984,7 @@ def add_manual_student():
         # Set username if provided
         if username:
             new_student.username_hash = hash_username(username, salt)
+            new_student.username_lookup_hash = hash_username_lookup(username)
 
         # Set PIN if provided
         if pin:
@@ -2954,13 +2968,13 @@ def export_students():
         insurance_name = active_insurance.policy.title if active_insurance else 'None'
 
         writer.writerow([
-            student.first_name,
-            student.last_initial,
-            student.block,
+            _sanitize_csv_field(student.first_name),
+            _sanitize_csv_field(student.last_initial),
+            _sanitize_csv_field(student.block),
             f"{student.checking_balance:.2f}",
             f"{student.savings_balance:.2f}",
             f"{student.total_earnings:.2f}",
-            insurance_name,
+            _sanitize_csv_field(insurance_name),
             'Yes' if student.is_rent_enabled else 'No',
             'Yes' if student.has_completed_setup else 'No'
         ])
