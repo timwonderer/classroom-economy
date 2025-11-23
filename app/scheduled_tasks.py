@@ -17,53 +17,62 @@ def enforce_daily_limits_job():
     from app.models import Student, TapEvent
     from app.routes.api import check_and_auto_tapout_if_limit_reached
     from app.extensions import db
+    from payroll import load_payroll_settings_cache
+    from sqlalchemy import func
 
     logger = logging.getLogger('scheduled_tasks')
     logger.info("Starting scheduled auto tap-out enforcement job")
 
     try:
         with db.session.begin_nested():
-            students = Student.query.all()
-            checked_count = 0
+            latest_events_subq = (
+                db.session.query(
+                    TapEvent.student_id.label("student_id"),
+                    TapEvent.period.label("period"),
+                    func.max(TapEvent.timestamp).label("latest_ts"),
+                )
+                .group_by(TapEvent.student_id, TapEvent.period)
+                .subquery()
+            )
+
+            students = (
+                db.session.query(Student)
+                .join(latest_events_subq, Student.id == latest_events_subq.c.student_id)
+                .join(
+                    TapEvent,
+                    (TapEvent.student_id == latest_events_subq.c.student_id)
+                    & (TapEvent.period == latest_events_subq.c.period)
+                    & (TapEvent.timestamp == latest_events_subq.c.latest_ts),
+                )
+                .filter(TapEvent.status == "active")
+                .distinct()
+                .all()
+            )
+
+            checked_count = len(students)
             tapped_out_count = 0
+            payroll_settings_cache = load_payroll_settings_cache()
 
             for student in students:
                 try:
-                    # Get the student's current active sessions
-                    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-                    has_active_session = False
+                    latest_before = (
+                        TapEvent.query.filter_by(student_id=student.id)
+                        .order_by(TapEvent.timestamp.desc())
+                        .first()
+                    )
 
-                    for period in student_blocks:
-                        latest_event = (
-                            TapEvent.query
-                            .filter_by(student_id=student.id, period=period)
-                            .order_by(TapEvent.timestamp.desc())
-                            .first()
-                        )
+                    check_and_auto_tapout_if_limit_reached(student, payroll_settings_cache)
 
-                        # If student is active, check their limit
-                        if latest_event and latest_event.status == "active":
-                            has_active_session = True
-                            break
+                    latest_after = (
+                        TapEvent.query.filter_by(student_id=student.id)
+                        .order_by(TapEvent.timestamp.desc())
+                        .first()
+                    )
 
-                    if has_active_session:
-                        checked_count += 1
-                        # Get the latest event ID before running check
-                        latest_before = TapEvent.query.filter_by(
-                            student_id=student.id
-                        ).order_by(TapEvent.timestamp.desc()).first()
-
-                        check_and_auto_tapout_if_limit_reached(student)
-
-                        # Check if a new tap-out event was created
-                        latest_after = TapEvent.query.filter_by(
-                            student_id=student.id
-                        ).order_by(TapEvent.timestamp.desc()).first()
-
-                        if latest_after and latest_after.id != latest_before.id:
-                            if latest_after.status == "inactive":
-                                tapped_out_count += 1
-                                logger.info(f"Auto-tapped out student {student.id} ({student.full_name})")
+                    if latest_after and latest_after.id != (latest_before.id if latest_before else None):
+                        if latest_after.status == "inactive":
+                            tapped_out_count += 1
+                            logger.info(f"Auto-tapped out student {student.id} ({student.full_name})")
 
                 except Exception as e:
                     logger.error(f"Error checking student {student.id}: {e}", exc_info=True)

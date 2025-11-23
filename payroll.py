@@ -4,7 +4,16 @@ from datetime import datetime, timezone
 from attendance import calculate_unpaid_attendance_seconds
 
 
-def get_pay_rate_for_block(block):
+def load_payroll_settings_cache():
+    """Preload active payroll settings to avoid repeated queries during batch operations."""
+
+    settings = PayrollSettings.query.filter_by(is_active=True).all()
+    block_settings = {s.block: s for s in settings if s.block}
+    global_setting = next((s for s in settings if s.block is None), None)
+    return block_settings, global_setting
+
+
+def get_pay_rate_for_block(block, settings_cache=None):
     """
     Get the pay rate for a specific block from settings, falling back to global/default.
 
@@ -14,14 +23,15 @@ def get_pay_rate_for_block(block):
     Returns:
         float: The pay rate per second.
     """
+    block_settings, global_setting = settings_cache or load_payroll_settings_cache()
+
     # Try block-specific settings first
     if block:
-        setting = PayrollSettings.query.filter_by(block=block, is_active=True).first()
+        setting = block_settings.get(block)
         if setting and setting.pay_rate:
             return setting.pay_rate / 60.0  # Convert per-minute to per-second
 
     # Fall back to global settings
-    global_setting = PayrollSettings.query.filter_by(block=None, is_active=True).first()
     if global_setting and global_setting.pay_rate:
         return global_setting.pay_rate / 60.0
 
@@ -29,7 +39,7 @@ def get_pay_rate_for_block(block):
     return 0.25 / 60  # $0.25 per minute
 
 
-def get_daily_limit_seconds(block):
+def get_daily_limit_seconds(block, settings_cache=None):
     """
     Get the daily time limit in seconds for a specific block from settings.
 
@@ -39,9 +49,11 @@ def get_daily_limit_seconds(block):
     Returns:
         int or None: The daily limit in seconds, or None if no limit is set.
     """
+    block_settings, global_setting = settings_cache or load_payroll_settings_cache()
+
     # Try block-specific settings first
     if block:
-        setting = PayrollSettings.query.filter_by(block=block, is_active=True).first()
+        setting = block_settings.get(block)
         if setting:
             # Simple mode: daily_limit_hours
             if setting.settings_mode == 'simple' and setting.daily_limit_hours:
@@ -58,7 +70,6 @@ def get_daily_limit_seconds(block):
                 return int(setting.max_time_per_day * multiplier)
 
     # Fall back to global settings
-    global_setting = PayrollSettings.query.filter_by(block=None, is_active=True).first()
     if global_setting:
         if global_setting.settings_mode == 'simple' and global_setting.daily_limit_hours:
             return int(global_setting.daily_limit_hours * 3600)
@@ -76,7 +87,7 @@ def get_daily_limit_seconds(block):
     return None
 
 
-def calculate_payroll(students, last_payroll_time):
+def calculate_payroll(students, last_payroll_time, settings_cache=None):
     """
     Calculates payroll for a given list of students since the last payroll run.
     Now uses PayrollSettings from database for configurable pay rates.
@@ -90,6 +101,8 @@ def calculate_payroll(students, last_payroll_time):
     """
     summary = {}
 
+    settings_cache = settings_cache or load_payroll_settings_cache()
+
     for student in students:
         # Keep original block names for settings lookup, but uppercase for TapEvent queries
         student_blocks = [b.strip() for b in (student.block or "").split(',') if b.strip()]
@@ -97,7 +110,7 @@ def calculate_payroll(students, last_payroll_time):
             block_upper = block_original.upper()
 
             # Get pay rate using original block name (matches PayrollSettings.block)
-            rate_per_second = get_pay_rate_for_block(block_original)
+            rate_per_second = get_pay_rate_for_block(block_original, settings_cache)
 
             total_seconds = calculate_unpaid_attendance_seconds(
                 student.id,

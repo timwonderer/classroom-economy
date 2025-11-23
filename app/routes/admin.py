@@ -45,7 +45,7 @@ from forms import (
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
-from payroll import calculate_payroll
+from payroll import calculate_payroll, load_payroll_settings_cache
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
 
 # Timezone
@@ -107,27 +107,45 @@ def auto_tapout_all_over_limit():
     """
     from app.routes.api import check_and_auto_tapout_if_limit_reached
 
-    # Get all students
-    students = _scoped_students().all()
+    student_ids_subq = _student_scope_subquery()
+
+    # Identify the latest tap event for each student/period within the admin's scope
+    latest_events_subq = (
+        db.session.query(
+            TapEvent.student_id.label("student_id"),
+            TapEvent.period.label("period"),
+            func.max(TapEvent.timestamp).label("latest_ts")
+        )
+        .filter(TapEvent.student_id.in_(student_ids_subq))
+        .group_by(TapEvent.student_id, TapEvent.period)
+        .subquery()
+    )
+
+    active_students = (
+        db.session.query(Student)
+        .join(latest_events_subq, Student.id == latest_events_subq.c.student_id)
+        .join(
+            TapEvent,
+            (TapEvent.student_id == latest_events_subq.c.student_id)
+            & (TapEvent.period == latest_events_subq.c.period)
+            & (TapEvent.timestamp == latest_events_subq.c.latest_ts)
+        )
+        .filter(TapEvent.status == "active")
+        .options(sa.orm.load_only(Student.id, Student.block))
+        .distinct()
+        .all()
+    )
+
     tapped_out_count = 0
+    if not active_students:
+        return tapped_out_count
 
-    for student in students:
+    payroll_settings_cache = load_payroll_settings_cache()
+
+    for student in active_students:
         try:
-            # Get the student's current active sessions
-            student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-            for period in student_blocks:
-                latest_event = (
-                    TapEvent.query
-                    .filter_by(student_id=student.id, period=period)
-                    .order_by(TapEvent.timestamp.desc())
-                    .first()
-                )
-
-                # If student is active, run the auto-tapout check
-                if latest_event and latest_event.status == "active":
-                    check_and_auto_tapout_if_limit_reached(student)
-                    tapped_out_count += 1
-                    break  # Only need to run once per student
+            check_and_auto_tapout_if_limit_reached(student, payroll_settings_cache)
+            tapped_out_count += 1
         except Exception as e:
             current_app.logger.error(f"Error checking auto-tapout for student {student.id}: {e}")
             continue
@@ -142,13 +160,17 @@ def dashboard():
     # Auto-tapout students who have exceeded their daily limit
     auto_tapout_all_over_limit()
 
-    # Get all students for calculations
-    students = _scoped_students().order_by(Student.first_name).all()
-    student_lookup = {s.id: s for s in students}
+    students_query = _scoped_students()
 
     # Quick Stats
-    total_students = len(students)
-    total_balance = sum(s.checking_balance + s.savings_balance for s in students)
+    total_students = students_query.count()
+    total_balance = (
+        db.session.query(func.coalesce(func.sum(Transaction.amount), 0))
+        .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter(Transaction.is_void.is_(False))
+        .scalar()
+        or 0
+    )
     avg_balance = total_balance / total_students if total_students > 0 else 0
 
     # Pending actions - count all types of pending approvals
@@ -247,9 +269,34 @@ def dashboard():
             'status': log.status
         })
 
+    student_ids_for_lookup = set()
+    student_ids_for_lookup.update(item.student_id for item in recent_redemptions)
+    student_ids_for_lookup.update(item.student_id for item in recent_hall_passes)
+    student_ids_for_lookup.update(item.student_id for item in recent_insurance_claims)
+    student_ids_for_lookup.update(tx.student_id for tx in recent_transactions)
+    student_ids_for_lookup.update(log["student_id"] for log in recent_logs)
+
+    student_lookup = (
+        {
+            s.id: s
+            for s in Student.query
+            .filter(Student.id.in_(student_ids_for_lookup))
+            .options(sa.orm.load_only(Student.id, Student.first_name, Student.last_initial))
+            .all()
+        }
+        if student_ids_for_lookup
+        else {}
+    )
+
     # --- Payroll Info ---
     last_payroll_time = get_last_payroll_time()
-    payroll_summary = calculate_payroll(students, last_payroll_time)
+    payroll_settings_cache = load_payroll_settings_cache()
+    students_for_payroll = (
+        students_query.options(sa.orm.load_only(Student.id, Student.block)).yield_per(200)
+    )
+    payroll_summary = calculate_payroll(
+        students_for_payroll, last_payroll_time, payroll_settings_cache
+    )
     total_payroll_estimate = sum(payroll_summary.values())
 
     # Calculate next payroll date (keep in UTC for template conversion)

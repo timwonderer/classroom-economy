@@ -29,7 +29,7 @@ from attendance import (
     calculate_unpaid_attendance_seconds,
     get_all_block_statuses
 )
-from payroll import get_pay_rate_for_block
+from payroll import get_pay_rate_for_block, load_payroll_settings_cache
 
 # Create blueprint
 api_bp = Blueprint('api', __name__, url_prefix='/api')
@@ -1294,7 +1294,7 @@ def handle_tap():
     })
 
 
-def check_and_auto_tapout_if_limit_reached(student):
+def check_and_auto_tapout_if_limit_reached(student, payroll_settings_cache=None):
     """
     Checks if an active student has reached their daily limit and auto-taps them out.
     This function should be called periodically (e.g., during status checks).
@@ -1338,6 +1338,9 @@ def check_and_auto_tapout_if_limit_reached(student):
     end_of_day_pacific = start_of_day_pacific + timedelta(days=1)
     end_of_day_utc = end_of_day_pacific.astimezone(timezone.utc)
 
+    if payroll_settings_cache is None:
+        payroll_settings_cache = load_payroll_settings_cache()
+
     for block_original in student_blocks:
         period_upper = block_original.upper()
 
@@ -1351,7 +1354,7 @@ def check_and_auto_tapout_if_limit_reached(student):
 
         if latest_event and latest_event.status == "active":
             # Get daily limit for this period (use original case for settings lookup)
-            daily_limit = get_daily_limit_seconds(block_original)
+            daily_limit = get_daily_limit_seconds(block_original, payroll_settings_cache)
 
             if daily_limit:
                 # Calculate today's completed attendance using proper Pacific day boundaries
