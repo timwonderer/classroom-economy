@@ -85,7 +85,7 @@ def cleanup_expired_demo_sessions_job():
     # Import here to avoid circular imports
     from app.models import DemoStudent
     from app.extensions import db
-    from app.demo_cleanup import cleanup_demo_student_records
+    from app.utils.demo_sessions import cleanup_demo_student_data
 
     logger = logging.getLogger('scheduled_tasks')
     logger.info("Starting demo session cleanup job")
@@ -102,13 +102,15 @@ def cleanup_expired_demo_sessions_job():
         cleaned_count = 0
         for demo_session in expired_sessions:
             try:
-                cleanup_demo_student_records(demo_session)
+                session_id = demo_session.session_id
+
+                cleanup_demo_student_data(demo_session)
 
                 db.session.commit()
                 cleaned_count += 1
                 logger.info(
                     "Cleaned up expired demo session %s (student_id=%s)",
-                    demo_session.session_id,
+                    session_id,
                     demo_session.student_id,
                 )
 

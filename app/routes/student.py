@@ -26,7 +26,6 @@ from app.models import (
     BankingSettings, UserReport
 )
 from app.auth import admin_required, login_required, get_logged_in_student, SESSION_TIMEOUT_MINUTES
-from app.demo_cleanup import cleanup_demo_student_records
 from forms import (
     StudentClaimAccountForm, StudentCreateUsernameForm, StudentPinPassphraseForm,
     StudentLoginForm, InsuranceClaimForm
@@ -36,6 +35,7 @@ from forms import (
 from app.utils.helpers import is_safe_url
 from app.utils.constants import THEME_PROMPTS
 from app.utils.turnstile import verify_turnstile_token
+from app.utils.demo_sessions import cleanup_demo_student_data
 from hash_utils import hash_hmac, hash_username
 from attendance import get_all_block_statuses
 
@@ -1629,7 +1629,7 @@ def demo_login(session_id):
         now = datetime.now(timezone.utc)
         if now > demo_session.expires_at:
             # Mark as inactive and cleanup
-            cleanup_demo_student_records(demo_session)
+            cleanup_demo_student_data(demo_session)
             db.session.commit()
             flash("Demo session has expired (10 minute limit).", "error")
             return redirect(url_for('admin.dashboard'))
@@ -1690,7 +1690,11 @@ def logout():
         try:
             demo_session = DemoStudent.query.filter_by(session_id=demo_session_id).first()
             if demo_session:
-                cleanup_demo_student_records(demo_session)
+                demo_session.is_active = False
+                demo_session.ended_at = datetime.now(timezone.utc)
+
+                cleanup_demo_student_data(demo_session)
+
                 db.session.commit()
                 current_app.logger.info(f"Demo session {demo_session_id} ended and cleaned up")
         except Exception as e:
