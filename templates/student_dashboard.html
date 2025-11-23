@@ -238,17 +238,22 @@
         </div>
 
         <!-- Rent Card (if enabled) -->
-        {% if student.teacher.is_rent_enabled %}
+        {% if global_rent_enabled and student.is_rent_enabled %}
         <div class="card mb-2">
             <div class="card-body p-3">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
                         <h6 class="mb-1">Rent</h6>
                         <div>
-                            {% if student.rent_paid %}
+                            {% if rent_paid_current %}
                                 <span class="badge bg-success">Paid</span>
+                                <small class="text-muted ms-2">{{ rent_last_paid.astimezone(now.tzinfo).strftime('%b %d') if rent_last_paid else '' }}</small>
+                            {% elif rent_overdue %}
+                                <span class="badge bg-danger">Overdue</span>
+                                <small class="text-muted ms-2">Due {{ rent_due_date.strftime('%b %d') }}</small>
                             {% else %}
-                                <span class="badge bg-danger">Due</span>
+                                <span class="badge bg-warning text-dark">Due</span>
+                                <small class="text-muted ms-2">Due {{ rent_due_date.strftime('%b %d') }}</small>
                             {% endif %}
                         </div>
                     </div>

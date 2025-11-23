@@ -11,7 +11,7 @@ import re
 import hashlib
 import hmac
 from calendar import monthrange
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, jsonify, current_app
 from sqlalchemy import or_, func
@@ -228,6 +228,21 @@ def dashboard():
 
     insurance_paid = bool(student.insurance_last_paid)
 
+    # Rent status
+    last_rent_payment = Transaction.query.filter_by(student_id=student.id, type="rent") \
+        .order_by(Transaction.timestamp.desc()).first()
+    rent_last_paid = last_rent_payment.timestamp if last_rent_payment else None
+    if rent_last_paid and rent_last_paid.tzinfo is None:
+        rent_last_paid = rent_last_paid.replace(tzinfo=timezone.utc)
+
+    pacific = pytz.timezone('America/Los_Angeles')
+    today = datetime.now(pacific).date()
+    rent_due_date = date(today.year, today.month, 5)
+    rent_overdue = today > rent_due_date and (
+        not rent_last_paid or rent_last_paid.astimezone(pacific).date() <= rent_due_date
+    )
+    rent_paid_current = rent_last_paid is not None and not rent_overdue
+
     tz = pytz.timezone('America/Los_Angeles')
     local_now = datetime.now(tz)
     # --- DASHBOARD DEBUG LOGGING ---
@@ -264,6 +279,10 @@ def dashboard():
         projected_pay_per_block=projected_pay_per_block,
         student_name=student_name,
         total_unpaid_elapsed=total_unpaid_elapsed,
+        rent_last_paid=rent_last_paid,
+        rent_overdue=rent_overdue,
+        rent_paid_current=rent_paid_current,
+        rent_due_date=rent_due_date,
     )
 
 
