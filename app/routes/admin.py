@@ -1421,6 +1421,104 @@ def deactivate_insurance_policy(policy_id):
     return redirect(url_for('admin.insurance_management'))
 
 
+@admin_bp.route('/insurance/delete/<int:policy_id>', methods=['POST'])
+@admin_required
+def delete_insurance_policy(policy_id):
+    """Delete an insurance policy and optionally cancel all student enrollments."""
+    policy = InsurancePolicy.query.get_or_404(policy_id)
+    force_delete = request.form.get('force_delete') == 'true'
+
+    # Check for active enrollments
+    active_enrollments = StudentInsurance.query.filter_by(
+        policy_id=policy_id,
+        status='active'
+    ).count()
+
+    total_enrollments = StudentInsurance.query.filter_by(
+        policy_id=policy_id
+    ).count()
+
+    pending_claims = InsuranceClaim.query.filter_by(
+        policy_id=policy_id,
+        status='pending'
+    ).count()
+
+    if not force_delete and (active_enrollments > 0 or pending_claims > 0):
+        flash(f"Cannot delete policy '{policy.title}': {active_enrollments} active enrollments and {pending_claims} pending claims. Cancel all enrollments first or use force delete.", "danger")
+        return redirect(url_for('admin.insurance_management'))
+
+    try:
+        # Cancel all active enrollments if force delete
+        if force_delete and active_enrollments > 0:
+            StudentInsurance.query.filter_by(
+                policy_id=policy_id,
+                status='active'
+            ).update({'status': 'cancelled'})
+            flash(f"Cancelled {active_enrollments} active enrollments.", "info")
+
+        # Delete all claims (or mark as archived)
+        claims_deleted = InsuranceClaim.query.filter_by(policy_id=policy_id).delete()
+
+        # Delete all student enrollments
+        enrollments_deleted = StudentInsurance.query.filter_by(policy_id=policy_id).delete()
+
+        # Delete the policy
+        db.session.delete(policy)
+        db.session.commit()
+
+        flash(f"Successfully deleted policy '{policy.title}' ({enrollments_deleted} enrollments and {claims_deleted} claims removed).", "success")
+    except Exception as e:
+        db.session.rollback()
+        flash(f"Error deleting policy: {str(e)}", "danger")
+
+    return redirect(url_for('admin.insurance_management'))
+
+
+@admin_bp.route('/insurance/mass-remove/<int:policy_id>', methods=['POST'])
+@admin_required
+def mass_remove_policy(policy_id):
+    """Cancel insurance policy for multiple or all students."""
+    policy = InsurancePolicy.query.get_or_404(policy_id)
+
+    # Get list of student IDs to remove (or 'all')
+    student_ids_raw = request.form.get('student_ids', 'all')
+
+    if student_ids_raw == 'all':
+        # Cancel for all active students
+        query = StudentInsurance.query.filter_by(
+            policy_id=policy_id,
+            status='active'
+        )
+    else:
+        # Cancel for specific students
+        try:
+            student_ids = [int(sid.strip()) for sid in student_ids_raw.split(',') if sid.strip()]
+            query = StudentInsurance.query.filter(
+                StudentInsurance.policy_id == policy_id,
+                StudentInsurance.student_id.in_(student_ids),
+                StudentInsurance.status == 'active'
+            )
+        except ValueError:
+            flash("Invalid student IDs provided.", "danger")
+            return redirect(url_for('admin.insurance_management'))
+
+    # Scope to teacher's students
+    query = query.join(Student, StudentInsurance.student_id == Student.id).filter(
+        Student.id.in_(_student_scope_subquery())
+    )
+
+    # Update to cancelled
+    count = query.update({'status': 'cancelled'}, synchronize_session=False)
+    db.session.commit()
+
+    if student_ids_raw == 'all':
+        flash(f"Cancelled policy '{policy.title}' for {count} students.", "success")
+    else:
+        flash(f"Cancelled policy '{policy.title}' for {count} selected students.", "success")
+
+    return redirect(url_for('admin.insurance_management'))
+
+
 @admin_bp.route('/insurance/student-policy/<int:enrollment_id>')
 @admin_required
 def view_student_policy(enrollment_id):

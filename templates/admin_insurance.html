@@ -84,9 +84,14 @@
                 </td>
                 <td>{{ policy.student_policies.filter_by(status='active').count() }} students</td>
                 <td>
-                  <a href="{{ url_for('admin.edit_insurance_policy', policy_id=policy.id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
-                  <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#deactivatePolicyModal" data-policy-id="{{ policy.id }}" data-policy-title="{{ policy.title }}">
-                    Deactivate
+                  <a href="{{ url_for('admin.edit_insurance_policy', policy_id=policy.id) }}" class="btn btn-sm btn-outline-primary mb-1">
+                    <i class="bi bi-pencil"></i> Edit
+                  </a>
+                  <button class="btn btn-sm btn-outline-warning mb-1" data-bs-toggle="modal" data-bs-target="#massRemoveModal" data-policy-id="{{ policy.id }}" data-policy-title="{{ policy.title }}" data-active-count="{{ policy.student_policies.filter_by(status='active').count() }}">
+                    <i class="bi bi-person-dash"></i> Mass Remove
+                  </button>
+                  <button class="btn btn-sm btn-outline-danger mb-1" data-bs-toggle="modal" data-bs-target="#deletePolicyModal" data-policy-id="{{ policy.id }}" data-policy-title="{{ policy.title }}" data-active-count="{{ policy.student_policies.filter_by(status='active').count() }}" data-pending-claims="{{ policy.claims.filter_by(status='pending').count() }}">
+                    <i class="bi bi-trash"></i> Delete
                   </button>
                 </td>
               </tr>
@@ -561,6 +566,96 @@
   </div>
 </div>
 
+<!-- Delete Policy Modal -->
+<div class="modal fade" id="deletePolicyModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="bi bi-exclamation-triangle"></i> Delete Policy</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="fw-bold">Are you sure you want to permanently delete <strong id="deletePolicyTitle"></strong>?</p>
+        <div class="alert alert-warning">
+          <strong>Warning:</strong> This action cannot be undone!
+        </div>
+        <div id="deletePolicyInfo">
+          <p><strong>Active enrollments:</strong> <span id="deleteActiveCount">0</span></p>
+          <p><strong>Pending claims:</strong> <span id="deletePendingClaims">0</span></p>
+        </div>
+        <div class="form-check mt-3">
+          <input class="form-check-input" type="checkbox" id="forceDeleteCheck">
+          <label class="form-check-label fw-bold text-danger" for="forceDeleteCheck">
+            Force delete (cancel all enrollments and delete all claims)
+          </label>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <form id="deletePolicyForm" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="force_delete" id="forceDeleteInput" value="false">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-danger" id="deletePolicyBtn">
+            <i class="bi bi-trash"></i> Delete Policy
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mass Remove Policy Modal -->
+<div class="modal fade" id="massRemoveModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-warning">
+        <h5 class="modal-title"><i class="bi bi-person-dash"></i> Mass Remove Policy</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p>Remove <strong id="massRemovePolicyTitle"></strong> from students?</p>
+        <div class="alert alert-info">
+          <p class="mb-2"><strong>This will:</strong></p>
+          <ul class="mb-0">
+            <li>Cancel the policy for all selected students</li>
+            <li>Stop future premium charges</li>
+            <li>Keep claim history intact</li>
+          </ul>
+        </div>
+        <div class="mt-3">
+          <p><strong>Active enrollments:</strong> <span id="massRemoveActiveCount">0</span></p>
+        </div>
+        <div class="form-check">
+          <input class="form-check-input" type="radio" name="removeScope" id="removeAll" value="all" checked>
+          <label class="form-check-label" for="removeAll">
+            Remove from ALL students
+          </label>
+        </div>
+        <div class="form-check mt-2">
+          <input class="form-check-input" type="radio" name="removeScope" id="removeSelected" value="selected">
+          <label class="form-check-label" for="removeSelected">
+            Remove from specific students (comma-separated IDs)
+          </label>
+        </div>
+        <div class="mt-2" id="studentIdsInput" style="display: none;">
+          <input type="text" class="form-control" id="studentIdsField" placeholder="e.g., 1,5,12,34">
+          <small class="text-muted">Enter student IDs separated by commas</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <form id="massRemoveForm" method="POST">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="hidden" name="student_ids" id="studentIdsHidden" value="all">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning">
+            <i class="bi bi-person-dash"></i> Remove Policy
+          </button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // Deactivate policy modal
 const deactivatePolicyModal = document.getElementById('deactivatePolicyModal');
@@ -572,6 +667,72 @@ if (deactivatePolicyModal) {
 
     document.getElementById('modalPolicyTitle').textContent = policyTitle;
     document.getElementById('deactivatePolicyForm').action = `/admin/insurance/deactivate/${policyId}`;
+  });
+}
+
+// Delete policy modal
+const deletePolicyModal = document.getElementById('deletePolicyModal');
+if (deletePolicyModal) {
+  deletePolicyModal.addEventListener('show.bs.modal', event => {
+    const button = event.relatedTarget;
+    const policyTitle = button.getAttribute('data-policy-title');
+    const policyId = button.getAttribute('data-policy-id');
+    const activeCount = button.getAttribute('data-active-count');
+    const pendingClaims = button.getAttribute('data-pending-claims');
+
+    document.getElementById('deletePolicyTitle').textContent = policyTitle;
+    document.getElementById('deleteActiveCount').textContent = activeCount;
+    document.getElementById('deletePendingClaims').textContent = pendingClaims;
+    document.getElementById('deletePolicyForm').action = `/admin/insurance/delete/${policyId}`;
+
+    // Reset checkbox
+    document.getElementById('forceDeleteCheck').checked = false;
+    document.getElementById('forceDeleteInput').value = 'false';
+  });
+
+  // Handle force delete checkbox
+  document.getElementById('forceDeleteCheck').addEventListener('change', function() {
+    document.getElementById('forceDeleteInput').value = this.checked ? 'true' : 'false';
+  });
+}
+
+// Mass remove policy modal
+const massRemoveModal = document.getElementById('massRemoveModal');
+if (massRemoveModal) {
+  massRemoveModal.addEventListener('show.bs.modal', event => {
+    const button = event.relatedTarget;
+    const policyTitle = button.getAttribute('data-policy-title');
+    const policyId = button.getAttribute('data-policy-id');
+    const activeCount = button.getAttribute('data-active-count');
+
+    document.getElementById('massRemovePolicyTitle').textContent = policyTitle;
+    document.getElementById('massRemoveActiveCount').textContent = activeCount;
+    document.getElementById('massRemoveForm').action = `/admin/insurance/mass-remove/${policyId}`;
+
+    // Reset to 'all'
+    document.getElementById('removeAll').checked = true;
+    document.getElementById('studentIdsHidden').value = 'all';
+    document.getElementById('studentIdsInput').style.display = 'none';
+    document.getElementById('studentIdsField').value = '';
+  });
+
+  // Handle radio button changes
+  document.getElementById('removeAll').addEventListener('change', function() {
+    if (this.checked) {
+      document.getElementById('studentIdsInput').style.display = 'none';
+      document.getElementById('studentIdsHidden').value = 'all';
+    }
+  });
+
+  document.getElementById('removeSelected').addEventListener('change', function() {
+    if (this.checked) {
+      document.getElementById('studentIdsInput').style.display = 'block';
+    }
+  });
+
+  // Update hidden field when student IDs change
+  document.getElementById('studentIdsField').addEventListener('input', function() {
+    document.getElementById('studentIdsHidden').value = this.value;
   });
 }
 
