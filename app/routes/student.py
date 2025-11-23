@@ -754,8 +754,14 @@ def insurance_marketplace():
         status='active'
     ).all()
 
-    # Get available policies
-    available_policies = InsurancePolicy.query.filter_by(is_active=True).all()
+    # Get teacher IDs associated with this student
+    teacher_ids = [teacher.id for teacher in student.teachers]
+
+    # Get available policies (only from student's teachers)
+    available_policies = InsurancePolicy.query.filter(
+        InsurancePolicy.is_active == True,
+        InsurancePolicy.teacher_id.in_(teacher_ids)
+    ).all() if teacher_ids else []
 
     # Check which policies can be purchased
     can_purchase = {}
@@ -809,6 +815,12 @@ def purchase_insurance(policy_id):
     """Purchase insurance policy."""
     student = get_logged_in_student()
     policy = InsurancePolicy.query.get_or_404(policy_id)
+
+    # Verify policy belongs to one of student's teachers
+    teacher_ids = [teacher.id for teacher in student.teachers]
+    if policy.teacher_id not in teacher_ids:
+        flash("This insurance policy is not available to you.", "danger")
+        return redirect(url_for('student.student_insurance'))
 
     # Check if already enrolled
     existing = StudentInsurance.query.filter_by(
