@@ -179,152 +179,152 @@
                 </small>
             </div>
             <div class="card-body">
-        <div class="row">
-            <!-- Left Column: Policy List -->
-                <div class="col-md-4">
-                    <div class="list-group" id="policyList">
+                <div class="row">
+                    <!-- Left Column: Policy List -->
+                    <div class="col-md-4">
+                        <div class="list-group" id="policyList">
+                            {% for policy in tier_data.policies %}
+                                {% set badge_config = {
+                                    'best_value': {'color': 'warning', 'icon': 'grade'},
+                                    'most_popular': {'color': 'primary', 'icon': 'trending_up'},
+                                    'recommended': {'color': 'success', 'icon': 'verified'},
+                                    'premium': {'color': 'dark', 'icon': 'workspace_premium'},
+                                    'limited_time': {'color': 'danger', 'icon': 'schedule'},
+                                    'new': {'color': 'info', 'icon': 'new_releases'},
+                                    'fan_favorite': {'color': 'primary', 'icon': 'favorite'},
+                                    'yolo': {'color': 'danger', 'icon': 'casino'},
+                                    'trust_me': {'color': 'warning', 'icon': 'handshake'},
+                                    'definitely_not_scam': {'color': 'success', 'icon': 'verified_user'},
+                                    'parents_approved': {'color': 'info', 'icon': 'family_restroom'},
+                                    'as_seen_on_tv': {'color': 'primary', 'icon': 'live_tv'},
+                                    'industry_leading': {'color': 'dark', 'icon': 'emoji_events'},
+                                    'chaos_insurance': {'color': 'danger', 'icon': 'tornado'},
+                                    'responsible_choice': {'color': 'success', 'icon': 'check_circle'},
+                                    'your_friend_has_it': {'color': 'info', 'icon': 'groups'}
+                                } %}
+                                {% set badge = badge_config.get(policy.marketing_badge, {'color': 'secondary', 'icon': None}) %}
+                                <button type="button" class="list-group-item list-group-item-action policy-item {% if loop.first %}active{% endif %}"
+                                        data-policy-id="{{ policy.id }}"
+                                        data-policy-index="{{ loop.index0 }}">
+                                    <div class="d-flex justify-content-between align-items-start">
+                                        <div class="flex-grow-1">
+                                            <h6 class="mb-1">{{ policy.title }}</h6>
+                                            <div class="text-primary fw-bold">${{ "%.2f"|format(policy.premium) }}<small class="text-muted">/{{ policy.charge_frequency }}</small></div>
+                                        </div>
+                                    </div>
+                                </button>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Policy Details -->
+                    <div class="col-md-8">
                         {% for policy in tier_data.policies %}
-                    {% set badge_config = {
-                        'best_value': {'color': 'warning', 'icon': 'grade'},
-                        'most_popular': {'color': 'primary', 'icon': 'trending_up'},
-                        'recommended': {'color': 'success', 'icon': 'verified'},
-                        'premium': {'color': 'dark', 'icon': 'workspace_premium'},
-                        'limited_time': {'color': 'danger', 'icon': 'schedule'},
-                        'new': {'color': 'info', 'icon': 'new_releases'},
-                        'fan_favorite': {'color': 'primary', 'icon': 'favorite'},
-                        'yolo': {'color': 'danger', 'icon': 'casino'},
-                        'trust_me': {'color': 'warning', 'icon': 'handshake'},
-                        'definitely_not_scam': {'color': 'success', 'icon': 'verified_user'},
-                        'parents_approved': {'color': 'info', 'icon': 'family_restroom'},
-                        'as_seen_on_tv': {'color': 'primary', 'icon': 'live_tv'},
-                        'industry_leading': {'color': 'dark', 'icon': 'emoji_events'},
-                        'chaos_insurance': {'color': 'danger', 'icon': 'tornado'},
-                        'responsible_choice': {'color': 'success', 'icon': 'check_circle'},
-                        'your_friend_has_it': {'color': 'info', 'icon': 'groups'}
-                    } %}
-                    {% set badge = badge_config.get(policy.marketing_badge, {'color': 'secondary', 'icon': None}) %}
-                    <button type="button" class="list-group-item list-group-item-action policy-item {% if loop.first %}active{% endif %}"
-                            data-policy-id="{{ policy.id }}"
-                            data-policy-index="{{ loop.index0 }}">
-                        <div class="d-flex justify-content-between align-items-start">
-                            <div class="flex-grow-1">
-                                <h6 class="mb-1">{{ policy.title }}</h6>
-                                <div class="text-primary fw-bold">${{ "%.2f"|format(policy.premium) }}<small class="text-muted">/{{ policy.charge_frequency }}</small></div>
+                            {% set badge_config = {
+                                'best_value': {'color': 'warning', 'text': 'Best Value!', 'icon': 'grade', 'border': True},
+                                'most_popular': {'color': 'primary', 'text': 'Most Popular', 'icon': 'trending_up', 'border': True},
+                                'recommended': {'color': 'success', 'text': 'Recommended', 'icon': 'verified', 'border': False},
+                                'premium': {'color': 'dark', 'text': 'Premium Coverage', 'icon': 'workspace_premium', 'border': True},
+                                'limited_time': {'color': 'danger', 'text': 'Limited Time Offer', 'icon': 'schedule', 'border': True},
+                                'new': {'color': 'info', 'text': 'New!', 'icon': 'new_releases', 'border': False},
+                                'fan_favorite': {'color': 'primary', 'text': 'Fan Favorite', 'icon': 'favorite', 'border': False},
+                                'yolo': {'color': 'danger', 'text': 'YOLO Protection', 'icon': 'casino', 'border': True},
+                                'trust_me': {'color': 'warning', 'text': 'Trust Me Bro', 'icon': 'handshake', 'border': True},
+                                'definitely_not_scam': {'color': 'success', 'text': 'Definitely Not a Scam', 'icon': 'verified_user', 'border': False},
+                                'parents_approved': {'color': 'info', 'text': 'Your Parents Would Approve', 'icon': 'family_restroom', 'border': False},
+                                'as_seen_on_tv': {'color': 'primary', 'text': 'As Seen on TV', 'icon': 'live_tv', 'border': True},
+                                'industry_leading': {'color': 'dark', 'text': 'Industry Leading*', 'icon': 'emoji_events', 'border': True},
+                                'chaos_insurance': {'color': 'danger', 'text': 'Chaos Insurance', 'icon': 'tornado', 'border': True},
+                                'responsible_choice': {'color': 'success', 'text': 'The Responsible Choice™', 'icon': 'check_circle', 'border': False},
+                                'your_friend_has_it': {'color': 'info', 'text': 'The One Your Friend Has', 'icon': 'groups', 'border': False}
+                            } %}
+                            {% set badge = badge_config.get(policy.marketing_badge, {'color': 'secondary', 'text': None, 'icon': None, 'border': False}) %}
+                            <div class="policy-details card {% if badge.border %}border-{{ badge.color }} border-3{% endif %}"
+                                 id="policy-{{ policy.id }}"
+                                 style="{% if not loop.first %}display: none;{% endif %}">
+                            <div class="card-header bg-{{ badge.color }} {% if badge.color in ['warning', 'info'] %}text-dark{% else %}text-white{% endif %}">
+                                <h4 class="mb-0">{{ policy.title }}</h4>
+                                {% if badge.text %}
+                                <small class="badge bg-white text-{{ badge.color }} mt-2 d-inline-flex align-items-center gap-1">
+                                    {% if badge.icon %}<span class="material-symbols-outlined" style="font-size: 1rem;">{{ badge.icon }}</span>{% endif %}
+                                    {{ badge.text }}
+                                </small>
+                                {% endif %}
+                            </div>
+                            <div class="card-body">
+                                <h2 class="text-{{ badge.color }} mb-4">
+                                    ${{ "%.2f"|format(policy.premium) }}<small class="text-muted fs-5">/ {{ policy.charge_frequency }}</small>
+                                </h2>
+
+                                <h5>What this plan does</h5>
+                                <div class="mb-4">{{ (policy.description or 'Comprehensive coverage for your needs.') | markdown }}</div>
+
+                                <h5>What's Covered:</h5>
+                                <ul class="mb-4">
+                                    <li>Up to {% if policy.max_claims_count %}{{ policy.max_claims_count }}{% else %}unlimited{% endif %} claims per {{ policy.max_claims_period }}</li>
+                                    {% if policy.is_monetary %}
+                                        {% if policy.max_claim_amount %}
+                                        <li>Maximum claim amount: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
+                                        {% else %}
+                                        <li>Unlimited claim amounts</li>
+                                        {% endif %}
+                                    {% endif %}
+                                </ul>
+
+                                <h5>Important Rules</h5>
+                                <ul class="mb-4">
+                                    <li>You must wait {{ policy.waiting_period_days }} days after purchasing to begin using your insurance</li>
+                                    <li>You must file your claim within {{ policy.claim_time_limit_days }} days of returning to school</li>
+                                    {% if policy.no_repurchase_after_cancel %}
+                                    <li>If your policy got cancelled (either by you or non-payment), you must wait {{ policy.repurchase_wait_days }} days before you can repurchase again.</li>
+                                    {% endif %}
+                                </ul>
+
+                                <h5>Policy Details:</h5>
+                                <ul class="small mb-4">
+                                    <li>Claim type: <span class="badge {{ 'bg-info' if policy.is_monetary else 'bg-warning text-dark' }}">{{ 'Monetary' if policy.is_monetary else 'Item/Service' }}</span></li>
+                                    <li>Waiting period: {{ policy.waiting_period_days }} days</li>
+                                    {% if policy.max_claims_count %}
+                                        <li>Max claims: {{ policy.max_claims_count }} per {{ policy.max_claims_period }}</li>
+                                    {% else %}
+                                        <li>Unlimited claims</li>
+                                    {% endif %}
+                                    {% if policy.is_monetary and policy.max_claim_amount %}
+                                        <li>Max claim amount: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
+                                    {% endif %}
+                                </ul>
+
+                                {% if can_purchase[policy.id] %}
+                                    <form action="{{ url_for('student.purchase_insurance', policy_id=policy.id) }}" method="POST">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                        <button type="submit" class="btn btn-{{ badge.color }} btn-lg w-100">
+                                            <span class="material-symbols-outlined">shopping_cart</span> Purchase Plan
+                                        </button>
+                                    </form>
+                                {% else %}
+                                    <button class="btn btn-secondary btn-lg w-100" disabled>
+                                        {% if repurchase_blocks.get(policy.id) %}
+                                            <span class="material-symbols-outlined">block</span> Can't Repurchase ({{ repurchase_blocks[policy.id] }} days left)
+                                        {% else %}
+                                            <span class="material-symbols-outlined">check_circle</span> Already Enrolled
+                                        {% endif %}
+                                    </button>
+                                {% endif %}
                             </div>
                         </div>
-                    </button>
-                    {% endfor %}
-                </div>
-            </div>
+                        {% endfor %}
 
-            <!-- Right Column: Policy Details -->
-                <div class="col-md-8">
-                    {% for policy in tier_data.policies %}
-                {% set badge_config = {
-                    'best_value': {'color': 'warning', 'text': 'Best Value!', 'icon': 'grade', 'border': True},
-                    'most_popular': {'color': 'primary', 'text': 'Most Popular', 'icon': 'trending_up', 'border': True},
-                    'recommended': {'color': 'success', 'text': 'Recommended', 'icon': 'verified', 'border': False},
-                    'premium': {'color': 'dark', 'text': 'Premium Coverage', 'icon': 'workspace_premium', 'border': True},
-                    'limited_time': {'color': 'danger', 'text': 'Limited Time Offer', 'icon': 'schedule', 'border': True},
-                    'new': {'color': 'info', 'text': 'New!', 'icon': 'new_releases', 'border': False},
-                    'fan_favorite': {'color': 'primary', 'text': 'Fan Favorite', 'icon': 'favorite', 'border': False},
-                    'yolo': {'color': 'danger', 'text': 'YOLO Protection', 'icon': 'casino', 'border': True},
-                    'trust_me': {'color': 'warning', 'text': 'Trust Me Bro', 'icon': 'handshake', 'border': True},
-                    'definitely_not_scam': {'color': 'success', 'text': 'Definitely Not a Scam', 'icon': 'verified_user', 'border': False},
-                    'parents_approved': {'color': 'info', 'text': 'Your Parents Would Approve', 'icon': 'family_restroom', 'border': False},
-                    'as_seen_on_tv': {'color': 'primary', 'text': 'As Seen on TV', 'icon': 'live_tv', 'border': True},
-                    'industry_leading': {'color': 'dark', 'text': 'Industry Leading*', 'icon': 'emoji_events', 'border': True},
-                    'chaos_insurance': {'color': 'danger', 'text': 'Chaos Insurance', 'icon': 'tornado', 'border': True},
-                    'responsible_choice': {'color': 'success', 'text': 'The Responsible Choice™', 'icon': 'check_circle', 'border': False},
-                    'your_friend_has_it': {'color': 'info', 'text': 'The One Your Friend Has', 'icon': 'groups', 'border': False}
-                } %}
-                {% set badge = badge_config.get(policy.marketing_badge, {'color': 'secondary', 'text': None, 'icon': None, 'border': False}) %}
-                <div class="policy-details card {% if badge.border %}border-{{ badge.color }} border-3{% endif %}"
-                     id="policy-{{ policy.id }}"
-                     style="{% if not loop.first %}display: none;{% endif %}">
-                    <div class="card-header bg-{{ badge.color }} {% if badge.color in ['warning', 'info'] %}text-dark{% else %}text-white{% endif %}">
-                        <h4 class="mb-0">{{ policy.title }}</h4>
-                        {% if badge.text %}
-                        <small class="badge bg-white text-{{ badge.color }} mt-2 d-inline-flex align-items-center gap-1">
-                            {% if badge.icon %}<span class="material-symbols-outlined" style="font-size: 1rem;">{{ badge.icon }}</span>{% endif %}
-                            {{ badge.text }}
-                        </small>
-                        {% endif %}
+                        <!-- Empty State (shown when no policy selected, though first is auto-selected) -->
+                        <div class="text-center text-muted py-5" id="emptyPolicyState" style="display: none;">
+                            <span class="material-symbols-outlined" style="font-size: 4rem; opacity: 0.3;">touch_app</span>
+                            <h5 class="mt-3">Select a Policy</h5>
+                            <p>Click on a policy from the list to read about it</p>
+                        </div>
                     </div>
-                    <div class="card-body">
-                        <h2 class="text-{{ badge.color }} mb-4">
-                            ${{ "%.2f"|format(policy.premium) }}<small class="text-muted fs-5">/ {{ policy.charge_frequency }}</small>
-                        </h2>
-
-                        <h5>What this plan does</h5>
-                        <div class="mb-4">{{ (policy.description or 'Comprehensive coverage for your needs.') | markdown }}</div>
-
-                        <h5>What's Covered:</h5>
-                        <ul class="mb-4">
-                            <li>Up to {% if policy.max_claims_count %}{{ policy.max_claims_count }}{% else %}unlimited{% endif %} claims per {{ policy.max_claims_period }}</li>
-                            {% if policy.is_monetary %}
-                                {% if policy.max_claim_amount %}
-                                <li>Maximum claim amount: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
-                                {% else %}
-                                <li>Unlimited claim amounts</li>
-                                {% endif %}
-                            {% endif %}
-                        </ul>
-
-                        <h5>Important Rules</h5>
-                        <ul class="mb-4">
-                            <li>You must wait {{ policy.waiting_period_days }} days after purchasing to begin using your insurance</li>
-                            <li>You must file your claim within {{ policy.claim_time_limit_days }} days of returning to school</li>
-                            {% if policy.no_repurchase_after_cancel %}
-                            <li>If your policy got cancelled (either by you or non-payment), you must wait {{ policy.repurchase_wait_days }} days before you can repurchase again.</li>
-                            {% endif %}
-                        </ul>
-
-                        <h5>Policy Details:</h5>
-                        <ul class="small mb-4">
-                            <li>Claim type: <span class="badge {{ 'bg-info' if policy.is_monetary else 'bg-warning text-dark' }}">{{ 'Monetary' if policy.is_monetary else 'Item/Service' }}</span></li>
-                            <li>Waiting period: {{ policy.waiting_period_days }} days</li>
-                            {% if policy.max_claims_count %}
-                                <li>Max claims: {{ policy.max_claims_count }} per {{ policy.max_claims_period }}</li>
-                            {% else %}
-                                <li>Unlimited claims</li>
-                            {% endif %}
-                            {% if policy.is_monetary and policy.max_claim_amount %}
-                                <li>Max claim amount: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
-                            {% endif %}
-                        </ul>
-
-                        {% if can_purchase[policy.id] %}
-                            <form action="{{ url_for('student.purchase_insurance', policy_id=policy.id) }}" method="POST">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                <button type="submit" class="btn btn-{{ badge.color }} btn-lg w-100">
-                                    <span class="material-symbols-outlined">shopping_cart</span> Purchase Plan
-                                </button>
-                            </form>
-                        {% else %}
-                            <button class="btn btn-secondary btn-lg w-100" disabled>
-                                {% if repurchase_blocks.get(policy.id) %}
-                                    <span class="material-symbols-outlined">block</span> Can't Repurchase ({{ repurchase_blocks[policy.id] }} days left)
-                                {% else %}
-                                    <span class="material-symbols-outlined">check_circle</span> Already Enrolled
-                                {% endif %}
-                            </button>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endfor %}
-
-                <!-- Empty State (shown when no policy selected, though first is auto-selected) -->
-                <div class="text-center text-muted py-5" id="emptyPolicyState" style="display: none;">
-                    <span class="material-symbols-outlined" style="font-size: 4rem; opacity: 0.3;">touch_app</span>
-                    <h5 class="mt-3">Select a Policy</h5>
-                    <p>Click on a policy from the list to read about it</p>
-                </div>
-            </div>
         </div>
-            </div>
-        </div>
-        {% endfor %}
+    </div>
+</div>
+{% endfor %}
         {% else %}
         <div class="alert alert-info">
             <h5>No Insurance Plans Available</h5>
