@@ -13,6 +13,67 @@ from app.utils.encryption import PIIEncryptedType
 
 # -------------------- MODELS --------------------
 
+class TeacherBlock(db.Model):
+    """
+    Represents an unclaimed seat in a teacher's class roster.
+
+    When a teacher uploads a roster, each student creates a TeacherBlock entry (a "seat").
+    Students claim their seat by providing the period join code + their credentials.
+    Once claimed, the seat links to a Student record via student_id.
+
+    This model enables:
+    - Join code-based account claiming (eliminates need for students to know teacher name)
+    - Multi-school support (join codes implicitly partition schools)
+    - Duplicate prevention (same student claiming across multiple teachers)
+    """
+    __tablename__ = 'teacher_blocks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    block = db.Column(db.String(10), nullable=False)
+
+    # Student identifiers (used for matching during claim)
+    first_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
+    last_initial = db.Column(db.String(1), nullable=False)
+
+    # Fuzzy name matching - stores hash of each last name part separately
+    # Example: "Smith-Jones" → ["hash(smith)", "hash(jones)"]
+    last_name_hash_by_part = db.Column(db.JSON, nullable=False)
+
+    # Privacy-aligned DOB sum for verification (non-reversible)
+    dob_sum = db.Column(db.Integer, nullable=False)
+
+    # Hashing
+    salt = db.Column(db.LargeBinary(16), nullable=False)
+    first_half_hash = db.Column(db.String(64), nullable=False)  # Hash of CONCAT(first_initial, DOB_sum) - e.g., "S2025"
+
+    # Join code for this period (shared across all students in same teacher-block)
+    join_code = db.Column(db.String(20), nullable=False)
+
+    # Claim status
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
+    is_claimed = db.Column(db.Boolean, default=False, nullable=False)
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    claimed_at = db.Column(db.DateTime, nullable=True)
+
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('roster_seats', lazy='dynamic'))
+    student = db.relationship('Student', backref='roster_seats')
+
+    # Indexes for efficient lookups
+    __table_args__ = (
+        db.Index('ix_teacher_blocks_join_code', 'join_code'),
+        db.Index('ix_teacher_blocks_teacher_block', 'teacher_id', 'block'),
+        db.Index('ix_teacher_blocks_claimed', 'is_claimed'),
+    )
+
+    def __repr__(self):
+        status = "claimed" if self.is_claimed else "unclaimed"
+        return f'<TeacherBlock {self.first_name} {self.last_initial}. - {self.teacher_id}/{self.block} - {status}>'
+
+
 class Student(db.Model):
     __tablename__ = 'students'
     id = db.Column(db.Integer, primary_key=True)
@@ -21,14 +82,31 @@ class Student(db.Model):
     block = db.Column(db.String(10), nullable=False)
 
     # Hash and credential fields
+    # Credential: CONCAT(first_initial, DOB_sum) - simpler than old name_code system
     salt = db.Column(db.LargeBinary(16), nullable=False)
-    first_half_hash = db.Column(db.String(64), unique=True, nullable=True)
-    second_half_hash = db.Column(db.String(64), unique=True, nullable=True)
+    first_half_hash = db.Column(db.String(64), unique=True, nullable=True)  # Hash of "FirstInitial + DOBSum" (e.g., "S2025")
+    second_half_hash = db.Column(db.String(64), unique=True, nullable=True)  # Hash of DOB sum (backward compat)
     username_hash = db.Column(db.String(64), unique=True, nullable=True)
 
+    # Fuzzy name matching - stores hash of each last name part separately
+    # Example: "Smith-Jones" → ["hash(smith)", "hash(jones)"]
+    # Allows matching when teachers enter names with different delimiters
+    last_name_hash_by_part = db.Column(db.JSON, nullable=True)
+
     # Ownership / tenancy
+    # DEPRECATED: teacher_id will be removed in future migration
+    # Students are now linked to teachers via student_teachers table only
+    # This column kept temporarily for backwards compatibility during migration
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
     teacher = db.relationship('Admin', backref=db.backref('students', lazy='dynamic'))
+
+    # Teachers associated with this student (many-to-many)
+    teachers = db.relationship(
+        'Admin',
+        secondary='student_teachers',
+        backref=db.backref('linked_students', lazy='dynamic'),
+        lazy='dynamic',
+    )
 
     pin_hash = db.Column(db.Text, nullable=True)
     passphrase_hash = db.Column(db.Text, nullable=True)
@@ -58,6 +136,37 @@ class Student(db.Model):
     @property
     def savings_balance(self):
         return round(sum(tx.amount for tx in self.transactions if tx.account_type == 'savings' and not tx.is_void), 2)
+
+    def get_checking_balance(self, teacher_id):
+        """Get checking balance scoped to a specific teacher's economy."""
+        return round(sum(
+            tx.amount for tx in self.transactions
+            if tx.account_type == 'checking' and not tx.is_void and tx.teacher_id == teacher_id
+        ), 2)
+
+    def get_savings_balance(self, teacher_id):
+        """Get savings balance scoped to a specific teacher's economy."""
+        return round(sum(
+            tx.amount for tx in self.transactions
+            if tx.account_type == 'savings' and not tx.is_void and tx.teacher_id == teacher_id
+        ), 2)
+
+    def get_total_earnings(self, teacher_id):
+        """Get total earnings scoped to a specific teacher's economy."""
+        return round(sum(
+            tx.amount for tx in self.transactions
+            if tx.teacher_id == teacher_id and tx.amount > 0 and not tx.is_void
+            and not (tx.description or "").startswith("Transfer")
+        ), 2)
+
+    def get_all_teachers(self):
+        """
+        Get list of all teachers this student is associated with.
+
+        Uses the student_teachers many-to-many relationship.
+        DEPRECATED teacher_id is ignored in favor of explicit links only.
+        """
+        return list(self.teachers.all())
 
     @property
     def total_earnings(self):
@@ -109,6 +218,20 @@ class AdminInviteCode(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 
+class StudentTeacher(db.Model):
+    __tablename__ = 'student_teachers'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    admin_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('student_id', 'admin_id', name='uq_student_teachers_student_admin'),
+        db.Index('ix_student_teachers_student_id', 'student_id'),
+        db.Index('ix_student_teachers_admin_id', 'admin_id'),
+    )
+
+
 # -------------------- SYSTEM ADMIN MODEL --------------------
 class SystemAdmin(db.Model):
     __tablename__ = 'system_admins'
@@ -120,6 +243,7 @@ class SystemAdmin(db.Model):
 class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
     amount = db.Column(db.Float, nullable=False)
     # All times stored as UTC (see header note)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
@@ -129,6 +253,9 @@ class Transaction(db.Model):
     type = db.Column(db.String(50))  # optional field to describe the transaction type
     # All times stored as UTC
     date_funds_available = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationship to track which teacher created this transaction
+    teacher = db.relationship('Admin', backref=db.backref('transactions', lazy='dynamic'))
 
 
 # ---- TapEvent Model (append-only) ----

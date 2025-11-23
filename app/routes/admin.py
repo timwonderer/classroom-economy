@@ -10,8 +10,6 @@ import io
 import os
 import re
 import base64
-import hashlib
-import hmac
 import math
 import random
 import string
@@ -21,7 +19,7 @@ from datetime import datetime, timedelta, timezone
 
 from flask import (
     Blueprint, render_template, redirect, url_for, flash, request, session,
-    jsonify, Response, send_file, current_app
+    jsonify, Response, send_file, current_app, abort
 )
 from sqlalchemy import desc, text, or_, func
 from sqlalchemy.exc import SQLAlchemyError
@@ -31,11 +29,11 @@ import pytz
 
 from app.extensions import db
 from app.models import (
-    Student, Admin, AdminInviteCode, Transaction, TapEvent, StoreItem, StudentItem,
+    Student, Admin, AdminInviteCode, StudentTeacher, Transaction, TapEvent, StoreItem, StudentItem,
     RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings, UserReport
+    HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings
 )
-from app.auth import admin_required
+from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
     AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, StoreItemForm,
     InsurancePolicyForm, AdminClaimProcessForm, PayrollSettingsForm,
@@ -44,7 +42,6 @@ from forms import (
 
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso
-from app.utils.turnstile import verify_turnstile_token
 from hash_utils import get_random_salt, hash_hmac, hash_username
 from payroll import calculate_payroll
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
@@ -56,18 +53,38 @@ PACIFIC = pytz.timezone('America/Los_Angeles')
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 
-def _generate_anonymous_code(user_identifier: str) -> str:
-    """Return an HMAC-based anonymous code for the given user identifier."""
-
-    secret = current_app.config.get("USER_REPORT_SECRET") or current_app.config.get("SECRET_KEY")
-    if not secret:
-        raise RuntimeError("USER_REPORT_SECRET or SECRET_KEY must be configured for anonymous reporting")
-
-    secret_bytes = secret if isinstance(secret, (bytes, bytearray)) else str(secret).encode()
-    return hmac.new(secret_bytes, user_identifier.encode(), hashlib.sha256).hexdigest()
-
-
 # -------------------- DASHBOARD & QUICK ACTIONS --------------------
+
+
+def _scoped_students(include_unassigned=True):
+    """Return a query for students the current admin can access."""
+    return get_admin_student_query(include_unassigned=include_unassigned)
+
+
+def _student_scope_subquery(include_unassigned=True):
+    """Return a subquery of student IDs the current admin can access."""
+    return (
+        _scoped_students(include_unassigned=include_unassigned)
+        .with_entities(Student.id)
+        .subquery()
+    )
+
+
+def _get_student_or_404(student_id, include_unassigned=True):
+    """Fetch a student the current admin can access or 404."""
+    student = get_student_for_admin(student_id, include_unassigned=include_unassigned)
+    if not student:
+        abort(404)
+    return student
+
+
+def _link_student_to_admin(student: Student, admin_id):
+    """Ensure the given admin is associated with the student."""
+    if not admin_id:
+        return
+    existing_link = StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin_id).first()
+    if not existing_link:
+        db.session.add(StudentTeacher(student_id=student.id, admin_id=admin_id))
 
 def auto_tapout_all_over_limit():
     """
@@ -77,7 +94,7 @@ def auto_tapout_all_over_limit():
     from app.routes.api import check_and_auto_tapout_if_limit_reached
 
     # Get all students
-    students = Student.query.all()
+    students = _scoped_students().all()
     tapped_out_count = 0
 
     for student in students:
@@ -107,17 +124,12 @@ def auto_tapout_all_over_limit():
 @admin_required
 def dashboard():
     """Admin dashboard with statistics, pending actions, and recent activity."""
-    from app.auth import get_current_admin
-
+    student_ids_subq = _student_scope_subquery()
     # Auto-tapout students who have exceeded their daily limit
     auto_tapout_all_over_limit()
 
-    current_admin = get_current_admin()
-
-    # Get students for this teacher (include orphaned for backwards compatibility)
-    students = Student.query.filter(
-        (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
-    ).order_by(Student.first_name).all()
+    # Get all students for calculations
+    students = _scoped_students().order_by(Student.first_name).all()
     student_lookup = {s.id: s for s in students}
 
     # Quick Stats
@@ -126,22 +138,76 @@ def dashboard():
     avg_balance = total_balance / total_students if total_students > 0 else 0
 
     # Pending actions - count all types of pending approvals
-    pending_redemptions_count = StudentItem.query.filter_by(status='processing').count()
-    pending_hall_passes_count = HallPassLog.query.filter_by(status='pending').count()
-    pending_insurance_claims_count = InsuranceClaim.query.filter_by(status='pending').count()
+    pending_redemptions_count = (
+        StudentItem.query
+        .join(Student, StudentItem.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(StudentItem.status == 'processing')
+        .count()
+    )
+    pending_hall_passes_count = (
+        HallPassLog.query
+        .join(Student, HallPassLog.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(HallPassLog.status == 'pending')
+        .count()
+    )
+    pending_insurance_claims_count = (
+        InsuranceClaim.query
+        .join(Student, InsuranceClaim.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(InsuranceClaim.status == 'pending')
+        .count()
+    )
     total_pending_actions = pending_redemptions_count + pending_hall_passes_count + pending_insurance_claims_count
 
     # Get recent items for each pending type (limited for display)
-    recent_redemptions = StudentItem.query.filter_by(status='processing').order_by(StudentItem.redemption_date.desc()).limit(5).all()
-    recent_hall_passes = HallPassLog.query.filter_by(status='pending').order_by(HallPassLog.request_time.desc()).limit(5).all()
-    recent_insurance_claims = InsuranceClaim.query.filter_by(status='pending').order_by(InsuranceClaim.filed_date.desc()).limit(5).all()
+    recent_redemptions = (
+        StudentItem.query
+        .join(Student, StudentItem.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(StudentItem.status == 'processing')
+        .order_by(StudentItem.redemption_date.desc())
+        .limit(5)
+        .all()
+    )
+    recent_hall_passes = (
+        HallPassLog.query
+        .join(Student, HallPassLog.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(HallPassLog.status == 'pending')
+        .order_by(HallPassLog.request_time.desc())
+        .limit(5)
+        .all()
+    )
+    recent_insurance_claims = (
+        InsuranceClaim.query
+        .join(Student, InsuranceClaim.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(InsuranceClaim.status == 'pending')
+        .order_by(InsuranceClaim.filed_date.desc())
+        .limit(5)
+        .all()
+    )
 
     # Recent transactions (limited to 5 for display)
-    recent_transactions = Transaction.query.filter_by(is_void=False).order_by(Transaction.timestamp.desc()).limit(5).all()
-    total_transactions_today = Transaction.query.filter(
-        Transaction.timestamp >= datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0),
-        Transaction.is_void == False
-    ).count()
+    recent_transactions = (
+        Transaction.query
+        .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter_by(is_void=False)
+        .order_by(Transaction.timestamp.desc())
+        .limit(5)
+        .all()
+    )
+    total_transactions_today = (
+        Transaction.query
+        .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter(
+            Transaction.timestamp >= datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0),
+            Transaction.is_void == False,
+        )
+        .count()
+    )
 
     # Recent attendance logs (limited to 5 for display)
     raw_logs = (
@@ -151,6 +217,7 @@ def dashboard():
             Student.last_initial
         )
         .join(Student, TapEvent.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
         .order_by(TapEvent.timestamp.desc())
         .limit(5)
         .all()
@@ -207,65 +274,6 @@ def dashboard():
     )
 
 
-@admin_bp.route('/claim-students', methods=['GET', 'POST'])
-@admin_required
-def claim_students():
-    """One-time setup: Allow teacher to claim orphaned students."""
-    from app.auth import get_current_admin
-
-    current_admin = get_current_admin()
-    if not current_admin:
-        flash("Unable to identify current admin", "error")
-        return redirect(url_for('admin.dashboard'))
-
-    # If already completed setup, redirect
-    if current_admin.has_assigned_students:
-        flash("You have already completed student assignment.", "info")
-        return redirect(url_for('admin.students'))
-
-    # Get all orphaned students (teacher_id is None)
-    orphaned_students = Student.query.filter_by(teacher_id=None).order_by(Student.first_name, Student.last_initial).all()
-
-    if request.method == 'POST':
-        # Get selected student IDs from form
-        selected_ids = request.form.getlist('student_ids')
-
-        if not selected_ids:
-            # If no students selected, just mark as completed
-            current_admin.has_assigned_students = True
-            db.session.commit()
-            flash("Student assignment completed. No students were claimed.", "success")
-            return redirect(url_for('admin.students'))
-
-        # Assign selected students to current teacher
-        claimed_count = 0
-        for student_id in selected_ids:
-            student = Student.query.get(int(student_id))
-            if student and student.teacher_id is None:  # Verify it's still orphaned
-                student.teacher_id = current_admin.id
-                claimed_count += 1
-
-        # Mark admin as having completed student assignment
-        current_admin.has_assigned_students = True
-
-        try:
-            db.session.commit()
-            flash(f"Successfully claimed {claimed_count} student(s)!", "admin_success")
-            return redirect(url_for('admin.students'))
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Error claiming students: {e}", exc_info=True)
-            flash(f"Error claiming students: {e}", "admin_error")
-            return redirect(url_for('admin.claim_students'))
-
-    # GET request - show claim page
-    return render_template(
-        'admin_claim_students.html',
-        orphaned_students=orphaned_students,
-        current_page="claim_students"
-    )
-
-
 @admin_bp.route('/bonuses', methods=['POST'])
 @admin_required
 def give_bonus_all():
@@ -275,7 +283,7 @@ def give_bonus_all():
     tx_type = request.form.get('type')
 
     # Stream students in batches to reduce memory usage
-    students = Student.query.yield_per(50)
+    students = _scoped_students().yield_per(50)
     for student in students:
         tx = Transaction(student_id=student.id, amount=amount, type=tx_type, description=title, account_type='checking')
         db.session.add(tx)
@@ -295,13 +303,6 @@ def login():
     session.pop("last_activity", None)
     form = AdminLoginForm()
     if form.validate_on_submit():
-        # Verify Turnstile token
-        turnstile_token = request.form.get('cf-turnstile-response')
-        if not verify_turnstile_token(turnstile_token, request.remote_addr):
-            current_app.logger.warning(f"Turnstile verification failed for admin login attempt")
-            flash("CAPTCHA verification failed. Please try again.", "error")
-            return redirect(url_for('admin.login', next=request.args.get('next')))
-
         username = form.username.data.strip()
         totp_code = form.totp_code.data.strip()
         admin = Admin.query.filter_by(username=username).first()
@@ -317,18 +318,6 @@ def login():
                 session["last_activity"] = datetime.now(timezone.utc).isoformat()
                 current_app.logger.info(f"✅ Admin login success for {username}")
                 flash("Admin login successful.")
-
-                # Check if admin needs to claim students (one-time setup)
-                if not admin.has_assigned_students:
-                    orphaned_count = Student.query.filter_by(teacher_id=None).count()
-                    if orphaned_count > 0:
-                        flash(f"Please select the students that belong to your class ({orphaned_count} unclaimed).", "info")
-                        return redirect(url_for("admin.claim_students"))
-                    else:
-                        # No orphaned students, mark as completed
-                        admin.has_assigned_students = True
-                        db.session.commit()
-
                 next_url = request.args.get("next")
                 if not is_safe_url(next_url):
                     return redirect(url_for("admin.dashboard"))
@@ -473,14 +462,7 @@ def logout():
 @admin_required
 def students():
     """View all students with basic information organized by block."""
-    from app.auth import get_current_admin
-
-    current_admin = get_current_admin()
-
-    # Filter students by teacher_id (include orphaned students for backwards compatibility)
-    all_students = Student.query.filter(
-        (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
-    ).order_by(Student.block, Student.first_name).all()
+    all_students = _scoped_students().order_by(Student.block, Student.first_name).all()
 
     # Get unique blocks - split comma-separated blocks into individual blocks
     blocks = sorted({b.strip() for s in all_students for b in (s.block or "").split(',') if b.strip()})
@@ -525,7 +507,7 @@ def students():
 @admin_required
 def student_detail(student_id):
     """View detailed information for a specific student."""
-    student = Student.query.get_or_404(student_id)
+    student = _get_student_or_404(student_id)
     # Remove deprecated last_tap_in/last_tap_out logic; rely on TapEvent backend.
     # Fetch last rent payment
     latest_rent = Transaction.query.filter_by(student_id=student.id, type="rent").order_by(Transaction.timestamp.desc()).first()
@@ -554,7 +536,7 @@ def student_detail(student_id):
     latest_tap_event = TapEvent.query.filter_by(student_id=student.id).order_by(TapEvent.timestamp.desc()).first()
 
     # Get all blocks for the edit modal
-    all_students = Student.query.all()
+    all_students = _scoped_students().all()
     blocks = sorted({b.strip() for s in all_students for b in (s.block or "").split(',') if b.strip()})
 
     return render_template('student_detail.html', student=student, transactions=transactions, student_items=student_items, latest_tap_event=latest_tap_event, blocks=blocks)
@@ -564,7 +546,7 @@ def student_detail(student_id):
 @admin_required
 def set_hall_passes(student_id):
     """Set hall pass balance for a student."""
-    student = Student.query.get_or_404(student_id)
+    student = _get_student_or_404(student_id)
     new_balance = request.form.get('hall_passes', type=int)
 
     if new_balance is not None and new_balance >= 0:
@@ -582,7 +564,7 @@ def set_hall_passes(student_id):
 def edit_student():
     """Edit student basic information."""
     student_id = request.form.get('student_id', type=int)
-    student = Student.query.get_or_404(student_id)
+    student = _get_student_or_404(student_id)
 
     # Get form data
     new_first_name = request.form.get('first_name', '').strip()
@@ -674,7 +656,7 @@ def delete_student():
         flash("Deletion cancelled: confirmation text did not match.", "warning")
         return redirect(url_for('admin.students'))
 
-    student = Student.query.get_or_404(student_id)
+    student = _get_student_or_404(student_id)
     student_name = student.full_name
 
     try:
@@ -685,7 +667,6 @@ def delete_student():
         RentPayment.query.filter_by(student_id=student.id).delete()
         StudentInsurance.query.filter_by(student_id=student.id).delete()
         HallPassLog.query.filter_by(student_id=student.id).delete()
-        UserReport.query.filter_by(student_id=student.id).delete()
 
         # Delete the student
         db.session.delete(student)
@@ -712,7 +693,7 @@ def bulk_delete_students():
     try:
         deleted_count = 0
         for student_id in student_ids:
-            student = Student.query.get(student_id)
+            student = _get_student_or_404(student_id)
             if student:
                 # Delete associated records
                 Transaction.query.filter_by(student_id=student.id).delete()
@@ -723,7 +704,6 @@ def bulk_delete_students():
                 StudentInsurance.query.filter_by(student_id=student.id).delete()
                 InsuranceClaim.query.filter_by(student_id=student.id).delete()
                 HallPassLog.query.filter_by(student_id=student.id).delete()
-                UserReport.query.filter_by(student_id=student.id).delete()
 
                 # Delete the student
                 db.session.delete(student)
@@ -750,7 +730,7 @@ def delete_block():
         return jsonify({"status": "error", "message": "No block specified."}), 400
 
     try:
-        students = Student.query.filter_by(block=block).all()
+        students = _scoped_students().filter_by(block=block).all()
         deleted_count = len(students)
 
         for student in students:
@@ -763,7 +743,6 @@ def delete_block():
             StudentInsurance.query.filter_by(student_id=student.id).delete()
             InsuranceClaim.query.filter_by(student_id=student.id).delete()
             HallPassLog.query.filter_by(student_id=student.id).delete()
-            UserReport.query.filter_by(student_id=student.id).delete()
 
             # Delete the student
             db.session.delete(student)
@@ -782,14 +761,7 @@ def delete_block():
 @admin_required
 def add_individual_student():
     """Add a single student (same as bulk upload but for one student)."""
-    from app.auth import get_current_admin
-
     try:
-        current_admin = get_current_admin()
-        if not current_admin:
-            flash("Unable to identify current admin", "error")
-            return redirect(url_for('admin.students'))
-
         first_name = request.form.get('first_name', '').strip()
         last_name = request.form.get('last_name', '').strip()
         dob_str = request.form.get('dob', '').strip()
@@ -806,39 +778,64 @@ def add_individual_student():
         month, day, year = map(int, dob_str.split('/'))
         dob_sum = month + day + year
 
-        # Generate name code (MUST match original algorithm for consistency)
-        # vowels from first_name + consonants from last_name
-        vowels = re.findall(r'[AEIOUaeiou]', first_name)
-        consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-        name_code = ''.join(vowels + consonants).lower()
-
-        # Generate salt and hashes
+        # Generate salt
         salt = get_random_salt()
-        first_half_hash = hash_hmac(name_code.encode(), salt)
+
+        # Compute first_half_hash: CONCAT(last_initial, DOB_sum)
+        # Updated to match new credential system
+        credential = f"{last_initial}{dob_sum}"  # e.g., "S2025"
+        first_half_hash = hash_hmac(credential.encode(), salt)
         second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
-        # Check for duplicates within this teacher's students (and orphaned)
-        potential_duplicates = Student.query.filter(
-            Student.last_initial == last_initial,
-            Student.block == block,
-            (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
+        # Compute last_name_hash_by_part for fuzzy matching
+        from app.utils.name_utils import hash_last_name_parts
+        last_name_parts = hash_last_name_parts(last_name, salt)
+
+        # Check for duplicates - need to check ALL students GLOBALLY (not scoped to teacher)
+        # This prevents creating duplicate accounts when multiple teachers have the same student
+        potential_duplicates = Student.query.filter_by(
+            last_initial=last_initial,
+            dob_sum=dob_sum
         ).all()
 
-        # Check if any existing student has BOTH the same first name AND full last name
-        # Since we don't store full last name, we check if the name code matches
+        # Check if any existing student matches (using new credential system)
+        from app.utils.name_utils import verify_last_name_parts
+
         for existing_student in potential_duplicates:
             if existing_student.first_name == first_name:
-                # Same first name and last initial - need to verify it's truly the same person
-                # by comparing the full last name through the name code
-                # MUST use same algorithm: vowels from first_name + consonants from last_name
-                test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
-                test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-                test_name_code = ''.join(test_vowels + test_consonants).lower()
+                # Verify credential matches
+                test_credential = f"{last_initial}{dob_sum}"
+                credential_matches = existing_student.first_half_hash == hash_hmac(test_credential.encode(), existing_student.salt)
 
-                # Try to verify with the stored hash
-                test_hash = hash_hmac(test_name_code.encode(), existing_student.salt)
-                if test_hash == existing_student.first_half_hash:
-                    flash(f"Student {first_name} {last_name} in block {block} already exists.", "warning")
+                # Also check fuzzy last name matching
+                fuzzy_match = False
+                if existing_student.last_name_hash_by_part:
+                    fuzzy_match = verify_last_name_parts(
+                        last_name,
+                        existing_student.last_name_hash_by_part,
+                        existing_student.salt
+                    )
+
+                # Match if BOTH credential AND last name match
+                if credential_matches and fuzzy_match:
+                    # Student already exists - link to this teacher instead of creating duplicate
+                    current_admin_id = session.get("admin_id")
+
+                    # Check if this teacher is already linked to this student
+                    from app.models import StudentTeacher
+                    existing_link = StudentTeacher.query.filter_by(
+                        student_id=existing_student.id,
+                        admin_id=current_admin_id
+                    ).first()
+
+                    if existing_link:
+                        flash(f"Student {first_name} {last_name} is already in your class.", "info")
+                    else:
+                        # Link this teacher to the existing student
+                        _link_student_to_admin(existing_student, current_admin_id)
+                        db.session.commit()
+                        flash(f"Student {first_name} {last_name} already exists. Added to your class.", "success")
+
                     return redirect(url_for('admin.students'))
 
         # Create student
@@ -850,11 +847,14 @@ def add_individual_student():
             first_half_hash=first_half_hash,
             second_half_hash=second_half_hash,
             dob_sum=dob_sum,
-            teacher_id=current_admin.id,  # Assign to current teacher
-            has_completed_setup=False
+            last_name_hash_by_part=last_name_parts,
+            has_completed_setup=False,
+            teacher_id=session.get("admin_id"),
         )
 
         db.session.add(new_student)
+        db.session.flush()
+        _link_student_to_admin(new_student, session.get("admin_id"))
         db.session.commit()
 
         flash(f"Successfully added {first_name} {last_initial}. to block {block}.", "success")
@@ -871,15 +871,8 @@ def add_individual_student():
 @admin_required
 def add_manual_student():
     """Add a student with full manual configuration (advanced mode)."""
-    from app.auth import get_current_admin
-
     try:
         from werkzeug.security import generate_password_hash
-
-        current_admin = get_current_admin()
-        if not current_admin:
-            flash("Unable to identify current admin", "error")
-            return redirect(url_for('admin.students'))
 
         first_name = request.form.get('first_name', '').strip()
         last_name = request.form.get('last_name', '').strip()
@@ -903,35 +896,52 @@ def add_manual_student():
         month, day, year = map(int, dob_str.split('/'))
         dob_sum = month + day + year
 
-        # Generate name code (MUST match original algorithm for consistency)
-        # vowels from first_name + consonants from last_name
-        vowels = re.findall(r'[AEIOUaeiou]', first_name)
-        consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-        name_code = ''.join(vowels + consonants).lower()
-
-        # Generate salt and hashes
+        # Generate salt
         salt = get_random_salt()
-        first_half_hash = hash_hmac(name_code.encode(), salt)
+
+        # Compute first_half_hash: CONCAT(last_initial, DOB_sum)
+        # Updated to match new credential system
+        credential = f"{last_initial}{dob_sum}"  # e.g., "S2025"
+        first_half_hash = hash_hmac(credential.encode(), salt)
         second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
-        # Check for duplicates within this teacher's students (and orphaned)
-        potential_duplicates = Student.query.filter(
-            Student.last_initial == last_initial,
-            Student.block == block,
-            (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
+        # Compute last_name_hash_by_part for fuzzy matching
+        from app.utils.name_utils import hash_last_name_parts, verify_last_name_parts
+        last_name_parts = hash_last_name_parts(last_name, salt)
+
+        # Check for duplicates GLOBALLY (not scoped to teacher)
+        potential_duplicates = Student.query.filter_by(
+            last_initial=last_initial,
+            dob_sum=dob_sum
         ).all()
 
         for existing_student in potential_duplicates:
             if existing_student.first_name == first_name:
-                # Same first name and last initial - verify full last name matches
-                # MUST use same algorithm: vowels from first_name + consonants from last_name
-                test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
-                test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-                test_name_code = ''.join(test_vowels + test_consonants).lower()
+                # Verify credential matches
+                test_credential = f"{last_initial}{dob_sum}"
+                credential_matches = existing_student.first_half_hash == hash_hmac(test_credential.encode(), existing_student.salt)
 
-                test_hash = hash_hmac(test_name_code.encode(), existing_student.salt)
-                if test_hash == existing_student.first_half_hash:
-                    flash(f"Student {first_name} {last_name} in block {block} already exists.", "warning")
+                # Also check fuzzy last name matching
+                fuzzy_match = False
+                if existing_student.last_name_hash_by_part:
+                    fuzzy_match = verify_last_name_parts(
+                        last_name,
+                        existing_student.last_name_hash_by_part,
+                        existing_student.salt
+                    )
+
+                if credential_matches and fuzzy_match:
+                    flash(f"Student {first_name} {last_name} already exists. Linking to your class.", "warning")
+                    # Link to this teacher
+                    from app.models import StudentTeacher
+                    current_admin_id = session.get("admin_id")
+                    existing_link = StudentTeacher.query.filter_by(
+                        student_id=existing_student.id,
+                        admin_id=current_admin_id
+                    ).first()
+                    if not existing_link:
+                        _link_student_to_admin(existing_student, current_admin_id)
+                        db.session.commit()
                     return redirect(url_for('admin.students'))
 
         # Create student
@@ -943,10 +953,11 @@ def add_manual_student():
             first_half_hash=first_half_hash,
             second_half_hash=second_half_hash,
             dob_sum=dob_sum,
-            teacher_id=current_admin.id,  # Assign to current teacher
+            last_name_hash_by_part=last_name_parts,
             hall_passes=hall_passes,
             is_rent_enabled=rent_enabled,
-            has_completed_setup=setup_complete
+            has_completed_setup=setup_complete,
+            teacher_id=session.get("admin_id"),
         )
 
         # Set username if provided
@@ -962,6 +973,8 @@ def add_manual_student():
             new_student.passphrase_hash = generate_password_hash(passphrase)
 
         db.session.add(new_student)
+        db.session.flush()
+        _link_student_to_admin(new_student, session.get("admin_id"))
         db.session.commit()
 
         flash(f"Successfully created {first_name} {last_initial}. in block {block} (manual mode).", "success")
@@ -974,132 +987,13 @@ def add_manual_student():
     return redirect(url_for('admin.students'))
 
 
-# -------------------- TRANSACTION CLEARING --------------------
-
-@admin_bp.route('/student/<int:student_id>/clear-transactions', methods=['POST'])
-@admin_required
-def clear_student_transactions(student_id):
-    """Clear all transactions for a specific student (only for students assigned to current teacher)."""
-    from app.auth import get_current_admin
-
-    current_admin = get_current_admin()
-    student = Student.query.get_or_404(student_id)
-
-    # Verify the student belongs to this teacher (or is orphaned for backwards compatibility)
-    if student.teacher_id and student.teacher_id != current_admin.id:
-        flash("You can only clear transactions for your own students.", "error")
-        return redirect(url_for('admin.students'))
-
-    try:
-        # Delete all transactions for this student
-        deleted_transactions = Transaction.query.filter_by(student_id=student.id).delete()
-
-        # Delete all rent payments for this student
-        RentPayment.query.filter_by(student_id=student.id).delete()
-
-        # Delete all tap events (attendance) for this student to prevent payroll recalculation
-        deleted_taps = TapEvent.query.filter_by(student_id=student.id).delete()
-
-        db.session.commit()
-
-        flash(f"Successfully cleared {deleted_transactions} transaction(s) and {deleted_taps} attendance record(s) for {student.full_name}.", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error clearing transactions: {str(e)}", "error")
-
-    return redirect(url_for('admin.student_detail', student_id=student_id))
-
-
-@admin_bp.route('/students/clear-period-transactions', methods=['POST'])
-@admin_required
-def clear_period_transactions():
-    """Clear all transactions for all students in a specific period/block."""
-    from app.auth import get_current_admin
-
-    current_admin = get_current_admin()
-    period = request.form.get('period', '').strip().upper()
-
-    if not period:
-        flash("Please specify a period.", "error")
-        return redirect(url_for('admin.students'))
-
-    try:
-        # Get all students in this period assigned to this teacher
-        all_students = Student.query.filter(
-            (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
-        ).all()
-
-        students_in_period = [
-            s for s in all_students
-            if s.block and period.upper() in [b.strip().upper() for b in s.block.split(',')]
-        ]
-
-        if not students_in_period:
-            flash(f"No students found in period {period}.", "warning")
-            return redirect(url_for('admin.students'))
-
-        total_transactions = 0
-        total_taps = 0
-        for student in students_in_period:
-            deleted_transactions = Transaction.query.filter_by(student_id=student.id).delete()
-            RentPayment.query.filter_by(student_id=student.id).delete()
-            deleted_taps = TapEvent.query.filter_by(student_id=student.id).delete()
-            total_transactions += deleted_transactions
-            total_taps += deleted_taps
-
-        db.session.commit()
-
-        flash(f"Successfully cleared {total_transactions} transaction(s) and {total_taps} attendance record(s) for {len(students_in_period)} student(s) in period {period}.", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error clearing transactions: {str(e)}", "error")
-
-    return redirect(url_for('admin.students'))
-
-
-@admin_bp.route('/students/clear-all-transactions', methods=['POST'])
-@admin_required
-def clear_all_transactions():
-    """Clear all transactions for all students assigned to the current teacher."""
-    from app.auth import get_current_admin
-
-    current_admin = get_current_admin()
-
-    try:
-        # Get all students assigned to this teacher (include orphaned for backwards compatibility)
-        students = Student.query.filter(
-            (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
-        ).all()
-
-        if not students:
-            flash("No students found.", "warning")
-            return redirect(url_for('admin.students'))
-
-        total_transactions = 0
-        total_taps = 0
-        for student in students:
-            deleted_transactions = Transaction.query.filter_by(student_id=student.id).delete()
-            RentPayment.query.filter_by(student_id=student.id).delete()
-            deleted_taps = TapEvent.query.filter_by(student_id=student.id).delete()
-            total_transactions += deleted_transactions
-            total_taps += deleted_taps
-
-        db.session.commit()
-
-        flash(f"Successfully cleared {total_transactions} transaction(s) and {total_taps} attendance record(s) for {len(students)} student(s).", "success")
-    except Exception as e:
-        db.session.rollback()
-        flash(f"Error clearing transactions: {str(e)}", "error")
-
-    return redirect(url_for('admin.students'))
-
-
 # -------------------- STORE MANAGEMENT --------------------
 
 @admin_bp.route('/store', methods=['GET', 'POST'])
 @admin_required
 def store_management():
     """Manage store items - view, create, edit, delete."""
+    student_ids_subq = _student_scope_subquery()
     form = StoreItemForm()
     if form.validate_on_submit():
         new_item = StoreItem(
@@ -1118,12 +1012,7 @@ def store_management():
             # Bulk discount settings
             bulk_discount_enabled=form.bulk_discount_enabled.data,
             bulk_discount_quantity=form.bulk_discount_quantity.data if form.bulk_discount_enabled.data else None,
-            bulk_discount_percentage=form.bulk_discount_percentage.data if form.bulk_discount_enabled.data else None,
-            # Collective goal settings
-            collective_goal_type=form.collective_goal_type.data if form.item_type.data == 'collective' else None,
-            collective_goal_target=form.collective_goal_target.data if form.item_type.data == 'collective' and form.collective_goal_type.data == 'fixed' else None,
-            # Redemption settings
-            redemption_prompt=form.redemption_prompt.data
+            bulk_discount_percentage=form.bulk_discount_percentage.data if form.bulk_discount_enabled.data else None
         )
         db.session.add(new_item)
         db.session.commit()
@@ -1136,7 +1025,12 @@ def store_management():
     from app.models import StudentItem
     total_items = len(items)
     active_items = len([i for i in items if i.is_active])
-    total_purchases = StudentItem.query.count()
+    total_purchases = (
+        StudentItem.query
+        .join(Student, StudentItem.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .count()
+    )
 
     return render_template('admin_store.html', form=form, items=items, current_page="store",
                          total_items=total_items, active_items=active_items, total_purchases=total_purchases)
@@ -1176,37 +1070,21 @@ def hard_delete_store_item(item_id):
     item = StoreItem.query.get_or_404(item_id)
     item_name = item.name
 
-    # Check if there are any student purchases of this item with non-voided transactions
+    # Check if there are any student purchases of this item
     from app.models import StudentItem
-    student_items = StudentItem.query.filter_by(store_item_id=item_id).all()
+    purchase_count = (
+        StudentItem.query
+        .join(Student, StudentItem.student_id == Student.id)
+        .filter(Student.id.in_(_student_scope_subquery()))
+        .filter_by(store_item_id=item_id)
+        .count()
+    )
 
-    # Count non-voided purchases by checking corresponding transactions
-    non_voided_count = 0
-    for si in student_items:
-        # Try to find the corresponding transaction for this purchase
-        # Match by: student_id, purchase type, timestamp within 5 seconds
-        # NOTE: Do NOT filter by item name - items can be renamed after purchase
-        txn = Transaction.query.filter(
-            Transaction.student_id == si.student_id,
-            Transaction.type == 'purchase',
-            Transaction.timestamp >= si.purchase_date - timedelta(seconds=5),
-            Transaction.timestamp <= si.purchase_date + timedelta(seconds=5)
-        ).first()
-
-        # If we found a transaction and it's not voided, count it
-        # If we can't find a transaction at all, assume it's valid and count it (safer)
-        if not txn or not txn.is_void:
-            non_voided_count += 1
-
-    if non_voided_count > 0:
-        flash(f"Cannot permanently delete '{item_name}' because it has {non_voided_count} non-voided purchase record(s). Please deactivate instead.", "danger")
+    if purchase_count > 0:
+        flash(f"Cannot permanently delete '{item_name}' because it has {purchase_count} purchase record(s). Please deactivate instead.", "danger")
         return redirect(url_for('admin.store_management'))
 
-    # Safe to delete - no non-voided purchase history
-    # Also delete the StudentItem records (which should all be from voided transactions)
-    for si in student_items:
-        db.session.delete(si)
-
+    # Safe to delete - no purchase history
     db.session.delete(item)
     db.session.commit()
     flash(f"'{item_name}' has been permanently deleted from the database.", "success")
@@ -1219,6 +1097,7 @@ def hard_delete_store_item(item_id):
 @admin_required
 def rent_settings():
     """Configure rent settings."""
+    student_ids_subq = _student_scope_subquery()
     # Get or create rent settings (singleton)
     settings = RentSettings.query.first()
     if not settings:
@@ -1271,86 +1150,28 @@ def rent_settings():
         return redirect(url_for('admin.rent_settings'))
 
     # Get statistics
-    total_students = Student.query.filter_by(is_rent_enabled=True).count()
+    total_students = _scoped_students().filter_by(is_rent_enabled=True).count()
     current_month = datetime.now().month
     current_year = datetime.now().year
-    paid_this_month = RentPayment.query.filter_by(
-        period_month=current_month,
-        period_year=current_year
-    ).count()
-
-    # Calculate unpaid students (students who haven't paid rent for current month/period)
-    unpaid_students = []
-    if settings.is_enabled:
-        from app.routes.student import _calculate_rent_deadlines
-        now = datetime.now()
-        due_date, grace_end_date = _calculate_rent_deadlines(settings, now)
-
-        # Check if rent is active for the current month
-        rent_is_active = True
-        if settings.first_rent_due_date and now < settings.first_rent_due_date:
-            # Check if we're in preview period
-            if settings.bill_preview_enabled and settings.bill_preview_days:
-                preview_start_date = due_date - timedelta(days=settings.bill_preview_days)
-                rent_is_active = now >= preview_start_date
-            else:
-                rent_is_active = False
-
-        if rent_is_active:
-            all_rent_enabled_students = Student.query.filter_by(is_rent_enabled=True).all()
-            for student in all_rent_enabled_students:
-                student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-                for period in student_blocks:
-                    # Get payments for this student/period/month
-                    payments = RentPayment.query.filter_by(
-                        student_id=student.id,
-                        period=period,
-                        period_month=current_month,
-                        period_year=current_year
-                    ).all()
-
-                    # Filter out voided payments
-                    valid_payments = []
-                    for payment in payments:
-                        txn = Transaction.query.filter(
-                            Transaction.student_id == student.id,
-                            Transaction.type == 'Rent Payment',
-                            Transaction.timestamp >= payment.payment_date - timedelta(seconds=5),
-                            Transaction.timestamp <= payment.payment_date + timedelta(seconds=5),
-                            Transaction.amount == -payment.amount_paid
-                        ).first()
-                        if txn and not txn.is_void:
-                            valid_payments.append(payment)
-
-                    total_paid = sum(p.amount_paid for p in valid_payments) if valid_payments else 0.0
-
-                    # Calculate late fee if applicable
-                    late_fee = 0.0
-                    is_late = now > grace_end_date
-                    if is_late:
-                        late_fee = settings.late_penalty_amount
-
-                    total_due = settings.rent_amount + late_fee
-
-                    # Check if not fully paid
-                    if total_paid < total_due:
-                        unpaid_students.append({
-                            'student': student,
-                            'period': period,
-                            'total_paid': total_paid,
-                            'total_due': total_due,
-                            'remaining': total_due - total_paid,
-                            'is_late': is_late
-                        })
+    paid_this_month = (
+        RentPayment.query
+        .filter(RentPayment.student_id.in_(student_ids_subq))
+        .filter_by(period_month=current_month, period_year=current_year)
+        .count()
+    )
 
     # Get active waivers
     now = datetime.now(timezone.utc)
-    active_waivers = RentWaiver.query.filter(
-        RentWaiver.waiver_end_date >= now
-    ).all()
+    active_waivers = (
+        RentWaiver.query
+        .join(Student, RentWaiver.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(RentWaiver.waiver_end_date >= now)
+        .all()
+    )
 
     # Get all students for waiver form
-    all_students = Student.query.order_by(Student.first_name).all()
+    all_students = _scoped_students().order_by(Student.first_name).all()
 
     # Calculate payroll warning
     payroll_warning = None
@@ -1384,7 +1205,6 @@ def rent_settings():
                           settings=settings,
                           total_students=total_students,
                           paid_this_month=paid_this_month,
-                          unpaid_students=unpaid_students,
                           active_waivers=active_waivers,
                           all_students=all_students,
                           payroll_warning=payroll_warning)
@@ -1440,7 +1260,7 @@ def add_rent_waiver():
     # Create waivers for each student
     count = 0
     for student_id in student_ids:
-        student = Student.query.get(int(student_id))
+        student = _get_student_or_404(int(student_id))
         if student:
             waiver = RentWaiver(
                 student_id=student.id,
@@ -1463,6 +1283,7 @@ def add_rent_waiver():
 def remove_rent_waiver(waiver_id):
     """Remove a rent waiver."""
     waiver = RentWaiver.query.get_or_404(waiver_id)
+    _get_student_or_404(waiver.student_id)
     student_name = waiver.student.full_name
     db.session.delete(waiver)
     db.session.commit()
@@ -1476,6 +1297,7 @@ def remove_rent_waiver(waiver_id):
 @admin_required
 def insurance_management():
     """Main insurance management dashboard."""
+    student_ids_subq = _student_scope_subquery()
     form = InsurancePolicyForm()
 
     if request.method == 'POST' and form.validate_on_submit():
@@ -1507,12 +1329,36 @@ def insurance_management():
     policies = InsurancePolicy.query.all()
 
     # Get all student enrollments
-    active_enrollments = StudentInsurance.query.filter_by(status='active').all()
-    cancelled_enrollments = StudentInsurance.query.filter_by(status='cancelled').all()
+    active_enrollments = (
+        StudentInsurance.query
+        .join(Student, StudentInsurance.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(StudentInsurance.status == 'active')
+        .all()
+    )
+    cancelled_enrollments = (
+        StudentInsurance.query
+        .join(Student, StudentInsurance.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(StudentInsurance.status == 'cancelled')
+        .all()
+    )
 
     # Get all claims
-    claims = InsuranceClaim.query.order_by(InsuranceClaim.filed_date.desc()).all()
-    pending_claims_count = InsuranceClaim.query.filter_by(status='pending').count()
+    claims = (
+        InsuranceClaim.query
+        .join(Student, InsuranceClaim.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .order_by(InsuranceClaim.filed_date.desc())
+        .all()
+    )
+    pending_claims_count = (
+        InsuranceClaim.query
+        .join(Student, InsuranceClaim.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(InsuranceClaim.status == 'pending')
+        .count()
+    )
 
     return render_template('admin_insurance.html',
                           form=form,
@@ -1579,7 +1425,13 @@ def deactivate_insurance_policy(policy_id):
 @admin_required
 def view_student_policy(enrollment_id):
     """View student's policy enrollment details and claims history."""
-    enrollment = StudentInsurance.query.get_or_404(enrollment_id)
+    enrollment = (
+        StudentInsurance.query
+        .join(Student, StudentInsurance.student_id == Student.id)
+        .filter(StudentInsurance.id == enrollment_id)
+        .filter(Student.id.in_(_student_scope_subquery()))
+        .first_or_404()
+    )
 
     # Get claims for this enrollment
     claims = InsuranceClaim.query.filter_by(student_insurance_id=enrollment.id).order_by(
@@ -1597,7 +1449,13 @@ def view_student_policy(enrollment_id):
 @admin_required
 def process_claim(claim_id):
     """Process insurance claim with auto-deposit for monetary claims."""
-    claim = InsuranceClaim.query.get_or_404(claim_id)
+    claim = (
+        InsuranceClaim.query
+        .join(Student, InsuranceClaim.student_id == Student.id)
+        .filter(InsuranceClaim.id == claim_id)
+        .filter(Student.id.in_(_student_scope_subquery()))
+        .first_or_404()
+    )
     form = AdminClaimProcessForm(obj=claim)
 
     # Get enrollment details
@@ -1700,25 +1558,13 @@ def transactions():
 def void_transaction(transaction_id):
     """Void a transaction."""
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
-    tx = Transaction.query.get_or_404(transaction_id)
-
-    # Check if this is a hall pass purchase that needs to be reversed
-    if tx.type == 'purchase' and tx.description and not tx.is_void:
-        # Parse item name from description (format: "Purchase: {item_name}" or "Purchase: {item_name} (x{quantity})")
-        match = re.match(r'Purchase: (.+?)(?:\s*\(x(\d+)\))?(?:\s*\[.+\])?$', tx.description)
-        if match:
-            item_name = match.group(1)
-            quantity = int(match.group(2)) if match.group(2) else 1
-
-            # Look up the item to check if it's a hall pass
-            item = StoreItem.query.filter_by(name=item_name).first()
-            if item and item.item_type == 'hall_pass':
-                # Decrement the student's hall passes
-                student = Student.query.get(tx.student_id)
-                if student:
-                    student.hall_passes = max(0, student.hall_passes - quantity)
-                    current_app.logger.info(f"Removed {quantity} hall pass(es) from student {student.id} due to voided transaction {transaction_id}")
-
+    tx = (
+        Transaction.query
+        .join(Student, Transaction.student_id == Student.id)
+        .filter(Transaction.id == transaction_id)
+        .filter(Student.id.in_(_student_scope_subquery()))
+        .first_or_404()
+    )
     tx.is_void = True
     try:
         db.session.commit()
@@ -1742,9 +1588,31 @@ def void_transaction(transaction_id):
 @admin_required
 def hall_pass():
     """Manage hall pass requests and active passes."""
-    pending_requests = HallPassLog.query.filter_by(status='pending').order_by(HallPassLog.request_time.asc()).all()
-    approved_queue = HallPassLog.query.filter_by(status='approved').order_by(HallPassLog.decision_time.asc()).all()
-    out_of_class = HallPassLog.query.filter_by(status='left').order_by(HallPassLog.left_time.asc()).all()
+    student_ids_subq = _student_scope_subquery()
+    pending_requests = (
+        HallPassLog.query
+        .join(Student, HallPassLog.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(HallPassLog.status == 'pending')
+        .order_by(HallPassLog.request_time.asc())
+        .all()
+    )
+    approved_queue = (
+        HallPassLog.query
+        .join(Student, HallPassLog.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(HallPassLog.status == 'approved')
+        .order_by(HallPassLog.decision_time.asc())
+        .all()
+    )
+    out_of_class = (
+        HallPassLog.query
+        .join(Student, HallPassLog.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(HallPassLog.status == 'left')
+        .order_by(HallPassLog.left_time.asc())
+        .all()
+    )
 
     return render_template(
         'admin_hall_pass.html',
@@ -1762,6 +1630,7 @@ def hall_pass():
 def payroll_history():
     """View payroll history with filtering."""
     current_app.logger.info("🧭 Entered admin_payroll_history route")
+    student_ids_subq = _student_scope_subquery()
 
     block = request.args.get("block")
     current_app.logger.info(f"📊 Block filter: {block}")
@@ -1769,11 +1638,14 @@ def payroll_history():
     end_date_str = request.args.get("end_date")
     current_app.logger.info(f"📅 Date filters: start={start_date_str}, end={end_date_str}")
 
-    query = Transaction.query.filter_by(type="payroll")
+    query = Transaction.query.filter(
+        Transaction.student_id.in_(student_ids_subq),
+        Transaction.type == "payroll",
+    )
 
     if block:
         # Stream students in batches for this block
-        student_ids = [s.id for s in Student.query.filter_by(block=block).yield_per(50).all()]
+        student_ids = [s.id for s in _scoped_students().filter_by(block=block).yield_per(50).all()]
         current_app.logger.info(f"👥 Student IDs in block '{block}': {student_ids}")
         query = query.filter(Transaction.student_id.in_(student_ids))
 
@@ -1789,7 +1661,7 @@ def payroll_history():
     current_app.logger.info(f"🔎 Payroll transactions found: {len(payroll_transactions)}")
 
     # Stream students in batches to reduce memory usage for the lookup
-    student_lookup = {s.id: s for s in Student.query.yield_per(50)}
+    student_lookup = {s.id: s for s in _scoped_students().yield_per(50)}
     # Gather distinct block names for the dropdown
     blocks = sorted({s.block for s in student_lookup.values() if s.block})
 
@@ -1838,7 +1710,7 @@ def run_payroll():
         last_payroll_time = last_payroll_tx.timestamp if last_payroll_tx else None
         current_app.logger.info(f"🧮 RUN PAYROLL: Last payroll at {last_payroll_time}")
 
-        students = Student.query.all()
+        students = _scoped_students().all()
         summary = calculate_payroll(students, last_payroll_time)
 
         for student_id, amount in summary.items():
@@ -1883,7 +1755,7 @@ def payroll():
     now_utc = datetime.now(timezone.utc)
 
     # Get all students
-    students = Student.query.all()
+    students = _scoped_students().all()
 
     # Get all blocks (split multi-block assignments like "A, B")
     blocks = sorted({b.strip() for s in students for b in (s.block or "").split(',') if b.strip()})
@@ -1933,7 +1805,14 @@ def payroll():
     next_pay_date_utc = _compute_next_pay_date(default_setting, now_utc)
 
     # Recent payroll activity
-    recent_payrolls = Transaction.query.filter_by(type='payroll').order_by(Transaction.timestamp.desc()).limit(20).all()
+    recent_payrolls = (
+        Transaction.query
+        .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter_by(type='payroll')
+        .order_by(Transaction.timestamp.desc())
+        .limit(20)
+        .all()
+    )
 
     # Calculate payroll estimates
     payroll_summary = calculate_payroll(students, last_payroll_time)
@@ -2005,9 +1884,14 @@ def payroll():
     avg_payout = total_payroll_estimate / len(students) if students else 0
 
     # Payroll history for History tab (all transaction types, not just payroll)
-    payroll_history_transactions = Transaction.query.filter(
-        Transaction.type.in_(['payroll', 'reward', 'fine', 'manual_payment'])
-    ).order_by(Transaction.timestamp.desc()).limit(100).all()
+    payroll_history_transactions = (
+        Transaction.query
+        .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter(Transaction.type.in_(['payroll', 'reward', 'fine', 'manual_payment']))
+        .order_by(Transaction.timestamp.desc())
+        .limit(100)
+        .all()
+    )
     student_lookup = {s.id: s for s in students}
     payroll_history = []
     for tx in payroll_history_transactions:
@@ -2067,7 +1951,7 @@ def payroll_settings():
     """Save payroll settings for a block or globally (Simple or Advanced mode)."""
     try:
         # Get all blocks
-        students = Student.query.all()
+        students = _scoped_students().all()
         blocks = sorted(set(s.block for s in students if s.block))
 
         # Determine which mode we're in
@@ -2354,7 +2238,13 @@ def payroll_edit_fine(fine_id):
 def void_payroll_transaction(transaction_id):
     """Void a single transaction from payroll interface."""
     try:
-        transaction = Transaction.query.get_or_404(transaction_id)
+        transaction = (
+            Transaction.query
+            .join(Student, Transaction.student_id == Student.id)
+            .filter(Transaction.id == transaction_id)
+            .filter(Student.id.in_(_student_scope_subquery()))
+            .first_or_404()
+        )
 
         if transaction.is_void:
             return jsonify({'success': False, 'message': 'Transaction is already voided'}), 400
@@ -2380,9 +2270,16 @@ def void_transactions_bulk():
         if not transaction_ids:
             return jsonify({'success': False, 'message': 'No transactions selected'}), 400
 
+        student_ids_subq = _student_scope_subquery()
         count = 0
         for tx_id in transaction_ids:
-            transaction = Transaction.query.get(int(tx_id))
+            transaction = (
+                Transaction.query
+                .join(Student, Transaction.student_id == Student.id)
+                .filter(Transaction.id == int(tx_id))
+                .filter(Student.id.in_(student_ids_subq))
+                .first()
+            )
             if transaction and not transaction.is_void:
                 transaction.is_void = True
                 count += 1
@@ -2408,7 +2305,7 @@ def payroll_apply_reward(reward_id):
 
         count = 0
         for student_id in student_ids:
-            student = Student.query.get(int(student_id))
+            student = _get_student_or_404(int(student_id))
             if student:
                 transaction = Transaction(
                     student_id=student.id,
@@ -2442,7 +2339,7 @@ def payroll_apply_fine(fine_id):
 
         count = 0
         for student_id in student_ids:
-            student = Student.query.get(int(student_id))
+            student = _get_student_or_404(int(student_id))
             if student:
                 transaction = Transaction(
                     student_id=student.id,
@@ -2484,7 +2381,7 @@ def payroll_manual_payment():
             # Create transactions for each selected student
             count = 0
             for student_id in student_ids:
-                student = Student.query.get(int(student_id))
+                student = _get_student_or_404(int(student_id))
                 if student:
                     transaction = Transaction(
                         student_id=student.id,
@@ -2514,22 +2411,27 @@ def payroll_manual_payment():
 @admin_bp.route('/attendance-log')
 @admin_required
 def attendance_log():
-    """View attendance log with filtering and pagination."""
-    # Build student lookup for names and blocks
-    students = {s.id: {'name': s.full_name, 'block': s.block} for s in Student.query.all()}
-
-    # Get all distinct periods from tap events for filter dropdown
-    periods = db.session.query(TapEvent.period).distinct().order_by(TapEvent.period).all()
-    periods = [p[0] for p in periods if p[0]]
-
-    # Get all distinct blocks for filter dropdown
-    blocks = sorted({b.strip() for s in Student.query.all() for b in (s.block or "").split(',') if b.strip()})
-
+    """View complete attendance log."""
+    # Build student lookup for names and blocks, streaming in batches
+    students = {s.id: {'name': s.full_name, 'block': s.block} for s in _scoped_students().yield_per(50)}
+    # Fetch attendance events from TapEvent, streaming in batches
+    raw_logs = TapEvent.query.order_by(TapEvent.timestamp.desc()).yield_per(100)
+    attendance_logs = []
+    for log in raw_logs:
+        student_info = students.get(log.student_id, {'name': 'Unknown', 'block': 'Unknown'})
+        attendance_logs.append({
+            'student_id': log.student_id,
+            'student_name': student_info['name'],
+            'student_block': student_info['block'],
+            'timestamp': log.timestamp,
+            'period': log.period,
+            'status': log.status,
+            'reason': log.reason
+        })
     return render_template(
         'admin_attendance_log.html',
+        logs=attendance_logs,
         students=students,
-        periods=periods,
-        blocks=blocks,
         current_page="attendance"
     )
 
@@ -2539,18 +2441,15 @@ def attendance_log():
 @admin_bp.route('/upload-students', methods=['POST'])
 @admin_required
 def upload_students():
-    """Upload students from CSV file."""
-    from app.auth import get_current_admin
+    """
+    Upload student roster from CSV file.
 
+    Creates TeacherBlock seats (unclaimed accounts) with join codes.
+    Students later claim their seat by providing the join code + credentials.
+    """
     file = request.files.get('csv_file')
     if not file:
         flash("No file provided", "admin_error")
-        return redirect(url_for('admin.students'))
-
-    # Get current admin for teacher_id assignment
-    current_admin = get_current_admin()
-    if not current_admin:
-        flash("Unable to identify current admin", "admin_error")
         return redirect(url_for('admin.students'))
 
     # Read file content and remove BOM if present
@@ -2560,6 +2459,14 @@ def upload_students():
     added_count = 0
     errors = 0
     duplicated = 0
+
+    # Track join codes for each block
+    from app.models import TeacherBlock
+    from app.utils.join_code import generate_join_code
+    teacher_id = session.get("admin_id")
+
+    # Get or generate join codes for each block in this upload
+    join_codes_by_block = {}
 
     for row in csv_input:
         try:
@@ -2576,7 +2483,43 @@ def upload_students():
             # Generate last_initial
             last_initial = last_name[0].upper()
 
-            # Parse and calculate dob_sum early (needed for duplicate detection)
+            # Get or generate join code for this teacher-block combination
+            if block not in join_codes_by_block:
+                # Check if this teacher already has a join code for this block
+                existing_seat = TeacherBlock.query.filter_by(
+                    teacher_id=teacher_id,
+                    block=block
+                ).first()
+
+                if existing_seat:
+                    # Reuse existing join code
+                    join_codes_by_block[block] = existing_seat.join_code
+                else:
+                    # Generate new unique join code
+                    while True:
+                        new_code = generate_join_code()
+                        # Ensure uniqueness across all teachers
+                        if not TeacherBlock.query.filter_by(join_code=new_code).first():
+                            join_codes_by_block[block] = new_code
+                            break
+
+            join_code = join_codes_by_block[block]
+
+            # Check if this seat already exists for this teacher
+            # Duplicate detection: same teacher + block + first_name + last_initial
+            existing_seat = TeacherBlock.query.filter_by(
+                teacher_id=teacher_id,
+                block=block,
+                first_name=first_name,
+                last_initial=last_initial
+            ).first()
+
+            if existing_seat:
+                current_app.logger.info(f"Seat for {first_name} {last_name} already exists in block {block}, skipping.")
+                duplicated += 1
+                continue
+
+            # Generate dob_sum
             # Handle both mm/dd/yy and mm/dd/yyyy formats
             date_parts = dob_str.split('/')
             mm = int(date_parts[0])
@@ -2591,65 +2534,32 @@ def upload_students():
 
             dob_sum = mm + dd + yyyy
 
-            # Efficiently check for duplicates within this teacher's students
-            # 1. Filter by unencrypted fields (`last_initial`, `block`) AND (teacher_id OR orphaned students).
-            # Include orphaned students (teacher_id=None) for backwards compatibility.
-            potential_matches = Student.query.filter(
-                Student.last_initial == last_initial,
-                Student.block == block,
-                (Student.teacher_id == current_admin.id) | (Student.teacher_id == None)
-            ).all()
-
-            # 2. Iterate through the small pool and compare first name, full last name, AND date of birth via hash
-            is_duplicate = False
-            for student in potential_matches:
-                if student.first_name == first_name:
-                    # Same first name and last initial - verify full last name matches too
-                    # MUST use original algorithm: vowels from first_name + consonants from last_name
-                    test_vowels = re.findall(r'[AEIOUaeiou]', first_name)
-                    test_consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-                    test_name_code = ''.join(test_vowels + test_consonants).lower()
-
-                    # Check if this matches the existing student's name hash
-                    test_name_hash = hash_hmac(test_name_code.encode(), student.salt)
-                    if test_name_hash == student.first_half_hash:
-                        # Name matches - now verify date of birth also matches
-                        test_dob_hash = hash_hmac(str(dob_sum).encode(), student.salt)
-                        if test_dob_hash == student.second_half_hash:
-                            # Both name AND date of birth match - this is a true duplicate
-                            is_duplicate = True
-                            break
-
-            if is_duplicate:
-                current_app.logger.info(f"Duplicate detected: {first_name} {last_name} (DOB sum: {dob_sum}) in block {block}, skipping.")
-                duplicated += 1
-                continue  # skip this duplicate
-
-            # Generate name_code (MUST match original algorithm for consistency)
-            # vowels from first_name + consonants from last_name
-            vowels = re.findall(r'[AEIOUaeiou]', first_name)
-            consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name)
-            name_code = ''.join(vowels + consonants).lower()
-
             # Generate salt
             salt = get_random_salt()
 
-            # Compute first_half_hash and second_half_hash using HMAC
-            first_half_hash = hash_hmac(name_code.encode(), salt)
-            second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
+            # Compute first_half_hash: CONCAT(first_initial, DOB_sum)
+            # Simpler credential: student just needs to know their initial and birthday
+            credential = f"{last_initial}{dob_sum}"  # e.g., "S2025"
+            first_half_hash = hash_hmac(credential.encode(), salt)
 
-            student = Student(
+            # Compute last_name_hash_by_part for fuzzy matching
+            from app.utils.name_utils import hash_last_name_parts
+            last_name_parts = hash_last_name_parts(last_name, salt)
+
+            # Create TeacherBlock seat (unclaimed account)
+            seat = TeacherBlock(
+                teacher_id=teacher_id,
+                block=block,
                 first_name=first_name,
                 last_initial=last_initial,
-                block=block,
+                last_name_hash_by_part=last_name_parts,
+                dob_sum=dob_sum,
                 salt=salt,
                 first_half_hash=first_half_hash,
-                second_half_hash=second_half_hash,
-                dob_sum=dob_sum,
-                teacher_id=current_admin.id,  # Assign to current teacher
-                has_completed_setup=False
+                join_code=join_code,
+                is_claimed=False,
             )
-            db.session.add(student)
+            db.session.add(seat)
             added_count += 1
 
         except Exception as e:
@@ -2659,7 +2569,22 @@ def upload_students():
 
     try:
         db.session.commit()
-        flash(f"{added_count} students added successfully<br>{errors} students cannot be added<br>{duplicated} duplicated students skipped.", "admin_success")
+
+        # Build success message with join codes
+        success_msg = f"{added_count} roster seats created successfully"
+        if errors > 0:
+            success_msg += f"<br>{errors} rows could not be processed"
+        if duplicated > 0:
+            success_msg += f"<br>{duplicated} duplicate seats skipped"
+
+        # Display join codes for each block
+        if join_codes_by_block:
+            success_msg += "<br><br><strong>Join Codes by Period:</strong><br>"
+            for period, code in sorted(join_codes_by_block.items()):
+                success_msg += f"Period {period}: <strong>{code}</strong><br>"
+            success_msg += "<br>Share these codes with your students so they can claim their accounts."
+
+        flash(success_msg, "admin_success")
     except Exception as e:
         db.session.rollback()
         flash(f"Upload failed: {e}", "admin_error")
@@ -2694,7 +2619,7 @@ def export_students():
     ])
 
     # Write student data
-    students = Student.query.order_by(Student.first_name, Student.last_initial).all()
+    students = _scoped_students().order_by(Student.first_name, Student.last_initial).all()
     for student in students:
         writer.writerow([
             student.first_name,
@@ -2732,7 +2657,7 @@ def enforce_daily_limits():
     import pytz
     from payroll import get_daily_limit_seconds
 
-    students = Student.query.all()
+    students = _scoped_students().all()
     tapped_out = []
     checked = 0
     errors = []
@@ -2821,7 +2746,7 @@ def tap_out_students():
         # If tap_out_all is true, get all students with this period who are currently active
         if tap_out_all:
             # Find all students in this block
-            students = Student.query.all()
+            students = _scoped_students().all()
             for student in students:
                 student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
                 if period not in student_blocks:
@@ -2840,7 +2765,7 @@ def tap_out_students():
 
         # Process each student ID
         for student_id in student_ids:
-            student = Student.query.get(student_id)
+            student = _get_student_or_404(student_id)
 
             if not student:
                 errors.append(f"Student ID {student_id} not found")
@@ -2959,7 +2884,7 @@ def banking():
             matching_student_ids.append(int(student_q))
 
         # Handle if the query is a name
-        all_students = Student.query.all()
+        all_students = _scoped_students().all()
         for s in all_students:
             # The full_name property will decrypt the first_name
             if student_q.lower() in s.full_name.lower():
@@ -3013,7 +2938,7 @@ def banking():
         })
 
     # Get all students for stats
-    students = Student.query.all()
+    students = _scoped_students().all()
 
     # Calculate banking stats
     total_checking = sum(s.checking_balance for s in students)
@@ -3100,67 +3025,3 @@ def banking_settings_update():
                 flash(f'{field}: {error}', 'error')
 
     return redirect(url_for('admin.banking'))
-
-
-# -------------------- HELP AND SUPPORT --------------------
-
-@admin_bp.route('/help-support', methods=['GET', 'POST'])
-@admin_required
-def help_support():
-    """Help and Support page for teachers/admins with bug reporting and suggestions."""
-    admin_id = session.get('admin_id')
-    admin = Admin.query.get(admin_id)
-
-    if request.method == 'POST':
-        # Handle bug report submission
-        report_type = request.form.get('report_type', 'bug')
-        error_code = request.form.get('error_code', '')
-        title = request.form.get('title', '').strip()
-        description = request.form.get('description', '').strip()
-        steps_to_reproduce = request.form.get('steps_to_reproduce', '').strip()
-        expected_behavior = request.form.get('expected_behavior', '').strip()
-        page_url = request.form.get('page_url', '').strip()
-
-        # Validation
-        if not title or not description:
-            flash("Please provide both a title and description for your report.", "error")
-            return redirect(url_for('admin.help_support'))
-
-        # Generate anonymous code derived from a secret to prevent reversal by admins
-        anonymous_code = _generate_anonymous_code(f"admin:{admin.id}")
-
-        # Create report
-        try:
-            report = UserReport(
-                anonymous_code=anonymous_code,
-                user_type='teacher',
-                report_type=report_type,
-                error_code=error_code if error_code else None,
-                title=title,
-                description=description,
-                steps_to_reproduce=steps_to_reproduce if steps_to_reproduce else None,
-                expected_behavior=expected_behavior if expected_behavior else None,
-                page_url=page_url if page_url else None,
-                ip_address=request.remote_addr,
-                user_agent=request.headers.get('User-Agent'),
-                _student_id=None,  # No student ID for teachers
-                status='new'
-            )
-            db.session.add(report)
-            db.session.commit()
-
-            flash("Thank you for your report! It will be reviewed by the system administrator.", "success")
-            return redirect(url_for('admin.help_support'))
-        except Exception as e:
-            db.session.rollback()
-            current_app.logger.error(f"Error submitting report: {str(e)}")
-            flash("An error occurred while submitting your report. Please try again.", "error")
-            return redirect(url_for('admin.help_support'))
-
-    # Get teacher's previous reports (last 10) - use anonymous code to find them
-    anonymous_code = _generate_anonymous_code(f"admin:{admin.id}")
-    my_reports = UserReport.query.filter_by(anonymous_code=anonymous_code).order_by(UserReport.submitted_at.desc()).limit(10).all()
-
-    return render_template('admin_help_support.html',
-                         current_page='help',
-                         my_reports=my_reports)

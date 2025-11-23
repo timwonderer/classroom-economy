@@ -42,6 +42,42 @@ from attendance import get_all_block_statuses
 student_bp = Blueprint('student', __name__, url_prefix='/student')
 
 
+# -------------------- PERIOD SELECTION HELPERS --------------------
+
+def get_current_teacher_id():
+    """Get the currently selected teacher ID from session.
+
+    Returns the teacher_id for the period/class the student is currently viewing.
+    If no period is selected, defaults to the student's primary teacher.
+    """
+    student = get_logged_in_student()
+    if not student:
+        return None
+
+    # Check if a period is already selected in session
+    current_teacher_id = session.get('current_teacher_id')
+
+    # Get all linked teachers
+    all_teachers = student.get_all_teachers()
+    if not all_teachers:
+        return None
+
+    # If no period selected, default to first linked teacher
+    if not current_teacher_id:
+        current_teacher_id = all_teachers[0].id
+        # Store in session for future requests
+        session['current_teacher_id'] = current_teacher_id
+
+    # Verify student still has access to this teacher
+    teacher_ids = [t.id for t in all_teachers]
+    if current_teacher_id not in teacher_ids:
+        # Teacher no longer accessible, reset to first available
+        current_teacher_id = all_teachers[0].id
+        session['current_teacher_id'] = current_teacher_id
+
+    return current_teacher_id
+
+
 def _generate_anonymous_code(user_identifier: str) -> str:
     """Return an HMAC-based anonymous code for the given user identifier."""
 
@@ -57,38 +93,154 @@ def _generate_anonymous_code(user_identifier: str) -> str:
 
 @student_bp.route('/claim-account', methods=['GET', 'POST'])
 def claim_account():
-    """PAGE 1: Claim Account - Verify identity to begin setup."""
+    """
+    PAGE 1: Claim Account - Verify identity using join code to begin setup.
+
+    New join code-based flow:
+    1. Student enters join code (identifies their teacher-period)
+    2. Student enters name code + DOB sum
+    3. System finds matching unclaimed seat in TeacherBlock
+    4. Creates Student record (or finds existing if student has other classes)
+    5. Links TeacherBlock seat to Student
+    6. Creates StudentTeacher link
+    """
+    from app.models import TeacherBlock, StudentTeacher
+    from app.utils.join_code import format_join_code
+
     form = StudentClaimAccountForm()
 
     if form.validate_on_submit():
-        first_half = form.first_half.data.strip().lower()
-        second_half = form.second_half.data.strip()
+        join_code = format_join_code(form.join_code.data)
+        first_initial = form.first_initial.data.strip().upper()
+        last_name = form.last_name.data.strip()
+        dob_sum_str = form.dob_sum.data.strip()
 
-        if not second_half.isdigit():
+        if not dob_sum_str.isdigit():
             flash("DOB sum must be a number.", "claim")
             return redirect(url_for('student.claim_account'))
 
-        for s in Student.query.filter_by(has_completed_setup=False).all():
-            # Try the name code as entered (supports manual entry)
-            name_code = first_half
+        # Find all unclaimed seats with this join code
+        unclaimed_seats = TeacherBlock.query.filter_by(
+            join_code=join_code,
+            is_claimed=False
+        ).all()
 
-            # Check if the hash matches
-            hash_matches = s.first_half_hash == hash_hmac(name_code.encode(), s.salt)
-            dob_matches = (
-                s.second_half_hash == hash_hmac(second_half.encode(), s.salt)
-                and str(s.dob_sum) == second_half
+        if not unclaimed_seats:
+            flash("Invalid join code or all seats already claimed. Check with your teacher.", "claim")
+            return redirect(url_for('student.claim_account'))
+
+        # Try to find a matching seat
+        from app.utils.name_utils import verify_last_name_parts
+
+        matched_seat = None
+        for seat in unclaimed_seats:
+            # Check credential: CONCAT(first_initial, DOB_sum)
+            credential = f"{first_initial}{dob_sum_str}"
+            credential_matches = seat.first_half_hash == hash_hmac(credential.encode(), seat.salt)
+
+            # Check last name with fuzzy matching
+            last_name_matches = verify_last_name_parts(
+                last_name,
+                seat.last_name_hash_by_part,
+                seat.salt
             )
 
-            if hash_matches and dob_matches:
-                session['claimed_student_id'] = s.id
+            if credential_matches and last_name_matches and str(seat.dob_sum) == dob_sum_str:
+                matched_seat = seat
+                break
+
+        if not matched_seat:
+            flash("No matching account found. Please check your join code and credentials.", "claim")
+            return redirect(url_for('student.claim_account'))
+
+        # Check if this student already has an account (claiming from another teacher)
+        # Look for existing students with same credentials across all teachers
+        existing_student = None
+        all_students = Student.query.filter_by(
+            last_initial=first_initial,
+            dob_sum=int(dob_sum_str)
+        ).all()
+
+        for student in all_students:
+            if student.first_name == matched_seat.first_name:
+                # Verify credential matches
+                credential = f"{first_initial}{dob_sum_str}"
+                if student.first_half_hash == hash_hmac(credential.encode(), student.salt):
+                    existing_student = student
+                    break
+
+        if existing_student:
+            # Student already exists - link this seat to existing student
+            matched_seat.student_id = existing_student.id
+            matched_seat.is_claimed = True
+            matched_seat.claimed_at = datetime.utcnow()
+
+            # Create StudentTeacher link
+            existing_link = StudentTeacher.query.filter_by(
+                student_id=existing_student.id,
+                admin_id=matched_seat.teacher_id
+            ).first()
+
+            if not existing_link:
+                link = StudentTeacher(
+                    student_id=existing_student.id,
+                    admin_id=matched_seat.teacher_id
+                )
+                db.session.add(link)
+
+            db.session.commit()
+
+            # Student already completed setup in another class, redirect to login
+            if existing_student.has_completed_setup:
+                flash("This seat has been linked to your existing account. Please log in.", "claim")
+                return redirect(url_for('student.login'))
+            else:
+                # Continue setup process
+                session['claimed_student_id'] = existing_student.id
                 session.pop('generated_username', None)
                 session.pop('theme_prompt', None)
                 session.pop('theme_slug', None)
-
                 return redirect(url_for('student.create_username'))
 
-        flash("No matching account found. Please check your info.", "claim")
-        return redirect(url_for('student.claim_account'))
+        # New student - create Student record
+        # Generate second_half_hash (DOB hash) for backward compatibility
+        second_half_hash = hash_hmac(dob_sum_str.encode(), matched_seat.salt)
+
+        new_student = Student(
+            first_name=matched_seat.first_name,
+            last_initial=matched_seat.last_initial,
+            block=matched_seat.block,
+            salt=matched_seat.salt,
+            first_half_hash=matched_seat.first_half_hash,
+            second_half_hash=second_half_hash,
+            dob_sum=matched_seat.dob_sum,
+            last_name_hash_by_part=matched_seat.last_name_hash_by_part,
+            has_completed_setup=False,
+            teacher_id=None,  # DEPRECATED - no longer used
+        )
+        db.session.add(new_student)
+        db.session.flush()  # Get student ID
+
+        # Link seat to student
+        matched_seat.student_id = new_student.id
+        matched_seat.is_claimed = True
+        matched_seat.claimed_at = datetime.utcnow()
+
+        # Create StudentTeacher link
+        link = StudentTeacher(
+            student_id=new_student.id,
+            admin_id=matched_seat.teacher_id
+        )
+        db.session.add(link)
+        db.session.commit()
+
+        # Start setup flow
+        session['claimed_student_id'] = new_student.id
+        session.pop('generated_username', None)
+        session.pop('theme_prompt', None)
+        session.pop('theme_slug', None)
+
+        return redirect(url_for('student.create_username'))
 
     return render_template('student_account_claim.html', form=form)
 
@@ -1340,6 +1492,30 @@ def logout():
     session.pop('student_id', None)
     flash("You've been logged out.")
     return redirect(url_for('student.login'))
+
+
+@student_bp.route('/switch-period/<int:teacher_id>', methods=['POST'])
+@login_required
+def switch_period(teacher_id):
+    """Switch to a different period/teacher's class economy."""
+    student = get_logged_in_student()
+
+    # Verify student has access to this teacher
+    teacher_ids = [t.id for t in student.get_all_teachers()]
+    if teacher_id not in teacher_ids:
+        flash("You don't have access to that class.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    # Update session with new teacher
+    session['current_teacher_id'] = teacher_id
+
+    # Get teacher name for flash message
+    from app.models import Admin
+    teacher = Admin.query.get(teacher_id)
+    if teacher:
+        flash(f"Switched to {teacher.username}'s class")
+
+    return redirect(url_for('student.dashboard'))
 
 
 # -------------------- SETUP COMPLETE --------------------

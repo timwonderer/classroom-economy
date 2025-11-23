@@ -8,6 +8,7 @@ import urllib.parse
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 
+import sqlalchemy as sa
 from flask import session, flash, redirect, url_for, request, current_app
 
 
@@ -145,3 +146,40 @@ def get_current_admin():
         return None
     from app.models import Admin  # Imported lazily to avoid circular import
     return Admin.query.get(admin_id)
+
+
+def get_admin_student_query(include_unassigned=True):
+    """Return a Student query scoped to the current admin's ownership.
+
+    System admins are allowed to see all students. Regular admins only see
+    students they own, with optional access to unassigned students during
+    migration.
+    """
+    from app.models import Student, StudentTeacher  # Imported lazily to avoid circular import
+
+    if session.get("is_system_admin"):
+        return Student.query
+
+    admin = get_current_admin()
+    if not admin:
+        return Student.query.filter(sa.text("0=1"))
+
+    shared_student_ids = (
+        StudentTeacher.query.with_entities(StudentTeacher.student_id)
+        .filter(StudentTeacher.admin_id == admin.id)
+        .subquery()
+    )
+
+    filters = [
+        Student.teacher_id == admin.id,
+        Student.id.in_(shared_student_ids),
+    ]
+    if include_unassigned:
+        filters.append(Student.teacher_id.is_(None))
+    return Student.query.filter(sa.or_(*filters))
+
+
+def get_student_for_admin(student_id, include_unassigned=True):
+    """Return a student the current admin can access, or None."""
+    query = get_admin_student_query(include_unassigned=include_unassigned)
+    return query.filter_by(id=student_id).first()
