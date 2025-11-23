@@ -17,22 +17,22 @@ depends_on = None
 
 
 def upgrade():
-    # Add teacher_id column to transactions table
-    op.add_column('transactions',
+    # Add teacher_id column to transaction table (singular)
+    op.add_column('transaction',
         sa.Column('teacher_id', sa.Integer(), nullable=True))
 
     # Add foreign key constraint
     op.create_foreign_key(
-        'fk_transactions_teacher_id_admins',
-        'transactions', 'admins',
+        'fk_transaction_teacher_id_admins',
+        'transaction', 'admins',
         ['teacher_id'], ['id'],
         ondelete='SET NULL'
     )
 
     # Add index for performance
     op.create_index(
-        'ix_transactions_teacher_id',
-        'transactions',
+        'ix_transaction_teacher_id',
+        'transaction',
         ['teacher_id']
     )
 
