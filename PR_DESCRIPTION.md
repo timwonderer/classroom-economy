@@ -71,9 +71,38 @@ Teachers can now add marketing badges to insurance policies through the admin pa
 - `forms.py`: Add SelectField with 17 badge choices
 - `app/routes/admin.py`: Handle marketing_badge in create/edit
 - `templates/student_insurance_marketplace.html`: Display badges with colors and icons
-- `migrations/versions/a2b3c4d5e6f7_add_marketing_badge_to_insurance.py`: Migration file
+- `migrations/versions/b3c4d5e6f7g8_add_marketing_badge_to_insurance.py`: Migration file (unique revision ID)
 
-### 4. Dashboard Improvements
+### 4. Tabbed Insurance Interface
+
+**Problem:** Insurance page was crowded with everything on one long scrolling page.
+
+**Solution:** Reorganized into 3 clean tabs:
+
+**Tab 1: My Policies**
+- Shows active insurance policies with quick facts dashboard
+- 4 stat boxes: Premium, Payment Status, Wait Days, Max Claims
+- Material Symbol icons for all status indicators
+- Larger, clearer action buttons (File Claim, View Details, Cancel)
+- Empty state with "Browse Available Plans" button
+
+**Tab 2: Available Plans** (Two-column layout)
+- Left column: Compact list showing name + price with badge icons
+- Right column: Full policy details for selected plan
+- Interactive JavaScript for policy selection
+- First policy auto-selected on page load
+- Better information hierarchy for comparing plans
+
+**Tab 3: Claims History**
+- Moved from bottom of page to dedicated tab
+- Material Symbol icons for claim statuses (pending, approved, rejected, paid)
+- Empty state when no claims filed
+- Cleaner table layout with hover effects
+
+**Files Changed:**
+- `templates/student_insurance_marketplace.html`: Complete redesign with tabs + JavaScript
+
+### 5. Dashboard Improvements
 
 **Replace Item Status Card:**
 The "Item Status" card (showing Pending/Redeemed/Expired counts) was removed because it showed all zeros and wasted valuable dashboard space.
