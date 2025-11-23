@@ -7,8 +7,10 @@ from app import create_app
 app = create_app()
 with app.app_context():
     try:
-        result = db.engine.execute("SELECT version_num FROM alembic_version;")
-        version = list(result)[0][0]
+        # Use SQLAlchemy 2.0 compatible syntax
+        from sqlalchemy import text
+        result = db.session.execute(text("SELECT version_num FROM alembic_version;"))
+        version = result.scalar()
         print(f"Current alembic migration: {version}")
 
         # Also show what migrations exist
@@ -22,3 +24,4 @@ with app.app_context():
 
     except Exception as e:
         print(f"Error: {e}")
+
