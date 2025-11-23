@@ -238,17 +238,25 @@
         </div>
 
         <!-- Rent Card (if enabled) -->
-        {% if student.teacher.is_rent_enabled %}
+        {% if global_rent_enabled and student.is_rent_enabled %}
         <div class="card mb-2">
             <div class="card-body p-3">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
                         <h6 class="mb-1">Rent</h6>
                         <div>
-                            {% if student.rent_paid %}
-                                <span class="badge bg-success">Paid</span>
+                            {% if rent_status and rent_status.is_active %}
+                                {% if rent_status.is_paid %}
+                                    <span class="badge bg-success">Paid</span>
+                                {% elif rent_status.is_preview %}
+                                    <span class="badge bg-warning text-dark">Preview</span>
+                                {% else %}
+                                    <span class="badge bg-danger">Due</span>
+                                {% endif %}
+                            {% elif rent_status %}
+                                <span class="badge bg-secondary">Not Due</span>
                             {% else %}
-                                <span class="badge bg-danger">Due</span>
+                                <span class="badge bg-secondary">Unavailable</span>
                             {% endif %}
                         </div>
                     </div>

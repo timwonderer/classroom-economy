@@ -228,6 +228,68 @@ def dashboard():
 
     insurance_paid = bool(student.insurance_last_paid)
 
+    rent_status = None
+    rent_settings = RentSettings.query.first()
+    if rent_settings and rent_settings.is_enabled and student.is_rent_enabled:
+        now = datetime.now()
+        due_date, grace_end_date = _calculate_rent_deadlines(rent_settings, now)
+
+        preview_start_date = None
+        if rent_settings.bill_preview_enabled and rent_settings.bill_preview_days:
+            preview_start_date = due_date - timedelta(days=rent_settings.bill_preview_days)
+
+        rent_is_active = True
+        is_preview_period = False
+        if rent_settings.first_rent_due_date and now < rent_settings.first_rent_due_date:
+            if preview_start_date and now >= preview_start_date:
+                rent_is_active = True
+                is_preview_period = True
+            else:
+                rent_is_active = False
+        elif preview_start_date and preview_start_date <= now < due_date:
+            is_preview_period = True
+
+        student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+        current_month = now.month
+        current_year = now.year
+
+        all_paid = True
+        for period in student_blocks:
+            all_payments_for_period = RentPayment.query.filter_by(
+                student_id=student.id,
+                period=period,
+                period_month=current_month,
+                period_year=current_year
+            ).all()
+
+            payments = []
+            for payment in all_payments_for_period:
+                txn = Transaction.query.filter(
+                    Transaction.student_id == student.id,
+                    Transaction.type == 'Rent Payment',
+                    Transaction.timestamp >= payment.payment_date - timedelta(seconds=5),
+                    Transaction.timestamp <= payment.payment_date + timedelta(seconds=5),
+                    Transaction.amount == -payment.amount_paid
+                ).first()
+
+                if txn and not txn.is_void:
+                    payments.append(payment)
+
+            total_paid = sum(p.amount_paid for p in payments) if payments else 0.0
+            late_fee = rent_settings.late_fee if rent_is_active and now > grace_end_date else 0.0
+            total_due = rent_settings.rent_amount + late_fee if rent_is_active else 0.0
+            is_paid = total_paid >= total_due if rent_is_active else False
+
+            if rent_is_active and not is_paid:
+                all_paid = False
+                break
+
+        rent_status = {
+            'is_active': rent_is_active,
+            'is_paid': all_paid if rent_is_active else False,
+            'is_preview': is_preview_period
+        }
+
     tz = pytz.timezone('America/Los_Angeles')
     local_now = datetime.now(tz)
     # --- DASHBOARD DEBUG LOGGING ---
@@ -260,6 +322,7 @@ def dashboard():
         forecast_interest=forecast_interest,
         recent_deposit=recent_deposit,
         insurance_paid=insurance_paid,
+        rent_status=rent_status,
         unpaid_seconds_per_block=unpaid_seconds_per_block,
         projected_pay_per_block=projected_pay_per_block,
         student_name=student_name,
