@@ -1459,16 +1459,20 @@ def delete_insurance_policy(policy_id):
 
     force_delete = request.form.get('force_delete') == 'true'
 
-    # Check for active enrollments
-    active_enrollments = StudentInsurance.query.filter_by(
-        policy_id=policy_id,
-        status='active'
+    student_ids_subq = _student_scope_subquery()
+
+    # Check for active enrollments within scope
+    active_enrollments = StudentInsurance.query.filter(
+        StudentInsurance.policy_id == policy_id,
+        StudentInsurance.status == 'active',
+        StudentInsurance.student_id.in_(student_ids_subq),
     ).count()
 
-    # Check for pending claims
-    pending_claims = InsuranceClaim.query.filter_by(
-        policy_id=policy_id,
-        status='pending'
+    # Check for pending claims within scope
+    pending_claims = InsuranceClaim.query.filter(
+        InsuranceClaim.policy_id == policy_id,
+        InsuranceClaim.status == 'pending',
+        InsuranceClaim.student_id.in_(student_ids_subq),
     ).count()
 
     if not force_delete and (active_enrollments > 0 or pending_claims > 0):
@@ -1478,17 +1482,24 @@ def delete_insurance_policy(policy_id):
     try:
         # Cancel active enrollments if force delete
         if force_delete and active_enrollments > 0:
-            cancelled_count = StudentInsurance.query.filter_by(
-                policy_id=policy_id,
-                status='active'
+            cancelled_count = StudentInsurance.query.filter(
+                StudentInsurance.policy_id == policy_id,
+                StudentInsurance.status == 'active',
+                StudentInsurance.student_id.in_(student_ids_subq),
             ).update({'status': 'cancelled'}, synchronize_session=False)
             flash(f"Cancelled {cancelled_count} active enrollments.", "info")
 
         # Delete all claims for this policy
-        claims_deleted = InsuranceClaim.query.filter_by(policy_id=policy_id).delete()
+        claims_deleted = InsuranceClaim.query.filter(
+            InsuranceClaim.policy_id == policy_id,
+            InsuranceClaim.student_id.in_(student_ids_subq),
+        ).delete(synchronize_session=False)
 
         # Delete all enrollments for this policy
-        enrollments_deleted = StudentInsurance.query.filter_by(policy_id=policy_id).delete()
+        enrollments_deleted = StudentInsurance.query.filter(
+            StudentInsurance.policy_id == policy_id,
+            StudentInsurance.student_id.in_(student_ids_subq),
+        ).delete(synchronize_session=False)
 
         # Delete the policy itself
         db.session.delete(policy)

@@ -727,6 +727,7 @@ if (massRemoveModal) {
   document.getElementById('removeSelected').addEventListener('change', function() {
     if (this.checked) {
       document.getElementById('studentIdsInput').style.display = 'block';
+      document.getElementById('studentIdsHidden').value = '';
     }
   });
 
