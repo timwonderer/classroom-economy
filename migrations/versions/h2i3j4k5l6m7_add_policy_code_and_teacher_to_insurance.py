@@ -63,6 +63,37 @@ def upgrade():
         )
         connection.commit()
 
+    # Backfill teacher_id for existing policies using enrolled students' primary teacher
+    # Choose the most frequent teacher_id among students attached to each policy
+    teacher_counts = connection.execute(
+        sa.text(
+            """
+            SELECT si.policy_id, s.teacher_id, COUNT(*) AS cnt
+            FROM student_insurance si
+            JOIN students s ON s.id = si.student_id
+            WHERE s.teacher_id IS NOT NULL
+            GROUP BY si.policy_id, s.teacher_id
+            """
+        )
+    ).fetchall()
+
+    teacher_by_policy = {}
+    for policy_id, teacher_id, count in teacher_counts:
+        current = teacher_by_policy.get(policy_id)
+        if current is None or count > current[1]:
+            teacher_by_policy[policy_id] = (teacher_id, count)
+
+    for policy_id, (teacher_id, _) in teacher_by_policy.items():
+        connection.execute(
+            sa.text(
+                "UPDATE insurance_policies SET teacher_id = :teacher_id "
+                "WHERE id = :policy_id AND teacher_id IS NULL"
+            ),
+            {"teacher_id": teacher_id, "policy_id": policy_id},
+        )
+
+    connection.commit()
+
     # Now make policy_code non-nullable and unique
     op.alter_column('insurance_policies', 'policy_code', nullable=False)
     op.create_unique_constraint('uq_insurance_policies_policy_code', 'insurance_policies', ['policy_code'])
