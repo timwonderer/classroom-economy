@@ -19,6 +19,20 @@ Guide for identifying and safely removing duplicate student records that may hav
 - Safe migration of data from duplicates to primary records
 - Preview mode to see what will happen before making changes
 
+### [Demo Session Lifecycle and Cleanup](DEMO_SESSIONS.md)
+
+How to monitor and clean demo student sessions that power the admin “view as student” experience.
+
+**Use this when:**
+- You need to verify demo sessions are expiring after the 10-minute limit
+- An expired demo student remains visible in the admin UI
+- The background cleanup job is paused or failing
+
+**Key features:**
+- Documents automatic cleanup paths (logout, scheduled job, route guard)
+- Provides a manual cleanup snippet using `cleanup_demo_student_data`
+- Notes the foreign-key-safe deletion order and required transaction commit
+
 ## Adding New Operational Guides
 
 When creating new operational documentation:

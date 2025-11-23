@@ -1,5 +1,7 @@
 """Utility helpers for demo student session lifecycle management."""
 
+from datetime import datetime, timezone
+
 from app.extensions import db
 from app.models import (
     DemoStudent,
@@ -31,6 +33,10 @@ def cleanup_demo_student_data(demo_session: DemoStudent, delete_session_record: 
     """
 
     student_id = demo_session.student_id
+
+    # Mark the session inactive before deleting dependents (FK-safe order below)
+    demo_session.is_active = False
+    demo_session.ended_at = demo_session.ended_at or datetime.now(timezone.utc)
 
     # Insurance-related artifacts
     InsuranceClaim.query.filter_by(student_id=student_id).delete()

@@ -1629,7 +1629,7 @@ def demo_login(session_id):
         now = datetime.now(timezone.utc)
         if now > demo_session.expires_at:
             # Mark as inactive and cleanup
-            cleanup_demo_student_records(demo_session)
+            cleanup_demo_student_data(demo_session)
             db.session.commit()
             flash("Demo session has expired (10 minute limit).", "error")
             return redirect(url_for('admin.dashboard'))

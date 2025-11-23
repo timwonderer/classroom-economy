@@ -51,13 +51,13 @@ def login_required(f):
 
                     try:
                         if demo_session_id:
-                            from app.demo_cleanup import cleanup_demo_student_records
                             from app.extensions import db
                             from app.models import DemoStudent
+                            from app.utils.demo_sessions import cleanup_demo_student_data
 
                             demo_session = DemoStudent.query.filter_by(session_id=demo_session_id).first()
                             if demo_session:
-                                cleanup_demo_student_records(demo_session)
+                                cleanup_demo_student_data(demo_session)
                                 db.session.commit()
                             else:
                                 db.session.rollback()
@@ -95,21 +95,36 @@ def login_required(f):
                 now = datetime.now(timezone.utc)
 
                 if not demo_session or not demo_session.is_active or now > demo_session.expires_at:
-                    if demo_session:
-                        demo_session.is_active = False
-                        demo_session.ended_at = now
-                    session.pop('student_id', None)
-                    session.pop('login_time', None)
-                    session.pop('last_activity', None)
-                    session.pop('is_demo', None)
-                    session.pop('demo_session_id', None)
-                    session['view_as_student'] = False
+                    try:
+                        if demo_session:
+                            from app.extensions import db  # Imported lazily to avoid circular import
+                            from app.utils.demo_sessions import cleanup_demo_student_data
 
-                    from app.extensions import db  # Imported lazily to avoid circular import
-                    db.session.commit()
+                            cleanup_demo_student_data(demo_session)
+                            db.session.commit()
 
-                    flash("Demo session expired. Start a new demo to continue.")
-                    return redirect(url_for('admin.dashboard'))
+                        session.pop('student_id', None)
+                        session.pop('login_time', None)
+                        session.pop('last_activity', None)
+                        session.pop('is_demo', None)
+                        session.pop('demo_session_id', None)
+                        session['view_as_student'] = False
+
+                        flash("Demo session expired. Start a new demo to continue.")
+                        return redirect(url_for('admin.dashboard'))
+                    except Exception:
+                        current_app.logger.exception(
+                            "Failed to clean up expired demo session %s during auth check",
+                            demo_session_id,
+                        )
+                        session.pop('student_id', None)
+                        session.pop('login_time', None)
+                        session.pop('last_activity', None)
+                        session.pop('is_demo', None)
+                        session.pop('demo_session_id', None)
+                        session['view_as_student'] = False
+                        flash("Demo session expired. Start a new demo to continue.")
+                        return redirect(url_for('admin.dashboard'))
 
             # Update admin's last activity
             session['last_activity'] = datetime.now(timezone.utc).isoformat()

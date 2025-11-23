@@ -416,9 +416,15 @@ Sessions are stored server-side with the following keys:
 
 ### Session Timeouts
 
-- Student sessions: 60 minutes of inactivity
-- Admin sessions: 60 minutes of inactivity
-- System admin sessions: 60 minutes of inactivity
+- Student and demo sessions: 10-minute absolute timeout (`SESSION_TIMEOUT_MINUTES`) enforced in `app.auth.login_required`, including when admins are viewing as students
+- Admin sessions: 10-minute inactivity window tracked via `last_activity` in `app.auth.admin_required`
+- System admin sessions: 10-minute inactivity window tracked via `last_activity` in `app.auth.system_admin_required`
+
+### Demo Session Lifecycle (Admin “View as Student”)
+
+- Demo sessions are short-lived (10 minutes) and tagged in the session (`is_demo`, `demo_session_id`) so `login_required` can expire and clear them.
+- Cleanup is centralized in `app.utils.demo_sessions.cleanup_demo_student_data`, which marks the session inactive, timestamps `ended_at`, and deletes rent, insurance, hall pass, commerce, and association rows before removing the demo student.
+- Expired sessions are removed via two automated paths: `student.logout` and the `cleanup_expired_demo_sessions_job` scheduler, both of which call the same helper to avoid FK issues and orphaned demo data.
 
 ---
 
