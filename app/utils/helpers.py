@@ -9,7 +9,8 @@ This module provides reusable helper functions for:
 
 from datetime import timezone
 from urllib.parse import urlparse, urljoin
-from flask import request, Markup
+from flask import request
+from markupsafe import Markup
 import markdown
 import bleach
 
