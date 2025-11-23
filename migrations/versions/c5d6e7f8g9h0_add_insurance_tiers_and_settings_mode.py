@@ -1,7 +1,7 @@
 """add insurance tiers and settings mode
 
 Revision ID: c5d6e7f8g9h0
-Revises: 612a205
+Revises: z1a2b3c4d5e6
 Create Date: 2025-11-23 12:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'c5d6e7f8g9h0'
-down_revision = '612a205'
+down_revision = 'z1a2b3c4d5e6'
 branch_labels = None
 depends_on = None
 

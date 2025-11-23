@@ -181,9 +181,9 @@
             <div class="card-body">
         <div class="row">
             <!-- Left Column: Policy List -->
-            <div class="col-md-4">
-                <div class="list-group" id="policyList">
-                    {% for policy in available_policies %}
+                <div class="col-md-4">
+                    <div class="list-group" id="policyList">
+                        {% for policy in tier_data.policies %}
                     {% set badge_config = {
                         'best_value': {'color': 'warning', 'icon': 'grade'},
                         'most_popular': {'color': 'primary', 'icon': 'trending_up'},
@@ -218,8 +218,8 @@
             </div>
 
             <!-- Right Column: Policy Details -->
-            <div class="col-md-8">
-                {% for policy in available_policies %}
+                <div class="col-md-8">
+                    {% for policy in tier_data.policies %}
                 {% set badge_config = {
                     'best_value': {'color': 'warning', 'text': 'Best Value!', 'icon': 'grade', 'border': True},
                     'most_popular': {'color': 'primary', 'text': 'Most Popular', 'icon': 'trending_up', 'border': True},
