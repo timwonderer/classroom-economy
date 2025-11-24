@@ -14,8 +14,8 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, jsonify, current_app
-from sqlalchemy import or_, func
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import or_, func, select
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
 import pytz
 
@@ -969,9 +969,33 @@ def file_claim(policy_id):
 
     policy = enrollment.policy
     form = InsuranceClaimForm()
+    if policy.claim_type == 'transaction_monetary' and not form.incident_date.data:
+        form.incident_date.data = datetime.utcnow().date()
 
     # Validation errors
     errors = []
+
+    def _get_period_bounds():
+        now = datetime.utcnow()
+        if policy.max_claims_period == 'year':
+            return (
+                now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0),
+                now.replace(month=12, day=31, hour=23, minute=59, second=59),
+            )
+        if policy.max_claims_period == 'semester':
+            if now.month <= 6:
+                return (
+                    now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0),
+                    now.replace(month=6, day=30, hour=23, minute=59, second=59),
+                )
+            return (
+                now.replace(month=7, day=1, hour=0, minute=0, second=0, microsecond=0),
+                now.replace(month=12, day=31, hour=23, minute=59, second=59),
+            )
+        period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        next_month = period_start.replace(day=28) + timedelta(days=4)
+        period_end = next_month.replace(day=1) - timedelta(seconds=1)
+        return period_start, period_end
 
     # Check if coverage has started
     if not enrollment.coverage_start_date or enrollment.coverage_start_date > datetime.utcnow():
@@ -981,52 +1005,151 @@ def file_claim(policy_id):
     if not enrollment.payment_current:
         errors.append("Your premium payments are not current. Please contact the teacher.")
 
-    # Check max claims
+    period_start, period_end = _get_period_bounds()
+
+    # Check max claims per period
     if policy.max_claims_count:
         claims_count = InsuranceClaim.query.filter(
             InsuranceClaim.student_insurance_id == enrollment.id,
-            InsuranceClaim.status.in_(['approved', 'paid'])
+            InsuranceClaim.status.in_(['pending', 'approved', 'paid']),
+            InsuranceClaim.filed_date >= period_start,
+            InsuranceClaim.filed_date <= period_end,
         ).count()
 
         if claims_count >= policy.max_claims_count:
             errors.append(f"You have reached the maximum number of claims ({policy.max_claims_count}) for this {policy.max_claims_period}.")
 
+    period_payouts = None
+    remaining_period_cap = None
+    if policy.max_payout_per_period:
+        period_payouts = db.session.query(func.sum(InsuranceClaim.approved_amount)).filter(
+            InsuranceClaim.student_insurance_id == enrollment.id,
+            InsuranceClaim.status.in_(['approved', 'paid']),
+            InsuranceClaim.processed_date >= period_start,
+            InsuranceClaim.processed_date <= period_end,
+            InsuranceClaim.approved_amount.isnot(None),
+        ).scalar() or 0.0
+        remaining_period_cap = max(policy.max_payout_per_period - period_payouts, 0)
+
+    eligible_transactions = []
+    if policy.claim_type == 'transaction_monetary':
+        claimed_tx_subq = db.session.query(InsuranceClaim.transaction_id).filter(
+            InsuranceClaim.transaction_id.isnot(None)
+        )
+        cutoff_date = datetime.utcnow() - timedelta(days=policy.claim_time_limit_days)
+        tx_query = (
+            Transaction.query
+            .filter(Transaction.student_id == student.id)
+            .filter(Transaction.is_void == False)
+            .filter(Transaction.timestamp >= cutoff_date)
+            .filter(~Transaction.id.in_(claimed_tx_subq))
+            .filter(Transaction.amount < 0)
+        )
+        if policy.teacher_id:
+            tx_query = tx_query.filter(Transaction.teacher_id == policy.teacher_id)
+        if enrollment.coverage_start_date:
+            tx_query = tx_query.filter(Transaction.timestamp >= enrollment.coverage_start_date)
+
+        eligible_transactions = tx_query.order_by(Transaction.timestamp.desc()).all()
+        form.transaction_id.choices = [
+            (
+                tx.id,
+                f"{tx.timestamp.strftime('%Y-%m-%d')} — {tx.description or 'No description'} (${abs(tx.amount):.2f})",
+            )
+            for tx in eligible_transactions
+        ]
+    else:
+        form.transaction_id.choices = []
+
     if request.method == 'POST' and form.validate_on_submit():
-        # Additional validation for monetary vs non-monetary
-        if policy.is_monetary:
-            if not form.claim_amount.data:
-                flash("Claim amount is required for monetary policies.", "danger")
+        selected_transaction = None
+        claim_amount_value = None
+        claim_item_value = None
+        incident_date_value = None
+        transaction_id_value = None
+
+        if policy.claim_type == 'transaction_monetary':
+            if not form.transaction_id.data:
+                flash("You must select a transaction for this claim type.", "danger")
                 return redirect(url_for('student.file_claim', policy_id=policy_id))
 
-            # Check max claim amount
-            if policy.max_claim_amount and form.claim_amount.data > policy.max_claim_amount:
-                flash(f"Claim amount cannot exceed ${policy.max_claim_amount:.2f}.", "danger")
+            selected_transaction = next((tx for tx in eligible_transactions if tx.id == form.transaction_id.data), None)
+            if not selected_transaction:
+                flash("Selected transaction is not eligible for claims.", "danger")
                 return redirect(url_for('student.file_claim', policy_id=policy_id))
+
+            bind = db.session.get_bind()
+            use_row_locking = bind and bind.dialect.name != 'sqlite'
+            if use_row_locking:
+                transaction_already_claimed = db.session.execute(
+                    select(InsuranceClaim)
+                    .where(InsuranceClaim.transaction_id == selected_transaction.id)
+                    .with_for_update()
+                ).scalar_one_or_none()
+            else:
+                transaction_already_claimed = InsuranceClaim.query.filter(
+                    InsuranceClaim.transaction_id == selected_transaction.id
+                ).first()
+
+            if transaction_already_claimed:
+                flash("This transaction already has a claim. Each transaction can only be claimed once.", "danger")
+                return redirect(url_for('student.file_claim', policy_id=policy_id))
+
+            incident_date_value = selected_transaction.timestamp
+            claim_amount_value = abs(selected_transaction.amount)
+            transaction_id_value = selected_transaction.id
+
+            days_since_incident = (datetime.utcnow() - incident_date_value).days
         else:
+            incident_date_value = datetime.combine(form.incident_date.data, datetime.min.time())
+            days_since_incident = (datetime.utcnow() - incident_date_value).days
+
+        if policy.claim_type == 'non_monetary':
             if not form.claim_item.data:
                 flash("Claim item is required for non-monetary policies.", "danger")
                 return redirect(url_for('student.file_claim', policy_id=policy_id))
+            claim_item_value = form.claim_item.data
+        elif policy.claim_type == 'legacy_monetary':
+            if not form.claim_amount.data:
+                flash("Claim amount is required for monetary policies.", "danger")
+                return redirect(url_for('student.file_claim', policy_id=policy_id))
+            claim_amount_value = form.claim_amount.data
 
-        # Check claim time limit
-        days_since_incident = (datetime.utcnow() - form.incident_date.data).days
+            if policy.max_claim_amount and claim_amount_value > policy.max_claim_amount:
+                flash(f"Claim amount cannot exceed ${policy.max_claim_amount:.2f}.", "danger")
+                return redirect(url_for('student.file_claim', policy_id=policy_id))
+
         if days_since_incident > policy.claim_time_limit_days:
             flash(f"Claims must be filed within {policy.claim_time_limit_days} days of the incident.", "danger")
             return redirect(url_for('student.file_claim', policy_id=policy_id))
 
-        # Create claim
+        if remaining_period_cap is not None and policy.claim_type != 'non_monetary' and remaining_period_cap <= 0:
+            flash("You have reached the maximum payout limit for this period.", "danger")
+            return redirect(url_for('student.file_claim', policy_id=policy_id))
+
         claim = InsuranceClaim(
             student_insurance_id=enrollment.id,
             policy_id=policy.id,
             student_id=student.id,
-            incident_date=form.incident_date.data,
+            incident_date=incident_date_value,
             description=form.description.data,
-            claim_amount=form.claim_amount.data if policy.is_monetary else None,
-            claim_item=form.claim_item.data if not policy.is_monetary else None,
+            claim_amount=claim_amount_value if policy.claim_type != 'non_monetary' else None,
+            claim_item=claim_item_value if policy.claim_type == 'non_monetary' else None,
             comments=form.comments.data,
-            status='pending'
+            status='pending',
+            transaction_id=transaction_id_value,
         )
         db.session.add(claim)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash("This transaction already has a claim. Each transaction can only be claimed once.", "danger")
+            return redirect(url_for('student.file_claim', policy_id=policy_id))
+        except SQLAlchemyError:
+            db.session.rollback()
+            flash("Something went wrong while submitting your claim. Please try again.", "danger")
+            return redirect(url_for('student.file_claim', policy_id=policy_id))
 
         flash("Claim submitted successfully! It will be reviewed by your teacher.", "success")
         return redirect(url_for('student.student_insurance'))
@@ -1042,7 +1165,10 @@ def file_claim(policy_id):
                           enrollment=enrollment,
                           form=form,
                           errors=errors,
-                          claims_this_period=claims_this_period)
+                          claims_this_period=claims_this_period,
+                          eligible_transactions=eligible_transactions,
+                          remaining_period_cap=remaining_period_cap,
+                          period_payouts=period_payouts)
 
 
 @student_bp.route('/insurance/policy/<int:enrollment_id>')

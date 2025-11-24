@@ -242,6 +242,7 @@ class SystemAdmin(db.Model):
 
 
 class Transaction(db.Model):
+    __tablename__ = 'transaction'
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
@@ -447,6 +448,7 @@ class InsurancePolicy(db.Model):
     max_payout_per_period = db.Column(db.Float, nullable=True)  # Max total $ payout per period (null = unlimited)
 
     # Claim type
+    claim_type = db.Column(db.String(20), nullable=False, default='legacy_monetary')  # transaction_monetary, non_monetary, legacy_monetary
     is_monetary = db.Column(db.Boolean, default=True)  # True = monetary claims, False = item/service claims
 
     # Special rules
@@ -481,6 +483,10 @@ class InsurancePolicy(db.Model):
     student_policies = db.relationship('StudentInsurance', backref='policy', lazy='dynamic')
     claims = db.relationship('InsuranceClaim', backref='policy', lazy='dynamic')
 
+    @property
+    def is_monetary_claim(self):
+        return self.claim_type != 'non_monetary'
+
 
 class StudentInsurance(db.Model):
     __tablename__ = 'student_insurance'
@@ -506,6 +512,9 @@ class StudentInsurance(db.Model):
 
 class InsuranceClaim(db.Model):
     __tablename__ = 'insurance_claims'
+    __table_args__ = (
+        db.UniqueConstraint('transaction_id', name='uq_insurance_claims_transaction_id'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     student_insurance_id = db.Column(db.Integer, db.ForeignKey('student_insurance.id'), nullable=False)
     policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id'), nullable=False)
@@ -524,10 +533,12 @@ class InsuranceClaim(db.Model):
     approved_amount = db.Column(db.Float, nullable=True)
     processed_date = db.Column(db.DateTime, nullable=True)
     processed_by_admin_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
+    transaction_id = db.Column(db.Integer, db.ForeignKey('transaction.id'), nullable=True)
 
     # Relationships
     student = db.relationship('Student', backref='insurance_claims')
     processed_by = db.relationship('Admin', backref='processed_claims')
+    transaction = db.relationship('Transaction', backref='insurance_claims')
 
 
 # ---- Error Log Model ----

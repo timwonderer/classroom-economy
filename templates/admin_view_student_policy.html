@@ -178,9 +178,13 @@
             <div class="card-body">
                 <p class="small mb-2"><strong>Policy Type:</strong></p>
                 <p class="mb-3">
-                    <span class="badge {{ 'bg-info' if policy.is_monetary else 'bg-warning text-dark' }}">
-                        {{ 'Monetary Claims' if policy.is_monetary else 'Item/Service Claims' }}
-                    </span>
+                    {% if policy.claim_type == 'transaction_monetary' %}
+                        <span class="badge bg-info">[TXN] Transaction-based</span>
+                    {% elif policy.claim_type == 'non_monetary' %}
+                        <span class="badge bg-warning text-dark">[NON-MONETARY] Approval only</span>
+                    {% else %}
+                        <span class="badge bg-primary">[LEGACY] Manual amounts</span>
+                    {% endif %}
                 </p>
 
                 {% if enrollment.policy.no_repurchase_after_cancel %}
