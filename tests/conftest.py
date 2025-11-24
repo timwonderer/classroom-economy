@@ -14,7 +14,7 @@ os.environ["PEPPER_LEGACY_KEYS"] = "legacy-pepper"
 os.environ.setdefault("PEPPER", "legacy-pepper")
 
 # Ensure ENCRYPTION_KEY and PEPPER_KEY are set for tests, if not already in .env
-os.environ.setdefault("ENCRYPTION_KEY", "test-encryption-key")
+os.environ.setdefault("ENCRYPTION_KEY", "yijXqCSDe_mUoPfcEFCFIV4saBYJw5nKgIVnrDa6U0g=")
 os.environ.setdefault("PEPPER_KEY", "test-pepper-key")
 
 
