@@ -1,0 +1,181 @@
+{% extends "layout_admin.html" %}
+{% set page_title = "Deletion Requests" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-lg-8 offset-lg-2">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h5 class="mb-0">Request Period or Account Deletion</h5>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info">
+                        <strong>Privacy Notice:</strong> Deletion requests are reviewed by system administrators.
+                        <ul class="mb-0 mt-2">
+                            <li><strong>Period Deletion:</strong> Removes your access to students in a specific period/block. Students maintain access to other classes.</li>
+                            <li><strong>Account Deletion:</strong> Removes your entire teacher account. Students maintain access if linked to other teachers.</li>
+                        </ul>
+                    </div>
+
+                    <form method="POST" action="{{ url_for('admin.deletion_requests') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                        <div class="mb-3">
+                            <label class="form-label"><strong>Request Type</strong></label>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="request_type" id="type_period" value="period" required onchange="togglePeriodField()">
+                                <label class="form-check-label" for="type_period">
+                                    Delete a specific period/block
+                                </label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="request_type" id="type_account" value="account" required onchange="togglePeriodField()">
+                                <label class="form-check-label" for="type_account">
+                                    Delete my entire account
+                                </label>
+                            </div>
+                        </div>
+
+                        <div class="mb-3" id="period_field" style="display: none;">
+                            <label for="period" class="form-label"><strong>Select Period/Block</strong></label>
+                            <select name="period" id="period" class="form-select">
+                                <option value="">-- Select a period --</option>
+                                {% for period in periods %}
+                                    <option value="{{ period }}">{{ period|upper }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="reason" class="form-label"><strong>Reason (Optional)</strong></label>
+                            <textarea name="reason" id="reason" class="form-control" rows="3" placeholder="Provide context for your deletion request..."></textarea>
+                        </div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-danger">
+                                <i class="bi bi-trash"></i> Submit Deletion Request
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Pending Requests -->
+            {% if pending_requests %}
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-warning text-dark">
+                    <h5 class="mb-0">Pending Deletion Requests</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Period</th>
+                                    <th>Reason</th>
+                                    <th>Requested</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for req in pending_requests %}
+                                <tr>
+                                    <td>
+                                        {% if req.request_type == 'period' %}
+                                            <span class="badge bg-warning text-dark">Period</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">Account</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ req.period|upper if req.period else 'N/A' }}</td>
+                                    <td>{{ req.reason if req.reason else 'Not provided' }}</td>
+                                    <td><small>{{ req.requested_at.strftime('%b %d, %Y') }}</small></td>
+                                    <td><span class="badge bg-secondary">Pending Review</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Resolved Requests -->
+            {% if resolved_requests %}
+            <div class="card shadow-sm">
+                <div class="card-header">
+                    <h5 class="mb-0">Request History</h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Type</th>
+                                    <th>Period</th>
+                                    <th>Requested</th>
+                                    <th>Resolved</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for req in resolved_requests %}
+                                <tr>
+                                    <td>
+                                        {% if req.request_type == 'period' %}
+                                            <span class="badge bg-warning text-dark">Period</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">Account</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ req.period|upper if req.period else 'N/A' }}</td>
+                                    <td><small>{{ req.requested_at.strftime('%b %d, %Y') }}</small></td>
+                                    <td><small>{{ req.resolved_at.strftime('%b %d, %Y') if req.resolved_at else 'N/A' }}</small></td>
+                                    <td>
+                                        {% if req.status == 'approved' %}
+                                            <span class="badge bg-success">Approved</span>
+                                        {% elif req.status == 'rejected' %}
+                                            <span class="badge bg-danger">Rejected</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+function togglePeriodField() {
+    const periodRadio = document.getElementById('type_period');
+    const periodField = document.getElementById('period_field');
+    const periodSelect = document.getElementById('period');
+
+    if (periodRadio.checked) {
+        periodField.style.display = 'block';
+        periodSelect.required = true;
+    } else {
+        periodField.style.display = 'none';
+        periodSelect.required = false;
+        periodSelect.value = '';
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const typeRadios = document.querySelectorAll('input[name="request_type"]');
+    typeRadios.forEach(radio => {
+        if (radio.checked) {
+            togglePeriodField();
+        }
+    });
+});
+</script>
+{% endblock %}

@@ -19,7 +19,7 @@ from app.extensions import db
 from app.models import (
     SystemAdmin, Admin, Student, AdminInviteCode, ErrorLog,
     Transaction, TapEvent, HallPassLog, StudentItem, RentPayment,
-    StudentInsurance, InsuranceClaim, StudentTeacher
+    StudentInsurance, InsuranceClaim, StudentTeacher, DeletionRequest
 )
 from app.auth import system_admin_required
 from forms import SystemAdminLoginForm, SystemAdminInviteForm
@@ -449,81 +449,219 @@ def manage_teachers():
     )
 
 
-@sysadmin_bp.route('/student-ownership', methods=['GET', 'POST'])
+@sysadmin_bp.route('/teacher-overview', methods=['GET'])
 @system_admin_required
-def student_ownership():
-    """Manage which teachers have access to each student account."""
-    action = request.form.get("action") if request.method == "POST" else None
+def teacher_overview():
+    """
+    Privacy-compliant teacher overview showing only aggregated student counts.
 
-    if action:
-        student_id = request.form.get("student_id", type=int)
-        admin_id = request.form.get("admin_id", type=int)
-        student = Student.query.get_or_404(student_id)
-        admin = Admin.query.get_or_404(admin_id)
+    System admins can view:
+    - Teacher username
+    - Total student count per teacher
+    - Student counts by period/block
+    - Last login date
+    - Pending deletion requests
 
-        if action == "add":
-            existing_link = StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin.id).first()
-            if existing_link:
-                flash(f"{admin.username} already has access to {student.full_name}.", "info")
-            else:
-                db.session.add(StudentTeacher(student_id=student.id, admin_id=admin.id))
-                if request.form.get("make_primary") == "on":
-                    student.teacher_id = admin.id
-                db.session.commit()
-                flash(f"Added {admin.username} to {student.full_name}'s teacher list.", "success")
-            return redirect(url_for('sysadmin.student_ownership'))
-
-        if action == "remove":
-            link = StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin.id).first()
-            if not link:
-                flash("No matching teacher link found for removal.", "error")
-                return redirect(url_for('sysadmin.student_ownership'))
-
-            db.session.delete(link)
-            # If removing the primary teacher, fall back to another linked teacher if available
-            if student.teacher_id == admin.id:
-                fallback = (
-                    StudentTeacher.query
-                    .filter(StudentTeacher.student_id == student.id, StudentTeacher.admin_id != admin.id)
-                    .order_by(StudentTeacher.created_at.asc())
-                    .first()
-                )
-                student.teacher_id = fallback.admin_id if fallback else None
-
-            db.session.commit()
-            flash(f"Removed {admin.username} from {student.full_name}.", "success")
-            return redirect(url_for('sysadmin.student_ownership'))
-
-        flash("Unsupported action.", "error")
-        return redirect(url_for('sysadmin.student_ownership'))
-
-    # GET request: render the mapping table
-    students = Student.query.order_by(Student.first_name.asc(), Student.last_initial.asc()).all()
+    System admins CANNOT view:
+    - Individual student names
+    - Individual student details
+    """
     teachers = Admin.query.order_by(Admin.username.asc()).all()
-    teacher_lookup = {t.id: t for t in teachers}
+    teacher_data = []
 
-    student_links = {}
-    for link in StudentTeacher.query.all():
-        student_links.setdefault(link.student_id, []).append(link.admin_id)
+    # Define inactivity threshold (6 months)
+    inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=180)
+
+    for teacher in teachers:
+        # Get total student count for this teacher
+        total_students = _get_teacher_student_count(teacher.id)
+
+        # Get student counts by period/block
+        period_counts = db.session.query(
+            Student.block,
+            db.func.count(Student.id).label('count')
+        ).join(
+            StudentTeacher,
+            Student.id == StudentTeacher.student_id
+        ).filter(
+            StudentTeacher.admin_id == teacher.id
+        ).group_by(
+            Student.block
+        ).all()
+
+        # Convert to dict for easier template access
+        periods = {period: count for period, count in period_counts}
+
+        # Check for pending deletion requests
+        pending_requests = DeletionRequest.query.filter_by(
+            admin_id=teacher.id,
+            status='pending'
+        ).all()
+
+        # Check if teacher is inactive
+        is_inactive = False
+        if teacher.last_login:
+            # Ensure last_login is timezone-aware
+            last_login = teacher.last_login
+            if last_login.tzinfo is None:
+                last_login = last_login.replace(tzinfo=timezone.utc)
+            is_inactive = last_login < inactivity_threshold
+        else:
+            # Never logged in - consider inactive
+            is_inactive = True
+
+        teacher_data.append({
+            'id': teacher.id,
+            'username': teacher.username,
+            'total_students': total_students,
+            'periods': periods,
+            'last_login': teacher.last_login,
+            'is_inactive': is_inactive,
+            'pending_requests': pending_requests,
+            'can_delete': len(pending_requests) > 0 or is_inactive
+        })
 
     return render_template(
-        "system_admin_student_ownership.html",
-        students=students,
-        teachers=teachers,
-        student_links=student_links,
-        teacher_lookup=teacher_lookup,
-        current_page="student_ownership",
+        "system_admin_teacher_overview.html",
+        teachers=teacher_data,
+        current_page="teacher_overview",
+        inactivity_threshold_days=180
     )
+
+
+@sysadmin_bp.route('/delete-period/<int:admin_id>/<string:period>', methods=['POST'])
+@system_admin_required
+def delete_period(admin_id, period):
+    """
+    Delete a specific period/block for a teacher with authorization check.
+
+    Authorization required:
+    1. Teacher has a pending deletion request for this period, OR
+    2. Teacher has been inactive for 6+ months
+    """
+    admin = Admin.query.get_or_404(admin_id)
+
+    # Check authorization
+    has_pending_request = DeletionRequest.query.filter_by(
+        admin_id=admin.id,
+        request_type='period',
+        period=period,
+        status='pending'
+    ).first() is not None
+
+    # Check inactivity
+    inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=180)
+    is_inactive = False
+    if admin.last_login:
+        last_login = admin.last_login
+        if last_login.tzinfo is None:
+            last_login = last_login.replace(tzinfo=timezone.utc)
+        is_inactive = last_login < inactivity_threshold
+    else:
+        is_inactive = True
+
+    if not (has_pending_request or is_inactive):
+        flash(
+            f"❌ Unauthorized: Cannot delete period '{period}' for teacher '{admin.username}'. "
+            f"Teacher must request deletion or be inactive for 6+ months.",
+            "error"
+        )
+        return redirect(url_for('sysadmin.teacher_overview'))
+
+    try:
+        # Get students in this period linked to this teacher
+        students_in_period = db.session.query(Student).join(
+            StudentTeacher,
+            Student.id == StudentTeacher.student_id
+        ).filter(
+            StudentTeacher.admin_id == admin.id,
+            Student.block == period
+        ).all()
+
+        removed_count = 0
+        for student in students_in_period:
+            # Remove the teacher-student link
+            StudentTeacher.query.filter_by(
+                student_id=student.id,
+                admin_id=admin.id
+            ).delete()
+
+            # If this was the primary teacher, reassign to another linked teacher
+            if student.teacher_id == admin.id:
+                fallback = StudentTeacher.query.filter(
+                    StudentTeacher.student_id == student.id
+                ).order_by(StudentTeacher.created_at.asc()).first()
+                student.teacher_id = fallback.admin_id if fallback else None
+
+            removed_count += 1
+
+        # Mark any pending deletion requests for this period as approved
+        if has_pending_request:
+            deletion_request = DeletionRequest.query.filter_by(
+                admin_id=admin.id,
+                request_type='period',
+                period=period,
+                status='pending'
+            ).first()
+            if deletion_request:
+                deletion_request.status = 'approved'
+                deletion_request.resolved_at = datetime.utcnow()
+
+        db.session.commit()
+
+        flash(
+            f"✅ Period '{period}' deleted for teacher '{admin.username}'. "
+            f"Removed {removed_count} student links. Students maintain access to other classes.",
+            "success"
+        )
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.exception(f"Error deleting period {period} for teacher {admin_id}")
+        flash(f"❌ Error deleting period: {str(e)}", "error")
+
+    return redirect(url_for('sysadmin.teacher_overview'))
 
 
 @sysadmin_bp.route('/manage-teachers/delete/<int:admin_id>', methods=['POST'])
 @system_admin_required
 def delete_teacher(admin_id):
     """
-    Delete a teacher and all their associated data.
-    This is a permanent action that cascades to all student data.
+    Delete a teacher account with authorization check.
+
+    Authorization required:
+    1. Teacher has a pending deletion request for their account, OR
+    2. Teacher has been inactive for 6+ months
+
+    Students maintain access unless they have no other teachers.
     """
     admin = Admin.query.get_or_404(admin_id)
+
+    # Check authorization
+    has_pending_request = DeletionRequest.query.filter_by(
+        admin_id=admin.id,
+        request_type='account',
+        status='pending'
+    ).first() is not None
+
+    # Check inactivity
+    inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=180)
+    is_inactive = False
+    if admin.last_login:
+        last_login = admin.last_login
+        if last_login.tzinfo is None:
+            last_login = last_login.replace(tzinfo=timezone.utc)
+        is_inactive = last_login < inactivity_threshold
+    else:
+        is_inactive = True
+
+    if not (has_pending_request or is_inactive):
+        flash(
+            f"❌ Unauthorized: Cannot delete teacher '{admin.username}'. "
+            f"Teacher must request deletion or be inactive for 6+ months.",
+            "error"
+        )
+        return redirect(url_for('sysadmin.teacher_overview'))
 
     try:
         linked_student_ids = (
@@ -538,8 +676,10 @@ def delete_teacher(admin_id):
         student_count = len(affected_students)
 
         for student in affected_students:
+            # Remove the teacher-student link
             StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin.id).delete()
 
+            # If this was the primary teacher, reassign to another linked teacher
             if student.teacher_id == admin.id:
                 fallback = (
                     StudentTeacher.query
@@ -549,12 +689,24 @@ def delete_teacher(admin_id):
                 )
                 student.teacher_id = fallback.admin_id if fallback else None
 
+        # Mark any pending deletion requests for this teacher as approved
+        if has_pending_request:
+            deletion_request = DeletionRequest.query.filter_by(
+                admin_id=admin.id,
+                request_type='account',
+                status='pending'
+            ).first()
+            if deletion_request:
+                deletion_request.status = 'approved'
+                deletion_request.resolved_at = datetime.utcnow()
+
         admin_username = admin.username
         db.session.delete(admin)
         db.session.commit()
 
         flash(
-            f"✅ Teacher '{admin_username}' deleted. Updated {student_count} student ownership records.",
+            f"✅ Teacher '{admin_username}' deleted. Updated {student_count} student ownership records. "
+            f"Students maintain access unless they have no other teachers.",
             "success",
         )
 
@@ -563,4 +715,4 @@ def delete_teacher(admin_id):
         current_app.logger.exception(f"Error deleting teacher {admin_id}")
         flash(f"❌ Error deleting teacher: {str(e)}", "error")
 
-    return redirect(url_for('sysadmin.manage_teachers'))
+    return redirect(url_for('sysadmin.teacher_overview'))

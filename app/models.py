@@ -233,6 +233,36 @@ class StudentTeacher(db.Model):
     )
 
 
+class DeletionRequest(db.Model):
+    """
+    Tracks teacher requests for period/block or account deletion.
+    System admins can only approve deletions that have been requested by teachers
+    or for accounts that have been inactive beyond the threshold.
+    """
+    __tablename__ = 'deletion_requests'
+    id = db.Column(db.Integer, primary_key=True)
+    admin_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
+    request_type = db.Column(db.String(20), nullable=False)  # 'period' or 'account'
+    period = db.Column(db.String(10), nullable=True)  # Specified for period deletions only
+    reason = db.Column(db.Text, nullable=True)  # Optional reason from teacher
+    status = db.Column(db.String(20), default='pending', nullable=False)  # 'pending', 'approved', 'rejected'
+    requested_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    resolved_at = db.Column(db.DateTime, nullable=True)
+    resolved_by = db.Column(db.Integer, db.ForeignKey('system_admins.id'), nullable=True)
+
+    # Relationships
+    admin = db.relationship('Admin', backref=db.backref('deletion_requests', lazy='dynamic'))
+    resolver = db.relationship('SystemAdmin', backref=db.backref('resolved_deletion_requests', lazy='dynamic'))
+
+    __table_args__ = (
+        db.Index('ix_deletion_requests_admin_id', 'admin_id'),
+        db.Index('ix_deletion_requests_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f'<DeletionRequest {self.request_type} for Admin {self.admin_id} - {self.status}>'
+
+
 # -------------------- SYSTEM ADMIN MODEL --------------------
 class SystemAdmin(db.Model):
     __tablename__ = 'system_admins'
