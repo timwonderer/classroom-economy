@@ -554,8 +554,8 @@ def delete_period(admin_id, period):
     """
     admin = Admin.query.get_or_404(admin_id)
 
-    # Validate period parameter
-    if not period or len(period) > 10:
+    # Validate period parameter - only allow alphanumeric, spaces, and common period delimiters
+    if not period or len(period) > 10 or not re.match(r'^[A-Za-z0-9\s\-_/]+$', period):
         flash("❌ Invalid period parameter.", "error")
         return redirect(url_for('sysadmin.teacher_overview'))
 
