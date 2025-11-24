@@ -4,8 +4,6 @@
 # Run this BEFORE creating PRs to catch multiple heads early
 #
 
-set -e
-
 echo "🔍 Checking migration heads..."
 echo ""
 
@@ -18,8 +16,16 @@ if not os.path.exists('migrations/alembic.ini'):
     print("❌ ERROR: Must run from project root directory")
     sys.exit(1)
 
-from alembic.script import ScriptDirectory
-from alembic.config import Config
+try:
+    from alembic.script import ScriptDirectory
+    from alembic.config import Config
+except ImportError:
+    print("⚠️  ERROR: alembic/flask-migrate not installed")
+    print("")
+    print("Install dependencies first:")
+    print("  pip install -r requirements.txt")
+    print("  # OR activate your virtual environment")
+    sys.exit(1)
 
 config = Config('migrations/alembic.ini')
 config.set_main_option('script_location', 'migrations')
