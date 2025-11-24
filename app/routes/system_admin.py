@@ -11,7 +11,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app
-from sqlalchemy import delete, or_
+from sqlalchemy import delete, or_, case, literal_column
 from werkzeug.exceptions import BadRequest, Unauthorized, Forbidden, NotFound, ServiceUnavailable
 import pyotp
 
@@ -483,7 +483,6 @@ def teacher_overview():
 
     # Batch query: Get all period counts for all teachers
     # Group by teacher and period to get all data in one query
-    from sqlalchemy import case, literal_column
     
     # Create a CTE (Common Table Expression) for all teacher-student relationships
     teacher_students = db.session.query(

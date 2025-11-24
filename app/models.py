@@ -11,6 +11,11 @@ from app.extensions import db
 from app.utils.encryption import PIIEncryptedType
 
 
+def _utc_now():
+    """Helper function for timezone-aware datetime defaults in SQLAlchemy models."""
+    return datetime.now(timezone.utc)
+
+
 # -------------------- MODELS --------------------
 
 class TeacherBlock(db.Model):
@@ -246,7 +251,7 @@ class DeletionRequest(db.Model):
     period = db.Column(db.String(10), nullable=True)  # Specified for period deletions only
     reason = db.Column(db.Text, nullable=True)  # Optional reason from teacher
     status = db.Column(db.String(20), default='pending', nullable=False)  # 'pending', 'approved', 'rejected'
-    requested_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
+    requested_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
     resolved_at = db.Column(db.DateTime, nullable=True)
     resolved_by = db.Column(db.Integer, db.ForeignKey('system_admins.id'), nullable=True)
 
