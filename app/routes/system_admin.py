@@ -31,6 +31,33 @@ from app.utils.helpers import is_safe_url
 sysadmin_bp = Blueprint('sysadmin', __name__, url_prefix='/sysadmin')
 
 
+def _get_teacher_student_count(teacher_id: int) -> int:
+    """
+    Get the count of students associated with a specific teacher.
+    
+    Counts students that are either:
+    1. Linked via student_teachers table (many-to-many relationship), OR
+    2. Have teacher_id set (legacy primary ownership during migration)
+    
+    Uses UNION to avoid double-counting students that appear in both.
+    Optimized to count in database without loading student IDs.
+    """
+    # Get student IDs from student_teachers links
+    linked_ids = db.session.query(StudentTeacher.student_id).filter(
+        StudentTeacher.admin_id == teacher_id
+    ).distinct()
+    
+    # Get student IDs from legacy teacher_id column
+    legacy_ids = db.session.query(Student.id).filter(
+        Student.teacher_id == teacher_id
+    ).distinct()
+    
+    # Union the two queries and count - database does the work
+    count = linked_ids.union(legacy_ids).count()
+    
+    return count
+
+
 def _tail_log_lines(file_path: str, max_lines: int = 200, chunk_size: int = 8192):
     """Return the last ``max_lines`` from a log file without loading the entire file."""
 
@@ -282,16 +309,18 @@ def test_error_503():
 def manage_admins():
     """
     View and manage all admin (teacher) accounts.
-    Shows admin details, student counts, signup date, and last login.
+    Shows admin details, student counts per teacher, signup date, and last login.
+    
+    Note: System admins see teacher info and student counts only, not individual student details.
     """
     # Get all admins with student counts
     admins = Admin.query.all()
     admin_data = []
 
     for admin in admins:
-        # Count students (will be accurate once multi-tenancy is implemented)
-        student_count = Student.query.count()  # Currently counts all students
-        # TODO: After multi-tenancy, use: Student.query.filter_by(teacher_id=admin.id).count()
+        # Count students associated with this specific teacher
+        # Uses both student_teachers links and legacy teacher_id for accuracy
+        student_count = _get_teacher_student_count(admin.id)
 
         admin_data.append({
             'id': admin.id,

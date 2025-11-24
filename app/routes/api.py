@@ -972,8 +972,14 @@ def attendance_history():
         start_date = request.args.get('start_date', '').strip()
         end_date = request.args.get('end_date', '').strip()
 
-        # Build query
-        query = TapEvent.query
+        # Import auth helper for tenant scoping
+        from app.auth import get_admin_student_query
+        
+        # Get student IDs that the current admin can access (tenant-scoped)
+        accessible_student_ids_query = get_admin_student_query(include_unassigned=False).with_entities(Student.id)
+        
+        # Build query scoped to admin's students
+        query = TapEvent.query.filter(TapEvent.student_id.in_(accessible_student_ids_query))
 
         # Apply filters
         if period:
