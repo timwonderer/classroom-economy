@@ -81,9 +81,13 @@
                 <td>${{ "%.2f"|format(policy.premium) }}</td>
                 <td>{{ policy.charge_frequency|title }}</td>
                 <td>
-                  <span class="badge {{ 'bg-info' if policy.is_monetary else 'bg-warning' }}">
-                    {{ 'Monetary' if policy.is_monetary else 'Item/Service' }}
-                  </span>
+                  {% if policy.claim_type == 'transaction_monetary' %}
+                    <span class="badge bg-info">[TXN]</span>
+                  {% elif policy.claim_type == 'non_monetary' %}
+                    <span class="badge bg-warning text-dark">[NON-MONETARY]</span>
+                  {% else %}
+                    <span class="badge bg-primary">[LEGACY]</span>
+                  {% endif %}
                 </td>
                 <td>{{ policy.waiting_period_days }} days</td>
                 <td>
@@ -163,6 +167,12 @@
               {{ form.description(class="form-control", rows=3, placeholder="What does this insurance cover?", id="simple_description") }}
             </div>
 
+            <div class="mb-3">
+              {{ form.claim_type.label(class="form-label fw-bold") }}
+              {{ form.claim_type(class="form-select", id="simple_claim_type") }}
+              <small class="text-muted">Choose how claims are processed.</small>
+            </div>
+
             <div class="row">
               <div class="col-md-6 mb-3">
                 <label class="form-label fw-bold">Claim Amount (Flat Rate)</label>
@@ -228,13 +238,14 @@
                     <small class="text-muted">Add a fun marketing badge to attract students</small>
                   </div>
                   <div class="mb-0">
-                    <div class="form-check form-switch">
-                      {{ form.is_monetary(class="form-check-input", role="switch", id="isMonetaryToggleNew") }}
-                      {{ form.is_monetary.label(class="form-check-label fw-bold") }}
-                    </div>
+                    {{ form.claim_type.label(class="form-label fw-bold") }}
+                    {{ form.claim_type(class="form-select", id="advanced_claim_type") }}
                     <div class="alert alert-light border mt-2 mb-0">
-                      <small><strong>Monetary:</strong> Dollar claims<br>
-                      <strong>Non-Monetary:</strong> Item/service claims</small>
+                      <small>
+                        <strong>Transactions-based:</strong> Students pick a spending transaction; amount auto-calculated.<br>
+                        <strong>Non-monetary:</strong> Approval-only, no reimbursements.<br>
+                        <strong>Legacy monetary:</strong> Students enter an amount manually.
+                      </small>
                     </div>
                   </div>
                 </div>
@@ -803,6 +814,13 @@
                 <td>{{ claim.incident_date.strftime('%Y-%m-%d') }}</td>
                 <td>{{ claim.filed_date.strftime('%Y-%m-%d') }}</td>
                 <td>
+                  {% if claim.policy.claim_type == 'transaction_monetary' %}
+                    <span class="badge bg-info me-1">TXN</span>
+                  {% elif claim.policy.claim_type == 'non_monetary' %}
+                    <span class="badge bg-warning text-dark me-1">NON-MONETARY</span>
+                  {% else %}
+                    <span class="badge bg-primary me-1">LEGACY</span>
+                  {% endif %}
                   {% if claim.claim_amount %}
                     <span class="badge bg-success">${{ "%.2f"|format(claim.claim_amount) }}</span>
                   {% elif claim.claim_item %}

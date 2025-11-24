@@ -136,6 +136,15 @@ class InsurancePolicyForm(FlaskForm):
         ('semester', 'Per Semester')
     ], default='monthly')
     autopay = BooleanField('Enable Autopay', default=True)
+    claim_type = SelectField(
+        'Claim Type',
+        choices=[
+            ('transaction_monetary', 'Transactions-based (linked to spending)'),
+            ('non_monetary', 'Non-monetary (no reimbursement)'),
+            ('legacy_monetary', 'Legacy monetary (manual amount)'),
+        ],
+        default='transaction_monetary',
+    )
     waiting_period_days = IntegerField('Waiting Period (days)', default=7, validators=[DataRequired()])
     max_claims_count = IntegerField('Max Claims per Period (leave blank for unlimited)', validators=[Optional()])
     max_claims_period = SelectField('Claims Period', choices=[
@@ -145,9 +154,6 @@ class InsurancePolicyForm(FlaskForm):
     ], default='month')
     max_claim_amount = FloatField('Max Claim Amount $ (leave blank for unlimited)', validators=[Optional()])
     max_payout_per_period = FloatField('Max Total Payout per Period $ (leave blank for unlimited)', validators=[Optional()])
-
-    # Claim type
-    is_monetary = BooleanField('Monetary Claims (students claim dollar amounts)', default=True)
 
     # Special rules
     no_repurchase_after_cancel = BooleanField('Prevent repurchase after cancellation (permanent block)', default=False)
@@ -211,6 +217,7 @@ class InsuranceClaimForm(FlaskForm):
     description = TextAreaField('Claim Description', validators=[DataRequired()])
     claim_amount = FloatField('Claim Amount ($)', validators=[Optional()])
     claim_item = StringField('What are you claiming?', validators=[Optional()])
+    transaction_id = SelectField('Transaction', coerce=int, validators=[Optional()])
     comments = TextAreaField('Additional Comments (optional)', validators=[Optional()])
     submit = SubmitField('Submit Claim')
 

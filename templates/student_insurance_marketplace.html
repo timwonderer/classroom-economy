@@ -84,10 +84,13 @@
 
                             <!-- Status Badges -->
                             <div class="mb-2">
-                                <span class="badge {{ 'bg-info' if enrollment.policy.is_monetary else 'bg-warning text-dark' }}">
-                                    <span class="material-symbols-outlined" style="font-size: 1rem;">{{ 'payments' if enrollment.policy.is_monetary else 'redeem' }}</span>
-                                    {{ 'Monetary Claims' if enrollment.policy.is_monetary else 'Item/Service Claims' }}
-                                </span>
+                                {% if enrollment.policy.claim_type == 'transaction_monetary' %}
+                                    <span class="badge bg-info"><span class="material-symbols-outlined" style="font-size: 1rem;">payments</span> TXN-based</span>
+                                {% elif enrollment.policy.claim_type == 'non_monetary' %}
+                                    <span class="badge bg-warning text-dark"><span class="material-symbols-outlined" style="font-size: 1rem;">redeem</span> Non-monetary</span>
+                                {% else %}
+                                    <span class="badge bg-primary"><span class="material-symbols-outlined" style="font-size: 1rem;">payments</span> Legacy monetary</span>
+                                {% endif %}
                                 {% if enrollment.coverage_start_date %}
                                     <span class="badge bg-success">
                                         <span class="material-symbols-outlined" style="font-size: 1rem;">event_available</span>
@@ -232,7 +235,7 @@
                                     <h5>What's Covered:</h5>
                                     <ul class="mb-4">
                                         <li>Up to {% if policy.max_claims_count %}{{ policy.max_claims_count }}{% else %}unlimited{% endif %} claims per {{ policy.max_claims_period }}</li>
-                                        {% if policy.is_monetary %}
+                                        {% if policy.claim_type != 'non_monetary' %}
                                             {% if policy.max_claim_amount %}
                                             <li>Maximum claim amount: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
                                             {% else %}
@@ -252,15 +255,26 @@
 
                                     <h5>Policy Details:</h5>
                                     <ul class="small mb-4">
-                                        <li>Claim type: <span class="badge {{ 'bg-info' if policy.is_monetary else 'bg-warning text-dark' }}">{{ 'Monetary' if policy.is_monetary else 'Item/Service' }}</span></li>
+                                        <li>Claim type:
+                                            {% if policy.claim_type == 'transaction_monetary' %}
+                                                <span class="badge bg-info">Transaction-based</span>
+                                            {% elif policy.claim_type == 'non_monetary' %}
+                                                <span class="badge bg-warning text-dark">Non-monetary</span>
+                                            {% else %}
+                                                <span class="badge bg-primary">Legacy monetary</span>
+                                            {% endif %}
+                                        </li>
                                         <li>Waiting period: {{ policy.waiting_period_days }} days</li>
                                         {% if policy.max_claims_count %}
                                             <li>Max claims: {{ policy.max_claims_count }} per {{ policy.max_claims_period }}</li>
                                         {% else %}
                                             <li>Unlimited claims</li>
                                         {% endif %}
-                                        {% if policy.is_monetary and policy.max_claim_amount %}
+                                        {% if policy.claim_type != 'non_monetary' and policy.max_claim_amount %}
                                             <li>Max claim amount: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
+                                        {% endif %}
+                                        {% if policy.claim_type == 'transaction_monetary' %}
+                                            <li>One claim per transaction; amount pulled from spending</li>
                                         {% endif %}
                                     </ul>
 
@@ -314,7 +328,7 @@
                         <ul class="small mb-3">
                             <li>Up to {% if policy.max_claims_count %}{{ policy.max_claims_count }}{% else %}unlimited{% endif %} claims</li>
                             <li>{{ policy.waiting_period_days }} day waiting period</li>
-                            {% if policy.is_monetary and policy.max_claim_amount %}
+                            {% if policy.claim_type != 'non_monetary' and policy.max_claim_amount %}
                             <li>Max claim: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
                             {% endif %}
                         </ul>

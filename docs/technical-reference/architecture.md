@@ -1,6 +1,6 @@
 # Classroom Token Hub - Architecture Guide
 
-**Last Updated:** 2025-11-19
+**Last Updated:** 2025-11-23
 **Purpose:** Comprehensive architecture guide for developers and AI assistants working on this educational platform
 
 ---
@@ -349,7 +349,7 @@ All errors are automatically logged to the `ErrorLog` table with:
 - `Student.transactions` - All transactions for a student
 - `Student.tap_events` - All attendance records
 - `Student.student_items` - All purchased store items
-- Future: `Student.teacher_id` - Multi-tenancy support (see docs/development/MULTI_TENANCY_TODO.md)
+- `Student.teachers` via `student_teachers` - Authoritative multi-teacher ownership (see docs/development/MULTI_TENANCY_TODO.md)
 
 ### Migration Management
 
@@ -606,17 +606,16 @@ gunicorn --bind=0.0.0.0 --timeout 600 wsgi:app
 
 ### Current Issues
 
-1. **Hardcoded pay rates** - Should be configurable in admin panel (HIGH PRIORITY)
-2. **No teacher data isolation** - All admins see all students (multi-tenancy planned)
-3. **Limited pagination** - Performance issues with large datasets
-4. **Minimal test coverage** - Need more comprehensive tests
-5. **No audit logging** - Need to track admin actions for compliance
+1. **Multi-teacher migration cleanup** - Legacy `students.teacher_id` column still exists; enforce link-only ownership
+2. **Limited pagination** - Performance issues remain on large datasets without pagination/cursoring
+3. **Minimal shared-student test coverage** - Expand pytest coverage for payroll/attendance with shared students
+4. **Audit logging gaps** - Sensitive admin actions still lack audit trails
 
 ### Important Context
 
-- **Multi-tenancy:** Planned but not yet implemented - will add `teacher_id` to students
-- **Payroll schedule:** Hardcoded to 14 days, needs configuration UI
-- **Insurance system:** Frontend complete, backend partially implemented
+- **Multi-tenancy:** Implemented via `student_teachers`; legacy column cleanup pending
+- **Payroll schedule:** Configurable via `PayrollSettings` (global + per block)
+- **Insurance system:** Policies/enrollments/claims live; continue monitoring for edge cases
 
 ### Watch Out For
 
@@ -688,7 +687,7 @@ This is a **classroom economy simulation** where:
 
 **2. Admins (Teachers):**
 - Manage their classroom(s)
-- Currently see ALL students (multi-tenancy will change this)
+- See only their own students plus any shared via `student_teachers`
 - Configure settings, run payroll, approve purchases
 - Authenticate with TOTP
 
@@ -748,7 +747,7 @@ git push -u origin branch-name     # Push changes
 - Favor clarity over cleverness
 - Prefer established patterns over new approaches
 - Think about the teacher and student experience
-- Consider scalability (multi-tenancy coming soon)
+- Consider scalability (multi-teacher tenancy is live; enforce scoped helpers)
 - Maintain the educational mission of the project
 
 ---

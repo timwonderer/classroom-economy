@@ -38,19 +38,43 @@
 
                 <form method="POST" action="{{ url_for('student.file_claim', policy_id=policy.id) }}">
                     {{ form.hidden_tag() }}
+                    {% set is_transaction = policy.claim_type == 'transaction_monetary' %}
+                    {% set is_non_monetary = policy.claim_type == 'non_monetary' %}
+                    {% set is_legacy = policy.claim_type == 'legacy_monetary' %}
 
                     <div class="mb-3">
                         <label class="form-label">Insurance Policy</label>
                         <input type="text" class="form-control" value="{{ policy.title }}" disabled>
                     </div>
 
-                    <div class="mb-3">
-                        {{ form.incident_date.label(class="form-label") }}
-                        {{ form.incident_date(class="form-control") }}
-                        <small class="form-text text-muted">
-                            Claims must be filed within {{ policy.claim_time_limit_days }} days of the incident.
-                        </small>
-                    </div>
+                    {% if is_transaction %}
+                        <div class="mb-3">
+                            {{ form.transaction_id.label(class="form-label") }}
+                            {{ form.transaction_id(class="form-select", required=True) }}
+                            <small class="form-text text-muted">
+                                One claim per transaction. Select a spending transaction within {{ policy.claim_time_limit_days }} days.
+                            </small>
+                            {% if not eligible_transactions %}
+                                <div class="alert alert-warning mt-2 mb-0 py-2">
+                                    No eligible transactions available to claim right now.
+                                </div>
+                            {% endif %}
+                        </div>
+                        {{ form.incident_date(type="hidden") }}
+                        <div class="mb-3">
+                            <label class="form-label">Incident Date</label>
+                            <input type="text" class="form-control" value="Auto-selected from the transaction date" disabled>
+                            <small class="form-text text-muted">Claims must be filed within {{ policy.claim_time_limit_days }} days of the transaction.</small>
+                        </div>
+                    {% else %}
+                        <div class="mb-3">
+                            {{ form.incident_date.label(class="form-label") }}
+                            {{ form.incident_date(class="form-control") }}
+                            <small class="form-text text-muted">
+                                Claims must be filed within {{ policy.claim_time_limit_days }} days of the incident.
+                            </small>
+                        </div>
+                    {% endif %}
 
                     <div class="mb-3">
                         {{ form.description.label(class="form-label") }}
@@ -58,28 +82,43 @@
                         <small class="form-text text-muted">Be as detailed as possible to help with processing your claim.</small>
                     </div>
 
-                    {% if policy.is_monetary %}
-                    <div class="mb-3">
-                        {{ form.claim_amount.label(class="form-label") }}
-                        <div class="input-group">
-                            <span class="input-group-text">$</span>
-                            {{ form.claim_amount(class="form-control", placeholder="Enter amount", required=True) }}
+                    {% if is_transaction %}
+                        <div class="alert alert-info d-flex align-items-start gap-2">
+                            <span class="material-symbols-outlined">payments</span>
+                            <div>
+                                <div class="fw-bold">Transaction-based reimbursement</div>
+                                <div class="small mb-1">Claim amount is based on the transaction total (no manual entry).</div>
+                                {% if policy.max_claim_amount %}
+                                    <div class="small">Per-claim cap: ${{ '%.2f'|format(policy.max_claim_amount) }}</div>
+                                {% endif %}
+                                {% if remaining_period_cap is not none %}
+                                    <div class="small">Remaining period cap: ${{ '%.2f'|format(remaining_period_cap) }}</div>
+                                {% endif %}
+                            </div>
                         </div>
-                        <small class="form-text text-muted">
-                            Specify the dollar amount you're claiming.
-                            {% if policy.max_claim_amount %}
-                                Maximum: ${{ "%.2f"|format(policy.max_claim_amount) }} per claim.
-                            {% endif %}
-                        </small>
-                    </div>
-                    {% else %}
-                    <div class="mb-3">
-                        {{ form.claim_item.label(class="form-label") }}
-                        {{ form.claim_item(class="form-control", placeholder="e.g., Calculator, Textbook, etc.", required=True) }}
-                        <small class="form-text text-muted">
-                            Specify what item or service you're claiming.
-                        </small>
-                    </div>
+                    {% elif is_non_monetary %}
+                        <div class="mb-3">
+                            {{ form.claim_item.label(class="form-label") }}
+                            {{ form.claim_item(class="form-control", placeholder="e.g., Calculator, Textbook, etc.", required=True) }}
+                            <small class="form-text text-muted">
+                                Specify what item or service you're claiming.
+                            </small>
+                        </div>
+                    {% elif is_legacy %}
+                        <div class="mb-3">
+                            {{ form.claim_amount.label(class="form-label") }}
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                {{ form.claim_amount(class="form-control", placeholder="Enter amount", required=True) }}
+                            </div>
+                            <small class="form-text text-muted">
+                                {% if policy.max_claim_amount %}
+                                    Maximum: ${{ "%.2f"|format(policy.max_claim_amount) }} per claim.
+                                {% else %}
+                                    Enter the amount you are requesting.
+                                {% endif %}
+                            </small>
+                        </div>
                     {% endif %}
 
                     <div class="mb-3">
@@ -114,20 +153,27 @@
 
                 <p class="mb-2"><strong>Claim Type:</strong></p>
                 <p class="mb-3">
-                    <span class="badge {{ 'bg-info' if policy.is_monetary else 'bg-warning text-dark' }}">
-                        {{ 'Monetary Claims' if policy.is_monetary else 'Item/Service Claims' }}
-                    </span>
+                    {% if policy.claim_type == 'transaction_monetary' %}
+                        <span class="badge bg-info">[TXN] Transaction-based</span>
+                    {% elif policy.claim_type == 'non_monetary' %}
+                        <span class="badge bg-warning text-dark">[NON-MONETARY] Approval only</span>
+                    {% else %}
+                        <span class="badge bg-primary">[LEGACY] Manual amount</span>
+                    {% endif %}
                 </p>
 
                 <p class="mb-2"><strong>Coverage Details:</strong></p>
                 <ul class="small mb-3">
                     <li>Waiting period: {{ policy.waiting_period_days }} days</li>
                     <li>Claim deadline: {{ policy.claim_time_limit_days }} days from incident</li>
-                    {% if policy.is_monetary and policy.max_claim_amount %}
+                    {% if policy.claim_type != 'non_monetary' and policy.max_claim_amount %}
                         <li>Max claim: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
                     {% endif %}
                     {% if policy.max_claims_count %}
                         <li>Max claims: {{ policy.max_claims_count }} per {{ policy.max_claims_period }}</li>
+                    {% endif %}
+                    {% if policy.claim_type == 'transaction_monetary' %}
+                        <li>One claim per transaction (no splitting)</li>
                     {% endif %}
                 </ul>
 
