@@ -530,7 +530,7 @@ def teacher_overview():
     direct_students_q = db.session.query(
         Student.teacher_id.label('teacher_id'),
         Student.id.label('student_id'),
-        Student.block
+        Student.block.label('block')
     ).filter(
         Student.teacher_id.in_([t.id for t in teachers])
     )
@@ -538,7 +538,7 @@ def teacher_overview():
     indirect_students_q = db.session.query(
         StudentTeacher.admin_id.label('teacher_id'),
         Student.id.label('student_id'),
-        Student.block
+        Student.block.label('block')
     ).join(
         Student, Student.id == StudentTeacher.student_id
     ).filter(
