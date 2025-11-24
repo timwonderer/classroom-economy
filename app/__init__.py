@@ -182,6 +182,43 @@ def create_app():
 
         return render_template("maintenance.html", **maintenance_context()), 503
 
+    @app.before_request
+    def set_rls_tenant_context():
+        """
+        Set PostgreSQL Row-Level Security tenant context for multi-tenancy isolation.
+
+        This sets the app.current_teacher_id session variable that RLS policies use
+        to filter database queries. This ensures teachers can only see/modify their
+        own data at the database level, even if application code has bugs.
+
+        This follows industry best practices from AWS, Azure, and major SaaS providers.
+        """
+        # Skip for static files, health checks, and public routes
+        if request.path.startswith("/static/"):
+            return None
+        if request.endpoint in {"main.health_check"}:
+            return None
+
+        # Set tenant context if admin is logged in
+        admin_id = session.get('admin_id')
+        if admin_id:
+            try:
+                from sqlalchemy import text
+                from app.extensions import db
+
+                # SET LOCAL only affects the current transaction
+                # This is automatically reset after each request
+                db.session.execute(
+                    text("SET LOCAL app.current_teacher_id = :teacher_id"),
+                    {"teacher_id": admin_id}
+                )
+                app.logger.debug(f"RLS context set for teacher_id={admin_id}")
+            except Exception as e:
+                # Log but don't fail the request - RLS will just filter to empty results
+                app.logger.error(f"Failed to set RLS tenant context: {str(e)}")
+
+        return None
+
     # -------------------- CONTEXT PROCESSORS --------------------
     @app.context_processor
     def inject_global_settings():
