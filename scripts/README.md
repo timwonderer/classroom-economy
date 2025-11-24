@@ -79,10 +79,11 @@ When adding new scripts to this directory:
    - Usage example
    - Link to detailed documentation (if applicable)
 
-4. **Use relative imports** for Python scripts:
+4. **Import from app package** for Python scripts:
    ```python
    from app import create_app, db
    ```
+   Scripts must be run from the repository root directory for proper module resolution.
    Avoid hardcoded paths like `/home/user/classroom-economy`
 
 5. **Add error handling** and helpful error messages
