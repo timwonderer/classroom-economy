@@ -2,7 +2,7 @@
 
 Add DeletionRequest model for teacher-initiated deletion requests
 Revision ID: b4c5d6e7f8g9
-Revises: z1a2b3c4d5e6
+Revises: c5d6e7f8g9h0
 Create Date: 2025-11-24 00:00:00.000000
 
 """
