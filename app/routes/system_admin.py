@@ -683,10 +683,23 @@ def delete_period(admin_id, period):
                 student.teacher_id = fallback.admin_id if fallback else None
 
             # Remove the teacher-student link after reassignment
-            StudentTeacher.query.filter_by(
-                student_id=student.id,
-                admin_id=admin.id
-            ).delete()
+            # Only remove the StudentTeacher link if the student is not taught by this teacher in any other period
+            other_periods = Student.query.filter(
+                Student.id == student.id,
+                Student.teacher_id == admin.id,
+                Student.block != period
+            ).count()
+            other_links = StudentTeacher.query.filter(
+                StudentTeacher.student_id == student.id,
+                StudentTeacher.admin_id == admin.id
+            ).join(Student, Student.id == StudentTeacher.student_id).filter(
+                Student.block != period
+            ).count()
+            if other_periods == 0 and other_links == 0:
+                StudentTeacher.query.filter_by(
+                    student_id=student.id,
+                    admin_id=admin.id
+                ).delete()
 
             removed_count += 1
 
