@@ -471,8 +471,15 @@
             <!-- Banking (includes Transactions) -->
             <a href="{{ url_for('admin.banking') }}"
                class="btn text-start {% if current_page == 'banking' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">account_balance</span> Banking</a>
+
+            <!-- Help & Support -->
+            <a href="{{ url_for('admin.help_support') }}"
+               class="btn text-start {% if current_page == 'help_support' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">help</span> Help & Support</a>
         </div>
         <div class="mt-auto">
+            <!-- Account Settings -->
+            <a href="{{ url_for('admin.deletion_requests') }}"
+               class="btn text-start w-100 mb-2 {% if current_page == 'deletion_requests' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">manage_accounts</span> Account Settings</a>
             <button id="viewAsStudentToggle" class="btn text-start w-100 mb-2" data-bs-toggle="modal" data-bs-target="#demoStudentConfigModal" style="background: rgba(253, 176, 52, 0.2); border: 2px solid var(--brand-gold); color: var(--white);">
                 <span class="material-symbols-outlined">visibility</span>
                 <span id="toggleText">View as Student</span>

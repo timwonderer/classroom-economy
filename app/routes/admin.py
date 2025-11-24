@@ -3574,6 +3574,7 @@ def deletion_requests():
 
     return render_template(
         'admin_deletion_requests.html',
+        current_page='deletion_requests',
         pending_requests=pending_requests,
         resolved_requests=resolved_requests,
         periods=periods
