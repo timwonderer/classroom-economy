@@ -1083,7 +1083,7 @@ def file_claim(policy_id):
             if use_row_locking:
                 transaction_already_claimed = db.session.execute(
                     select(InsuranceClaim)
-                    .filter(InsuranceClaim.transaction_id == selected_transaction.id)
+                    .where(InsuranceClaim.transaction_id == selected_transaction.id)
                     .with_for_update()
                 ).scalar_one_or_none()
             else:
