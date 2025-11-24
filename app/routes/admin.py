@@ -1403,7 +1403,8 @@ def insurance_management():
             max_claims_period=form.max_claims_period.data,
             max_claim_amount=form.max_claim_amount.data,
             max_payout_per_period=form.max_payout_per_period.data,
-            is_monetary=form.is_monetary.data,
+            claim_type=form.claim_type.data,
+            is_monetary=form.claim_type.data != 'non_monetary',
             no_repurchase_after_cancel=form.no_repurchase_after_cancel.data,
             repurchase_wait_days=form.repurchase_wait_days.data,
             auto_cancel_nonpay_days=form.auto_cancel_nonpay_days.data,
@@ -1509,7 +1510,8 @@ def edit_insurance_policy(policy_id):
         policy.max_claims_period = form.max_claims_period.data
         policy.max_claim_amount = form.max_claim_amount.data
         policy.max_payout_per_period = form.max_payout_per_period.data
-        policy.is_monetary = form.is_monetary.data
+        policy.claim_type = form.claim_type.data
+        policy.is_monetary = form.claim_type.data != 'non_monetary'
         policy.no_repurchase_after_cancel = form.no_repurchase_after_cancel.data
         policy.enable_repurchase_cooldown = form.enable_repurchase_cooldown.data
         policy.repurchase_wait_days = form.repurchase_wait_days.data
@@ -1723,6 +1725,35 @@ def process_claim(claim_id):
     # Get enrollment details
     enrollment = StudentInsurance.query.get(claim.student_insurance_id)
 
+    def _get_period_bounds():
+        now = datetime.utcnow()
+        if claim.policy.max_claims_period == 'year':
+            return (
+                now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0),
+                now.replace(month=12, day=31, hour=23, minute=59, second=59),
+            )
+        if claim.policy.max_claims_period == 'semester':
+            if now.month <= 6:
+                return (
+                    now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0),
+                    now.replace(month=6, day=30, hour=23, minute=59, second=59),
+                )
+            return (
+                now.replace(month=7, day=1, hour=0, minute=0, second=0, microsecond=0),
+                now.replace(month=12, day=31, hour=23, minute=59, second=59),
+            )
+        period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        next_month = period_start.replace(day=28) + timedelta(days=4)
+        period_end = next_month.replace(day=1) - timedelta(seconds=1)
+        return period_start, period_end
+
+    period_start, period_end = _get_period_bounds()
+
+    def _claim_base_amount(target_claim):
+        if target_claim.policy.claim_type == 'transaction_monetary' and target_claim.transaction:
+            return abs(target_claim.transaction.amount)
+        return target_claim.claim_amount or 0.0
+
     # Validate claim
     validation_errors = []
 
@@ -1734,58 +1765,50 @@ def process_claim(claim_id):
     if not enrollment.payment_current:
         validation_errors.append("Premium payments are not current")
 
-    # Check claim time limit
-    days_since_incident = (datetime.utcnow() - claim.incident_date).days
+    if claim.policy.claim_type == 'transaction_monetary' and not claim.transaction:
+        validation_errors.append("Transaction-based claim is missing a linked transaction")
+    if claim.policy.claim_type == 'transaction_monetary' and claim.transaction_id:
+        duplicate_claim = InsuranceClaim.query.filter(
+            InsuranceClaim.transaction_id == claim.transaction_id,
+            InsuranceClaim.id != claim.id,
+        ).first()
+        if duplicate_claim:
+            validation_errors.append("Another claim is already tied to this transaction")
+
+    incident_reference = claim.transaction.timestamp if claim.policy.claim_type == 'transaction_monetary' and claim.transaction else claim.incident_date
+    days_since_incident = (datetime.utcnow() - incident_reference).days
     if days_since_incident > claim.policy.claim_time_limit_days:
         validation_errors.append(f"Claim filed too late ({days_since_incident} days after incident, limit is {claim.policy.claim_time_limit_days} days)")
 
     # Check max claims count
-    if claim.policy.max_claims_count:
-        # Count approved/paid claims in current period
-        # Simplified: count all approved/paid claims for this enrollment
-        approved_claims = InsuranceClaim.query.filter(
-            InsuranceClaim.student_insurance_id == enrollment.id,
-            InsuranceClaim.status.in_(['approved', 'paid'])
-        ).count()
-        if approved_claims >= claim.policy.max_claims_count:
-            validation_errors.append(f"Maximum claims limit reached ({claim.policy.max_claims_count} per {claim.policy.max_claims_period})")
+    approved_claims = InsuranceClaim.query.filter(
+        InsuranceClaim.student_insurance_id == enrollment.id,
+        InsuranceClaim.status.in_(['approved', 'paid']),
+        InsuranceClaim.processed_date >= period_start,
+        InsuranceClaim.processed_date <= period_end,
+        InsuranceClaim.id != claim.id,
+    )
+    if claim.policy.max_claims_count and approved_claims.count() >= claim.policy.max_claims_count:
+        validation_errors.append(f"Maximum claims limit reached ({claim.policy.max_claims_count} per {claim.policy.max_claims_period})")
 
-    # Check max payout per period
+    period_payouts = None
+    remaining_period_cap = None
     if claim.policy.max_payout_per_period:
-        # Calculate period boundaries
-        now = datetime.utcnow()
-        if claim.policy.max_claims_period == 'month':
-            period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            next_month = period_start.replace(day=28) + timedelta(days=4)
-            period_end = next_month.replace(day=1) - timedelta(seconds=1)
-        elif claim.policy.max_claims_period == 'year':
-            period_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-            period_end = now.replace(month=12, day=31, hour=23, minute=59, second=59)
-        elif claim.policy.max_claims_period == 'semester':
-            # Simplified: Jan-Jun or Jul-Dec
-            if now.month <= 6:
-                period_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-                period_end = now.replace(month=6, day=30, hour=23, minute=59, second=59)
-            else:
-                period_start = now.replace(month=7, day=1, hour=0, minute=0, second=0, microsecond=0)
-                period_end = now.replace(month=12, day=31, hour=23, minute=59, second=59)
-        else:
-            period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-            period_end = now
-
-        # Sum approved payouts in current period
         period_payouts = db.session.query(func.sum(InsuranceClaim.approved_amount)).filter(
             InsuranceClaim.student_insurance_id == enrollment.id,
             InsuranceClaim.status.in_(['approved', 'paid']),
             InsuranceClaim.processed_date >= period_start,
             InsuranceClaim.processed_date <= period_end,
-            InsuranceClaim.approved_amount.isnot(None)
+            InsuranceClaim.approved_amount.isnot(None),
+            InsuranceClaim.id != claim.id,
         ).scalar() or 0.0
 
-        # Check if new claim would exceed limit
-        requested_amount = claim.claim_amount or 0.0
-        if period_payouts + requested_amount > claim.policy.max_payout_per_period:
-            validation_errors.append(f"Maximum payout limit would be exceeded (${period_payouts:.2f} paid + ${requested_amount:.2f} requested > ${claim.policy.max_payout_per_period:.2f} limit per {claim.policy.max_claims_period})")
+        requested_amount = _claim_base_amount(claim)
+        remaining_period_cap = max(claim.policy.max_payout_per_period - period_payouts, 0)
+        if remaining_period_cap is not None and requested_amount > remaining_period_cap and claim.policy.claim_type != 'non_monetary':
+            validation_errors.append(
+                f"Maximum payout limit would be exceeded (${period_payouts:.2f} paid + ${requested_amount:.2f} requested > ${claim.policy.max_payout_per_period:.2f} limit per {claim.policy.max_claims_period})"
+            )
 
     # Get claims statistics
     claims_stats = {
@@ -1799,71 +1822,67 @@ def process_claim(claim_id):
         old_status = claim.status
         new_status = form.status.data
 
+        is_monetary_claim = claim.policy.claim_type != 'non_monetary'
+        requires_payout = is_monetary_claim and new_status in ('approved', 'paid') and old_status not in ('approved', 'paid')
+
+        if validation_errors and requires_payout:
+            flash("Resolve validation errors before approving or paying out this claim.", "danger")
+            return redirect(url_for('admin.process_claim', claim_id=claim_id))
+
         claim.status = new_status
         claim.admin_notes = form.admin_notes.data
         claim.rejection_reason = form.rejection_reason.data if new_status == 'rejected' else None
         claim.processed_date = datetime.utcnow()
         claim.processed_by_admin_id = session.get('admin_id')
 
-        # Handle monetary claims - auto-deposit when approved
-        if claim.policy.is_monetary and new_status == 'approved' and old_status != 'approved':
-            # Use approved amount or requested amount
-            deposit_amount = form.approved_amount.data if form.approved_amount.data else claim.claim_amount
-            claim.approved_amount = deposit_amount
+        # Handle monetary claims - auto-deposit when approved/paid
+        if requires_payout:
+            approved_claims_count = approved_claims.count()
+            if claim.policy.max_claims_count and approved_claims_count >= claim.policy.max_claims_count:
+                flash(f"Cannot approve claim: maximum of {claim.policy.max_claims_count} claims already reached this {claim.policy.max_claims_period}.", "danger")
+                db.session.rollback()
+                return redirect(url_for('admin.process_claim', claim_id=claim_id))
 
-            # Final check: Verify max payout per period won't be exceeded
-            if claim.policy.max_payout_per_period:
-                # Recalculate period boundaries (same logic as above)
-                now = datetime.utcnow()
-                if claim.policy.max_claims_period == 'month':
-                    period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                    next_month = period_start.replace(day=28) + timedelta(days=4)
-                    period_end = next_month.replace(day=1) - timedelta(seconds=1)
-                elif claim.policy.max_claims_period == 'year':
-                    period_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-                    period_end = now.replace(month=12, day=31, hour=23, minute=59, second=59)
-                elif claim.policy.max_claims_period == 'semester':
-                    if now.month <= 6:
-                        period_start = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-                        period_end = now.replace(month=6, day=30, hour=23, minute=59, second=59)
-                    else:
-                        period_start = now.replace(month=7, day=1, hour=0, minute=0, second=0, microsecond=0)
-                        period_end = now.replace(month=12, day=31, hour=23, minute=59, second=59)
-                else:
-                    period_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                    period_end = now
+            base_amount = _claim_base_amount(claim)
+            approved_amount = base_amount
+            if claim.policy.claim_type == 'legacy_monetary' and form.approved_amount.data is not None:
+                approved_amount = form.approved_amount.data
 
-                # Sum approved payouts in current period (excluding this claim)
-                period_payouts = db.session.query(func.sum(InsuranceClaim.approved_amount)).filter(
-                    InsuranceClaim.student_insurance_id == enrollment.id,
-                    InsuranceClaim.status.in_(['approved', 'paid']),
-                    InsuranceClaim.processed_date >= period_start,
-                    InsuranceClaim.processed_date <= period_end,
-                    InsuranceClaim.approved_amount.isnot(None),
-                    InsuranceClaim.id != claim.id  # Exclude current claim
-                ).scalar() or 0.0
+            if claim.policy.max_claim_amount:
+                approved_amount = min(approved_amount, claim.policy.max_claim_amount)
 
-                if period_payouts + deposit_amount > claim.policy.max_payout_per_period:
-                    flash(f"Cannot approve claim: Would exceed maximum payout limit of ${claim.policy.max_payout_per_period:.2f} per {claim.policy.max_claims_period} (${period_payouts:.2f} already paid)", "danger")
+            if remaining_period_cap is not None:
+                if remaining_period_cap <= 0:
+                    flash(
+                        f"Cannot approve claim: Would exceed maximum payout limit of ${claim.policy.max_payout_per_period:.2f} per {claim.policy.max_claims_period} (${period_payouts:.2f} already paid)",
+                        "danger",
+                    )
                     db.session.rollback()
                     return redirect(url_for('admin.process_claim', claim_id=claim_id))
+                approved_amount = min(approved_amount, remaining_period_cap)
+
+            claim.approved_amount = approved_amount
 
             # Auto-deposit to student's checking account via transaction
             student = claim.student
 
-            # Create transaction record
+            transaction_description = f"Insurance reimbursement for claim #{claim.id} ({claim.policy.title})"
+            if claim.transaction_id:
+                transaction_description += f" linked to transaction #{claim.transaction_id}"
+
             transaction = Transaction(
                 student_id=student.id,
-                amount=deposit_amount,
+                teacher_id=claim.policy.teacher_id,
+                amount=approved_amount,
                 account_type='checking',
-                type='insurance_claim',
-                description=f"Insurance claim approved: {claim.policy.title}"
+                type='insurance_reimbursement',
+                description=transaction_description,
             )
             db.session.add(transaction)
 
-            flash(f"Monetary claim approved! ${deposit_amount:.2f} deposited to {student.full_name}'s checking account.", "success")
-        elif not claim.policy.is_monetary and new_status == 'approved':
-            # Non-monetary claim - just mark as approved
+            flash(f"Monetary claim approved! ${approved_amount:.2f} deposited to {student.full_name}'s checking account.", "success")
+        elif claim.policy.claim_type == 'non_monetary' and new_status == 'approved':
+            claim.approved_amount = None
             flash(f"Non-monetary claim approved for {claim.claim_item}. Item/service will be provided offline.", "success")
         elif new_status == 'rejected':
             flash("Claim has been rejected.", "warning")
@@ -1876,7 +1895,9 @@ def process_claim(claim_id):
                           form=form,
                           enrollment=enrollment,
                           validation_errors=validation_errors,
-                          claims_stats=claims_stats)
+                          claims_stats=claims_stats,
+                          remaining_period_cap=remaining_period_cap,
+                          period_payouts=period_payouts)
 
 
 # -------------------- TRANSACTIONS --------------------
