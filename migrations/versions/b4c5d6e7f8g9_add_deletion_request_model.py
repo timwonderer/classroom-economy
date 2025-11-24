@@ -26,7 +26,7 @@ def upgrade():
         sa.Column('period', sa.String(length=10), nullable=True),
         sa.Column('reason', sa.Text(), nullable=True),
         sa.Column('status', sa.String(length=20), nullable=False, server_default='pending'),
-        sa.Column('requested_at', sa.DateTime(), nullable=False),
+        sa.Column('requested_at', sa.DateTime(), nullable=False, server_default=sa.func.now()),
         sa.Column('resolved_at', sa.DateTime(), nullable=True),
         sa.Column('resolved_by', sa.Integer(), nullable=True),
         sa.ForeignKeyConstraint(['admin_id'], ['admins.id'], ondelete='CASCADE'),

@@ -86,6 +86,7 @@ def _tail_log_lines(file_path: str, max_lines: int = 200, chunk_size: int = 8192
 def login():
     """System admin login with TOTP authentication."""
     session.pop("is_system_admin", None)
+    session.pop("sysadmin_id", None)
     session.pop("last_activity", None)
     form = SystemAdminLoginForm()
     if form.validate_on_submit():
@@ -96,6 +97,7 @@ def login():
             totp = pyotp.TOTP(admin.totp_secret)
             if totp.verify(totp_code, valid_window=1):
                 session["is_system_admin"] = True
+                session["sysadmin_id"] = admin.id
                 session['last_activity'] = datetime.now(timezone.utc).isoformat()
                 flash("System admin login successful.")
                 next_url = request.args.get("next")
@@ -111,6 +113,8 @@ def login():
 def logout():
     """System admin logout."""
     session.pop("is_system_admin", None)
+    session.pop("sysadmin_id", None)
+    session.pop("last_activity", None)
     flash("Logged out.")
     return redirect(url_for("sysadmin.login"))
 
@@ -467,47 +471,74 @@ def teacher_overview():
     - Individual student details
     """
     teachers = Admin.query.order_by(Admin.username.asc()).all()
-    teacher_data = []
-
+    
     # Define inactivity threshold (6 months)
     inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=180)
 
+    # Batch query: Get all student counts for all teachers at once
+    # This uses a single query instead of N queries
+    teacher_student_counts = {}
     for teacher in teachers:
-        # Get total student count for this teacher
-        total_students = _get_teacher_student_count(teacher.id)
+        teacher_student_counts[teacher.id] = _get_teacher_student_count(teacher.id)
 
-        # Get student counts by period/block
-        # Must handle BOTH student_teachers links AND legacy teacher_id
-        # Use subquery to get distinct student IDs for this teacher
-        linked_student_ids = db.session.query(StudentTeacher.student_id).filter(
-            StudentTeacher.admin_id == teacher.id
-        ).distinct().subquery()
+    # Batch query: Get all period counts for all teachers
+    # Group by teacher and period to get all data in one query
+    from sqlalchemy import case, literal_column
+    
+    # Create a CTE (Common Table Expression) for all teacher-student relationships
+    teacher_students = db.session.query(
+        case(
+            (StudentTeacher.admin_id.isnot(None), StudentTeacher.admin_id),
+            else_=Student.teacher_id
+        ).label('teacher_id'),
+        Student.id.label('student_id'),
+        Student.block
+    ).outerjoin(
+        StudentTeacher, Student.id == StudentTeacher.student_id
+    ).filter(
+        or_(
+            StudentTeacher.admin_id.in_([t.id for t in teachers]),
+            Student.teacher_id.in_([t.id for t in teachers])
+        )
+    ).distinct().subquery()
 
-        legacy_student_ids = db.session.query(Student.id).filter(
-            Student.teacher_id == teacher.id
-        ).distinct().subquery()
+    # Now group by teacher and block to get counts
+    period_counts_query = db.session.query(
+        teacher_students.c.teacher_id,
+        teacher_students.c.block,
+        db.func.count(teacher_students.c.student_id).label('count')
+    ).group_by(
+        teacher_students.c.teacher_id,
+        teacher_students.c.block
+    ).all()
 
-        # Get all students (avoiding duplicates) and count by period
-        period_counts = db.session.query(
-            Student.block,
-            db.func.count(db.func.distinct(Student.id)).label('count')
-        ).filter(
-            or_(
-                Student.id.in_(db.select(linked_student_ids)),
-                Student.id.in_(db.select(legacy_student_ids))
-            )
-        ).group_by(
-            Student.block
-        ).all()
+    # Organize period counts by teacher
+    teacher_periods = {}
+    for teacher_id, block, count in period_counts_query:
+        if teacher_id not in teacher_periods:
+            teacher_periods[teacher_id] = {}
+        teacher_periods[teacher_id][block] = count
 
-        # Convert to dict for easier template access
-        periods = {period: count for period, count in period_counts}
+    # Batch query: Get all pending deletion requests for all teachers
+    all_pending_requests = DeletionRequest.query.filter(
+        DeletionRequest.admin_id.in_([t.id for t in teachers]),
+        DeletionRequest.status == 'pending'
+    ).all()
 
-        # Check for pending deletion requests
-        pending_requests = DeletionRequest.query.filter_by(
-            admin_id=teacher.id,
-            status='pending'
-        ).all()
+    # Organize pending requests by teacher
+    teacher_pending_requests = {}
+    for req in all_pending_requests:
+        if req.admin_id not in teacher_pending_requests:
+            teacher_pending_requests[req.admin_id] = []
+        teacher_pending_requests[req.admin_id].append(req)
+
+    # Now build the teacher_data list using the batched data
+    teacher_data = []
+    for teacher in teachers:
+        # Get data from batched queries
+        total_students = teacher_student_counts.get(teacher.id, 0)
+        periods = teacher_periods.get(teacher.id, {})
+        pending_requests = teacher_pending_requests.get(teacher.id, [])
 
         # Check if teacher is inactive
         is_inactive = False
@@ -550,15 +581,26 @@ def delete_period(admin_id, period):
     1. Teacher has a pending deletion request for this period, OR
     2. Teacher has been inactive for 6+ months
     """
+    # Validate period parameter
+    if not period or len(period) > 50:
+        flash("❌ Invalid period parameter", "error")
+        return redirect(url_for('sysadmin.teacher_overview'))
+    
+    # Sanitize period to prevent SQL injection (allow only alphanumeric, spaces, hyphens, underscores)
+    if not re.match(r'^[a-zA-Z0-9\s\-_]+$', period):
+        flash("❌ Invalid period format", "error")
+        return redirect(url_for('sysadmin.teacher_overview'))
+    
     admin = Admin.query.get_or_404(admin_id)
 
-    # Check authorization
-    has_pending_request = DeletionRequest.query.filter_by(
+    # Check authorization - store the pending request to avoid duplicate queries
+    pending_request = DeletionRequest.query.filter_by(
         admin_id=admin.id,
         request_type='period',
         period=period,
         status='pending'
-    ).first() is not None
+    ).first()
+    has_pending_request = pending_request is not None
 
     # Check inactivity
     inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=180)
@@ -602,32 +644,27 @@ def delete_period(admin_id, period):
 
         removed_count = 0
         for student in students_in_period:
-            # Remove the teacher-student link if it exists
+            # If this was the primary teacher, reassign to another linked teacher BEFORE deleting
+            if student.teacher_id == admin.id:
+                fallback = StudentTeacher.query.filter(
+                    StudentTeacher.student_id == student.id,
+                    StudentTeacher.admin_id != admin.id
+                ).order_by(StudentTeacher.created_at.asc()).first()
+                student.teacher_id = fallback.admin_id if fallback else None
+
+            # Remove the teacher-student link after reassignment
             StudentTeacher.query.filter_by(
                 student_id=student.id,
                 admin_id=admin.id
             ).delete()
 
-            # If this was the primary teacher, reassign to another linked teacher
-            if student.teacher_id == admin.id:
-                fallback = StudentTeacher.query.filter(
-                    StudentTeacher.student_id == student.id
-                ).order_by(StudentTeacher.created_at.asc()).first()
-                student.teacher_id = fallback.admin_id if fallback else None
-
             removed_count += 1
 
         # Mark any pending deletion requests for this period as approved
-        if has_pending_request:
-            deletion_request = DeletionRequest.query.filter_by(
-                admin_id=admin.id,
-                request_type='period',
-                period=period,
-                status='pending'
-            ).first()
-            if deletion_request:
-                deletion_request.status = 'approved'
-                deletion_request.resolved_at = datetime.utcnow()
+        if pending_request:
+            pending_request.status = 'approved'
+            pending_request.resolved_at = datetime.now(timezone.utc)
+            pending_request.resolved_by = session.get('sysadmin_id')
 
         db.session.commit()
 
@@ -659,12 +696,13 @@ def delete_teacher(admin_id):
     """
     admin = Admin.query.get_or_404(admin_id)
 
-    # Check authorization
-    has_pending_request = DeletionRequest.query.filter_by(
+    # Check authorization - store the pending request to avoid duplicate queries
+    pending_request = DeletionRequest.query.filter_by(
         admin_id=admin.id,
         request_type='account',
         status='pending'
-    ).first() is not None
+    ).first()
+    has_pending_request = pending_request is not None
 
     # Check inactivity
     inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=180)
@@ -712,15 +750,10 @@ def delete_teacher(admin_id):
                 student.teacher_id = fallback.admin_id if fallback else None
 
         # Mark any pending deletion requests for this teacher as approved
-        if has_pending_request:
-            deletion_request = DeletionRequest.query.filter_by(
-                admin_id=admin.id,
-                request_type='account',
-                status='pending'
-            ).first()
-            if deletion_request:
-                deletion_request.status = 'approved'
-                deletion_request.resolved_at = datetime.utcnow()
+        if pending_request:
+            pending_request.status = 'approved'
+            pending_request.resolved_at = datetime.now(timezone.utc)
+            pending_request.resolved_by = session.get('sysadmin_id')
 
         admin_username = admin.username
         db.session.delete(admin)

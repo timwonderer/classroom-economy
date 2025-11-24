@@ -102,9 +102,7 @@
                                     <td><small>{{ teacher.created_at.strftime('%b %d, %Y') if teacher.created_at else 'Unknown' }}</small></td>
                                     <td><small>{{ teacher.last_login.strftime('%b %d, %I:%M %p') if teacher.last_login else 'Never' }}</small></td>
                                     <td>
-                                        <a href="{{ url_for('sysadmin.teacher_overview') }}" class="btn btn-sm btn-outline-primary">
-                                            <i class="bi bi-eye"></i> View Details
-                                        </a>
+                                        <!-- Removed misleading "View Details" button as it doesn't provide teacher-specific details -->
                                     </td>
                                 </tr>
                                 {% else %}
