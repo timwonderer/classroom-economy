@@ -242,7 +242,7 @@ class SystemAdmin(db.Model):
 
 
 class Transaction(db.Model):
-    __tablename__ = 'transactions'
+    __tablename__ = 'transaction'
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
@@ -533,7 +533,7 @@ class InsuranceClaim(db.Model):
     approved_amount = db.Column(db.Float, nullable=True)
     processed_date = db.Column(db.DateTime, nullable=True)
     processed_by_admin_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
-    transaction_id = db.Column(db.Integer, db.ForeignKey('transactions.id'), nullable=True)
+    transaction_id = db.Column(db.Integer, db.ForeignKey('transaction.id'), nullable=True)
 
     # Relationships
     student = db.relationship('Student', backref='insurance_claims')
