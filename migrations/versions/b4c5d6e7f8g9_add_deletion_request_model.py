@@ -1,6 +1,6 @@
 """Add DeletionRequest model for teacher-initiated deletion requests
 
-Revision ID: a3b4c5d6e7f8
+Revision ID: b4c5d6e7f8g9
 Revises: z1a2b3c4d5e6
 Create Date: 2025-11-24 00:00:00.000000
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'a3b4c5d6e7f8'
+revision = 'b4c5d6e7f8g9'
 down_revision = 'z1a2b3c4d5e6'
 branch_labels = None
 depends_on = None

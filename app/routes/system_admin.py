@@ -477,14 +477,25 @@ def teacher_overview():
         total_students = _get_teacher_student_count(teacher.id)
 
         # Get student counts by period/block
+        # Must handle BOTH student_teachers links AND legacy teacher_id
+        # Use subquery to get distinct student IDs for this teacher
+        linked_student_ids = db.session.query(StudentTeacher.student_id).filter(
+            StudentTeacher.admin_id == teacher.id
+        ).distinct().subquery()
+
+        legacy_student_ids = db.session.query(Student.id).filter(
+            Student.teacher_id == teacher.id
+        ).distinct().subquery()
+
+        # Get all students (avoiding duplicates) and count by period
         period_counts = db.session.query(
             Student.block,
-            db.func.count(Student.id).label('count')
-        ).join(
-            StudentTeacher,
-            Student.id == StudentTeacher.student_id
+            db.func.count(db.func.distinct(Student.id)).label('count')
         ).filter(
-            StudentTeacher.admin_id == teacher.id
+            or_(
+                Student.id.in_(db.select(linked_student_ids)),
+                Student.id.in_(db.select(legacy_student_ids))
+            )
         ).group_by(
             Student.block
         ).all()
@@ -570,7 +581,8 @@ def delete_period(admin_id, period):
 
     try:
         # Get students in this period linked to this teacher
-        students_in_period = db.session.query(Student).join(
+        # Must check BOTH student_teachers join table AND legacy teacher_id column
+        students_via_link = db.session.query(Student).join(
             StudentTeacher,
             Student.id == StudentTeacher.student_id
         ).filter(
@@ -578,9 +590,19 @@ def delete_period(admin_id, period):
             Student.block == period
         ).all()
 
+        # Also get students linked via legacy teacher_id column
+        students_via_legacy = Student.query.filter(
+            Student.teacher_id == admin.id,
+            Student.block == period
+        ).all()
+
+        # Combine both sets (use dict to deduplicate by student ID)
+        all_students = {s.id: s for s in students_via_link + students_via_legacy}
+        students_in_period = list(all_students.values())
+
         removed_count = 0
         for student in students_in_period:
-            # Remove the teacher-student link
+            # Remove the teacher-student link if it exists
             StudentTeacher.query.filter_by(
                 student_id=student.id,
                 admin_id=admin.id
