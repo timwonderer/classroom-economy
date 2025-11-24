@@ -512,6 +512,9 @@ class StudentInsurance(db.Model):
 
 class InsuranceClaim(db.Model):
     __tablename__ = 'insurance_claims'
+    __table_args__ = (
+        db.UniqueConstraint('transaction_id', name='uq_insurance_claims_transaction_id'),
+    )
     id = db.Column(db.Integer, primary_key=True)
     student_insurance_id = db.Column(db.Integer, db.ForeignKey('student_insurance.id'), nullable=False)
     policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id'), nullable=False)
