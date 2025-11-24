@@ -86,7 +86,7 @@ def _check_deletion_authorization(admin, request_type=None, period=None):
     if request_type:
         # Convert string to enum if needed
         if isinstance(request_type, str):
-            request_type = DeletionRequestType.PERIOD if request_type == 'period' else DeletionRequestType.ACCOUNT
+            request_type = DeletionRequestType.from_string(request_type)
         query = query.filter_by(request_type=request_type)
     if period:
         query = query.filter_by(period=period)

@@ -3452,13 +3452,14 @@ def deletion_requests():
                 flash('Period/block is required for period deletion requests.', 'error')
                 return redirect(url_for('admin.deletion_requests'))
             # Validate period format and length
+            # Allow spaces, hyphens, underscores since periods may be named like "Period 1A" or "Block-2"
             if not re.match(r'^[a-zA-Z0-9\s\-_]+$', period) or len(period) > 10:
                 flash('Invalid period format. Use alphanumeric characters only, max 10 characters.', 'error')
                 return redirect(url_for('admin.deletion_requests'))
 
         # Check for duplicate pending requests
-        # Convert string to enum
-        request_type_enum = DeletionRequestType.PERIOD if request_type == 'period' else DeletionRequestType.ACCOUNT
+        # Convert string to enum (will raise ValueError if invalid)
+        request_type_enum = DeletionRequestType.from_string(request_type)
         existing = DeletionRequest.query.filter_by(
             admin_id=admin_id,
             request_type=request_type_enum,

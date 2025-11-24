@@ -243,6 +243,16 @@ class DeletionRequestType(enum.Enum):
     """Enum for deletion request types."""
     PERIOD = 'period'
     ACCOUNT = 'account'
+    
+    @classmethod
+    def from_string(cls, value):
+        """Convert string to enum, raising ValueError if invalid."""
+        if isinstance(value, cls):
+            return value
+        for member in cls:
+            if member.value == value:
+                return member
+        raise ValueError(f"Invalid DeletionRequestType: {value}")
 
 
 class DeletionRequestStatus(enum.Enum):
