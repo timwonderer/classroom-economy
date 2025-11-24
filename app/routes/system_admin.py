@@ -545,7 +545,7 @@ def teacher_overview():
         StudentTeacher.admin_id.in_([t.id for t in teachers])
     )
 
-    teacher_students = direct_students_q.union_all(indirect_students_q).subquery()
+    teacher_students = direct_students_q.union(indirect_students_q).subquery()
 
     # Get total student counts per teacher in a single query
     teacher_student_count_rows = db.session.query(
