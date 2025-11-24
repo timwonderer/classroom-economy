@@ -8,15 +8,40 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Added
-- Comprehensive documentation reorganization and housekeeping
-- Operations documentation directory for operational guides
-- Improved migrations README with quick reference commands
+- Archive directory for historical PR reports (`docs/archive/pr-reports/`)
+- README documentation for scripts directory
+- README documentation for archived PR reports
 
 ### Changed
-- Moved cleanup guides to docs/operations/ for better organization
+- Moved utility scripts to `scripts/` directory for better organization:
+  - `check_migration.py`
+  - `check_orphaned_insurance.py`
+  - `cleanup_duplicates.py`
+  - `cleanup_duplicates_flask.py`
+- Updated script references in documentation to reflect new paths
+- Removed hardcoded paths from `check_orphaned_insurance.py`
 
 ### Removed
-- Obsolete merge documentation (MERGE_GUIDE.md, MERGE_STATUS.md)
+- Duplicate file: `SECURITY_AUDIT_INSURANCE_OVERHAUL (1).md`
+- Moved PR-specific reports to archive (no longer in root):
+  - `PR_DESCRIPTION.md`
+  - `PR_DESCRIPTION_SECURITY_FIXES.md`
+  - `CODE_REVIEW_SECURITY_FIXES.md`
+  - `CODE_REVIEW_TECHNICAL_ANALYSIS.md`
+  - `FINAL_CODE_REVIEW_SUMMARY.md`
+  - `MIGRATION_REPORT_STAGING.md`
+  - `REGRESSION_TEST_REPORT_STAGING.md`
+  - `SECURITY_FIXES_CONSOLIDATED.md`
+  - `SECURITY_FIX_VERIFICATION.md`
+  - `SECURITY_FIX_VERIFICATION_UPDATED.md`
+  - `SECURITY_AUDIT_INSURANCE_OVERHAUL.md`
+  - `PRODUCTION_DEPLOYMENT_INSTRUCTIONS.md`
+
+## [Recent Updates] - 2025-11-24
+
+### Changed
+- Repository housekeeping: organized files, removed obsolete files, and updated documentation
+- Improved repository structure for better maintainability and navigation
 
 ## [Recent Updates] - 2025-11-20
 

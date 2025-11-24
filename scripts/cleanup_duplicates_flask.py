@@ -7,8 +7,10 @@ IMPORTANT: This script migrates all related records (transactions, tap events, e
 from duplicate students to the student being kept, then deletes duplicates.
 
 Usage:
-    python cleanup_duplicates_flask.py --list     # Show duplicates
-    python cleanup_duplicates_flask.py --delete   # Delete duplicates (with migration)
+    python scripts/cleanup_duplicates_flask.py --list     # Show duplicates
+    python scripts/cleanup_duplicates_flask.py --delete   # Delete duplicates (with migration)
+
+Note: Must be run from the repository root directory.
 """
 
 import sys

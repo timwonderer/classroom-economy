@@ -1,5 +1,12 @@
 #!/usr/bin/env python
-"""Check current alembic migration version in the database."""
+"""
+Check current alembic migration version in the database.
+
+Usage:
+    python scripts/check_migration.py
+
+Note: Must be run from the repository root directory.
+"""
 
 from app.extensions import db
 from app import create_app

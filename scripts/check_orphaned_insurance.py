@@ -2,10 +2,12 @@
 """
 Script to find and optionally fix orphaned insurance policies with NULL teacher_id.
 These policies won't show up in any teacher's admin panel.
-"""
 
-import sys
-sys.path.insert(0, '/home/user/classroom-economy')
+Usage:
+    python scripts/check_orphaned_insurance.py
+
+Note: Must be run from the repository root directory.
+"""
 
 from app import create_app, db
 from app.models import InsurancePolicy, Admin

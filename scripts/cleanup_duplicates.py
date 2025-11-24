@@ -4,6 +4,13 @@ Cleanup script to remove duplicate students created due to algorithm bug.
 
 This script identifies and removes duplicate students, keeping the OLDEST record
 (the original) and deleting newer duplicates.
+
+Usage:
+    python scripts/cleanup_duplicates.py          # List duplicates
+    python scripts/cleanup_duplicates.py --delete # Delete duplicates
+
+Note: Must be run from the repository root directory.
+      For production use, prefer cleanup_duplicates_flask.py which migrates data.
 """
 
 from app import create_app

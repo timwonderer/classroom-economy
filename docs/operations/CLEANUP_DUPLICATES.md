@@ -25,14 +25,14 @@ The bug has been FIXED. Now you need to clean up the existing duplicates.
 
 ### Step 1: List duplicates
 ```bash
-python cleanup_duplicates_flask.py --list
+python scripts/cleanup_duplicates_flask.py --list
 ```
 
 This will show you all duplicate students and which ones will be kept/deleted.
 
 ### Step 2: Delete duplicates
 ```bash
-python cleanup_duplicates_flask.py --delete
+python scripts/cleanup_duplicates_flask.py --delete
 ```
 
 This automatically:
@@ -56,10 +56,10 @@ cd /path/to/classroom-economy
 source venv/bin/activate
 
 # List duplicates first
-python cleanup_duplicates_flask.py --list
+python scripts/cleanup_duplicates_flask.py --list
 
 # Review the output, then delete
-python cleanup_duplicates_flask.py --delete
+python scripts/cleanup_duplicates_flask.py --delete
 ```
 
 ---
@@ -70,8 +70,8 @@ python cleanup_duplicates_flask.py --delete
 2. Click the "Shell" tab
 3. Run:
    ```bash
-   python cleanup_duplicates_flask.py --list
-   python cleanup_duplicates_flask.py --delete
+   python scripts/cleanup_duplicates_flask.py --list
+   python scripts/cleanup_duplicates_flask.py --delete
    ```
 
 ---
@@ -143,7 +143,7 @@ After running the cleanup, verify the results:
 
 ```bash
 # Run list again - should show "No duplicates found!"
-python cleanup_duplicates_flask.py --list
+python scripts/cleanup_duplicates_flask.py --list
 
 # Check student counts look correct
 # (should be roughly half if you uploaded twice)
