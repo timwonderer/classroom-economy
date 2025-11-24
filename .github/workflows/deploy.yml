@@ -79,6 +79,14 @@ jobs:
           # Ensure DATABASE_URL is set for migrations
           echo 'Exporting DATABASE_URL for production migrations...'
 
+          echo '🔍 Running migration safety checks...'
+          bash scripts/check-migrations.sh || {
+            echo "❌ Migration safety check failed - deployment aborted"
+            echo "This usually means there are multiple migration heads."
+            echo "Fix this by creating a merge migration locally and pushing to main."
+            exit 1
+          }
+
           echo 'Running database migrations...'
           flask db upgrade
 
