@@ -86,7 +86,7 @@
                                             <ul class="dropdown-menu">
                                                 {% for period, count in teacher.periods.items() %}
                                                     <li>
-                                                        <form method="POST" action="{{ url_for('sysadmin.delete_period', admin_id=teacher.id, period=period) }}" class="d-inline" onsubmit="return confirm(`Delete period ${{{ period|upper|tojson }}} for ${{{ teacher.username|tojson }}}? This will remove {{ count }} student link(s).`);">
+                                                        <form method="POST" action="{{ url_for('sysadmin.delete_period', admin_id=teacher.id, period=period) }}" class="d-inline" onsubmit="return confirm(`Delete period ${ {{ period|upper|tojson }} } for ${ {{ teacher.username|tojson }} }? This will remove {{ count }} student link(s).`);">
                                                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                                             <button type="submit" class="dropdown-item">
                                                                 {{ period|upper }} ({{ count }} students)
@@ -98,7 +98,7 @@
                                         </div>
                                     {% endif %}
                                     <!-- Account deletion -->
-                                    <form method="POST" action="{{ url_for('sysadmin.delete_teacher', admin_id=teacher.id) }}" class="d-inline" onsubmit="return confirm(`Delete teacher account ${{{ teacher.username|tojson }}}? This will remove all student links.`);">
+                                    <form method="POST" action="{{ url_for('sysadmin.delete_teacher', admin_id=teacher.id) }}" class="d-inline" onsubmit="return confirm(`Delete teacher account ${ {{ teacher.username|tojson }} }? This will remove all student links.`);">
                                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                         <button type="submit" class="btn btn-sm btn-outline-danger">
                                             <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">delete</span>
