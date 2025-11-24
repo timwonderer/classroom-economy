@@ -199,9 +199,26 @@ def create_app():
         if request.endpoint in {"main.health_check"}:
             return None
 
-        # Set tenant context if admin is logged in
+        # Set tenant context for both admin and student sessions
+        teacher_id = None
+        
+        # Check if admin is logged in
         admin_id = session.get('admin_id')
         if admin_id:
+            teacher_id = admin_id
+        else:
+            # Check if student is logged in and has a current teacher
+            # Students query teacher-scoped tables (StoreItem, RentSettings, etc.)
+            # so we need to set RLS context for them too
+            student_id = session.get('student_id')
+            if student_id:
+                # Get the student's current teacher context
+                # This uses the multi-period support system
+                current_teacher_id = session.get('current_teacher_id')
+                if current_teacher_id:
+                    teacher_id = current_teacher_id
+        
+        if teacher_id:
             try:
                 from sqlalchemy import text
                 from app.extensions import db
@@ -210,9 +227,9 @@ def create_app():
                 # This is automatically reset after each request
                 db.session.execute(
                     text("SET LOCAL app.current_teacher_id = :teacher_id"),
-                    {"teacher_id": admin_id}
+                    {"teacher_id": teacher_id}
                 )
-                app.logger.debug(f"RLS context set for teacher_id={admin_id}")
+                app.logger.debug(f"RLS context set for teacher_id={teacher_id}")
             except Exception as e:
                 # Log but don't fail the request - RLS will just filter to empty results
                 app.logger.error(f"Failed to set RLS tenant context: {str(e)}")
