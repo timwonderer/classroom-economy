@@ -3292,7 +3292,6 @@ def banking():
             query = query.filter(Transaction.timestamp >= start_date_obj)
         except ValueError:
             flash("Invalid start date format. Please use YYYY-MM-DD.", "danger")
-            start_date = None
     if end_date:
         # P1-1 Fix: Prevent SQL injection by validating and parsing date in Python
         try:
@@ -3302,7 +3301,6 @@ def banking():
             query = query.filter(Transaction.timestamp < end_date_inclusive)
         except ValueError:
             flash("Invalid end date format. Please use YYYY-MM-DD.", "danger")
-            end_date = None
 
     # Count total for pagination
     total_transactions = query.count()

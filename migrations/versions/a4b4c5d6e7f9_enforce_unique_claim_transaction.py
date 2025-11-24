@@ -1,6 +1,6 @@
 """Enforce unique claim per transaction
 
-Revision ID: a3b4c5d6e7f8
+Revision ID: a4b4c5d6e7f9
 Revises: 2f3g4h5i6j7k
 Create Date: 2025-12-15 00:00:00.000000
 
@@ -12,7 +12,6 @@ branch_labels = None
 depends_on = None
 
 from alembic import op
-import sqlalchemy as sa
 
 
 def upgrade():
