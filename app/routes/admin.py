@@ -1769,6 +1769,20 @@ def process_claim(claim_id):
         validation_errors.append("Transaction-based claim is missing a linked transaction")
     if claim.policy.claim_type == 'transaction_monetary' and claim.transaction and claim.transaction.is_void:
         validation_errors.append("Linked transaction has been voided and cannot be reimbursed")
+
+    # P0-3 Fix: Validate transaction ownership to prevent cross-student fraud
+    if claim.policy.claim_type == 'transaction_monetary' and claim.transaction:
+        if claim.transaction.student_id != claim.student_id:
+            validation_errors.append(
+                f"SECURITY: Transaction ownership mismatch. "
+                f"Transaction belongs to student ID {claim.transaction.student_id}, "
+                f"but claim filed by student ID {claim.student_id}."
+            )
+            current_app.logger.error(
+                f"SECURITY ALERT: Transaction ownership mismatch in claim {claim.id}. "
+                f"Claim student_id={claim.student_id}, transaction student_id={claim.transaction.student_id}"
+            )
+
     if claim.policy.claim_type == 'transaction_monetary' and claim.transaction_id:
         duplicate_claim = InsuranceClaim.query.filter(
             InsuranceClaim.transaction_id == claim.transaction_id,
@@ -3273,10 +3287,22 @@ def banking():
     if type_q:
         query = query.filter(Transaction.type == type_q)
     if start_date:
-        query = query.filter(Transaction.timestamp >= start_date)
+        try:
+            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d')
+            query = query.filter(Transaction.timestamp >= start_date_obj)
+        except ValueError:
+            flash("Invalid start date format. Please use YYYY-MM-DD.", "danger")
+            start_date = None
     if end_date:
-        # include entire end_date
-        query = query.filter(Transaction.timestamp < text(f"'{end_date}'::date + interval '1 day'"))
+        # P1-1 Fix: Prevent SQL injection by validating and parsing date in Python
+        try:
+            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d')
+            # Add one day to include entire end_date (safe in Python, not SQL)
+            end_date_inclusive = end_date_obj + timedelta(days=1)
+            query = query.filter(Transaction.timestamp < end_date_inclusive)
+        except ValueError:
+            flash("Invalid end date format. Please use YYYY-MM-DD.", "danger")
+            end_date = None
 
     # Count total for pagination
     total_transactions = query.count()
