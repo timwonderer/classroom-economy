@@ -119,44 +119,136 @@ git push --no-verify
 
 ### Production Deployment Failures:
 
-If `flask db upgrade` fails during deployment to DigitalOcean with a "multiple heads" error, this means migration conflicts reached `main` branch (usually due to concurrent PR merges or bypassed hooks).
+If deployment fails with a "multiple heads" error, follow this procedure carefully.
 
-**CRITICAL: Follow this procedure carefully in production:**
+#### Scenario A: Deployment Check Catches Multiple Heads (Before flask db upgrade runs)
 
-1. **DO NOT rollback the deployment** - Fix forward instead
-2. **SSH into your DigitalOcean droplet:**
+**This is the good scenario** - the deployment check caught the issue before it affected the database.
+
+1. **SSH into your DigitalOcean droplet to verify:**
    ```bash
-   ssh user@your-droplet-ip
-   cd /path/to/your/app
+   ssh root@your-droplet-ip
+   cd ~/classroom-economy
    source venv/bin/activate
-   ```
-
-3. **Check the current situation:**
-   ```bash
-   flask db current
    flask db heads
    ```
 
-4. **Create a merge migration on main:**
+2. **Create merge migration locally:**
    ```bash
-   # On your local machine, on main branch:
+   # On your local machine:
    git checkout main
    git pull origin main
+   source venv/bin/activate
    flask db merge heads -m "Merge migration heads (production fix)"
+   ```
+
+3. **Review the merge migration file:**
+   ```bash
+   # Check migrations/versions/ for the new merge file
+   # Verify it references both heads in down_revision
+   ```
+
+4. **Commit and push to trigger redeployment:**
+   ```bash
    git add migrations/
    git commit -m "Fix production migration heads"
    git push origin main
    ```
 
-5. **Deploy the merge migration:**
-   - Push to main triggers new deployment
-   - Or manually pull on server: `git pull && flask db upgrade`
+5. **Wait for automatic redeployment** or manually deploy on server:
+   ```bash
+   # On server:
+   git pull origin main
+   flask db upgrade
+   ```
 
 6. **Verify success:**
    ```bash
-   flask db current
    flask db heads  # Should show only 1 head
+   flask db current  # Shows the merge migration was applied
    ```
+
+---
+
+#### Scenario B: Multiple Heads Already on Production Server (After flask db upgrade ran)
+
+**This is the problematic scenario** - somehow multiple heads were already applied to production database.
+
+1. **SSH into production server:**
+   ```bash
+   ssh root@your-droplet-ip
+   cd ~/classroom-economy
+   source venv/bin/activate
+   ```
+
+2. **Check current database state:**
+   ```bash
+   flask db current  # May show error or multiple revisions
+   flask db heads    # Shows all head revisions
+   ```
+
+   Example output:
+   ```
+   abc123 (head)  # Head 1
+   def456 (head)  # Head 2
+   ```
+
+3. **IMPORTANT: Create merge migration DIRECTLY ON SERVER**
+   ```bash
+   # This must be done on the server to match the actual database state
+   flask db merge heads -m "Emergency merge migration heads on production"
+   ```
+
+   This creates a merge migration that references both heads.
+
+4. **Apply the merge migration:**
+   ```bash
+   flask db upgrade
+   ```
+
+5. **Verify the merge worked:**
+   ```bash
+   flask db heads    # Should show only 1 head now
+   flask db current  # Should show the merge revision
+   ```
+
+6. **Copy the merge migration back to your repo:**
+   ```bash
+   # On server, find the new migration file:
+   ls -lt migrations/versions/ | head -5
+
+   # Copy its contents (e.g., via cat or scp)
+   cat migrations/versions/YOUR_MERGE_MIGRATION.py
+   ```
+
+7. **On your local machine, commit this merge migration:**
+   ```bash
+   # Create the same merge migration file locally
+   # (paste the content from the server)
+   git checkout main
+   git pull origin main
+   # Create migrations/versions/YOUR_MERGE_MIGRATION.py with the content
+   git add migrations/
+   git commit -m "Add emergency merge migration from production"
+   git push origin main
+   ```
+
+8. **Verify everything is in sync:**
+   ```bash
+   # On server:
+   git pull origin main
+   flask db heads  # Should still show 1 head
+   flask db current  # Should match local
+   ```
+
+---
+
+#### When to Use Which Scenario:
+
+- **Use Scenario A** if: Deployment check failed, `flask db upgrade` never ran
+- **Use Scenario B** if: `flask db upgrade` ran and failed, or database already has multiple heads
+
+**Prevention is key:** The 3-layer safety system should prevent Scenario B from ever happening!
 
 **Prevention:**
 - GitHub Actions automatically checks for multiple heads on all PRs
