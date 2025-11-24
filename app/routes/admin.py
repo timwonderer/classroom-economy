@@ -1767,6 +1767,8 @@ def process_claim(claim_id):
 
     if claim.policy.claim_type == 'transaction_monetary' and not claim.transaction:
         validation_errors.append("Transaction-based claim is missing a linked transaction")
+    if claim.policy.claim_type == 'transaction_monetary' and claim.transaction and claim.transaction.is_void:
+        validation_errors.append("Linked transaction has been voided and cannot be reimbursed")
     if claim.policy.claim_type == 'transaction_monetary' and claim.transaction_id:
         duplicate_claim = InsuranceClaim.query.filter(
             InsuranceClaim.transaction_id == claim.transaction_id,
