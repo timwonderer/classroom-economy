@@ -76,7 +76,7 @@
                         </td>
                         <td>
                             <div class="btn-group" role="group">
-                                {% if teacher.can_delete %}
+                                {% if teacher.can_delete_account or teacher.authorized_periods %}
                                     <!-- Period deletion dropdown -->
                                     {% if teacher.periods %}
                                         <div class="btn-group" role="group">
@@ -85,29 +85,44 @@
                                             </button>
                                             <ul class="dropdown-menu">
                                                 {% for period, count in teacher.periods.items() %}
-                                                    <li>
-                                                        <form method="POST" action="{{ url_for('sysadmin.delete_period', admin_id=teacher.id, period=period) }}" class="d-inline" onsubmit="return confirm('Delete period ' + {{ period|upper|tojson }} + ' for ' + {{ teacher.username|tojson }} + '? This will remove {{ count }} student link(s).');">
-                                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                                            <button type="submit" class="dropdown-item">
-                                                                {{ period|upper }} ({{ count }} students)
+                                                    {% if period in teacher.authorized_periods %}
+                                                        <li>
+                                                            <form method="POST" action="{{ url_for('sysadmin.delete_period', admin_id=teacher.id, period=period) }}" class="delete-form" data-type="period" data-period="{{ period|upper }}" data-username="{{ teacher.username }}" data-count="{{ count }}">
+                                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                                <button type="submit" class="dropdown-item">
+                                                                    {{ period|upper }} ({{ count }} students)
+                                                                </button>
+                                                            </form>
+                                                        </li>
+                                                    {% else %}
+                                                        <li>
+                                                            <button type="button" class="dropdown-item disabled" disabled title="No authorization for this period">
+                                                                {{ period|upper }} ({{ count }} students) 🔒
                                                             </button>
-                                                        </form>
-                                                    </li>
+                                                        </li>
+                                                    {% endif %}
                                                 {% endfor %}
                                             </ul>
                                         </div>
                                     {% endif %}
                                     <!-- Account deletion -->
-                                    <form method="POST" action="{{ url_for('sysadmin.delete_teacher', admin_id=teacher.id) }}" class="d-inline" onsubmit="return confirm('Delete teacher account ' + {{ teacher.username|tojson }} + '? This will remove all student links.');">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger">
-                                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;" aria-hidden="true">delete</span>
+                                    {% if teacher.can_delete_account %}
+                                        <form method="POST" action="{{ url_for('sysadmin.delete_teacher', admin_id=teacher.id) }}" class="d-inline delete-form" data-type="account" data-username="{{ teacher.username }}">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;" aria-hidden="true">delete</span>
+                                                Delete Account
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <button type="button" class="btn btn-sm btn-secondary" disabled title="Account deletion requires teacher request or {{ inactivity_threshold_days }}+ days of inactivity">
+                                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;" aria-hidden="true">lock</span>
                                             Delete Account
                                         </button>
-                                    </form>
+                                    {% endif %}
                                 {% else %}
                                     <button type="button" class="btn btn-sm btn-secondary" disabled title="Deletion requires teacher request or {{ inactivity_threshold_days }}+ days of inactivity">
-                                        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">lock</span>
+                                        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;" aria-hidden="true">lock</span>
                                         Locked
                                     </button>
                                 {% endif %}
@@ -179,4 +194,33 @@
     </div>
     {% endif %}
 </div>
+
+<script>
+// Handle deletion form confirmations
+document.addEventListener('DOMContentLoaded', function() {
+    const deleteForms = document.querySelectorAll('.delete-form');
+    
+    deleteForms.forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            const type = form.getAttribute('data-type');
+            const username = form.getAttribute('data-username');
+            
+            let message;
+            if (type === 'period') {
+                const period = form.getAttribute('data-period');
+                const count = form.getAttribute('data-count');
+                message = 'Delete period ' + period + ' for ' + username + '? This will remove ' + count + ' student link(s).';
+            } else if (type === 'account') {
+                message = 'Delete teacher account ' + username + '? This will remove all student links.';
+            } else {
+                message = 'Are you sure you want to proceed with this deletion?';
+            }
+            
+            if (!confirm(message)) {
+                e.preventDefault();
+            }
+        });
+    });
+});
+</script>
 {% endblock %}
