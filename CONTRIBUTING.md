@@ -117,6 +117,84 @@ To bypass the check (not recommended):
 git push --no-verify
 ```
 
+### Production Deployment Failures:
+
+If `flask db upgrade` fails during deployment to DigitalOcean with a "multiple heads" error, this means migration conflicts reached `main` branch (usually due to concurrent PR merges or bypassed hooks).
+
+**CRITICAL: Follow this procedure carefully in production:**
+
+1. **DO NOT rollback the deployment** - Fix forward instead
+2. **SSH into your DigitalOcean droplet:**
+   ```bash
+   ssh user@your-droplet-ip
+   cd /path/to/your/app
+   source venv/bin/activate
+   ```
+
+3. **Check the current situation:**
+   ```bash
+   flask db current
+   flask db heads
+   ```
+
+4. **Create a merge migration on main:**
+   ```bash
+   # On your local machine, on main branch:
+   git checkout main
+   git pull origin main
+   flask db merge heads -m "Merge migration heads (production fix)"
+   git add migrations/
+   git commit -m "Fix production migration heads"
+   git push origin main
+   ```
+
+5. **Deploy the merge migration:**
+   - Push to main triggers new deployment
+   - Or manually pull on server: `git pull && flask db upgrade`
+
+6. **Verify success:**
+   ```bash
+   flask db current
+   flask db heads  # Should show only 1 head
+   ```
+
+**Prevention:**
+- GitHub Actions automatically checks for multiple heads on all PRs
+- Run pre-deployment check: `bash scripts/check-migrations.sh`
+- Never use `git push --no-verify` when pushing to main
+- Merge migration PRs one at a time, not concurrently
+
+### Automated Safety Checks:
+
+This repository has **three layers** of migration protection:
+
+1. **Pre-Push Hook (Developer)** - Installed via `scripts/setup-hooks.sh`
+   - Blocks pushes with multiple heads
+   - Runs on every `git push`
+   - Can be bypassed with `--no-verify` (not recommended)
+
+2. **GitHub Actions (CI/CD)** - Workflow: `.github/workflows/check-migrations.yml`
+   - Runs on every PR to main
+   - Blocks merging if multiple heads detected
+   - Validates migration file syntax
+   - **Cannot be bypassed** - PR cannot merge if check fails
+
+3. **Pre-Deployment Script (Manual)** - Run before deploying
+   ```bash
+   bash scripts/check-migrations.sh
+   ```
+   - Run this before deploying to production
+   - Checks migration heads and file validity
+   - Returns exit code 1 if unsafe to deploy
+   - Integrate into your deployment pipeline
+
+**Recommendation:** Add the pre-deployment check to your DigitalOcean deployment script:
+```bash
+# In your deployment script, before flask db upgrade:
+bash scripts/check-migrations.sh || exit 1
+flask db upgrade
+```
+
 ## Submitting Changes
 
 1.  **Create a new branch** for your feature or bug fix.
