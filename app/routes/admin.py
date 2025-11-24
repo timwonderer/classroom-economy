@@ -1751,6 +1751,8 @@ def process_claim(claim_id):
 
     def _claim_base_amount(target_claim):
         if target_claim.policy.claim_type == 'transaction_monetary' and target_claim.transaction:
+            if target_claim.transaction.is_void:
+                return 0.0
             return abs(target_claim.transaction.amount)
         return target_claim.claim_amount or 0.0
 
@@ -1769,6 +1771,16 @@ def process_claim(claim_id):
         validation_errors.append("Transaction-based claim is missing a linked transaction")
     if claim.policy.claim_type == 'transaction_monetary' and claim.transaction and claim.transaction.is_void:
         validation_errors.append("Linked transaction has been voided and cannot be reimbursed")
+    if claim.policy.claim_type == 'transaction_monetary' and claim.transaction and claim.transaction.student_id != claim.student_id:
+        validation_errors.append(
+            "SECURITY: Transaction ownership mismatch. Linked transaction belongs to a different student."
+        )
+        current_app.logger.error(
+            "SECURITY ALERT: Transaction ownership mismatch in claim %s. Claim student: %s, Transaction student: %s",
+            claim.id,
+            claim.student_id,
+            claim.transaction.student_id,
+        )
     if claim.policy.claim_type == 'transaction_monetary' and claim.transaction_id:
         duplicate_claim = InsuranceClaim.query.filter(
             InsuranceClaim.transaction_id == claim.transaction_id,
@@ -1793,24 +1805,28 @@ def process_claim(claim_id):
     if claim.policy.max_claims_count and approved_claims.count() >= claim.policy.max_claims_count:
         validation_errors.append(f"Maximum claims limit reached ({claim.policy.max_claims_count} per {claim.policy.max_claims_period})")
 
-    period_payouts = None
-    remaining_period_cap = None
-    if claim.policy.max_payout_per_period:
-        period_payouts = db.session.query(func.sum(InsuranceClaim.approved_amount)).filter(
-            InsuranceClaim.student_insurance_id == enrollment.id,
-            InsuranceClaim.status.in_(['approved', 'paid']),
-            InsuranceClaim.processed_date >= period_start,
-            InsuranceClaim.processed_date <= period_end,
-            InsuranceClaim.approved_amount.isnot(None),
-            InsuranceClaim.id != claim.id,
-        ).scalar() or 0.0
+    def _calculate_period_caps(enrollment_id):
+        cap_period_payouts = None
+        cap_remaining = None
+        if claim.policy.max_payout_per_period:
+            cap_period_payouts = db.session.query(func.sum(InsuranceClaim.approved_amount)).filter(
+                InsuranceClaim.student_insurance_id == enrollment_id,
+                InsuranceClaim.status.in_(['approved', 'paid']),
+                InsuranceClaim.processed_date >= period_start,
+                InsuranceClaim.processed_date <= period_end,
+                InsuranceClaim.approved_amount.isnot(None),
+                InsuranceClaim.id != claim.id,
+            ).scalar() or 0.0
 
-        requested_amount = _claim_base_amount(claim)
-        remaining_period_cap = max(claim.policy.max_payout_per_period - period_payouts, 0)
-        if remaining_period_cap is not None and requested_amount > remaining_period_cap and claim.policy.claim_type != 'non_monetary':
-            validation_errors.append(
-                f"Maximum payout limit would be exceeded (${period_payouts:.2f} paid + ${requested_amount:.2f} requested > ${claim.policy.max_payout_per_period:.2f} limit per {claim.policy.max_claims_period})"
-            )
+            requested_amount = _claim_base_amount(claim)
+            cap_remaining = max(claim.policy.max_payout_per_period - cap_period_payouts, 0)
+            if cap_remaining is not None and requested_amount > cap_remaining and claim.policy.claim_type != 'non_monetary':
+                validation_errors.append(
+                    f"Maximum payout limit would be exceeded (${cap_period_payouts:.2f} paid + ${requested_amount:.2f} requested > ${claim.policy.max_payout_per_period:.2f} limit per {claim.policy.max_claims_period})"
+                )
+        return cap_period_payouts, cap_remaining
+
+    period_payouts, remaining_period_cap = _calculate_period_caps(enrollment.id)
 
     # Get claims statistics
     claims_stats = {
@@ -1821,6 +1837,22 @@ def process_claim(claim_id):
     }
 
     if request.method == 'POST' and form.validate_on_submit():
+        bind = db.session.get_bind()
+        supports_row_locking = bind and bind.dialect.name != 'sqlite'
+        locked_enrollment = StudentInsurance.query.filter_by(id=enrollment.id)
+        if supports_row_locking:
+            locked_enrollment = locked_enrollment.with_for_update()
+        enrollment = locked_enrollment.first()
+
+        # Recalculate period caps within the locked transaction to avoid race conditions
+        period_payouts, remaining_period_cap = _calculate_period_caps(enrollment.id)
+        approved_claims = InsuranceClaim.query.filter(
+            InsuranceClaim.student_insurance_id == enrollment.id,
+            InsuranceClaim.status.in_(['approved', 'paid']),
+            InsuranceClaim.processed_date >= period_start,
+            InsuranceClaim.processed_date <= period_end,
+            InsuranceClaim.id != claim.id,
+        )
         old_status = claim.status
         new_status = form.status.data
 
@@ -3235,8 +3267,20 @@ def banking():
     block_q = request.args.get('block', '')
     account_q = request.args.get('account', '')
     type_q = request.args.get('type', '')
-    start_date = request.args.get('start_date')
-    end_date = request.args.get('end_date')
+    start_date_raw = request.args.get('start_date')
+    end_date_raw = request.args.get('end_date')
+    start_date = None
+    end_date = None
+    if start_date_raw:
+        try:
+            start_date = datetime.strptime(start_date_raw, '%Y-%m-%d')
+        except ValueError:
+            flash("Invalid start date format. Please use YYYY-MM-DD.", "danger")
+    if end_date_raw:
+        try:
+            end_date = datetime.strptime(end_date_raw, '%Y-%m-%d') + timedelta(days=1)
+        except ValueError:
+            flash("Invalid end date format. Please use YYYY-MM-DD.", "danger")
     page = int(request.args.get('page', 1))
     per_page = 50
 
@@ -3276,7 +3320,7 @@ def banking():
         query = query.filter(Transaction.timestamp >= start_date)
     if end_date:
         # include entire end_date
-        query = query.filter(Transaction.timestamp < text(f"'{end_date}'::date + interval '1 day'"))
+        query = query.filter(Transaction.timestamp < end_date)
 
     # Count total for pagination
     total_transactions = query.count()
