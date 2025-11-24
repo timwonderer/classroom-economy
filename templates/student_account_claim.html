@@ -242,25 +242,46 @@
                     {{ form.hidden_tag() }}
 
                     <div class="form-group mb-3" style="margin:1rem 1rem 1rem 1rem">
-                        <label class="form-label fw-bold">Name Code</label>
-                        {{ form.first_half(class="form-control form-control-lg", placeholder="Example: aialpz") }}
+                        <label class="form-label fw-bold">Join Code</label>
+                        {{ form.join_code(class="form-control form-control-lg", placeholder="Example: ABC123") }}
                         <small class="form-text text-muted">
-                            Every vowel (a, e, i, o, u) from your first name + every consonants (not a, e, i, o, u) from your last name as one word, lowercase.<br>
-                            <strong>Example:</strong> "Maria Lopez" → vowels (a,i,a) + consonants (l,p,z). You will enter <code>aialpz</code>
+                            Enter the join code provided by your teacher
                         </small>
-                        {% for error in form.first_half.errors %}
+                        {% for error in form.join_code.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="form-group mb-3" style="margin:1rem 1rem 1rem 1rem">
+                        <label class="form-label fw-bold">First Initial</label>
+                        {{ form.first_initial(class="form-control form-control-lg", placeholder="Example: J", maxlength="1") }}
+                        <small class="form-text text-muted">
+                            Enter the first letter of your first name
+                        </small>
+                        {% for error in form.first_initial.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="form-group mb-3" style="margin:1rem 1rem 1rem 1rem">
+                        <label class="form-label fw-bold">Last Name</label>
+                        {{ form.last_name(class="form-control form-control-lg", placeholder="Example: Smith") }}
+                        <small class="form-text text-muted">
+                            Enter your last name
+                        </small>
+                        {% for error in form.last_name.errors %}
                             <div class="text-danger small">{{ error }}</div>
                         {% endfor %}
                     </div>
 
                     <div class="form-group mb-3" style="margin:1rem 1rem 1rem 1rem">
                         <label class="form-label fw-bold">Birthday Sum</label>
-                        {{ form.second_half(class="form-control form-control-lg", placeholder="Example: 2028") }}
+                        {{ form.dob_sum(class="form-control form-control-lg", placeholder="Example: 2028") }}
                         <small class="form-text text-muted">
                             Add up the numerical value of your birth month, day, and year<br>
                             <strong>Example:</strong> March 15, 2010 → 3 + 15 + 2010 so you will enter <code>2028</code> 
                         </small>
-                        {% for error in form.second_half.errors %}
+                        {% for error in form.dob_sum.errors %}
                             <div class="text-danger small">{{ error }}</div>
                         {% endfor %}
                     </div>
