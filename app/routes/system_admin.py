@@ -525,22 +525,27 @@ def teacher_overview():
     inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
 
     # Batch query: Get all teacher-student relationships in one query
-    # Create a CTE (Common Table Expression) for all teacher-student relationships
-    teacher_students = db.session.query(
-        case(
-            (StudentTeacher.admin_id.isnot(None), StudentTeacher.admin_id),
-            else_=Student.teacher_id
-        ).label('teacher_id'),
+    # Build two queries: one for direct teacher_id, one for StudentTeacher.admin_id
+    # Then UNION them to handle both sources correctly without double-counting
+    direct_students_q = db.session.query(
+        Student.teacher_id.label('teacher_id'),
         Student.id.label('student_id'),
         Student.block
-    ).outerjoin(
-        StudentTeacher, Student.id == StudentTeacher.student_id
     ).filter(
-        or_(
-            StudentTeacher.admin_id.in_([t.id for t in teachers]),
-            Student.teacher_id.in_([t.id for t in teachers])
-        )
-    ).distinct().subquery()
+        Student.teacher_id.in_([t.id for t in teachers])
+    )
+
+    indirect_students_q = db.session.query(
+        StudentTeacher.admin_id.label('teacher_id'),
+        Student.id.label('student_id'),
+        Student.block
+    ).join(
+        Student, Student.id == StudentTeacher.student_id
+    ).filter(
+        StudentTeacher.admin_id.in_([t.id for t in teachers])
+    )
+
+    teacher_students = direct_students_q.union(indirect_students_q).subquery()
 
     # Get total student counts per teacher in a single query
     teacher_student_count_rows = db.session.query(
@@ -599,6 +604,25 @@ def teacher_overview():
             # Never logged in - consider inactive
             is_inactive = True
 
+        # Check authorization for account deletion
+        has_account_request = any(
+            req.request_type == DeletionRequestType.ACCOUNT 
+            for req in pending_requests
+        )
+        can_delete_account = has_account_request or is_inactive
+        
+        # Check authorization for each period deletion
+        # A period can be deleted if there's a specific request for it OR an account deletion request OR teacher is inactive
+        authorized_periods = set()
+        if can_delete_account:
+            # Account deletion request or inactivity authorizes all period deletions
+            authorized_periods = set(periods.keys())
+        else:
+            # Check for period-specific requests
+            for req in pending_requests:
+                if req.request_type == DeletionRequestType.PERIOD and req.period:
+                    authorized_periods.add(req.period)
+        
         teacher_data.append({
             'id': teacher.id,
             'username': teacher.username,
@@ -607,7 +631,8 @@ def teacher_overview():
             'last_login': teacher.last_login,
             'is_inactive': is_inactive,
             'pending_requests': pending_requests,
-            'can_delete': len(pending_requests) > 0 or is_inactive
+            'can_delete_account': can_delete_account,
+            'authorized_periods': authorized_periods
         })
 
     return render_template(
@@ -629,7 +654,7 @@ def delete_period(admin_id, period):
     2. Teacher has been inactive for 6+ months
     """
     # Validate period parameter
-    if not period or len(period) > 50:
+    if not period or len(period) > 10:
         flash("❌ Invalid period parameter", "error")
         return redirect(url_for('sysadmin.teacher_overview'))
     
@@ -781,6 +806,22 @@ def delete_teacher(admin_id):
             pending_request.status = DeletionRequestStatus.APPROVED
             pending_request.resolved_at = datetime.now(timezone.utc)
             pending_request.resolved_by = session.get('sysadmin_id')
+
+        # Also resolve all other pending deletion requests for this teacher
+        # Since the account is being deleted, all pending requests become moot
+        other_pending_requests = (
+            DeletionRequest.query
+            .filter(
+                DeletionRequest.admin_id == admin.id,
+                DeletionRequest.status == DeletionRequestStatus.PENDING,
+                DeletionRequest.id != (pending_request.id if pending_request else None)
+            )
+            .all()
+        )
+        for req in other_pending_requests:
+            req.status = DeletionRequestStatus.APPROVED
+            req.resolved_at = datetime.now(timezone.utc)
+            req.resolved_by = session.get('sysadmin_id')
 
         admin_username = admin.username
         db.session.delete(admin)
