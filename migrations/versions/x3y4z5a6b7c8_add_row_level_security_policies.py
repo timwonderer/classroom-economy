@@ -46,10 +46,14 @@ def validate_identifier(name):
     """
     Validate a PostgreSQL identifier to prevent SQL injection.
     Returns the validated name without quotes (for use in DDL statements).
+    
+    PostgreSQL has a 63-character limit for identifiers.
     """
     # Allow alphanumeric characters (upper and lower case) and underscores
     if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
         raise ValueError(f"Invalid identifier: {name}")
+    if len(name) > 63:
+        raise ValueError(f"Identifier too long (max 63 chars): {name}")
     return name
 
 

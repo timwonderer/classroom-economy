@@ -115,7 +115,7 @@ def upgrade():
         conn.execute(sa.text("UPDATE hall_pass_settings SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
         
         # Also backfill insurance_policies if they have NULL teacher_id
-        # This ensures insurance policies are ready for RLS in the next migration
+        # This ensures insurance policies are ready for RLS in migration x3y4z5a6b7c8
         conn.execute(sa.text("UPDATE insurance_policies SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
 
     # Make teacher_id NOT NULL after data migration

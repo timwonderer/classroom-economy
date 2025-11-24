@@ -206,6 +206,7 @@ def create_app():
         # If no admin context, try student context (if student is logged in)
         if not teacher_id and session.get('student_id'):
             try:
+                # Import here to avoid circular dependency (student.py imports from app)
                 from app.routes.student import get_current_teacher_id
                 teacher_id = get_current_teacher_id()
             except Exception as e:
