@@ -14,8 +14,9 @@ os.environ["PEPPER_LEGACY_KEYS"] = "legacy-pepper"
 os.environ.setdefault("PEPPER", "legacy-pepper")
 
 # Ensure ENCRYPTION_KEY and PEPPER_KEY are set for tests, if not already in .env
-os.environ.setdefault("ENCRYPTION_KEY", "test-encryption-key")
-os.environ.setdefault("PEPPER_KEY", "test-pepper-key")
+# Use valid Fernet keys (32 url-safe base64-encoded bytes)
+os.environ.setdefault("ENCRYPTION_KEY", "jhe53bcYZI4_MZS4Kb8hu8-xnQHHvwqSX8LN4sDtzbw=")
+os.environ.setdefault("PEPPER_KEY", "tKiXIAgaPqsOOhR1PqvdEQo4BelrN5SP3cpWxVYrsHk=")
 
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
