@@ -387,7 +387,8 @@ def dashboard():
     ).first()  # Get first active policy for dashboard display
 
     rent_status = None
-    rent_settings = RentSettings.query.first()
+    teacher_id = get_current_teacher_id()
+    rent_settings = RentSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
     if rent_settings and rent_settings.is_enabled and student.is_rent_enabled:
         now = datetime.now()
         due_date, grace_end_date = _calculate_rent_deadlines(rent_settings, now)
@@ -615,7 +616,8 @@ def transfer():
 
     # Get banking settings for interest rate display
     from app.models import BankingSettings
-    settings = BankingSettings.query.first()
+    teacher_id = get_current_teacher_id()
+    settings = BankingSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
     annual_rate = settings.savings_apy / 100 if settings else 0.045
     calculation_type = settings.interest_calculation_type if settings else 'simple'
     compound_frequency = settings.compound_frequency if settings else 'monthly'
@@ -667,8 +669,9 @@ def apply_savings_interest(student, annual_rate=0.045):
             return dt.replace(tzinfo=timezone.utc)
         return dt.astimezone(timezone.utc)
 
-    # Get banking settings
-    settings = BankingSettings.query.first()
+    # Get banking settings for current teacher
+    teacher_id = get_current_teacher_id()
+    settings = BankingSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
     if not settings:
         # Use default simple interest if no settings
         calculation_type = 'simple'
@@ -1204,11 +1207,13 @@ def shop():
     """Student shop - browse and purchase items."""
     student = get_logged_in_student()
     # Fetch active items that haven't passed their auto-delist date
+    teacher_id = get_current_teacher_id()
     now = datetime.now(timezone.utc)
     items = StoreItem.query.filter(
+        StoreItem.teacher_id == teacher_id,
         StoreItem.is_active == True,
         or_(StoreItem.auto_delist_date == None, StoreItem.auto_delist_date > now)
-    ).order_by(StoreItem.name).all()
+    ).order_by(StoreItem.name).all() if teacher_id else []
 
     # Fetch student's purchased items
     student_items = student.items.filter(
@@ -1331,7 +1336,8 @@ def _calculate_rent_deadlines(settings, reference_date=None):
 def rent():
     """View rent status and payment history (per period)."""
     student = get_logged_in_student()
-    settings = RentSettings.query.first()
+    teacher_id = get_current_teacher_id()
+    settings = RentSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
 
     if not settings or not settings.is_enabled:
         flash("Rent system is currently disabled.", "info")
@@ -1441,7 +1447,8 @@ def rent():
 def rent_pay(period):
     """Process rent payment for a specific period."""
     student = get_logged_in_student()
-    settings = RentSettings.query.first()
+    teacher_id = get_current_teacher_id()
+    settings = RentSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
 
     if not settings or not settings.is_enabled:
         flash("Rent system is currently disabled.", "error")
@@ -1544,7 +1551,8 @@ def rent_pay(period):
         payment_amount = remaining_amount
 
     # Get banking settings for overdraft handling
-    banking_settings = BankingSettings.query.first()
+    teacher_id = get_current_teacher_id()
+    banking_settings = BankingSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
 
     # Check if student has enough funds for this payment
     if student.checking_balance < payment_amount:

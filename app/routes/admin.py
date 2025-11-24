@@ -1016,10 +1016,12 @@ def add_manual_student():
 @admin_required
 def store_management():
     """Manage store items - view, create, edit, delete."""
+    admin_id = session.get("admin_id")
     student_ids_subq = _student_scope_subquery()
     form = StoreItemForm()
     if form.validate_on_submit():
         new_item = StoreItem(
+            teacher_id=admin_id,
             name=form.name.data,
             description=form.description.data,
             price=form.price.data,
@@ -1042,7 +1044,9 @@ def store_management():
         flash(f"'{new_item.name}' has been added to the store.", "success")
         return redirect(url_for('admin.store_management'))
 
-    items = StoreItem.query.order_by(StoreItem.name).all()
+    # Get items for this teacher only
+    admin_id = session.get("admin_id")
+    items = StoreItem.query.filter_by(teacher_id=admin_id).order_by(StoreItem.name).all()
 
     # Get store statistics for overview tab
     from app.models import StudentItem
@@ -1063,7 +1067,8 @@ def store_management():
 @admin_required
 def edit_store_item(item_id):
     """Edit an existing store item."""
-    item = StoreItem.query.get_or_404(item_id)
+    admin_id = session.get("admin_id")
+    item = StoreItem.query.filter_by(id=item_id, teacher_id=admin_id).first_or_404()
     form = StoreItemForm(obj=item)
     if form.validate_on_submit():
         form.populate_obj(item)
@@ -1077,7 +1082,8 @@ def edit_store_item(item_id):
 @admin_required
 def delete_store_item(item_id):
     """Deactivate a store item (soft delete)."""
-    item = StoreItem.query.get_or_404(item_id)
+    admin_id = session.get("admin_id")
+    item = StoreItem.query.filter_by(id=item_id, teacher_id=admin_id).first_or_404()
     # To preserve history, we'll just deactivate it instead of a hard delete
     # A hard delete would be: db.session.delete(item)
     item.is_active = False
@@ -1090,7 +1096,8 @@ def delete_store_item(item_id):
 @admin_required
 def hard_delete_store_item(item_id):
     """Permanently delete a store item (hard delete)."""
-    item = StoreItem.query.get_or_404(item_id)
+    admin_id = session.get("admin_id")
+    item = StoreItem.query.filter_by(id=item_id, teacher_id=admin_id).first_or_404()
     item_name = item.name
 
     # Check if there are any student purchases of this item
@@ -1120,11 +1127,12 @@ def hard_delete_store_item(item_id):
 @admin_required
 def rent_settings():
     """Configure rent settings."""
+    admin_id = session.get("admin_id")
     student_ids_subq = _student_scope_subquery()
-    # Get or create rent settings (singleton)
-    settings = RentSettings.query.first()
+    # Get or create rent settings for this teacher
+    settings = RentSettings.query.filter_by(teacher_id=admin_id).first()
     if not settings:
-        settings = RentSettings()
+        settings = RentSettings(teacher_id=admin_id)
         db.session.add(settings)
         db.session.commit()
 
@@ -1246,7 +1254,8 @@ def add_rent_waiver():
         return redirect(url_for('admin.rent_settings'))
 
     # Get rent settings to calculate waiver period
-    settings = RentSettings.query.first()
+    admin_id = session.get("admin_id")
+    settings = RentSettings.query.filter_by(teacher_id=admin_id).first()
     if not settings:
         flash("Rent settings not configured.", "danger")
         return redirect(url_for('admin.rent_settings'))
@@ -2137,15 +2146,18 @@ def payroll():
     # Get all blocks (split multi-block assignments like "A, B")
     blocks = sorted({b.strip() for s in students for b in (s.block or "").split(',') if b.strip()})
 
-    # Check if payroll settings exist
-    has_settings = PayrollSettings.query.first() is not None
+    # Get admin ID for filtering
+    admin_id = session.get("admin_id")
+
+    # Check if payroll settings exist for this teacher
+    has_settings = PayrollSettings.query.filter_by(teacher_id=admin_id).first() is not None
     show_setup_banner = not has_settings
 
-    # Get payroll settings
-    block_settings = PayrollSettings.query.filter_by(is_active=True).all()
+    # Get payroll settings for this teacher
+    block_settings = PayrollSettings.query.filter_by(teacher_id=admin_id, is_active=True).all()
 
     # Get default/global settings for form pre-population
-    default_setting = PayrollSettings.query.filter_by(block=None, is_active=True).first()
+    default_setting = PayrollSettings.query.filter_by(teacher_id=admin_id, block=None, is_active=True).first()
 
     # Organize settings by block for display and lookup
     settings_by_block = {}
@@ -2245,9 +2257,9 @@ def payroll():
             'total_earned': total_earned
         })
 
-    # Get rewards and fines
-    rewards = PayrollReward.query.order_by(PayrollReward.created_at.desc()).all()
-    fines = PayrollFine.query.order_by(PayrollFine.created_at.desc()).all()
+    # Get rewards and fines for this teacher
+    rewards = PayrollReward.query.filter_by(teacher_id=admin_id).order_by(PayrollReward.created_at.desc()).all()
+    fines = PayrollFine.query.filter_by(teacher_id=admin_id).order_by(PayrollFine.created_at.desc()).all()
 
     # Initialize forms
     settings_form = PayrollSettingsForm()
@@ -2456,9 +2468,9 @@ def payroll_settings():
             target_blocks = selected_blocks
 
         for block_value in target_blocks:
-            setting = PayrollSettings.query.filter_by(block=block_value).first()
+            setting = PayrollSettings.query.filter_by(teacher_id=admin_id, block=block_value).first()
             if not setting:
-                setting = PayrollSettings(block=block_value)
+                setting = PayrollSettings(teacher_id=admin_id, block=block_value)
 
             # Update all fields
             for key, value in settings_data.items():
@@ -2492,7 +2504,9 @@ def payroll_add_reward():
 
     if form.validate_on_submit():
         try:
+            admin_id = session.get("admin_id")
             reward = PayrollReward(
+                teacher_id=admin_id,
                 name=form.name.data,
                 description=form.description.data,
                 amount=form.amount.data,
@@ -2516,7 +2530,8 @@ def payroll_add_reward():
 def payroll_delete_reward(reward_id):
     """Delete a payroll reward."""
     try:
-        reward = PayrollReward.query.get_or_404(reward_id)
+        admin_id = session.get("admin_id")
+        reward = PayrollReward.query.filter_by(id=reward_id, teacher_id=admin_id).first_or_404()
         db.session.delete(reward)
         db.session.commit()
         return jsonify({'success': True, 'message': 'Reward deleted successfully'})
@@ -2534,7 +2549,9 @@ def payroll_add_fine():
 
     if form.validate_on_submit():
         try:
+            admin_id = session.get("admin_id")
             fine = PayrollFine(
+                teacher_id=admin_id,
                 name=form.name.data,
                 description=form.description.data,
                 amount=form.amount.data,
@@ -2558,7 +2575,8 @@ def payroll_add_fine():
 def payroll_delete_fine(fine_id):
     """Delete a payroll fine."""
     try:
-        fine = PayrollFine.query.get_or_404(fine_id)
+        admin_id = session.get("admin_id")
+        fine = PayrollFine.query.filter_by(id=fine_id, teacher_id=admin_id).first_or_404()
         db.session.delete(fine)
         db.session.commit()
         return jsonify({'success': True, 'message': 'Fine deleted successfully'})
@@ -2573,7 +2591,8 @@ def payroll_delete_fine(fine_id):
 def payroll_edit_reward(reward_id):
     """Edit an existing reward."""
     try:
-        reward = PayrollReward.query.get_or_404(reward_id)
+        admin_id = session.get("admin_id")
+        reward = PayrollReward.query.filter_by(id=reward_id, teacher_id=admin_id).first_or_404()
         data = request.get_json()
 
         reward.name = data.get('name', reward.name)
@@ -2594,7 +2613,8 @@ def payroll_edit_reward(reward_id):
 def payroll_edit_fine(fine_id):
     """Edit an existing fine."""
     try:
-        fine = PayrollFine.query.get_or_404(fine_id)
+        admin_id = session.get("admin_id")
+        fine = PayrollFine.query.filter_by(id=fine_id, teacher_id=admin_id).first_or_404()
         data = request.get_json()
 
         fine.name = data.get('name', fine.name)
@@ -3223,8 +3243,15 @@ def tap_out_students():
 @admin_required
 def banking():
     """Banking management page with transactions and settings."""
-    # Get current banking settings
-    settings = BankingSettings.query.first()
+    admin_id = session.get("admin_id")
+
+    # Get current banking settings for this teacher
+    settings = BankingSettings.query.filter_by(teacher_id=admin_id).first()
+    if not settings:
+        # Create default settings for this teacher
+        settings = BankingSettings(teacher_id=admin_id)
+        db.session.add(settings)
+        db.session.commit()
 
     # Create form and populate with existing data
     form = BankingSettingsForm()
@@ -3255,8 +3282,15 @@ def banking():
     page = int(request.args.get('page', 1))
     per_page = 50
 
-    # Base query joining Transaction with Student
-    query = db.session.query(Transaction, Student).join(Student, Transaction.student_id == Student.id)
+    # Get student IDs for this teacher to filter transactions
+    student_ids_subq = _student_scope_subquery()
+
+    # Base query joining Transaction with Student, filtered by teacher's students
+    query = (
+        db.session.query(Transaction, Student)
+        .join(Student, Transaction.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+    )
 
     # Apply filters
     if student_q:
@@ -3348,8 +3382,15 @@ def banking():
     # Get all blocks for filter
     blocks = sorted(set(s.block for s in students))
 
-    # Get transaction types for filter
-    transaction_types = db.session.query(Transaction.type).distinct().filter(Transaction.type.isnot(None)).all()
+    # Get transaction types for filter (filtered to this teacher's students)
+    transaction_types = (
+        db.session.query(Transaction.type)
+        .join(Student, Transaction.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(Transaction.type.isnot(None))
+        .distinct()
+        .all()
+    )
     transaction_types = sorted([t[0] for t in transaction_types if t[0]])
 
 
@@ -3378,13 +3419,14 @@ def banking():
 @admin_required
 def banking_settings_update():
     """Update banking settings."""
+    admin_id = session.get("admin_id")
     form = BankingSettingsForm()
 
     if form.validate_on_submit():
-        # Get or create settings
-        settings = BankingSettings.query.first()
+        # Get or create settings for this teacher
+        settings = BankingSettings.query.filter_by(teacher_id=admin_id).first()
         if not settings:
-            settings = BankingSettings()
+            settings = BankingSettings(teacher_id=admin_id)
             db.session.add(settings)
 
         # Update settings from form

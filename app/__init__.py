@@ -192,10 +192,10 @@ def create_app():
                 'turnstile_site_key': app.config.get('TURNSTILE_SITE_KEY')
             }
 
-        from app.models import RentSettings
-        rent_settings = RentSettings.query.first()
+        # Note: Rent settings are now per-teacher, so there's no global rent enabled flag
+        # Templates should check rent settings for the specific teacher context
         return {
-            'global_rent_enabled': rent_settings.is_enabled if rent_settings else False,
+            'global_rent_enabled': False,  # Deprecated: rent is now per-teacher
             'turnstile_site_key': app.config.get('TURNSTILE_SITE_KEY')
         }
 

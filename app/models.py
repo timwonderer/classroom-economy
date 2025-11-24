@@ -354,6 +354,7 @@ class HallPassLog(db.Model):
 class HallPassSettings(db.Model):
     __tablename__ = 'hall_pass_settings'
     id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
 
     # Queue system toggle
     queue_enabled = db.Column(db.Boolean, default=True, nullable=False)
@@ -364,11 +365,15 @@ class HallPassSettings(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('hall_pass_settings', lazy='dynamic'))
+
 
 # -------------------- STORE MODELS --------------------
 class StoreItem(db.Model):
     __tablename__ = 'store_items'
     id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
     price = db.Column(db.Float, nullable=False)
@@ -395,7 +400,8 @@ class StoreItem(db.Model):
     # Redemption prompt (for delayed use items)
     redemption_prompt = db.Column(db.Text, nullable=True)  # Optional prompt shown to students when redeeming delayed items
 
-    # Relationship to student items
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('store_items', lazy='dynamic'))
     student_items = db.relationship('StudentItem', backref='store_item', lazy=True)
 
 
@@ -424,6 +430,7 @@ class StudentItem(db.Model):
 class RentSettings(db.Model):
     __tablename__ = 'rent_settings'
     id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
 
     # Main toggle
     is_enabled = db.Column(db.Boolean, default=True)
@@ -452,6 +459,9 @@ class RentSettings(db.Model):
 
     # Metadata
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('rent_settings', lazy='dynamic'))
 
     # Keep old field names for backward compatibility (deprecated)
     @property
@@ -675,6 +685,7 @@ class Admin(db.Model):
 class PayrollSettings(db.Model):
     __tablename__ = 'payroll_settings'
     id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
     block = db.Column(db.String(10), nullable=True)  # NULL = global/default settings
     pay_rate = db.Column(db.Float, nullable=False, default=0.25)  # $ per minute
     payroll_frequency_days = db.Column(db.Integer, nullable=False, default=14)
@@ -707,6 +718,9 @@ class PayrollSettings(db.Model):
     first_pay_date = db.Column(db.DateTime, nullable=True)  # First payday
     rounding_mode = db.Column(db.String(20), nullable=False, default='down')  # 'up' or 'down'
 
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('payroll_settings', lazy='dynamic'))
+
     def __repr__(self):
         return f'<PayrollSettings {self.block or "Global"}>'
 
@@ -715,11 +729,15 @@ class PayrollSettings(db.Model):
 class PayrollReward(db.Model):
     __tablename__ = 'payroll_rewards'
     id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
     amount = db.Column(db.Float, nullable=False)
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('payroll_rewards', lazy='dynamic'))
 
     def __repr__(self):
         return f'<PayrollReward {self.name}: ${self.amount}>'
@@ -729,11 +747,15 @@ class PayrollReward(db.Model):
 class PayrollFine(db.Model):
     __tablename__ = 'payroll_fines'
     id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
     amount = db.Column(db.Float, nullable=False)  # Positive value, will be deducted
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('payroll_fines', lazy='dynamic'))
 
     def __repr__(self):
         return f'<PayrollFine {self.name}: -${self.amount}>'
@@ -743,6 +765,7 @@ class PayrollFine(db.Model):
 class BankingSettings(db.Model):
     __tablename__ = 'banking_settings'
     id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
 
     # Interest settings for savings
     savings_apy = db.Column(db.Float, default=0.0)  # Annual Percentage Yield (e.g., 5.0 for 5%)
@@ -773,6 +796,9 @@ class BankingSettings(db.Model):
     is_active = db.Column(db.Boolean, default=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('banking_settings', lazy='dynamic'))
 
     def __repr__(self):
         return f'<BankingSettings APY:{self.savings_apy}% OD:{self.overdraft_protection_enabled}>'
