@@ -63,13 +63,14 @@
                   <small class="text-muted">Add a fun marketing badge to attract students</small>
                 </div>
                 <div class="mb-0">
-                  <div class="form-check form-switch">
-                    {{ form.is_monetary(class="form-check-input", role="switch", id="isMonetaryToggle") }}
-                    {{ form.is_monetary.label(class="form-check-label fw-bold") }}
-                  </div>
+                  {{ form.claim_type.label(class="form-label fw-bold") }}
+                  {{ form.claim_type(class="form-select", id="edit_claim_type") }}
                   <div class="alert alert-light border mt-2 mb-0">
-                    <small><strong>Monetary:</strong> Dollar claims<br>
-                    <strong>Non-Monetary:</strong> Item/service claims</small>
+                    <small>
+                      <strong>Transactions-based:</strong> Link claims to a specific student transaction.<br>
+                      <strong>Non-monetary:</strong> Approval-only workflow, no reimbursements.<br>
+                      <strong>Legacy monetary:</strong> Manual claim amounts (backward compatible).
+                    </small>
                   </div>
                 </div>
               </div>
