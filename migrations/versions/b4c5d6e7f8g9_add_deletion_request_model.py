@@ -1,5 +1,6 @@
-"""Add DeletionRequest model for teacher-initiated deletion requests
+"""Migration: b4c5d6e7f8g9_add_deletion_request_model.py
 
+Add DeletionRequest model for teacher-initiated deletion requests
 Revision ID: b4c5d6e7f8g9
 Revises: z1a2b3c4d5e6
 Create Date: 2025-11-24 00:00:00.000000
