@@ -40,6 +40,7 @@ def _get_teacher_student_count(teacher_id: int) -> int:
     2. Have teacher_id set (legacy primary ownership during migration)
     
     Uses UNION to avoid double-counting students that appear in both.
+    Optimized to count in database without loading student IDs.
     """
     # Get student IDs from student_teachers links
     linked_ids = db.session.query(StudentTeacher.student_id).filter(
@@ -51,10 +52,10 @@ def _get_teacher_student_count(teacher_id: int) -> int:
         Student.teacher_id == teacher_id
     ).distinct()
     
-    # Union the two queries to get unique student IDs
-    all_student_ids = linked_ids.union(legacy_ids).all()
+    # Union the two queries and count - database does the work
+    count = linked_ids.union(legacy_ids).count()
     
-    return len(all_student_ids)
+    return count
 
 
 def _tail_log_lines(file_path: str, max_lines: int = 200, chunk_size: int = 8192):
