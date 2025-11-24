@@ -4,9 +4,9 @@
 
 This PR implements comprehensive security fixes for the insurance claim processing system, addressing **4 critical vulnerabilities** (3 P0, 1 P1) discovered during security audit. All fixes have been code-reviewed, tested, and validated for production deployment.
 
-**Security Status:** 🔒 **All critical issues RESOLVED** - System is production-ready
+**Security Status:** All critical issues RESOLVED - System is production-ready
 
-## Problem: Financial Fraud & Data Security Risks 💸🚨
+## Problem: Financial Fraud & Data Security Risks
 
 The insurance claim processing system had **4 critical security vulnerabilities** that could allow students to:
 
@@ -21,7 +21,7 @@ The insurance claim processing system had **4 critical security vulnerabilities*
 
 ## Changes
 
-### 1. P0-1: Race Condition Prevention (Defense-in-Depth) 🛡️
+### 1. P0-1: Race Condition Prevention (Defense-in-Depth)
 
 **The Problem:**
 Two concurrent requests could file duplicate claims for the same transaction, bypassing the simple duplicate check.
@@ -87,7 +87,7 @@ except IntegrityError:
 
 ---
 
-### 2. P0-2: Void Transaction Bypass Prevention 🚫
+### 2. P0-2: Void Transaction Bypass Prevention
 
 **The Problem:**
 Students could:
@@ -121,7 +121,7 @@ if claim.policy.claim_type == 'transaction_monetary' and \
 
 ---
 
-### 3. P0-3: Cross-Student Fraud Prevention 🔐
+### 3. P0-3: Cross-Student Fraud Prevention
 
 **The Problem:**
 Transaction ownership was never validated during claim approval. An attacker could:
@@ -162,7 +162,7 @@ if claim.policy.claim_type == 'transaction_monetary' and claim.transaction:
 
 ---
 
-### 4. P1-1: SQL Injection Prevention 💉
+### 4. P1-1: SQL Injection Prevention
 
 **The Problem:**
 Date filtering in banking page used unsafe f-string injection into SQL:
@@ -308,7 +308,7 @@ pytest tests/ -v
 
 This PR includes comprehensive validation documentation:
 
-### 📋 Code Review Report
+### Code Review Report
 **File:** `CODE_REVIEW_SECURITY_FIXES.md`
 
 **Reviewer:** Jules (AI Assistant)
@@ -320,7 +320,7 @@ This PR includes comprehensive validation documentation:
 - ✅ No critical or medium issues found
 - ✅ Code quality meets standards
 
-### 🧪 Regression Test Report
+### Regression Test Report
 **File:** `REGRESSION_TEST_REPORT_STAGING.md`
 
 **Environment:** Staging (Sandbox)
@@ -333,7 +333,7 @@ This PR includes comprehensive validation documentation:
 - Browser Compatibility: All browsers tested ✅
 - Performance: All endpoints < 1 second
 
-### 🗄️ Migration Report
+### Migration Report
 **File:** `MIGRATION_REPORT_STAGING.md`
 
 **Database:** SQLite (Staging)
@@ -344,7 +344,7 @@ This PR includes comprehensive validation documentation:
 - ✅ Application stable after migration
 - ✅ Migration graph conflicts resolved
 
-### 📚 Complete Documentation
+### Complete Documentation
 **File:** `PRODUCTION_DEPLOYMENT_INSTRUCTIONS.md` (1,240 lines)
 
 **Includes:**
@@ -358,7 +358,7 @@ This PR includes comprehensive validation documentation:
 
 ## Security Audit Documentation
 
-### 🔍 Original Security Audit
+### Original Security Audit
 **File:** `SECURITY_AUDIT_INSURANCE_OVERHAUL.md` (795 lines)
 
 **Discovered Vulnerabilities:**
@@ -503,25 +503,25 @@ curl -I https://production-url/
 
 ## Security Impact Assessment
 
-### Before This PR ⚠️ CRITICAL RISK
+### Before This PR - CRITICAL RISK
 
 **Financial Fraud Vulnerabilities:**
-- 💸 Students could file unlimited duplicate claims (race condition)
-- 💸 Students could claim refunded purchases (double payment)
-- 💸 Students could claim other students' transactions (theft)
-- 🔓 SQL injection could compromise entire database
+- Students could file unlimited duplicate claims (race condition)
+- Students could claim refunded purchases (double payment)
+- Students could claim other students' transactions (theft)
+- SQL injection could compromise entire database
 
-**Risk Level:** 🔴 **P0 Critical** - Production deployment blocked
+**Risk Level:** **P0 Critical** - Production deployment blocked
 
-### After This PR ✅ PRODUCTION READY
+### After This PR - PRODUCTION READY
 
 **Security Hardening:**
-- 🔒 Duplicate claims physically impossible (database constraint)
-- 🔒 Void transactions automatically rejected
-- 🔒 Cross-student fraud blocked with security alerts
-- 🔒 SQL injection attack vector eliminated
+- Duplicate claims physically impossible (database constraint)
+- Void transactions automatically rejected
+- Cross-student fraud blocked with security alerts
+- SQL injection attack vector eliminated
 
-**Risk Level:** 🟢 **Low** - Production deployment approved
+**Risk Level:** **Low** - Production deployment approved
 
 **Security Posture:** Defense-in-depth with multiple validation layers
 
@@ -610,8 +610,8 @@ This PR consolidates security fixes from multiple branches:
 - ✅ Date parsing in Python (vs SQL text()) → better query optimization
 
 **Neutral:**
-- ⚪ Row locking adds ~1-5ms per claim submission (negligible)
-- ⚪ Ownership validation adds one field comparison (microseconds)
+- Row locking adds ~1-5ms per claim submission (negligible)
+- Ownership validation adds one field comparison (microseconds)
 
 **Overall:** No measurable performance degradation. Some queries may be faster due to new index.
 
