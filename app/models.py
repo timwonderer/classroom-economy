@@ -246,7 +246,7 @@ class DeletionRequest(db.Model):
     period = db.Column(db.String(10), nullable=True)  # Specified for period deletions only
     reason = db.Column(db.Text, nullable=True)  # Optional reason from teacher
     status = db.Column(db.String(20), default='pending', nullable=False)  # 'pending', 'approved', 'rejected'
-    requested_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    requested_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc), nullable=False)
     resolved_at = db.Column(db.DateTime, nullable=True)
     resolved_by = db.Column(db.Integer, db.ForeignKey('system_admins.id'), nullable=True)
 

@@ -96,6 +96,7 @@ def login():
             totp = pyotp.TOTP(admin.totp_secret)
             if totp.verify(totp_code, valid_window=1):
                 session["is_system_admin"] = True
+                session["sysadmin_id"] = admin.id
                 session['last_activity'] = datetime.now(timezone.utc).isoformat()
                 flash("System admin login successful.")
                 next_url = request.args.get("next")
@@ -111,6 +112,7 @@ def login():
 def logout():
     """System admin logout."""
     session.pop("is_system_admin", None)
+    session.pop("sysadmin_id", None)
     flash("Logged out.")
     return redirect(url_for("sysadmin.login"))
 
@@ -552,13 +554,37 @@ def delete_period(admin_id, period):
     """
     admin = Admin.query.get_or_404(admin_id)
 
+    # Validate period parameter
+    if not period or len(period) > 10:
+        flash("❌ Invalid period parameter.", "error")
+        return redirect(url_for('sysadmin.teacher_overview'))
+
+    # Verify the period exists for this teacher
+    period_exists = db.session.query(Student).join(
+        StudentTeacher, Student.id == StudentTeacher.student_id
+    ).filter(
+        StudentTeacher.admin_id == admin.id,
+        Student.block == period
+    ).first() is not None
+    
+    if not period_exists:
+        # Also check legacy teacher_id
+        period_exists = Student.query.filter_by(
+            teacher_id=admin.id,
+            block=period
+        ).first() is not None
+    
+    if not period_exists:
+        flash(f"❌ Period '{period}' not found for teacher '{admin.username}'.", "error")
+        return redirect(url_for('sysadmin.teacher_overview'))
+
     # Check authorization
-    has_pending_request = DeletionRequest.query.filter_by(
+    pending_request = DeletionRequest.query.filter_by(
         admin_id=admin.id,
         request_type='period',
         period=period,
         status='pending'
-    ).first() is not None
+    ).first()
 
     # Check inactivity
     inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=180)
@@ -571,7 +597,7 @@ def delete_period(admin_id, period):
     else:
         is_inactive = True
 
-    if not (has_pending_request or is_inactive):
+    if not (pending_request or is_inactive):
         flash(
             f"❌ Unauthorized: Cannot delete period '{period}' for teacher '{admin.username}'. "
             f"Teacher must request deletion or be inactive for 6+ months.",
@@ -602,32 +628,27 @@ def delete_period(admin_id, period):
 
         removed_count = 0
         for student in students_in_period:
-            # Remove the teacher-student link if it exists
+            # If this was the primary teacher, reassign to another linked teacher BEFORE deleting the link
+            if student.teacher_id == admin.id:
+                fallback = StudentTeacher.query.filter(
+                    StudentTeacher.student_id == student.id,
+                    StudentTeacher.admin_id != admin.id
+                ).order_by(StudentTeacher.created_at.asc()).first()
+                student.teacher_id = fallback.admin_id if fallback else None
+
+            # Remove the teacher-student link if it exists (after reassignment)
             StudentTeacher.query.filter_by(
                 student_id=student.id,
                 admin_id=admin.id
             ).delete()
 
-            # If this was the primary teacher, reassign to another linked teacher
-            if student.teacher_id == admin.id:
-                fallback = StudentTeacher.query.filter(
-                    StudentTeacher.student_id == student.id
-                ).order_by(StudentTeacher.created_at.asc()).first()
-                student.teacher_id = fallback.admin_id if fallback else None
-
             removed_count += 1
 
         # Mark any pending deletion requests for this period as approved
-        if has_pending_request:
-            deletion_request = DeletionRequest.query.filter_by(
-                admin_id=admin.id,
-                request_type='period',
-                period=period,
-                status='pending'
-            ).first()
-            if deletion_request:
-                deletion_request.status = 'approved'
-                deletion_request.resolved_at = datetime.utcnow()
+        if pending_request:
+            pending_request.status = 'approved'
+            pending_request.resolved_at = datetime.now(timezone.utc)
+            pending_request.resolved_by = session.get('sysadmin_id')
 
         db.session.commit()
 
@@ -660,11 +681,11 @@ def delete_teacher(admin_id):
     admin = Admin.query.get_or_404(admin_id)
 
     # Check authorization
-    has_pending_request = DeletionRequest.query.filter_by(
+    pending_request = DeletionRequest.query.filter_by(
         admin_id=admin.id,
         request_type='account',
         status='pending'
-    ).first() is not None
+    ).first()
 
     # Check inactivity
     inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=180)
@@ -677,7 +698,7 @@ def delete_teacher(admin_id):
     else:
         is_inactive = True
 
-    if not (has_pending_request or is_inactive):
+    if not (pending_request or is_inactive):
         flash(
             f"❌ Unauthorized: Cannot delete teacher '{admin.username}'. "
             f"Teacher must request deletion or be inactive for 6+ months.",
@@ -698,29 +719,25 @@ def delete_teacher(admin_id):
         student_count = len(affected_students)
 
         for student in affected_students:
-            # Remove the teacher-student link
-            StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin.id).delete()
-
-            # If this was the primary teacher, reassign to another linked teacher
+            # If this was the primary teacher, reassign to another linked teacher BEFORE deleting the link
             if student.teacher_id == admin.id:
                 fallback = (
                     StudentTeacher.query
-                    .filter(StudentTeacher.student_id == student.id)
+                    .filter(StudentTeacher.student_id == student.id,
+                            StudentTeacher.admin_id != admin.id)
                     .order_by(StudentTeacher.created_at.asc())
                     .first()
                 )
                 student.teacher_id = fallback.admin_id if fallback else None
 
+            # Remove the teacher-student link (after reassignment)
+            StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin.id).delete()
+
         # Mark any pending deletion requests for this teacher as approved
-        if has_pending_request:
-            deletion_request = DeletionRequest.query.filter_by(
-                admin_id=admin.id,
-                request_type='account',
-                status='pending'
-            ).first()
-            if deletion_request:
-                deletion_request.status = 'approved'
-                deletion_request.resolved_at = datetime.utcnow()
+        if pending_request:
+            pending_request.status = 'approved'
+            pending_request.resolved_at = datetime.now(timezone.utc)
+            pending_request.resolved_by = session.get('sysadmin_id')
 
         admin_username = admin.username
         db.session.delete(admin)

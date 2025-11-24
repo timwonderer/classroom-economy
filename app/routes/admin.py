@@ -3507,7 +3507,6 @@ def deletion_requests():
     ).order_by(DeletionRequest.resolved_at.desc()).limit(10).all()
 
     # Get teacher's periods for the dropdown
-    admin = Admin.query.get(admin_id)
     periods = db.session.query(
         Student.block
     ).join(
