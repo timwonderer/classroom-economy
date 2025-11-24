@@ -41,17 +41,25 @@ branch_labels = None
 depends_on = None
 
 
-def quote_identifier(name):
+def validate_identifier(name):
     """
-    Quote a PostgreSQL identifier to prevent SQL injection.
-    This validates the identifier against a whitelist pattern.
+    Validate a PostgreSQL identifier to prevent SQL injection.
+    Returns the validated name without quotes (for use in DDL statements).
     """
     import re
-    # Only allow alphanumeric characters and underscores
-    if not re.match(r'^[a-z_][a-z0-9_]*$', name):
+    # Allow alphanumeric characters (upper and lower case) and underscores
+    if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
         raise ValueError(f"Invalid identifier: {name}")
-    # Return quoted identifier
-    return f'"{name}"'
+    return name
+
+
+def quote_identifier(name):
+    """
+    Quote a PostgreSQL table/column identifier.
+    Use for table and column names that need quoting.
+    """
+    validated = validate_identifier(name)
+    return f'"{validated}"'
 
 
 def upgrade():
@@ -99,7 +107,8 @@ def upgrade():
 
     for table in tables_with_teacher_id:
         table_name = quote_identifier(table)
-        policy_prefix = quote_identifier(f"{table}_tenant_isolation")
+        # Policy names don't need quoting, just validation
+        policy_prefix = validate_identifier(f"{table}_tenant_isolation")
         
         # Policy for SELECT
         conn.execute(sa.text(f"""
@@ -218,7 +227,8 @@ def downgrade():
     for table in tables_with_teacher_id:
         table_name = quote_identifier(table)
         for operation in ['select', 'insert', 'update', 'delete']:
-            policy_name = quote_identifier(f"{table}_tenant_isolation_{operation}")
+            # Policy names don't need quoting, just validation
+            policy_name = validate_identifier(f"{table}_tenant_isolation_{operation}")
             conn.execute(sa.text(
                 f"DROP POLICY IF EXISTS {policy_name} ON {table_name}"
             ))
