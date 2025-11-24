@@ -32,6 +32,7 @@ Usage:
 """
 from alembic import op
 import sqlalchemy as sa
+import re
 
 
 # revision identifiers, used by Alembic.
@@ -46,7 +47,6 @@ def validate_identifier(name):
     Validate a PostgreSQL identifier to prevent SQL injection.
     Returns the validated name without quotes (for use in DDL statements).
     """
-    import re
     # Allow alphanumeric characters (upper and lower case) and underscores
     if not re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
         raise ValueError(f"Invalid identifier: {name}")
