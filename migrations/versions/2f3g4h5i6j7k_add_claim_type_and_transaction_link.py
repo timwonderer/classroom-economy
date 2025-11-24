@@ -25,7 +25,7 @@ def upgrade():
         'insurance_claims',
         sa.Column('transaction_id', sa.Integer(), nullable=True)
     )
-    op.create_foreign_key(None, 'insurance_claims', 'transactions', ['transaction_id'], ['id'])
+    op.create_foreign_key(None, 'insurance_claims', 'transaction', ['transaction_id'], ['id'])
 
     insurance_policies = sa.sql.table(
         'insurance_policies',
