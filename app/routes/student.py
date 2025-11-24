@@ -14,8 +14,8 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, jsonify, current_app
-from sqlalchemy import or_, func
-from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import or_, func, select
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
 import pytz
 
@@ -1078,9 +1078,19 @@ def file_claim(policy_id):
                 flash("Selected transaction is not eligible for claims.", "danger")
                 return redirect(url_for('student.file_claim', policy_id=policy_id))
 
-            transaction_already_claimed = InsuranceClaim.query.filter(
-                InsuranceClaim.transaction_id == selected_transaction.id
-            ).first()
+            bind = db.session.get_bind()
+            use_row_locking = bind and bind.dialect.name != 'sqlite'
+            if use_row_locking:
+                transaction_already_claimed = db.session.execute(
+                    select(InsuranceClaim)
+                    .filter(InsuranceClaim.transaction_id == selected_transaction.id)
+                    .with_for_update()
+                ).scalar_one_or_none()
+            else:
+                transaction_already_claimed = InsuranceClaim.query.filter(
+                    InsuranceClaim.transaction_id == selected_transaction.id
+                ).first()
+
             if transaction_already_claimed:
                 flash("This transaction already has a claim. Each transaction can only be claimed once.", "danger")
                 return redirect(url_for('student.file_claim', policy_id=policy_id))
@@ -1130,7 +1140,16 @@ def file_claim(policy_id):
             transaction_id=transaction_id_value,
         )
         db.session.add(claim)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            flash("This transaction already has a claim. Each transaction can only be claimed once.", "danger")
+            return redirect(url_for('student.file_claim', policy_id=policy_id))
+        except SQLAlchemyError:
+            db.session.rollback()
+            flash("Something went wrong while submitting your claim. Please try again.", "danger")
+            return redirect(url_for('student.file_claim', policy_id=policy_id))
 
         flash("Claim submitted successfully! It will be reviewed by your teacher.", "success")
         return redirect(url_for('student.student_insurance'))
