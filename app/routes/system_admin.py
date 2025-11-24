@@ -27,6 +27,7 @@ from forms import SystemAdminLoginForm, SystemAdminInviteForm
 
 # Import utility functions
 from app.utils.helpers import is_safe_url
+from app.utils.constants import PERIOD_MAX_LENGTH, PERIOD_PATTERN
 
 # Create blueprint
 sysadmin_bp = Blueprint('sysadmin', __name__, url_prefix='/sysadmin')
@@ -629,12 +630,12 @@ def delete_period(admin_id, period):
     2. Teacher has been inactive for 6+ months
     """
     # Validate period parameter
-    if not period or len(period) > 50:
+    if not period or len(period) > PERIOD_MAX_LENGTH:
         flash("❌ Invalid period parameter", "error")
         return redirect(url_for('sysadmin.teacher_overview'))
     
     # Sanitize period to prevent SQL injection (allow only alphanumeric, spaces, hyphens, underscores)
-    if not re.match(r'^[a-zA-Z0-9\s\-_]+$', period):
+    if not PERIOD_PATTERN.match(period):
         flash("❌ Invalid period format", "error")
         return redirect(url_for('sysadmin.teacher_overview'))
     
@@ -683,23 +684,12 @@ def delete_period(admin_id, period):
                 student.teacher_id = fallback.admin_id if fallback else None
 
             # Remove the teacher-student link after reassignment
-            # Only remove the StudentTeacher link if the student is not taught by this teacher in any other period
-            other_periods = Student.query.filter(
-                Student.id == student.id,
-                Student.teacher_id == admin.id,
-                Student.block != period
-            ).count()
-            other_links = StudentTeacher.query.filter(
-                StudentTeacher.student_id == student.id,
-                StudentTeacher.admin_id == admin.id
-            ).join(Student, Student.id == StudentTeacher.student_id).filter(
-                Student.block != period
-            ).count()
-            if other_periods == 0 and other_links == 0:
-                StudentTeacher.query.filter_by(
-                    student_id=student.id,
-                    admin_id=admin.id
-                ).delete()
+            # Since each student has only one block and we're deleting this period,
+            # we should always remove the StudentTeacher link for this student-teacher pair
+            StudentTeacher.query.filter_by(
+                student_id=student.id,
+                admin_id=admin.id
+            ).delete()
 
             removed_count += 1
 

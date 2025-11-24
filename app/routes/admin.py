@@ -45,6 +45,7 @@ from forms import (
 
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso
+from app.utils.constants import PERIOD_MAX_LENGTH, PERIOD_PATTERN
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
@@ -3453,8 +3454,8 @@ def deletion_requests():
                 return redirect(url_for('admin.deletion_requests'))
             # Validate period format and length
             # Allow spaces, hyphens, underscores since periods may be named like "Period 1A" or "Block-2"
-            if not re.match(r'^[a-zA-Z0-9\s\-_]+$', period) or len(period) > 10:
-                flash('Invalid period format. Use alphanumeric characters, spaces, hyphens, and underscores only. Max 10 characters.', 'error')
+            if not PERIOD_PATTERN.match(period) or len(period) > PERIOD_MAX_LENGTH:
+                flash(f'Invalid period format. Use alphanumeric characters, spaces, hyphens, and underscores only. Max {PERIOD_MAX_LENGTH} characters.', 'error')
                 return redirect(url_for('admin.deletion_requests'))
 
         # Check for duplicate pending requests
