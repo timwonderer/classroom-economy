@@ -3454,7 +3454,7 @@ def deletion_requests():
             # Validate period format and length
             # Allow spaces, hyphens, underscores since periods may be named like "Period 1A" or "Block-2"
             if not re.match(r'^[a-zA-Z0-9\s\-_]+$', period) or len(period) > 10:
-                flash('Invalid period format. Use alphanumeric characters only, max 10 characters.', 'error')
+                flash('Invalid period format. Use alphanumeric characters, spaces, hyphens, and underscores only. Max 10 characters.', 'error')
                 return redirect(url_for('admin.deletion_requests'))
 
         # Check for duplicate pending requests
