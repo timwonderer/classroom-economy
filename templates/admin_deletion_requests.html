@@ -54,7 +54,7 @@
 
                         <div class="d-grid">
                             <button type="submit" class="btn btn-danger">
-                                <i class="bi bi-trash"></i> Submit Deletion Request
+                                <i class="bi bi-trash" aria-hidden="true"></i> Submit Deletion Request
                             </button>
                         </div>
                     </form>
@@ -83,7 +83,7 @@
                                 {% for req in pending_requests %}
                                 <tr>
                                     <td>
-                                        {% if req.request_type == 'period' %}
+                                        {% if req.request_type.value == 'period' %}
                                             <span class="badge bg-warning text-dark">Period</span>
                                         {% else %}
                                             <span class="badge bg-danger">Account</span>
@@ -124,7 +124,7 @@
                                 {% for req in resolved_requests %}
                                 <tr>
                                     <td>
-                                        {% if req.request_type == 'period' %}
+                                        {% if req.request_type.value == 'period' %}
                                             <span class="badge bg-warning text-dark">Period</span>
                                         {% else %}
                                             <span class="badge bg-danger">Account</span>
@@ -134,9 +134,9 @@
                                     <td><small>{{ req.requested_at.strftime('%b %d, %Y') }}</small></td>
                                     <td><small>{{ req.resolved_at.strftime('%b %d, %Y') if req.resolved_at else 'N/A' }}</small></td>
                                     <td>
-                                        {% if req.status == 'approved' %}
+                                        {% if req.status.value == 'approved' %}
                                             <span class="badge bg-success">Approved</span>
-                                        {% elif req.status == 'rejected' %}
+                                        {% elif req.status.value == 'rejected' %}
                                             <span class="badge bg-danger">Rejected</span>
                                         {% endif %}
                                     </td>

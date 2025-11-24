@@ -11,7 +11,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app
-from sqlalchemy import delete, or_, case, literal_column
+from sqlalchemy import delete, or_, case
 from werkzeug.exceptions import BadRequest, Unauthorized, Forbidden, NotFound, ServiceUnavailable
 import pyotp
 
@@ -19,7 +19,8 @@ from app.extensions import db
 from app.models import (
     SystemAdmin, Admin, Student, AdminInviteCode, ErrorLog,
     Transaction, TapEvent, HallPassLog, StudentItem, RentPayment,
-    StudentInsurance, InsuranceClaim, StudentTeacher, DeletionRequest
+    StudentInsurance, InsuranceClaim, StudentTeacher, DeletionRequest,
+    DeletionRequestType, DeletionRequestStatus
 )
 from app.auth import system_admin_required
 from forms import SystemAdminLoginForm, SystemAdminInviteForm
@@ -29,6 +30,9 @@ from app.utils.helpers import is_safe_url
 
 # Create blueprint
 sysadmin_bp = Blueprint('sysadmin', __name__, url_prefix='/sysadmin')
+
+# Constants
+INACTIVITY_THRESHOLD_DAYS = 180  # Number of days of inactivity before allowing deletion without request
 
 
 def _get_teacher_student_count(teacher_id: int) -> int:
@@ -56,6 +60,51 @@ def _get_teacher_student_count(teacher_id: int) -> int:
     count = linked_ids.union(legacy_ids).count()
     
     return count
+
+
+def _check_deletion_authorization(admin, request_type=None, period=None):
+    """
+    Check if system admin is authorized to delete for this teacher.
+    
+    Authorization is granted if:
+    1. Teacher has a pending deletion request matching the criteria, OR
+    2. Teacher has been inactive for INACTIVITY_THRESHOLD_DAYS or more
+    
+    Args:
+        admin: The Admin object to check authorization for
+        request_type: Optional request type filter ('period' or 'account')
+        period: Optional period filter (for period-specific requests)
+    
+    Returns:
+        tuple: (authorized: bool, pending_request: DeletionRequest or None)
+    """
+    # Check for pending request
+    query = DeletionRequest.query.filter_by(
+        admin_id=admin.id,
+        status=DeletionRequestStatus.PENDING
+    )
+    if request_type:
+        # Convert string to enum if needed
+        if isinstance(request_type, str):
+            request_type = DeletionRequestType.from_string(request_type)
+        query = query.filter_by(request_type=request_type)
+    if period:
+        query = query.filter_by(period=period)
+    pending_request = query.first()
+    
+    # Check inactivity
+    inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
+    is_inactive = False
+    if admin.last_login:
+        last_login = admin.last_login
+        if last_login.tzinfo is None:
+            last_login = last_login.replace(tzinfo=timezone.utc)
+        is_inactive = last_login < inactivity_threshold
+    else:
+        is_inactive = True
+    
+    authorized = (pending_request is not None) or is_inactive
+    return authorized, pending_request
 
 
 def _tail_log_lines(file_path: str, max_lines: int = 200, chunk_size: int = 8192):
@@ -473,17 +522,9 @@ def teacher_overview():
     teachers = Admin.query.order_by(Admin.username.asc()).all()
     
     # Define inactivity threshold (6 months)
-    inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=180)
+    inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
 
-    # Batch query: Get all student counts for all teachers at once
-    # This uses a single query instead of N queries
-    teacher_student_counts = {}
-    for teacher in teachers:
-        teacher_student_counts[teacher.id] = _get_teacher_student_count(teacher.id)
-
-    # Batch query: Get all period counts for all teachers
-    # Group by teacher and period to get all data in one query
-    
+    # Batch query: Get all teacher-student relationships in one query
     # Create a CTE (Common Table Expression) for all teacher-student relationships
     teacher_students = db.session.query(
         case(
@@ -501,7 +542,14 @@ def teacher_overview():
         )
     ).distinct().subquery()
 
-    # Now group by teacher and block to get counts
+    # Get total student counts per teacher in a single query
+    teacher_student_count_rows = db.session.query(
+        teacher_students.c.teacher_id,
+        db.func.count(teacher_students.c.student_id).label('count')
+    ).group_by(teacher_students.c.teacher_id).all()
+    teacher_student_counts = {row.teacher_id: row.count for row in teacher_student_count_rows}
+
+    # Get period counts per teacher in a single query
     period_counts_query = db.session.query(
         teacher_students.c.teacher_id,
         teacher_students.c.block,
@@ -521,7 +569,7 @@ def teacher_overview():
     # Batch query: Get all pending deletion requests for all teachers
     all_pending_requests = DeletionRequest.query.filter(
         DeletionRequest.admin_id.in_([t.id for t in teachers]),
-        DeletionRequest.status == 'pending'
+        DeletionRequest.status == DeletionRequestStatus.PENDING
     ).all()
 
     # Organize pending requests by teacher
@@ -566,7 +614,7 @@ def teacher_overview():
         "system_admin_teacher_overview.html",
         teachers=teacher_data,
         current_page="teacher_overview",
-        inactivity_threshold_days=180
+        inactivity_threshold_days=INACTIVITY_THRESHOLD_DAYS
     )
 
 
@@ -592,27 +640,10 @@ def delete_period(admin_id, period):
     
     admin = Admin.query.get_or_404(admin_id)
 
-    # Check authorization - store the pending request to avoid duplicate queries
-    pending_request = DeletionRequest.query.filter_by(
-        admin_id=admin.id,
-        request_type='period',
-        period=period,
-        status='pending'
-    ).first()
-    has_pending_request = pending_request is not None
-
-    # Check inactivity
-    inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=180)
-    is_inactive = False
-    if admin.last_login:
-        last_login = admin.last_login
-        if last_login.tzinfo is None:
-            last_login = last_login.replace(tzinfo=timezone.utc)
-        is_inactive = last_login < inactivity_threshold
-    else:
-        is_inactive = True
-
-    if not (has_pending_request or is_inactive):
+    # Check authorization using helper function
+    authorized, pending_request = _check_deletion_authorization(admin, 'period', period)
+    
+    if not authorized:
         flash(
             f"❌ Unauthorized: Cannot delete period '{period}' for teacher '{admin.username}'. "
             f"Teacher must request deletion or be inactive for 6+ months.",
@@ -661,7 +692,7 @@ def delete_period(admin_id, period):
 
         # Mark any pending deletion requests for this period as approved
         if pending_request:
-            pending_request.status = 'approved'
+            pending_request.status = DeletionRequestStatus.APPROVED
             pending_request.resolved_at = datetime.now(timezone.utc)
             pending_request.resolved_by = session.get('sysadmin_id')
 
@@ -695,26 +726,10 @@ def delete_teacher(admin_id):
     """
     admin = Admin.query.get_or_404(admin_id)
 
-    # Check authorization - store the pending request to avoid duplicate queries
-    pending_request = DeletionRequest.query.filter_by(
-        admin_id=admin.id,
-        request_type='account',
-        status='pending'
-    ).first()
-    has_pending_request = pending_request is not None
-
-    # Check inactivity
-    inactivity_threshold = datetime.now(timezone.utc) - timedelta(days=180)
-    is_inactive = False
-    if admin.last_login:
-        last_login = admin.last_login
-        if last_login.tzinfo is None:
-            last_login = last_login.replace(tzinfo=timezone.utc)
-        is_inactive = last_login < inactivity_threshold
-    else:
-        is_inactive = True
-
-    if not (has_pending_request or is_inactive):
+    # Check authorization using helper function
+    authorized, pending_request = _check_deletion_authorization(admin, 'account', None)
+    
+    if not authorized:
         flash(
             f"❌ Unauthorized: Cannot delete teacher '{admin.username}'. "
             f"Teacher must request deletion or be inactive for 6+ months.",
@@ -750,7 +765,7 @@ def delete_teacher(admin_id):
 
         # Mark any pending deletion requests for this teacher as approved
         if pending_request:
-            pending_request.status = 'approved'
+            pending_request.status = DeletionRequestStatus.APPROVED
             pending_request.resolved_at = datetime.now(timezone.utc)
             pending_request.resolved_by = session.get('sysadmin_id')
 
