@@ -1045,7 +1045,6 @@ def store_management():
         return redirect(url_for('admin.store_management'))
 
     # Get items for this teacher only
-    admin_id = session.get("admin_id")
     items = StoreItem.query.filter_by(teacher_id=admin_id).order_by(StoreItem.name).all()
 
     # Get store statistics for overview tab
@@ -2339,6 +2338,7 @@ def payroll():
 def payroll_settings():
     """Save payroll settings for a block or globally (Simple or Advanced mode)."""
     try:
+        admin_id = session.get("admin_id")
         # Get all blocks
         students = _scoped_students().all()
         blocks = sorted(set(s.block for s in students if s.block))

@@ -1550,8 +1550,7 @@ def rent_pay(period):
         # Full payment required (or no amount specified with incremental disabled)
         payment_amount = remaining_amount
 
-    # Get banking settings for overdraft handling
-    teacher_id = get_current_teacher_id()
+    # Get banking settings for overdraft handling (using teacher_id from line 1450)
     banking_settings = BankingSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
 
     # Check if student has enough funds for this payment

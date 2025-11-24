@@ -41,6 +41,19 @@ branch_labels = None
 depends_on = None
 
 
+def quote_identifier(name):
+    """
+    Quote a PostgreSQL identifier to prevent SQL injection.
+    This validates the identifier against a whitelist pattern.
+    """
+    import re
+    # Only allow alphanumeric characters and underscores
+    if not re.match(r'^[a-z_][a-z0-9_]*$', name):
+        raise ValueError(f"Invalid identifier: {name}")
+    # Return quoted identifier
+    return f'"{name}"'
+
+
 def upgrade():
     """
     Enable Row-Level Security on all teacher-scoped tables.
@@ -71,7 +84,7 @@ def upgrade():
     ]
 
     for table in tables_with_teacher_id:
-        conn.execute(sa.text(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY"))
+        conn.execute(sa.text(f"ALTER TABLE {quote_identifier(table)} ENABLE ROW LEVEL SECURITY"))
 
     # Special case: deletion_requests uses admin_id instead of teacher_id
     conn.execute(sa.text("ALTER TABLE deletion_requests ENABLE ROW LEVEL SECURITY"))
@@ -85,9 +98,12 @@ def upgrade():
     # Set by application on each request
 
     for table in tables_with_teacher_id:
+        table_name = quote_identifier(table)
+        policy_prefix = quote_identifier(f"{table}_tenant_isolation")
+        
         # Policy for SELECT
         conn.execute(sa.text(f"""
-            CREATE POLICY {table}_tenant_isolation_select ON {table}
+            CREATE POLICY {policy_prefix}_select ON {table_name}
             FOR SELECT
             USING (
                 teacher_id = NULLIF(current_setting('app.current_teacher_id', TRUE), '')::integer
@@ -96,7 +112,7 @@ def upgrade():
 
         # Policy for INSERT
         conn.execute(sa.text(f"""
-            CREATE POLICY {table}_tenant_isolation_insert ON {table}
+            CREATE POLICY {policy_prefix}_insert ON {table_name}
             FOR INSERT
             WITH CHECK (
                 teacher_id = NULLIF(current_setting('app.current_teacher_id', TRUE), '')::integer
@@ -105,7 +121,7 @@ def upgrade():
 
         # Policy for UPDATE
         conn.execute(sa.text(f"""
-            CREATE POLICY {table}_tenant_isolation_update ON {table}
+            CREATE POLICY {policy_prefix}_update ON {table_name}
             FOR UPDATE
             USING (
                 teacher_id = NULLIF(current_setting('app.current_teacher_id', TRUE), '')::integer
@@ -117,7 +133,7 @@ def upgrade():
 
         # Policy for DELETE
         conn.execute(sa.text(f"""
-            CREATE POLICY {table}_tenant_isolation_delete ON {table}
+            CREATE POLICY {policy_prefix}_delete ON {table_name}
             FOR DELETE
             USING (
                 teacher_id = NULLIF(current_setting('app.current_teacher_id', TRUE), '')::integer
@@ -200,9 +216,11 @@ def downgrade():
 
     # Drop policies for each table
     for table in tables_with_teacher_id:
+        table_name = quote_identifier(table)
         for operation in ['select', 'insert', 'update', 'delete']:
+            policy_name = quote_identifier(f"{table}_tenant_isolation_{operation}")
             conn.execute(sa.text(
-                f"DROP POLICY IF EXISTS {table}_tenant_isolation_{operation} ON {table}"
+                f"DROP POLICY IF EXISTS {policy_name} ON {table_name}"
             ))
 
     # Drop policies for deletion_requests
@@ -213,7 +231,7 @@ def downgrade():
 
     # Disable RLS on all tables
     for table in tables_with_teacher_id:
-        conn.execute(sa.text(f"ALTER TABLE {table} DISABLE ROW LEVEL SECURITY"))
+        conn.execute(sa.text(f"ALTER TABLE {quote_identifier(table)} DISABLE ROW LEVEL SECURITY"))
 
     conn.execute(sa.text("ALTER TABLE deletion_requests DISABLE ROW LEVEL SECURITY"))
 

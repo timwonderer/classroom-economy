@@ -105,14 +105,18 @@ def upgrade():
     if first_admin_id:
         first_admin_id = first_admin_id[0]
 
-        # Update all existing settings to belong to the first admin
-        conn.execute(sa.text(f"UPDATE banking_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
-        conn.execute(sa.text(f"UPDATE rent_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
-        conn.execute(sa.text(f"UPDATE payroll_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
-        conn.execute(sa.text(f"UPDATE payroll_rewards SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
-        conn.execute(sa.text(f"UPDATE payroll_fines SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
-        conn.execute(sa.text(f"UPDATE store_items SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
-        conn.execute(sa.text(f"UPDATE hall_pass_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
+        # Update all existing settings to belong to the first admin (using parameterized queries)
+        conn.execute(sa.text("UPDATE banking_settings SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
+        conn.execute(sa.text("UPDATE rent_settings SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
+        conn.execute(sa.text("UPDATE payroll_settings SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
+        conn.execute(sa.text("UPDATE payroll_rewards SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
+        conn.execute(sa.text("UPDATE payroll_fines SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
+        conn.execute(sa.text("UPDATE store_items SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
+        conn.execute(sa.text("UPDATE hall_pass_settings SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
+        
+        # Also backfill insurance_policies if they have NULL teacher_id
+        # This ensures insurance policies are ready for RLS in the next migration
+        conn.execute(sa.text("UPDATE insurance_policies SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
 
     # Make teacher_id NOT NULL after data migration
     op.alter_column('banking_settings', 'teacher_id', nullable=False)

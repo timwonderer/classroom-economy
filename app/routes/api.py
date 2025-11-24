@@ -141,8 +141,7 @@ def purchase_item():
 
     total_price = unit_price * quantity
 
-    # Get banking settings for overdraft handling (for current teacher)
-    teacher_id = get_current_teacher_id()
+    # Get banking settings for overdraft handling (using teacher_id from line 126)
     banking_settings = BankingSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
 
     # Check if student has sufficient funds
