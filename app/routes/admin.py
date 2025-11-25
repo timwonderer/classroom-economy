@@ -555,6 +555,36 @@ def students():
                 unclaimed_seats_list_by_block[block_name].append(tb)
                 unclaimed_seats_by_block[block_name] += 1
 
+    # Ensure all blocks with students have join codes (for legacy teachers with pre-c3aa3a0 classes)
+    # If a block has students but no TeacherBlock records, look up or generate a join code
+    from app.utils.join_code import generate_join_code
+    
+    for block in blocks:
+        if block != "Unassigned" and block not in join_codes_by_block:
+            # This block has students but no TeacherBlock records yet
+            # Check if there are any claimed TeacherBlock records for this teacher-block combination
+            existing_tb = TeacherBlock.query.filter_by(
+                teacher_id=current_admin,
+                block=block,
+                is_claimed=True
+            ).first()
+            
+            if existing_tb and existing_tb.join_code:
+                # Use existing join code from claimed seat
+                join_codes_by_block[block] = existing_tb.join_code
+            else:
+                # No join code exists for this block yet - generate a new unique one
+                new_code = generate_join_code()
+                # Ensure uniqueness across all teachers
+                while TeacherBlock.query.filter_by(join_code=new_code).first():
+                    new_code = generate_join_code()
+                join_codes_by_block[block] = new_code
+            
+            # Initialize unclaimed seats counter for this block
+            if block not in unclaimed_seats_by_block:
+                unclaimed_seats_by_block[block] = 0
+                unclaimed_seats_list_by_block[block] = []
+
     return render_template('admin_students.html',
                          students=all_students,
                          blocks=blocks,
