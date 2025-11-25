@@ -481,6 +481,10 @@
             <a href="{{ url_for('student.dashboard') }}"
                class="btn text-start {% if current_page == 'dashboard' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">dashboard</span> Dashboard</a>
 
+            <!-- Add New Class -->
+            <a href="{{ url_for('student.add_class') }}"
+               class="btn text-start {% if current_page == 'add_class' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">group_add</span> Add New Class</a>
+
             <!-- Finances -->
             <a href="{{ url_for('student.transfer') }}"
                class="btn text-start {% if current_page == 'transfer' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">account_balance_wallet</span> Finances</a>

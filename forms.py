@@ -319,3 +319,12 @@ class BankingSettingsForm(FlaskForm):
     overdraft_fee_progressive_cap = FloatField('Fee Cap per Period ($, optional)', validators=[Optional()])
 
     submit = SubmitField('Save Banking Settings')
+
+
+class StudentAddClassForm(FlaskForm):
+    """Form for logged-in students to add a new class by entering a join code."""
+    join_code = StringField('Join Code (from your teacher)', validators=[DataRequired()])
+    first_initial = StringField('First Initial (e.g., J)', validators=[DataRequired(), Length(min=1, max=1)])
+    last_name = StringField('Last Name', validators=[DataRequired()])
+    dob_sum = StringField('DOB Sum (MM + DD + YYYY)', validators=[DataRequired()])
+    submit = SubmitField('Add Class')

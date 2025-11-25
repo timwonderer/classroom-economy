@@ -310,6 +310,128 @@ def setup_pin_passphrase():
     return render_template('student_pin_setup.html', username=username, form=form)
 
 
+# -------------------- ADD NEW CLASS --------------------
+
+@student_bp.route('/add-class', methods=['GET', 'POST'])
+@login_required
+def add_class():
+    """
+    Allow logged-in students to add a new class by entering a join code.
+
+    This enables students who are already registered to join additional classes
+    taught by other teachers, creating multi-teacher/multi-class support.
+    """
+    from app.models import TeacherBlock, StudentTeacher
+    from app.utils.join_code import format_join_code
+    from forms import StudentAddClassForm
+    from app.utils.name_utils import verify_last_name_parts
+
+    student = get_logged_in_student()
+    form = StudentAddClassForm()
+
+    if form.validate_on_submit():
+        join_code = format_join_code(form.join_code.data)
+        first_initial = form.first_initial.data.strip().upper()
+        last_name = form.last_name.data.strip()
+        dob_sum_str = form.dob_sum.data.strip()
+
+        # Validate DOB sum is numeric
+        if not dob_sum_str.isdigit():
+            flash("DOB sum must be a number.", "danger")
+            return redirect(url_for('student.add_class'))
+
+        # Verify the credentials match the logged-in student
+        if first_initial != student.first_name[0].upper():
+            flash("The first initial doesn't match your account. Please check and try again.", "danger")
+            return redirect(url_for('student.add_class'))
+
+        if int(dob_sum_str) != student.dob_sum:
+            flash("The DOB sum doesn't match your account. Please check and try again.", "danger")
+            return redirect(url_for('student.add_class'))
+
+        # Verify last name matches using the same fuzzy matching logic
+        if not verify_last_name_parts(last_name, student.last_name_hash_by_part, student.salt):
+            flash("The last name doesn't match your account. Please check and try again.", "danger")
+            return redirect(url_for('student.add_class'))
+
+        # Find all unclaimed seats with this join code
+        unclaimed_seats = TeacherBlock.query.filter_by(
+            join_code=join_code,
+            is_claimed=False
+        ).all()
+
+        if not unclaimed_seats:
+            flash("Invalid join code or all seats already claimed. Check with your teacher.", "danger")
+            return redirect(url_for('student.add_class'))
+
+        # Try to find a matching seat for this student
+        matched_seat = None
+        for seat in unclaimed_seats:
+            # Check credential: CONCAT(first_initial, DOB_sum)
+            credential = f"{first_initial}{dob_sum_str}"
+            credential_matches = seat.first_half_hash == hash_hmac(credential.encode(), seat.salt)
+
+            # Check last name with fuzzy matching
+            last_name_matches = verify_last_name_parts(
+                last_name,
+                seat.last_name_hash_by_part,
+                seat.salt
+            )
+
+            # Check if names match (encrypted first name comparison)
+            name_matches = seat.first_name == student.first_name and seat.last_initial == student.last_initial
+
+            if credential_matches and last_name_matches and name_matches and str(seat.dob_sum) == dob_sum_str:
+                matched_seat = seat
+                break
+
+        if not matched_seat:
+            flash("No matching seat found for your account. Please verify your join code and credentials.", "danger")
+            return redirect(url_for('student.add_class'))
+
+        # Check if student is already linked to this teacher
+        existing_link = StudentTeacher.query.filter_by(
+            student_id=student.id,
+            admin_id=matched_seat.teacher_id
+        ).first()
+
+        if existing_link:
+            flash("You are already enrolled in this teacher's class.", "warning")
+            return redirect(url_for('student.dashboard'))
+
+        # Link the seat to the existing student
+        matched_seat.student_id = student.id
+        matched_seat.is_claimed = True
+        matched_seat.claimed_at = datetime.utcnow()
+
+        # Create StudentTeacher link
+        link = StudentTeacher(
+            student_id=student.id,
+            admin_id=matched_seat.teacher_id
+        )
+        db.session.add(link)
+
+        # Update student's block to include the new block if not already there
+        current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+        new_block = matched_seat.block.strip().upper()
+
+        if new_block not in current_blocks:
+            current_blocks.append(new_block)
+            student.block = ','.join(sorted(current_blocks))
+
+        try:
+            db.session.commit()
+            flash(f"Successfully added to Block {new_block}! You can now access this class from your dashboard.", "success")
+            return redirect(url_for('student.dashboard'))
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error adding class for student {student.id}: {str(e)}")
+            flash("An error occurred while adding the class. Please try again or contact your teacher.", "danger")
+            return redirect(url_for('student.add_class'))
+
+    return render_template('student_add_class.html', form=form)
+
+
 # -------------------- STUDENT DASHBOARD --------------------
 
 @student_bp.route('/dashboard')
