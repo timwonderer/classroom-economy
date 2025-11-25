@@ -4,15 +4,116 @@
 <div class="container-fluid">
     <h2 class="mb-4"><i class="bi bi-life-preserver me-2"></i>Help & Support</h2>
 
-    <div class="row g-4">
-        <!-- Left Column: Report a Bug/Issue -->
-        <div class="col-lg-8">
+    <!-- Tabs -->
+    <ul class="nav nav-tabs mb-4" id="helpTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="kb-tab" data-bs-toggle="tab" data-bs-target="#kb" type="button" role="tab" aria-controls="kb" aria-selected="true">
+                <i class="bi bi-book-half me-2"></i>Knowledge Base
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="report-tab" data-bs-toggle="tab" data-bs-target="#report" type="button" role="tab" aria-controls="report" aria-selected="false">
+                <i class="bi bi-bug-fill me-2"></i>Report an Issue
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="myreports-tab" data-bs-toggle="tab" data-bs-target="#myreports" type="button" role="tab" aria-controls="myreports" aria-selected="false">
+                <i class="bi bi-list-ul me-2"></i>My Reports
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content" id="helpTabsContent">
+        <!-- Knowledge Base Tab -->
+        <div class="tab-pane fade show active" id="kb" role="tabpanel" aria-labelledby="kb-tab">
+            <div class="row g-4">
+                <!-- Quick Start -->
+                <div class="col-lg-6">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header bg-info text-white">
+                            <h5 class="mb-0"><i class="bi bi-rocket-takeoff-fill me-2"></i>Quick Start Guide</h5>
+                        </div>
+                        <div class="card-body">
+                            <ol class="list-group list-group-numbered list-group-flush">
+                                <li class="list-group-item">
+                                    <strong>Add Students:</strong> Go to the <a href="{{ url_for('admin.students') }}">Students</a> page. Upload your roster CSV or add students manually. Share the generated Join Codes with your students.
+                                </li>
+                                <li class="list-group-item">
+                                    <strong>Set Up Payroll:</strong> Configure pay rates (e.g., $15/hr) in <a href="{{ url_for('admin.payroll') }}">Payroll Settings</a>. Run payroll periodically to pay students for attendance.
+                                </li>
+                                <li class="list-group-item">
+                                    <strong>Stock the Store:</strong> Add items in <a href="{{ url_for('admin.store_management') }}">Store Management</a>. Use "Delayed" items for physical rewards that require redemption.
+                                </li>
+                                <li class="list-group-item">
+                                    <strong>Enable Rent:</strong> In <a href="{{ url_for('admin.rent_settings') }}">Rent Settings</a>, enable rent to simulate real-world expenses.
+                                </li>
+                                <li class="list-group-item">
+                                    <strong>Create Insurance:</strong> Offer protection plans in the <a href="{{ url_for('admin.insurance_management') }}">Insurance</a> tab.
+                                </li>
+                            </ol>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- FAQ / Self Help -->
+                <div class="col-lg-6">
+                    <div class="card shadow-sm h-100">
+                        <div class="card-header bg-secondary text-white">
+                            <h5 class="mb-0"><i class="bi bi-question-circle-fill me-2"></i>Frequently Asked Questions</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="accordion" id="faqAccordion">
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="headingOne">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne">
+                                            How do students log in?
+                                        </button>
+                                    </h2>
+                                    <div id="collapseOne" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#faqAccordion">
+                                        <div class="accordion-body">
+                                            Students use the <strong>Join Code</strong> (found on the Students page) to claim their account. They will then set their own Username, PIN, and Passphrase.
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="headingTwo">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
+                                            How do I reset a student's PIN?
+                                        </button>
+                                    </h2>
+                                    <div id="collapseTwo" class="accordion-collapse collapse" aria-labelledby="headingTwo" data-bs-parent="#faqAccordion">
+                                        <div class="accordion-body">
+                                            Go to the Student Detail page and click "Edit Student". There is an option to "Reset Login", which will require the student to re-claim their account and set a new PIN.
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="headingThree">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree">
+                                            Can I undo a transaction?
+                                        </button>
+                                    </h2>
+                                    <div id="collapseThree" class="accordion-collapse collapse" aria-labelledby="headingThree" data-bs-parent="#faqAccordion">
+                                        <div class="accordion-body">
+                                            Yes. Go to <a href="{{ url_for('admin.banking') }}">Banking</a>, find the transaction, and click the "Void" button.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Report Issue Tab -->
+        <div class="tab-pane fade" id="report" role="tabpanel" aria-labelledby="report-tab">
             <div class="card shadow-sm">
                 <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0"><i class="bi bi-bug-fill me-2"></i>Report a Bug, Suggestion, or Issue</h5>
+                    <h5 class="mb-0"><i class="bi bi-bug-fill me-2"></i>Report a Bug or Issue</h5>
                 </div>
                 <div class="card-body">
-                    <div class="alert alert-info">
+                   <div class="alert alert-info">
                         <i class="bi bi-info-circle-fill me-2"></i>
                         <strong>Your feedback matters!</strong> Help us improve the system by reporting bugs, suggesting features, or providing feedback. All reports are reviewed by the system administrator.
                     </div>
@@ -20,7 +121,6 @@
                     <form method="POST" action="{{ url_for('admin.help_support') }}">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-                        <!-- Report Type -->
                         <div class="mb-3">
                             <label for="report_type" class="form-label">What would you like to report?</label>
                             <select class="form-select" id="report_type" name="report_type" required>
@@ -30,7 +130,6 @@
                             </select>
                         </div>
 
-                        <!-- Error Code (Optional) -->
                         <div class="mb-3" id="error_code_container">
                             <label for="error_code" class="form-label">Error Code (if applicable)</label>
                             <select class="form-select" id="error_code" name="error_code">
@@ -45,40 +144,32 @@
                             </select>
                         </div>
 
-                        <!-- Title -->
                         <div class="mb-3">
                             <label for="title" class="form-label">Title <span class="text-danger">*</span></label>
                             <input type="text" class="form-control" id="title" name="title"
                                    placeholder="Brief summary of the issue" required maxlength="200">
                         </div>
 
-                        <!-- Description -->
                         <div class="mb-3">
                             <label for="description" class="form-label">Description <span class="text-danger">*</span></label>
                             <textarea class="form-control" id="description" name="description" rows="4"
                                       placeholder="Please describe what happened in detail" required></textarea>
                         </div>
 
-                        <!-- Steps to Reproduce -->
                         <div class="mb-3">
                             <label for="steps_to_reproduce" class="form-label">Steps to Reproduce (for bugs)</label>
                             <textarea class="form-control" id="steps_to_reproduce" name="steps_to_reproduce" rows="3"
-                                      placeholder="What did you do right before the error occurred? Please be specific:
-1. I went to the Students page
-2. I clicked on Edit Student
-3. I saw an error message"></textarea>
+                                      placeholder="What did you do right before the error occurred?"></textarea>
                         </div>
 
-                        <!-- Expected Behavior -->
                         <div class="mb-3">
                             <label for="expected_behavior" class="form-label">Expected Behavior</label>
                             <textarea class="form-control" id="expected_behavior" name="expected_behavior" rows="2"
                                       placeholder="What did you expect to happen instead?"></textarea>
                         </div>
 
-                        <!-- Page URL -->
                         <div class="mb-3">
-                            <label for="page_url" class="form-label">Page URL (where the issue occurred)</label>
+                            <label for="page_url" class="form-label">Page URL</label>
                             <input type="text" class="form-control" id="page_url" name="page_url"
                                    placeholder="e.g., /admin/students">
                         </div>
@@ -91,33 +182,9 @@
             </div>
         </div>
 
-        <!-- Right Column: My Reports & Support Resources -->
-        <div class="col-lg-4">
-            <!-- Support Resources -->
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-info text-white">
-                    <h5 class="mb-0"><i class="bi bi-book-fill me-2"></i>Support Resources</h5>
-                </div>
-                <div class="card-body">
-                    <div class="d-grid gap-2">
-                        <a href="#" class="btn btn-outline-primary text-start">
-                            <i class="bi bi-file-text me-2"></i>Admin Guide
-                        </a>
-                        <a href="#" class="btn btn-outline-primary text-start">
-                            <i class="bi bi-question-circle me-2"></i>FAQs
-                        </a>
-                        <a href="#" class="btn btn-outline-primary text-start">
-                            <i class="bi bi-gear me-2"></i>Configuration Guide
-                        </a>
-                    </div>
-                </div>
-            </div>
-
-            <!-- My Reports -->
+        <!-- My Reports Tab -->
+        <div class="tab-pane fade" id="myreports" role="tabpanel" aria-labelledby="myreports-tab">
             <div class="card shadow-sm">
-                <div class="card-header bg-secondary text-white">
-                    <h5 class="mb-0"><i class="bi bi-list-ul me-2"></i>My Recent Reports</h5>
-                </div>
                 <div class="card-body">
                     {% if my_reports %}
                         <div class="list-group">
@@ -148,7 +215,10 @@
                             {% endfor %}
                         </div>
                     {% else %}
-                        <p class="text-muted mb-0">No reports submitted yet.</p>
+                        <div class="text-center py-5">
+                            <i class="bi bi-inbox fs-1 text-muted"></i>
+                            <p class="text-muted mt-2">No reports submitted yet.</p>
+                        </div>
                     {% endif %}
                 </div>
             </div>

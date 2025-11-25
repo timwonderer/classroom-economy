@@ -8,8 +8,6 @@ financial transactions, shopping, insurance, and rent payment.
 import json
 import random
 import re
-import hashlib
-import hmac
 from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
@@ -32,7 +30,7 @@ from forms import (
 )
 
 # Import utility functions
-from app.utils.helpers import is_safe_url
+from app.utils.helpers import is_safe_url, generate_anonymous_code
 from app.utils.constants import THEME_PROMPTS
 from app.utils.turnstile import verify_turnstile_token
 from app.utils.demo_sessions import cleanup_demo_student_data
@@ -77,17 +75,6 @@ def get_current_teacher_id():
         session['current_teacher_id'] = current_teacher_id
 
     return current_teacher_id
-
-
-def _generate_anonymous_code(user_identifier: str) -> str:
-    """Return an HMAC-based anonymous code for the given user identifier."""
-
-    secret = current_app.config.get("USER_REPORT_SECRET") or current_app.config.get("SECRET_KEY")
-    if not secret:
-        raise RuntimeError("USER_REPORT_SECRET or SECRET_KEY must be configured for anonymous reporting")
-
-    secret_bytes = secret if isinstance(secret, (bytes, bytearray)) else str(secret).encode()
-    return hmac.new(secret_bytes, user_identifier.encode(), hashlib.sha256).hexdigest()
 
 
 # -------------------- STUDENT ONBOARDING --------------------
@@ -1910,7 +1897,7 @@ def help_support():
             return redirect(url_for('student.help_support'))
 
         # Generate anonymous code derived from a secret to prevent reversal by admins
-        anonymous_code = _generate_anonymous_code(f"student:{student.id}")
+        anonymous_code = generate_anonymous_code(f"student:{student.id}")
 
         # Create report
         try:

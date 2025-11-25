@@ -9,7 +9,9 @@ This module provides reusable helper functions for:
 
 from datetime import timezone
 from urllib.parse import urlparse, urljoin
-from flask import request
+import hashlib
+import hmac
+from flask import request, current_app
 from markupsafe import Markup
 import markdown
 import bleach
@@ -106,3 +108,14 @@ def render_markdown(text):
 
     # Return as Markup so Jinja2 doesn't double-escape it
     return Markup(sanitized_html)
+
+
+def generate_anonymous_code(user_identifier: str) -> str:
+    """Return an HMAC-based anonymous code for the given user identifier."""
+
+    secret = current_app.config.get("USER_REPORT_SECRET") or current_app.config.get("SECRET_KEY")
+    if not secret:
+        raise RuntimeError("USER_REPORT_SECRET or SECRET_KEY must be configured for anonymous reporting")
+
+    secret_bytes = secret if isinstance(secret, (bytes, bytearray)) else str(secret).encode()
+    return hmac.new(secret_bytes, user_identifier.encode(), hashlib.sha256).hexdigest()
