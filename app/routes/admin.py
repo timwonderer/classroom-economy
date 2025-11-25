@@ -49,6 +49,7 @@ from app.utils.join_code import generate_join_code
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
+import time
 
 # Timezone
 PACIFIC = pytz.timezone('America/Los_Angeles')
@@ -574,19 +575,28 @@ def students():
             else:
                 # No join code exists for this block yet - generate a new unique one
                 # Try up to 10 times to generate a unique code to prevent infinite loops
-                max_retries = 10
-                for _ in range(max_retries):
+                MAX_JOIN_CODE_RETRIES = 10
+                FALLBACK_CODE_MODULO = 10000  # Keep fallback codes within 4 digits
+                FALLBACK_BLOCK_PREFIX_LENGTH = 2  # Use first 2 chars of block name
+                
+                new_code = None
+                for _ in range(MAX_JOIN_CODE_RETRIES):
                     new_code = generate_join_code()
                     # Ensure uniqueness across all teachers
                     if not TeacherBlock.query.filter_by(join_code=new_code).first():
                         join_codes_by_block[block] = new_code
                         break
                 else:
-                    # If we couldn't generate a unique code after max_retries, log an error
-                    # and use a timestamp-based fallback
-                    import time
-                    new_code = f"B{block[:2]}{int(time.time()) % 10000:04d}"
+                    # If we couldn't generate a unique code after max_retries, use a timestamp-based fallback
+                    # Format: B + block_prefix + timestamp_suffix (e.g., "BA0123" for block "A")
+                    block_prefix = block[:FALLBACK_BLOCK_PREFIX_LENGTH].ljust(FALLBACK_BLOCK_PREFIX_LENGTH, 'X')
+                    timestamp_suffix = int(time.time()) % FALLBACK_CODE_MODULO
+                    new_code = f"B{block_prefix}{timestamp_suffix:04d}"
                     join_codes_by_block[block] = new_code
+                    current_app.logger.warning(
+                        f"Failed to generate unique join code after {MAX_JOIN_CODE_RETRIES} attempts. "
+                        f"Using fallback code {new_code} for block {block}"
+                    )
             
             # Initialize unclaimed seats counter for this block
             if block not in unclaimed_seats_by_block:
