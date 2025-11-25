@@ -20,23 +20,22 @@
         body {
             font-family: 'Inter', sans-serif;
             height: 100vh;
-            overflow: hidden;
             background: #fffaf5;
         }
 
         .login-wrapper {
             display: flex;
-            min-height: 100vh;
+            height: 100vh;
+            padding: 1rem;
         }
 
         .login-form-side {
-            flex: 1 1 60%;
+           flex: 1;
             display: flex;
-            align-items: center;
             justify-content: center;
             background: #ffffff;
             padding: 2.5rem 3rem;
-            overflow-y: auto;
+            height: 100vh;
             min-width: 0;
         }
 
@@ -49,7 +48,7 @@
             justify-content: center;
             color: white;
             position: relative;
-            overflow: hidden;
+            height: 100vh; 
         }
 
         .branding-content {
@@ -82,7 +81,7 @@
         }
 
         .login-container h1 {
-            margin-bottom: 1rem;
+            margin-bottom: 0.5rem;
             font-weight: 700;
             color: #c15f00;
             text-align: center;
@@ -187,6 +186,20 @@
                 flex: 1;
             }
         }
+
+        #student-login-redirect {
+            font-size: 0.9rem;
+            width:fit-content;
+            align-items:center; 
+            color: #e07b00; 
+            background:#ffe1c2; 
+            border-color:#ff9524; 
+            padding:5px 1rem; 
+            margin-bottom:10px; 
+            border-style: solid; 
+            border-radius: 4px; c
+            ursor:pointer;" 
+        }
     </style>
 </head>
 
@@ -198,21 +211,13 @@
                     <h1>Teacher Login</h1>
                     <p class="subtitle">Please log in to access your account</p>
                     <!-- Tabs for Student/Teacher -->
-                <ul class="nav nav-tabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="student-tab" data-bs-toggle="tab" data-bs-target="#student-login" type="button" role="tab" onclick="window.location.href='{{ url_for('student.login') }}'">
-                            Student Login
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="teacher-tab" data-bs-toggle="tab" data-bs-target="#teacher-login" type="button" role="tab">
-                            Teacher Login
-                        </button>
-                    </li>
-                </ul>
+                <div id="student-login-redirect" onclick="window.location.href='{{ url_for('student.login') }}'">
+                    Click here if you are a student
+                </div>
+               
 
                 <!-- Tab Content -->
-                <div class="tab-content">
+                
                     <!-- Teacher Login -->
                     <div class="tab-pane fade show active" id="teacher-login" role="tabpanel">
                         {% with messages = get_flashed_messages() %}
@@ -247,7 +252,7 @@
                             <span class="mx-2">|</span>
                             <a href="{{ url_for('admin.signup') }}">Set up teacher account</a>
                         </div>
-                    </div>
+                    
                 </div>
 
                 <div class="footer-info text-center">
@@ -267,19 +272,19 @@
                         <a href="{{ url_for('main.terms') }}" class="small">Click here to read our terms of service</a>
                     </div>
 
-                    <small class="text-muted d-block mt-3">re-Release Testing v0.10.0</small>
+                    <small class="text-muted d-block mt-3">Pre-Release Testing v0.10.0</small>
                 </div>
             </div>
 
             <!-- Right side: Branding -->
-            <div class="branding-side">
-                <div class="branding-content">
-                    <div class="branding-logo-card">
-                        <img src="{{ url_for('static', filename='images/admin-logo.svg') }}" alt="Admin Logo">
-                    </div>
+        <div class="branding-side">
+            <div class="branding-content">
+                <div class="branding-logo-card">
+                    <img src="{{ url_for('static', filename='images/admin-logo.svg') }}" alt="Admin Logo">
                 </div>
             </div>
         </div>
+     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
