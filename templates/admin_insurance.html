@@ -136,6 +136,27 @@
         </div>
       </div>
       <div class="card-body">
+        <!-- Display Form Validation Errors -->
+        {% if form.errors %}
+        <div class="alert alert-danger alert-dismissible fade show" role="alert">
+          <h6 class="alert-heading"><i class="bi bi-exclamation-triangle me-2"></i>Form Validation Errors</h6>
+          <ul class="mb-0">
+            {% for field_name, errors in form.errors.items() %}
+              {% for error in errors %}
+                <li>
+                  {% if field_name in form and form[field_name].label %}
+                    <strong>{{ form[field_name].label.text }}:</strong> {{ error }}
+                  {% else %}
+                    <strong>Error:</strong> {{ error }}
+                  {% endif %}
+                </li>
+              {% endfor %}
+            {% endfor %}
+          </ul>
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+        {% endif %}
+
         <form method="POST" action="{{ url_for('admin.insurance_management') }}" id="insuranceForm">
           {{ form.hidden_tag() }}
           <input type="hidden" name="settings_mode" id="settingsModeInput" value="simple">
@@ -512,6 +533,29 @@
       const settingsModeInput = document.getElementById('settingsModeInput');
       const simpleModeFields = document.getElementById('simpleModeFields');
       const advancedModeFields = document.getElementById('advancedModeFields');
+
+      // Highlight fields with errors
+      {% if form.errors %}
+      const fields = {};
+      {% for field_name, errors in form.errors.items() %}
+        fields["{{ field_name }}"] = document.querySelector('[name="{{ field_name }}"]');
+        if (fields["{{ field_name }}"]) {
+          fields["{{ field_name }}"].classList.add('is-invalid');
+          // Create and append error message if it doesn't exist
+          if (!fields["{{ field_name }}"].nextElementSibling || !fields["{{ field_name }}"].nextElementSibling.classList.contains('invalid-feedback')) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'invalid-feedback d-block';
+            errorDiv.textContent = '{{ errors[0] }}';
+            fields["{{ field_name }}"].parentNode.appendChild(errorDiv);
+          }
+        }
+      {% endfor %}
+      // Scroll to the error alert
+      const errorAlert = document.querySelector('.alert-danger');
+      if (errorAlert) {
+        errorAlert.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      {% endif %}
 
       if (insuranceModeToggle) {
         insuranceModeToggle.addEventListener('change', function() {
