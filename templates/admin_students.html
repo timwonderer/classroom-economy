@@ -587,7 +587,6 @@ console.log('📝 Script block executing (before DOMContentLoaded)');
 
 // Join Code Copy Function
 function copyJoinCode(block, code) {
-  const input = document.getElementById(`join-code-${block}`);
 
   navigator.clipboard.writeText(code).then(function() {
     // Show success feedback
