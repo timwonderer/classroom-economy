@@ -538,7 +538,7 @@
           if (!field_{{ field_name }}.nextElementSibling || !field_{{ field_name }}.nextElementSibling.classList.contains('invalid-feedback')) {
             const errorDiv = document.createElement('div');
             errorDiv.className = 'invalid-feedback d-block';
-            errorDiv.textContent = '{{ errors[0] }}';
+            errorDiv.textContent = {{ errors[0]|tojson }};
             field_{{ field_name }}.parentNode.appendChild(errorDiv);
           }
         }
