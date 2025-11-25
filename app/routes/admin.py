@@ -511,10 +511,31 @@ def students():
         else:
             student.username_display = "Not Set"
 
+    # Fetch join codes for each block from TeacherBlock records
+    current_admin = session.get('admin_id')
+    join_codes_by_block = {}
+    unclaimed_seats_by_block = {}
+
+    # Query all TeacherBlock records for this teacher
+    teacher_blocks = TeacherBlock.query.filter_by(teacher_id=current_admin).all()
+
+    # Group by block and extract join codes and count unclaimed seats
+    for tb in teacher_blocks:
+        block_name = tb.block.strip().upper()
+        if block_name not in join_codes_by_block:
+            join_codes_by_block[block_name] = tb.join_code
+            unclaimed_seats_by_block[block_name] = 0
+
+        # Count unclaimed seats
+        if not tb.is_claimed:
+            unclaimed_seats_by_block[block_name] += 1
+
     return render_template('admin_students.html',
                          students=all_students,
                          blocks=blocks,
                          students_by_block=students_by_block,
+                         join_codes_by_block=join_codes_by_block,
+                         unclaimed_seats_by_block=unclaimed_seats_by_block,
                          current_page="students")
 
 
