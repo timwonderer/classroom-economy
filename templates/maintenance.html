@@ -141,7 +141,7 @@
             <div>
                 <div class="status-pill">
                     <span class="material-symbols-outlined" style="color: #1f306e; font-size:40px;vertical-align:-10%" aria-hidden="true">computer_cancel</span>
-                    <span style="color: #1f306e;font-size:25pt;vertical-align:middle">Classrooom Token Hub <span style="font-weight:300">is currently unavailable</span></span>
+                    <span style="color: #1f306e;font-size:25pt;vertical-align:middle">Classrooom Token Hub <span style="font-weight:300">{{ status_description or "Unavailable" }}</span></span>
                 </div>
                 <div style="border-radius: 5px; padding: 1rem; background-color: #fac0c0; border-style: solid; border-color: #a30303; border-width: 0 0 0 8px; margin-top: 1rem; color: #000000;">
                     <div style="font-weight: 400; font-size: 12pt; color: #ffffff; background-color: #a30303; padding: 3px 8px 3px 8px; width: fit-content; border-radius: 40px; text-align: center;">
@@ -157,7 +157,7 @@
         <div class="card-body">
             <div id="badge-container" class="badge-container">
                 <div id="badge-label" class="badge-label">
-                    <span id="badge-icon" class="material-symbols-outlined badge-icon" aria-hidden="true">apps_outage</span> <span id="badge-text">ABOUT THIS OUTAGE</span>
+                    <span id="badge-icon" class="material-symbols-outlined badge-icon" aria-hidden="true">{{ badge_icon }}</span> <span id="badge-text">{{ badge_text|upper }}</span>
                 </div>
                 <div style="margin-top: 0.5rem; margin-bottom: 0;">{{ message or "We're applying updates and running database checks. Thank you for your patience!" }}</div>
             </div>

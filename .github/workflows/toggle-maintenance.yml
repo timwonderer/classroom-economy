@@ -60,8 +60,9 @@ jobs:
         EXPECTED_END="${{ inputs.expected_end }}"
         CONTACT="${{ inputs.contact }}"
         BADGE_TYPE="${{ inputs.badge_type }}"
+        STATUS_DESCRIPTION="${{ inputs.status_description }}"
 
-        SSH_ENV_VARS="MODE_VALUE=$(printf %q "${MODE_VALUE}") MESSAGE=$(printf %q "${MESSAGE}") EXPECTED_END=$(printf %q "${EXPECTED_END}") CONTACT=$(printf %q "${CONTACT}") BADGE_TYPE=$(printf %q "${BADGE_TYPE}")"
+        SSH_ENV_VARS="MODE_VALUE=$(printf %q "${MODE_VALUE}") MESSAGE=$(printf %q "${MESSAGE}") EXPECTED_END=$(printf %q "${EXPECTED_END}") CONTACT=$(printf %q "${CONTACT}") BADGE_TYPE=$(printf %q "${BADGE_TYPE}") STATUS_DESCRIPTION=$(printf %q "${STATUS_DESCRIPTION}")"
 
         ssh -o StrictHostKeyChecking=no root@24.199.127.184 "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
           set -e
@@ -76,6 +77,7 @@ jobs:
           sed -i '/^MAINTENANCE_EXPECTED_END=/d' .env 2>/dev/null || true
           sed -i '/^MAINTENANCE_CONTACT=/d' .env 2>/dev/null || true
           sed -i '/^MAINTENANCE_BADGE_TYPE=/d' .env 2>/dev/null || true
+          sed -i '/^MAINTENANCE_STATUS_DESCRIPTION=/d' .env 2>/dev/null || true
 
           # Add new maintenance mode variables
           echo "MAINTENANCE_MODE=$MODE_VALUE" >> .env
@@ -83,6 +85,7 @@ jobs:
           echo "MAINTENANCE_EXPECTED_END=\"$EXPECTED_END\"" >> .env
           echo "MAINTENANCE_CONTACT=\"$CONTACT\"" >> .env
           echo "MAINTENANCE_BADGE_TYPE=\"$BADGE_TYPE\"" >> .env
+          echo "MAINTENANCE_STATUS_DESCRIPTION=\"$STATUS_DESCRIPTION\"" >> .env
 
           echo 'Restarting Gunicorn to apply changes...'
           sudo systemctl restart gunicorn
@@ -93,6 +96,7 @@ jobs:
             echo "Message: $MESSAGE"
             echo "Expected end: $EXPECTED_END"
             echo "Contact: $CONTACT"
+            echo "Status description: $STATUS_DESCRIPTION"
           fi
         EOF
 
@@ -102,6 +106,7 @@ jobs:
           echo "Maintenance mode ENABLED"
           echo "Badge type: ${{ inputs.badge_type }}"
           echo "Message: ${{ inputs.message }}"
+          echo "Status: ${{ inputs.status_description }}"
         else
           echo "Maintenance mode DISABLED - Site is live"
         fi
