@@ -33,10 +33,26 @@ def test_sysadmin_bypass(monkeypatch):
         'MAINTENANCE_SYSADMIN_BYPASS': 'true'
     })
     with app.test_client() as client:
-        with client.session_transaction() as sess:
-            sess['is_system_admin'] = True
+            # Simulate sysadmin login establishing global bypass
+            with client.session_transaction() as sess:
+                sess['is_system_admin'] = True
+                sess['maintenance_global_bypass'] = True
         resp = client.get('/')
         assert resp.status_code != 503, 'Sysadmin bypass should allow normal access.'
+
+def test_sysadmin_login_endpoint_accessible_under_maintenance(monkeypatch):
+    app = make_app(monkeypatch, {'MAINTENANCE_MODE': 'true'})
+    with app.test_client() as client:
+        resp = client.get('/sysadmin/login')
+        assert resp.status_code in (200, 302)
+
+def test_global_bypass_persists_after_logout(monkeypatch):
+    app = make_app(monkeypatch, {'MAINTENANCE_MODE': 'true'})
+    with app.test_client() as client:
+        with client.session_transaction() as sess:
+            sess['maintenance_global_bypass'] = True
+        resp = client.get('/student/dashboard')
+        assert resp.status_code != 503
 
 
 def test_token_bypass(monkeypatch):

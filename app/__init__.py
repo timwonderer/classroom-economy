@@ -200,6 +200,10 @@ def create_app():
         if request.path.startswith("/static/"):
             return None
 
+        # Allow system admin login/logout routes so admins can establish a bypass session.
+        if request.endpoint in {"sysadmin.login", "sysadmin.logout"}:
+            return None
+
         # --- Bypass Logic --------------------------------------------------
         # Provide controlled access for sysadmin or via a token when maintenance
         # mode is active, so production can be validated while end users see
@@ -215,17 +219,31 @@ def create_app():
         bypass_token = os.getenv("MAINTENANCE_BYPASS_TOKEN", "")
         provided_token = request.args.get("maintenance_bypass")
 
+        # Persistent session bypass for admin-enabled testing across other roles.
+        global_bypass = session.get("maintenance_global_bypass") is True
         is_sysadmin = session.get("is_system_admin") is True
         token_valid = bool(bypass_token and provided_token and provided_token == bypass_token)
 
         # Allow if sysadmin bypass on and user is sysadmin
         if sysadmin_bypass_enabled and is_sysadmin:
             app.logger.debug("Maintenance bypass granted (sysadmin).")
+            # Promote to global bypass so teacher/student logins in same session do not need query param.
+            session.setdefault("maintenance_global_bypass", True)
+            g.maintenance_bypass_active = True
+            return None
+
+        # Allow if a prior sysadmin granted global bypass (sticky across role changes)
+        if global_bypass:
+            app.logger.debug("Maintenance bypass granted (global session).")
+            g.maintenance_bypass_active = True
             return None
 
         # Allow if valid token provided (works for any authenticated role once past initial page)
         if token_valid:
             app.logger.debug("Maintenance bypass granted (token).")
+            # Persist for remainder of session
+            session.setdefault("maintenance_global_bypass", True)
+            g.maintenance_bypass_active = True
             return None
 
         # Otherwise show maintenance page.
