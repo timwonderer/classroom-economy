@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Classroom Token Hub - Student Account Setup</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,100..700;1,100..700&family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -17,10 +17,10 @@
         }
 
         body {
-            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-            min-height: 100vh;
+            font-family: 'Inter', sans-serif;
+            height: 100vh;
             overflow: hidden;
-            background: #f5f9ff;
+            background: #f0f8ff;
         }
 
         .setup-wrapper {
@@ -49,7 +49,6 @@
             color: white;
             position: relative;
             overflow: hidden;
-            min-height: 100vh;
         }
 
         .branding-content {
@@ -63,7 +62,6 @@
 
         .branding-logo-card {
             background: rgba(255, 255, 255, 0.96);
-            
             padding: 2rem;
             width: 300px;
             height: 300px;
@@ -77,82 +75,52 @@
             height: 300px;
         }
 
-        /* Decorative circles */
-        .circle {
-            position: absolute;
-            border-radius: 50%;
-            opacity: 0.1;
-        }
-
-        .circle-1 {
-            width: 300px;
-            height: 300px;
-            background: rgba(0, 175, 223, 0.3);
-            top: -100px;
-            right: -100px;
-        }
-
-        .circle-2 {
-            width: 200px;
-            height: 200px;
-            background: rgba(253, 176, 52, 0.25);
-            bottom: 50px;
-            left: -50px;
-        }
-
-        .circle-3 {
-            width: 150px;
-            height: 150px;
-            background: rgba(3, 83, 151, 0.3);
-            top: 50%;
-            right: 10%;
-        }
-
         .setup-container {
             width: 100%;
             max-width: 520px;
         }
 
         .setup-container h1 {
-            margin: 2rem;
-            margin-bottom:5px;
-            font-weight: 600;
+            margin-bottom: 1rem;
+            font-weight: 700;
             color: #274174;
             text-align: center;
-            font-family: 'IBM Plex Sans', sans-serif;
-        }
-
-        .form-logo {
-            text-align: center;
-            margin-bottom: 1rem;
-        }
-
-        .form-logo img {
-            max-height: 64px;
+            font-size: 2rem;
         }
 
         .setup-container .subtitle {
             text-align: center;
-            color: #6c757d;
+            color: #4a6fa5;
+            margin-bottom: 2rem;
             font-size: 0.95rem;
-            margin-bottom:0;
+        }
+
+        .info-box {
+            border: 2px solid #4a9eff;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            background-color: #f0f7ff;
+        }
+
+        .info-box p {
+            margin-bottom: 0.5rem;
+            font-size: 0.9rem;
         }
 
         .btn-primary {
             background: linear-gradient(135deg, #00d4ff 0%, #00afdf 100%);
             border: none;
-            padding: 0.75rem;
-            font-weight: 600;
+            padding: 0.85rem;
+            font-weight: 700;
             transition: all 0.3s ease;
             border-radius: 12px;
-            width: 100%;
-            box-shadow: 0 8px 24px rgba(74, 158, 255, 0.2);
+            box-shadow: 0 8px 24px rgba(74, 158, 255, 0.35);
         }
 
         .btn-primary:hover {
             background: linear-gradient(135deg, #00afdf 0%, #035397 100%);
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(74, 158, 255, 0.3);
         }
 
         .back-to-login {
@@ -163,9 +131,9 @@
         }
 
         .back-to-login a {
-            color: #4a9eff;
+            color: #00afdf;
             text-decoration: none;
-            font-weight: 600;
+            font-weight: 500;
         }
 
         .back-to-login a:hover {
@@ -190,49 +158,39 @@
         }
 
         .form-group {
-            margin: 1.25rem 0;
+            margin-bottom: 1.5rem;
         }
 
-        @media (max-width: 400px) {
+        @media (max-width: 768px) {
             .branding-side {
                 display: none;
             }
 
             .setup-form-side {
-                flex: 1 1 100%;
-                width: 100%;
-                max-width: 100%;
-                padding: 1.5rem;
-            }
-
-            .setup-wrapper {
-                flex-direction: column;
-            }
-
-            .setup-container {
-                width: 100%;
+                flex: 1;
             }
         }
     </style>
 </head>
 
 <body>
-        <div class="setup-wrapper" >
+        <div class="setup-wrapper">
             <!-- Left side: Setup Form -->
-            <div class="setup-form-side" >
-                <div class="setup-container" style="margin:1rem 1rem 1rem 1rem">
-                    
-                    <h1 style="margin-bottom:1rem">Welcome! <span style="font-weight:300"><br>Let's get you started.</span></h1>
-                    <div style="background-color:#d2ddf7; width:fit-content; padding:10px; margin-bottom:0.5rem; border-radius:5px">
-                    You should only set up your account if your teacher has already created one for you.<br><br>
-                        If you are not sure or if you are having trouble locating your account, please ask your teacher for further instructions
+            <div class="setup-form-side">
+                <div class="setup-container">
+                    <h1>Student Account Setup</h1>
+                    <p class="subtitle">Let's get you started</p>
+
+                    <div class="info-box">
+                        <p>You should only set up your account if your teacher has already created one for you.</p>
+                        <p>If you are not sure or if you are having trouble locating your account, please ask your teacher for further instructions.</p>
                     </div>
 
                 {% with messages = get_flashed_messages(category_filter=["claim"]) %}
                     {% if messages %}
                         <div class="flash-messages">
                             {% for message in messages %}
-                                <div class="alert alert-info" style="margin:1rem 1rem 1rem 1rem">{{ message }}</div>
+                                <div class="alert alert-info">{{ message }}</div>
                             {% endfor %}
                         </div>
                     {% endif %}
@@ -241,9 +199,9 @@
                 <form method="POST">
                     {{ form.hidden_tag() }}
 
-                    <div class="form-group mb-3" style="margin:1rem 1rem 1rem 1rem">
-                        <label class="form-label fw-bold">Join Code</label>
-                        {{ form.join_code(class="form-control form-control-lg", placeholder="Example: ABC123") }}
+                    <div class="form-group">
+                        <label for="join_code" class="form-label">Join Code</label>
+                        {{ form.join_code(class="form-control", placeholder="Example: ABC123") }}
                         <small class="form-text text-muted">
                             Enter the join code provided by your teacher
                         </small>
@@ -252,9 +210,9 @@
                         {% endfor %}
                     </div>
 
-                    <div class="form-group mb-3" style="margin:1rem 1rem 1rem 1rem">
-                        <label class="form-label fw-bold">First Initial</label>
-                        {{ form.first_initial(class="form-control form-control-lg", placeholder="Example: J", maxlength="1") }}
+                    <div class="form-group">
+                        <label for="first_initial" class="form-label">First Initial</label>
+                        {{ form.first_initial(class="form-control", placeholder="Example: J", maxlength="1") }}
                         <small class="form-text text-muted">
                             Enter the first letter of your first name
                         </small>
@@ -263,9 +221,9 @@
                         {% endfor %}
                     </div>
 
-                    <div class="form-group mb-3" style="margin:1rem 1rem 1rem 1rem">
-                        <label class="form-label fw-bold">Last Name</label>
-                        {{ form.last_name(class="form-control form-control-lg", placeholder="Example: Smith") }}
+                    <div class="form-group">
+                        <label for="last_name" class="form-label">Last Name</label>
+                        {{ form.last_name(class="form-control", placeholder="Example: Smith") }}
                         <small class="form-text text-muted">
                             Enter your last name
                         </small>
@@ -274,21 +232,19 @@
                         {% endfor %}
                     </div>
 
-                    <div class="form-group mb-3" style="margin:1rem 1rem 1rem 1rem">
-                        <label class="form-label fw-bold">Birthday Sum</label>
-                        {{ form.dob_sum(class="form-control form-control-lg", placeholder="Example: 2028") }}
+                    <div class="form-group">
+                        <label for="dob_sum" class="form-label">Birthday Sum</label>
+                        {{ form.dob_sum(class="form-control", placeholder="Example: 2028") }}
                         <small class="form-text text-muted">
                             Add up the numerical value of your birth month, day, and year<br>
-                            <strong>Example:</strong> March 15, 2010 → 3 + 15 + 2010 so you will enter <code>2028</code> 
+                            <strong>Example:</strong> March 15, 2010 → 3 + 15 + 2010 so you will enter <code>2028</code>
                         </small>
                         {% for error in form.dob_sum.errors %}
                             <div class="text-danger small">{{ error }}</div>
                         {% endfor %}
                     </div>
 
-                    <div class="form-group">
-                        {{ form.submit(class="btn btn-primary w-100") }}
-                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Submit</button>
                 </form>
 
                 <div class="back-to-login">
@@ -314,12 +270,9 @@
 
             <!-- Right side: Branding -->
             <div class="branding-side">
-                <div class="circle circle-1"></div>
-                <div class="circle circle-2"></div>
-                <div class="circle circle-3"></div>
                 <div class="branding-content">
                     <div class="branding-logo-card">
-                        <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Portal Logo">
+                        <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Logo">
                     </div>
                 </div>
             </div>

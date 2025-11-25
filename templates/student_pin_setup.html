@@ -8,7 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/zxcvbn@4.4.2/dist/zxcvbn.js"></script>
     <style>
         * {
@@ -21,7 +21,7 @@
             font-family: 'Inter', sans-serif;
             height: 100vh;
             overflow: hidden;
-            background: #f5f9ff;
+            background: #f0f8ff;
         }
 
         .setup-wrapper {
@@ -91,33 +91,24 @@
 
         .setup-container .subtitle {
             text-align: center;
-            color: #6c757d;
+            color: #4a6fa5;
             margin-bottom: 2rem;
             font-size: 0.95rem;
-            padding: 1rem;
-            background-color: #f0f7ff;
-            border-radius: 10px;
-        }
-
-        .setup-container .subtitle strong {
-            color: #274174;
-            font-weight: 600;
         }
 
         .btn-primary {
             background: linear-gradient(135deg, #00d4ff 0%, #00afdf 100%);
             border: none;
-            padding: 0.75rem;
-            font-weight: 600;
+            padding: 0.85rem;
+            font-weight: 700;
             transition: all 0.3s ease;
             border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(74, 158, 255, 0.2);
+            box-shadow: 0 8px 24px rgba(74, 158, 255, 0.35);
         }
 
         .btn-primary:hover {
             background: linear-gradient(135deg, #00afdf 0%, #035397 100%);
             transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(74, 158, 255, 0.3);
         }
 
         .btn-primary:disabled {
@@ -198,8 +189,8 @@
         <div class="setup-form-side">
             <div class="setup-container">
                 <h1>Set Your PIN & Passphrase</h1>
-                <p class="subtitle" style="font-size:14pt">Your username is: <strong>{{ username }}</strong><br></p>
-                <p style="font-weight:bold">Please write it down if you haven't already, as it will not be shown again after setup is complete.</p>
+                <p class="subtitle">Your username is: <strong>{{ username }}</strong></p>
+                <p style="font-weight: 600; margin-bottom: 1.5rem; text-align: center;">Please write it down if you haven't already, as it will not be shown again after setup is complete.</p>
 
                 <div class="form-check mb-4">
                     <input class="form-check-input" type="checkbox" value="" id="username-ack">
@@ -267,7 +258,7 @@
         <div class="branding-side">
             <div class="branding-content">
                 <div class="branding-logo-card">
-                    <img src="{{ url_for('static', filename='images/brand-logo.svg') }}" alt="Brand Logo">
+                    <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Logo">
                 </div>
             </div>
         </div>

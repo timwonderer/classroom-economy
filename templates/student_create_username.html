@@ -8,7 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -20,7 +20,7 @@
             font-family: 'Inter', sans-serif;
             height: 100vh;
             overflow: hidden;
-            background: #f5f9ff;
+            background: #f0f8ff;
         }
 
         .setup-wrapper {
@@ -55,50 +55,24 @@
             text-align: center;
             z-index: 2;
             padding: 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        .branding-content h1 {
-            font-size: 3rem;
-            font-weight: 700;
-            margin-bottom: 0.5rem;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
-        }
-
-        .branding-content .tagline {
-            font-size: 1.1rem;
-            font-weight: 400;
-            opacity: 0.95;
-        }
-
-        /* Decorative circles */
-        .circle {
-            position: absolute;
-            border-radius: 50%;
-            opacity: 0.1;
-        }
-
-        .circle-1 {
+        .branding-logo-card {
+            background: rgba(255, 255, 255, 0.96);
+            padding: 2rem;
             width: 300px;
             height: 300px;
-            background: rgba(0, 175, 223, 0.3);
-            top: -100px;
-            right: -100px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        .circle-2 {
-            width: 200px;
-            height: 200px;
-            background: rgba(253, 176, 52, 0.25);
-            bottom: 50px;
-            left: -50px;
-        }
-
-        .circle-3 {
-            width: 150px;
-            height: 150px;
-            background: rgba(3, 83, 151, 0.3);
-            top: 50%;
-            right: 10%;
+        .branding-logo-card img {
+            max-width: 300px;
+            height: 300px;
         }
 
         .setup-container {
@@ -108,7 +82,7 @@
 
         .setup-container h1 {
             margin-bottom: 1rem;
-            font-weight: 600;
+            font-weight: 700;
             color: #274174;
             text-align: center;
             font-size: 2rem;
@@ -116,35 +90,30 @@
 
         .setup-container .subtitle {
             text-align: center;
-            color: #6c757d;
-            margin-bottom: 1.5rem;
+            color: #4a6fa5;
+            margin-bottom: 2rem;
             font-size: 0.95rem;
         }
 
         .info-box {
-            background-color: #f0f7ff;
-            border-left: 4px solid #00afdf;
+            border: 2px solid #4a9eff;
             padding: 1rem;
+            border-radius: 8px;
             margin-bottom: 1.5rem;
-            border-radius: 10px;
+            background-color: #f0f7ff;
         }
 
         .info-box p {
             margin-bottom: 0.5rem;
             font-size: 0.9rem;
-            color: #495057;
-        }
-
-        .info-box p:last-child {
-            margin-bottom: 0;
         }
 
         .warning-box {
             background-color: #fff3cd;
-            border-left: 4px solid #ffc107;
+            border: 1px solid #ffc107;
             padding: 1rem;
             margin-bottom: 1.5rem;
-            border-radius: 10px;
+            border-radius: 8px;
         }
 
         .warning-box p {
@@ -158,16 +127,15 @@
             background: linear-gradient(135deg, #00d4ff 0%, #00afdf 100%);
             border: none;
             padding: 0.85rem;
-            font-weight: 600;
+            font-weight: 700;
             transition: all 0.3s ease;
             border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(74, 158, 255, 0.2);
+            box-shadow: 0 8px 24px rgba(74, 158, 255, 0.35);
         }
 
         .btn-primary:hover {
             background: linear-gradient(135deg, #00afdf 0%, #035397 100%);
             transform: translateY(-2px);
-            box-shadow: 0 6px 16px rgba(74, 158, 255, 0.3);
         }
 
         .footer-info {
@@ -187,7 +155,7 @@
         }
 
         .form-group {
-            margin-bottom: 1.25rem;
+            margin-bottom: 1.5rem;
         }
 
         @media (max-width: 768px) {
@@ -197,7 +165,6 @@
 
             .setup-form-side {
                 flex: 1;
-                padding: 1.5rem;
             }
         }
     </style>
@@ -259,13 +226,10 @@
 
         <!-- Right side: Branding -->
         <div class="branding-side">
-            <div class="circle circle-1"></div>
-            <div class="circle circle-2"></div>
-            <div class="circle circle-3"></div>
             <div class="branding-content">
-                <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Portal Logo" style="max-width: 200px; filter: brightness(0) invert(1) drop-shadow(0 4px 12px rgba(0,0,0,0.2)); margin-bottom: 2rem;">
-                <h1>Classroom<br>Token Hub</h1>
-                <p class="tagline">Empowering Student Engagement</p>
+                <div class="branding-logo-card">
+                    <img src="{{ url_for('static', filename='images/student-logo.svg') }}" alt="Student Logo">
+                </div>
             </div>
         </div>
     </div>
