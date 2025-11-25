@@ -22,25 +22,28 @@
             background: #fffaf5;
         }
 
-        .setup-wrapper {
+        .login-wrapper {
             display: flex;
-            height: 100vh;
-            padding: 1rem;
+            height:100vh;
+            width:100vw;
+            padding: 0;
+            align-items: stretch;
         }
 
-        .setup-form-side {
+        .login-form-side {
             flex: 1;
-            display: flex;
+            display:flex;
+            align-items: center;
             justify-content: center;
             background: #ffffff;
-            padding: 2.5rem 3rem;
+
             height: 100vh;
-            min-width: 0;
+
         }
 
         .branding-side {
-            flex: 0 0 40%;
-            max-width: 460px;
+            flex: 1;
+
             background: linear-gradient(135deg, #ffc965 0%, #f6a43b 50%, #e07b00 100%);
             display: flex;
             align-items: center;
@@ -48,13 +51,14 @@
             color: white;
             position: relative;
             height: 100vh;
+            max-width: 400px;
 
         }
 
         .branding-content {
             text-align: center;
             z-index: 2;
-            padding: 2rem;
+
             display: flex;
             align-items: center;
             justify-content: center;
@@ -75,13 +79,15 @@
             height: 300px;
         }
 
-        .setup-container {
+        .login-container {
             width: 100%;
+
+            margin:auto;
             max-width: 520px;
 
         }
 
-        .setup-container h1 {
+        .login-container h1 {
             margin-bottom: 0.5rem;
             font-weight: 700;
             color: #c15f00;
@@ -89,23 +95,15 @@
             font-size: 2rem;
         }
 
-        .setup-container .subtitle {
+        .login-container .subtitle {
             text-align: center;
             color: #7a5130;
-            margin-bottom: 2rem;
+            margin-bottom: 0.5rem;
             font-size: 0.95rem;
         }
 
-        .info-box {
-            border: 2px solid #f6a43b;
-            padding: 1rem;
-            border-radius: 8px;
-            background-color: #fff4e2;
-        }
 
-      
 
-        
 
         .btn-primary {
             background: linear-gradient(135deg, #fccc63 0%, #f19a23 100%);
@@ -115,6 +113,7 @@
             transition: all 0.3s ease;
             border-radius: 12px;
             box-shadow: 0 8px 24px rgba(243, 168, 54, 0.35);
+            width:200px;
         }
 
         .btn-primary:hover {
@@ -122,20 +121,20 @@
             transform: translateY(-2px);
         }
 
-        .back-to-login {
+        .first-time-link {
             text-align: center;
-            margin-top: 1rem;
+            margin-top: 2rem;
             padding-top: 1rem;
-            border-top: 1px solid #f1a415ff;
+            border-top: 1px solid #fda324ff;
         }
 
-        .back-to-login a {
+        .first-time-link a {
             color: #e07b00;
             text-decoration: none;
             font-weight: 500;
         }
 
-        .back-to-login a:hover {
+        .first-time-link a:hover {
             color: #b35d00;
             text-decoration: underline;
         }
@@ -177,7 +176,7 @@
                 display: none;
             }
 
-            .setup-form-side {
+            .login-form-side {
                 flex: 1;
             }
         }
@@ -185,13 +184,13 @@
 </head>
 
 <body>
-    <div class="setup-wrapper">
+    <div class="login-wrapper">
         <!-- Left side: Setup Form -->
-        <div class="setup-form-side">
-            <div class="setup-container">
-                <h1>Welcome! <span style="font-weight:300">It's Great to Have You Here</span></h1>
-                
-                <p style="color:#7a5130">  If you have received an invite code, enter it below and create your username to start using Classroom Token Hub</p>
+        <div class="login-form-side">
+            <div class="login-container">
+
+                <h1>Welcome, <span style="font-weight:300">Teachers!</span></h1>
+                <p class="subtitle">Enter your invite code to get started</p>
 
                 {% with messages = get_flashed_messages(with_categories=true) %}
                   {% if messages %}
@@ -231,7 +230,8 @@
                     <button type="submit" class="btn btn-primary w-100">Sign Up</button>
                 </form>
 
-                <div class="back-to-login">
+                <div class="first-time-link">
+
                     <p class="mb-2">Already have an account?</p>
                     <a href="{{ url_for('admin.login') }}">Back to Login</a>
                 </div>

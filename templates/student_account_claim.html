@@ -19,42 +19,45 @@
         body {
             font-family: 'Inter', sans-serif;
             height: 100vh;
-            overflow: hidden;
-            background: #f0f8ff;
+            background: #fffaf5;
         }
 
-        .setup-wrapper {
+       .login-wrapper {
             display: flex;
-            min-height: 100vh;
+            height:100vh;
+            width:100vw;
+            padding: 0;
+            align-items: stretch;
         }
 
-        .setup-form-side {
-            flex: 1 1 60%;
-            display: flex;
+        .login-form-side {
+            flex: 1;
+            display:flex;
             align-items: center;
             justify-content: center;
             background: #ffffff;
-            padding: 2.5rem 3rem;
-            overflow-y: auto;
-            min-width: 0;
+
+            height: 100vh;
+
         }
 
         .branding-side {
-            flex: 0 0 40%;
-            max-width: 460px;
+            flex: 1;
+
             background: linear-gradient(135deg, #4a9eff 0%, #00afdf 50%, #00d4ff 100%);
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
             position: relative;
-            overflow: hidden;
+            height: 100vh;
+            max-width: 400px;
         }
 
         .branding-content {
             text-align: center;
             z-index: 2;
-            padding: 2rem;
+
             display: flex;
             align-items: center;
             justify-content: center;
@@ -75,23 +78,25 @@
             height: 300px;
         }
 
-        .setup-container {
+        .login-container {
             width: 100%;
+
+            margin:auto;
             max-width: 520px;
         }
 
-        .setup-container h1 {
-            margin-bottom: 1rem;
+        .login-container h1 {
+            margin-bottom: 0.5rem;
             font-weight: 700;
             color: #274174;
             text-align: center;
             font-size: 2rem;
         }
 
-        .setup-container .subtitle {
+        .login-container .subtitle {
             text-align: center;
             color: #4a6fa5;
-            margin-bottom: 2rem;
+            margin-bottom: 0.5rem;
             font-size: 0.95rem;
         }
 
@@ -123,28 +128,40 @@
             transform: translateY(-2px);
         }
 
-        .back-to-login {
+        .first-time-link {
             text-align: center;
             margin-top: 2rem;
-            padding-top: 2rem;
-            border-top: 1px solid #e9ecef;
+            padding-top: 1rem;
+            border-top: 1px solid #1283f5ff;
         }
 
-        .back-to-login a {
+        .first-time-link a {
             color: #00afdf;
             text-decoration: none;
             font-weight: 500;
         }
 
-        .back-to-login a:hover {
+        .first-time-link a:hover {
             color: #035397;
             text-decoration: underline;
         }
 
         .footer-info {
-            margin-top: 2rem;
-            font-size: 0.85rem;
+            margin-top: 20px;
+
             color: #6c757d;
+            border-style:solid;
+            border-color:red;
+            border-width:1px;
+            font-size:8pt;
+        }
+
+        .dev-notice {
+
+            color: #dc3545;
+            font-weight: 500;
+
+
         }
 
         .form-label {
@@ -166,7 +183,7 @@
                 display: none;
             }
 
-            .setup-form-side {
+            .login-form-side {
                 flex: 1;
             }
         }
@@ -174,11 +191,11 @@
 </head>
 
 <body>
-        <div class="setup-wrapper">
+        <div class="login-wrapper">
             <!-- Left side: Setup Form -->
-            <div class="setup-form-side">
-                <div class="setup-container">
-                    <h1>Student Account Setup</h1>
+            <div class="login-form-side">
+                <div class="login-container">
+                    <h1>Student <span style="font-weight:300">Account Setup</span></h1>
                     <p class="subtitle">Let's get you started</p>
 
                     <div class="info-box">
@@ -247,12 +264,15 @@
                     <button type="submit" class="btn btn-primary w-100">Submit</button>
                 </form>
 
-                <div class="back-to-login">
+                <div class="first-time-link">
                     <p class="mb-2">Already have an account?</p>
                     <a href="{{ url_for('student.login') }}">Back to Login</a>
                 </div>
 
                 <div class="footer-info text-center">
+                     <p class="dev-notice">
+                        You are using an app that is currently in limited BETA testing. There is a 120% chance you will encounter bugs or issues. Please be patient while we work out the wrinkles!</p>
+
                     <p class="mt-3 small">
                         For questions or concerns, contact the developer at
                         <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a>

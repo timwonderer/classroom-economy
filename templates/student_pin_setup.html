@@ -20,42 +20,45 @@
         body {
             font-family: 'Inter', sans-serif;
             height: 100vh;
-            overflow: hidden;
-            background: #f0f8ff;
+            background: #fffaf5;
         }
 
-        .setup-wrapper {
+       .login-wrapper {
             display: flex;
-            min-height: 100vh;
+            height:100vh;
+            width:100vw;
+            padding: 0;
+            align-items: stretch;
         }
 
-        .setup-form-side {
-            flex: 1 1 60%;
-            display: flex;
+        .login-form-side {
+            flex: 1;
+            display:flex;
             align-items: center;
             justify-content: center;
             background: #ffffff;
-            padding: 2.5rem 3rem;
-            overflow-y: auto;
-            min-width: 0;
+
+            height: 100vh;
+
         }
 
         .branding-side {
-            flex: 0 0 40%;
-            max-width: 460px;
+            flex: 1;
+
             background: linear-gradient(135deg, #4a9eff 0%, #00afdf 50%, #00d4ff 100%);
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
             position: relative;
-            overflow: hidden;
+            height: 100vh;
+            max-width: 400px;
         }
 
         .branding-content {
             text-align: center;
             z-index: 2;
-            padding: 2rem;
+
             display: flex;
             align-items: center;
             justify-content: center;
@@ -76,23 +79,25 @@
             height: 300px;
         }
 
-        .setup-container {
+        .login-container {
             width: 100%;
-            max-width: 500px;
+
+            margin:auto;
+            max-width: 520px;
         }
 
-        .setup-container h1 {
-            margin-bottom: 1rem;
+        .login-container h1 {
+            margin-bottom: 0.5rem;
             font-weight: 700;
             color: #274174;
             text-align: center;
             font-size: 2rem;
         }
 
-        .setup-container .subtitle {
+        .login-container .subtitle {
             text-align: center;
             color: #4a6fa5;
-            margin-bottom: 2rem;
+            margin-bottom: 0.5rem;
             font-size: 0.95rem;
         }
 
@@ -117,9 +122,21 @@
         }
 
         .footer-info {
-            margin-top: 2rem;
-            font-size: 0.85rem;
+            margin-top: 20px;
+
             color: #6c757d;
+            border-style:solid;
+            border-color:red;
+            border-width:1px;
+            font-size:8pt;
+        }
+
+        .dev-notice {
+
+            color: #dc3545;
+            font-weight: 500;
+
+
         }
 
         .form-label {
@@ -176,7 +193,7 @@
                 display: none;
             }
 
-            .setup-form-side {
+            .login-form-side {
                 flex: 1;
             }
         }
@@ -184,11 +201,11 @@
 </head>
 
 <body>
-    <div class="setup-wrapper">
+    <div class="login-wrapper">
         <!-- Left side: Setup Form -->
-        <div class="setup-form-side">
-            <div class="setup-container">
-                <h1>Set Your PIN & Passphrase</h1>
+        <div class="login-form-side">
+            <div class="login-container">
+                <h1>Set Your <span style="font-weight:300">PIN & Passphrase</span></h1>
                 <p class="subtitle">Your username is: <strong>{{ username }}</strong></p>
                 <p style="font-weight: 600; margin-bottom: 1.5rem; text-align: center;">Please write it down if you haven't already, as it will not be shown again after setup is complete.</p>
 
@@ -244,12 +261,21 @@
                 </form>
 
                 <div class="footer-info text-center">
+                     <p class="dev-notice">
+                        You are using an app that is currently in limited BETA testing. There is a 120% chance you will encounter bugs or issues. Please be patient while we work out the wrinkles!</p>
+
                     <p class="mt-3 small">
                         For questions or concerns, contact the developer at
                         <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a>
                     </p>
 
-                    <small class="text-muted d-block mt-3">BETA Stable Release v0.9.0</small>
+                    <div class="mt-2">
+                        <a href="{{ url_for('main.privacy') }}" class="small">Click here to learn about how we use your information</a>
+                        <span class="mx-2">|</span>
+                        <a href="{{ url_for('main.terms') }}" class="small">Click here to read our terms of service</a>
+                    </div>
+
+                    <small class="text-muted d-block mt-3">Pre-Release Testing v0.10.0</small>
                 </div>
             </div>
         </div>
