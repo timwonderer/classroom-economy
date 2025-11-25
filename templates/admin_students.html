@@ -110,7 +110,7 @@
                                value="{{ join_codes_by_block[block|upper] }}"
                                readonly
                                style="font-size: 1.5rem; letter-spacing: 0.2em; background-color: #fff;">
-                        <button class="btn btn-outline-success btn-lg"
+                        <button class="btn btn-outline-success btn-lg copy-join-code-btn"
                                 type="button"
                                 onclick="copyJoinCode('{{ block }}', '{{ join_codes_by_block[block|upper] }}', event)">
                           <span class="material-symbols-outlined" style="vertical-align: middle;">content_copy</span> Copy
@@ -552,6 +552,31 @@ function copyJoinCode(block, code, event) {
 
 document.addEventListener('DOMContentLoaded', function() {
   console.log('🚀 Student management page scripts loaded (inside DOMContentLoaded)');
+
+  // Join Code Copy Function - attach via addEventListener to prevent XSS
+  document.querySelectorAll('.copy-join-code-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      const code = this.dataset.joinCode;
+      const originalHTML = this.innerHTML;
+      const buttonRef = this;
+
+      navigator.clipboard.writeText(code).then(function() {
+        // Show success feedback
+        buttonRef.innerHTML = '<span class="material-symbols-outlined" style="vertical-align: middle;">check</span> Copied!';
+        buttonRef.classList.remove('btn-outline-success');
+        buttonRef.classList.add('btn-success');
+
+        setTimeout(function() {
+          buttonRef.innerHTML = originalHTML;
+          buttonRef.classList.remove('btn-success');
+          buttonRef.classList.add('btn-outline-success');
+        }, 2000);
+      }).catch(function(err) {
+        console.error('Failed to copy: ', err);
+        alert('Failed to copy join code. Please copy manually.');
+      });
+    });
+  });
 
   // Edit Student Modal
   const editModal = document.getElementById('editStudentModal');
