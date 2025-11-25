@@ -87,21 +87,21 @@ jobs:
           echo 'Restarting Gunicorn to apply changes...'
           sudo systemctl restart gunicorn
 
-          echo "✅ Maintenance mode updated: $MODE_VALUE"
+          echo "Maintenance mode updated: $MODE_VALUE"
           if [ "$MODE_VALUE" = "true" ]; then
-            echo "🏷️  Badge type: $BADGE_TYPE"
-            echo "📝 Message: $MESSAGE"
-            echo "⏰ Expected end: $EXPECTED_END"
-            echo "📧 Contact: $CONTACT"
+            echo "Badge type: $BADGE_TYPE"
+            echo "Message: $MESSAGE"
+            echo "Expected end: $EXPECTED_END"
+            echo "Contact: $CONTACT"
           fi
         EOF
 
     - name: Summary
       run: |
         if [ "${{ inputs.enabled }}" = "true" ]; then
-          echo "🔧 Maintenance mode ENABLED"
+          echo "Maintenance mode ENABLED"
           echo "Badge type: ${{ inputs.badge_type }}"
           echo "Message: ${{ inputs.message }}"
         else
-          echo "✅ Maintenance mode DISABLED - Site is live"
+          echo "Maintenance mode DISABLED - Site is live"
         fi

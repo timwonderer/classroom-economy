@@ -248,7 +248,7 @@
             badgeContainer.style.backgroundColor = config.bgColor;
             badgeContainer.style.borderColor = config.borderColor;
             badgeLabel.style.backgroundColor = config.labelBg;
-            badgeLabel.textContent = config.text;
+            badgeLabel.innerHTML = '<span class="material-symbols-outlined" style="font-size:24px; vertical-align: middle" aria-hidden="true">' + config.icon + '</span> ' + config.text;
             badgeIcon.textContent = config.icon;
         }
     </script>
