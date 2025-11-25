@@ -587,6 +587,19 @@ def students():
                     # Ensure uniqueness across all teachers
                     if not TeacherBlock.query.filter_by(join_code=new_code).first():
                         join_codes_by_block[block] = new_code
+                        # Persist the new join code to the database to prevent race conditions
+                        new_teacher_block = TeacherBlock(
+                            teacher_id=current_admin,
+                            block=block,
+                            join_code=new_code,
+                            is_claimed=False
+                        )
+                        db.session.add(new_teacher_block)
+                        try:
+                            db.session.commit()
+                        except Exception as e:
+                            current_app.logger.error(f"Failed to persist TeacherBlock for block {block} with join code {new_code}: {e}")
+                            db.session.rollback()
                         break
                 else:
                     # If we couldn't generate a unique code after max_retries, use a timestamp-based fallback
