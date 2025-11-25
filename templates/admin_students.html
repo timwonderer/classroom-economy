@@ -70,7 +70,13 @@
               {% else %}
                 Block {{ block|upper }}
               {% endif %}
-              <span class="badge bg-secondary ms-1">{{ students_by_block[block]|length }}</span>
+              {% set claimed_count = students_by_block[block]|length if block in students_by_block else 0 %}
+              {% set unclaimed_count = unclaimed_seats_by_block.get(block|upper, 0) %}
+              {% set total_count = claimed_count + unclaimed_count %}
+              <span class="badge bg-secondary ms-1">{{ total_count }}</span>
+              {% if unclaimed_count > 0 %}
+                <span class="badge bg-warning text-dark ms-1">{{ unclaimed_count }} unclaimed</span>
+              {% endif %}
             </button>
           </li>
           {% endfor %}
@@ -135,7 +141,57 @@
             </div>
             {% endif %}
 
+            <!-- Unclaimed Seats Section -->
+            {% if block != "Unassigned" and unclaimed_seats_list_by_block.get(block|upper) %}
+            {% set unclaimed_seats = unclaimed_seats_list_by_block[block|upper] %}
+            <div class="card border-warning mb-3">
+              <div class="card-header bg-warning bg-opacity-10">
+                <h6 class="mb-0 text-dark">
+                  <span class="material-symbols-outlined me-2" style="vertical-align: middle;">pending</span>
+                  Unclaimed Seats ({{ unclaimed_seats|length }})
+                </h6>
+              </div>
+              <div class="card-body">
+                <p class="text-muted mb-3">These students are in your roster but haven't claimed their accounts yet. Share the join code above with them.</p>
+                <div class="table-responsive">
+                  <table class="table table-sm table-striped">
+                    <thead class="table-light">
+                      <tr>
+                        <th>Name</th>
+                        <th>Added</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {% for seat in unclaimed_seats %}
+                      <tr>
+                        <td>
+                          <span class="fw-bold">{{ seat.first_name }} {{ seat.last_initial }}.</span>
+                        </td>
+                        <td>
+                          <small class="text-muted">{{ seat.created_at.strftime('%Y-%m-%d') if seat.created_at else 'N/A' }}</small>
+                        </td>
+                        <td>
+                          <span class="badge bg-warning text-dark">Waiting for Claim</span>
+                        </td>
+                      </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
             {% if block_students %}
+              <div class="card border-success mb-3">
+                <div class="card-header bg-success bg-opacity-10">
+                  <h6 class="mb-0 text-success">
+                    <span class="material-symbols-outlined me-2" style="vertical-align: middle;">check_circle</span>
+                    Claimed Students ({{ block_students|length }})
+                  </h6>
+                </div>
+                <div class="card-body">
               <!-- Bulk Actions Toolbar -->
               <div class="bulk-actions-toolbar mb-3 p-3 bg-light border rounded d-none" id="bulk-toolbar-{{ block }}">
                 <div class="d-flex justify-content-between align-items-center">
@@ -235,9 +291,11 @@
                   </tbody>
                 </table>
               </div>
+                </div>
+              </div>
             {% else %}
               <div class="alert alert-info">
-                <span class="material-symbols-outlined me-2" style="vertical-align: middle;">info</span>No students in Block {{ block|upper }}
+                <span class="material-symbols-outlined me-2" style="vertical-align: middle;">info</span>No students have claimed accounts in Block {{ block|upper }} yet.
               </div>
             {% endif %}
           </div>
