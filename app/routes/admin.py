@@ -54,6 +54,14 @@ import time
 # Timezone
 PACIFIC = pytz.timezone('America/Los_Angeles')
 
+# Placeholder values for legacy block TeacherBlock records
+# These values won't match any real student but hold the join code for the block
+PLACEHOLDER_CREDENTIAL = "__BLOCK_PLACEHOLDER__"
+PLACEHOLDER_FIRST_NAME = "__PLACEHOLDER__"
+PLACEHOLDER_LAST_INITIAL = "_"
+PLACEHOLDER_LAST_NAME_PART = "__PLACEHOLDER__"
+PLACEHOLDER_DOB_SUM = 0
+
 # Create blueprint
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -540,6 +548,8 @@ def students():
     unclaimed_seats_list_by_block = {}
 
     # Process teacher_blocks in one pass to build all required structures
+    # Also build a lookup of claimed TeacherBlocks by block for efficient lookups later
+    claimed_tb_by_block = {}
     for tb in teacher_blocks:
         block_name = tb.block.strip().upper() if tb.block else None
         if block_name:
@@ -556,6 +566,9 @@ def students():
             if not tb.is_claimed:
                 unclaimed_seats_list_by_block[block_name].append(tb)
                 unclaimed_seats_by_block[block_name] += 1
+            # Track claimed TeacherBlocks for efficient lookup later
+            elif block_name not in claimed_tb_by_block:
+                claimed_tb_by_block[block_name] = tb
 
     # Ensure all blocks with students have join codes (for legacy teachers with pre-c3aa3a0 classes)
     # If a block has students but no TeacherBlock records, look up or generate a join code
@@ -563,11 +576,7 @@ def students():
         if block != "Unassigned" and block not in join_codes_by_block:
             # This block has students but no TeacherBlock records yet
             # Check if there are any claimed TeacherBlock records for this teacher-block combination
-            existing_tb = TeacherBlock.query.filter_by(
-                teacher_id=current_admin,
-                block=block,
-                is_claimed=True
-            ).first()
+            existing_tb = claimed_tb_by_block.get(block)
             
             if existing_tb and existing_tb.join_code:
                 # Use existing join code from claimed seat
@@ -600,16 +609,15 @@ def students():
                 # This ensures the join code remains stable and will be reused when teacher uploads a roster
                 # Use placeholder values that won't match any real student
                 placeholder_salt = get_random_salt()
-                placeholder_credential = "__BLOCK_PLACEHOLDER__"
-                placeholder_hash = hash_hmac(placeholder_credential.encode(), placeholder_salt)
+                placeholder_hash = hash_hmac(PLACEHOLDER_CREDENTIAL.encode(), placeholder_salt)
                 
                 placeholder_seat = TeacherBlock(
                     teacher_id=current_admin,
                     block=block,
-                    first_name="__PLACEHOLDER__",
-                    last_initial="_",
-                    last_name_hash_by_part=["__PLACEHOLDER__"],
-                    dob_sum=0,
+                    first_name=PLACEHOLDER_FIRST_NAME,
+                    last_initial=PLACEHOLDER_LAST_INITIAL,
+                    last_name_hash_by_part=[PLACEHOLDER_LAST_NAME_PART],
+                    dob_sum=PLACEHOLDER_DOB_SUM,
                     salt=placeholder_salt,
                     first_half_hash=placeholder_hash,
                     join_code=new_code,
