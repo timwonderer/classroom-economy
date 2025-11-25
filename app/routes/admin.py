@@ -34,7 +34,7 @@ from app.models import (
     Student, Admin, AdminInviteCode, StudentTeacher, Transaction, TapEvent, StoreItem, StudentItem,
     RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
     HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings, TeacherBlock,
-    DeletionRequest, DeletionRequestType, DeletionRequestStatus
+    DeletionRequest, DeletionRequestType, DeletionRequestStatus, UserReport
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
@@ -44,7 +44,7 @@ from forms import (
 )
 
 # Import utility functions
-from app.utils.helpers import is_safe_url, format_utc_iso
+from app.utils.helpers import is_safe_url, format_utc_iso, generate_anonymous_code
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
@@ -3579,3 +3579,65 @@ def deletion_requests():
         resolved_requests=resolved_requests,
         periods=periods
     )
+
+
+@admin_bp.route('/help-support', methods=['GET', 'POST'])
+@admin_required
+def help_support():
+    """Admin Help & Support page with bug reporting and documentation."""
+    admin_id = session.get('admin_id')
+
+    if request.method == 'POST':
+        # Handle bug report submission
+        report_type = request.form.get('report_type', 'bug')
+        error_code = request.form.get('error_code', '')
+        title = request.form.get('title', '').strip()
+        description = request.form.get('description', '').strip()
+        steps_to_reproduce = request.form.get('steps_to_reproduce', '').strip()
+        expected_behavior = request.form.get('expected_behavior', '').strip()
+        page_url = request.form.get('page_url', '').strip()
+
+        # Validation
+        if not title or not description:
+            flash("Please provide both a title and description for your report.", "error")
+            return redirect(url_for('admin.help_support'))
+
+        # Generate anonymous code (using admin ID)
+        anonymous_code = generate_anonymous_code(f"admin:{admin_id}")
+
+        # Create report
+        try:
+            report = UserReport(
+                anonymous_code=anonymous_code,
+                user_type='teacher',
+                report_type=report_type,
+                error_code=error_code if error_code else None,
+                title=title,
+                description=description,
+                steps_to_reproduce=steps_to_reproduce if steps_to_reproduce else None,
+                expected_behavior=expected_behavior if expected_behavior else None,
+                page_url=page_url if page_url else None,
+                ip_address=request.remote_addr,
+                user_agent=request.headers.get('User-Agent'),
+                status='new'
+            )
+            # Note: _student_id is null for teachers
+
+            db.session.add(report)
+            db.session.commit()
+
+            flash("Thank you for your report! It has been submitted to the system administrator.", "success")
+            return redirect(url_for('admin.help_support'))
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error submitting report: {str(e)}")
+            flash("An error occurred while submitting your report. Please try again.", "error")
+            return redirect(url_for('admin.help_support'))
+
+    # Get admin's previous reports (last 10)
+    anonymous_code = generate_anonymous_code(f"admin:{admin_id}")
+    my_reports = UserReport.query.filter_by(anonymous_code=anonymous_code).order_by(UserReport.submitted_at.desc()).limit(10).all()
+
+    return render_template('admin_help_support.html',
+                         current_page='help',
+                         my_reports=my_reports)
