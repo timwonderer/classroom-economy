@@ -27,6 +27,8 @@ import os
 # Add parent directory to path so we can import app modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from sqlalchemy import or_
+
 from app import create_app
 from app.extensions import db
 from app.models import TeacherBlock
@@ -45,8 +47,8 @@ def backfill_join_codes():
     with app.app_context():
         # Find all TeacherBlock entries without join codes
         blocks_without_codes = TeacherBlock.query.filter(
-            db.or_(
-                TeacherBlock.join_code == None,
+            or_(
+                TeacherBlock.join_code is None,
                 TeacherBlock.join_code == ''
             )
         ).all()
@@ -104,8 +106,8 @@ def backfill_join_codes():
 
             # Verify
             remaining = TeacherBlock.query.filter(
-                db.or_(
-                    TeacherBlock.join_code == None,
+                or_(
+                    TeacherBlock.join_code is None,
                     TeacherBlock.join_code == ''
                 )
             ).count()
