@@ -579,7 +579,7 @@ def students():
                 # Try up to 10 times to generate a unique code to prevent infinite loops
                 MAX_JOIN_CODE_RETRIES = 10
                 FALLBACK_CODE_MODULO = 10000  # Keep fallback codes within 4 digits
-                FALLBACK_BLOCK_PREFIX_LENGTH = 2  # Use first 2 chars of block name
+                FALLBACK_BLOCK_PREFIX_LENGTH = 1  # Use first char of block name to fit 6-char format
                 
                 new_code = None
                 for _ in range(MAX_JOIN_CODE_RETRIES):
@@ -590,10 +590,11 @@ def students():
                         break
                 else:
                     # If we couldn't generate a unique code after max_retries, use a timestamp-based fallback
-                    # Format: B + block_prefix + timestamp_suffix (e.g., "BA0123" for block "A")
-                    block_prefix = block[:FALLBACK_BLOCK_PREFIX_LENGTH].ljust(FALLBACK_BLOCK_PREFIX_LENGTH, 'X')
+                    # Format: B + block_initial + timestamp_suffix (e.g., "BA0123" for block "A")
+                    # This produces a 6-character code: B(1) + block_initial(1) + timestamp(4) = 6 total
+                    block_initial = block[:FALLBACK_BLOCK_PREFIX_LENGTH].ljust(FALLBACK_BLOCK_PREFIX_LENGTH, 'X')
                     timestamp_suffix = int(time.time()) % FALLBACK_CODE_MODULO
-                    new_code = f"B{block_prefix}{timestamp_suffix:04d}"
+                    new_code = f"B{block_initial}{timestamp_suffix:04d}"
                     join_codes_by_block[block] = new_code
                     current_app.logger.warning(
                         f"Failed to generate unique join code after {MAX_JOIN_CODE_RETRIES} attempts. "
