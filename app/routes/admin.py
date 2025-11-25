@@ -544,7 +544,9 @@ def students():
             # Initialize structures if needed
             if block_name not in unclaimed_seats_list_by_block:
                 unclaimed_seats_list_by_block[block_name] = []
-                # Store the first join code we encounter for this block
+                # Store the first join code we encounter for this block.
+                # All TeacherBlock records for the same block should have the same join_code
+                # (enforced by roster import logic), so taking the first one is correct.
                 join_codes_by_block[block_name] = tb.join_code
                 unclaimed_seats_by_block[block_name] = 0
 
