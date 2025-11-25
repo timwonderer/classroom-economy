@@ -112,7 +112,7 @@
                                style="font-size: 1.5rem; letter-spacing: 0.2em; background-color: #fff;">
                         <button class="btn btn-outline-success btn-lg"
                                 type="button"
-                                onclick="copyJoinCode('{{ block }}', '{{ join_codes_by_block[block|upper] }}')">
+                                onclick="copyJoinCode('{{ block }}', '{{ join_codes_by_block[block|upper] }}', event)">
                           <span class="material-symbols-outlined" style="vertical-align: middle;">content_copy</span> Copy
                         </button>
                       </div>
@@ -528,7 +528,7 @@
 console.log('📝 Script block executing (before DOMContentLoaded)');
 
 // Join Code Copy Function
-function copyJoinCode(block, code) {
+function copyJoinCode(block, code, event) {
   const input = document.getElementById(`join-code-${block}`);
 
   navigator.clipboard.writeText(code).then(function() {
