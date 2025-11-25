@@ -99,9 +99,16 @@
                     <span class="material-symbols-outlined me-2" style="vertical-align: middle;">key</span>
                     Join Code for Block {{ block|upper }}
                   </h6>
-                  <span class="badge bg-warning text-dark">
-                    {{ unclaimed_seats_by_block.get(block|upper, 0) }} unclaimed seat(s)
-                  </span>
+                  {% set unclaimed_count = unclaimed_seats_by_block.get(block|upper, 0) %}
+                  {% if unclaimed_count > 0 %}
+                    <span class="badge bg-warning text-dark">
+                      {{ unclaimed_count }} unclaimed seat(s)
+                    </span>
+                  {% else %}
+                    <span class="badge bg-success text-white">
+                      All seats claimed
+                    </span>
+                  {% endif %}
                 </div>
               </div>
               <div class="card-body">
