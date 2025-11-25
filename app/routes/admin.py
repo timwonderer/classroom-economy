@@ -477,10 +477,31 @@ def logout():
 @admin_required
 def students():
     """View all students with basic information organized by block."""
+    current_admin = session.get('admin_id')
+
+    # Get claimed students (Student records)
     all_students = _scoped_students().order_by(Student.block, Student.first_name).all()
 
-    # Get unique blocks - split comma-separated blocks into individual blocks
-    blocks = sorted({b.strip() for s in all_students for b in (s.block or "").split(',') if b.strip()})
+    # Get ALL TeacherBlock records (both claimed and unclaimed seats)
+    teacher_blocks = TeacherBlock.query.filter_by(teacher_id=current_admin).all()
+
+    # Collect all blocks from both students and teacher_blocks
+    blocks_set = set()
+
+    # Add blocks from claimed students
+    for s in all_students:
+        if s.block:
+            for b in s.block.split(','):
+                b = b.strip().upper()
+                if b:
+                    blocks_set.add(b)
+
+    # Add blocks from TeacherBlock records (including unclaimed)
+    for tb in teacher_blocks:
+        if tb.block:
+            blocks_set.add(tb.block.strip().upper())
+
+    blocks = sorted(blocks_set)
 
     # Check if there are any students without block assignments
     unassigned_students = [s for s in all_students if not s.block or not s.block.strip()]
@@ -511,35 +532,36 @@ def students():
         else:
             student.username_display = "Not Set"
 
-    # Fetch join codes for each block from TeacherBlock records
-    current_admin = session.get('admin_id')
+    # Fetch join codes and unclaimed seats for each block
     join_codes_by_block = {}
     unclaimed_seats_by_block = {}
+    unclaimed_seats_list_by_block = {}
 
-    # Query TeacherBlock records for this teacher, grouped by block and join_code, counting unclaimed seats
-    teacher_block_agg = (
-        TeacherBlock.query
-        .with_entities(
-            TeacherBlock.block,
-            TeacherBlock.join_code,
-            func.sum(func.cast(~TeacherBlock.is_claimed, db.Integer)).label('unclaimed_count')
-        )
-        .filter_by(teacher_id=current_admin)
-        .group_by(TeacherBlock.block, TeacherBlock.join_code)
-        .all()
-    )
+    # Process teacher_blocks in one pass to build all required structures
+    for tb in teacher_blocks:
+        block_name = tb.block.strip().upper() if tb.block else None
+        if block_name:
+            # Initialize structures if needed
+            if block_name not in unclaimed_seats_list_by_block:
+                unclaimed_seats_list_by_block[block_name] = []
+                # Store the first join code we encounter for this block.
+                # All TeacherBlock records for the same block should have the same join_code
+                # (enforced by roster import logic), so taking the first one is correct.
+                join_codes_by_block[block_name] = tb.join_code
+                unclaimed_seats_by_block[block_name] = 0
 
-    # Populate join_codes_by_block and unclaimed_seats_by_block from aggregated query
-    for block, join_code, unclaimed_count in teacher_block_agg:
-        block_name = block.strip().upper()
-        join_codes_by_block[block_name] = join_code
-        unclaimed_seats_by_block[block_name] = unclaimed_count or 0
+            # Track unclaimed seats
+            if not tb.is_claimed:
+                unclaimed_seats_list_by_block[block_name].append(tb)
+                unclaimed_seats_by_block[block_name] += 1
+
     return render_template('admin_students.html',
                          students=all_students,
                          blocks=blocks,
                          students_by_block=students_by_block,
                          join_codes_by_block=join_codes_by_block,
                          unclaimed_seats_by_block=unclaimed_seats_by_block,
+                         unclaimed_seats_list_by_block=unclaimed_seats_list_by_block,
                          current_page="students")
 
 

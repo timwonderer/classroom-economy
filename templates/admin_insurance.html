@@ -541,13 +541,15 @@
         fields["{{ field_name }}"] = document.querySelector('[name="{{ field_name }}"]');
         if (fields["{{ field_name }}"]) {
           fields["{{ field_name }}"].classList.add('is-invalid');
-          // Create and append error message if it doesn't exist
+          // Create and append error messages if they don't exist
+          {% for error in errors %}
           if (!fields["{{ field_name }}"].nextElementSibling || !fields["{{ field_name }}"].nextElementSibling.classList.contains('invalid-feedback')) {
             const errorDiv = document.createElement('div');
             errorDiv.className = 'invalid-feedback d-block';
-            errorDiv.textContent = '{{ errors[0] }}';
+            errorDiv.textContent = '{{ error }}';
             fields["{{ field_name }}"].parentNode.appendChild(errorDiv);
           }
+          {% endfor %}
         }
       {% endfor %}
       // Scroll to the error alert
