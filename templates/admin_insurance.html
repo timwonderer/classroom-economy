@@ -143,7 +143,13 @@
           <ul class="mb-0">
             {% for field_name, errors in form.errors.items() %}
               {% for error in errors %}
-                <li><strong>{{ form[field_name].label.text }}:</strong> {{ error }}</li>
+                <li>
+                  {% if field_name in form and form[field_name].label %}
+                    <strong>{{ form[field_name].label.text }}:</strong> {{ error }}
+                  {% else %}
+                    <strong>Error:</strong> {{ error }}
+                  {% endif %}
+                </li>
               {% endfor %}
             {% endfor %}
           </ul>
