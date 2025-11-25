@@ -45,6 +45,7 @@ from forms import (
 
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso, generate_anonymous_code
+from app.utils.join_code import generate_join_code
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
@@ -557,8 +558,6 @@ def students():
 
     # Ensure all blocks with students have join codes (for legacy teachers with pre-c3aa3a0 classes)
     # If a block has students but no TeacherBlock records, look up or generate a join code
-    from app.utils.join_code import generate_join_code
-    
     for block in blocks:
         if block != "Unassigned" and block not in join_codes_by_block:
             # This block has students but no TeacherBlock records yet
@@ -574,11 +573,20 @@ def students():
                 join_codes_by_block[block] = existing_tb.join_code
             else:
                 # No join code exists for this block yet - generate a new unique one
-                new_code = generate_join_code()
-                # Ensure uniqueness across all teachers
-                while TeacherBlock.query.filter_by(join_code=new_code).first():
+                # Try up to 10 times to generate a unique code to prevent infinite loops
+                max_retries = 10
+                for _ in range(max_retries):
                     new_code = generate_join_code()
-                join_codes_by_block[block] = new_code
+                    # Ensure uniqueness across all teachers
+                    if not TeacherBlock.query.filter_by(join_code=new_code).first():
+                        join_codes_by_block[block] = new_code
+                        break
+                else:
+                    # If we couldn't generate a unique code after max_retries, log an error
+                    # and use a timestamp-based fallback
+                    import time
+                    new_code = f"B{block[:2]}{int(time.time()) % 10000:04d}"
+                    join_codes_by_block[block] = new_code
             
             # Initialize unclaimed seats counter for this block
             if block not in unclaimed_seats_by_block:
