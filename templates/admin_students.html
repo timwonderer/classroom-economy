@@ -110,15 +110,17 @@
                     <p class="mb-2"><strong>Students use this code to claim their accounts:</strong></p>
                     <div class="d-flex align-items-center gap-2">
                       <div class="input-group">
+                        <label for="join-code-{{ block }}" class="visually-hidden">Join code for Block {{ block|upper }}</label>
                         <input type="text"
                                class="form-control form-control-lg font-monospace text-center fw-bold"
                                id="join-code-{{ block }}"
                                value="{{ join_codes_by_block[block|upper] }}"
                                readonly
                                style="font-size: 1.5rem; letter-spacing: 0.2em; background-color: #fff;">
-                        <button class="btn btn-outline-success btn-lg"
+                        <button class="btn btn-outline-success btn-lg join-code-copy-btn"
                                 type="button"
-                                onclick="copyJoinCode('{{ block }}', '{{ join_codes_by_block[block|upper] }}')">
+                                data-block="{{ block }}"
+                                data-join-code="{{ join_codes_by_block[block|upper] }}">
                           <span class="material-symbols-outlined" style="vertical-align: middle;">content_copy</span> Copy
                         </button>
                       </div>
@@ -586,11 +588,9 @@
 console.log('📝 Script block executing (before DOMContentLoaded)');
 
 // Join Code Copy Function
-function copyJoinCode(block, code) {
-
+function copyJoinCode(code, btn) {
   navigator.clipboard.writeText(code).then(function() {
     // Show success feedback
-    const btn = event.target.closest('button');
     const originalHTML = btn.innerHTML;
     btn.innerHTML = '<span class="material-symbols-outlined" style="vertical-align: middle;">check</span> Copied!';
     btn.classList.remove('btn-outline-success');
@@ -608,6 +608,13 @@ function copyJoinCode(block, code) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+  // Attach event listeners to join code copy buttons
+  document.querySelectorAll('.join-code-copy-btn').forEach(function(btn) {
+    btn.addEventListener('click', function(event) {
+      const code = this.getAttribute('data-join-code');
+      copyJoinCode(code, this);
+    });
+  });
   console.log('🚀 Student management page scripts loaded (inside DOMContentLoaded)');
 
   // Edit Student Modal
