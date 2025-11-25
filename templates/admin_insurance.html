@@ -530,16 +530,17 @@
 
       // Highlight fields with errors
       {% if form.errors %}
+      const fields = {};
       {% for field_name, errors in form.errors.items() %}
-        const field_{{ field_name }} = document.querySelector('[name="{{ field_name }}"]');
-        if (field_{{ field_name }}) {
-          field_{{ field_name }}.classList.add('is-invalid');
+        fields["{{ field_name }}"] = document.querySelector('[name="{{ field_name }}"]');
+        if (fields["{{ field_name }}"]) {
+          fields["{{ field_name }}"].classList.add('is-invalid');
           // Create and append error message if it doesn't exist
-          if (!field_{{ field_name }}.nextElementSibling || !field_{{ field_name }}.nextElementSibling.classList.contains('invalid-feedback')) {
+          if (!fields["{{ field_name }}"].nextElementSibling || !fields["{{ field_name }}"].nextElementSibling.classList.contains('invalid-feedback')) {
             const errorDiv = document.createElement('div');
             errorDiv.className = 'invalid-feedback d-block';
-            errorDiv.textContent = {{ errors[0]|tojson }};
-            field_{{ field_name }}.parentNode.appendChild(errorDiv);
+            errorDiv.textContent = '{{ errors[0] }}';
+            fields["{{ field_name }}"].parentNode.appendChild(errorDiv);
           }
         }
       {% endfor %}
