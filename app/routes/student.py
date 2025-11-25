@@ -341,7 +341,7 @@ def add_class():
             return redirect(url_for('student.add_class'))
 
         # Verify the credentials match the logged-in student
-        if first_initial != student.first_name[0].upper():
+        if first_initial != student.first_name[:1].upper():
             flash("The first initial doesn't match your account. Please check and try again.", "danger")
             return redirect(url_for('student.add_class'))
 
