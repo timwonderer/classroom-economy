@@ -573,8 +573,8 @@ def students():
                 # Use existing join code from claimed seat
                 join_codes_by_block[block] = existing_tb.join_code
             else:
-                # No join code exists for this block yet - generate a new unique one
-                # Try up to 10 times to generate a unique code to prevent infinite loops
+                # No join code exists for this block yet - generate and persist a new unique one
+                # This creates a stable join code that will be reused when teacher uploads a roster
                 MAX_JOIN_CODE_RETRIES = 10
                 FALLBACK_CODE_MODULO = 10000  # Keep fallback codes within 4 digits
                 FALLBACK_BLOCK_PREFIX_LENGTH = 2  # Use first 2 chars of block name
@@ -584,7 +584,6 @@ def students():
                     new_code = generate_join_code()
                     # Ensure uniqueness across all teachers
                     if not TeacherBlock.query.filter_by(join_code=new_code).first():
-                        join_codes_by_block[block] = new_code
                         break
                 else:
                     # If we couldn't generate a unique code after max_retries, use a timestamp-based fallback
@@ -592,11 +591,46 @@ def students():
                     block_prefix = block[:FALLBACK_BLOCK_PREFIX_LENGTH].ljust(FALLBACK_BLOCK_PREFIX_LENGTH, 'X')
                     timestamp_suffix = int(time.time()) % FALLBACK_CODE_MODULO
                     new_code = f"B{block_prefix}{timestamp_suffix:04d}"
-                    join_codes_by_block[block] = new_code
                     current_app.logger.warning(
                         f"Failed to generate unique join code after {MAX_JOIN_CODE_RETRIES} attempts. "
                         f"Using fallback code {new_code} for block {block}"
                     )
+                
+                # Persist the join code by creating a placeholder TeacherBlock record
+                # This ensures the join code remains stable and will be reused when teacher uploads a roster
+                # Use placeholder values that won't match any real student
+                placeholder_salt = get_random_salt()
+                placeholder_credential = "__BLOCK_PLACEHOLDER__"
+                placeholder_hash = hash_hmac(placeholder_credential.encode(), placeholder_salt)
+                
+                placeholder_seat = TeacherBlock(
+                    teacher_id=current_admin,
+                    block=block,
+                    first_name="__PLACEHOLDER__",
+                    last_initial="_",
+                    last_name_hash_by_part=["__PLACEHOLDER__"],
+                    dob_sum=0,
+                    salt=placeholder_salt,
+                    first_half_hash=placeholder_hash,
+                    join_code=new_code,
+                    is_claimed=False
+                )
+                db.session.add(placeholder_seat)
+                
+                try:
+                    db.session.commit()
+                    join_codes_by_block[block] = new_code
+                    current_app.logger.info(
+                        f"Created placeholder TeacherBlock with join code {new_code} for block {block}. "
+                        f"Teacher should upload a roster to enable student account claiming."
+                    )
+                except SQLAlchemyError as e:
+                    db.session.rollback()
+                    current_app.logger.error(
+                        f"Failed to persist join code for block {block}: {e}"
+                    )
+                    # Fall back to in-memory code (won't work for students but better than crashing)
+                    join_codes_by_block[block] = new_code
             
             # Initialize unclaimed seats counter for this block
             if block not in unclaimed_seats_by_block:
