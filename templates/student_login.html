@@ -10,52 +10,56 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&icon_names=arrow_circle_left" />
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
+       
         body {
             font-family: 'Inter', sans-serif;
             height: 100vh;
-            overflow: hidden;
-            background: #f0f8ff;
+            background: #fffaf5;
         }
 
-        .login-wrapper {
+       .login-wrapper {
             display: flex;
-            min-height: 100vh;
+            height:100vh;
+            width:100vw;
+            padding: 0;
+            align-items: stretch;
         }
 
         .login-form-side {
-            flex: 1 1 60%;
-            display: flex;
+            flex: 1;
+            display:flex;
             align-items: center;
             justify-content: center;
             background: #ffffff;
-            padding: 2.5rem 3rem;
-            overflow-y: auto;
-            min-width: 0;
+
+            height: 100vh;
+
         }
 
         .branding-side {
-            flex: 0 0 40%;
-            max-width: 460px;
+            flex: 1;
+
             background: linear-gradient(135deg, #4a9eff 0%, #00afdf 50%, #00d4ff 100%);
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
             position: relative;
-            overflow: hidden;
+            height: 100vh;
+            max-width: 400px;
         }
 
         .branding-content {
             text-align: center;
             z-index: 2;
-            padding: 2rem;
+
             display: flex;
             align-items: center;
             justify-content: center;
@@ -77,12 +81,14 @@
         }
 
         .login-container {
-            width: 100%;
+            width: 100%;    
+
+            margin:auto;
             max-width: 520px;
         }
 
         .login-container h1 {
-            margin-bottom: 1rem;
+            margin-bottom: 0.5rem;
             font-weight: 700;
             color: #274174;
             text-align: center;
@@ -92,32 +98,11 @@
         .login-container .subtitle {
             text-align: center;
             color: #4a6fa5;
-            margin-bottom: 2rem;
+            margin-bottom: 0.5rem;
             font-size: 0.95rem;
         }
 
-        .nav-tabs {
-            border-bottom: 2px solid #e9ecef;
-            margin-bottom: 2rem;
-        }
-
-        .nav-tabs .nav-link {
-            color: #6c757d;
-            border: none;
-            font-weight: 500;
-            padding: 0.75rem 1.5rem;
-            cursor: pointer;
-        }
-
-        .nav-tabs .nav-link.active {
-            color: #00afdf;
-            border-bottom: 3px solid #4a9eff;
-            background: transparent;
-        }
-
-        .tab-content {
-            padding: 1rem;
-        }
+       
 
         .btn-primary {
             background: linear-gradient(135deg, #00d4ff 0%, #00afdf 100%);
@@ -127,6 +112,7 @@
             transition: all 0.3s ease;
             border-radius: 12px;
             box-shadow: 0 8px 24px rgba(74, 158, 255, 0.35);
+            width:200px;
         }
 
         .btn-primary:hover {
@@ -137,8 +123,8 @@
         .first-time-link {
             text-align: center;
             margin-top: 2rem;
-            padding-top: 2rem;
-            border-top: 1px solid #e9ecef;
+            padding-top: 1rem;
+            border-top: 1px solid #1283f5ff;
         }
 
         .first-time-link a {
@@ -153,16 +139,23 @@
         }
 
         .footer-info {
-            margin-top: 2rem;
-            font-size: 0.85rem;
+            margin-top: 20px;
+     
             color: #6c757d;
+            border-style:solid;
+            border-color:red;
+            border-width:1px;
+            font-size:8pt;
         }
 
         .dev-notice {
+
             color: #dc3545;
             font-weight: 500;
-            margin-top: 1rem;
+
+
         }
+        
 
         .form-label {
             font-weight: 500;
@@ -187,6 +180,21 @@
                 flex: 1;
             }
         }
+
+            #teacher-login-redirect {
+    font-size: 12pt;
+    display: flex;
+
+    width: fit-content;
+    margin:auto;
+    margin-bottom: 1rem;
+    color: #b25b09ff;
+    background: #ffead9ff;
+    border: 1px solid #c97c00ff;
+    padding: 5px 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+}
     </style>
 </head>
 
@@ -195,24 +203,16 @@
             <!-- Left side: Login Form -->
             <div class="login-form-side">
                 <div class="login-container">
-                    <h1>Student Login</h1>
+                    <h1>Howdy, <span style="font-weight:300">Students!</span></h1>
                     <p class="subtitle">Please log in to access your account</p>
+                    <div id="teacher-login-redirect" onclick="window.location.href='{{ url_for('teacher.login') }}'">
+                    <span class="material-symbols-outlined" style="vertical-align: middle;">arrow_circle_left</span>Click here if you are a teacher
+                </div>
                     <!-- Tabs for Student/Teacher -->
-                <ul class="nav nav-tabs" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="student-tab" data-bs-toggle="tab" data-bs-target="#student-login" type="button" role="tab">
-                            Student Login
-                        </button>
-                    </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="teacher-tab" data-bs-toggle="tab" data-bs-target="#teacher-login" type="button" role="tab" onclick="window.location.href='{{ url_for('admin.login') }}'">
-                            Teacher Login
-                        </button>
-                    </li>
-                </ul>
+               
 
                 <!-- Tab Content -->
-                <div class="tab-content">
+                
                     <!-- Student Login -->
                     <div class="tab-pane fade show active" id="student-login" role="tabpanel">
                         {% if error %}
@@ -250,14 +250,11 @@
                             <a href="{{ url_for('admin.signup') }}">Set up teacher account</a>
                         </div>
                     </div>
-                </div>
+                
 
                 <div class="footer-info text-center">
-                    <p class="dev-notice">
-                        You are currently using an app that is actively being developed.<br>
-                        Some features and/or layout may be added, removed, or modified rapidly.<br>
-                        
-                    </p>
+                     <p class="dev-notice">
+                        You are using an app that is currently in limited BETA testing. There is a 120% chance you will encounter bugs or issues. Please be patient while we work out the wrinkles!</p>
 
                     <p class="mt-3 small">
                         For questions or concerns, contact the developer at
