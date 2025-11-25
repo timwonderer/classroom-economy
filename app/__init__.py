@@ -166,6 +166,7 @@ def create_app():
             ),
             "expected_back": os.getenv("MAINTENANCE_EXPECTED_END", ""),
             "contact_email": os.getenv("MAINTENANCE_CONTACT", os.getenv("SUPPORT_EMAIL", "")),
+            "badge_type": os.getenv("MAINTENANCE_BADGE_TYPE", "maintenance"),
         }
 
     @app.before_request

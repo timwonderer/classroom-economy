@@ -131,9 +131,9 @@
         </div>
 
         <div class="card-body" >
-            <div style="margin-bottom:1rem;border-radius: 5px;padding:1rem; background-color:#ccdbff;  border-style:solid;border-color:#011c5c;border-width:0 0 0 8px; color:#000000;">
-            <div style="font-weight:400; font-size:12pt;color:#ffffff;background-color:#011c5c; padding:3px 8px 3px 8px; width:fit-content;border-radius:40px; text-align:center;">
-                <span class="material-symbols-outlined" style="font-size:24px; vertical-align: middle" aria-hidden="true">apps_outage</span> ABOUT THIS OUTAGE
+            <div id="badge-container" style="margin-bottom:1rem;border-radius: 5px;padding:1rem; background-color:#ccdbff;  border-style:solid;border-color:#011c5c;border-width:0 0 0 8px; color:#000000;">
+            <div id="badge-label" style="font-weight:400; font-size:12pt;color:#ffffff;background-color:#011c5c; padding:3px 8px 3px 8px; width:fit-content;border-radius:40px; text-align:center;">
+                <span id="badge-icon" class="material-symbols-outlined" style="font-size:24px; vertical-align: middle" aria-hidden="true">apps_outage</span> ABOUT THIS OUTAGE
             </div>
                 <div style="margin-top:0.5rem;margin-bottom:0;">{{ message or "We're applying updates and running database checks. Thank you for your patience!" }}</div>
             </div>
@@ -182,6 +182,75 @@
                 countdownEl.textContent = seconds;
             }
         }, 1000);
+
+        // Badge configuration
+        const badgeConfig = {
+            maintenance: {
+                icon: 'construction',
+                text: 'SCHEDULED MAINTENANCE',
+                bgColor: '#ccdbff',
+                borderColor: '#011c5c',
+                labelBg: '#011c5c'
+            },
+            bug: {
+                icon: 'bug_report',
+                text: 'BUG FIX IN PROGRESS',
+                bgColor: '#fff3cd',
+                borderColor: '#856404',
+                labelBg: '#856404'
+            },
+            security: {
+                icon: 'shield',
+                text: 'SECURITY PATCH',
+                bgColor: '#f8d7da',
+                borderColor: '#721c24',
+                labelBg: '#721c24'
+            },
+            update: {
+                icon: 'system_update',
+                text: 'SYSTEM UPDATE',
+                bgColor: '#d1ecf1',
+                borderColor: '#0c5460',
+                labelBg: '#0c5460'
+            },
+            feature: {
+                icon: 'new_releases',
+                text: 'NEW FEATURE DEPLOYMENT',
+                bgColor: '#d4edda',
+                borderColor: '#155724',
+                labelBg: '#155724'
+            },
+            unavailable: {
+                icon: 'cloud_off',
+                text: 'SERVER UNAVAILABLE',
+                bgColor: '#f8d7da',
+                borderColor: '#721c24',
+                labelBg: '#721c24'
+            },
+            error: {
+                icon: 'error',
+                text: 'UNEXPECTED ERROR',
+                bgColor: '#f8d7da',
+                borderColor: '#721c24',
+                labelBg: '#721c24'
+            }
+        };
+
+        // Apply badge styling
+        const badgeType = '{{ badge_type|default("maintenance") }}';
+        const config = badgeConfig[badgeType] || badgeConfig.maintenance;
+        
+        const badgeContainer = document.getElementById('badge-container');
+        const badgeLabel = document.getElementById('badge-label');
+        const badgeIcon = document.getElementById('badge-icon');
+        
+        if (badgeContainer && badgeLabel && badgeIcon) {
+            badgeContainer.style.backgroundColor = config.bgColor;
+            badgeContainer.style.borderColor = config.borderColor;
+            badgeLabel.style.backgroundColor = config.labelBg;
+            badgeLabel.textContent = config.text;
+            badgeIcon.textContent = config.icon;
+        }
     </script>
 </body>
 </html>

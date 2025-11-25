@@ -8,16 +8,33 @@ on:
         required: true
         type: boolean
         default: false
+      badge_type:
+        description: 'Badge type'
+        required: false
+        type: choice
+        default: 'maintenance'
+        options:
+          - maintenance
+          - bug
+          - security
+          - update
+          - feature
+          - unavailable
+          - error
       message:
         description: 'Maintenance message'
         required: false
-        default: "We're performing scheduled maintenance."
+        default: ""
       expected_end:
         description: 'Expected end time (e.g., "Back online by 3:00 PM")'
         required: false
         default: ''
       contact:
         description: 'Contact email'
+        required: false
+        default: ''
+      status_description:
+        description: 'The application is currently:'
         required: false
         default: ''
 
@@ -42,8 +59,9 @@ jobs:
         MESSAGE="${{ inputs.message }}"
         EXPECTED_END="${{ inputs.expected_end }}"
         CONTACT="${{ inputs.contact }}"
+        BADGE_TYPE="${{ inputs.badge_type }}"
 
-        SSH_ENV_VARS="MODE_VALUE=$(printf %q "${MODE_VALUE}") MESSAGE=$(printf %q "${MESSAGE}") EXPECTED_END=$(printf %q "${EXPECTED_END}") CONTACT=$(printf %q "${CONTACT}")"
+        SSH_ENV_VARS="MODE_VALUE=$(printf %q "${MODE_VALUE}") MESSAGE=$(printf %q "${MESSAGE}") EXPECTED_END=$(printf %q "${EXPECTED_END}") CONTACT=$(printf %q "${CONTACT}") BADGE_TYPE=$(printf %q "${BADGE_TYPE}")"
 
         ssh -o StrictHostKeyChecking=no root@24.199.127.184 "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
           set -e
@@ -57,18 +75,21 @@ jobs:
           sed -i '/^MAINTENANCE_MESSAGE=/d' .env 2>/dev/null || true
           sed -i '/^MAINTENANCE_EXPECTED_END=/d' .env 2>/dev/null || true
           sed -i '/^MAINTENANCE_CONTACT=/d' .env 2>/dev/null || true
+          sed -i '/^MAINTENANCE_BADGE_TYPE=/d' .env 2>/dev/null || true
 
           # Add new maintenance mode variables
           echo "MAINTENANCE_MODE=$MODE_VALUE" >> .env
           echo "MAINTENANCE_MESSAGE=\"$MESSAGE\"" >> .env
           echo "MAINTENANCE_EXPECTED_END=\"$EXPECTED_END\"" >> .env
           echo "MAINTENANCE_CONTACT=\"$CONTACT\"" >> .env
+          echo "MAINTENANCE_BADGE_TYPE=\"$BADGE_TYPE\"" >> .env
 
           echo 'Restarting Gunicorn to apply changes...'
           sudo systemctl restart gunicorn
 
           echo "✅ Maintenance mode updated: $MODE_VALUE"
           if [ "$MODE_VALUE" = "true" ]; then
+            echo "🏷️  Badge type: $BADGE_TYPE"
             echo "📝 Message: $MESSAGE"
             echo "⏰ Expected end: $EXPECTED_END"
             echo "📧 Contact: $CONTACT"
@@ -79,6 +100,7 @@ jobs:
       run: |
         if [ "${{ inputs.enabled }}" = "true" ]; then
           echo "🔧 Maintenance mode ENABLED"
+          echo "Badge type: ${{ inputs.badge_type }}"
           echo "Message: ${{ inputs.message }}"
         else
           echo "✅ Maintenance mode DISABLED - Site is live"
