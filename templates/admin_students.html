@@ -530,8 +530,6 @@ console.log('📝 Script block executing (before DOMContentLoaded)');
 // Join Code Copy Function
 function copyJoinCode(block, code) {
   const input = document.getElementById(`join-code-${block}`);
-  input.select();
-  input.setSelectionRange(0, 99999); // For mobile devices
 
   navigator.clipboard.writeText(code).then(function() {
     // Show success feedback
