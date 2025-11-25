@@ -84,4 +84,25 @@ When adding entries:
 - Keep entries concise but informative
 - Update the date when moving Unreleased to a version
 
-**Last Updated:** 2025-11-20
+## [Maintenance & Bypass Enhancements] - 2025-11-25
+
+### Added
+- Persistent maintenance mode across deploys (`deploy_updates.sh`) with `--end-maintenance` explicit exit flag.
+- System admin and token-based maintenance bypass with session persistence (`maintenance_global_bypass`).
+- System admin login access during maintenance (`/sysadmin/login`) and login link on `maintenance.html`.
+- Badge icon/text server-side mapping and status description rendering fallback when JS disabled.
+- Documentation for maintenance variables and operational workflow (see `docs/DEPLOYMENT.md`).
+
+### Changed
+- `deploy_updates.sh` now detects existing maintenance state instead of resetting it.
+- Bypass logic promotes valid sysadmin/token to global session for teacher/student role testing.
+- Tests expanded for bypass persistence and login accessibility.
+
+### Security
+- Bypass token now stored only in environment and session flag; recommends rotation post-window.
+
+### Notes
+- To end maintenance: workflow toggle, manual `.env` edit, or `./deploy_updates.sh --end-maintenance`.
+- Optional future enhancements: explicit disable bypass route, audit logging, token rotation helper.
+
+**Last Updated:** 2025-11-25

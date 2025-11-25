@@ -36,14 +36,14 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            padding: 1.5rem;
+            padding: 2rem;
             font-family: Inter
         }
 
         .card {
             border: none;
-            border-radius: 10px;
-            
+            border-radius: 5px;
+            padding: 2rem;
             max-width: 960px;
             width: 100%;
             overflow: hidden;
@@ -52,7 +52,8 @@
         .card-header {
             background: linear-gradient(135deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02));
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 1.5rem 1.75rem;
+            padding: 0 1.75rem 1rem 1.75rem;
+            
         }
 
         .status-pill {
@@ -68,7 +69,7 @@
         }
 
         .card-body {
-            padding: 2rem 1.75rem 1.5rem;
+            padding: 0 1.75rem 0 1.75rem;
             background: var(--card-bg);
         }
 
@@ -108,6 +109,30 @@
             font-size: 0.95rem;
             color: var(--text-secondary);
         }
+
+        .badge-container {
+            margin-bottom: 1rem;
+            border-radius: 5px;
+            padding: 1rem;
+            border-style: solid;
+            border-width: 0 0 0 8px;
+            color: #000000;
+        }
+
+        .badge-label {
+            font-weight: 400;
+            font-size: 12pt;
+            color: #ffffff;
+            padding: 3px 8px 3px 8px;
+            width: fit-content;
+            border-radius: 40px;
+            text-align: center;
+        }
+
+        .badge-icon {
+            font-size: 24px;
+            vertical-align: middle;
+        }
     </style>
 </head>
 <body>
@@ -115,24 +140,27 @@
         <div class="card-header d-flex justify-content-between align-items-center text-white" style="margin:0">
             <div>
                 <div class="status-pill">
-                    <span class="material-symbols-outlined" style="color: #1f306e; font-size:40pt; " aria-hidden="true">reset_wrench</span>
-                    <p style="color: #1f306e;font-size:25pt;vertical-align:middle">Classrooom Token Hub <span style="font-weight:300">Currently Under Maintenance</span></p>
+                    <span class="material-symbols-outlined" style="color: #1f306e; font-size:40px;vertical-align:-10%" aria-hidden="true">computer_cancel</span>
+                    <span style="color: #1f306e;font-size:25pt;vertical-align:middle">Classrooom Token Hub <span style="font-weight:300">{{ status_description or "Unavailable" }}</span></span>
                 </div>
-                <div style="padding:1rem; background-color:#ffe1cc;  border-style:solid;border-color:#ff730f;border-width:0 0 0 5px;margin-top:1rem; color:#000000;">
-                    <span style="color:#ff730f;font-size:24px"> <span class="material-symbols-outlined" style="color:#ff730f;font-size:30px;vertical-align: middle;" aria-hidden="true">cloud_alert</span > Notice </span>
-                    <div style="margin-top:0.5rem;">
-                        We are currently fixing some critical bugs and upgrading your experiences on Classroom Token Hub.<br>
-                        During this time, our services are not available to perform normal operations. We apologize for this inconvenience and are diligently working to resume service for you.
+                <div style="border-radius: 5px; padding: 1rem; background-color: #fac0c0; border-style: solid; border-color: #a30303; border-width: 0 0 0 8px; margin-top: 1rem; color: #000000;">
+                    <div style="font-weight: 400; font-size: 12pt; color: #ffffff; background-color: #a30303; padding: 3px 8px 3px 8px; width: fit-content; border-radius: 40px; text-align: center;">
+                        <span class="material-symbols-outlined" style="font-size: 24px; vertical-align: -25%;" aria-hidden="true">error</span> IMPORTANT
                     </div>
-                </div>
+                    <div style="margin-top: 0.5rem; margin-bottom: 0;">
+                        Classroom Token Hub is an actively developing project. As such, this application may become temporarily unavailable when we detect an issue that could either degrade your experiences or compromise the integrity of our platform. <strong>Unfortunately, these events are often unpredictable and sudden.</strong><br><br>
+                        We understand that having a reliable classroom economy application you can depend on is critical to your routines and we sincerely apologize for this inconvenience. We would like to thank you for your patience and continued support during this time.</div>          
+                    </div>
             </div>
         </div>
 
-        <div class="card-body" style="margin-top:-1.5rem">
-            
-            <p class="lead mb-2"><span class="material-symbols-outlined" style="color: #1f306e; font-size:24px; vertical-align: middle" aria-hidden="true">help</span> What you should know</p>
-            <p class="text-secondary mb-4">{{ message or "We're applying updates and running database checks. Thank you for your patience!" }}</p>
-
+        <div class="card-body">
+            <div id="badge-container" class="badge-container">
+                <div id="badge-label" class="badge-label">
+                    <span id="badge-icon" class="material-symbols-outlined badge-icon" aria-hidden="true">{{ badge_icon }}</span> <span id="badge-text">{{ badge_text|upper }}</span>
+                </div>
+                <div style="margin-top: 0.5rem; margin-bottom: 0;">{{ message or "We're applying updates and running database checks. Thank you for your patience!" }}</div>
+            </div>
             <div class="row g-3 mb-4">
                 <div class="col-md-6">
                     <div class="info-tile h-100">
@@ -151,15 +179,17 @@
 
             <div class="row g-3 align-items-center mb-3">
                 <div class="col-md-8">
-                    <ul class="list-group list-group-flush">
-                        <li class="list-group-item text-secondary">You don't need to do anything, the app will resume once we are done.</li>
-                        <li class="list-group-item text-secondary">This page will also refresh every 30 seconds to retry.</li>
-
-                    </ul>
+                    <div class="mt-2">
+                        <a href="/sysadmin/login?next=%2F" class="btn btn-sm btn-outline-light" style="background:#1f306e;color:#fff;border-color:#1f306e">
+                            <span class="material-symbols-outlined" style="vertical-align:middle;font-size:20px" aria-hidden="true">admin_panel_settings</span>
+                            System Admin: Sign In For Bypass
+                        </a>
+                        <div class="text-secondary mt-2" style="font-size:0.8rem">Authorized system admins can sign in to bypass maintenance and test live functionality (teacher/student flows) without exposing the app to end users.</div>
+                    </div>
                 </div>
                 <div class="col-md-4 text-md-end text-center">
-                    <button id="refreshButton" class="btn btn-primary px-4" type="button">Try now</button>
-                    <div class="footer-note mt-2">We'll retry automatically in <span id="countdown">30</span>s.</div>
+                    <button id="refreshButton" class="btn btn-primary px-4" type="button">Refresh Page</button>
+                    <div class="footer-note mt-2">We'll retry automatically in <span id="countdown">60</span>s.</div>
                 </div>
             </div>
         </div>
@@ -167,8 +197,8 @@
 
     <script>
         const countdownEl = document.getElementById('countdown');
-        const refreshButton = document.getElementById('refreshButton');
-        let seconds = 30;
+        
+        let seconds = 60;
 
         refreshButton?.addEventListener('click', () => window.location.reload());
 
@@ -182,6 +212,76 @@
                 countdownEl.textContent = seconds;
             }
         }, 1000);
+
+        // Badge configuration
+        const badgeConfig = {
+            maintenance: {
+                icon: 'construction',
+                text: 'SCHEDULED MAINTENANCE',
+                bgColor: '#ccdbff',
+                borderColor: '#011c5c',
+                labelBg: '#011c5c'
+            },
+            bug: {
+                icon: 'bug_report',
+                text: 'BUG FIX IN PROGRESS',
+                bgColor: '#fff3cd',
+                borderColor: '#856404',
+                labelBg: '#856404'
+            },
+            security: {
+                icon: 'shield',
+                text: 'SECURITY PATCH',
+                bgColor: '#f8d7da',
+                borderColor: '#721c24',
+                labelBg: '#721c24'
+            },
+            update: {
+                icon: 'system_update',
+                text: 'SYSTEM UPDATE',
+                bgColor: '#d1ecf1',
+                borderColor: '#0c5460',
+                labelBg: '#0c5460'
+            },
+            feature: {
+                icon: 'new_releases',
+                text: 'NEW FEATURE DEPLOYMENT',
+                bgColor: '#d4edda',
+                borderColor: '#155724',
+                labelBg: '#155724'
+            },
+            unavailable: {
+                icon: 'cloud_off',
+                text: 'SERVER UNAVAILABLE',
+                bgColor: '#f8d7da',
+                borderColor: '#721c24',
+                labelBg: '#721c24'
+            },
+            error: {
+                icon: 'error',
+                text: 'UNEXPECTED ERROR',
+                bgColor: '#f8d7da',
+                borderColor: '#721c24',
+                labelBg: '#721c24'
+            }
+        };
+
+        // Apply badge styling
+        const badgeType = {{ badge_type|default("maintenance")|tojson }};
+        const config = badgeConfig[badgeType] || badgeConfig.maintenance;
+        
+        const badgeContainer = document.getElementById('badge-container');
+        const badgeLabel = document.getElementById('badge-label');
+        const badgeIcon = document.getElementById('badge-icon');
+        const badgeText = document.getElementById('badge-text');
+        
+        if (badgeContainer && badgeLabel && badgeIcon && badgeText) {
+            badgeContainer.style.backgroundColor = config.bgColor;
+            badgeContainer.style.borderColor = config.borderColor;
+            badgeLabel.style.backgroundColor = config.labelBg;
+            badgeIcon.textContent = config.icon;
+            badgeText.textContent = config.text;
+        }
     </script>
 </body>
 </html>

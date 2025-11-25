@@ -148,6 +148,8 @@ def login():
                 session["is_system_admin"] = True
                 session["sysadmin_id"] = admin.id
                 session['last_activity'] = datetime.now(timezone.utc).isoformat()
+                # Establish global maintenance bypass for subsequent role testing.
+                session['maintenance_global_bypass'] = True
                 flash("System admin login successful.")
                 next_url = request.args.get("next")
                 if not is_safe_url(next_url):
@@ -164,6 +166,7 @@ def logout():
     session.pop("is_system_admin", None)
     session.pop("sysadmin_id", None)
     session.pop("last_activity", None)
+    # Intentionally DO NOT remove maintenance_global_bypass so admin can test other roles.
     flash("Logged out.")
     return redirect(url_for("sysadmin.login"))
 

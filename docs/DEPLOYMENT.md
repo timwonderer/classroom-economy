@@ -47,6 +47,41 @@ The application also recognizes these optional variables for logging:
 | `LOG_FORMAT` | The log message format. | `[%(asctime)s] %(levelname)s in %(module)s: %(message)s` |
 | `LOG_FILE` | The file used for rotating logs when `FLASK_ENV=production`. | `app.log` |
 
+### Maintenance Mode Variables
+
+| Variable | Description | Example |
+|---|---|---|
+| `MAINTENANCE_MODE` | When `true/1/on/yes`, all non-bypassed requests render the maintenance page. | `true` |
+| `MAINTENANCE_BADGE_TYPE` | Badge category displayed (maintenance, bug, security, update, feature, unavailable, error). | `update` |
+| `MAINTENANCE_STATUS_DESCRIPTION` | Free-form description explaining current work. | `Applying security patches` |
+| `MAINTENANCE_SYSADMIN_BYPASS` | Allow system admin sessions to bypass maintenance. | `true` |
+| `MAINTENANCE_BYPASS_TOKEN` | Token that enables bypass via `?maintenance_bypass=<token>` query. | `MySecretToken123` |
+
+### Persistence Behavior
+
+Maintenance mode is intentionally PERSISTENT across code deployments. Pushing to `main` or running `deploy_updates.sh` does not clear `MAINTENANCE_MODE`. This prevents accidental reopening while iterative fixes are applied.
+
+To end maintenance you must either:
+1. Run the maintenance toggle workflow with mode off, OR
+2. Manually edit `.env` and set `MAINTENANCE_MODE=false`, OR
+3. Execute the deploy script with `--end-maintenance` (added safeguard).
+
+### Testing While In Maintenance
+
+During maintenance you can still exercise the application:
+- Log in as a system admin (if `MAINTENANCE_SYSADMIN_BYPASS=true`).
+- Use a normal teacher/student session with the bypass query: `https://yourdomain/app_path?maintenance_bypass=MySecretToken123` (token must match `MAINTENANCE_BYPASS_TOKEN`).
+- A visible ribbon shows you are bypassing maintenance (`maintenance_bypass_active`).
+
+Recommended workflow for an extended maintenance window:
+1. Enable maintenance via workflow, set badge + description.
+2. Set `MAINTENANCE_SYSADMIN_BYPASS=true` and a strong `MAINTENANCE_BYPASS_TOKEN`.
+3. Deploy iterative code changes freely (mode persists).
+4. Validate fixes using bypass sessions.
+5. Disable maintenance via workflow or `deploy_updates.sh --end-maintenance` when satisfied.
+
+Security tip: Rotate `MAINTENANCE_BYPASS_TOKEN` after major incidents or before ending maintenance to avoid token reuse.
+
 ## Database Reset
 
 If you encounter migration errors that cannot be resolved, you can reset the database. **Warning: This will delete all data.**
