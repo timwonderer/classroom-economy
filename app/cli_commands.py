@@ -55,7 +55,8 @@ def migrate_legacy_students_command():
         click.echo("✓ No legacy students found! All students are already migrated.")
         return
 
-    click.echo(f"Found {len(legacy_students)} legacy students to migrate")
+    student_word = "student" if len(legacy_students) == 1 else "students"
+    click.echo(f"Found {len(legacy_students)} legacy {student_word} to migrate")
     click.echo()
 
     # Step 2: Create StudentTeacher associations

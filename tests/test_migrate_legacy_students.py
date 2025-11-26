@@ -120,7 +120,7 @@ def test_migrate_single_legacy_student(client):
     result = runner.invoke(migrate_legacy_students_command)
     
     assert result.exit_code == 0
-    assert "Found 1 legacy students to migrate" in result.output
+    assert "Found 1 legacy student to migrate" in result.output
     assert "Created 1 StudentTeacher associations" in result.output
     assert "Created 1 TeacherBlock entries" in result.output
     
@@ -312,7 +312,7 @@ def test_migrate_skip_modern_students(client):
     
     assert result.exit_code == 0
     # Should only find 1 legacy student
-    assert "Found 1 legacy students to migrate" in result.output
+    assert "Found 1 legacy student to migrate" in result.output
     
     # Verify modern student's records are unchanged
     st_count = StudentTeacher.query.filter_by(student_id=modern.id).count()

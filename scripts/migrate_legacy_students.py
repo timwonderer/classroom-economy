@@ -79,7 +79,8 @@ def migrate_legacy_students():
             print("✓ No legacy students found! All students are already migrated.")
             return
 
-        print(f"Found {len(legacy_students)} legacy students to migrate")
+        student_word = "student" if len(legacy_students) == 1 else "students"
+        print(f"Found {len(legacy_students)} legacy {student_word} to migrate")
         print()
 
         # Step 2: Create StudentTeacher associations
