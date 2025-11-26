@@ -33,10 +33,10 @@ def test_sysadmin_bypass(monkeypatch):
         'MAINTENANCE_SYSADMIN_BYPASS': 'true'
     })
     with app.test_client() as client:
-            # Simulate sysadmin login establishing global bypass
-            with client.session_transaction() as sess:
-                sess['is_system_admin'] = True
-                sess['maintenance_global_bypass'] = True
+        # Simulate sysadmin login establishing global bypass
+        with client.session_transaction() as sess:
+            sess['is_system_admin'] = True
+            sess['maintenance_global_bypass'] = True
         resp = client.get('/')
         assert resp.status_code != 503, 'Sysadmin bypass should allow normal access.'
 
