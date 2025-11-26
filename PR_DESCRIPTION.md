@@ -1,17 +1,22 @@
 ## Description
 
-This PR implements a feature allowing students to join additional classes after their initial account setup. Students who are already registered can now add new classes taught by other teachers by entering a join code, enabling true multi-teacher/multi-class enrollment.
+Adds a data migration system to transition legacy students from the deprecated `teacher_id` field to the modern multi-tenancy system using `StudentTeacher` associations and proper `TeacherBlock` entries.
 
-**Key capabilities:**
-- Students can add new classes from their dashboard via "Add New Class" link
-- Join process validates student identity against existing account credentials
-- Prevents duplicate enrollments and ensures data integrity
-- Updates student records and creates StudentTeacher many-to-many relationships
-- Includes backfill script for legacy data migration
+**Problem Solved:**
+- Join codes were regenerating on every page reload (non-persistent)
+- New students unable to claim accounts due to unstable join codes
+- Incorrect "All seats claimed" badge showing for blocks with unclaimed seats
+- Legacy students (created before join code system) lacking proper TeacherBlock entries
+
+**Solution:**
+- Created Flask CLI command to migrate legacy student data
+- Populates `student_teachers` table with many-to-many associations
+- Creates proper `TeacherBlock` entries (marked as claimed) for legacy students
+- Generates stable, persistent join codes per teacher-block combination
 
 ## Type of Change
 
-- [ ] Bug fix (non-breaking change which fixes an issue)
+- [x] Bug fix (non-breaking change which fixes an issue)
 - [x] New feature (non-breaking change which adds functionality)
 - [ ] Breaking change (fix or feature that would cause existing functionality to not work as expected)
 - [ ] Documentation update
@@ -21,173 +26,190 @@ This PR implements a feature allowing students to join additional classes after 
 
 ## Testing
 
-- [x] Tested locally
-- [x] All existing tests pass (pytest not available in environment, but Python syntax validated)
-- [ ] Added new tests for new functionality
+### Manual Testing Required
 
-**Testing performed:**
-- Verified Python syntax compilation for all modified files
-- Reviewed existing claim_account flow to ensure consistency
-- Verified route follows existing authentication patterns
-- Checked form validation logic matches existing patterns
-- Confirmed template extends proper layout and uses existing components
+**⚠️ This PR requires manual testing as it's a data migration:**
+
+1. **Before running migration:**
+   ```bash
+   # Verify legacy students exist
+   flask shell
+   >>> from app.models import Student, StudentTeacher
+   >>> legacy = Student.query.filter(Student.teacher_id.isnot(None)).all()
+   >>> print(f"Found {len(legacy)} students with teacher_id")
+   >>> exit()
+   ```
+
+2. **Run the migration:**
+   ```bash
+   flask migrate-legacy-students
+   ```
+
+3. **Verify results:**
+   - Check that join codes persist across page reloads
+   - Verify badge counts are accurate
+   - Test that new students can claim accounts successfully
+   - Confirm all 7 periods have stable join codes
+
+### Test Status
+
+- [ ] Tested locally (requires production/staging environment)
+- [ ] All existing tests pass (`pytest -q`)
+- [ ] Added new tests for new functionality (CLI command testing recommended)
+
+**Note:** Tests should be run in the deployment environment before merging.
 
 ## Database Migration Checklist
 
 **Does this PR include a database migration?** [ ] Yes / [x] No
 
-**Note:** No migration required. Feature uses existing schema:
-- `TeacherBlock.join_code` column already exists
-- `student_teachers` many-to-many table already exists
-- `Student.block` field already stores comma-separated periods
+**Note:** This is a **data migration** (populates existing tables), not a **schema migration** (no table/column changes).
 
-The included `backfill_join_codes.py` script is optional and only needed if legacy TeacherBlock entries lack join codes.
+The migration:
+- Uses existing `student_teachers` table ✓
+- Uses existing `teacher_blocks` table ✓
+- No schema changes required ✓
 
 ## Checklist
 
 - [x] My code follows the project's style guidelines
 - [x] I have performed a self-review of my own code
 - [x] I have commented my code where necessary, particularly in hard-to-understand areas
-- [x] I have updated the documentation accordingly
+- [ ] I have updated the documentation accordingly (see notes below)
 - [x] My changes generate no new warnings or errors
-- [x] I have read and followed the [contributing guidelines](../CONTRIBUTING.md)
-- [x] Synced with main branch before pushing
-
-## Related Issues
-
-Implements student add new class flow as requested.
-
-Closes #
-
-## Implementation Details
-
-### Backend (`app/routes/student.py`)
-**New route:** `/student/add-class` (lines 315-432)
-- Requires `@login_required` decorator
-- Validates all credentials match logged-in student:
-  - First initial must match `student.first_name[0]`
-  - DOB sum must match `student.dob_sum`
-  - Last name verified using fuzzy matching via `verify_last_name_parts()`
-- Searches for unclaimed TeacherBlock seats matching join code
-- Prevents duplicate enrollments via `StudentTeacher` lookup
-- Links seat to existing student and creates StudentTeacher relationship
-- Updates `student.block` field to include new class period
-- Comprehensive error handling with user-friendly flash messages
-
-### Form (`forms.py`)
-**New form:** `StudentAddClassForm` (lines 324-330)
-- Fields: `join_code`, `first_initial`, `last_name`, `dob_sum`
-- Uses WTForms validators: `DataRequired()`, `Length(min=1, max=1)`
-- Consistent with existing `StudentClaimAccountForm` pattern
-
-### Frontend (`templates/student_add_class.html`)
-- Extends `layout_student.html` for consistent student portal styling
-- Material icons for visual clarity (`group_add`, `key`, `person`, `badge`, `cake`)
-- Info and warning alerts for user guidance
-- Help section explaining the join process
-- Responsive Bootstrap 5 layout
-- Form validation with error display
-
-### Navigation (`templates/layout_student.html`)
-- Added "Add New Class" link in sidebar (line 484-486)
-- Positioned after Dashboard, before Finances
-- Active state highlighting with `current_page` check
-
-### Data Migration (`scripts/backfill_join_codes.py`)
-**Purpose:** Backfill join codes for any legacy TeacherBlock entries without them
-
-**Logic:**
-1. Finds TeacherBlock entries with NULL or empty `join_code`
-2. Groups by `(teacher_id, block)` combination
-3. For each group:
-   - Reuses existing join code if another seat in same teacher-block has one
-   - Generates new unique join code otherwise
-4. Updates all seats in group with same code
-5. Commits changes with error handling
-
-**Usage:**
-```bash
-python3 scripts/backfill_join_codes.py
-```
-
-Note: Script likely unnecessary as roster upload already generates join codes, but included as safety measure for edge cases.
-
-## Security Considerations
-
-- **Credential verification:** All student credentials validated against existing account before linking
-- **Prevents impersonation:** Cannot add classes for different student identity
-- **Duplicate prevention:** Checks for existing StudentTeacher links
-- **CSRF protection:** Form includes `{{ form.hidden_tag() }}`
-- **Login required:** Route protected with `@login_required` decorator
-- **Input validation:** All form fields validated server-side
-
-## Data Integrity
-
-- **Atomic operations:** Database changes wrapped in try-except with rollback
-- **Referential integrity:** Uses existing foreign key relationships
-- **Consistent state:** Updates both TeacherBlock seat and student.block field
-- **Prevents orphans:** Creates StudentTeacher link before marking seat claimed
-- **Timestamp tracking:** Sets `claimed_at` timestamp on seat claim
-
-## User Experience
-
-**Student workflow:**
-1. Log in to student portal
-2. Click "Add New Class" in sidebar
-3. Enter join code from new teacher
-4. Verify identity with first initial, last name, DOB sum
-5. Receive confirmation message
-6. See new class block in dashboard
-
-**Benefits:**
-- No need to create separate accounts for each class
-- Single login for all classes
-- Unified transaction history and balance tracking
-- Seamless multi-teacher enrollment
-
-## Compatibility
-
-- **Multi-tenancy ready:** Uses existing `student_teachers` many-to-many architecture
-- **Backward compatible:** Works with existing claim_account flow
-- **No breaking changes:** Additive feature only
-- **Existing data safe:** Backfill script preserves existing join codes
+- [x] I have read and followed the contributing guidelines
 
 ## Files Changed
 
-```
-app/routes/student.py            | +122 lines (new route)
-forms.py                         | +11 lines (new form)
-templates/student_add_class.html | +133 lines (new template)
-templates/layout_student.html    | +4 lines (nav link)
-scripts/backfill_join_codes.py   | +130 lines (new script)
+### New Files
+
+1. **`app/cli_commands.py`** (245 lines)
+   - Flask CLI command: `flask migrate-legacy-students`
+   - Implements full migration logic with verification
+   - Handles grouping by (teacher_id, block) for join code generation
+
+2. **`scripts/migrate_legacy_students.py`** (202 lines)
+   - Standalone script version (alternative to CLI command)
+   - Same functionality, can run outside Flask context
+
+### Modified Files
+
+3. **`app/__init__.py`** (3 lines added)
+   - Registers CLI commands with Flask app factory
+   - Lines 347-349: Import and initialize CLI commands module
+
+## How to Use
+
+### Run the Migration
+
+```bash
+# Option 1: Flask CLI command (recommended)
+flask migrate-legacy-students
+
+# Option 2: Python module syntax
+python -m flask migrate-legacy-students
+
+# Option 3: Standalone script
+python3 scripts/migrate_legacy_students.py
 ```
 
-**Total:** 5 files changed, 400 insertions, 1 deletion
+### Expected Output
+
+```
+======================================================================
+LEGACY STUDENT MIGRATION
+======================================================================
+
+Step 1: Finding legacy students...
+Found 250+ legacy students to migrate
+
+Step 2: Creating StudentTeacher associations...
+Created 250+ StudentTeacher associations
+
+Step 3: Grouping students by teacher and block...
+Found 7 unique teacher-block combinations
+
+Step 4: Creating TeacherBlock entries...
+Created 250+ TeacherBlock entries
+
+Step 5: Committing changes to database...
+✓ All changes committed successfully!
+
+======================================================================
+MIGRATION SUMMARY
+======================================================================
+Legacy students migrated: 250+
+StudentTeacher associations created: 250+
+TeacherBlock entries created: 250+
+Unique teacher-block combinations: 7
+
+Join codes by teacher and block:
+  Teacher 1, Block A: ABC123
+  Teacher 1, Block B: ZA7PWB
+  Teacher 1, Block C: XYZ789
+  Teacher 1, Block D: DEF456
+  Teacher 1, Block E: GHI789
+  Teacher 1, Block F: JKL012
+  Teacher 1, Block X: MNO345
+
+✓ Migration complete! All legacy students now use the new system.
+```
+
+## Multi-Tenancy Alignment
+
+This PR advances the multi-tenancy hardening efforts outlined in `AGENTS.md`:
+
+**From AGENTS.md High-Priority Follow-Ups:**
+> Students have a **primary owner** (`teacher_id`, still nullable pending enforcement) and a **many-to-many association** via `student_teachers` for shared accounts.
+
+**What this PR does:**
+- ✅ Populates `student_teachers` associations for all legacy students
+- ✅ Maintains `teacher_id` compatibility (doesn't remove deprecated field yet)
+- ✅ Creates proper TeacherBlock roster entries for tenant isolation
+- ✅ Uses scoped query pattern (relies on existing associations)
+
+**Next steps toward full multi-tenancy:**
+- Future: Add `teacher_id NOT NULL` constraint once all students migrated
+- Future: Add unique constraint on `(student_id, admin_id)` in `student_teachers`
+- This PR is a prerequisite for those schema hardening steps
+
+## Related Issues
+
+Fixes the join code persistence issue discussed in conversation.
+
+Related to:
+- #415 - Fix unclaimed seats badge counting placeholder entries
+- #413 - Fix join code persistence for legacy classes
+- #407 - Fix join code display for teachers with pre-c3aa3a0 students
 
 ## Additional Notes
 
-### Follow-up Considerations
+### Why This Approach?
 
-1. **Testing:** Consider adding integration tests for the add_class flow
-2. **Admin notification:** Could add optional notification when student joins new class
-3. **Audit logging:** Consider logging class additions for admin visibility
-4. **Bulk operations:** Future feature could allow students to add multiple classes at once
+Instead of continuing to patch the placeholder TeacherBlock system (which generated temporary entries on page load), this migration:
 
-### Architecture Notes
+1. **Permanently fixes the root cause** by giving legacy students proper TeacherBlock entries
+2. **Aligns with multi-tenancy goals** by populating StudentTeacher associations
+3. **Enables future schema enforcement** (NOT NULL on teacher_id, unique constraints)
+4. **Minimal disruption** - data migration only, no schema changes
 
-This implementation fully embraces the multi-tenancy model documented in `docs/development/MULTI_TENANCY_TODO.md`:
-- Uses `student_teachers` as authoritative ownership model
-- Ignores deprecated `students.teacher_id` column
-- Maintains consistency with existing scoped query helpers in `app/auth.py`
+### Safety Considerations
 
-### Deployment Instructions
+- **Idempotent:** Safe to run multiple times (checks for existing records)
+- **No data deletion:** Only creates new records, never deletes
+- **Rollback friendly:** Can manually delete created records if needed
+- **Verification built-in:** Script verifies migration success automatically
 
-1. Merge PR
-2. Deploy as normal (no migrations required)
-3. **(Optional)** Run backfill script if legacy data exists:
-   ```bash
-   python3 scripts/backfill_join_codes.py
-   ```
-4. Verify by having test student add new class via join code
+### Documentation Updates Needed
 
-No downtime required, no maintenance mode needed.
+- [ ] Update `docs/development/MULTI_TENANCY_TODO.md` - mark student_teachers population as complete
+- [ ] Add runbook to `docs/operations/` for this migration procedure
+- [ ] Update teacher manual with join code persistence guarantee
+
+### Post-Merge Actions
+
+1. Run migration in staging environment first
+2. Verify join codes persist and new students can join
+3. Run migration in production
+4. Monitor for any issues with student claiming flow
+5. Update MULTI_TENANCY_TODO.md milestone status
