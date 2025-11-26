@@ -28,7 +28,6 @@ import os
 # Add parent directory to path so we can import app modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sqlalchemy import and_
 from datetime import datetime
 
 from app import create_app
@@ -81,15 +80,23 @@ def migrate_legacy_students():
         student_teacher_created = 0
 
         for student in legacy_students:
-            st = StudentTeacher(
+            # Check if StudentTeacher record already exists
+            existing_st = StudentTeacher.query.filter_by(
                 student_id=student.id,
-                admin_id=student.teacher_id,
-                created_at=datetime.utcnow()
-            )
-            db.session.add(st)
-            student_teacher_created += 1
-            print(f"  ✓ Created StudentTeacher for {student.full_name} (ID: {student.id})")
+                admin_id=student.teacher_id
+            ).first()
 
+            if not existing_st:
+                st = StudentTeacher(
+                    student_id=student.id,
+                    admin_id=student.teacher_id,
+                    created_at=datetime.utcnow()
+                )
+                db.session.add(st)
+                student_teacher_created += 1
+                print(f"  ✓ Created StudentTeacher for {student.full_name} (ID: {student.id})")
+            else:
+                print(f"  ⊙ StudentTeacher already exists for {student.full_name}, skipping")
         print(f"Created {student_teacher_created} StudentTeacher associations")
         print()
 

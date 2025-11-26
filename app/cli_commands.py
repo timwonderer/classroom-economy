@@ -3,7 +3,6 @@ Flask CLI commands for database operations and migrations.
 """
 
 import click
-from flask import current_app
 from datetime import datetime
 
 from app.extensions import db
