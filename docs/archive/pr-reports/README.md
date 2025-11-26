@@ -1,6 +1,6 @@
 # Archived PR Reports
 
-This directory contains historical pull request reports and documentation that were generated during specific development cycles. These files are kept for historical reference but are no longer actively maintained.
+This directory contains historical pull request reports and documentation that were generated during specific development cycles. These files are kept for historical reference but are no longer actively maintained. For PR template, please use the instructions found in agent.md
 
 ## Contents
 
