@@ -132,7 +132,7 @@ The repository has experienced recurring "multiple heads" errors during deployme
 
 ## PR Template
 
-Please use the following template when creating PR
+Please use the following template when creating a PR
 
 <!-- Start of Document -->
 ## Description
