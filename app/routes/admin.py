@@ -54,6 +54,11 @@ import time
 # Timezone
 PACIFIC = pytz.timezone('America/Los_Angeles')
 
+# Join code generation constants
+MAX_JOIN_CODE_RETRIES = 10  # Maximum attempts to generate a unique join code
+FALLBACK_BLOCK_PREFIX_LENGTH = 1  # Number of characters from block name in fallback code
+FALLBACK_CODE_MODULO = 10000  # Modulo for timestamp suffix (produces 4-digit number)
+
 # Create blueprint
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
