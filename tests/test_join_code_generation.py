@@ -7,7 +7,7 @@ and used when generating unique join codes for classroom blocks.
 import pyotp
 
 from app import db
-from app.models import Admin, Student, StudentTeacher
+from app.models import Admin, Student, StudentTeacher, TeacherBlock
 from hash_utils import get_random_salt, hash_username
 
 
@@ -76,6 +76,12 @@ def test_students_page_generates_join_codes_for_blocks(client):
     assert "Alice" in body
     assert "Bob" in body
     assert "Charlie" in body
+    
+    # Verify join codes are displayed on the page for each block
+    # The system generates join codes on-demand but may not persist them
+    # unless there are TeacherBlock seat records (which require student info)
+    # For this test, we're primarily verifying no NameError is raised
+    assert "Join Code:" in body or "join-code" in body.lower()
 
 
 def test_students_page_works_with_no_students(client):

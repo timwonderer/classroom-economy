@@ -3002,13 +3002,24 @@ def upload_students():
                     # Reuse existing join code
                     join_codes_by_block[block] = existing_seat.join_code
                 else:
-                    # Generate new unique join code
-                    while True:
+                    # Generate new unique join code with retry limit
+                    new_code = None
+                    for _ in range(MAX_JOIN_CODE_RETRIES):
                         new_code = generate_join_code()
                         # Ensure uniqueness across all teachers
                         if not TeacherBlock.query.filter_by(join_code=new_code).first():
                             join_codes_by_block[block] = new_code
                             break
+                    else:
+                        # If we couldn't generate a unique code after max_retries, use a timestamp-based fallback
+                        block_initial = block[:FALLBACK_BLOCK_PREFIX_LENGTH].ljust(FALLBACK_BLOCK_PREFIX_LENGTH, 'X')
+                        timestamp_suffix = int(time.time()) % FALLBACK_CODE_MODULO
+                        new_code = f"B{block_initial}{timestamp_suffix:04d}"
+                        join_codes_by_block[block] = new_code
+                        current_app.logger.warning(
+                            f"Failed to generate unique join code after {MAX_JOIN_CODE_RETRIES} attempts. "
+                            f"Using fallback code {new_code} for block {block} in roster upload"
+                        )
 
             join_code = join_codes_by_block[block]
 
