@@ -5,8 +5,11 @@ This test verifies that when a teacher has students from before the join code
 system was implemented (i.e., students exist but no TeacherBlock entries),
 the join codes generated for those blocks persist across page loads.
 
-Regression test for: "Join code for legacy classes do not persist"
+Regression test for: "Join code for legacy classes does not persist"
 """
+
+# Constants
+JOIN_CODE_LENGTH = 6  # Length of join codes (should match app.utils.join_code.generate_join_code)
 import pyotp
 
 from app import db
@@ -64,13 +67,13 @@ def _extract_join_code_from_page(html: str, block: str) -> str:
     """
     import re
     # Look for the input element with id="join-code-{block}" and extract its value
-    pattern = rf'<input[^>]*id="join-code-{block}"[^>]*value="([A-Z0-9]{{6}})"'
+    pattern = rf'<input[^>]*id="join-code-{block}"[^>]*value="([A-Z0-9]{{{JOIN_CODE_LENGTH}}})"'
     match = re.search(pattern, html, re.IGNORECASE)
     if match:
         return match.group(1)
     
     # Alternative pattern if value attribute comes before id
-    pattern = rf'<input[^>]*value="([A-Z0-9]{{6}})"[^>]*id="join-code-{block}"'
+    pattern = rf'<input[^>]*value="([A-Z0-9]{{{JOIN_CODE_LENGTH}}})"[^>]*id="join-code-{block}"'
     match = re.search(pattern, html, re.IGNORECASE)
     if match:
         return match.group(1)
@@ -104,7 +107,7 @@ def test_legacy_class_join_code_persists_across_page_loads(client):
     # Extract join code from first page load
     join_code_1 = _extract_join_code_from_page(html1, "A")
     assert join_code_1 is not None, "Join code should be displayed on the page"
-    assert len(join_code_1) == 6, f"Join code should be 6 characters, got {len(join_code_1)}"
+    assert len(join_code_1) == JOIN_CODE_LENGTH, f"Join code should be {JOIN_CODE_LENGTH} characters, got {len(join_code_1)}"
     
     # Verify TeacherBlock was created and persisted
     teacher_block = TeacherBlock.query.filter_by(teacher_id=teacher.id, block="A").first()

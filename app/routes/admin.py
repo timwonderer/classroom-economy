@@ -59,6 +59,11 @@ MAX_JOIN_CODE_RETRIES = 10  # Maximum attempts to generate a unique join code
 FALLBACK_BLOCK_PREFIX_LENGTH = 1  # Number of characters from block name in fallback code
 FALLBACK_CODE_MODULO = 10000  # Modulo for timestamp suffix (produces 4-digit number)
 
+# Placeholder values for legacy class TeacherBlock entries
+LEGACY_PLACEHOLDER_CREDENTIAL = "LEGACY0"  # Placeholder credential for legacy classes
+LEGACY_PLACEHOLDER_FIRST_NAME = "__JOIN_CODE_PLACEHOLDER__"  # Marks legacy placeholder entries
+LEGACY_PLACEHOLDER_LAST_INITIAL = "P"  # "P" for Placeholder
+
 # Create blueprint
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
@@ -588,8 +593,7 @@ def students():
                         # Create a placeholder TeacherBlock with dummy values to satisfy NOT NULL constraints
                         # This is for legacy classes that don't have TeacherBlock entries yet
                         placeholder_salt = get_random_salt()
-                        placeholder_credential = "LEGACY0"  # Placeholder credential
-                        placeholder_first_half_hash = hash_hmac(placeholder_credential.encode(), placeholder_salt)
+                        placeholder_first_half_hash = hash_hmac(LEGACY_PLACEHOLDER_CREDENTIAL.encode(), placeholder_salt)
                         
                         new_teacher_block = TeacherBlock(
                             teacher_id=current_admin,
@@ -597,8 +601,8 @@ def students():
                             join_code=new_code,
                             is_claimed=False,
                             # Placeholder values for required fields
-                            first_name="__JOIN_CODE_PLACEHOLDER__",
-                            last_initial="P",
+                            first_name=LEGACY_PLACEHOLDER_FIRST_NAME,
+                            last_initial=LEGACY_PLACEHOLDER_LAST_INITIAL,
                             last_name_hash_by_part=[],
                             dob_sum=0,
                             salt=placeholder_salt,
