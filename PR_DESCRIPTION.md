@@ -1,4 +1,4 @@
-## Description
+# Description
 
 Adds a data migration system to transition legacy students from the deprecated `teacher_id` field to the modern multi-tenancy system using `StudentTeacher` associations and proper `TeacherBlock` entries.
 
@@ -99,7 +99,7 @@ The migration:
 
 ### Modified Files
 
-3. **`app/__init__.py`** (3 lines added)
+1. **`app/__init__.py`** (3 lines added)
    - Registers CLI commands with Flask app factory
    - Lines 347-349: Import and initialize CLI commands module
 
@@ -120,12 +120,48 @@ python3 scripts/migrate_legacy_students.py
 
 ### Expected Output
 
-```
-======================================================================
+```python
+## Migration Summary
 LEGACY STUDENT MIGRATION
 ======================================================================
 
 Step 1: Finding legacy students...
+Found 250+ legacy students to migrate
+
+Step 2: Creating StudentTeacher associations...
+Created 250+ StudentTeacher associations
+
+Step 3: Grouping students by teacher and block...
+Found 7 unique teacher-block combinations
+
+Step 4: Creating TeacherBlock entries...
+Created 250+ TeacherBlock entries
+
+Step 5: Committing changes to database...
+✓ All changes committed successfully!
+
+```markdown
+Legacy students migrated: 250+
+StudentTeacher associations created: 250+
+TeacherBlock entries created: 250+
+Unique teacher-block combinations: 7
+
+Join codes by teacher and block:
+   Teacher 1, Block A: ABC123
+   Teacher 1, Block B: ZA7PWB
+   Teacher 1, Block C: XYZ789
+   Teacher 1, Block D: DEF456
+   Teacher 1, Block E: GHI789
+   Teacher 1, Block F: JKL012
+   Teacher 1, Block X: MNO345
+
+✓ Migration complete! All legacy students now use the new system.
+```
+
+======================================================================
+LEGACY STUDENT MIGRATION
+```markdown
+
 Found 250+ legacy students to migrate
 
 Step 2: Creating StudentTeacher associations...
@@ -158,6 +194,7 @@ Join codes by teacher and block:
   Teacher 1, Block X: MNO345
 
 ✓ Migration complete! All legacy students now use the new system.
+
 ```
 
 ## Multi-Tenancy Alignment
