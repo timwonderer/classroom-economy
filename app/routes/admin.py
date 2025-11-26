@@ -573,10 +573,6 @@ def students():
             else:
                 # No join code exists for this block yet - generate a new unique one
                 # Try up to 10 times to generate a unique code to prevent infinite loops
-                MAX_JOIN_CODE_RETRIES = 10
-                FALLBACK_CODE_MODULO = 10000  # Keep fallback codes within 4 digits
-                FALLBACK_BLOCK_PREFIX_LENGTH = 1  # Use first char of block name to fit 6-char format
-                
                 new_code = None
                 for _ in range(MAX_JOIN_CODE_RETRIES):
                     new_code = generate_join_code()
