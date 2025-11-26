@@ -344,6 +344,10 @@ def create_app():
     app.register_blueprint(student_bp)
     app.register_blueprint(admin_bp)
 
+    # -------------------- CLI COMMANDS --------------------
+    from app import cli_commands
+    cli_commands.init_app(app)
+
     # -------------------- SCHEDULED TASKS --------------------
     if not app.config.get("TESTING") and app.config.get("ENV") != "testing":
         from app.scheduled_tasks import init_scheduled_tasks
