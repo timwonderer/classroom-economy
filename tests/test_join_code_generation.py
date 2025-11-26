@@ -7,7 +7,7 @@ and used when generating unique join codes for classroom blocks.
 import pyotp
 
 from app import db
-from app.models import Admin, Student, StudentTeacher, TeacherBlock
+from app.models import Admin, Student, StudentTeacher
 from hash_utils import get_random_salt, hash_username
 
 
