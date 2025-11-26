@@ -160,6 +160,7 @@ Join codes by teacher and block:
 
 ======================================================================
 LEGACY STUDENT MIGRATION
+
 ```markdown
 
 Found 250+ legacy students to migrate
