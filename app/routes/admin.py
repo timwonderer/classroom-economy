@@ -560,11 +560,7 @@ def students():
     # Ensure all blocks with students have join codes (for legacy teachers with pre-c3aa3a0 classes)
     # If a block has students but no TeacherBlock records, look up or generate a join code
     # Fetch all claimed TeacherBlock records for current admin upfront
-    claimed_teacher_blocks = TeacherBlock.query.filter_by(
-        teacher_id=current_admin,
-        is_claimed=True
-    ).all()
-    claimed_tb_by_block = {tb.block: tb for tb in claimed_teacher_blocks if tb.block}
+    claimed_tb_by_block = {tb.block: tb for tb in teacher_blocks if tb.block and tb.is_claimed}
     for block in blocks:
         if block != "Unassigned" and block not in join_codes_by_block:
             # This block has students but no TeacherBlock records yet
