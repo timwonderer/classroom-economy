@@ -35,6 +35,59 @@ def health_check():
         return jsonify(error='Database error'), 500
 
 
+@main_bp.route('/health/deep')
+def health_check_deep():
+    """
+    Extended health check that validates critical system components.
+
+    Checks:
+    - Database connectivity
+    - Student table accessibility
+    - Admin table accessibility
+
+    Returns JSON with component status for detailed monitoring.
+    """
+    try:
+        checks = {}
+
+        # Check database connectivity
+        db.session.execute(text('SELECT 1'))
+        checks['database'] = 'connected'
+
+        # Check if student table is accessible
+        student_count = db.session.execute(
+            text('SELECT COUNT(*) FROM students')
+        ).scalar()
+        checks['students_table'] = 'accessible'
+        checks['student_count'] = student_count
+
+        # Check if admin table is accessible
+        admin_count = db.session.execute(
+            text('SELECT COUNT(*) FROM admins')
+        ).scalar()
+        checks['admins_table'] = 'accessible'
+        checks['admin_count'] = admin_count
+
+        # Check if hall pass table is accessible (key feature)
+        hall_pass_count = db.session.execute(
+            text('SELECT COUNT(*) FROM hall_passes')
+        ).scalar()
+        checks['hall_passes_table'] = 'accessible'
+
+        return jsonify({
+            'status': 'ok',
+            'checks': checks
+        }), 200
+
+    except SQLAlchemyError as e:
+        current_app.logger.exception('Deep health check failed')
+        return jsonify({
+            'status': 'error',
+            'error': 'Health check failed',
+            'checks': checks if 'checks' in locals() else {}
+        }), 500
+
+
 @main_bp.route('/privacy')
 def privacy():
     """Render the Privacy & Data Handling Policy page."""

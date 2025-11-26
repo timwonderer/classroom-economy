@@ -246,7 +246,8 @@ def internal_error(error):
         error_type=error_type,
         error_message=error_message,
         log_output=log_output,
-        support_email='timothy.cs.chang@gmail.com'
+        support_email='timothy.cs.chang@gmail.com',
+        status_page_url=os.getenv('STATUS_PAGE_URL')
     ), 500
 
 
@@ -361,7 +362,10 @@ def service_unavailable_error(error):
         stack_trace=None
     )
 
-    return render_template('error_503.html'), 503
+    return render_template(
+        'error_503.html',
+        status_page_url=os.getenv('STATUS_PAGE_URL')
+    ), 503
 
 
 # -------------------- ROUTES --------------------
