@@ -101,14 +101,68 @@ def debug_student_state():
         all_teachers = Admin.query.all()
         print(f"Total teachers in database: {len(all_teachers)}")
         for teacher in all_teachers:
-            print(f"  Teacher ID {teacher.id}: {teacher.first_name} {teacher.last_name}")
+            print(f"  Teacher ID {teacher.id}: {teacher.username}")
 
             # Count students by different methods
             direct = Student.query.filter_by(teacher_id=teacher.id).count()
             via_st = StudentTeacher.query.filter_by(admin_id=teacher.id).count()
+            roster_seats = TeacherBlock.query.filter_by(teacher_id=teacher.id).count()
+            claimed_seats = TeacherBlock.query.filter_by(teacher_id=teacher.id, is_claimed=True).count()
 
             print(f"    - Students via teacher_id: {direct}")
             print(f"    - Students via StudentTeacher: {via_st}")
+            print(f"    - Total TeacherBlock entries: {roster_seats}")
+            print(f"    - Claimed TeacherBlock entries: {claimed_seats}")
+        print()
+
+        # Additional analysis: Check for students with StudentTeacher but no TeacherBlock
+        print("=" * 70)
+        print("DETAILED ANALYSIS: Students with StudentTeacher but no TeacherBlock")
+        print("=" * 70)
+        print()
+
+        for teacher in all_teachers:
+            students_via_st = Student.query.join(
+                StudentTeacher, Student.id == StudentTeacher.student_id
+            ).filter(
+                StudentTeacher.admin_id == teacher.id,
+                Student.has_completed_setup == True
+            ).all()
+
+            if students_via_st:
+                print(f"Teacher ID {teacher.id} ({teacher.username}):")
+                print(f"  Total students with accounts: {len(students_via_st)}")
+
+                # Check how many have claimed TeacherBlock
+                with_tb = 0
+                without_tb = []
+                for student in students_via_st:
+                    tb = TeacherBlock.query.filter_by(
+                        teacher_id=teacher.id,
+                        student_id=student.id,
+                        is_claimed=True
+                    ).first()
+                    if tb:
+                        with_tb += 1
+                    else:
+                        without_tb.append(student)
+
+                print(f"  Students with claimed TeacherBlock: {with_tb}")
+                print(f"  Students WITHOUT claimed TeacherBlock: {len(without_tb)}")
+
+                if without_tb:
+                    print(f"  Sample students without TeacherBlock (first 10):")
+                    for s in without_tb[:10]:
+                        # Check if there's an unclaimed TeacherBlock for this student
+                        unclaimed = TeacherBlock.query.filter_by(
+                            teacher_id=teacher.id,
+                            first_name=s.first_name,
+                            last_initial=s.last_initial,
+                            is_claimed=False
+                        ).first()
+                        status = "has unclaimed seat" if unclaimed else "no seat found"
+                        print(f"    - {s.full_name} (ID: {s.id}, Block: {s.block}, {status})")
+                print()
 
 if __name__ == '__main__':
     debug_student_state()
