@@ -585,11 +585,24 @@ def students():
                     if not TeacherBlock.query.filter_by(join_code=new_code).first():
                         join_codes_by_block[block] = new_code
                         # Persist the new join code to the database to prevent race conditions
+                        # Create a placeholder TeacherBlock with dummy values to satisfy NOT NULL constraints
+                        # This is for legacy classes that don't have TeacherBlock entries yet
+                        placeholder_salt = get_random_salt()
+                        placeholder_credential = "LEGACY0"  # Placeholder credential
+                        placeholder_first_half_hash = hash_hmac(placeholder_credential.encode(), placeholder_salt)
+                        
                         new_teacher_block = TeacherBlock(
                             teacher_id=current_admin,
                             block=block,
                             join_code=new_code,
-                            is_claimed=False
+                            is_claimed=False,
+                            # Placeholder values for required fields
+                            first_name="__JOIN_CODE_PLACEHOLDER__",
+                            last_initial="P",
+                            last_name_hash_by_part=[],
+                            dob_sum=0,
+                            salt=placeholder_salt,
+                            first_half_hash=placeholder_first_half_hash,
                         )
                         db.session.add(new_teacher_block)
                         try:
