@@ -34,6 +34,7 @@ from app.utils.helpers import is_safe_url, generate_anonymous_code, render_templ
 from app.utils.constants import THEME_PROMPTS
 from app.utils.turnstile import verify_turnstile_token
 from app.utils.demo_sessions import cleanup_demo_student_data
+from app.utils.ip_handler import get_real_ip
 from hash_utils import hash_hmac, hash_username, hash_username_lookup
 from attendance import get_all_block_statuses
 
@@ -1780,7 +1781,7 @@ def login():
 
         # Verify Turnstile token
         turnstile_token = request.form.get('cf-turnstile-response')
-        if not verify_turnstile_token(turnstile_token, request.remote_addr):
+        if not verify_turnstile_token(turnstile_token, get_real_ip()):
             current_app.logger.warning(f"Turnstile verification failed for student login attempt")
             if is_json:
                 return jsonify(status="error", message="CAPTCHA verification failed. Please try again."), 403
@@ -2033,7 +2034,7 @@ def help_support():
                 steps_to_reproduce=steps_to_reproduce if steps_to_reproduce else None,
                 expected_behavior=expected_behavior if expected_behavior else None,
                 page_url=page_url if page_url else None,
-                ip_address=request.remote_addr,
+                ip_address=get_real_ip(),
                 user_agent=request.headers.get('User-Agent'),
                 _student_id=student.id,  # Hidden from sysadmin, used only for rewards
                 status='new'
