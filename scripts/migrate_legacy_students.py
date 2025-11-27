@@ -34,6 +34,7 @@ from app import create_app
 from app.extensions import db
 from app.models import Student, StudentTeacher, TeacherBlock
 from app.utils.join_code import generate_join_code
+from app.routes.admin import MAX_JOIN_CODE_RETRIES
 
 
 def migrate_legacy_students():
@@ -57,22 +58,29 @@ def migrate_legacy_students():
             Student.teacher_id.isnot(None)
         ).all()
 
-        legacy_students = []
-        for student in all_students_with_teacher_id:
-            # Check if StudentTeacher record exists
-            has_student_teacher = StudentTeacher.query.filter_by(
-                student_id=student.id,
-                admin_id=student.teacher_id
-            ).first()
+        # Batch query: get all existing StudentTeacher associations for these students
+        student_ids = [s.id for s in all_students_with_teacher_id]
+        existing_associations = set()
+        if student_ids:
+            existing_associations = set(
+                (st.student_id, st.admin_id)
+                for st in StudentTeacher.query.filter(
+                    StudentTeacher.student_id.in_(student_ids)
+                ).all()
+            )
 
-            if not has_student_teacher:
-                legacy_students.append(student)
+        # Filter to find legacy students (no StudentTeacher record for (student_id, teacher_id))
+        legacy_students = [
+            student for student in all_students_with_teacher_id
+            if (student.id, student.teacher_id) not in existing_associations
+        ]
 
         if not legacy_students:
             print("✓ No legacy students found! All students are already migrated.")
             return
 
-        print(f"Found {len(legacy_students)} legacy students to migrate")
+        student_word = "student" if len(legacy_students) == 1 else "students"
+        print(f"Found {len(legacy_students)} legacy {student_word} to migrate")
         print()
 
         # Step 2: Create StudentTeacher associations
@@ -80,11 +88,23 @@ def migrate_legacy_students():
         student_teacher_created = 0
 
         for student in legacy_students:
-            # Check if StudentTeacher record already exists
+            # Check if StudentTeacher record already exists (idempotency check)
             existing_st = StudentTeacher.query.filter_by(
                 student_id=student.id,
                 admin_id=student.teacher_id
             ).first()
+
+            if not existing_st:
+                st = StudentTeacher(
+                    student_id=student.id,
+                    admin_id=student.teacher_id,
+                    created_at=datetime.utcnow()
+                )
+                db.session.add(st)
+                student_teacher_created += 1
+                print(f"  ✓ Created StudentTeacher for {student.full_name} (ID: {student.id})")
+            else:
+                print(f"  ⊙ StudentTeacher already exists for {student.full_name}, skipping")
 
             if not existing_st:
                 st = StudentTeacher(
@@ -104,7 +124,9 @@ def migrate_legacy_students():
         print("Step 3: Grouping students by teacher and block...")
         groups = {}
         for student in legacy_students:
-            key = (student.teacher_id, student.block)
+            # Normalize block name for consistent grouping
+            normalized_block = student.block.strip().upper() if student.block else ''
+            key = (student.teacher_id, normalized_block)
             if key not in groups:
                 groups[key] = []
             groups[key].append(student)
@@ -116,41 +138,68 @@ def migrate_legacy_students():
         print("Step 4: Creating TeacherBlock entries...")
         teacher_blocks_created = 0
         join_codes_by_teacher_block = {}
+        skipped_students = []
+
+        # Preload existing join codes for all teacher-block combinations
+        teacher_ids = list(set(tid for tid, _ in groups.keys()))
+        existing_join_codes_map = {}
+        if teacher_ids:
+            existing_tbs = TeacherBlock.query.filter(
+                TeacherBlock.teacher_id.in_(teacher_ids),
+                TeacherBlock.join_code.isnot(None),
+                TeacherBlock.join_code != ''
+            ).all()
+            for tb in existing_tbs:
+                existing_join_codes_map[(tb.teacher_id, tb.block)] = tb.join_code
+
+        # Preload all existing join codes into a set for uniqueness checking
+        existing_join_code_set = set(
+            tb.join_code for tb in TeacherBlock.query.filter(
+                TeacherBlock.join_code.isnot(None)
+            ).with_entities(TeacherBlock.join_code).all()
+        )
+
+        # Preload existing TeacherBlock seats to avoid N+1 queries
+        existing_seats = set()
+        if teacher_ids:
+            seats = TeacherBlock.query.filter(
+                TeacherBlock.teacher_id.in_(teacher_ids),
+                TeacherBlock.student_id.isnot(None)
+            ).all()
+            existing_seats = set((tb.teacher_id, tb.block, tb.student_id) for tb in seats)
 
         for (teacher_id, block), students in groups.items():
             # Check if this teacher-block already has a join code
-            existing_tb = TeacherBlock.query.filter_by(
-                teacher_id=teacher_id,
-                block=block
-            ).filter(
-                TeacherBlock.join_code.isnot(None),
-                TeacherBlock.join_code != ''
-            ).first()
-
-            if existing_tb:
-                join_code = existing_tb.join_code
+            if (teacher_id, block) in existing_join_codes_map:
+                join_code = existing_join_codes_map[(teacher_id, block)]
                 print(f"  → Reusing existing join code {join_code} for teacher {teacher_id}, block {block}")
             else:
-                # Generate new unique join code
-                while True:
-                    join_code = generate_join_code()
-                    # Ensure uniqueness across all teachers
-                    if not TeacherBlock.query.filter_by(join_code=join_code).first():
+                # Generate new unique join code with bounded retries
+                # Using 10x standard retry limit for migration scenarios
+                max_attempts = MAX_JOIN_CODE_RETRIES * 10
+                join_code = None
+                for _ in range(max_attempts):
+                    candidate = generate_join_code()
+                    # Check uniqueness using preloaded set
+                    if candidate not in existing_join_code_set:
+                        join_code = candidate
+                        existing_join_code_set.add(candidate)  # Track newly generated codes
                         break
+
+                if not join_code:
+                    print(f"  ✗ Failed to generate unique join code after {max_attempts} attempts for teacher {teacher_id}, block {block}")
+                    # Mark all students in this group as skipped
+                    skipped_students.extend(students)
+                    continue
+
                 print(f"  → Generated new join code {join_code} for teacher {teacher_id}, block {block}")
 
             join_codes_by_teacher_block[(teacher_id, block)] = join_code
 
             # Create TeacherBlock entry for each student in this group
             for student in students:
-                # Check if TeacherBlock already exists for this student
-                existing_seat = TeacherBlock.query.filter_by(
-                    teacher_id=teacher_id,
-                    block=block,
-                    student_id=student.id
-                ).first()
-
-                if existing_seat:
+                # Check if TeacherBlock already exists using preloaded set
+                if (teacher_id, block, student.id) in existing_seats:
                     print(f"    ⊙ TeacherBlock already exists for {student.full_name}, skipping")
                     continue
 
@@ -187,10 +236,12 @@ def migrate_legacy_students():
             print("=" * 70)
             print("MIGRATION SUMMARY")
             print("=" * 70)
-            print(f"Legacy students migrated: {len(legacy_students)}")
+            print(f"Legacy students found: {len(legacy_students)}")
             print(f"StudentTeacher associations created: {student_teacher_created}")
             print(f"TeacherBlock entries created: {teacher_blocks_created}")
             print(f"Unique teacher-block combinations: {len(groups)}")
+            if skipped_students:
+                print(f"Students skipped due to errors: {len(skipped_students)}")
             print()
 
             if join_codes_by_teacher_block:
@@ -208,14 +259,20 @@ def migrate_legacy_students():
                 Student.teacher_id.isnot(None)
             ).all()
 
+            # Batch query: collect all (student_id, teacher_id) pairs
+            pairs = [(student.id, student.teacher_id) for student in remaining_legacy]
             still_legacy = []
-            for student in remaining_legacy:
-                has_st = StudentTeacher.query.filter_by(
-                    student_id=student.id,
-                    admin_id=student.teacher_id
-                ).first()
-                if not has_st:
-                    still_legacy.append(student)
+            if pairs:
+                # Query all StudentTeacher records matching these pairs
+                student_ids = [sid for sid, _ in pairs]
+                st_records = StudentTeacher.query.filter(
+                    StudentTeacher.student_id.in_(student_ids)
+                ).all()
+                existing_pairs = set((st.student_id, st.admin_id) for st in st_records)
+                still_legacy = [
+                    student for student in remaining_legacy
+                    if (student.id, student.teacher_id) not in existing_pairs
+                ]
 
             if still_legacy:
                 print(f"⚠ Warning: {len(still_legacy)} students still need migration")
