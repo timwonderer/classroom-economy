@@ -70,8 +70,11 @@
               {% else %}
                 Block {{ block|upper }}
               {% endif %}
-              {% set claimed_count = students_by_block[block]|length if block in students_by_block else 0 %}
-              {% set unclaimed_count = unclaimed_seats_by_block.get(block|upper, 0) %}
+              {% set all_students_in_block = students_by_block[block] if block in students_by_block else [] %}
+              {% set claimed_count = all_students_in_block|selectattr('username_hash')|list|length %}
+              {% set unclaimed_students_count = all_students_in_block|rejectattr('username_hash')|list|length %}
+              {% set unclaimed_seats_count = unclaimed_seats_by_block.get(block|upper, 0) %}
+              {% set unclaimed_count = unclaimed_seats_count + unclaimed_students_count %}
               {% set total_count = claimed_count + unclaimed_count %}
               <span class="badge bg-secondary ms-1">{{ total_count }}</span>
               {% if unclaimed_count > 0 %}
@@ -99,10 +102,13 @@
                     <span class="material-symbols-outlined me-2" style="vertical-align: middle;">key</span>
                     Join Code for Block {{ block|upper }}
                   </h6>
-                  {% set unclaimed_count = unclaimed_seats_by_block.get(block|upper, 0) %}
-                  {% if unclaimed_count > 0 %}
+                  {% set block_students_list = students_by_block[block] if block in students_by_block else [] %}
+                  {% set unclaimed_students_in_block = block_students_list|rejectattr('username_hash')|list|length %}
+                  {% set unclaimed_seats_in_block = unclaimed_seats_by_block.get(block|upper, 0) %}
+                  {% set total_unclaimed_in_block = unclaimed_seats_in_block + unclaimed_students_in_block %}
+                  {% if total_unclaimed_in_block > 0 %}
                     <span class="badge bg-warning text-dark">
-                      {{ unclaimed_count }} unclaimed seat(s)
+                      {{ total_unclaimed_in_block }} unclaimed seat(s)
                     </span>
                   {% else %}
                     <span class="badge bg-success text-white">
@@ -150,18 +156,23 @@
             </div>
             {% endif %}
 
-            <!-- Unclaimed Seats Section -->
-            {% if block != "Unassigned" and unclaimed_seats_list_by_block.get(block|upper) %}
-            {% set unclaimed_seats = unclaimed_seats_list_by_block[block|upper] %}
+            <!-- Unclaimed Seats Section - includes both TeacherBlock seats and students without username -->
+            {% set unclaimed_seats = unclaimed_seats_list_by_block.get(block|upper, []) %}
+            {% set unclaimed_students = [] %}
+            {% for student in block_students if not student.username_hash %}
+              {% set _ = unclaimed_students.append(student) %}
+            {% endfor %}
+            {% set total_unclaimed = unclaimed_seats|length + unclaimed_students|length %}
+            {% if block != "Unassigned" and total_unclaimed > 0 %}
             <div class="card border-warning mb-3">
               <div class="card-header bg-warning bg-opacity-10">
                 <h6 class="mb-0 text-dark">
                   <span class="material-symbols-outlined me-2" style="vertical-align: middle;">pending</span>
-                  Unclaimed Seats ({{ unclaimed_seats|length }})
+                  Unclaimed Seats ({{ total_unclaimed }})
                 </h6>
               </div>
               <div class="card-body">
-                <p class="text-muted mb-3">These students are in your roster but haven't claimed their accounts yet. Share the join code above with them.</p>
+                <p class="text-muted mb-3">These students are in your roster but haven't set up their username yet. Share the join code above with them.</p>
                 <div class="table-responsive">
                   <table class="table table-sm table-striped">
                     <thead class="table-light">
@@ -169,6 +180,7 @@
                         <th>Name</th>
                         <th>Added</th>
                         <th>Status</th>
+                        <th>Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -183,6 +195,27 @@
                         <td>
                           <span class="badge bg-warning text-dark">Waiting for Claim</span>
                         </td>
+                        <td>-</td>
+                      </tr>
+                      {% endfor %}
+                      {% for student in unclaimed_students %}
+                      <tr>
+                        <td>
+                          <a href="{{ url_for('admin.student_detail', student_id=student.id) }}" class="text-decoration-none">
+                            <span class="fw-bold">{{ student.first_name }} {{ student.last_initial }}.</span>
+                          </a>
+                        </td>
+                        <td>
+                          <small class="text-muted">-</small>
+                        </td>
+                        <td>
+                          <span class="badge bg-warning text-dark">Needs Username</span>
+                        </td>
+                        <td>
+                          <a href="{{ url_for('admin.student_detail', student_id=student.id) }}" class="btn btn-sm btn-outline-primary">
+                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">visibility</span>
+                          </a>
+                        </td>
                       </tr>
                       {% endfor %}
                     </tbody>
@@ -192,12 +225,16 @@
             </div>
             {% endif %}
 
-            {% if block_students %}
+            {% set claimed_students = [] %}
+            {% for student in block_students if student.username_hash %}
+              {% set _ = claimed_students.append(student) %}
+            {% endfor %}
+            {% if claimed_students %}
               <div class="card border-success mb-3">
                 <div class="card-header bg-success bg-opacity-10">
                   <h6 class="mb-0 text-success">
                     <span class="material-symbols-outlined me-2" style="vertical-align: middle;">check_circle</span>
-                    Claimed Students ({{ block_students|length }})
+                    Claimed Students ({{ claimed_students|length }})
                   </h6>
                 </div>
                 <div class="card-body">
@@ -248,7 +285,7 @@
                     </tr>
                   </thead>
                   <tbody>
-                    {% for student in block_students %}
+                    {% for student in claimed_students %}
                     <tr class="student-row" data-student-id="{{ student.id }}">
                       <td>
                         <input type="checkbox" class="form-check-input student-checkbox" value="{{ student.id }}" onchange="updateBulkToolbar('{{ block }}')">
