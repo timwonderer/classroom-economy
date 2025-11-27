@@ -85,14 +85,12 @@ def health_check_deep():
         checks['admins_table'] = 'error'
         overall_status = 'degraded'
 
-    # Check if hall pass table is accessible (may fail due to RLS/tenant context)
+    # Check if hall pass logs table is accessible (may fail due to RLS/tenant context)
     try:
         hall_pass_count = db.session.execute(
-            text('SELECT COUNT(*) FROM hall_passes')
+            text('SELECT COUNT(*) FROM hall_pass_logs')
         ).scalar()
-        checks['hall_passes_table'] = 'accessible'
-        checks['hall_pass_count'] = hall_pass_count
-        checks['hall_pass_count'] = hall_pass_count
+        checks['hall_pass_logs_table'] = 'accessible'
         checks['hall_pass_count'] = hall_pass_count
     except SQLAlchemyError as e:
         current_app.logger.warning('Hall pass logs table check failed: %s', str(e))
