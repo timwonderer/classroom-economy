@@ -44,31 +44,49 @@ def health_check_deep():
     - Database connectivity
     - Student table accessibility
     - Admin table accessibility
-    - Hall passes table accessibility
-    Returns JSON with component status for detailed monitoring.
-    """
-    try:
-        checks = {}
+    - Hall passes table accessibility (if accessible)
 
-        # Check database connectivity
+    Returns JSON with component status for detailed monitoring.
+    Individual table checks that fail are logged but don't fail the entire check.
+    """
+    checks = {}
+    overall_status = 'ok'
+
+    # Check database connectivity
+    try:
         db.session.execute(text('SELECT 1'))
         checks['database'] = 'connected'
+    except SQLAlchemyError as e:
+        current_app.logger.exception('Database connectivity check failed')
+        checks['database'] = 'error'
+        overall_status = 'degraded'
 
-        # Check if student table is accessible
+    # Check if student table is accessible
+    try:
         student_count = db.session.execute(
             text('SELECT COUNT(*) FROM students')
         ).scalar()
         checks['students_table'] = 'accessible'
         checks['student_count'] = student_count
+    except SQLAlchemyError as e:
+        current_app.logger.warning('Students table check failed: %s', str(e))
+        checks['students_table'] = 'error'
+        overall_status = 'degraded'
 
-        # Check if admin table is accessible
+    # Check if admin table is accessible
+    try:
         admin_count = db.session.execute(
             text('SELECT COUNT(*) FROM admins')
         ).scalar()
         checks['admins_table'] = 'accessible'
         checks['admin_count'] = admin_count
+    except SQLAlchemyError as e:
+        current_app.logger.warning('Admins table check failed: %s', str(e))
+        checks['admins_table'] = 'error'
+        overall_status = 'degraded'
 
-        # Check if hall pass table is accessible (key feature)
+    # Check if hall pass table is accessible (may fail due to RLS/tenant context)
+    try:
         hall_pass_count = db.session.execute(
             text('SELECT COUNT(*) FROM hall_passes')
         ).scalar()
@@ -76,17 +94,21 @@ def health_check_deep():
         checks['hall_pass_count'] = hall_pass_count
         checks['hall_pass_count'] = hall_pass_count
         checks['hall_pass_count'] = hall_pass_count
+    except SQLAlchemyError as e:
+        current_app.logger.warning('Hall pass logs table check failed: %s', str(e))
+        checks['hall_pass_logs_table'] = 'not_accessible'
+        # Don't mark as degraded - this might be expected due to RLS
 
+    # Return 200 if at least database is working, 500 if database is down
+    if checks.get('database') == 'connected':
         return jsonify({
-            'status': 'ok',
+            'status': overall_status,
             'checks': checks
         }), 200
-
-    except SQLAlchemyError as e:
-        current_app.logger.exception('Deep health check failed')
+    else:
         return jsonify({
             'status': 'error',
-            'error': 'Health check failed',
+            'error': 'Database connectivity failed',
             'checks': checks
         }), 500
 
