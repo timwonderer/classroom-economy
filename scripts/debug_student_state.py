@@ -83,11 +83,15 @@ def debug_student_state():
         print()
 
         # Students with accounts but no claimed TeacherBlock
-        no_tb = []
-        for student in students_with_accounts:
-            tb_count = TeacherBlock.query.filter_by(student_id=student.id, is_claimed=True).count()
-            if tb_count == 0:
-                no_tb.append(student)
+        # Efficiently find students with accounts but no claimed TeacherBlock (avoid N+1 queries)
+        student_ids_with_accounts = [s.id for s in students_with_accounts]
+        claimed_tb_students = set(
+            tb.student_id for tb in TeacherBlock.query.filter(
+                TeacherBlock.student_id.in_(student_ids_with_accounts),
+                TeacherBlock.is_claimed == True
+            ).all()
+        )
+        no_tb = [s for s in students_with_accounts if s.id not in claimed_tb_students]
 
         if no_tb:
             print(f"⚠ Found {len(no_tb)} students WITH accounts but NO claimed TeacherBlock:")
