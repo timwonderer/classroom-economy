@@ -90,15 +90,17 @@ def test_new_student_can_claim_in_legacy_class(client):
     # Now simulate teacher uploading a roster with a new student
     # This would create a real TeacherBlock entry (not a placeholder)
     new_salt = get_random_salt()
+    # Corrected test data: Last name Smith -> Last Initial S
+    # Admin logic uses Last Initial for hash generation
     new_seat = TeacherBlock(
         teacher_id=teacher.id,
         block="A",
         first_name="NewStudent",
-        last_initial="N",
+        last_initial="S",
         last_name_hash_by_part=[hash_hmac("smith".encode(), new_salt)],
         dob_sum=2025,
         salt=new_salt,
-        first_half_hash=hash_hmac("N2025".encode(), new_salt),
+        first_half_hash=hash_hmac("S2025".encode(), new_salt),
         join_code=join_code,  # Same join code as the legacy class
         is_claimed=False,
     )

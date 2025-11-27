@@ -107,13 +107,22 @@ def claim_account():
             flash("DOB sum must be a number.", "claim")
             return redirect(url_for('student.claim_account'))
 
-        # Find all unclaimed seats with this join code
-        unclaimed_seats = TeacherBlock.query.filter_by(
-            join_code=join_code,
-            is_claimed=False
-        ).all()
+        # Find potential seats with this join code (including claimed ones for legacy/reset cases)
+        all_seats = TeacherBlock.query.filter_by(join_code=join_code).all()
+        candidates = []
 
-        if not unclaimed_seats:
+        # Filter candidates: Unclaimed OR (Claimed but Setup Incomplete)
+        for seat in all_seats:
+            is_available = not seat.is_claimed
+            if seat.is_claimed and seat.student_id:
+                # Check linked student status if claimed
+                if seat.student and not seat.student.has_completed_setup:
+                    is_available = True
+
+            if is_available:
+                candidates.append(seat)
+
+        if not candidates:
             flash("Invalid join code or all seats already claimed. Check with your teacher.", "claim")
             return redirect(url_for('student.claim_account'))
 
@@ -121,9 +130,12 @@ def claim_account():
         from app.utils.name_utils import verify_last_name_parts
 
         matched_seat = None
-        for seat in unclaimed_seats:
-            # Check credential: CONCAT(first_initial, DOB_sum)
-            credential = f"{first_initial}{dob_sum_str}"
+        for seat in candidates:
+            # Check credential: CONCAT(LastInitial, DOB_sum)
+            # Backend logic generates hash using Last Initial, so we must derive it from Last Name input
+            # We explicitly check First Initial separately below to resolve collisions
+            derived_last_initial = last_name[0].upper() if last_name else ''
+            credential = f"{derived_last_initial}{dob_sum_str}"
             credential_matches = seat.first_half_hash == hash_hmac(credential.encode(), seat.salt)
 
             # Check last name with fuzzy matching
@@ -133,7 +145,12 @@ def claim_account():
                 seat.salt
             )
 
-            if credential_matches and last_name_matches and str(seat.dob_sum) == dob_sum_str:
+            # Check First Initial against decrypted First Name (resolves John Smith vs Jane Smith)
+            first_initial_matches = False
+            if seat.first_name and seat.first_name[0].upper() == first_initial:
+                first_initial_matches = True
+
+            if credential_matches and last_name_matches and first_initial_matches and str(seat.dob_sum) == dob_sum_str:
                 matched_seat = seat
                 break
 
@@ -367,8 +384,11 @@ def add_class():
         # Try to find a matching seat for this student
         matched_seat = None
         for seat in unclaimed_seats:
-            # Check credential: CONCAT(first_initial, DOB_sum)
-            credential = f"{first_initial}{dob_sum_str}"
+            # Check credential: CONCAT(LastInitial, DOB_sum)
+            # Backend logic generates hash using Last Initial, so we must derive it from Last Name
+            # Note: We are validating against logged-in student so we can use their known last_initial
+            credential_hash_source = student.last_initial
+            credential = f"{credential_hash_source}{dob_sum_str}"
             credential_matches = seat.first_half_hash == hash_hmac(credential.encode(), seat.salt)
 
             # Check last name with fuzzy matching
