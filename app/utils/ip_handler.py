@@ -72,7 +72,9 @@ def get_cloudflare_ips():
         _cloudflare_ips_cache_time = datetime.utcnow()
 
         return _cloudflare_ips_cache
-    except Exception:
+    except (urllib.error.URLError, TimeoutError) as e:
+        from flask import current_app
+        current_app.logger.warning(f"Failed to fetch Cloudflare IPs, using fallback. Error: {e}")
         pass  # Fall through to fallback
 
     # Use fallback if API fetch failed
