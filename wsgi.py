@@ -30,10 +30,12 @@ def get_validated_status_page_url():
     
     Validates that the URL starts with an expected domain to prevent
     potential phishing attacks if an attacker controls the environment variable.
+    
+    Currently only allows UptimeRobot status pages. To support other status
+    page providers, add their specific domain patterns to the validation.
     """
     url = os.getenv('STATUS_PAGE_URL')
-    if url and (url.startswith('https://stats.uptimerobot.com/') or 
-                url.startswith('https://status.')):
+    if url and url.startswith('https://stats.uptimerobot.com/'):
         return url
     return None
 
