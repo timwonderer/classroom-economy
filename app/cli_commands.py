@@ -14,6 +14,7 @@ from app.routes.admin import (
     FALLBACK_BLOCK_PREFIX_LENGTH,
     FALLBACK_CODE_MODULO
 )
+from hash_utils import hash_hmac
 
 
 @click.command('migrate-legacy-students')
@@ -174,6 +175,10 @@ def migrate_legacy_students_command():
                 continue
 
             # Create new TeacherBlock entry using student's existing credentials
+            # Compute first_half_hash correctly using last_initial + dob_sum
+            credential = f"{student.last_initial}{student.dob_sum or 0}"
+            first_half_hash = hash_hmac(credential.encode(), student.salt)
+
             tb = TeacherBlock(
                 teacher_id=teacher_id,
                 block=block,
@@ -182,7 +187,7 @@ def migrate_legacy_students_command():
                 last_name_hash_by_part=student.last_name_hash_by_part or [],
                 dob_sum=student.dob_sum or 0,
                 salt=student.salt,
-                first_half_hash=student.first_half_hash or '',
+                first_half_hash=first_half_hash,
                 join_code=join_code,
                 is_claimed=True,  # Mark as claimed since student already exists
                 student_id=student.id,  # Link to existing student
@@ -519,7 +524,140 @@ def fix_missing_teacher_blocks_command():
         raise click.Abort()
 
 
+# Placeholder constant for legacy entries that should be skipped
+LEGACY_PLACEHOLDER_FIRST_NAME = "__JOIN_CODE_PLACEHOLDER__"
+
+
+@click.command('repair-teacher-block-hashes')
+@click.option('--dry-run', is_flag=True, help='Preview changes without modifying the database')
+def repair_teacher_block_hashes_command(dry_run):
+    """
+    Repair TeacherBlock entries with incorrectly computed first_half_hash values.
+
+    This command:
+    1. Finds all TeacherBlock entries
+    2. Checks if first_half_hash matches the correct formula: hash_hmac(f"{last_initial}{dob_sum}".encode(), salt)
+    3. Fixes entries where the hash doesn't match
+    4. Skips placeholder entries
+
+    Use --dry-run to preview changes before applying them.
+    """
+    click.echo("=" * 70)
+    click.echo("TEACHER BLOCK HASH REPAIR")
+    click.echo("=" * 70)
+    click.echo()
+
+    if dry_run:
+        click.echo("🔍 DRY RUN MODE - No changes will be made to the database")
+        click.echo()
+
+    # Step 1: Find all TeacherBlock entries
+    click.echo("Step 1: Finding all TeacherBlock entries...")
+
+    all_teacher_blocks = TeacherBlock.query.all()
+
+    if not all_teacher_blocks:
+        click.echo("✓ No TeacherBlock entries found!")
+        return
+
+    click.echo(f"Found {len(all_teacher_blocks)} TeacherBlock entries to check")
+    click.echo()
+
+    # Step 2: Check and fix each entry
+    click.echo("Step 2: Checking and repairing hashes...")
+    click.echo()
+
+    fixed_count = 0
+    skipped_count = 0
+    error_count = 0
+    already_correct_count = 0
+
+    for tb in all_teacher_blocks:
+        # Skip placeholder entries
+        if tb.first_name == LEGACY_PLACEHOLDER_FIRST_NAME:
+            skipped_count += 1
+            if dry_run:
+                click.echo(f"  ⊙ SKIP: TeacherBlock #{tb.id} (placeholder entry)")
+            continue
+
+        # Skip entries without required fields
+        if not tb.salt or not tb.last_initial:
+            error_count += 1
+            click.echo(f"  ✗ ERROR: TeacherBlock #{tb.id} missing salt or last_initial")
+            continue
+
+        # Compute the correct hash
+        try:
+            credential = f"{tb.last_initial}{tb.dob_sum or 0}"
+            correct_hash = hash_hmac(credential.encode(), tb.salt)
+        except Exception as e:
+            error_count += 1
+            click.echo(f"  ✗ ERROR: TeacherBlock #{tb.id} - Failed to compute hash: {e}")
+            continue
+
+        # Check if hash needs to be fixed
+        if tb.first_half_hash == correct_hash:
+            already_correct_count += 1
+            continue
+
+        # Fix needed
+        fixed_count += 1
+        status_str = "claimed" if tb.is_claimed else "unclaimed"
+        click.echo(f"  → FIX: TeacherBlock #{tb.id} ({tb.first_name} {tb.last_initial}., "
+                   f"block={tb.block}, {status_str})")
+        if dry_run:
+            click.echo(f"         Current:  {tb.first_half_hash[:16]}...")
+            click.echo(f"         Correct:  {correct_hash[:16]}...")
+        else:
+            tb.first_half_hash = correct_hash
+
+    click.echo()
+
+    # Step 3: Commit changes if not dry run
+    if not dry_run and fixed_count > 0:
+        click.echo("Step 3: Committing changes to database...")
+        try:
+            db.session.commit()
+            click.echo("✓ All changes committed successfully!")
+        except Exception as e:
+            db.session.rollback()
+            click.echo(f"✗ Error during commit: {str(e)}", err=True)
+            import traceback
+            traceback.print_exc()
+            raise click.Abort()
+    elif dry_run:
+        click.echo("Step 3: Skipped (dry-run mode)")
+    else:
+        click.echo("Step 3: Skipped (no changes needed)")
+
+    click.echo()
+
+    # Summary
+    click.echo("=" * 70)
+    click.echo("REPAIR SUMMARY")
+    click.echo("=" * 70)
+    click.echo(f"Total entries checked: {len(all_teacher_blocks)}")
+    click.echo(f"Already correct:       {already_correct_count}")
+    click.echo(f"Fixed:                 {fixed_count}")
+    click.echo(f"Skipped (placeholders):{skipped_count}")
+    click.echo(f"Errors:                {error_count}")
+    click.echo()
+
+    if dry_run:
+        if fixed_count > 0:
+            click.echo("To apply these fixes, run:")
+            click.echo("  flask repair-teacher-block-hashes")
+        else:
+            click.echo("✓ All hashes are correct! No fixes needed.")
+    else:
+        if fixed_count > 0:
+            click.echo(f"✓ Repair complete! Fixed {fixed_count} entries.")
+        else:
+            click.echo("✓ All hashes were already correct! No changes made.")
+
+
 def init_app(app):
     """Register CLI commands with Flask app."""
     app.cli.add_command(migrate_legacy_students_command)
     app.cli.add_command(fix_missing_teacher_blocks_command)
+    app.cli.add_command(repair_teacher_block_hashes_command)

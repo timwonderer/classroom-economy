@@ -35,6 +35,7 @@ from app.extensions import db
 from app.models import Student, StudentTeacher, TeacherBlock
 from app.utils.join_code import generate_join_code
 from app.routes.admin import MAX_JOIN_CODE_RETRIES
+from hash_utils import hash_hmac
 
 
 def migrate_legacy_students():
@@ -193,6 +194,10 @@ def migrate_legacy_students():
                     continue
 
                 # Create new TeacherBlock entry using student's existing credentials
+                # Compute first_half_hash correctly using last_initial + dob_sum
+                credential = f"{student.last_initial}{student.dob_sum or 0}"
+                first_half_hash = hash_hmac(credential.encode(), student.salt)
+
                 tb = TeacherBlock(
                     teacher_id=teacher_id,
                     block=block,
@@ -201,7 +206,7 @@ def migrate_legacy_students():
                     last_name_hash_by_part=student.last_name_hash_by_part or [],
                     dob_sum=student.dob_sum or 0,
                     salt=student.salt,
-                    first_half_hash=student.first_half_hash or '',
+                    first_half_hash=first_half_hash,
                     join_code=join_code,
                     is_claimed=True,  # Mark as claimed since student already exists
                     student_id=student.id,  # Link to existing student

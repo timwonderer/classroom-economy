@@ -145,8 +145,11 @@ def test_migrate_single_legacy_student(client):
     assert tb.last_initial == "L"
     assert tb.dob_sum == 12
     assert tb.last_name_hash_by_part == ["hash1", "hash2"]
-    # first_half_hash should match the student's hash (which is unique per student)
-    assert tb.first_half_hash == student.first_half_hash
+    # first_half_hash should be computed correctly using last_initial + dob_sum
+    from hash_utils import hash_hmac
+    expected_credential = f"{student.last_initial}{student.dob_sum}"  # "L12"
+    expected_hash = hash_hmac(expected_credential.encode(), student.salt)
+    assert tb.first_half_hash == expected_hash
 
 
 def test_migrate_multiple_students_same_block(client):
