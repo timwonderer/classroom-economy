@@ -20,7 +20,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
 from flask import (
-    Blueprint, render_template, redirect, url_for, flash, request, session,
+    Blueprint, redirect, url_for, flash, request, session,
     jsonify, Response, send_file, current_app, abort
 )
 from sqlalchemy import desc, text, or_, func
@@ -44,7 +44,7 @@ from forms import (
 )
 
 # Import utility functions
-from app.utils.helpers import is_safe_url, format_utc_iso, generate_anonymous_code
+from app.utils.helpers import is_safe_url, format_utc_iso, generate_anonymous_code, render_template_with_fallback as render_template
 from app.utils.join_code import generate_join_code
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll

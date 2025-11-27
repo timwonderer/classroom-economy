@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-
+from flask import session
 from app import Transaction, apply_savings_interest, db
 
 
@@ -16,7 +16,9 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
     db.session.add(savings_tx)
     db.session.commit()
 
-    apply_savings_interest(test_student)
+    with client.application.test_request_context('/'):
+        session['student_id'] = test_student.id
+        apply_savings_interest(test_student)
 
     interest_tx = (
         Transaction.query.filter_by(

@@ -5,12 +5,13 @@ Contains public-facing utility routes including health checks, legal pages,
 debug endpoints, and hall pass terminals (no authentication required).
 """
 
-from flask import Blueprint, render_template, redirect, url_for, jsonify, current_app
+from flask import Blueprint, redirect, url_for, jsonify, current_app, session, request
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.extensions import db
 from app.models import Admin
+from app.utils.helpers import render_template_with_fallback as render_template, is_safe_url
 
 # Create blueprint
 main_bp = Blueprint('main', __name__)
@@ -73,6 +74,23 @@ def hall_pass_queue():
 def debug_filters():
     """List all available Jinja2 filters for debugging."""
     return jsonify(list(current_app.jinja_env.filters.keys()))
+
+
+@main_bp.route('/switch-view')
+def switch_view():
+    """Switches the view between mobile and desktop."""
+    view = request.args.get('view', 'mobile')
+    next_url = request.args.get('next', url_for('main.home'))
+
+    if view == 'desktop':
+        session['force_desktop'] = True
+    else:
+        session.pop('force_desktop', None)
+
+    if not is_safe_url(next_url):
+        return redirect(url_for('main.home'))
+
+    return redirect(next_url)
 
 
 @main_bp.route('/debug/admin-db-test')

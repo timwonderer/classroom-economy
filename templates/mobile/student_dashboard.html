@@ -1,0 +1,56 @@
+{% extends "mobile/layout_student.html" %}
+{% set page_title = "Dashboard" %}
+{% set current_page = "dashboard" %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Balance Summary -->
+    <div class="card mb-3">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Your Balances</h5>
+        </div>
+        <div class="card-body">
+            <div class="d-flex justify-content-around text-center">
+                <div>
+                    <small class="text-muted d-block">Checking</small>
+                    <h4 class="mb-0">${{ "%.2f"|format(student.checking_balance) }}</h4>
+                </div>
+                <div>
+                    <small class="text-muted d-block">Savings</small>
+                    <h4 class="mb-0">${{ "%.2f"|format(student.savings_balance) }}</h4>
+                </div>
+                <div>
+                    <small class="text-muted d-block">Total</small>
+                    <h4 class="mb-0">${{ "%.2f"|format(student.checking_balance + student.savings_balance) }}</h4>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Transactions -->
+    <div class="card">
+        <div class="card-header">
+            <h5 class="card-title mb-0">Recent Transactions</h5>
+        </div>
+        <div class="list-group list-group-flush">
+            {% if recent_transactions %}
+                {% for tx in recent_transactions %}
+                <div class="list-group-item">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">{{ tx.description }}</h6>
+                        <span class="fw-bold {% if tx.amount > 0 %}text-success{% else %}text-danger{% endif %}">
+                            {% if tx.amount > 0 %}+{% endif %}${{ "%.2f"|format(tx.amount) }}
+                        </span>
+                    </div>
+                    <small class="text-muted">{{ tx.timestamp.strftime('%b %d, %Y') }}</small>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="list-group-item text-center text-muted">
+                    No recent transactions.
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

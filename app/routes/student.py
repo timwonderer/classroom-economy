@@ -11,7 +11,7 @@ import re
 from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, session, jsonify, current_app
+from flask import Blueprint, redirect, url_for, flash, request, session, jsonify, current_app
 from sqlalchemy import or_, func, select
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -30,7 +30,7 @@ from forms import (
 )
 
 # Import utility functions
-from app.utils.helpers import is_safe_url, generate_anonymous_code
+from app.utils.helpers import is_safe_url, generate_anonymous_code, render_template_with_fallback as render_template
 from app.utils.constants import THEME_PROMPTS
 from app.utils.turnstile import verify_turnstile_token
 from app.utils.demo_sessions import cleanup_demo_student_data
