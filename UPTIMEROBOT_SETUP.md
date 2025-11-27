@@ -261,10 +261,27 @@ If you want to monitor that authentication works:
 - SSL certificate issues
 - Slow response (timeout set too low)
 
-**Fix:**
-- Check UptimeRobot IP whitelist in firewall
+**Fix - Option 1: Automated (Recommended)**
+```bash
+# Add all UptimeRobot IPs to your firewall automatically
+./scripts/add-uptimerobot-to-firewall.sh <firewall-id>
+
+# Or create/update complete firewall with Cloudflare + UptimeRobot
+./scripts/setup-firewall-complete.sh update <firewall-id>
+```
+
+**Fix - Option 2: Manual**
+- Get your firewall ID: `doctl compute firewall list`
+- Add each UptimeRobot IP from `scripts/firewall-ips.json`
+- Or follow the instructions in `docs/operations/DIGITALOCEAN_CLOUDFLARE_SETUP.md`
 - Increase timeout to 30 seconds
 - Verify SSL certificate is valid
+
+**Verify fix:**
+```bash
+# Check if UptimeRobot IPs are allowed
+doctl compute firewall get <firewall-id> | grep -E "46.137|52.62|54.79"
+```
 
 ### Health check fails with 500 error
 

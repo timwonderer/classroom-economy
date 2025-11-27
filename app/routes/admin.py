@@ -46,6 +46,7 @@ from forms import (
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso, generate_anonymous_code, render_template_with_fallback as render_template
 from app.utils.join_code import generate_join_code
+from app.utils.ip_handler import get_real_ip
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
@@ -3931,7 +3932,7 @@ def help_support():
                 steps_to_reproduce=steps_to_reproduce if steps_to_reproduce else None,
                 expected_behavior=expected_behavior if expected_behavior else None,
                 page_url=page_url if page_url else None,
-                ip_address=request.remote_addr,
+                ip_address=get_real_ip(),
                 user_agent=request.headers.get('User-Agent'),
                 status='new'
             )

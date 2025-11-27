@@ -4,6 +4,37 @@ This directory contains utility scripts for development, operations, and mainten
 
 ## Operational Scripts
 
+### Firewall Management
+
+#### `setup-firewall-complete.sh`
+Automated DigitalOcean firewall setup with Cloudflare and UptimeRobot IP ranges. Creates or updates firewall rules to allow traffic only from Cloudflare's proxy and UptimeRobot monitoring.
+
+**Usage:**
+```bash
+# Create new firewall
+./scripts/setup-firewall-complete.sh create <droplet-id> "<your-ssh-ip>"
+
+# Update existing firewall
+./scripts/setup-firewall-complete.sh update <firewall-id>
+```
+
+**Prerequisites:** `doctl` and `jq` installed and authenticated
+
+#### `add-uptimerobot-to-firewall.sh`
+Adds only UptimeRobot monitoring IPs to an existing firewall. Use this if you already have Cloudflare configured.
+
+**Usage:**
+```bash
+./scripts/add-uptimerobot-to-firewall.sh <firewall-id>
+```
+
+#### `firewall-ips.json`
+Reference file containing all Cloudflare and UptimeRobot IP ranges in JSON format. Use for manual setup or custom automation.
+
+**Documentation:** [DigitalOcean & Cloudflare Setup Guide](../docs/operations/DIGITALOCEAN_CLOUDFLARE_SETUP.md)
+
+---
+
 ### `cleanup_duplicates_flask.py`
 Identifies and safely removes duplicate student records while preserving all related data (transactions, attendance, hall passes, etc.).
 
