@@ -1,11 +1,10 @@
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from app import Transaction, apply_savings_interest, db
 
 
 def test_apply_savings_interest_with_naive_datetimes(client, test_student):
-    from unittest.mock import patch
-
     past_date = datetime.utcnow() - timedelta(days=31)
     savings_tx = Transaction(
         student_id=test_student.id,
