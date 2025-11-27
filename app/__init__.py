@@ -322,9 +322,10 @@ def create_app():
             from app.utils.ip_handler import validate_cloudflare_request
 
             if not validate_cloudflare_request():
+                real_ip = get_real_ip(request)
                 app.logger.warning(
                     f"Request not from Cloudflare IP: {request.remote_addr} "
-                    f"(path: {request.path}, method: {request.method})"
+                    f"(real_ip: {real_ip}, path: {request.path}, method: {request.method})"
                 )
 
         return None
