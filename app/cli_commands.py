@@ -3,12 +3,17 @@ Flask CLI commands for database operations and migrations.
 """
 
 import click
+import time
 from datetime import datetime
 
 from app.extensions import db
 from app.models import Student, StudentTeacher, TeacherBlock
 from app.utils.join_code import generate_join_code
-from app.routes.admin import MAX_JOIN_CODE_RETRIES
+from app.routes.admin import (
+    MAX_JOIN_CODE_RETRIES,
+    FALLBACK_BLOCK_PREFIX_LENGTH,
+    FALLBACK_CODE_MODULO
+)
 
 
 @click.command('migrate-legacy-students')
@@ -372,10 +377,9 @@ def fix_missing_teacher_blocks_command():
             join_code = existing_tb.join_code
             click.echo(f"  → Reusing existing join code {join_code} for teacher {teacher_id}, block {block}")
         else:
-            # Generate new unique join code
-            max_attempts = 100
+            # Generate new unique join code with bounded retries
             join_code = None
-            for _ in range(max_attempts):
+            for _ in range(MAX_JOIN_CODE_RETRIES):
                 candidate = generate_join_code()
                 # Ensure uniqueness across all teachers
                 if not TeacherBlock.query.filter_by(join_code=candidate).first():
@@ -383,41 +387,48 @@ def fix_missing_teacher_blocks_command():
                     break
 
             if not join_code:
-                click.echo(f"  ✗ Failed to generate unique join code after {max_attempts} attempts", err=True)
-                continue
-
-            click.echo(f"  → Generated new join code {join_code} for teacher {teacher_id}, block {block}")
+                # Fallback to timestamp-based code if unable to generate unique code
+                # Format: B + block_initial + timestamp_suffix (e.g., "BA0123" for block "A")
+                block_initial = block[:FALLBACK_BLOCK_PREFIX_LENGTH].ljust(FALLBACK_BLOCK_PREFIX_LENGTH, 'X')
+                timestamp_suffix = int(time.time()) % FALLBACK_CODE_MODULO
+                join_code = f"B{block_initial}{timestamp_suffix:04d}"
+                click.echo(
+                    f"  ⚠ Failed to generate unique join code after {MAX_JOIN_CODE_RETRIES} attempts. "
+                    f"Using fallback code {join_code} for teacher {teacher_id}, block {block}"
+                )
+            else:
+                click.echo(f"  → Generated new join code {join_code} for teacher {teacher_id}, block {block}")
 
         join_codes_by_teacher_block[(teacher_id, block)] = join_code
 
         # Create TeacherBlock entry for each student in this group
-        for student, teacher_id, block in associations:
+        for assoc_student, assoc_teacher_id, assoc_block in associations:
             # Verify student has required fields
-            if not student.salt or not student.first_half_hash:
-                click.echo(f"    ⚠ Skipping {student.full_name} - missing salt or hash fields")
+            if not assoc_student.salt or not assoc_student.first_half_hash:
+                click.echo(f"    ⚠ Skipping {assoc_student.full_name} - missing salt or hash fields")
                 continue
 
             # Create claimed TeacherBlock entry
             tb = TeacherBlock(
-                teacher_id=teacher_id,
-                block=block,
-        # Fetch all claimed TeacherBlocks for affected students in one query
-        student_ids = [s.id for s in students_needing_fix]
-        claimed_tbs = set(
-            tb.student_id for tb in TeacherBlock.query.filter(
-                TeacherBlock.student_id.in_(student_ids),
-                TeacherBlock.is_claimed == True
-            ).all()
-        )
-
-        students_still_missing = [
-            s for s in students_needing_fix 
-            if s.id not in claimed_tbs
-        ]
+                teacher_id=assoc_teacher_id,
+                block=assoc_block,
+                first_name=assoc_student.first_name,
+                last_initial=assoc_student.last_initial,
+                last_name_hash_by_part=assoc_student.last_name_hash_by_part or [],
+                dob_sum=assoc_student.dob_sum or 0,
+                salt=assoc_student.salt,
+                first_half_hash=assoc_student.first_half_hash,
+                join_code=join_code,
+                is_claimed=True,  # Mark as claimed since student already has account
+                student_id=assoc_student.id,  # Link to existing student
+                claimed_at=datetime.utcnow()
             )
             db.session.add(tb)
             teacher_blocks_created += 1
-            click.echo(f"    ✓ Created TeacherBlock for {student.full_name} (teacher {teacher_id}, block {block})")
+            click.echo(
+                f"    ✓ Created TeacherBlock for {assoc_student.full_name} "
+                f"(teacher {assoc_teacher_id}, block {assoc_block})"
+            )
 
     click.echo(f"Created {teacher_blocks_created} TeacherBlock entries")
     click.echo()
@@ -448,17 +459,19 @@ def fix_missing_teacher_blocks_command():
         click.echo("✓ Fix complete! Teachers should now be able to see their rosters.")
         click.echo()
 
-        # Verification
+        # Verification - use batch query to avoid N+1 queries
         click.echo("Verifying fix...")
-        students_still_missing = []
-        for student in students_needing_fix:
-            claimed_tb = TeacherBlock.query.filter_by(
-                student_id=student.id,
-                is_claimed=True
-            ).first()
-
-            if not claimed_tb:
-                students_still_missing.append(student)
+        student_ids = [s.id for s in students_needing_fix]
+        claimed_student_ids = set(
+            tb.student_id for tb in TeacherBlock.query.filter(
+                TeacherBlock.student_id.in_(student_ids),
+                TeacherBlock.is_claimed.is_(True)
+            ).all()
+        )
+        students_still_missing = [
+            s for s in students_needing_fix
+            if s.id not in claimed_student_ids
+        ]
 
         if students_still_missing:
             click.echo(f"⚠ Warning: {len(students_still_missing)} students still missing TeacherBlock:")
