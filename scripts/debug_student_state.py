@@ -136,18 +136,17 @@ def debug_student_state():
                 print(f"  Total students with accounts: {len(students_via_st)}")
 
                 # Check how many have claimed TeacherBlock
-                with_tb = 0
-                without_tb = []
-                for student in students_via_st:
-                    tb = TeacherBlock.query.filter_by(
-                        teacher_id=teacher.id,
-                        student_id=student.id,
-                        is_claimed=True
-                    ).first()
-                    if tb:
-                        with_tb += 1
-                    else:
-                        without_tb.append(student)
+                # Bulk fetch all claimed TeacherBlocks for these students and this teacher
+                student_ids = [s.id for s in students_via_st]
+                claimed_tbs = set(
+                    tb.student_id for tb in TeacherBlock.query.filter(
+                        TeacherBlock.teacher_id == teacher.id,
+                        TeacherBlock.student_id.in_(student_ids),
+                        TeacherBlock.is_claimed == True
+                    ).all()
+                )
+                with_tb = len(claimed_tbs)
+                without_tb = [s for s in students_via_st if s.id not in claimed_tbs]
 
                 print(f"  Students with claimed TeacherBlock: {with_tb}")
                 print(f"  Students WITHOUT claimed TeacherBlock: {len(without_tb)}")
