@@ -1,0 +1,130 @@
+{% extends "mobile/layout_admin.html" %}
+{% set page_title = "Approvals" %}
+{% set current_page = "attendance" %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Filters -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-2">
+                <div class="col-6">
+                    <label for="filterPeriod" class="form-label">Period</label>
+                    <select class="form-select form-select-sm" id="filterPeriod">
+                        <option value="">All</option>
+                        {% for period in periods %}
+                        <option value="{{ period }}">{{ period }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-6">
+                    <label for="filterStatus" class="form-label">Status</label>
+                    <select class="form-select form-select-sm" id="filterStatus">
+                        <option value="">All</option>
+                        <option value="active">Tap In</option>
+                        <option value="inactive">Tap Out</option>
+                    </select>
+                </div>
+            </div>
+            <button class="btn btn-primary btn-sm w-100 mt-2" onclick="loadAttendanceHistory()">Apply Filters</button>
+        </div>
+    </div>
+
+    <!-- Attendance List -->
+    <div id="attendanceList">
+        <!-- Data will be populated by JavaScript -->
+    </div>
+
+    <!-- Pagination -->
+    <nav>
+        <ul class="pagination pagination-sm justify-content-center" id="paginationControls">
+            <!-- Pagination buttons will be populated by JavaScript -->
+        </ul>
+    </nav>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+let currentPage = 1;
+const pageSize = 20;
+
+function escapeHtml(text) {
+    if (text == null) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function formatTimestamp(utcString) {
+    if (!utcString) return '—';
+    const date = new Date(utcString);
+    return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true });
+}
+
+async function loadAttendanceHistory(page = 1) {
+    currentPage = page;
+    const list = document.getElementById('attendanceList');
+    list.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm" role="status"></div></div>';
+
+    const params = new URLSearchParams({ page: page, page_size: pageSize });
+    const period = document.getElementById('filterPeriod').value;
+    const status = document.getElementById('filterStatus').value;
+    if (period) params.append('period', period);
+    if (status) params.append('status', status);
+
+    try {
+        const response = await fetch(`/api/attendance/history?${params.toString()}`);
+        const data = await response.json();
+        if (data.status === 'success') {
+            renderList(data.records);
+            renderPagination(data.total_pages);
+        } else {
+            list.innerHTML = '<div class="alert alert-danger">Failed to load records.</div>';
+        }
+    } catch (error) {
+        list.innerHTML = '<div class="alert alert-danger">An error occurred.</div>';
+    }
+}
+
+function renderList(records) {
+    const list = document.getElementById('attendanceList');
+    if (records.length === 0) {
+        list.innerHTML = '<div class="alert alert-info text-center">No records found.</div>';
+        return;
+    }
+    list.innerHTML = `
+        <div class="list-group">
+            ${records.map(record => `
+                <div class="list-group-item">
+                    <div class="d-flex w-100 justify-content-between">
+                        <h6 class="mb-1">${escapeHtml(record.student_name)}</h6>
+                        <small>${escapeHtml(record.period)}</small>
+                    </div>
+                    <p class="mb-1">
+                        <span class="badge bg-${record.status === 'active' ? 'success' : 'danger'}">
+                            ${record.status === 'active' ? 'Tap In' : 'Tap Out'}
+                        </span>
+                    </p>
+                    <small class="text-muted">${formatTimestamp(record.timestamp)}</small>
+                </div>
+            `).join('')}
+        </div>
+    `;
+}
+
+function renderPagination(totalPages) {
+    const controls = document.getElementById('paginationControls');
+    let html = '';
+    if (currentPage > 1) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="loadAttendanceHistory(${currentPage - 1}); return false;">Previous</a></li>`;
+    }
+    if (currentPage < totalPages) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="loadAttendanceHistory(${currentPage + 1}); return false;">Next</a></li>`;
+    }
+    controls.innerHTML = html;
+}
+
+document.addEventListener('DOMContentLoaded', () => loadAttendanceHistory(1));
+</script>
+{% endblock %}

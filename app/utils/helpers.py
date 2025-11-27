@@ -11,10 +11,30 @@ from datetime import timezone
 from urllib.parse import urlparse, urljoin
 import hashlib
 import hmac
-from flask import request, current_app
+from flask import request, current_app, session, render_template
+from jinja2 import TemplateNotFound
 from markupsafe import Markup
 import markdown
 import bleach
+
+from .device import is_mobile
+
+
+def render_template_with_fallback(template_name, **context):
+    """
+    Renders a template, falling back to a mobile version if the user is on a mobile device.
+    """
+    if session.get('force_desktop'):
+        return render_template(template_name, **context)
+
+    if is_mobile() and not session.get('force_desktop'):
+        try:
+            mobile_template_name = f"mobile/{template_name}"
+            return render_template(mobile_template_name, **context)
+        except TemplateNotFound:
+            pass  # Fall back to the desktop version
+
+    return render_template(template_name, **context)
 
 
 def format_utc_iso(dt):
