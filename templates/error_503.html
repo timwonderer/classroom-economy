@@ -257,6 +257,11 @@
             <div class="actions">
                 <a href="javascript:window.location.reload()" class="btn-primary-custom">Try Again</a>
                 <a href="/" class="btn-secondary-custom">Go to Home</a>
+                {% if status_page_url %}
+                <a href="{{ status_page_url }}" target="_blank" rel="noopener noreferrer" class="btn-primary-custom" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                    📊 Check System Status
+                </a>
+                {% endif %}
                 <a href="/student/help-support" class="btn-primary-custom" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
                     🐛 Report This Issue
                 </a>
@@ -270,6 +275,10 @@
                 <p class="text-muted" style="font-size: 0.9rem;">
                     If this persists, contact support at
                     <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a>
+                    {% if status_page_url %}
+                    <br>
+                    Check our <a href="{{ status_page_url }}" target="_blank" rel="noopener noreferrer">system status page</a> for real-time updates.
+                    {% endif %}
                 </p>
             </div>
         </div>

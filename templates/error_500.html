@@ -220,6 +220,11 @@
                 <a href="mailto:{{ support_email }}?subject=Error Report - ID {{ error_id }}&body=Error ID: {{ error_id }}%0D%0AError Type: {{ error_type }}%0D%0AError Message: {{ error_message }}%0D%0A%0D%0ALog Output:%0D%0A{{ log_output | urlencode }}"
                    class="btn-primary-custom">Email Support</a>
                 {% endif %}
+                {% if status_page_url %}
+                <a href="{{ status_page_url }}" target="_blank" rel="noopener noreferrer" class="btn-primary-custom" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                    📊 Check System Status
+                </a>
+                {% endif %}
             </div>
 
             <div class="mt-4">
@@ -227,6 +232,10 @@
                     If this problem persists, please contact support at
                     <a href="mailto:{{ support_email }}">{{ support_email }}</a>
                     and include the Error ID above.
+                    {% if status_page_url %}
+                    <br>
+                    You can also check our <a href="{{ status_page_url }}" target="_blank" rel="noopener noreferrer">system status page</a> for real-time updates.
+                    {% endif %}
                 </p>
             </div>
         </div>
