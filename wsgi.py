@@ -24,6 +24,20 @@ def maintenance_mode_enabled():
     return os.getenv("MAINTENANCE_MODE", "").lower() in {"1", "true", "yes", "on"}
 
 
+def get_validated_status_page_url():
+    """
+    Return the STATUS_PAGE_URL if it's valid, otherwise None.
+    
+    Validates that the URL starts with an expected domain to prevent
+    potential phishing attacks if an attacker controls the environment variable.
+    """
+    url = os.getenv('STATUS_PAGE_URL')
+    if url and (url.startswith('https://stats.uptimerobot.com/') or 
+                url.startswith('https://status.')):
+        return url
+    return None
+
+
 # -------------------- BACKWARD COMPATIBILITY IMPORTS --------------------
 # Models (Stage 2)
 from app.models import (
@@ -247,7 +261,7 @@ def internal_error(error):
         error_message=error_message,
         log_output=log_output,
         support_email='timothy.cs.chang@gmail.com',
-        status_page_url=os.getenv('STATUS_PAGE_URL')
+        status_page_url=get_validated_status_page_url()
     ), 500
 
 
@@ -364,7 +378,7 @@ def service_unavailable_error(error):
 
     return render_template(
         'error_503.html',
-        status_page_url=os.getenv('STATUS_PAGE_URL')
+        status_page_url=get_validated_status_page_url()
     ), 503
 
 
