@@ -312,9 +312,32 @@ def fix_missing_teacher_blocks_command():
 
     associations_to_create = []  # (student, teacher_id, block)
 
+    # Batch query: get all StudentTeacher records for students needing fix
+    student_ids_needing_fix = [s.id for s in students_needing_fix]
+    all_student_teachers = StudentTeacher.query.filter(
+        StudentTeacher.student_id.in_(student_ids_needing_fix)
+    ).all() if student_ids_needing_fix else []
+
+    # Build lookup: student_id -> list of StudentTeacher records
+    student_teacher_map = {}
+    for st in all_student_teachers:
+        if st.student_id not in student_teacher_map:
+            student_teacher_map[st.student_id] = []
+        student_teacher_map[st.student_id].append(st)
+
+    # Batch query: get all existing TeacherBlock records for these students
+    existing_teacher_blocks = TeacherBlock.query.filter(
+        TeacherBlock.student_id.in_(student_ids_needing_fix)
+    ).all() if student_ids_needing_fix else []
+
+    # Build lookup: (teacher_id, block, student_id) -> TeacherBlock
+    existing_tb_set = set(
+        (tb.teacher_id, tb.block, tb.student_id) for tb in existing_teacher_blocks
+    )
+
     for student in students_needing_fix:
-        # Get all teachers this student is linked to
-        student_teachers = StudentTeacher.query.filter_by(student_id=student.id).all()
+        # Get all teachers this student is linked to from preloaded map
+        student_teachers = student_teacher_map.get(student.id, [])
 
         if not student_teachers:
             click.echo(f"⚠ Warning: Student {student.full_name} (ID: {student.id}) has no StudentTeacher associations")
@@ -329,14 +352,8 @@ def fix_missing_teacher_blocks_command():
             # In a multi-period scenario, you might need more sophisticated logic
             block = student_blocks[0] if student_blocks else 'A'
 
-            # Check if TeacherBlock already exists for this combination
-            existing_tb = TeacherBlock.query.filter_by(
-                teacher_id=st.admin_id,
-                block=block,
-                student_id=student.id
-            ).first()
-
-            if not existing_tb:
+            # Check if TeacherBlock already exists using preloaded set
+            if (st.admin_id, block, student.id) not in existing_tb_set:
                 associations_to_create.append((student, st.admin_id, block))
 
     click.echo(f"Need to create {len(associations_to_create)} TeacherBlock entries")
@@ -362,27 +379,39 @@ def fix_missing_teacher_blocks_command():
     teacher_blocks_created = 0
     join_codes_by_teacher_block = {}
 
-    for (teacher_id, block), associations in groups.items():
-        # Check if this teacher-block already has a join code
-        existing_tb = TeacherBlock.query.filter_by(
-            teacher_id=teacher_id,
-            block=block
-        ).filter(
+    # Preload existing join codes for all teacher-block combinations (avoid N+1)
+    teacher_ids_in_groups = list(set(tid for tid, _ in groups.keys()))
+    existing_join_codes_map = {}
+    if teacher_ids_in_groups:
+        existing_tbs_with_codes = TeacherBlock.query.filter(
+            TeacherBlock.teacher_id.in_(teacher_ids_in_groups),
             TeacherBlock.join_code.isnot(None),
             TeacherBlock.join_code != ''
-        ).first()
+        ).all()
+        for tb in existing_tbs_with_codes:
+            existing_join_codes_map[(tb.teacher_id, tb.block)] = tb.join_code
 
-        if existing_tb:
-            join_code = existing_tb.join_code
+    # Preload all existing join codes into a set for uniqueness checking (avoid N+1)
+    existing_join_code_set = set(
+        tb.join_code for tb in TeacherBlock.query.filter(
+            TeacherBlock.join_code.isnot(None)
+        ).with_entities(TeacherBlock.join_code).all()
+    )
+
+    for (teacher_id, block), associations in groups.items():
+        # Check if this teacher-block already has a join code (using preloaded map)
+        if (teacher_id, block) in existing_join_codes_map:
+            join_code = existing_join_codes_map[(teacher_id, block)]
             click.echo(f"  → Reusing existing join code {join_code} for teacher {teacher_id}, block {block}")
         else:
             # Generate new unique join code with bounded retries
             join_code = None
             for _ in range(MAX_JOIN_CODE_RETRIES):
                 candidate = generate_join_code()
-                # Ensure uniqueness across all teachers
-                if not TeacherBlock.query.filter_by(join_code=candidate).first():
+                # Check uniqueness using preloaded set
+                if candidate not in existing_join_code_set:
                     join_code = candidate
+                    existing_join_code_set.add(candidate)  # Track newly generated codes
                     break
 
             if not join_code:
