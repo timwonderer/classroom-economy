@@ -382,7 +382,6 @@ def fix_missing_teacher_blocks_command():
     # Preload existing join codes for all teacher-block combinations to avoid N+1 queries
     teacher_ids = list(set(tid for tid, _ in groups.keys()))
     existing_join_codes_map = {}
-    existing_join_code_set = set()
     if teacher_ids:
         existing_tbs = TeacherBlock.query.filter(
             TeacherBlock.teacher_id.in_(teacher_ids),
@@ -393,6 +392,8 @@ def fix_missing_teacher_blocks_command():
             existing_join_codes_map[(tb.teacher_id, tb.block)] = tb.join_code
 
     # Preload all existing join codes into a set for uniqueness checking
+    # Note: We fetch all join codes (not just for these teachers) because new join codes
+    # must be globally unique across all teachers
     existing_join_code_set = set(
         tb.join_code for tb in TeacherBlock.query.filter(
             TeacherBlock.join_code.isnot(None)
