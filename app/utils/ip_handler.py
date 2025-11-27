@@ -156,10 +156,14 @@ def get_real_ip():
 
     # Fallback to X-Forwarded-For (takes the leftmost/client IP)
     forwarded_for = request.headers.get('X-Forwarded-For')
-    if forwarded_for:
+    if forwarded_for and validate_cloudflare_request():
         # X-Forwarded-For can be: "client, proxy1, proxy2"
         # We want the leftmost (original client)
         return forwarded_for.split(',')[0].strip()
+    elif forwarded_for:
+        # Security: X-Forwarded-For present but not trusted (not from Cloudflare)
+        # Optionally log a warning here if desired
+        pass
 
     # Final fallback to direct connection IP
     return request.remote_addr
