@@ -117,7 +117,7 @@ After running the fix, you can verify it worked by:
 ## Files Modified
 
 - `app/cli_commands.py`: Added `fix-missing-teacher-blocks` command and registered it with Flask
-- `scripts/fix_missing_teacher_blocks.py`: Standalone script (not used - CLI command preferred)
+- `scripts/debug_student_state.py`: Debug script to verify the current state and help diagnose issues
 
 ## Commit
 
