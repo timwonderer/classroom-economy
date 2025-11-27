@@ -26,33 +26,15 @@ NC='\033[0m' # No Color
 
 # UptimeRobot IPv4 addresses (as of 2024)
 # Source: https://uptimerobot.com/help/locations/
-UPTIMEROBOT_IPS=(
-    "46.137.190.132/32"
-    "52.62.152.112/32"
-    "54.79.28.129/32"
-    "54.94.157.178/32"
-    "63.250.52.82/32"
-    "65.9.141.19/32"
-    "69.162.124.224/28"
-    "72.46.130.18/32"
-    "74.86.158.106/32"
-    "74.86.179.130/32"
-    "74.86.179.131/32"
-    "85.195.116.134/32"
-    "104.143.17.218/32"
-    "104.143.18.2/32"
-    "104.143.18.242/32"
-    "104.143.22.50/32"
-    "104.143.35.210/32"
-    "104.143.38.130/32"
-    "139.59.173.249/32"
-    "159.203.30.41/32"
-    "159.65.154.161/32"
-    "167.99.209.234/32"
-    "178.62.52.237/32"
-    "188.226.183.141/32"
-    "216.144.250.26/32"
-)
+# UptimeRobot IPv4 addresses sourced from firewall-ips.json
+# Source: https://uptimerobot.com/help/locations/
+if ! command -v jq &> /dev/null; then
+    echo -e "${RED}Error: jq is not installed. It's required to read IP addresses from firewall-ips.json.${NC}"
+    echo "Install: sudo apt-get install jq (or brew install jq on macOS)"
+    exit 1
+fi
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+UPTIMEROBOT_IPS=($(jq -r '.uptimerobot.ipv4[]' "$SCRIPT_DIR/firewall-ips.json"))
 
 # Check if firewall ID is provided
 if [ -z "$1" ]; then
