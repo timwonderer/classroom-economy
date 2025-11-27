@@ -76,7 +76,18 @@ HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
 if [ "$HTTP_CODE" = "200" ]; then
     echo -e "${GREEN}✓ PASSED${NC} - /health is publicly accessible (no auth required)"
 else
-    echo -e "${RED}✗ FAILED${NC} - Endpoint may require authentication"
+    echo -e "${RED}✗ FAILED${NC} - /health endpoint may require authentication"
+    exit 1
+fi
+
+# Test /health/deep with explicit no-credentials
+RESPONSE=$(curl -s -w "\n%{http_code}" -H "Cookie: " "${BASE_URL}/health/deep")
+HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
+
+if [ "$HTTP_CODE" = "200" ]; then
+    echo -e "${GREEN}✓ PASSED${NC} - /health/deep is publicly accessible (no auth required)"
+else
+    echo -e "${RED}✗ FAILED${NC} - /health/deep endpoint may require authentication"
     exit 1
 fi
 echo ""
