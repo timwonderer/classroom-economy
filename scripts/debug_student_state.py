@@ -64,12 +64,14 @@ def debug_student_state():
         print()
 
         # Students with accounts but no StudentTeacher
-        problematic = []
-        for student in students_with_accounts:
-            st_count = StudentTeacher.query.filter_by(student_id=student.id).count()
-            if st_count == 0:
-                problematic.append(student)
-
+        # Efficiently find students with accounts but no StudentTeacher association
+        student_ids_with_accounts = [s.id for s in students_with_accounts]
+        students_with_st = set(
+            st.student_id for st in StudentTeacher.query.filter(
+                StudentTeacher.student_id.in_(student_ids_with_accounts)
+            ).all()
+        )
+        problematic = [s for s in students_with_accounts if s.id not in students_with_st]
         if problematic:
             print(f"⚠ Found {len(problematic)} students WITH accounts but NO StudentTeacher associations:")
             for s in problematic[:10]:  # Show first 10
