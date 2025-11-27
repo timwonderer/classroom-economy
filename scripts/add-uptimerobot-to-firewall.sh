@@ -24,8 +24,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# UptimeRobot IPv4 addresses sourced from firewall-ips.json
-# Source: https://uptimerobot.com/help/locations/
 if ! command -v jq &> /dev/null; then
     echo -e "${RED}Error: jq is not installed. It's required to read IP addresses from firewall-ips.json.${NC}"
     echo "Install: sudo apt-get install jq (or brew install jq on macOS)"
