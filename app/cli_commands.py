@@ -401,19 +401,16 @@ def fix_missing_teacher_blocks_command():
             tb = TeacherBlock(
                 teacher_id=teacher_id,
                 block=block,
-        # Fetch all claimed TeacherBlocks for affected students in one query
-        student_ids = [s.id for s in students_needing_fix]
-        claimed_tbs = set(
-            tb.student_id for tb in TeacherBlock.query.filter(
-                TeacherBlock.student_id.in_(student_ids),
-                TeacherBlock.is_claimed == True
-            ).all()
-        )
-
-        students_still_missing = [
-            s for s in students_needing_fix 
-            if s.id not in claimed_tbs
-        ]
+                first_name=student.first_name,
+                last_initial=student.last_initial,
+                last_name_hash_by_part=student.last_name_hash_by_part or [],
+                dob_sum=student.dob_sum or 0,
+                salt=student.salt,
+                first_half_hash=student.first_half_hash,
+                join_code=join_code,
+                is_claimed=True,  # Mark as claimed since student already has account
+                student_id=student.id,  # Link to existing student
+                claimed_at=datetime.utcnow()
             )
             db.session.add(tb)
             teacher_blocks_created += 1
