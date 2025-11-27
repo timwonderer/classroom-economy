@@ -816,8 +816,18 @@ def edit_student():
             if existing_block_tb:
                 join_code = existing_block_tb.join_code
             else:
-                # Generate new join code if none exists for this block
-                join_code = generate_join_code()
+                # Generate a unique join code with bounded retries and fallback
+                join_code = None
+                for _ in range(MAX_JOIN_CODE_RETRIES):
+                    candidate = generate_join_code()
+                    if not TeacherBlock.query.filter_by(join_code=candidate).first():
+                        join_code = candidate
+                        break
+                else:
+                    # Fallback to timestamp-based code
+                    block_initial = block[:FALLBACK_BLOCK_PREFIX_LENGTH].ljust(FALLBACK_BLOCK_PREFIX_LENGTH, 'X')
+                    timestamp_suffix = int(time.time()) % FALLBACK_CODE_MODULO
+                    join_code = f"B{block_initial}{timestamp_suffix:04d}"
             
             # Student is claimed if they have a username set
             is_claimed = bool(student.username_hash)
@@ -969,9 +979,6 @@ def delete_block():
             InsuranceClaim.query.filter_by(student_id=student.id).delete()
             HallPassLog.query.filter_by(student_id=student.id).delete()
             
-            # Delete TeacherBlock entries for this student
-            TeacherBlock.query.filter_by(student_id=student.id).delete()
-
             # Delete the student
             db.session.delete(student)
 
@@ -1101,7 +1108,18 @@ def add_individual_student():
         if existing_tb:
             join_code = existing_tb.join_code
         else:
-            join_code = generate_join_code()
+            # Generate a unique join code with bounded retries and fallback
+            join_code = None
+            for _ in range(MAX_JOIN_CODE_RETRIES):
+                candidate = generate_join_code()
+                if not TeacherBlock.query.filter_by(join_code=candidate).first():
+                    join_code = candidate
+                    break
+            else:
+                # Fallback to timestamp-based code
+                block_initial = block[:FALLBACK_BLOCK_PREFIX_LENGTH].ljust(FALLBACK_BLOCK_PREFIX_LENGTH, 'X')
+                timestamp_suffix = int(time.time()) % FALLBACK_CODE_MODULO
+                join_code = f"B{block_initial}{timestamp_suffix:04d}"
         
         new_tb = TeacherBlock(
             teacher_id=current_admin_id,
@@ -1251,7 +1269,18 @@ def add_manual_student():
         if existing_tb:
             join_code = existing_tb.join_code
         else:
-            join_code = generate_join_code()
+            # Generate a unique join code with bounded retries and fallback
+            join_code = None
+            for _ in range(MAX_JOIN_CODE_RETRIES):
+                candidate = generate_join_code()
+                if not TeacherBlock.query.filter_by(join_code=candidate).first():
+                    join_code = candidate
+                    break
+            else:
+                # Fallback to timestamp-based code
+                block_initial = block[:FALLBACK_BLOCK_PREFIX_LENGTH].ljust(FALLBACK_BLOCK_PREFIX_LENGTH, 'X')
+                timestamp_suffix = int(time.time()) % FALLBACK_CODE_MODULO
+                join_code = f"B{block_initial}{timestamp_suffix:04d}"
         
         # Student is claimed if they have a username set
         is_claimed = bool(username)

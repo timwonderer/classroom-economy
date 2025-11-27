@@ -6,7 +6,6 @@ when students, periods, or teachers are deleted.
 """
 
 import pyotp
-from datetime import datetime, timezone
 
 from app import db
 from app.models import Admin, Student, StudentTeacher, TeacherBlock, SystemAdmin
@@ -150,8 +149,8 @@ def test_bulk_delete_students_removes_teacher_blocks(client):
 def test_delete_block_removes_teacher_blocks(client):
     """When a block is deleted, all TeacherBlock entries for that block should be removed."""
     teacher, secret = _create_admin("teacher-block-del")
-    student1, tb1 = _create_student_with_teacher_block("Alice", teacher, block="X")
-    student2, tb2 = _create_student_with_teacher_block("Bob", teacher, block="X")
+    _create_student_with_teacher_block("Alice", teacher, block="X")
+    _create_student_with_teacher_block("Bob", teacher, block="X")
     
     # Create an unclaimed TeacherBlock in the same block
     unclaimed_tb = TeacherBlock(
@@ -168,8 +167,6 @@ def test_delete_block_removes_teacher_blocks(client):
     )
     db.session.add(unclaimed_tb)
     db.session.commit()
-    unclaimed_tb_id = unclaimed_tb.id
-    
     _login_admin(client, teacher, secret)
     
     # Delete the block
