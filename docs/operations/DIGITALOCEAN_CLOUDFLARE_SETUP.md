@@ -170,7 +170,7 @@ The application uses the `app/utils/ip_handler.py` module:
 
 The `get_real_ip()` function is used throughout the application:
 
-- **Error Logging** (`wsgi.py:206`): Captures real IP in error reports
+- **Error Logging** (`wsgi.py:205-206`): Captures real IP in error reports
 - **Turnstile Verification** (`student.py:1784`): Passes real IP to Cloudflare CAPTCHA API
 - **Bug Reports** (`student.py:2037`, `admin.py:3935`): Stores real IP for analysis
 - **Security Middleware** (`app/__init__.py:322`): Validates Cloudflare traffic
