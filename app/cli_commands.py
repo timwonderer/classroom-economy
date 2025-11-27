@@ -312,10 +312,11 @@ def fix_missing_teacher_blocks_command():
     associations_to_create = []  # (student, teacher_id, block)
 
     # Batch query: get all StudentTeacher records for students needing fix
+    # Note: students_needing_fix is guaranteed non-empty at this point (early return above)
     student_ids_needing_fix = [s.id for s in students_needing_fix]
     all_student_teachers = StudentTeacher.query.filter(
         StudentTeacher.student_id.in_(student_ids_needing_fix)
-    ).all() if student_ids_needing_fix else []
+    ).all()
 
     # Build lookup: student_id -> list of StudentTeacher records
     student_teacher_map = defaultdict(list)
@@ -325,7 +326,7 @@ def fix_missing_teacher_blocks_command():
     # Batch query: get all existing TeacherBlock records for these students
     existing_teacher_blocks = TeacherBlock.query.filter(
         TeacherBlock.student_id.in_(student_ids_needing_fix)
-    ).all() if student_ids_needing_fix else []
+    ).all()
 
     # Build lookup: (teacher_id, block, student_id) -> TeacherBlock
     existing_tb_set = set(
