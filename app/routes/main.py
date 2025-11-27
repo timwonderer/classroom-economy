@@ -44,7 +44,7 @@ def health_check_deep():
     - Database connectivity
     - Student table accessibility
     - Admin table accessibility
-
+    - Hall passes table accessibility
     Returns JSON with component status for detailed monitoring.
     """
     try:
