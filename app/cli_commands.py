@@ -4,6 +4,7 @@ Flask CLI commands for database operations and migrations.
 
 import click
 import time
+from collections import defaultdict
 from datetime import datetime
 
 from app.extensions import db
@@ -92,13 +93,11 @@ def migrate_legacy_students_command():
 
     # Step 3: Group students by (teacher_id, block) for join code generation
     click.echo("Step 3: Grouping students by teacher and block...")
-    groups = {}
+    groups = defaultdict(list)
     for student in legacy_students:
         # Normalize block name for consistent grouping
         normalized_block = student.block.strip().upper() if student.block else ''
         key = (student.teacher_id, normalized_block)
-        if key not in groups:
-            groups[key] = []
         groups[key].append(student)
 
     click.echo(f"Found {len(groups)} unique teacher-block combinations")
@@ -319,10 +318,8 @@ def fix_missing_teacher_blocks_command():
     ).all() if student_ids_needing_fix else []
 
     # Build lookup: student_id -> list of StudentTeacher records
-    student_teacher_map = {}
+    student_teacher_map = defaultdict(list)
     for st in all_student_teachers:
-        if st.student_id not in student_teacher_map:
-            student_teacher_map[st.student_id] = []
         student_teacher_map[st.student_id].append(st)
 
     # Batch query: get all existing TeacherBlock records for these students
@@ -362,12 +359,10 @@ def fix_missing_teacher_blocks_command():
     # Step 3: Group by (teacher_id, block) for join code generation
     click.echo("Step 3: Grouping by teacher and block for join code generation...")
 
-    groups = {}  # (teacher_id, block) -> [(student, teacher_id, block), ...]
+    groups = defaultdict(list)  # (teacher_id, block) -> [(student, teacher_id, block), ...]
     for association in associations_to_create:
         student, teacher_id, block = association
         key = (teacher_id, block)
-        if key not in groups:
-            groups[key] = []
         groups[key].append(association)
 
     click.echo(f"Found {len(groups)} unique teacher-block combinations")
@@ -391,7 +386,9 @@ def fix_missing_teacher_blocks_command():
         for tb in existing_tbs_with_codes:
             existing_join_codes_map[(tb.teacher_id, tb.block)] = tb.join_code
 
-    # Preload all existing join codes into a set for uniqueness checking (avoid N+1)
+    # Preload all existing join codes into a set for global uniqueness checking.
+    # Join codes must be unique across all teachers, so we load from the entire table.
+    # Using with_entities() for efficiency - only fetches join_code column.
     existing_join_code_set = set(
         tb.join_code for tb in TeacherBlock.query.filter(
             TeacherBlock.join_code.isnot(None)
