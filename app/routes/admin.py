@@ -774,12 +774,12 @@ def edit_student():
         student.has_completed_setup = False
         
         # Update TeacherBlock entries to mark them as unclaimed
+        # Keep student_id since the student record still exists
         TeacherBlock.query.filter_by(
             student_id=student.id,
             teacher_id=current_admin_id
         ).update({
             'is_claimed': False,
-            'student_id': None,
             'claimed_at': None
         })
         
@@ -823,6 +823,7 @@ def edit_student():
             is_claimed = bool(student.username_hash)
                 
             # Create new TeacherBlock entry
+            # Always link to the student record since it exists
             new_tb = TeacherBlock(
                 teacher_id=current_admin_id,
                 block=block,
@@ -834,7 +835,7 @@ def edit_student():
                 first_half_hash=student.first_half_hash,
                 join_code=join_code,
                 is_claimed=is_claimed,
-                student_id=student.id if is_claimed else None,
+                student_id=student.id,  # Always link since student record exists
                 claimed_at=datetime.utcnow() if is_claimed else None
             )
             db.session.add(new_tb)
