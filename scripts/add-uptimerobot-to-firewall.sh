@@ -24,8 +24,6 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-# UptimeRobot IPv4 addresses (as of 2024)
-# Source: https://uptimerobot.com/help/locations/
 # UptimeRobot IPv4 addresses sourced from firewall-ips.json
 # Source: https://uptimerobot.com/help/locations/
 if ! command -v jq &> /dev/null; then
