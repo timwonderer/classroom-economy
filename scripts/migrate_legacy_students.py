@@ -106,6 +106,17 @@ def migrate_legacy_students():
             else:
                 print(f"  ⊙ StudentTeacher already exists for {student.full_name}, skipping")
 
+            if not existing_st:
+                st = StudentTeacher(
+                    student_id=student.id,
+                    admin_id=student.teacher_id,
+                    created_at=datetime.utcnow()
+                )
+                db.session.add(st)
+                student_teacher_created += 1
+                print(f"  ✓ Created StudentTeacher for {student.full_name} (ID: {student.id})")
+            else:
+                print(f"  ⊙ StudentTeacher already exists for {student.full_name}, skipping")
         print(f"Created {student_teacher_created} StudentTeacher associations")
         print()
 

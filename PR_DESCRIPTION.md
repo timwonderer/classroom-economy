@@ -1,14 +1,16 @@
-## Description
+# Description
 
 Adds a data migration system to transition legacy students from the deprecated `teacher_id` field to the modern multi-tenancy system using `StudentTeacher` associations and proper `TeacherBlock` entries.
 
 **Problem Solved:**
+
 - Join codes were regenerating on every page reload (non-persistent)
 - New students unable to claim accounts due to unstable join codes
 - Incorrect "All seats claimed" badge showing for blocks with unclaimed seats
 - Legacy students (created before join code system) lacking proper TeacherBlock entries
 
 **Solution:**
+
 - Created Flask CLI command to migrate legacy student data
 - Populates `student_teachers` table with many-to-many associations
 - Creates proper `TeacherBlock` entries (marked as claimed) for legacy students
@@ -31,6 +33,7 @@ Adds a data migration system to transition legacy students from the deprecated `
 **⚠️ This PR requires manual testing as it's a data migration:**
 
 1. **Before running migration:**
+
    ```bash
    # Verify legacy students exist
    flask shell
@@ -41,6 +44,7 @@ Adds a data migration system to transition legacy students from the deprecated `
    ```
 
 2. **Run the migration:**
+
    ```bash
    flask migrate-legacy-students
    ```
@@ -66,6 +70,7 @@ Adds a data migration system to transition legacy students from the deprecated `
 **Note:** This is a **data migration** (populates existing tables), not a **schema migration** (no table/column changes).
 
 The migration:
+
 - Uses existing `student_teachers` table ✓
 - Uses existing `teacher_blocks` table ✓
 - No schema changes required ✓
@@ -94,7 +99,7 @@ The migration:
 
 ### Modified Files
 
-3. **`app/__init__.py`** (3 lines added)
+1. **`app/__init__.py`** (3 lines added)
    - Registers CLI commands with Flask app factory
    - Lines 347-349: Import and initialize CLI commands module
 
@@ -115,12 +120,49 @@ python3 scripts/migrate_legacy_students.py
 
 ### Expected Output
 
-```
-======================================================================
+```python
+## Migration Summary
 LEGACY STUDENT MIGRATION
 ======================================================================
 
 Step 1: Finding legacy students...
+Found 250+ legacy students to migrate
+
+Step 2: Creating StudentTeacher associations...
+Created 250+ StudentTeacher associations
+
+Step 3: Grouping students by teacher and block...
+Found 7 unique teacher-block combinations
+
+Step 4: Creating TeacherBlock entries...
+Created 250+ TeacherBlock entries
+
+Step 5: Committing changes to database...
+✓ All changes committed successfully!
+
+```markdown
+Legacy students migrated: 250+
+StudentTeacher associations created: 250+
+TeacherBlock entries created: 250+
+Unique teacher-block combinations: 7
+
+Join codes by teacher and block:
+   Teacher 1, Block A: ABC123
+   Teacher 1, Block B: ZA7PWB
+   Teacher 1, Block C: XYZ789
+   Teacher 1, Block D: DEF456
+   Teacher 1, Block E: GHI789
+   Teacher 1, Block F: JKL012
+   Teacher 1, Block X: MNO345
+
+✓ Migration complete! All legacy students now use the new system.
+```
+
+======================================================================
+LEGACY STUDENT MIGRATION
+
+```markdown
+
 Found 250+ legacy students to migrate
 
 Step 2: Creating StudentTeacher associations...
@@ -153,6 +195,7 @@ Join codes by teacher and block:
   Teacher 1, Block X: MNO345
 
 ✓ Migration complete! All legacy students now use the new system.
+
 ```
 
 ## Multi-Tenancy Alignment
@@ -163,12 +206,14 @@ This PR advances the multi-tenancy hardening efforts outlined in `AGENTS.md`:
 > Students have a **primary owner** (`teacher_id`, still nullable pending enforcement) and a **many-to-many association** via `student_teachers` for shared accounts.
 
 **What this PR does:**
+
 - ✅ Populates `student_teachers` associations for all legacy students
 - ✅ Maintains `teacher_id` compatibility (doesn't remove deprecated field yet)
 - ✅ Creates proper TeacherBlock roster entries for tenant isolation
 - ✅ Uses scoped query pattern (relies on existing associations)
 
 **Next steps toward full multi-tenancy:**
+
 - Future: Add `teacher_id NOT NULL` constraint once all students migrated
 - Future: Add unique constraint on `(student_id, admin_id)` in `student_teachers`
 - This PR is a prerequisite for those schema hardening steps
@@ -178,6 +223,7 @@ This PR advances the multi-tenancy hardening efforts outlined in `AGENTS.md`:
 Fixes the join code persistence issue discussed in conversation.
 
 Related to:
+
 - #415 - Fix unclaimed seats badge counting placeholder entries
 - #413 - Fix join code persistence for legacy classes
 - #407 - Fix join code display for teachers with pre-c3aa3a0 students
