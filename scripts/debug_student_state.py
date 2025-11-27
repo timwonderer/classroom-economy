@@ -154,15 +154,18 @@ def debug_student_state():
 
                 if without_tb:
                     print(f"  Sample students without TeacherBlock (first 10):")
+                    # Fetch all unclaimed TeacherBlocks for this teacher in one query
+                    unclaimed_tbs = TeacherBlock.query.filter_by(
+                        teacher_id=teacher.id,
+                        is_claimed=False
+                    ).all()
+                    # Build a lookup dictionary by (first_name, last_initial)
+                    unclaimed_tb_lookup = {
+                        (tb.first_name, tb.last_initial): tb for tb in unclaimed_tbs
+                    }
                     for s in without_tb[:10]:
-                        # Check if there's an unclaimed TeacherBlock for this student
-                        unclaimed = TeacherBlock.query.filter_by(
-                            teacher_id=teacher.id,
-                            first_name=s.first_name,
-                            last_initial=s.last_initial,
-                            is_claimed=False
-                        ).first()
-                        status = "has unclaimed seat" if unclaimed else "no seat found"
+                        key = (s.first_name, s.last_initial)
+                        status = "has unclaimed seat" if key in unclaimed_tb_lookup else "no seat found"
                         print(f"    - {s.full_name} (ID: {s.id}, Block: {s.block}, {status})")
                 print()
 
