@@ -70,11 +70,9 @@ def health_check_deep():
 
         # Check if hall pass table is accessible (key feature)
         hall_pass_count = db.session.execute(
-            text('SELECT COUNT(*) FROM hall_passes')
+            text('SELECT COUNT(*) FROM hall_pass_logs')
         ).scalar()
-        checks['hall_passes_table'] = 'accessible'
-        checks['hall_pass_count'] = hall_pass_count
-        checks['hall_pass_count'] = hall_pass_count
+        checks['hall_pass_logs_table'] = 'accessible'
         checks['hall_pass_count'] = hall_pass_count
 
         return jsonify({
