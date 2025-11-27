@@ -73,6 +73,7 @@ def health_check_deep():
             text('SELECT COUNT(*) FROM hall_passes')
         ).scalar()
         checks['hall_passes_table'] = 'accessible'
+        checks['hall_pass_count'] = hall_pass_count
 
         return jsonify({
             'status': 'ok',
@@ -84,7 +85,7 @@ def health_check_deep():
         return jsonify({
             'status': 'error',
             'error': 'Health check failed',
-            'checks': checks if 'checks' in locals() else {}
+            'checks': checks
         }), 500
 
 

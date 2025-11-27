@@ -221,7 +221,7 @@
                    class="btn-primary-custom">Email Support</a>
                 {% endif %}
                 {% if status_page_url %}
-                <a href="{{ status_page_url }}" target="_blank" class="btn-primary-custom" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                <a href="{{ status_page_url }}" target="_blank" rel="noopener noreferrer" class="btn-primary-custom" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
                     📊 Check System Status
                 </a>
                 {% endif %}
@@ -234,7 +234,7 @@
                     and include the Error ID above.
                     {% if status_page_url %}
                     <br>
-                    You can also check our <a href="{{ status_page_url }}" target="_blank">system status page</a> for real-time updates.
+                    You can also check our <a href="{{ status_page_url }}" target="_blank" rel="noopener noreferrer">system status page</a> for real-time updates.
                     {% endif %}
                 </p>
             </div>
