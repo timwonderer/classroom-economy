@@ -319,7 +319,7 @@ def create_app():
 
         # Only check in production
         if app.config.get('ENV') == 'production':
-            from app.utils.ip_handler import validate_cloudflare_request, get_real_ip
+            from app.utils.ip_handler import validate_cloudflare_request
 
             if not validate_cloudflare_request():
                 app.logger.warning(
