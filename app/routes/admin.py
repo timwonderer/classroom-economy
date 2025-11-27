@@ -711,6 +711,7 @@ def edit_student():
     """Edit student basic information."""
     student_id = request.form.get('student_id', type=int)
     student = _get_student_or_404(student_id)
+    current_admin_id = session.get('admin_id')
 
     # Get form data
     new_first_name = request.form.get('first_name', '').strip()
@@ -728,6 +729,10 @@ def edit_student():
         # No blocks selected - this would break tap/hall pass functionality
         flash("At least one block must be selected.", "error")
         return redirect(url_for('admin.student_detail', student_id=student_id))
+
+    # Track old blocks for TeacherBlock updates
+    old_blocks = set(b.strip().upper() for b in (student.block or '').split(',') if b.strip())
+    new_blocks_set = set(b.strip().upper() for b in selected_blocks)
 
     # Check if name changed (need to recalculate hashes)
     name_changed = (new_first_name != student.first_name or new_last_initial != student.last_initial)
@@ -767,7 +772,72 @@ def edit_student():
         student.pin_hash = None
         student.passphrase_hash = None
         student.has_completed_setup = False
+        
+        # Update TeacherBlock entries to mark them as unclaimed
+        TeacherBlock.query.filter_by(
+            student_id=student.id,
+            teacher_id=current_admin_id
+        ).update({
+            'is_claimed': False,
+            'student_id': None,
+            'claimed_at': None
+        })
+        
         flash(f"{student.full_name}'s login has been reset. They will need to re-claim their account.", "warning")
+
+    # Handle block changes - update TeacherBlock entries
+    removed_blocks = old_blocks - new_blocks_set
+    added_blocks = new_blocks_set - old_blocks
+
+    # Remove TeacherBlock entries for blocks the student is no longer in
+    for block in removed_blocks:
+        TeacherBlock.query.filter_by(
+            student_id=student.id,
+            teacher_id=current_admin_id,
+            block=block
+        ).delete()
+
+    # Create TeacherBlock entries for new blocks (reusing existing join codes)
+    for block in added_blocks:
+        # Check if there's already an unclaimed TeacherBlock for this student in this block
+        existing_tb = TeacherBlock.query.filter_by(
+            teacher_id=current_admin_id,
+            block=block,
+            student_id=student.id
+        ).first()
+        
+        if not existing_tb:
+            # Get join code for this block (from existing TeacherBlock in this block)
+            existing_block_tb = TeacherBlock.query.filter_by(
+                teacher_id=current_admin_id,
+                block=block
+            ).first()
+            
+            if existing_block_tb:
+                join_code = existing_block_tb.join_code
+            else:
+                # Generate new join code if none exists for this block
+                join_code = generate_join_code()
+            
+            # Student is claimed if they have a username set
+            is_claimed = bool(student.username_hash)
+                
+            # Create new TeacherBlock entry
+            new_tb = TeacherBlock(
+                teacher_id=current_admin_id,
+                block=block,
+                first_name=student.first_name,
+                last_initial=student.last_initial,
+                last_name_hash_by_part=student.last_name_hash_by_part or [],
+                dob_sum=student.dob_sum or 0,
+                salt=student.salt,
+                first_half_hash=student.first_half_hash,
+                join_code=join_code,
+                is_claimed=is_claimed,
+                student_id=student.id if is_claimed else None,
+                claimed_at=datetime.utcnow() if is_claimed else None
+            )
+            db.session.add(new_tb)
 
     try:
         db.session.commit()
@@ -814,6 +884,9 @@ def delete_student():
         RentPayment.query.filter_by(student_id=student.id).delete()
         StudentInsurance.query.filter_by(student_id=student.id).delete()
         HallPassLog.query.filter_by(student_id=student.id).delete()
+        
+        # Delete TeacherBlock entries for this student
+        TeacherBlock.query.filter_by(student_id=student.id).delete()
 
         # Delete the student
         db.session.delete(student)
@@ -851,6 +924,9 @@ def bulk_delete_students():
                 StudentInsurance.query.filter_by(student_id=student.id).delete()
                 InsuranceClaim.query.filter_by(student_id=student.id).delete()
                 HallPassLog.query.filter_by(student_id=student.id).delete()
+                
+                # Delete TeacherBlock entries for this student
+                TeacherBlock.query.filter_by(student_id=student.id).delete()
 
                 # Delete the student
                 db.session.delete(student)
@@ -872,6 +948,7 @@ def delete_block():
     """Delete all students in a specific block."""
     data = request.get_json()
     block = data.get('block', '').strip().upper()
+    current_admin_id = session.get('admin_id')
 
     if not block:
         return jsonify({"status": "error", "message": "No block specified."}), 400
@@ -890,9 +967,18 @@ def delete_block():
             StudentInsurance.query.filter_by(student_id=student.id).delete()
             InsuranceClaim.query.filter_by(student_id=student.id).delete()
             HallPassLog.query.filter_by(student_id=student.id).delete()
+            
+            # Delete TeacherBlock entries for this student
+            TeacherBlock.query.filter_by(student_id=student.id).delete()
 
             # Delete the student
             db.session.delete(student)
+
+        # Also delete unclaimed TeacherBlock entries for this block
+        TeacherBlock.query.filter_by(
+            teacher_id=current_admin_id,
+            block=block
+        ).delete()
 
         db.session.commit()
         return jsonify({
@@ -986,6 +1072,7 @@ def add_individual_student():
                     return redirect(url_for('admin.students'))
 
         # Create student
+        current_admin_id = session.get("admin_id")
         new_student = Student(
             first_name=first_name,
             last_initial=last_initial,
@@ -996,12 +1083,40 @@ def add_individual_student():
             dob_sum=dob_sum,
             last_name_hash_by_part=last_name_parts,
             has_completed_setup=False,
-            teacher_id=session.get("admin_id"),
+            teacher_id=current_admin_id,
         )
 
         db.session.add(new_student)
         db.session.flush()
-        _link_student_to_admin(new_student, session.get("admin_id"))
+        _link_student_to_admin(new_student, current_admin_id)
+        
+        # Create TeacherBlock entry for this student
+        # Get or generate join code for this block
+        existing_tb = TeacherBlock.query.filter_by(
+            teacher_id=current_admin_id,
+            block=block
+        ).first()
+        
+        if existing_tb:
+            join_code = existing_tb.join_code
+        else:
+            join_code = generate_join_code()
+        
+        new_tb = TeacherBlock(
+            teacher_id=current_admin_id,
+            block=block,
+            first_name=first_name,
+            last_initial=last_initial,
+            last_name_hash_by_part=last_name_parts,
+            dob_sum=dob_sum,
+            salt=salt,
+            first_half_hash=first_half_hash,
+            join_code=join_code,
+            is_claimed=False,  # Student hasn't set up username yet
+            student_id=new_student.id,
+        )
+        db.session.add(new_tb)
+        
         db.session.commit()
 
         flash(f"Successfully added {first_name} {last_initial}. to block {block}.", "success")
@@ -1120,9 +1235,42 @@ def add_manual_student():
         if passphrase:
             new_student.passphrase_hash = generate_password_hash(passphrase)
 
+        current_admin_id = session.get("admin_id")
         db.session.add(new_student)
         db.session.flush()
-        _link_student_to_admin(new_student, session.get("admin_id"))
+        _link_student_to_admin(new_student, current_admin_id)
+        
+        # Create TeacherBlock entry for this student
+        # Get or generate join code for this block
+        existing_tb = TeacherBlock.query.filter_by(
+            teacher_id=current_admin_id,
+            block=block
+        ).first()
+        
+        if existing_tb:
+            join_code = existing_tb.join_code
+        else:
+            join_code = generate_join_code()
+        
+        # Student is claimed if they have a username set
+        is_claimed = bool(username)
+        
+        new_tb = TeacherBlock(
+            teacher_id=current_admin_id,
+            block=block,
+            first_name=first_name,
+            last_initial=last_initial,
+            last_name_hash_by_part=last_name_parts,
+            dob_sum=dob_sum,
+            salt=salt,
+            first_half_hash=first_half_hash,
+            join_code=join_code,
+            is_claimed=is_claimed,
+            student_id=new_student.id,
+            claimed_at=datetime.utcnow() if is_claimed else None,
+        )
+        db.session.add(new_tb)
+        
         db.session.commit()
 
         flash(f"Successfully created {first_name} {last_initial}. in block {block} (manual mode).", "success")

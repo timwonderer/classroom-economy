@@ -20,7 +20,7 @@ from app.models import (
     SystemAdmin, Admin, Student, AdminInviteCode, ErrorLog,
     Transaction, TapEvent, HallPassLog, StudentItem, RentPayment,
     StudentInsurance, InsuranceClaim, StudentTeacher, DeletionRequest,
-    DeletionRequestType, DeletionRequestStatus
+    DeletionRequestType, DeletionRequestStatus, TeacherBlock
 )
 from app.auth import system_admin_required
 from forms import SystemAdminLoginForm, SystemAdminInviteForm
@@ -731,6 +731,13 @@ def delete_period(admin_id, period):
 
             removed_count += 1
 
+        # Delete TeacherBlock entries for this period
+        # This is critical - without it, the period still appears in the UI
+        TeacherBlock.query.filter_by(
+            teacher_id=admin.id,
+            block=period
+        ).delete()
+
         # Mark any pending deletion requests for this period as approved
         if pending_request:
             pending_request.status = DeletionRequestStatus.APPROVED
@@ -825,6 +832,10 @@ def delete_teacher(admin_id):
             req.status = DeletionRequestStatus.APPROVED
             req.resolved_at = datetime.now(timezone.utc)
             req.resolved_by = session.get('sysadmin_id')
+
+        # Delete all TeacherBlock entries for this teacher
+        # This cleans up roster seats associated with the teacher
+        TeacherBlock.query.filter_by(teacher_id=admin.id).delete()
 
         admin_username = admin.username
         db.session.delete(admin)
