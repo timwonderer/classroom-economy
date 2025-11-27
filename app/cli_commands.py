@@ -283,16 +283,15 @@ def fix_missing_teacher_blocks_command():
     students_with_setup = Student.query.filter_by(has_completed_setup=True).all()
     click.echo(f"Total students with completed setup: {len(students_with_setup)}")
 
-    students_needing_fix = []
-    for student in students_with_setup:
-        # Check if student has a claimed TeacherBlock
-        claimed_tb = TeacherBlock.query.filter_by(
-            student_id=student.id,
-            is_claimed=True
-        ).first()
+    # Batch query: get all claimed TeacherBlock entries for these students
+    student_ids = [student.id for student in students_with_setup]
+    claimed_blocks = TeacherBlock.query.filter(
+        TeacherBlock.student_id.in_(student_ids),
+        TeacherBlock.is_claimed == True
+    ).all()
+    claimed_student_ids = set(tb.student_id for tb in claimed_blocks)
 
-        if not claimed_tb:
-            students_needing_fix.append(student)
+    students_needing_fix = [student for student in students_with_setup if student.id not in claimed_student_ids]
 
     click.echo(f"Students without claimed TeacherBlock: {len(students_needing_fix)}")
 
