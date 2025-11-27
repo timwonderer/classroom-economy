@@ -31,10 +31,31 @@ NC='\033[0m'
 
 # Source IPs from the JSON file
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+
+# Check if firewall-ips.json exists
+if [ ! -f "$SCRIPT_DIR/firewall-ips.json" ]; then
+    echo -e "${RED}Error: firewall-ips.json not found${NC}"
+    exit 1
+fi
+
+# Check if firewall-ips.json is valid JSON
+if ! jq empty "$SCRIPT_DIR/firewall-ips.json" 2>/dev/null; then
+    echo -e "${RED}Error: firewall-ips.json is not valid JSON${NC}"
+    exit 1
+fi
+
 CLOUDFLARE_IPV4=($(jq -r '.cloudflare.ipv4[]' "$SCRIPT_DIR/firewall-ips.json"))
 CLOUDFLARE_IPV6=($(jq -r '.cloudflare.ipv6[]' "$SCRIPT_DIR/firewall-ips.json"))
 UPTIMEROBOT_IPS=($(jq -r '.uptimerobot.ipv4[]' "$SCRIPT_DIR/firewall-ips.json"))
 
+# Validate arrays are not empty
+if [ ${#CLOUDFLARE_IPV4[@]} -eq 0 ] || [ ${#CLOUDFLARE_IPV6[@]} -eq 0 ]; then
+    echo -e "${RED}Error: Failed to load Cloudflare IPs from firewall-ips.json${NC}"
+    exit 1
+fi
+if [ ${#UPTIMEROBOT_IPS[@]} -eq 0 ]; then
+    echo -e "${YELLOW}Warning: No UptimeRobot IPs loaded from firewall-ips.json${NC}"
+fi
 # Function to check prerequisites
 check_prerequisites() {
     echo -e "${BLUE}Checking prerequisites...${NC}"
