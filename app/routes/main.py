@@ -75,6 +75,7 @@ def health_check_deep():
         checks['hall_passes_table'] = 'accessible'
         checks['hall_pass_count'] = hall_pass_count
         checks['hall_pass_count'] = hall_pass_count
+        checks['hall_pass_count'] = hall_pass_count
 
         return jsonify({
             'status': 'ok',
