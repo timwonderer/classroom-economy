@@ -303,8 +303,8 @@ def test_migrate_partial_migration_state(client):
 def test_migrate_skip_modern_students(client):
     """Test that modern students (already migrated) are skipped."""
     teacher = _create_admin("teacher7")
-    _create_legacy_student("Legacy7", teacher, block="A")
-    modern = _create_modern_student("Modern7", teacher, block="A")
+    _create_legacy_student("Legacy7", teacher, block="A")  # Creates legacy student for migration
+    modern = _create_modern_student("Modern7", teacher, block="A")  # Already has ST and TB
     
     # Run migration
     runner = CliRunner()
