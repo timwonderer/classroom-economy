@@ -42,4 +42,8 @@ def seed_dummy_students():
     print("✅ Dummy students seeded successfully.")
 
 if __name__ == "__main__":
-    seed_dummy_students()
+    from app import create_app
+    app = create_app()
+    with app.app_context():
+        db.create_all()
+        seed_dummy_students()
