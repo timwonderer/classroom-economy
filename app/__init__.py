@@ -319,14 +319,18 @@ def create_app():
 
         # Only check in production
         if app.config.get('ENV') == 'production':
-            from app.utils.ip_handler import validate_cloudflare_request, get_real_ip
+            try:
+                from app.utils.ip_handler import validate_cloudflare_request, get_real_ip
 
-            if not validate_cloudflare_request():
-                real_ip = get_real_ip()
-                app.logger.warning(
-                    f"Request not from Cloudflare IP: {request.remote_addr} "
-                    f"(real_ip: {real_ip}, path: {request.path}, method: {request.method})"
-                )
+                if not validate_cloudflare_request():
+                    real_ip = get_real_ip()
+                    app.logger.warning(
+                        f"Request not from Cloudflare IP: {request.remote_addr} "
+                        f"(real_ip: {real_ip}, path: {request.path}, method: {request.method})"
+                    )
+            except Exception as e:
+                # Don't break requests if Cloudflare monitoring fails
+                app.logger.error(f"Error in Cloudflare monitoring: {e}")
 
         return None
 
