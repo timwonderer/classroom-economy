@@ -363,42 +363,8 @@ def create_app():
         }
 
     @app.context_processor
-    def inject_feature_settings():
-        """Inject feature settings into student templates."""
-        from flask import session
-        from app.models import FeatureSettings
-        try:
-            # Only inject for logged-in students
-            student_id = session.get('student_id')
-            if not student_id:
-                # Return default values for non-student pages
-                return {'feature_settings': FeatureSettings.get_defaults()}
-
-            # Get teacher and block context
-            teacher_id = session.get('current_teacher_id')
-            current_block = session.get('current_period')
-
-            if not teacher_id:
-                return {'feature_settings': FeatureSettings.get_defaults()}
-
-            # Try block-specific settings first
-            if current_block:
-                block_settings = FeatureSettings.query.filter_by(
-                    teacher_id=teacher_id,
-                    block=current_block.strip().upper()
-                ).first()
-                if block_settings:
-                    return {'feature_settings': block_settings.to_dict()}
-
-            # Fall back to global settings
-            global_settings = FeatureSettings.query.filter_by(
-                teacher_id=teacher_id,
-                block=None
-            ).first()
-
-            if global_settings:
-                return {'feature_settings': global_settings.to_dict()}
-
+        from app.routes.student import get_feature_settings_for_student
+        return {'feature_settings': get_feature_settings_for_student()}
             return {'feature_settings': FeatureSettings.get_defaults()}
         except Exception as e:
             app.logger.error(f"Error loading feature settings: {e}")
