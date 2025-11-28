@@ -2,7 +2,7 @@
 #
 # Automated PostgreSQL Database Backup Script
 #
-# This script creates daily encrypted backups of the PostgreSQL database
+# This script creates daily compressed backups of the PostgreSQL database
 # with automatic rotation (keeps last 30 days).
 #
 # Setup:
