@@ -26,11 +26,10 @@ updates:
     # Allow both direct and indirect updates
     allow:
       - dependency-type: "all"
-    # Ignore major version updates for stable dependencies (optional)
-    ignore:
-      # Uncomment to ignore specific packages or version ranges
-      # - dependency-name: "flask"
-      #   update-types: ["version-update:semver-major"]
+    # Uncomment to ignore specific packages or version ranges
+    # ignore:
+    #   - dependency-name: "flask"
+    #     update-types: ["version-update:semver-major"]
 
   # Enable version updates for GitHub Actions
   - package-ecosystem: "github-actions"

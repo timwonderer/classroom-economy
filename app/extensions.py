@@ -5,6 +5,7 @@ Centralized to avoid circular imports. Extensions are initialized
 here but configured in create_app().
 """
 
+import os
 from flask_sqlalchemy import SQLAlchemy
 from flask_migrate import Migrate
 from flask_wtf import CSRFProtect
@@ -37,9 +38,24 @@ def get_real_ip_for_limiter():
     except RuntimeError:
         return get_remote_address()
 
+# Use memory storage in CI/testing environments, Redis in production
+# This prevents Redis connection errors in GitHub Actions
+if os.environ.get('RATELIMIT_STORAGE_URI'):
+    # Explicitly configured storage URI takes precedence
+    storage_uri = os.environ.get('RATELIMIT_STORAGE_URI')
+elif os.environ.get('CI') or os.environ.get('GITHUB_ACTIONS'):
+    # Use memory storage in CI environments
+    storage_uri = 'memory://'
+elif os.environ.get('REDIS_URL'):
+    # Use Redis URL if provided
+    storage_uri = os.environ.get('REDIS_URL')
+else:
+    # Default to local Redis in production/development
+    storage_uri = 'redis://localhost:6379'
+
 limiter = Limiter(
     key_func=get_real_ip_for_limiter,
     default_limits=["200 per day", "50 per hour"],
-    storage_uri="redis://localhost:6379",
+    storage_uri=storage_uri,
     strategy="fixed-window"
 )
