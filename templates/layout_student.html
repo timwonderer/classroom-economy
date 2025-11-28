@@ -509,8 +509,8 @@
                class="btn text-start {% if current_page == 'store' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">storefront</span> Store</a>
             {% endif %}
 
-            <!-- Rent - conditional on rent_enabled -->
-            {% if feature_settings.rent_enabled %}
+            <!-- Rent - conditional on rent_enabled and student.is_rent_enabled -->
+            {% if feature_settings.rent_enabled and student.is_rent_enabled %}
             <a href="{{ url_for('student.rent') }}"
                class="btn text-start {% if current_page == 'rent' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">home</span> Rent</a>
             {% endif %}
