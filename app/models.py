@@ -970,8 +970,6 @@ class TeacherOnboarding(db.Model):
 
     def mark_step_completed(self, step_name):
         """Mark a specific step as completed."""
-        if self.steps_completed is None:
-            self.steps_completed = {}
         # Create a new dict to trigger SQLAlchemy change detection for JSON columns
         updated_steps = dict(self.steps_completed)
         updated_steps[step_name] = True
