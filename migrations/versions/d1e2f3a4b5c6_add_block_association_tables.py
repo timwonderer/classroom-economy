@@ -69,9 +69,14 @@ def upgrade():
                 for block in blocks_str.split(','):
                     block = block.strip().upper()
                     if block:
-                        connection.execute(sa.text(
-                            "INSERT OR IGNORE INTO store_item_blocks (store_item_id, block) VALUES (:item_id, :block)"
-                        ), {'item_id': item_id, 'block': block})
+                        # Check if entry already exists before inserting (database-agnostic)
+                        exists = connection.execute(sa.text(
+                            "SELECT 1 FROM store_item_blocks WHERE store_item_id = :item_id AND block = :block"
+                        ), {'item_id': item_id, 'block': block}).fetchone()
+                        if not exists:
+                            connection.execute(sa.text(
+                                "INSERT INTO store_item_blocks (store_item_id, block) VALUES (:item_id, :block)"
+                            ), {'item_id': item_id, 'block': block})
     except Exception:
         # Column may not exist if this is a fresh database
         pass
@@ -88,9 +93,14 @@ def upgrade():
                 for block in blocks_str.split(','):
                     block = block.strip().upper()
                     if block:
-                        connection.execute(sa.text(
-                            "INSERT OR IGNORE INTO insurance_policy_blocks (policy_id, block) VALUES (:policy_id, :block)"
-                        ), {'policy_id': policy_id, 'block': block})
+                        # Check if entry already exists before inserting (database-agnostic)
+                        exists = connection.execute(sa.text(
+                            "SELECT 1 FROM insurance_policy_blocks WHERE policy_id = :policy_id AND block = :block"
+                        ), {'policy_id': policy_id, 'block': block}).fetchone()
+                        if not exists:
+                            connection.execute(sa.text(
+                                "INSERT INTO insurance_policy_blocks (policy_id, block) VALUES (:policy_id, :block)"
+                            ), {'policy_id': policy_id, 'block': block})
     except Exception:
         # Column may not exist if this is a fresh database
         pass
