@@ -485,31 +485,41 @@
             <a href="{{ url_for('student.add_class') }}"
                class="btn text-start {% if current_page == 'add_class' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">group_add</span> Add New Class</a>
 
-            <!-- Finances -->
+            <!-- Finances (Banking) - conditional on banking_enabled -->
+            {% if feature_settings.banking_enabled %}
             <a href="{{ url_for('student.transfer') }}"
                class="btn text-start {% if current_page == 'transfer' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">account_balance_wallet</span> Finances</a>
+            {% endif %}
 
-            <!-- Payroll -->
+            <!-- Payroll - conditional on payroll_enabled -->
+            {% if feature_settings.payroll_enabled %}
             <a href="{{ url_for('student.payroll') }}"
                class="btn text-start {% if current_page == 'payroll' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">receipt_long</span> Payroll</a>
+            {% endif %}
 
-            <!-- Insurance -->
+            <!-- Insurance - conditional on insurance_enabled -->
+            {% if feature_settings.insurance_enabled %}
             <a href="{{ url_for('student.student_insurance') }}"
                class="btn text-start {% if current_page == 'insurance' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">shield</span> Insurance</a>
+            {% endif %}
 
-            <!-- Store -->
+            <!-- Store - conditional on store_enabled -->
+            {% if feature_settings.store_enabled %}
             <a href="{{ url_for('student.shop') }}"
                class="btn text-start {% if current_page == 'store' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">storefront</span> Store</a>
+            {% endif %}
 
-            <!-- Rent (conditional) -->
-            {% if global_rent_enabled %}
+            <!-- Rent - conditional on rent_enabled and student.is_rent_enabled (when student is defined) -->
+            {% if feature_settings.rent_enabled and (student is defined and student.is_rent_enabled) %}
             <a href="{{ url_for('student.rent') }}"
                class="btn text-start {% if current_page == 'rent' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">home</span> Rent</a>
             {% endif %}
 
-            <!-- Help and Support -->
+            <!-- Help and Support - conditional on bug_reports_enabled -->
+            {% if feature_settings.bug_reports_enabled %}
             <a href="{{ url_for('student.help_support') }}"
                class="btn text-start {% if current_page == 'help' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">help</span> Help & Support</a>
+            {% endif %}
         </div>
         <div class="mt-auto">
             <a href="{{ url_for('main.switch_view', view='mobile', next=request.path) }}" class="btn btn-outline-primary text-start w-100 mb-2"><span class="material-symbols-outlined">phone_iphone</span> View Mobile Site</a>
