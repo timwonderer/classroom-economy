@@ -362,13 +362,20 @@ def create_app():
             'is_viewing_as_student': is_viewing_as_student()
         }
 
-    @app.context_processor
+@app.context_processor
+def inject_feature_settings():
+    """Inject feature settings into all templates."""
+    try:
+        # Imports are here to avoid circular dependencies
+        from app.models import FeatureSettings
         from app.routes.student import get_feature_settings_for_student
         return {'feature_settings': get_feature_settings_for_student()}
-            return {'feature_settings': FeatureSettings.get_defaults()}
-        except Exception as e:
-            app.logger.error(f"Error loading feature settings: {e}")
-            return {'feature_settings': FeatureSettings.get_defaults()}
+    except Exception as e:
+        # This can happen during `flask db` commands before the table exists.
+        # Fallback to defaults to avoid breaking CLI commands.
+        app.logger.warning(f"Could not load feature settings, falling back to defaults: {e}")
+        from app.models import FeatureSettings
+        return {'feature_settings': FeatureSettings.get_defaults()}
     # -------------------- REGISTER BLUEPRINTS --------------------
     from app.routes.main import main_bp
     from app.routes.api import api_bp
