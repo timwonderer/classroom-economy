@@ -1520,7 +1520,19 @@ def store_management():
     admin_id = session.get("admin_id")
     student_ids_subq = _student_scope_subquery()
     form = StoreItemForm()
+
+    # Populate blocks choices from teacher's students
+    students = _scoped_students().all()
+    blocks = sorted(set(
+        b.strip().upper() for s in students
+        for b in (s.block or '').split(',') if b.strip()
+    ))
+    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+
     if form.validate_on_submit():
+        # Convert blocks list to comma-separated string
+        blocks_str = ','.join(form.blocks.data) if form.blocks.data else None
+
         new_item = StoreItem(
             teacher_id=admin_id,
             name=form.name.data,
@@ -1532,6 +1544,7 @@ def store_management():
             auto_delist_date=form.auto_delist_date.data,
             auto_expiry_days=form.auto_expiry_days.data,
             is_active=form.is_active.data,
+            blocks=blocks_str,
             # Bundle settings
             is_bundle=form.is_bundle.data,
             bundle_quantity=form.bundle_quantity.data if form.is_bundle.data else None,
@@ -1570,7 +1583,25 @@ def edit_store_item(item_id):
     admin_id = session.get("admin_id")
     item = StoreItem.query.filter_by(id=item_id, teacher_id=admin_id).first_or_404()
     form = StoreItemForm(obj=item)
+
+    # Populate blocks choices from teacher's students
+    students = _scoped_students().all()
+    blocks = sorted(set(
+        b.strip().upper() for s in students
+        for b in (s.block or '').split(',') if b.strip()
+    ))
+    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+
+    # Pre-populate selected blocks on GET request
+    if request.method == 'GET' and item.blocks:
+        form.blocks.data = item.blocks.split(',')
+
     if form.validate_on_submit():
+        # Convert blocks list to comma-separated string
+        blocks_str = ','.join(form.blocks.data) if form.blocks.data else None
+        item.blocks = blocks_str
+
+        # Populate other fields
         form.populate_obj(item)
         db.session.commit()
         flash(f"'{item.name}' has been updated.", "success")
@@ -1865,6 +1896,14 @@ def insurance_management():
     student_ids_subq = _student_scope_subquery()
     form = InsurancePolicyForm()
 
+    # Populate blocks choices from teacher's students
+    students = _scoped_students().all()
+    blocks = sorted(set(
+        b.strip().upper() for s in students
+        for b in (s.block or '').split(',') if b.strip()
+    ))
+    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+
     current_teacher_id = session.get('admin_id')
     existing_policies = InsurancePolicy.query.filter_by(teacher_id=current_teacher_id).all()
 
@@ -1899,6 +1938,9 @@ def insurance_management():
         elif form.tier_name.data or form.tier_color.data:
             tier_category_id = next_tier_category_id
 
+        # Convert blocks list to comma-separated string
+        blocks_str = ','.join(form.blocks.data) if form.blocks.data else None
+
         # Create new insurance policy
         policy = InsurancePolicy(
             policy_code=policy_code,
@@ -1925,7 +1967,8 @@ def insurance_management():
             tier_name=form.tier_name.data if form.tier_name.data else None,
             tier_color=form.tier_color.data if form.tier_color.data else None,
             settings_mode=request.form.get('settings_mode', 'advanced'),
-            is_active=form.is_active.data
+            is_active=form.is_active.data,
+            blocks=blocks_str
         )
         db.session.add(policy)
         db.session.commit()
@@ -1990,6 +2033,18 @@ def edit_insurance_policy(policy_id):
 
     form = InsurancePolicyForm(obj=policy)
 
+    # Populate blocks choices from teacher's students
+    students = _scoped_students().all()
+    blocks = sorted(set(
+        b.strip().upper() for s in students
+        for b in (s.block or '').split(',') if b.strip()
+    ))
+    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+
+    # Pre-populate selected blocks on GET request
+    if request.method == 'GET' and policy.blocks:
+        form.blocks.data = policy.blocks.split(',')
+
     teacher_policies = InsurancePolicy.query.filter_by(teacher_id=session.get('admin_id')).all()
     tier_groups_map = {}
     for teacher_policy in teacher_policies:
@@ -2010,6 +2065,9 @@ def edit_insurance_policy(policy_id):
     next_tier_category_id = _next_tenant_scoped_tier_id(tier_namespace_seed, existing_tier_ids)
 
     if request.method == 'POST' and form.validate_on_submit():
+        # Convert blocks list to comma-separated string
+        blocks_str = ','.join(form.blocks.data) if form.blocks.data else None
+
         policy.title = form.title.data
         policy.description = form.description.data
         policy.premium = form.premium.data
@@ -2031,6 +2089,7 @@ def edit_insurance_policy(policy_id):
         policy.bundle_discount_percent = form.bundle_discount_percent.data
         policy.bundle_discount_amount = form.bundle_discount_amount.data
         policy.marketing_badge = form.marketing_badge.data if form.marketing_badge.data else None
+        policy.blocks = blocks_str
         if form.tier_category_id.data:
             policy.tier_category_id = form.tier_category_id.data
         elif form.tier_name.data or form.tier_color.data:
@@ -4192,6 +4251,10 @@ def feature_settings():
                 'bug_rewards_enabled': 'bug_rewards_enabled' in request.form,
             }
 
+            # Bug rewards is a subfeature of bug reports - if bug reports is disabled, disable bug rewards too
+            if not features_data['bug_reports_enabled']:
+                features_data['bug_rewards_enabled'] = False
+
             # Apply settings to selected periods
             if apply_to == 'all':
                 # Update global settings
@@ -4335,6 +4398,10 @@ def update_period_feature_settings(period):
         for feature_key, db_column in feature_map.items():
             if feature_key in data:
                 setattr(settings, db_column, bool(data[feature_key]))
+
+        # Bug rewards is a subfeature of bug reports - if bug reports is disabled, disable bug rewards too
+        if not settings.bug_reports_enabled:
+            settings.bug_rewards_enabled = False
 
         settings.updated_at = datetime.utcnow()
         db.session.commit()

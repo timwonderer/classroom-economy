@@ -355,6 +355,7 @@ class HallPassSettings(db.Model):
     __tablename__ = 'hall_pass_settings'
     id = db.Column(db.Integer, primary_key=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    block = db.Column(db.String(10), nullable=True)  # NULL = global default, otherwise period/block identifier
 
     # Queue system toggle
     queue_enabled = db.Column(db.Boolean, default=True, nullable=False)
@@ -383,6 +384,7 @@ class StoreItem(db.Model):
     auto_delist_date = db.Column(db.DateTime, nullable=True)
     auto_expiry_days = db.Column(db.Integer, nullable=True) # days student has to use the item
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    blocks = db.Column(db.String(255), nullable=True)  # comma-separated list of blocks/periods (e.g., "A,B,C") or NULL for all
 
     # Bundle settings
     is_bundle = db.Column(db.Boolean, default=False, nullable=False)
@@ -431,6 +433,7 @@ class RentSettings(db.Model):
     __tablename__ = 'rent_settings'
     id = db.Column(db.Integer, primary_key=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    block = db.Column(db.String(10), nullable=True)  # NULL = global default, otherwise period/block identifier
 
     # Main toggle
     is_enabled = db.Column(db.Boolean, default=True)
@@ -544,6 +547,7 @@ class InsurancePolicy(db.Model):
     settings_mode = db.Column(db.String(20), nullable=True, default='advanced')  # simple or advanced
 
     is_active = db.Column(db.Boolean, default=True)
+    blocks = db.Column(db.String(255), nullable=True)  # comma-separated list of blocks/periods (e.g., "A,B,C") or NULL for all
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -766,6 +770,7 @@ class BankingSettings(db.Model):
     __tablename__ = 'banking_settings'
     id = db.Column(db.Integer, primary_key=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    block = db.Column(db.String(10), nullable=True)  # NULL = global default, otherwise period/block identifier
 
     # Interest settings for savings
     savings_apy = db.Column(db.Float, default=0.0)  # Annual Percentage Yield (e.g., 5.0 for 5%)

@@ -22,6 +22,7 @@ class StoreItemForm(FlaskForm):
     auto_delist_date = DateField('Auto-Delist Date (optional)', format='%Y-%m-%d', validators=[Optional()])
     auto_expiry_days = IntegerField('Item Expiry in Days (optional, for delayed-use items)', validators=[Optional()])
     is_active = BooleanField('Item is Active', default=True)
+    blocks = SelectMultipleField('Visible to Periods/Blocks (leave empty for all)', choices=[], validators=[Optional()])
 
     # Bundle settings
     is_bundle = BooleanField('This is a Bundled Item', default=False)
@@ -209,6 +210,7 @@ class InsurancePolicyForm(FlaskForm):
     ], default='advanced')
 
     is_active = BooleanField('Policy is Active', default=True)
+    blocks = SelectMultipleField('Visible to Periods/Blocks (leave empty for all)', choices=[], validators=[Optional()])
     submit = SubmitField('Save Policy')
 
 

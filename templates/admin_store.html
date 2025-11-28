@@ -174,6 +174,11 @@
                       </div>
                     </div>
                   </div>
+                  <div class="mb-3">
+                    {{ form.blocks.label(class="form-label fw-bold") }}
+                    {{ form.blocks(class="form-select", multiple=true, size=5) }}
+                    <small class="text-muted">Hold Ctrl/Cmd to select multiple periods. Leave empty to show to all periods.</small>
+                  </div>
                 </div>
               </div>
 
