@@ -21,22 +21,22 @@ def upgrade():
     with op.batch_alter_table('rent_settings', schema=None) as batch_op:
         # Add frequency settings
         batch_op.add_column(sa.Column('frequency_type', sa.String(20), nullable=False, server_default='monthly'))
-        batch_op.add_column(sa.Column('custom_frequency_value', sa.Integer, nullable=True))
+        batch_op.add_column(sa.Column('custom_frequency_value', sa.Integer(), nullable=True))
         batch_op.add_column(sa.Column('custom_frequency_unit', sa.String(20), nullable=True))
 
         # Add first rent due date
-        batch_op.add_column(sa.Column('first_rent_due_date', sa.DateTime, nullable=True))
+        batch_op.add_column(sa.Column('first_rent_due_date', sa.DateTime(), nullable=True))
 
         # Rename late_fee to late_penalty_amount (keeping old column for compatibility)
-        batch_op.add_column(sa.Column('late_penalty_amount', sa.Float, nullable=False, server_default='10.0'))
+        batch_op.add_column(sa.Column('late_penalty_amount', sa.Float(), nullable=False, server_default='10.0'))
         batch_op.add_column(sa.Column('late_penalty_type', sa.String(20), nullable=False, server_default='once'))
-        batch_op.add_column(sa.Column('late_penalty_frequency_days', sa.Integer, nullable=True))
+        batch_op.add_column(sa.Column('late_penalty_frequency_days', sa.Integer(), nullable=True))
 
         # Add bill preview and payment options
-        batch_op.add_column(sa.Column('bill_preview_enabled', sa.Boolean, nullable=False, server_default='0'))
-        batch_op.add_column(sa.Column('bill_preview_days', sa.Integer, nullable=False, server_default='7'))
-        batch_op.add_column(sa.Column('allow_incremental_payment', sa.Boolean, nullable=False, server_default='0'))
-        batch_op.add_column(sa.Column('prevent_purchase_when_late', sa.Boolean, nullable=False, server_default='0'))
+        batch_op.add_column(sa.Column('bill_preview_enabled', sa.Boolean(), nullable=False, server_default='0'))
+        batch_op.add_column(sa.Column('bill_preview_days', sa.Integer(), nullable=False, server_default='7'))
+        batch_op.add_column(sa.Column('allow_incremental_payment', sa.Boolean(), nullable=False, server_default='0'))
+        batch_op.add_column(sa.Column('prevent_purchase_when_late', sa.Boolean(), nullable=False, server_default='0'))
 
     # Migrate data from late_fee to late_penalty_amount
     op.execute("""
