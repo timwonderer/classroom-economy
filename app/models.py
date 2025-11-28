@@ -976,7 +976,7 @@ class TeacherOnboarding(db.Model):
         self.steps_completed = updated_steps
         self.last_activity_at = datetime.utcnow()
 
-    def is_step_completed(self, step_name):
+        self.last_activity_at = datetime.now(timezone.utc)
         """Check if a specific step is completed."""
         if self.steps_completed is None:
             return False
