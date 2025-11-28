@@ -4549,6 +4549,7 @@ def onboarding_step(step_name):
                 # Last step completed
                 onboarding_record.complete_onboarding()
         except ValueError:
+            # If step_name is not found in step_order, ignore and do not advance onboarding step.
             pass
 
         db.session.commit()
