@@ -11,7 +11,7 @@
             <div class="card">
                 <div class="card-header">
                     <div class="d-flex justify-content-between align-items-center">
-                        <h5 class="mb-0"><i class="bi bi-file-text-fill me-2"></i>Error Logs Database</h5>
+                        <h5 class="mb-0"><span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">error</span> Error Logs Database</h5>
                         <a href="{{ url_for('sysadmin.error_logs') }}" class="btn btn-sm btn-outline-primary">
                             View Full Logs
                         </a>
@@ -56,7 +56,7 @@
         <div class="col-md-6 mb-4">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-bug-fill me-2"></i>Test Error Pages</h5>
+                    <h5 class="mb-0"><span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">bug_report</span> Test Error Pages</h5>
                 </div>
                 <div class="card-body">
                     <p class="mb-3">Click each button to trigger that error type and see how the error page looks.</p>
@@ -64,39 +64,39 @@
                     <div class="row g-2">
                         <div class="col-6">
                             <a href="{{ url_for('sysadmin.test_error_400') }}" class="btn btn-outline-warning w-100" target="_blank">
-                                <i class="bi bi-exclamation-triangle me-2"></i>400 Bad Request
+                                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">warning</span> 400 Bad Request
                             </a>
                         </div>
                         <div class="col-6">
                             <a href="{{ url_for('sysadmin.test_error_401') }}" class="btn btn-outline-info w-100" target="_blank">
-                                <i class="bi bi-shield-lock me-2"></i>401 Unauthorized
+                                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">lock</span> 401 Unauthorized
                             </a>
                         </div>
                         <div class="col-6">
                             <a href="{{ url_for('sysadmin.test_error_403') }}" class="btn btn-outline-danger w-100" target="_blank">
-                                <i class="bi bi-slash-circle me-2"></i>403 Forbidden
+                                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">block</span> 403 Forbidden
                             </a>
                         </div>
                         <div class="col-6">
                             <a href="{{ url_for('sysadmin.test_error_404') }}" class="btn btn-outline-secondary w-100" target="_blank">
-                                <i class="bi bi-question-circle me-2"></i>404 Not Found
+                                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">help</span> 404 Not Found
                             </a>
                         </div>
                         <div class="col-6">
                             <a href="{{ url_for('sysadmin.test_error_500') }}" class="btn btn-outline-danger w-100" target="_blank">
-                                <i class="bi bi-x-circle me-2"></i>500 Internal Error
+                                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">error</span> 500 Internal Error
                             </a>
                         </div>
                         <div class="col-6">
                             <a href="{{ url_for('sysadmin.test_error_503') }}" class="btn btn-outline-warning w-100" target="_blank">
-                                <i class="bi bi-exclamation-octagon me-2"></i>503 Unavailable
+                                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">report</span> 503 Unavailable
                             </a>
                         </div>
                     </div>
 
                     <div class="alert alert-dark mt-3 mb-0">
                         <small>
-                            <i class="bi bi-info-circle me-2"></i>
+                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">info</span>
                             <strong>Tip:</strong> Test buttons open in a new tab. After viewing the error page, close the tab and check the error logs above.
                         </small>
                     </div>
@@ -107,18 +107,18 @@
         <div class="col-md-6 mb-4">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-file-earmark-code me-2"></i>System Logs (File)</h5>
+                    <h5 class="mb-0"><span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">description</span> System Logs (File)</h5>
                 </div>
                 <div class="card-body">
                     <p class="mb-3">View system logs from the server log files.</p>
 
                     <a href="{{ logs_url }}" class="btn btn-outline-primary w-100 mb-3" target="_blank">
-                        <i class="bi bi-folder-open me-2"></i>Open System Log File
+                        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">folder_open</span> Open System Log File
                     </a>
 
                     <div class="alert alert-dark mb-0">
                         <small>
-                            <i class="bi bi-info-circle me-2"></i>
+                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">info</span>
                             These are server-level logs showing application activity, requests, and system events.
                         </small>
                     </div>

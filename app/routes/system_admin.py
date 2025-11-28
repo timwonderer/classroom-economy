@@ -312,6 +312,59 @@ def logs_testing():
     )
 
 
+@sysadmin_bp.route('/network-activity')
+@system_admin_required
+def network_activity():
+    """
+    View network activity log showing all HTTP requests and responses.
+    Displays data from error logs, grouped by IP address and request path.
+    """
+    page = request.args.get('page', 1, type=int)
+    per_page = 50
+
+    # Get IP filter if provided
+    ip_filter = request.args.get('ip', '')
+
+    # Query error logs as proxy for network activity
+    query = ErrorLog.query
+
+    if ip_filter:
+        query = query.filter(ErrorLog.ip_address == ip_filter)
+
+    # Paginate and order by most recent first
+    pagination = query.order_by(ErrorLog.timestamp.desc()).paginate(
+        page=page, per_page=per_page, error_out=False
+    )
+
+    network_logs = pagination.items
+
+    # Get distinct IP addresses for filter dropdown
+    ip_addresses = db.session.query(ErrorLog.ip_address).distinct().all()
+    ip_addresses = [ip[0] for ip in ip_addresses if ip[0]]
+
+    # Get statistics
+    total_requests = ErrorLog.query.count()
+    unique_ips = db.session.query(ErrorLog.ip_address).distinct().count()
+
+    # Group by error type for stats
+    error_type_stats = db.session.query(
+        ErrorLog.error_type,
+        db.func.count(ErrorLog.id).label('count')
+    ).group_by(ErrorLog.error_type).all()
+
+    return render_template(
+        "system_admin_network_activity.html",
+        network_logs=network_logs,
+        pagination=pagination,
+        ip_addresses=ip_addresses,
+        current_ip=ip_filter,
+        total_requests=total_requests,
+        unique_ips=unique_ips,
+        error_type_stats=error_type_stats,
+        current_page="network_activity"
+    )
+
+
 # -------------------- ERROR TESTING ROUTES --------------------
 
 @sysadmin_bp.route('/test-errors/400')

@@ -10,7 +10,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-ticket-perforated me-2"></i>Manage Invite Codes</h5>
+                    <h5 class="mb-0"><span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">confirmation_number</span> Manage Invite Codes</h5>
                 </div>
                 <div class="card-body">
                     <div class="row">
@@ -28,7 +28,7 @@
                                     <div class="form-text">Number of days until the code expires</div>
                                 </div>
                                 <button type="submit" class="btn btn-primary w-100">
-                                    <i class="bi bi-plus-circle me-2"></i>Generate Invite Code
+                                    <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">add_circle</span> Generate Invite Code
                                 </button>
                             </form>
                         </div>
@@ -43,16 +43,16 @@
                                             <code class="fs-6">{{ invite.code }}</code>
                                             <div class="small text-muted mt-1">
                                                 {% if invite.used %}
-                                                    <i class="bi bi-check-circle me-1"></i>Used by {{ invite.used_by.username if invite.used_by else 'Unknown' }}
+                                                    <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 14px;">check_circle</span> Used by {{ invite.used_by.username if invite.used_by else 'Unknown' }}
                                                 {% else %}
-                                                    <i class="bi bi-calendar3 me-1"></i>Expires {{ invite.expires_at.strftime('%b %d, %Y') }}
+                                                    <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 14px;">calendar_today</span> Expires {{ invite.expires_at.strftime('%b %d, %Y') }}
                                                 {% endif %}
                                             </div>
                                         </div>
                                         <div class="d-flex align-items-center gap-2">
                                             {% if not invite.used %}
                                             <button class="btn btn-sm btn-outline-secondary" onclick="navigator.clipboard.writeText('{{ invite.code }}')">
-                                                <i class="bi bi-clipboard"></i>
+                                                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">content_copy</span>
                                             </button>
                                             {% endif %}
                                             <span class="badge {{ 'bg-secondary' if invite.used else 'bg-success' }}">
@@ -79,7 +79,7 @@
         <div class="col-12">
             <div class="card">
                 <div class="card-header">
-                    <h5 class="mb-0"><i class="bi bi-people-fill me-2"></i>All Teachers</h5>
+                    <h5 class="mb-0"><span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">group</span> All Teachers</h5>
                 </div>
                 <div class="card-body">
                     <div class="table-responsive">
@@ -96,7 +96,7 @@
                                 {% for teacher in teachers %}
                                 <tr>
                                     <td>
-                                        <i class="bi bi-person-badge me-2"></i>
+                                        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">person</span>
                                         <strong>{{ teacher.username }}</strong>
                                     </td>
                                     <td><small>{{ teacher.created_at.strftime('%b %d, %Y') if teacher.created_at else 'Unknown' }}</small></td>

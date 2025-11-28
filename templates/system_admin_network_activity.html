@@ -1,0 +1,271 @@
+{% extends "layout_system_admin.html" %}
+{% set page_title = "Network Activity Log" %}
+{% set page_subtitle = "Monitor HTTP requests and network traffic" %}
+{% set current_page = "network_activity" %}
+
+{% block content %}
+<div class="container-fluid">
+  <!-- Statistics Cards -->
+  <div class="row mb-4">
+    <div class="col-md-4 mb-3">
+      <div class="card stat-card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <p class="text-muted mb-1" style="font-size: 0.85rem;">Total Requests</p>
+              <h3 class="mb-0 fw-bold" style="color: var(--brand-primary);">{{ total_requests }}</h3>
+            </div>
+            <div>
+              <span class="material-symbols-outlined" style="font-size: 48px; color: var(--brand-primary); opacity: 0.3;">cloud</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4 mb-3">
+      <div class="card stat-card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <p class="text-muted mb-1" style="font-size: 0.85rem;">Unique IP Addresses</p>
+              <h3 class="mb-0 fw-bold" style="color: var(--brand-teal);">{{ unique_ips }}</h3>
+            </div>
+            <div>
+              <span class="material-symbols-outlined" style="font-size: 48px; color: var(--brand-teal); opacity: 0.3;">router</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-4 mb-3">
+      <div class="card stat-card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center">
+            <div>
+              <p class="text-muted mb-1" style="font-size: 0.85rem;">Error Types</p>
+              <h3 class="mb-0 fw-bold" style="color: var(--brand-gold);">{{ error_type_stats|length }}</h3>
+            </div>
+            <div>
+              <span class="material-symbols-outlined" style="font-size: 48px; color: var(--brand-gold); opacity: 0.3;">category</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Filter Section -->
+  <div class="row mb-4">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">filter_alt</span> Filter by IP Address</h5>
+        </div>
+        <div class="card-body">
+          <form method="GET" action="{{ url_for('sysadmin.network_activity') }}" class="mb-0">
+            <div class="input-group">
+              <select name="ip" class="form-select">
+                <option value="">All IP Addresses</option>
+                {% for ip in ip_addresses %}
+                  <option value="{{ ip }}" {% if ip == current_ip %}selected{% endif %}>{{ ip }}</option>
+                {% endfor %}
+              </select>
+              <button type="submit" class="btn btn-primary">Filter</button>
+              {% if current_ip %}
+                <a href="{{ url_for('sysadmin.network_activity') }}" class="btn btn-outline-secondary">Clear</a>
+              {% endif %}
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">analytics</span> Error Type Distribution</h5>
+        </div>
+        <div class="card-body">
+          <div class="list-group list-group-flush" style="max-height: 200px; overflow-y: auto;">
+            {% for error_type, count in error_type_stats %}
+            <div class="list-group-item bg-transparent border-bottom d-flex justify-content-between align-items-center py-2">
+              <span class="small">{{ error_type or 'Unknown' }}</span>
+              <span class="badge bg-secondary">{{ count }}</span>
+            </div>
+            {% else %}
+            <div class="list-group-item bg-transparent text-center text-muted">No data available</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Network Activity Table -->
+  <div class="card">
+    <div class="card-header">
+      <div class="d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+          <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">network_check</span>
+          {% if current_ip %}
+            Network Activity for {{ current_ip }}
+          {% else %}
+            All Network Activity
+          {% endif %}
+        </h5>
+        <span class="badge bg-light text-dark">{{ pagination.total }} requests</span>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      {% if network_logs %}
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th style="width: 180px;">Timestamp</th>
+                <th style="width: 80px;">Method</th>
+                <th>Request Path</th>
+                <th style="width: 150px;">Status</th>
+                <th style="width: 140px;">IP Address</th>
+                <th style="width: 80px;">Details</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for log in network_logs %}
+                <tr>
+                  <td>
+                    <small>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else 'N/A' }}</small>
+                  </td>
+                  <td>
+                    <span class="badge
+                      {% if log.request_method == 'GET' %}bg-primary
+                      {% elif log.request_method == 'POST' %}bg-success
+                      {% elif log.request_method == 'PUT' %}bg-warning text-dark
+                      {% elif log.request_method == 'DELETE' %}bg-danger
+                      {% else %}bg-secondary{% endif %}">
+                      {{ log.request_method or 'N/A' }}
+                    </span>
+                  </td>
+                  <td>
+                    <code class="small">{{ log.request_path or 'N/A' }}</code>
+                  </td>
+                  <td>
+                    <span class="badge
+                      {% if log.error_type == '500 Internal Server Error' %}bg-danger
+                      {% elif log.error_type == '503 Service Unavailable' %}bg-warning text-dark
+                      {% elif log.error_type == '403 Forbidden' %}bg-danger
+                      {% elif log.error_type == '401 Unauthorized' %}bg-info
+                      {% elif log.error_type == '400 Bad Request' %}bg-warning text-dark
+                      {% elif log.error_type == '404 Not Found' %}bg-secondary
+                      {% else %}bg-dark{% endif %}">
+                      {{ log.error_type or 'Unknown' }}
+                    </span>
+                  </td>
+                  <td><small>{{ log.ip_address or 'N/A' }}</small></td>
+                  <td>
+                    <button class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#activityModal{{ log.id }}">
+                      View
+                    </button>
+                  </td>
+                </tr>
+
+                <!-- Modal for Request Details -->
+                <div class="modal fade" id="activityModal{{ log.id }}" tabindex="-1" aria-labelledby="activityModalLabel{{ log.id }}" aria-hidden="true">
+                  <div class="modal-dialog modal-xl">
+                    <div class="modal-content">
+                      <div class="modal-header bg-primary text-white">
+                        <h5 class="modal-title" id="activityModalLabel{{ log.id }}">
+                          <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">info</span>
+                          Request Details #{{ log.id }}
+                        </h5>
+                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                      </div>
+                      <div class="modal-body">
+                        <div class="row mb-3">
+                          <div class="col-md-6">
+                            <strong>Timestamp:</strong> {{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else 'N/A' }}
+                          </div>
+                          <div class="col-md-3">
+                            <strong>Method:</strong> <span class="badge bg-primary">{{ log.request_method or 'N/A' }}</span>
+                          </div>
+                          <div class="col-md-3">
+                            <strong>IP:</strong> {{ log.ip_address or 'N/A' }}
+                          </div>
+                        </div>
+                        <div class="mb-3">
+                          <strong>Request Path:</strong><br>
+                          <code>{{ log.request_path or 'N/A' }}</code>
+                        </div>
+                        <div class="mb-3">
+                          <strong>Response Status:</strong> <span class="badge bg-danger">{{ log.error_type or 'Unknown' }}</span>
+                        </div>
+                        <div class="mb-3">
+                          <strong>Error Message:</strong><br>
+                          <code>{{ log.error_message or 'No message' }}</code>
+                        </div>
+                        <div class="mb-3">
+                          <strong>User Agent:</strong><br>
+                          <small>{{ log.user_agent or 'N/A' }}</small>
+                        </div>
+
+                        {% if log.stack_trace %}
+                          <div class="mb-3">
+                            <strong>Stack Trace:</strong>
+                            <pre class="bg-dark text-light p-3 rounded" style="max-height: 300px; overflow-y: auto;"><code>{{ log.stack_trace }}</code></pre>
+                          </div>
+                        {% endif %}
+                      </div>
+                      <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination -->
+        {% if pagination.pages > 1 %}
+          <div class="card-footer">
+            <nav aria-label="Page navigation">
+              <ul class="pagination justify-content-center mb-0">
+                <li class="page-item {% if not pagination.has_prev %}disabled{% endif %}">
+                  <a class="page-link" href="{{ url_for('sysadmin.network_activity', page=pagination.prev_num, ip=current_ip) if pagination.has_prev else '#' }}">Previous</a>
+                </li>
+
+                {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+                  {% if page_num %}
+                    <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                      <a class="page-link" href="{{ url_for('sysadmin.network_activity', page=page_num, ip=current_ip) }}">{{ page_num }}</a>
+                    </li>
+                  {% else %}
+                    <li class="page-item disabled"><span class="page-link">...</span></li>
+                  {% endif %}
+                {% endfor %}
+
+                <li class="page-item {% if not pagination.has_next %}disabled{% endif %}">
+                  <a class="page-link" href="{{ url_for('sysadmin.network_activity', page=pagination.next_num, ip=current_ip) if pagination.has_next else '#' }}">Next</a>
+                </li>
+              </ul>
+            </nav>
+            <p class="text-center text-muted mt-2 mb-0">
+              Showing {{ (pagination.page - 1) * pagination.per_page + 1 }} - {{ min(pagination.page * pagination.per_page, pagination.total) }} of {{ pagination.total }}
+            </p>
+          </div>
+        {% endif %}
+
+      {% else %}
+        <div class="p-5 text-center text-muted">
+          <span class="material-symbols-outlined d-block" style="font-size: 64px; opacity: 0.3;">wifi_off</span>
+          <h4>No network activity logged yet</h4>
+          <p>Network requests will appear here as they occur.</p>
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

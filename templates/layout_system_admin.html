@@ -252,6 +252,11 @@
                class="btn text-start {% if current_page == 'logs' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
                <span class="material-symbols-outlined">description</span>Logs & Testing
             </a>
+
+            <a href="{{ url_for('sysadmin.network_activity') }}"
+               class="btn text-start {% if current_page == 'network_activity' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
+               <span class="material-symbols-outlined">network_check</span>Network Activity
+            </a>
         </div>
 
         <div class="mt-auto">

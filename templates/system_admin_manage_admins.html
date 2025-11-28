@@ -1,33 +1,26 @@
-{% extends "base.html" %}
-
-{% block title %}Manage Teachers - System Admin{% endblock %}
+{% extends "layout_system_admin.html" %}
+{% set page_title = "Manage Teachers" %}
+{% set page_subtitle = "View and manage all teacher accounts" %}
+{% set current_page = "teachers" %}
 
 {% block content %}
-<div class="container py-5">
-  <h2 class="mb-2 fw-bold text-center">Admin (Teacher) Management</h2>
-  <p class="text-muted text-center mb-4">View and manage all teacher accounts</p>
-
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      <div class="alert alert-info text-center" role="alert">
-        {{ messages[0] }}
-      </div>
-    {% endif %}
-  {% endwith %}
-
+<div class="container-fluid">
   <!-- Admins Table -->
-  <div class="card shadow">
-    <div class="card-header bg-primary text-white">
-      <h5 class="mb-0">
-        All Teachers
-        <span class="badge bg-light text-dark float-end">{{ admins|length }} total</span>
-      </h5>
+  <div class="card">
+    <div class="card-header">
+      <div class="d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+          <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">group</span>
+          All Teachers
+        </h5>
+        <span class="badge bg-light text-dark">{{ admins|length }} total</span>
+      </div>
     </div>
     <div class="card-body p-0">
       {% if admins %}
         <div class="table-responsive">
           <table class="table table-hover mb-0">
-            <thead class="table-light">
+            <thead>
               <tr>
                 <th>ID</th>
                 <th>Username</th>
@@ -71,7 +64,10 @@
                   <div class="modal-dialog">
                     <div class="modal-content">
                       <div class="modal-header bg-danger text-white">
-                        <h5 class="modal-title" id="deleteModalLabel{{ admin.id }}">⚠️ Delete Admin: {{ admin.username }}</h5>
+                        <h5 class="modal-title" id="deleteModalLabel{{ admin.id }}">
+                          <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">warning</span>
+                          Delete Admin: {{ admin.username }}
+                        </h5>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                       </div>
                       <div class="modal-body">
@@ -127,17 +123,12 @@
         </div>
       {% else %}
         <div class="p-5 text-center text-muted">
+          <span class="material-symbols-outlined d-block" style="font-size: 64px; opacity: 0.3;">person_off</span>
           <h4>No teachers registered</h4>
           <p>No admin (teacher) accounts have been created yet.</p>
           <p class="small">Use the invite code system to allow teachers to sign up.</p>
         </div>
       {% endif %}
-    </div>
-  </div>
-
-  <div class="row mt-4">
-    <div class="col-12 text-center">
-      <a href="{{ url_for('sysadmin.dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
     </div>
   </div>
 </div>

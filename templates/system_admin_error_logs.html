@@ -1,26 +1,18 @@
-{% extends "base.html" %}
-
-{% block title %}Error Logs - System Admin{% endblock %}
+{% extends "layout_system_admin.html" %}
+{% set page_title = "Error Logs" %}
+{% set page_subtitle = "View all errors captured by the error logging system" %}
+{% set current_page = "logs" %}
 
 {% block content %}
-<div class="container py-5">
-  <h2 class="mb-2 fw-bold text-center">Error Logs Database</h2>
-  <p class="text-muted text-center mb-4">View all errors captured by the error logging system</p>
-
-  {% with messages = get_flashed_messages() %}
-    {% if messages %}
-      <div class="alert alert-info text-center" role="alert">
-        {{ messages[0] }}
-      </div>
-    {% endif %}
-  {% endwith %}
-
+<div class="container-fluid">
   <!-- Filter and Stats Section -->
   <div class="row mb-4">
-    <div class="col-md-6 mx-auto">
-      <div class="card shadow-sm">
+    <div class="col-md-6">
+      <div class="card">
+        <div class="card-header">
+          <h5 class="mb-0"><span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">filter_alt</span> Filter Errors</h5>
+        </div>
         <div class="card-body">
-          <h5 class="card-title mb-3">Filter Errors</h5>
           <form method="GET" action="{{ url_for('sysadmin.error_logs') }}" class="mb-0">
             <div class="input-group">
               <select name="error_type" class="form-select">
@@ -41,22 +33,25 @@
   </div>
 
   <!-- Error Logs Table -->
-  <div class="card shadow">
-    <div class="card-header bg-danger text-white">
-      <h5 class="mb-0">
-        {% if current_error_type %}
-          {{ current_error_type }} Errors
-        {% else %}
-          All Errors
-        {% endif %}
-        <span class="badge bg-light text-dark float-end">{{ pagination.total }} total</span>
-      </h5>
+  <div class="card">
+    <div class="card-header">
+      <div class="d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+          <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">error</span>
+          {% if current_error_type %}
+            {{ current_error_type }} Errors
+          {% else %}
+            All Errors
+          {% endif %}
+        </h5>
+        <span class="badge bg-light text-dark">{{ pagination.total }} total</span>
+      </div>
     </div>
     <div class="card-body p-0">
       {% if error_logs %}
         <div class="table-responsive">
           <table class="table table-hover mb-0">
-            <thead class="table-light">
+            <thead>
               <tr>
                 <th style="width: 60px;">ID</th>
                 <th style="width: 180px;">Timestamp</th>
@@ -105,7 +100,10 @@
                   <div class="modal-dialog modal-xl">
                     <div class="modal-content">
                       <div class="modal-header bg-danger text-white">
-                        <h5 class="modal-title" id="errorModalLabel{{ log.id }}">Error #{{ log.id }} - {{ log.error_type }}</h5>
+                        <h5 class="modal-title" id="errorModalLabel{{ log.id }}">
+                          <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 20px;">error</span>
+                          Error #{{ log.id }} - {{ log.error_type }}
+                        </h5>
                         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
                       </div>
                       <div class="modal-body">
@@ -193,9 +191,10 @@
 
       {% else %}
         <div class="p-5 text-center text-muted">
+          <span class="material-symbols-outlined d-block" style="font-size: 64px; opacity: 0.3;">check_circle</span>
           <h4>No errors logged yet</h4>
           <p>This is good news! No errors have been captured by the error logging system.</p>
-          <p class="small">You can test the error pages using the buttons on the dashboard.</p>
+          <p class="small">You can test the error pages using the buttons on the Logs & Testing page.</p>
         </div>
       {% endif %}
     </div>
@@ -203,7 +202,10 @@
 
   <div class="row mt-4">
     <div class="col-12 text-center">
-      <a href="{{ url_for('sysadmin.dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+      <a href="{{ url_for('sysadmin.logs_testing') }}" class="btn btn-outline-secondary">
+        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">arrow_back</span>
+        Back to Logs & Testing
+      </a>
     </div>
   </div>
 </div>
