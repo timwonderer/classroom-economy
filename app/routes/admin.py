@@ -34,7 +34,8 @@ from app.models import (
     Student, Admin, AdminInviteCode, StudentTeacher, Transaction, TapEvent, StoreItem, StudentItem,
     RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
     HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings, TeacherBlock,
-    DeletionRequest, DeletionRequestType, DeletionRequestStatus, UserReport
+    DeletionRequest, DeletionRequestType, DeletionRequestStatus, UserReport,
+    FeatureSettings, TeacherOnboarding
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
@@ -119,6 +120,104 @@ def _link_student_to_admin(student: Student, admin_id):
     existing_link = StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin_id).first()
     if not existing_link:
         db.session.add(StudentTeacher(student_id=student.id, admin_id=admin_id))
+
+
+def _get_feature_settings(teacher_id, block=None):
+    """
+    Get feature settings for a teacher, optionally scoped to a specific block.
+
+    Settings are resolved with block-specific overriding global defaults:
+    1. Look for block-specific settings if block is provided
+    2. Fall back to global (block=NULL) settings
+    3. Fall back to system defaults if no settings exist
+
+    Args:
+        teacher_id: The teacher's admin ID
+        block: Optional block/period name (e.g., "A", "B", "1")
+
+    Returns:
+        dict: Feature settings with all toggle values
+    """
+    # Try block-specific settings first
+    if block:
+        block_settings = FeatureSettings.query.filter_by(
+            teacher_id=teacher_id,
+            block=block.strip().upper()
+        ).first()
+        if block_settings:
+            return block_settings.to_dict()
+
+    # Fall back to global settings
+    global_settings = FeatureSettings.query.filter_by(
+        teacher_id=teacher_id,
+        block=None
+    ).first()
+
+    if global_settings:
+        return global_settings.to_dict()
+
+    # Return defaults if no settings exist
+    return FeatureSettings.get_defaults()
+
+
+def _get_or_create_onboarding(teacher_id):
+    """
+    Get or create onboarding record for a teacher.
+
+    Args:
+        teacher_id: The teacher's admin ID
+
+    Returns:
+        TeacherOnboarding: The onboarding record
+    """
+    onboarding = TeacherOnboarding.query.filter_by(teacher_id=teacher_id).first()
+    if not onboarding:
+        onboarding = TeacherOnboarding(teacher_id=teacher_id)
+        db.session.add(onboarding)
+        db.session.commit()
+    return onboarding
+
+
+def _check_onboarding_redirect():
+    """
+    Check if the current admin needs onboarding and should be redirected.
+
+    Returns:
+        None if no redirect needed, otherwise a redirect response
+    """
+    admin_id = session.get('admin_id')
+    if not admin_id:
+        return None
+
+    # Check if teacher has completed or skipped onboarding
+    onboarding = TeacherOnboarding.query.filter_by(teacher_id=admin_id).first()
+
+    # If no onboarding record exists, teacher needs onboarding
+    if not onboarding:
+        # Check if teacher has any existing students - if so, they're a legacy teacher
+        # and we should skip onboarding for them
+        admin = Admin.query.get(admin_id)
+        if admin and admin.has_assigned_students:
+            # Legacy teacher - create completed onboarding record
+            onboarding = TeacherOnboarding(
+                teacher_id=admin_id,
+                is_completed=True,
+                is_skipped=True,
+                completed_at=datetime.utcnow()
+            )
+            db.session.add(onboarding)
+            db.session.commit()
+            return None
+
+        # New teacher needs onboarding
+        return redirect(url_for('admin.onboarding'))
+
+    # If onboarding exists and is completed or skipped, no redirect needed
+    if onboarding.is_completed or onboarding.is_skipped:
+        return None
+
+    # Teacher has incomplete onboarding - redirect them
+    return redirect(url_for('admin.onboarding'))
 
 
 def _normalize_claim_credentials_for_admin(admin_id: int) -> int:
@@ -4046,3 +4145,492 @@ def help_support():
     return render_template('admin_help_support.html',
                          current_page='help',
                          my_reports=my_reports)
+
+
+# -------------------- FEATURE SETTINGS --------------------
+
+@admin_bp.route('/feature-settings', methods=['GET', 'POST'])
+@admin_required
+def feature_settings():
+    """
+    Manage feature toggles for all periods/blocks.
+
+    GET: Display feature settings page with toggles for each period
+    POST: Update feature settings
+    """
+    admin_id = session.get('admin_id')
+
+    # Get all periods for this teacher
+    students = _scoped_students().all()
+    periods = sorted(set(
+        b.strip().upper() for s in students
+        for b in (s.block or '').split(',') if b.strip()
+    ))
+
+    if request.method == 'POST':
+        # Handle feature settings update
+        try:
+            # Determine if applying to all or selected periods
+            apply_to = request.form.get('apply_to', 'all')
+            selected_periods = request.form.getlist('selected_periods[]') if apply_to == 'selected' else periods
+
+            # Get feature toggle values
+            features_data = {
+                'payroll_enabled': 'payroll_enabled' in request.form,
+                'insurance_enabled': 'insurance_enabled' in request.form,
+                'banking_enabled': 'banking_enabled' in request.form,
+                'rent_enabled': 'rent_enabled' in request.form,
+                'hall_pass_enabled': 'hall_pass_enabled' in request.form,
+                'store_enabled': 'store_enabled' in request.form,
+                'bug_reports_enabled': 'bug_reports_enabled' in request.form,
+                'bug_rewards_enabled': 'bug_rewards_enabled' in request.form,
+            }
+
+            # Apply settings to selected periods
+            if apply_to == 'all':
+                # Update global settings
+                global_settings = FeatureSettings.query.filter_by(
+                    teacher_id=admin_id,
+                    block=None
+                ).first()
+
+                if not global_settings:
+                    global_settings = FeatureSettings(teacher_id=admin_id, block=None)
+                    db.session.add(global_settings)
+
+                for key, value in features_data.items():
+                    setattr(global_settings, key, value)
+
+                global_settings.updated_at = datetime.utcnow()
+
+                # Also update all period-specific settings
+                for period in periods:
+                    period_settings = FeatureSettings.query.filter_by(
+                        teacher_id=admin_id,
+                        block=period
+                    ).first()
+
+                    if not period_settings:
+                        period_settings = FeatureSettings(teacher_id=admin_id, block=period)
+                        db.session.add(period_settings)
+
+                    for key, value in features_data.items():
+                        setattr(period_settings, key, value)
+
+                    period_settings.updated_at = datetime.utcnow()
+
+                flash('Feature settings applied to all periods successfully!', 'success')
+            else:
+                # Apply to selected periods only
+                for period in selected_periods:
+                    period_settings = FeatureSettings.query.filter_by(
+                        teacher_id=admin_id,
+                        block=period.strip().upper()
+                    ).first()
+
+                    if not period_settings:
+                        period_settings = FeatureSettings(
+                            teacher_id=admin_id,
+                            block=period.strip().upper()
+                        )
+                        db.session.add(period_settings)
+
+                    for key, value in features_data.items():
+                        setattr(period_settings, key, value)
+
+                    period_settings.updated_at = datetime.utcnow()
+
+                flash(f'Feature settings applied to {len(selected_periods)} period(s) successfully!', 'success')
+
+            db.session.commit()
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error saving feature settings: {e}")
+            flash('Error saving feature settings. Please try again.', 'error')
+
+        return redirect(url_for('admin.feature_settings'))
+
+    # GET: Load current settings
+    global_settings = FeatureSettings.query.filter_by(
+        teacher_id=admin_id,
+        block=None
+    ).first()
+
+    if not global_settings:
+        global_settings = FeatureSettings(teacher_id=admin_id, block=None)
+        db.session.add(global_settings)
+        db.session.commit()
+
+    # Load period-specific settings
+    period_settings = {}
+    for period in periods:
+        settings = FeatureSettings.query.filter_by(
+            teacher_id=admin_id,
+            block=period
+        ).first()
+
+        if settings:
+            period_settings[period] = settings.to_dict()
+        else:
+            period_settings[period] = global_settings.to_dict()
+
+    return render_template(
+        'admin_feature_settings.html',
+        current_page='settings',
+        global_settings=global_settings,
+        periods=periods,
+        period_settings=period_settings,
+        features_list=[
+            ('payroll_enabled', 'Payroll', 'payments', 'Time tracking and student payments'),
+            ('insurance_enabled', 'Insurance', 'shield', 'Insurance policies and claims'),
+            ('banking_enabled', 'Banking', 'account_balance', 'Savings accounts and interest'),
+            ('rent_enabled', 'Rent', 'home', 'Housing costs and payments'),
+            ('hall_pass_enabled', 'Hall Pass', 'confirmation_number', 'Bathroom and water break passes'),
+            ('store_enabled', 'Store', 'storefront', 'Marketplace for student rewards'),
+            ('bug_reports_enabled', 'Bug Reports', 'bug_report', 'Allow students to report issues'),
+            ('bug_rewards_enabled', 'Bug Rewards', 'redeem', 'Reward students for valid bug reports'),
+        ]
+    )
+
+
+@admin_bp.route('/feature-settings/period/<period>', methods=['POST'])
+@admin_required
+def update_period_feature_settings(period):
+    """Update feature settings for a specific period via AJAX."""
+    admin_id = session.get('admin_id')
+
+    try:
+        data = request.get_json()
+        period = period.strip().upper()
+
+        # Get or create period settings
+        settings = FeatureSettings.query.filter_by(
+            teacher_id=admin_id,
+            block=period
+        ).first()
+
+        if not settings:
+            settings = FeatureSettings(teacher_id=admin_id, block=period)
+            db.session.add(settings)
+
+        # Update only the provided features
+        feature_map = {
+            'payroll': 'payroll_enabled',
+            'insurance': 'insurance_enabled',
+            'banking': 'banking_enabled',
+            'rent': 'rent_enabled',
+            'hall_pass': 'hall_pass_enabled',
+            'store': 'store_enabled',
+            'bug_reports': 'bug_reports_enabled',
+            'bug_rewards': 'bug_rewards_enabled',
+        }
+
+        for feature_key, db_column in feature_map.items():
+            if feature_key in data:
+                setattr(settings, db_column, bool(data[feature_key]))
+
+        settings.updated_at = datetime.utcnow()
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Settings updated for Period {period}',
+            'settings': settings.to_dict()
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating period feature settings: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_bp.route('/feature-settings/copy', methods=['POST'])
+@admin_required
+def copy_feature_settings():
+    """Copy feature settings from one period to other periods."""
+    admin_id = session.get('admin_id')
+
+    try:
+        data = request.get_json()
+        source_period = data.get('source_period', '').strip().upper()
+        target_periods = [p.strip().upper() for p in data.get('target_periods', [])]
+
+        if not source_period or not target_periods:
+            return jsonify({
+                'status': 'error',
+                'message': 'Source period and at least one target period are required.'
+            }), 400
+
+        # Get source settings
+        source_settings = FeatureSettings.query.filter_by(
+            teacher_id=admin_id,
+            block=source_period
+        ).first()
+
+        if not source_settings:
+            # Use global defaults if no source settings
+            source_settings = FeatureSettings.query.filter_by(
+                teacher_id=admin_id,
+                block=None
+            ).first()
+
+        if not source_settings:
+            return jsonify({
+                'status': 'error',
+                'message': 'No source settings found to copy.'
+            }), 404
+
+        source_dict = source_settings.to_dict()
+
+        # Copy to target periods
+        copied_count = 0
+        for period in target_periods:
+            if period == source_period:
+                continue  # Skip copying to self
+
+            target_settings = FeatureSettings.query.filter_by(
+                teacher_id=admin_id,
+                block=period
+            ).first()
+
+            if not target_settings:
+                target_settings = FeatureSettings(teacher_id=admin_id, block=period)
+                db.session.add(target_settings)
+
+            for key, value in source_dict.items():
+                setattr(target_settings, key, value)
+
+            target_settings.updated_at = datetime.utcnow()
+            copied_count += 1
+
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Settings copied from Period {source_period} to {copied_count} period(s).'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error copying feature settings: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# -------------------- TEACHER ONBOARDING --------------------
+
+@admin_bp.route('/onboarding')
+@admin_required
+def onboarding():
+    """
+    Teacher onboarding wizard.
+
+    Guides new teachers through initial setup:
+    1. Welcome & Overview
+    2. Feature Selection
+    3. Period Setup
+    4. Roster Upload
+    5. Quick Settings
+    """
+    admin_id = session.get('admin_id')
+
+    # Get or create onboarding record
+    onboarding_record = _get_or_create_onboarding(admin_id)
+
+    # If already completed or skipped, redirect to dashboard
+    if onboarding_record.is_completed or onboarding_record.is_skipped:
+        return redirect(url_for('admin.dashboard'))
+
+    # Get admin info
+    admin = Admin.query.get(admin_id)
+
+    # Define steps
+    steps = [
+        {
+            'id': 'welcome',
+            'title': 'Welcome',
+            'icon': 'waving_hand',
+            'description': 'Get started with Classroom Economy'
+        },
+        {
+            'id': 'features',
+            'title': 'Select Features',
+            'icon': 'tune',
+            'description': 'Choose which features to enable'
+        },
+        {
+            'id': 'periods',
+            'title': 'Set Up Periods',
+            'icon': 'calendar_today',
+            'description': 'Configure your class periods'
+        },
+        {
+            'id': 'roster',
+            'title': 'Upload Roster',
+            'icon': 'upload_file',
+            'description': 'Add your students'
+        },
+        {
+            'id': 'settings',
+            'title': 'Quick Settings',
+            'icon': 'settings',
+            'description': 'Configure basic settings'
+        }
+    ]
+
+    # Get current step based on onboarding record
+    current_step = onboarding_record.current_step
+
+    return render_template(
+        'admin_onboarding.html',
+        admin=admin,
+        onboarding=onboarding_record,
+        steps=steps,
+        current_step=current_step,
+        current_page='onboarding'
+    )
+
+
+@admin_bp.route('/onboarding/step/<step_name>', methods=['POST'])
+@admin_required
+def onboarding_step(step_name):
+    """Process an onboarding step completion."""
+    admin_id = session.get('admin_id')
+
+    try:
+        data = request.get_json() if request.is_json else {}
+
+        onboarding_record = _get_or_create_onboarding(admin_id)
+
+        # Mark step as completed
+        onboarding_record.mark_step_completed(step_name)
+
+        # Process step-specific data
+        if step_name == 'features':
+            # Save feature selections
+            features_data = data.get('features', {})
+
+            global_settings = FeatureSettings.query.filter_by(
+                teacher_id=admin_id,
+                block=None
+            ).first()
+
+            if not global_settings:
+                global_settings = FeatureSettings(teacher_id=admin_id, block=None)
+                db.session.add(global_settings)
+
+            for feature, enabled in features_data.items():
+                feature_column = f"{feature}_enabled"
+                if hasattr(global_settings, feature_column):
+                    setattr(global_settings, feature_column, bool(enabled))
+
+            global_settings.updated_at = datetime.utcnow()
+
+        elif step_name == 'periods':
+            # Periods are set up via the regular student upload flow
+            pass
+
+        # Advance to next step
+        step_order = ['welcome', 'features', 'periods', 'roster', 'settings']
+        try:
+            current_index = step_order.index(step_name)
+            if current_index < len(step_order) - 1:
+                onboarding_record.current_step = current_index + 2  # 1-indexed
+            else:
+                # Last step completed
+                onboarding_record.complete_onboarding()
+        except ValueError:
+            pass
+
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Step "{step_name}" completed.',
+            'next_step': onboarding_record.current_step,
+            'is_completed': onboarding_record.is_completed
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error processing onboarding step: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_bp.route('/onboarding/skip', methods=['POST'])
+@admin_required
+def onboarding_skip():
+    """Skip the onboarding process."""
+    admin_id = session.get('admin_id')
+
+    try:
+        onboarding_record = _get_or_create_onboarding(admin_id)
+        onboarding_record.skip_onboarding()
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Onboarding skipped. You can always configure settings later.',
+            'redirect': url_for('admin.dashboard')
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error skipping onboarding: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_bp.route('/onboarding/complete', methods=['POST'])
+@admin_required
+def onboarding_complete():
+    """Complete the onboarding process."""
+    admin_id = session.get('admin_id')
+
+    try:
+        onboarding_record = _get_or_create_onboarding(admin_id)
+        onboarding_record.complete_onboarding()
+        db.session.commit()
+
+        flash('🎉 Welcome to Classroom Economy! Your setup is complete.', 'success')
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Onboarding completed successfully!',
+            'redirect': url_for('admin.dashboard')
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error completing onboarding: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_bp.route('/onboarding/reset', methods=['POST'])
+@admin_required
+def onboarding_reset():
+    """Reset onboarding to start over (for testing or re-configuration)."""
+    admin_id = session.get('admin_id')
+
+    try:
+        onboarding_record = TeacherOnboarding.query.filter_by(teacher_id=admin_id).first()
+
+        if onboarding_record:
+            onboarding_record.is_completed = False
+            onboarding_record.is_skipped = False
+            onboarding_record.current_step = 1
+            onboarding_record.steps_completed = {}
+            onboarding_record.completed_at = None
+            onboarding_record.skipped_at = None
+            onboarding_record.last_activity_at = datetime.utcnow()
+            db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Onboarding reset. You can now go through setup again.',
+            'redirect': url_for('admin.onboarding')
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error resetting onboarding: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500

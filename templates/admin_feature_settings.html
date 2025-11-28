@@ -1,0 +1,467 @@
+{% extends "layout_admin.html" %}
+{% set page_title = "Feature Settings" %}
+{% block title %}Feature Settings{% endblock %}
+{% block page_icon %}tune{% endblock %}
+
+{% block extra_head %}
+<style>
+    .feature-card {
+        transition: all 0.2s ease;
+        border-left: 4px solid transparent;
+    }
+    .feature-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    }
+    .feature-card.enabled {
+        border-left-color: #10b981;
+    }
+    .feature-card.disabled {
+        border-left-color: #ef4444;
+        opacity: 0.8;
+    }
+    .period-badge {
+        font-size: 0.875rem;
+        padding: 0.5rem 1rem;
+        margin: 0.25rem;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+    .period-badge:hover {
+        transform: scale(1.05);
+    }
+    .period-badge.active {
+        background: linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-blue) 100%);
+        color: white;
+    }
+    .feature-toggle {
+        cursor: pointer;
+    }
+    .feature-toggle .form-check-input {
+        width: 3rem;
+        height: 1.5rem;
+        cursor: pointer;
+    }
+    .settings-summary {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .settings-summary .badge {
+        font-size: 0.75rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Nav Tabs -->
+<ul class="nav nav-tabs mb-4" id="featureSettingsTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="global-tab" data-bs-toggle="tab" data-bs-target="#global" type="button" role="tab">
+            <span class="material-symbols-outlined me-1" style="vertical-align: middle;">public</span>Global Settings
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="per-period-tab" data-bs-toggle="tab" data-bs-target="#per-period" type="button" role="tab">
+            <span class="material-symbols-outlined me-1" style="vertical-align: middle;">calendar_view_day</span>Per-Period Settings
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="copy-tab" data-bs-toggle="tab" data-bs-target="#copy" type="button" role="tab">
+            <span class="material-symbols-outlined me-1" style="vertical-align: middle;">content_copy</span>Copy Settings
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="featureSettingsTabContent">
+    <!-- GLOBAL SETTINGS TAB -->
+    <div class="tab-pane fade show active" id="global" role="tabpanel">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <span class="material-symbols-outlined me-2" style="vertical-align: middle;">settings</span>
+                    Global Feature Toggles
+                </h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted mb-4">
+                    Toggle features on or off for your entire classroom economy. Changes here apply to all periods unless overridden in Per-Period Settings.
+                </p>
+
+                <form method="POST" action="{{ url_for('admin.feature_settings') }}" id="globalSettingsForm">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="apply_to" value="all">
+
+                    <div class="row g-4">
+                        {% for feature_id, feature_name, feature_icon, feature_desc in features_list %}
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card h-100 feature-card {% if global_settings[feature_id] %}enabled{% else %}disabled{% endif %}">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <div>
+                                            <span class="material-symbols-outlined text-primary" style="font-size: 2rem;">{{ feature_icon }}</span>
+                                        </div>
+                                        <div class="form-check form-switch feature-toggle">
+                                            <input class="form-check-input" type="checkbox" role="switch"
+                                                   id="{{ feature_id }}" name="{{ feature_id }}"
+                                                   {% if global_settings[feature_id] %}checked{% endif %}
+                                                   onchange="updateFeatureCard(this)">
+                                        </div>
+                                    </div>
+                                    <h5 class="card-title">{{ feature_name }}</h5>
+                                    <p class="card-text text-muted small">{{ feature_desc }}</p>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mt-4 d-flex justify-content-between align-items-center">
+                        <div class="form-text">
+                            <span class="material-symbols-outlined text-warning" style="vertical-align: middle;">info</span>
+                            Changes will apply to all periods. Use "Per-Period Settings" for granular control.
+                        </div>
+                        <button type="submit" class="btn btn-primary">
+                            <span class="material-symbols-outlined me-1" style="vertical-align: middle;">save</span>
+                            Save Global Settings
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- PER-PERIOD SETTINGS TAB -->
+    <div class="tab-pane fade" id="per-period" role="tabpanel">
+        <div class="card shadow mb-4">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">
+                    <span class="material-symbols-outlined me-2" style="vertical-align: middle;">calendar_view_day</span>
+                    Per-Period Feature Settings
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if periods %}
+                <p class="text-muted mb-4">
+                    Customize features for each period. Click a period to view and modify its settings.
+                </p>
+
+                <!-- Period Selection -->
+                <div class="mb-4">
+                    <label class="form-label fw-bold">Select Period:</label>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for period in periods %}
+                        <button type="button" class="btn period-badge btn-outline-primary" 
+                                onclick="selectPeriod('{{ period }}')" id="period-btn-{{ period }}">
+                            Period {{ period }}
+                        </button>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Period Settings Panel (hidden by default) -->
+                <div id="periodSettingsPanel" style="display: none;">
+                    <hr>
+                    <h6 class="mb-3">
+                        <span class="material-symbols-outlined me-1" style="vertical-align: middle;">edit</span>
+                        Settings for Period: <span id="selectedPeriodName" class="text-primary"></span>
+                    </h6>
+
+                    <div class="row g-3" id="periodFeatureToggles">
+                        {% for feature_id, feature_name, feature_icon, feature_desc in features_list %}
+                        <div class="col-md-6 col-lg-4">
+                            <div class="card h-100">
+                                <div class="card-body py-3">
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <div class="d-flex align-items-center gap-2">
+                                            <span class="material-symbols-outlined text-primary">{{ feature_icon }}</span>
+                                            <span>{{ feature_name }}</span>
+                                        </div>
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input period-feature-toggle" type="checkbox"
+                                                   id="period_{{ feature_id }}" data-feature="{{ feature_id.replace('_enabled', '') }}"
+                                                   onchange="updatePeriodFeature(this)">
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+
+                    <div class="mt-3 text-muted small">
+                        <span class="material-symbols-outlined" style="vertical-align: middle;">sync</span>
+                        Changes are saved automatically.
+                    </div>
+                </div>
+
+                {% else %}
+                <div class="alert alert-info">
+                    <span class="material-symbols-outlined me-2" style="vertical-align: middle;">info</span>
+                    No periods configured yet. Upload a student roster to create periods.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Period Settings Summary -->
+        {% if periods %}
+        <div class="card shadow">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0">
+                    <span class="material-symbols-outlined me-2" style="vertical-align: middle;">summarize</span>
+                    Settings Summary
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>Period</th>
+                                <th>Enabled Features</th>
+                                <th>Disabled Features</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for period in periods %}
+                            <tr>
+                                <td><strong>Period {{ period }}</strong></td>
+                                <td>
+                                    <div class="settings-summary">
+                                        {% set settings = period_settings.get(period, {}) %}
+                                        {% for feature_id, feature_name, _, _ in features_list %}
+                                            {% if settings.get(feature_id, True) %}
+                                            <span class="badge bg-success">{{ feature_name }}</span>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="settings-summary">
+                                        {% set settings = period_settings.get(period, {}) %}
+                                        {% for feature_id, feature_name, _, _ in features_list %}
+                                            {% if not settings.get(feature_id, True) %}
+                                            <span class="badge bg-danger">{{ feature_name }}</span>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- COPY SETTINGS TAB -->
+    <div class="tab-pane fade" id="copy" role="tabpanel">
+        <div class="card shadow">
+            <div class="card-header bg-warning">
+                <h5 class="mb-0">
+                    <span class="material-symbols-outlined me-2" style="vertical-align: middle;">content_copy</span>
+                    Copy Settings Between Periods
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if periods and periods|length > 1 %}
+                <p class="text-muted mb-4">
+                    Copy feature settings from one period to other periods quickly.
+                </p>
+
+                <div class="row g-4">
+                    <div class="col-md-5">
+                        <label class="form-label fw-bold">Copy From:</label>
+                        <select class="form-select" id="sourcePeriod">
+                            <option value="">Select source period...</option>
+                            {% for period in periods %}
+                            <option value="{{ period }}">Period {{ period }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="col-md-2 d-flex align-items-end justify-content-center">
+                        <span class="material-symbols-outlined text-muted" style="font-size: 2rem;">arrow_forward</span>
+                    </div>
+
+                    <div class="col-md-5">
+                        <label class="form-label fw-bold">Copy To:</label>
+                        <div class="border rounded p-3" style="max-height: 200px; overflow-y: auto;">
+                            {% for period in periods %}
+                            <div class="form-check">
+                                <input class="form-check-input target-period" type="checkbox" 
+                                       value="{{ period }}" id="target_{{ period }}">
+                                <label class="form-check-label" for="target_{{ period }}">
+                                    Period {{ period }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="selectAllTargets()">
+                                Select All
+                            </button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="deselectAllTargets()">
+                                Deselect All
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 text-end">
+                    <button type="button" class="btn btn-warning" onclick="copySettings()">
+                        <span class="material-symbols-outlined me-1" style="vertical-align: middle;">content_copy</span>
+                        Copy Settings
+                    </button>
+                </div>
+
+                {% elif periods and periods|length == 1 %}
+                <div class="alert alert-info">
+                    <span class="material-symbols-outlined me-2" style="vertical-align: middle;">info</span>
+                    You need at least two periods to copy settings between them.
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <span class="material-symbols-outlined me-2" style="vertical-align: middle;">info</span>
+                    No periods configured yet. Upload a student roster to create periods.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Period settings data from server
+const periodSettings = {{ period_settings | tojson | safe }};
+let selectedPeriod = null;
+
+function updateFeatureCard(checkbox) {
+    const card = checkbox.closest('.feature-card');
+    if (checkbox.checked) {
+        card.classList.remove('disabled');
+        card.classList.add('enabled');
+    } else {
+        card.classList.remove('enabled');
+        card.classList.add('disabled');
+    }
+}
+
+function selectPeriod(period) {
+    selectedPeriod = period;
+    
+    // Update button states
+    document.querySelectorAll('.period-badge').forEach(btn => {
+        btn.classList.remove('active');
+    });
+    document.getElementById('period-btn-' + period).classList.add('active');
+    
+    // Show settings panel
+    document.getElementById('periodSettingsPanel').style.display = 'block';
+    document.getElementById('selectedPeriodName').textContent = period;
+    
+    // Load period settings into toggles
+    const settings = periodSettings[period] || {};
+    document.querySelectorAll('.period-feature-toggle').forEach(toggle => {
+        const feature = toggle.dataset.feature + '_enabled';
+        toggle.checked = settings[feature] !== false; // Default to true if not set
+    });
+}
+
+function updatePeriodFeature(toggle) {
+    if (!selectedPeriod) return;
+    
+    const feature = toggle.dataset.feature;
+    const enabled = toggle.checked;
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+    
+    fetch(`/admin/feature-settings/period/${selectedPeriod}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({ [feature]: enabled })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Update local cache
+            if (!periodSettings[selectedPeriod]) {
+                periodSettings[selectedPeriod] = {};
+            }
+            periodSettings[selectedPeriod][feature + '_enabled'] = enabled;
+            
+            // Show brief success indicator
+            toggle.parentElement.classList.add('bg-success', 'bg-opacity-10');
+            setTimeout(() => {
+                toggle.parentElement.classList.remove('bg-success', 'bg-opacity-10');
+            }, 500);
+        } else {
+            alert('Error: ' + data.message);
+            toggle.checked = !enabled; // Revert
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to save setting.');
+        toggle.checked = !enabled; // Revert
+    });
+}
+
+function selectAllTargets() {
+    document.querySelectorAll('.target-period').forEach(cb => cb.checked = true);
+}
+
+function deselectAllTargets() {
+    document.querySelectorAll('.target-period').forEach(cb => cb.checked = false);
+}
+
+function copySettings() {
+    const sourcePeriod = document.getElementById('sourcePeriod').value;
+    const targetPeriods = Array.from(document.querySelectorAll('.target-period:checked'))
+        .map(cb => cb.value);
+    
+    if (!sourcePeriod) {
+        alert('Please select a source period.');
+        return;
+    }
+    
+    if (targetPeriods.length === 0) {
+        alert('Please select at least one target period.');
+        return;
+    }
+    
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+    
+    fetch('/admin/feature-settings/copy', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({
+            source_period: sourcePeriod,
+            target_periods: targetPeriods
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            alert(data.message);
+            location.reload(); // Refresh to show updated settings
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to copy settings.');
+    });
+}
+</script>
+{% endblock %}

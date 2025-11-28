@@ -841,3 +841,162 @@ class DemoStudent(db.Model):
     def __repr__(self):
         status = 'active' if self.is_active else 'ended'
         return f'<DemoStudent admin_id={self.admin_id} student_id={self.student_id} {status}>'
+
+
+# -------------------- FEATURE SETTINGS MODEL --------------------
+class FeatureSettings(db.Model):
+    """
+    Per-period/block feature toggle settings for a teacher.
+
+    Allows teachers to enable/disable major features on a per-period basis.
+    If block is NULL, settings apply as global defaults for the teacher.
+    Period-specific settings override global defaults.
+
+    Features that can be toggled:
+    - Payroll (time tracking & payments)
+    - Insurance (policy marketplace & claims)
+    - Banking (savings, interest, overdraft)
+    - Rent (housing costs)
+    - Hall Pass (bathroom/water breaks)
+    - Store (marketplace for rewards)
+    - Bug Reports (allow students to report issues)
+    - Bug Rewards (reward students for valid bug reports)
+    """
+    __tablename__ = 'feature_settings'
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    block = db.Column(db.String(10), nullable=True)  # NULL = global defaults for teacher
+
+    # Feature toggles - all default to True (enabled)
+    payroll_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    insurance_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    banking_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    rent_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    hall_pass_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    store_enabled = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Bug report settings
+    bug_reports_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    bug_rewards_enabled = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('feature_settings', lazy='dynamic'))
+
+    # Unique constraint: one settings row per teacher-block combination
+    __table_args__ = (
+        db.UniqueConstraint('teacher_id', 'block', name='uq_feature_settings_teacher_block'),
+        db.Index('ix_feature_settings_teacher_id', 'teacher_id'),
+    )
+
+    def __repr__(self):
+        block_str = self.block or 'Global'
+        return f'<FeatureSettings teacher={self.teacher_id} block={block_str}>'
+
+    def to_dict(self):
+        """Return feature settings as a dictionary."""
+        return {
+            'payroll_enabled': self.payroll_enabled,
+            'insurance_enabled': self.insurance_enabled,
+            'banking_enabled': self.banking_enabled,
+            'rent_enabled': self.rent_enabled,
+            'hall_pass_enabled': self.hall_pass_enabled,
+            'store_enabled': self.store_enabled,
+            'bug_reports_enabled': self.bug_reports_enabled,
+            'bug_rewards_enabled': self.bug_rewards_enabled,
+        }
+
+    @classmethod
+    def get_defaults(cls):
+        """Return default feature settings dictionary."""
+        return {
+            'payroll_enabled': True,
+            'insurance_enabled': True,
+            'banking_enabled': True,
+            'rent_enabled': True,
+            'hall_pass_enabled': True,
+            'store_enabled': True,
+            'bug_reports_enabled': True,
+            'bug_rewards_enabled': True,
+        }
+
+
+# -------------------- TEACHER ONBOARDING MODEL --------------------
+class TeacherOnboarding(db.Model):
+    """
+    Tracks onboarding progress for teachers.
+
+    New teachers are guided through an initial setup process that helps them:
+    1. Understand the platform features
+    2. Configure feature toggles
+    3. Set up their first period/block
+    4. Upload their roster
+    5. Configure basic settings (payroll, rent, etc.)
+
+    Once completed, teachers can access the regular dashboard.
+    Onboarding can be skipped but the flag is preserved for potential re-entry.
+    """
+    __tablename__ = 'teacher_onboarding'
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False, unique=True)
+
+    # Onboarding status
+    is_completed = db.Column(db.Boolean, default=False, nullable=False)
+    is_skipped = db.Column(db.Boolean, default=False, nullable=False)
+
+    # Step tracking (for resume functionality)
+    current_step = db.Column(db.Integer, default=1, nullable=False)
+    total_steps = db.Column(db.Integer, default=5, nullable=False)
+
+    # Detailed step completion tracking (JSON for flexibility)
+    # Format: {"welcome": true, "features": true, "periods": false, "roster": false, "settings": false}
+    steps_completed = db.Column(db.JSON, default=dict, nullable=False)
+
+    # Timestamps
+    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    skipped_at = db.Column(db.DateTime, nullable=True)
+    last_activity_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('onboarding', uselist=False))
+
+    def __repr__(self):
+        status = 'completed' if self.is_completed else ('skipped' if self.is_skipped else 'in_progress')
+        return f'<TeacherOnboarding teacher={self.teacher_id} step={self.current_step}/{self.total_steps} status={status}>'
+
+    def mark_step_completed(self, step_name):
+        """Mark a specific step as completed."""
+        if self.steps_completed is None:
+            self.steps_completed = {}
+        # Create a new dict to trigger SQLAlchemy change detection for JSON columns
+        updated_steps = dict(self.steps_completed)
+        updated_steps[step_name] = True
+        self.steps_completed = updated_steps
+        self.last_activity_at = datetime.utcnow()
+
+    def is_step_completed(self, step_name):
+        """Check if a specific step is completed."""
+        if self.steps_completed is None:
+            return False
+        return self.steps_completed.get(step_name, False)
+
+    def complete_onboarding(self):
+        """Mark the onboarding as completed."""
+        self.is_completed = True
+        self.completed_at = datetime.utcnow()
+        self.last_activity_at = datetime.utcnow()
+
+    def skip_onboarding(self):
+        """Mark the onboarding as skipped."""
+        self.is_skipped = True
+        self.skipped_at = datetime.utcnow()
+        self.last_activity_at = datetime.utcnow()
+
+    @property
+    def needs_onboarding(self):
+        """Check if teacher needs to complete onboarding."""
+        return not self.is_completed and not self.is_skipped
