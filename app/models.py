@@ -987,8 +987,8 @@ class TeacherOnboarding(db.Model):
         self.is_completed = True
         self.completed_at = datetime.utcnow()
         self.last_activity_at = datetime.utcnow()
-
-    def skip_onboarding(self):
+        self.completed_at = datetime.now(timezone.utc)
+        self.last_activity_at = datetime.now(timezone.utc)
         """Mark the onboarding as skipped."""
         self.is_skipped = True
         self.skipped_at = datetime.utcnow()
