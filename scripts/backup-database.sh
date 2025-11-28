@@ -69,7 +69,7 @@ fi
 
 # Verify backup integrity
 log "Verifying backup integrity..."
-if gunzip -t "$BACKUP_FILE" 2>/dev/null; then
+if gunzip -t "$BACKUP_FILE" 2>&1 | tee -a "$LOG_FILE" > /dev/null; then
     log "${GREEN}✓ Backup file integrity verified${NC}"
 else
     log "${RED}✗ Backup file is corrupted!${NC}"
