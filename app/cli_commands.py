@@ -548,7 +548,7 @@ def normalize_claim_credentials_command():
             updated += 1
 
     # Normalize Student entries
-    for student in Student.query.all():
+    for student in Student.query.yield_per(100):
         first_initial = student.first_name.strip()[0].upper() if student.first_name else None
         updated_hash, changed = normalize_claim_hash(
             student.first_half_hash,
