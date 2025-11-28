@@ -970,11 +970,12 @@ class TeacherOnboarding(db.Model):
 
     def mark_step_completed(self, step_name):
         """Mark a specific step as completed."""
-        # Create a new dict to trigger SQLAlchemy change detection for JSON columns
-        updated_steps = dict(self.steps_completed)
-        updated_steps[step_name] = True
-        self.steps_completed = updated_steps
-        self.last_activity_at = datetime.utcnow()
+        from sqlalchemy.orm.attributes import flag_modified
+        if self.steps_completed is None:
+            self.steps_completed = {}
+        self.steps_completed[step_name] = True
+        flag_modified(self, 'steps_completed')
+        self.last_activity_at = datetime.now(timezone.utc)
 
     def is_step_completed(self, step_name):
         """Check if a specific step is completed."""
@@ -985,14 +986,14 @@ class TeacherOnboarding(db.Model):
     def complete_onboarding(self):
         """Mark the onboarding as completed."""
         self.is_completed = True
-        self.completed_at = datetime.utcnow()
-        self.last_activity_at = datetime.utcnow()
+        self.completed_at = datetime.now(timezone.utc)
+        self.last_activity_at = datetime.now(timezone.utc)
 
     def skip_onboarding(self):
         """Mark the onboarding as skipped."""
         self.is_skipped = True
-        self.skipped_at = datetime.utcnow()
-        self.last_activity_at = datetime.utcnow()
+        self.skipped_at = datetime.now(timezone.utc)
+        self.last_activity_at = datetime.now(timezone.utc)
 
     @property
     def needs_onboarding(self):

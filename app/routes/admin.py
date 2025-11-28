@@ -203,7 +203,7 @@ def _check_onboarding_redirect():
                 teacher_id=admin_id,
                 is_completed=True,
                 is_skipped=True,
-                completed_at=datetime.utcnow()
+                completed_at=datetime.now(timezone.utc)
             )
             db.session.add(onboarding)
             db.session.commit()
@@ -317,6 +317,11 @@ def auto_tapout_all_over_limit():
 @admin_required
 def dashboard():
     """Admin dashboard with statistics, pending actions, and recent activity."""
+    # Check if teacher needs onboarding
+    onboarding_redirect = _check_onboarding_redirect()
+    if onboarding_redirect:
+        return onboarding_redirect
+
     student_ids_subq = _student_scope_subquery()
     # Auto-tapout students who have exceeded their daily limit
     auto_tapout_all_over_limit()
