@@ -432,7 +432,7 @@ def create_app():
         csp_directives = [
             "default-src 'self'",
             "script-src 'self' https://challenges.cloudflare.com",
-            "style-src 'self' https://fonts.googleapis.com",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
             "font-src 'self' https://fonts.gstatic.com",
             "img-src 'self' data: https:",
             "connect-src 'self' https://challenges.cloudflare.com",
