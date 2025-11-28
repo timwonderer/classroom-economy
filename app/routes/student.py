@@ -17,7 +17,7 @@ from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
 import pytz
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models import (
     Student, Transaction, TapEvent, StoreItem, StudentItem,
     RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
@@ -1891,6 +1891,7 @@ def rent_pay(period):
 # -------------------- AUTHENTICATION --------------------
 
 @student_bp.route('/login', methods=['GET', 'POST'])
+@limiter.limit("15 per minute")
 def login():
     """Student login with username and PIN."""
     form = StudentLoginForm()
