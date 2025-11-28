@@ -428,12 +428,12 @@ def create_app():
 
         # Content Security Policy (CSP)
         # Restricts resource loading to prevent XSS attacks
-        # Adjusted for Google Fonts, Material Icons, and Cloudflare Turnstile
+        # Adjusted for Google Fonts, Material Icons, Cloudflare Turnstile, and jsdelivr CDN (Bootstrap, EasyMDE, zxcvbn)
         csp_directives = [
             "default-src 'self'",
-            "script-src 'self' https://challenges.cloudflare.com",
+            "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.jsdelivr.net",
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
-            "font-src 'self' https://fonts.gstatic.com",
+            "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net",
             "img-src 'self' data: https:",
             "connect-src 'self' https://challenges.cloudflare.com",
             "frame-src https://challenges.cloudflare.com",
