@@ -61,8 +61,10 @@ fi
 
 # Verify backup file
 echo -e "${BLUE}Verifying backup file integrity...${NC}"
-if ! gunzip -t "$BACKUP_FILE" 2>/dev/null; then
+GUNZIP_ERROR=$(gunzip -t "$BACKUP_FILE" 2>&1)
+if [ $? -ne 0 ]; then
     echo -e "${RED}Error: Backup file is corrupted!${NC}"
+    echo -e "${YELLOW}gunzip error:${NC} $GUNZIP_ERROR"
     exit 1
 fi
 echo -e "${GREEN}✓ Backup file is valid${NC}"
