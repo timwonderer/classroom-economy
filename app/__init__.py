@@ -303,6 +303,33 @@ def create_app():
 
         return None
 
+    @app.before_request
+    def log_cloudflare_status():
+        """
+        Log warnings when requests don't come through Cloudflare proxy.
+
+        This helps monitor whether the DigitalOcean firewall is properly
+        configured to only accept traffic from Cloudflare IPs.
+        """
+        # Skip for static files and health checks
+        if request.path.startswith("/static/"):
+            return None
+        if request.endpoint in {"main.health_check", "main.health_check_deep"}:
+            return None
+
+        # Only check in production
+        if app.config.get('ENV') == 'production':
+            from app.utils.ip_handler import validate_cloudflare_request
+
+            if not validate_cloudflare_request():
+                real_ip = get_real_ip(request)
+                app.logger.warning(
+                    f"Request not from Cloudflare IP: {request.remote_addr} "
+                    f"(real_ip: {real_ip}, path: {request.path}, method: {request.method})"
+                )
+
+        return None
+
     # -------------------- CONTEXT PROCESSORS --------------------
     @app.context_processor
     def inject_global_settings():

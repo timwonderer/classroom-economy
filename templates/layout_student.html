@@ -512,6 +512,7 @@
                class="btn text-start {% if current_page == 'help' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">help</span> Help & Support</a>
         </div>
         <div class="mt-auto">
+            <a href="{{ url_for('main.switch_view', view='mobile', next=request.path) }}" class="btn btn-outline-primary text-start w-100 mb-2"><span class="material-symbols-outlined">phone_iphone</span> View Mobile Site</a>
             <a href="{{ url_for('student.logout') }}" class="btn btn-outline-secondary text-start w-100"><span class="material-symbols-outlined">logout</span> Sign Out</a>
         </div>
     </div>

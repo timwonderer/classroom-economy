@@ -11,7 +11,7 @@ import re
 from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, session, jsonify, current_app
+from flask import Blueprint, redirect, url_for, flash, request, session, jsonify, current_app
 from sqlalchemy import or_, func, select
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -30,10 +30,11 @@ from forms import (
 )
 
 # Import utility functions
-from app.utils.helpers import is_safe_url, generate_anonymous_code
+from app.utils.helpers import is_safe_url, generate_anonymous_code, render_template_with_fallback as render_template
 from app.utils.constants import THEME_PROMPTS
 from app.utils.turnstile import verify_turnstile_token
 from app.utils.demo_sessions import cleanup_demo_student_data
+from app.utils.ip_handler import get_real_ip
 from hash_utils import hash_hmac, hash_username, hash_username_lookup
 from attendance import get_all_block_statuses
 
@@ -1780,7 +1781,7 @@ def login():
 
         # Verify Turnstile token
         turnstile_token = request.form.get('cf-turnstile-response')
-        if not verify_turnstile_token(turnstile_token, request.remote_addr):
+        if not verify_turnstile_token(turnstile_token, get_real_ip()):
             current_app.logger.warning(f"Turnstile verification failed for student login attempt")
             if is_json:
                 return jsonify(status="error", message="CAPTCHA verification failed. Please try again."), 403
@@ -2033,7 +2034,7 @@ def help_support():
                 steps_to_reproduce=steps_to_reproduce if steps_to_reproduce else None,
                 expected_behavior=expected_behavior if expected_behavior else None,
                 page_url=page_url if page_url else None,
-                ip_address=request.remote_addr,
+                ip_address=get_real_ip(),
                 user_agent=request.headers.get('User-Agent'),
                 _student_id=student.id,  # Hidden from sysadmin, used only for rewards
                 status='new'

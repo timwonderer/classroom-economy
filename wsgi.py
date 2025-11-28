@@ -197,7 +197,16 @@ def log_error_to_db(error_type=None, error_message=None, stack_trace=None, log_o
         request_path = request.path if request else None
         request_method = request.method if request else None
         user_agent = request.headers.get('User-Agent', None) if request else None
-        ip_address = request.remote_addr if request else None
+
+        # Get real IP (handles Cloudflare proxy)
+        ip_address = None
+        if request:
+            try:
+                from app.utils.ip_handler import get_real_ip
+                ip_address = get_real_ip()
+            except Exception:
+                # Fallback to remote_addr if import fails
+                ip_address = request.remote_addr
 
         # Get log output
         if log_output is None:

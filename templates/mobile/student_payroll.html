@@ -1,0 +1,60 @@
+{% extends "mobile/layout_student.html" %}
+{% set page_title = "Payroll" %}
+{% set current_page = "payroll" %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Total Projected Pay -->
+    <div class="card text-center mb-3">
+        <div class="card-body">
+            <small class="text-muted text-uppercase">Total Projected Earnings</small>
+            <h2 class="mb-0 text-success">${{ "%.2f"|format(projected_pay_per_block.values()|sum) }}</h2>
+        </div>
+    </div>
+
+    <!-- Per-Block Breakdown -->
+    {% if student_blocks %}
+        {% for blk in student_blocks %}
+        <div class="card mb-3">
+            <div class="card-header">
+                <h5 class="mb-0">Block {{ blk|upper }}</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-2">
+                    <span>Unpaid Time:</span>
+                    <span class="fw-bold">{{ (unpaid_seconds_per_block[blk] // 3600)|string }}h {{ ((unpaid_seconds_per_block[blk] % 3600) // 60)|string }}m</span>
+                </div>
+                <div class="d-flex justify-content-between">
+                    <span>Projected Pay:</span>
+                    <span class="fw-bold text-success">${{ "%.2f"|format(projected_pay_per_block[blk]) }}</span>
+                </div>
+            </div>
+            {% set block_events = tap_events_by_block[blk] if blk in tap_events_by_block else [] %}
+            {% if block_events %}
+            <div class="list-group list-group-flush">
+                <div class="list-group-item">
+                    <h6 class="mb-0">Recent Activity</h6>
+                </div>
+                {% for event in block_events[:3] %}
+                <div class="list-group-item d-flex justify-content-between">
+                    <div>
+                        {% if event.status == 'active' %}
+                            <span class="badge bg-success">Tap In</span>
+                        {% else %}
+                            <span class="badge bg-danger">Tap Out</span>
+                        {% endif %}
+                    </div>
+                    <small class="text-muted">{{ event.timestamp.strftime('%b %d, %I:%M %p') }}</small>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="alert alert-info">
+            You are not assigned to any blocks.
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
