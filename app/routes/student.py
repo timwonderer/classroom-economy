@@ -21,7 +21,7 @@ from app.extensions import db
 from app.models import (
     Student, Transaction, TapEvent, StoreItem, StudentItem,
     RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    BankingSettings, UserReport
+    BankingSettings, UserReport, FeatureSettings
 )
 from app.auth import admin_required, login_required, get_logged_in_student, SESSION_TIMEOUT_MINUTES
 from forms import (
@@ -77,6 +77,68 @@ def get_current_teacher_id():
         session['current_teacher_id'] = current_teacher_id
 
     return current_teacher_id
+
+
+def get_feature_settings_for_student():
+    """
+    Get feature settings for the currently logged-in student.
+
+    Returns the merged feature settings for the student's current teacher/period context.
+    Settings cascade: period-specific > global > system defaults.
+
+    Returns:
+        dict: Feature settings dictionary with enabled/disabled flags
+    """
+    student = get_logged_in_student()
+    if not student:
+        # Return defaults if no student logged in
+        return FeatureSettings.get_defaults()
+
+    teacher_id = get_current_teacher_id()
+    if not teacher_id:
+        return FeatureSettings.get_defaults()
+
+    # Get the student's current block/period
+    current_block = session.get('current_period')
+    if not current_block and student.block:
+        # Default to first block
+        current_block = student.block.split(',')[0].strip().upper()
+
+    # Try block-specific settings first
+    if current_block:
+        block_settings = FeatureSettings.query.filter_by(
+            teacher_id=teacher_id,
+            block=current_block
+        ).first()
+        if block_settings:
+            return block_settings.to_dict()
+
+    # Fall back to global settings for this teacher
+    global_settings = FeatureSettings.query.filter_by(
+        teacher_id=teacher_id,
+        block=None
+    ).first()
+
+    if global_settings:
+        return global_settings.to_dict()
+
+    # Return system defaults
+    return FeatureSettings.get_defaults()
+
+
+def is_feature_enabled(feature_name):
+    """
+    Check if a specific feature is enabled for the current student context.
+
+    Args:
+        feature_name: The feature to check (e.g., 'store', 'insurance', 'rent')
+
+    Returns:
+        bool: True if feature is enabled, False otherwise
+    """
+    settings = get_feature_settings_for_student()
+    feature_key = f"{feature_name}_enabled"
+    return settings.get(feature_key, True)  # Default to enabled
 
 
 # -------------------- STUDENT ONBOARDING --------------------
@@ -613,6 +675,8 @@ def dashboard():
     expiry_time = login_time + timedelta(minutes=SESSION_TIMEOUT_MINUTES)
     session_remaining_seconds = max(0, int((expiry_time - datetime.now(timezone.utc)).total_seconds()))
 
+    # --- Get feature settings for this student ---
+    feature_settings = get_feature_settings_for_student()
 
     return render_template(
         'student_dashboard.html',
@@ -634,6 +698,7 @@ def dashboard():
         projected_pay_per_block=projected_pay_per_block,
         student_name=student_name,
         total_unpaid_elapsed=total_unpaid_elapsed,
+        feature_settings=feature_settings,
     )
 
 
@@ -903,6 +968,11 @@ def apply_savings_interest(student, annual_rate=0.045):
 @login_required
 def insurance_marketplace():
     """Insurance marketplace - browse and manage policies."""
+    # Check if insurance feature is enabled
+    if not is_feature_enabled('insurance'):
+        flash("The insurance feature is currently disabled for your class.", "warning")
+        return redirect(url_for('student.dashboard'))
+
     student = get_logged_in_student()
 
     # Get student's active policies
@@ -1352,6 +1422,11 @@ def view_policy(enrollment_id):
 @login_required
 def shop():
     """Student shop - browse and purchase items."""
+    # Check if store feature is enabled
+    if not is_feature_enabled('store'):
+        flash("The store feature is currently disabled for your class.", "warning")
+        return redirect(url_for('student.dashboard'))
+
     student = get_logged_in_student()
     # Fetch active items that haven't passed their auto-delist date
     teacher_id = get_current_teacher_id()
@@ -1482,6 +1557,11 @@ def _calculate_rent_deadlines(settings, reference_date=None):
 @login_required
 def rent():
     """View rent status and payment history (per period)."""
+    # Check if rent feature is enabled
+    if not is_feature_enabled('rent'):
+        flash("The rent feature is currently disabled for your class.", "warning")
+        return redirect(url_for('student.dashboard'))
+
     student = get_logged_in_student()
     teacher_id = get_current_teacher_id()
     settings = RentSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
