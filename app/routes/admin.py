@@ -1600,7 +1600,7 @@ def edit_store_item(item_id):
 
     if form.validate_on_submit():
         # Update block associations using the many-to-many relationship
-        item.blocks_list = form.blocks.data if form.blocks.data else None
+        item.blocks_list = form.blocks.data or []
 
         # Populate other fields
         form.populate_obj(item)
@@ -2091,7 +2091,7 @@ def edit_insurance_policy(policy_id):
         policy.marketing_badge = form.marketing_badge.data if form.marketing_badge.data else None
         
         # Update block associations using the many-to-many relationship
-        policy.blocks_list = form.blocks.data if form.blocks.data else None
+        policy.blocks_list = form.blocks.data or []
         
         if form.tier_category_id.data:
             policy.tier_category_id = form.tier_category_id.data
