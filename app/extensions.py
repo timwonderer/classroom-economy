@@ -40,6 +40,6 @@ def get_real_ip_for_limiter():
 limiter = Limiter(
     key_func=get_real_ip_for_limiter,
     default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://",
+    storage_uri="redis://localhost:6379",
     strategy="fixed-window"
 )
