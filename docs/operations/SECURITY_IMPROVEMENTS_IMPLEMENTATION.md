@@ -20,7 +20,7 @@ We've implemented all HIGH priority and MEDIUM priority security recommendations
 
 ### What Was Added
 
-Added comprehensive security headers to all HTTP responses via `@app.after_request` handler in `app/__init__.py:393-460`.
+Added comprehensive security headers to all HTTP responses via the `@app.after_request` handler in the `set_security_headers()` function in `app/__init__.py`.
 
 ### Headers Implemented
 
