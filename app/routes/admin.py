@@ -4446,8 +4446,9 @@ def onboarding():
     # Get or create onboarding record
     onboarding_record = _get_or_create_onboarding(admin_id)
 
-    # If already completed or skipped, redirect to dashboard
-    if onboarding_record.is_completed or onboarding_record.is_skipped:
+    # If already completed or skipped, redirect to dashboard unless force=true
+    force = request.args.get('force')
+    if (onboarding_record.is_completed or onboarding_record.is_skipped) and force != 'true':
         return redirect(url_for('admin.dashboard'))
 
     # Get admin info
