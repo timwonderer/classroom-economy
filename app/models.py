@@ -993,8 +993,8 @@ class TeacherOnboarding(db.Model):
         self.is_skipped = True
         self.skipped_at = datetime.utcnow()
         self.last_activity_at = datetime.utcnow()
-
-    @property
+        self.skipped_at = datetime.now(timezone.utc)
+        self.last_activity_at = datetime.now(timezone.utc)
     def needs_onboarding(self):
         """Check if teacher needs to complete onboarding."""
         return not self.is_completed and not self.is_skipped
