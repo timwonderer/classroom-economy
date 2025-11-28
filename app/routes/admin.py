@@ -29,7 +29,7 @@ import sqlalchemy as sa
 import pyotp
 import pytz
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models import (
     Student, Admin, AdminInviteCode, StudentTeacher, Transaction, TapEvent, StoreItem, StudentItem,
     RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
@@ -494,6 +494,7 @@ def give_bonus_all():
 # -------------------- AUTHENTICATION --------------------
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
 def login():
     """Admin login with TOTP authentication."""
     session.pop("is_admin", None)

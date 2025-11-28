@@ -113,11 +113,12 @@ def create_app():
     app.jinja_env.auto_reload = True
 
     # -------------------- EXTENSIONS --------------------
-    from app.extensions import db, migrate, csrf
+    from app.extensions import db, migrate, csrf, limiter
 
     db.init_app(app)
     migrate.init_app(app, db)
     csrf.init_app(app)
+    limiter.init_app(app)
 
     # -------------------- LOGGING --------------------
     log_level_name = os.getenv("LOG_LEVEL", "INFO").upper()
@@ -389,6 +390,71 @@ def create_app():
     app.register_blueprint(sysadmin_bp)
     app.register_blueprint(student_bp)
     app.register_blueprint(admin_bp)
+
+    # -------------------- SECURITY HEADERS --------------------
+    @app.after_request
+    def set_security_headers(response):
+        """
+        Add security headers to all HTTP responses.
+
+        These headers protect against common web vulnerabilities:
+        - HSTS: Force HTTPS connections
+        - X-Frame-Options: Prevent clickjacking
+        - X-Content-Type-Options: Prevent MIME sniffing attacks
+        - CSP: Mitigate XSS attacks
+        - Referrer-Policy: Control referrer information leakage
+
+        See: https://owasp.org/www-project-secure-headers/
+        """
+        # Skip for static files (already have caching headers)
+        if request.path.startswith('/static/'):
+            return response
+
+        # HTTPS Enforcement (HSTS)
+        # Forces browsers to use HTTPS for 1 year, including subdomains
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+
+        # Clickjacking Protection
+        # Allows framing only from same origin (prevents iframe attacks)
+        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
+
+        # MIME Sniffing Protection
+        # Prevents browsers from interpreting files as a different MIME type
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+
+        # Referrer Policy
+        # Only send full URL to same origin, origin only to other HTTPS sites
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+
+        # Content Security Policy (CSP)
+        # Restricts resource loading to prevent XSS attacks
+        # Adjusted for Google Fonts, Material Icons, Cloudflare Turnstile, and jsdelivr CDN (Bootstrap, EasyMDE, zxcvbn)
+        csp_directives = [
+            "default-src 'self'",
+            "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.jsdelivr.net",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
+            "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net",
+            "img-src 'self' data: https:",
+            "connect-src 'self' https://challenges.cloudflare.com",
+            "frame-src https://challenges.cloudflare.com",
+            "base-uri 'self'",
+            "form-action 'self'",
+        ]
+        response.headers['Content-Security-Policy'] = "; ".join(csp_directives)
+
+        # Permissions Policy (formerly Feature-Policy)
+        # Disable browser features not needed by the application
+        permissions = [
+            "geolocation=()",
+            "microphone=()",
+            "camera=()",
+            "payment=()",
+            "usb=()",
+            "magnetometer=()",
+        ]
+        response.headers['Permissions-Policy'] = ", ".join(permissions)
+
+        return response
 
     # -------------------- CLI COMMANDS --------------------
     from app import cli_commands

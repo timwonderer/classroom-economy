@@ -15,7 +15,7 @@ from sqlalchemy import delete, or_, case
 from werkzeug.exceptions import BadRequest, Unauthorized, Forbidden, NotFound, ServiceUnavailable
 import pyotp
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models import (
     SystemAdmin, Admin, Student, AdminInviteCode, ErrorLog,
     Transaction, TapEvent, HallPassLog, StudentItem, RentPayment,
@@ -132,6 +132,7 @@ def _tail_log_lines(file_path: str, max_lines: int = 200, chunk_size: int = 8192
 # -------------------- AUTHENTICATION --------------------
 
 @sysadmin_bp.route('/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
 def login():
     """System admin login with TOTP authentication."""
     session.pop("is_system_admin", None)
