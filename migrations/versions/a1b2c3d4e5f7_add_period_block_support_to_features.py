@@ -10,10 +10,8 @@ This migration adds period/block filtering support to enable teachers to:
 3. Configure rent, banking, and hall pass settings per period/block
 
 Changes:
-- Add `blocks` column (String 255, nullable) to store_items table
-  (comma-separated list like "A,B,C" or NULL for all periods)
-- Add `blocks` column (String 255, nullable) to insurance_policies table
-  (comma-separated list like "A,B,C" or NULL for all periods)
+- Create `store_item_blocks` association table for many-to-many relationship
+- Create `insurance_policy_blocks` association table for many-to-many relationship
 - Add `block` column (String 10, nullable) to rent_settings table
   (NULL = global default, otherwise period/block identifier)
 - Add `block` column (String 10, nullable) to banking_settings table
@@ -34,13 +32,25 @@ depends_on = None
 
 
 def upgrade():
-    # Add blocks column to store_items (for visibility filtering)
-    with op.batch_alter_table('store_items', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('blocks', sa.String(length=255), nullable=True))
+    # Create store_item_blocks association table
+    op.create_table('store_item_blocks',
+        sa.Column('store_item_id', sa.Integer(), nullable=False),
+        sa.Column('block', sa.String(length=10), nullable=False),
+        sa.ForeignKeyConstraint(['store_item_id'], ['store_items.id'], ),
+        sa.PrimaryKeyConstraint('store_item_id', 'block')
+    )
+    op.create_index('ix_store_item_blocks_item', 'store_item_blocks', ['store_item_id'], unique=False)
+    op.create_index('ix_store_item_blocks_block', 'store_item_blocks', ['block'], unique=False)
 
-    # Add blocks column to insurance_policies (for visibility filtering)
-    with op.batch_alter_table('insurance_policies', schema=None) as batch_op:
-        batch_op.add_column(sa.Column('blocks', sa.String(length=255), nullable=True))
+    # Create insurance_policy_blocks association table
+    op.create_table('insurance_policy_blocks',
+        sa.Column('policy_id', sa.Integer(), nullable=False),
+        sa.Column('block', sa.String(length=10), nullable=False),
+        sa.ForeignKeyConstraint(['policy_id'], ['insurance_policies.id'], ),
+        sa.PrimaryKeyConstraint('policy_id', 'block')
+    )
+    op.create_index('ix_insurance_policy_blocks_policy', 'insurance_policy_blocks', ['policy_id'], unique=False)
+    op.create_index('ix_insurance_policy_blocks_block', 'insurance_policy_blocks', ['block'], unique=False)
 
     # Add block column to rent_settings (for period-specific settings)
     with op.batch_alter_table('rent_settings', schema=None) as batch_op:
@@ -68,10 +78,12 @@ def downgrade():
     with op.batch_alter_table('rent_settings', schema=None) as batch_op:
         batch_op.drop_column('block')
 
-    # Remove blocks column from insurance_policies
-    with op.batch_alter_table('insurance_policies', schema=None) as batch_op:
-        batch_op.drop_column('blocks')
+    # Drop insurance_policy_blocks table
+    op.drop_index('ix_insurance_policy_blocks_block', table_name='insurance_policy_blocks')
+    op.drop_index('ix_insurance_policy_blocks_policy', table_name='insurance_policy_blocks')
+    op.drop_table('insurance_policy_blocks')
 
-    # Remove blocks column from store_items
-    with op.batch_alter_table('store_items', schema=None) as batch_op:
-        batch_op.drop_column('blocks')
+    # Drop store_item_blocks table
+    op.drop_index('ix_store_item_blocks_block', table_name='store_item_blocks')
+    op.drop_index('ix_store_item_blocks_item', table_name='store_item_blocks')
+    op.drop_table('store_item_blocks')

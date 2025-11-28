@@ -384,7 +384,6 @@ class StoreItem(db.Model):
     auto_delist_date = db.Column(db.DateTime, nullable=True)
     auto_expiry_days = db.Column(db.Integer, nullable=True) # days student has to use the item
     is_active = db.Column(db.Boolean, default=True, nullable=False)
-    blocks = db.Column(db.String(255), nullable=True)  # comma-separated list of blocks/periods (e.g., "A,B,C") or NULL for all
 
     # Bundle settings
     is_bundle = db.Column(db.Boolean, default=False, nullable=False)
@@ -405,6 +404,44 @@ class StoreItem(db.Model):
     # Relationships
     teacher = db.relationship('Admin', backref=db.backref('store_items', lazy='dynamic'))
     student_items = db.relationship('StudentItem', backref='store_item', lazy=True)
+    # Many-to-many relationship for period/block visibility filtering
+    visible_blocks = db.relationship(
+        'StoreItemBlock',
+        backref='store_item',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+
+    @property
+    def blocks_list(self):
+        """Return list of block names this item is visible to."""
+        return [b.block for b in self.visible_blocks.all()]
+
+    @blocks_list.setter
+    def blocks_list(self, block_names):
+        """Set the visible blocks for this item.
+        
+        Args:
+            block_names: List of block names (e.g., ['A', 'B', 'C']) or None/empty for all blocks
+        """
+        # Clear existing blocks
+        self.visible_blocks.delete()
+        # Add new blocks
+        if block_names:
+            for block_name in block_names:
+                self.visible_blocks.append(StoreItemBlock(block=block_name.strip().upper()))
+
+
+class StoreItemBlock(db.Model):
+    """Association model for StoreItem-blocks many-to-many relationship."""
+    __tablename__ = 'store_item_blocks'
+    store_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id'), primary_key=True)
+    block = db.Column(db.String(10), primary_key=True)
+
+    __table_args__ = (
+        db.Index('ix_store_item_blocks_item', 'store_item_id'),
+        db.Index('ix_store_item_blocks_block', 'block'),
+    )
 
 
 class StudentItem(db.Model):
@@ -547,7 +584,6 @@ class InsurancePolicy(db.Model):
     settings_mode = db.Column(db.String(20), nullable=True, default='advanced')  # simple or advanced
 
     is_active = db.Column(db.Boolean, default=True)
-    blocks = db.Column(db.String(255), nullable=True)  # comma-separated list of blocks/periods (e.g., "A,B,C") or NULL for all
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -555,10 +591,48 @@ class InsurancePolicy(db.Model):
     teacher = db.relationship('Admin', foreign_keys=[teacher_id], backref='insurance_policies_owned')
     student_policies = db.relationship('StudentInsurance', backref='policy', lazy='dynamic')
     claims = db.relationship('InsuranceClaim', backref='policy', lazy='dynamic')
+    # Many-to-many relationship for period/block visibility filtering
+    visible_blocks = db.relationship(
+        'InsurancePolicyBlock',
+        backref='policy',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
 
     @property
     def is_monetary_claim(self):
         return self.claim_type != 'non_monetary'
+
+    @property
+    def blocks_list(self):
+        """Return list of block names this policy is visible to."""
+        return [b.block for b in self.visible_blocks.all()]
+
+    @blocks_list.setter
+    def blocks_list(self, block_names):
+        """Set the visible blocks for this policy.
+        
+        Args:
+            block_names: List of block names (e.g., ['A', 'B', 'C']) or None/empty for all blocks
+        """
+        # Clear existing blocks
+        self.visible_blocks.delete()
+        # Add new blocks
+        if block_names:
+            for block_name in block_names:
+                self.visible_blocks.append(InsurancePolicyBlock(block=block_name.strip().upper()))
+
+
+class InsurancePolicyBlock(db.Model):
+    """Association model for InsurancePolicy-blocks many-to-many relationship."""
+    __tablename__ = 'insurance_policy_blocks'
+    policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id'), primary_key=True)
+    block = db.Column(db.String(10), primary_key=True)
+
+    __table_args__ = (
+        db.Index('ix_insurance_policy_blocks_policy', 'policy_id'),
+        db.Index('ix_insurance_policy_blocks_block', 'block'),
+    )
 
 
 class StudentInsurance(db.Model):
