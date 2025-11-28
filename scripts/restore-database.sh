@@ -105,6 +105,9 @@ echo -e "${BLUE}Starting database restore...${NC}"
 echo "Stopping Gunicorn..."
 sudo systemctl stop gunicorn || true
 
+# Terminate active connections (recommended)
+echo "Terminating active connections to the database..."
+psql "$DATABASE_URL" -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid();" || true
 # Restore database
 echo "Restoring database..."
 gunzip -c "$BACKUP_FILE" | psql "$DATABASE_URL"
