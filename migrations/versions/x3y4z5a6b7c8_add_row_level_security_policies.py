@@ -57,6 +57,20 @@ def upgrade():
     # 1. Enable RLS on all teacher-scoped tables
     # ============================================================
 
+    # Whitelisted table names - these are the only allowed tables for RLS
+    # This prevents SQL injection by validating against a strict whitelist
+    ALLOWED_TABLES = frozenset([
+        'teacher_blocks',
+        'transaction',
+        'hall_pass_settings',
+        'store_items',
+        'rent_settings',
+        'payroll_settings',
+        'banking_settings',
+        'payroll_rewards',
+        'payroll_fines',
+    ])
+
     tables_with_teacher_id = [
         'teacher_blocks',
         'transaction',
@@ -71,14 +85,18 @@ def upgrade():
         'payroll_fines',
     ]
 
-    # Enable RLS on tables using proper identifier escaping
+    # Validate all table names against whitelist before processing
     for table in tables_with_teacher_id:
-        # Use SQLAlchemy's quoted_name for safe identifier handling
-        table_identifier = sa.sql.quoted_name(table, quote=True)
-        conn.execute(sa.text(f"ALTER TABLE {table_identifier} ENABLE ROW LEVEL SECURITY"))
+        if table not in ALLOWED_TABLES:
+            raise ValueError(f"Table '{table}' is not in the allowed whitelist for RLS")
+
+    # Enable RLS on tables using quoted identifiers
+    for table in tables_with_teacher_id:
+        # Table name is validated against whitelist above
+        conn.execute(sa.text(f'ALTER TABLE "{table}" ENABLE ROW LEVEL SECURITY'))
 
     # Special case: deletion_requests uses admin_id instead of teacher_id
-    conn.execute(sa.text("ALTER TABLE deletion_requests ENABLE ROW LEVEL SECURITY"))
+    conn.execute(sa.text('ALTER TABLE "deletion_requests" ENABLE ROW LEVEL SECURITY'))
 
     # ============================================================
     # 2. Create RLS policies for each table
@@ -88,33 +106,33 @@ def upgrade():
     # Uses session variable: app.current_teacher_id
     # Set by application on each request
 
-    # Create RLS policies using proper identifier escaping
+    # Create RLS policies using validated and quoted identifiers
     for table in tables_with_teacher_id:
-        # Use SQLAlchemy's quoted_name for safe identifier handling
-        table_identifier = sa.sql.quoted_name(table, quote=True)
-        policy_prefix = table.replace('.', '_').replace('-', '_')  # Sanitize for policy names
-        
+        # Table name already validated against whitelist above
+        # Policy name uses only alphanumeric and underscore (validated implicitly by whitelist)
+        policy_prefix = table.replace('.', '_').replace('-', '_')
+
         # Policy for SELECT
-        conn.execute(sa.text(f"""
-            CREATE POLICY {policy_prefix}_tenant_isolation_select ON {table_identifier}
+        conn.execute(sa.text(f'''
+            CREATE POLICY "{policy_prefix}_tenant_isolation_select" ON "{table}"
             FOR SELECT
             USING (
                 teacher_id = NULLIF(current_setting('app.current_teacher_id', TRUE), '')::integer
             )
-        """))
+        '''))
 
         # Policy for INSERT
-        conn.execute(sa.text(f"""
-            CREATE POLICY {policy_prefix}_tenant_isolation_insert ON {table_identifier}
+        conn.execute(sa.text(f'''
+            CREATE POLICY "{policy_prefix}_tenant_isolation_insert" ON "{table}"
             FOR INSERT
             WITH CHECK (
                 teacher_id = NULLIF(current_setting('app.current_teacher_id', TRUE), '')::integer
             )
-        """))
+        '''))
 
         # Policy for UPDATE
-        conn.execute(sa.text(f"""
-            CREATE POLICY {policy_prefix}_tenant_isolation_update ON {table_identifier}
+        conn.execute(sa.text(f'''
+            CREATE POLICY "{policy_prefix}_tenant_isolation_update" ON "{table}"
             FOR UPDATE
             USING (
                 teacher_id = NULLIF(current_setting('app.current_teacher_id', TRUE), '')::integer
@@ -122,16 +140,16 @@ def upgrade():
             WITH CHECK (
                 teacher_id = NULLIF(current_setting('app.current_teacher_id', TRUE), '')::integer
             )
-        """))
+        '''))
 
         # Policy for DELETE
-        conn.execute(sa.text(f"""
-            CREATE POLICY {policy_prefix}_tenant_isolation_delete ON {table_identifier}
+        conn.execute(sa.text(f'''
+            CREATE POLICY "{policy_prefix}_tenant_isolation_delete" ON "{table}"
             FOR DELETE
             USING (
                 teacher_id = NULLIF(current_setting('app.current_teacher_id', TRUE), '')::integer
             )
-        """))
+        '''))
 
     # Special policies for deletion_requests (uses admin_id)
     conn.execute(sa.text("""
@@ -194,6 +212,19 @@ def downgrade():
     """
     conn = op.get_bind()
 
+    # Whitelisted table names - must match upgrade function
+    ALLOWED_TABLES = frozenset([
+        'teacher_blocks',
+        'transaction',
+        'hall_pass_settings',
+        'store_items',
+        'rent_settings',
+        'payroll_settings',
+        'banking_settings',
+        'payroll_rewards',
+        'payroll_fines',
+    ])
+
     tables_with_teacher_id = [
         'teacher_blocks',
         'transaction',
@@ -207,26 +238,30 @@ def downgrade():
         'payroll_fines',
     ]
 
-    # Drop policies for each table using proper identifier escaping
+    # Validate all table names against whitelist before processing
     for table in tables_with_teacher_id:
-        table_identifier = sa.sql.quoted_name(table, quote=True)
-        policy_prefix = table.replace('.', '_').replace('-', '_')  # Sanitize for policy names
+        if table not in ALLOWED_TABLES:
+            raise ValueError(f"Table '{table}' is not in the allowed whitelist for RLS")
+
+    # Drop policies for each table using validated and quoted identifiers
+    for table in tables_with_teacher_id:
+        # Table name already validated against whitelist above
+        policy_prefix = table.replace('.', '_').replace('-', '_')
         for operation in ['select', 'insert', 'update', 'delete']:
             conn.execute(sa.text(
-                f"DROP POLICY IF EXISTS {policy_prefix}_tenant_isolation_{operation} ON {table_identifier}"
+                f'DROP POLICY IF EXISTS "{policy_prefix}_tenant_isolation_{operation}" ON "{table}"'
             ))
 
     # Drop policies for deletion_requests
     for operation in ['select', 'insert', 'update', 'delete']:
         conn.execute(sa.text(
-            f"DROP POLICY IF EXISTS deletion_requests_tenant_isolation_{operation} ON deletion_requests"
+            f'DROP POLICY IF EXISTS "deletion_requests_tenant_isolation_{operation}" ON "deletion_requests"'
         ))
 
     # Disable RLS on all tables
     for table in tables_with_teacher_id:
-        table_identifier = sa.sql.quoted_name(table, quote=True)
-        conn.execute(sa.text(f"ALTER TABLE {table_identifier} DISABLE ROW LEVEL SECURITY"))
+        conn.execute(sa.text(f'ALTER TABLE "{table}" DISABLE ROW LEVEL SECURITY'))
 
-    conn.execute(sa.text("ALTER TABLE deletion_requests DISABLE ROW LEVEL SECURITY"))
+    conn.execute(sa.text('ALTER TABLE "deletion_requests" DISABLE ROW LEVEL SECURITY'))
 
     print("✓ Row-Level Security disabled and policies removed")
