@@ -49,7 +49,7 @@ if [ "$1" = "latest" ]; then
         echo -e "${RED}Error: No backups found in $BACKUP_DIR${NC}"
         exit 1
     fi
-    echo -e "${YELLOW}Using latest backup: $(basename $BACKUP_FILE)${NC}"
+    echo -e "${YELLOW}Using latest backup: $(basename "$BACKUP_FILE")${NC}"
 elif [ -f "$1" ]; then
     BACKUP_FILE="$1"
 elif [ -f "$BACKUP_DIR/$1" ]; then
