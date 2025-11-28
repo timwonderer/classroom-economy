@@ -533,7 +533,8 @@
 </div>
 
 <script>
-const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+const csrfTokenMeta = document.querySelector('meta[name="csrf-token"]');
+const csrfToken = csrfTokenMeta ? csrfTokenMeta.content : '';
 const stepOrder = ['welcome', 'features', 'periods', 'roster', 'settings'];
 let currentStepIndex = {{ current_step - 1 }};
 

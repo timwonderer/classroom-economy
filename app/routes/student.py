@@ -101,8 +101,9 @@ def get_feature_settings_for_student():
     # Get the student's current block/period
     current_block = session.get('current_period')
     if not current_block and student.block:
-        # Default to first block
-        current_block = student.block.split(',')[0].strip().upper()
+        # Default to first block, handling empty strings after split
+        blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+        current_block = blocks[0] if blocks else None
 
     # Try block-specific settings first
     if current_block:

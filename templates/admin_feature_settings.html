@@ -377,7 +377,8 @@ function updatePeriodFeature(toggle) {
     
     const feature = toggle.dataset.feature;
     const enabled = toggle.checked;
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+    const csrfTokenMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrfToken = csrfTokenMeta ? csrfTokenMeta.content : '';
     
     fetch(`/admin/feature-settings/period/${selectedPeriod}`, {
         method: 'POST',
@@ -436,7 +437,8 @@ function copySettings() {
         return;
     }
     
-    const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
+    const csrfTokenMeta = document.querySelector('meta[name="csrf-token"]');
+    const csrfToken = csrfTokenMeta ? csrfTokenMeta.content : '';
     
     fetch('/admin/feature-settings/copy', {
         method: 'POST',

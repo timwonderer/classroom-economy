@@ -4383,6 +4383,13 @@ def copy_feature_settings():
 
         source_dict = source_settings.to_dict()
 
+        # Define valid feature columns
+        valid_feature_columns = {
+            'payroll_enabled', 'insurance_enabled', 'banking_enabled',
+            'rent_enabled', 'hall_pass_enabled', 'store_enabled',
+            'bug_reports_enabled', 'bug_rewards_enabled'
+        }
+
         # Copy to target periods
         copied_count = 0
         for period in target_periods:
@@ -4398,8 +4405,10 @@ def copy_feature_settings():
                 target_settings = FeatureSettings(teacher_id=admin_id, block=period)
                 db.session.add(target_settings)
 
+            # Only copy valid feature columns to prevent attribute injection
             for key, value in source_dict.items():
-                setattr(target_settings, key, value)
+                if key in valid_feature_columns:
+                    setattr(target_settings, key, value)
 
             target_settings.updated_at = datetime.utcnow()
             copied_count += 1

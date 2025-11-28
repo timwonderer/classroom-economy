@@ -71,20 +71,18 @@ def upgrade():
     )
 
     # Add RLS policy for feature_settings (PostgreSQL only)
+    # This uses exception handling to gracefully handle non-PostgreSQL databases
     op.execute("""
         DO $$
         BEGIN
-            -- Only run on PostgreSQL
-            IF current_setting('server_version_num')::integer > 0 THEN
-                -- Enable RLS on feature_settings
-                ALTER TABLE feature_settings ENABLE ROW LEVEL SECURITY;
-                
-                -- Create policy for feature_settings
-                CREATE POLICY teacher_isolation_policy ON feature_settings
-                    USING (teacher_id = NULLIF(current_setting('app.current_teacher_id', true), '')::integer);
-            END IF;
+            -- Enable RLS on feature_settings (only works on PostgreSQL)
+            ALTER TABLE feature_settings ENABLE ROW LEVEL SECURITY;
+            
+            -- Create policy for feature_settings
+            CREATE POLICY teacher_isolation_policy ON feature_settings
+                USING (teacher_id = NULLIF(current_setting('app.current_teacher_id', true), '')::integer);
         EXCEPTION WHEN OTHERS THEN
-            -- SQLite doesn't support these commands, which is fine
+            -- Non-PostgreSQL databases or errors are silently ignored
             NULL;
         END $$;
     """)
