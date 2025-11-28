@@ -11,6 +11,7 @@ and this project follows semantic versioning principles.
 - Archive directory for historical PR reports (`docs/archive/pr-reports/`)
 - README documentation for scripts directory
 - README documentation for archived PR reports
+- CLI command `normalize-claim-credentials` to backfill student and roster claim hashes to the canonical format
 
 ### Changed
 - Moved utility scripts to `scripts/` directory for better organization:

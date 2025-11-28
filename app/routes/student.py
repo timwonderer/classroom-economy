@@ -35,6 +35,7 @@ from app.utils.constants import THEME_PROMPTS
 from app.utils.turnstile import verify_turnstile_token
 from app.utils.demo_sessions import cleanup_demo_student_data
 from app.utils.ip_handler import get_real_ip
+from app.utils.claim_credentials import compute_primary_claim_hash, match_claim_hash
 from hash_utils import hash_hmac, hash_username, hash_username_lookup
 from attendance import get_all_block_statuses
 
@@ -108,6 +109,8 @@ def claim_account():
             flash("DOB sum must be a number.", "claim")
             return redirect(url_for('student.claim_account'))
 
+        dob_sum = int(dob_sum_str)
+
         # Find all unclaimed seats with this join code
         unclaimed_seats = TeacherBlock.query.filter_by(
             join_code=join_code,
@@ -123,9 +126,13 @@ def claim_account():
 
         matched_seat = None
         for seat in unclaimed_seats:
-            # Check credential: CONCAT(first_initial, DOB_sum)
-            credential = f"{first_initial}{dob_sum_str}"
-            credential_matches = seat.first_half_hash == hash_hmac(credential.encode(), seat.salt)
+            credential_matches, matched_primary, canonical_hash = match_claim_hash(
+                seat.first_half_hash,
+                first_initial,
+                seat.last_initial,
+                seat.dob_sum,
+                seat.salt,
+            )
 
             # Check last name with fuzzy matching
             last_name_matches = verify_last_name_parts(
@@ -134,7 +141,9 @@ def claim_account():
                 seat.salt
             )
 
-            if credential_matches and last_name_matches and str(seat.dob_sum) == dob_sum_str:
+            if credential_matches and last_name_matches and seat.dob_sum == dob_sum:
+                if canonical_hash and not matched_primary:
+                    seat.first_half_hash = canonical_hash
                 matched_seat = seat
                 break
 
@@ -142,19 +151,38 @@ def claim_account():
             flash("No matching account found. Please check your join code and credentials.", "claim")
             return redirect(url_for('student.claim_account'))
 
+        # Normalize the seat hash to the canonical pattern when available
+        canonical_claim_hash = compute_primary_claim_hash(first_initial, dob_sum, matched_seat.salt)
+        if canonical_claim_hash:
+            matched_seat.first_half_hash = canonical_claim_hash
+
         # Check if this student already has an account (claiming from another teacher)
         # Look for existing students with same credentials across all teachers
         existing_student = None
         all_students = Student.query.filter_by(
-            last_initial=first_initial,
-            dob_sum=int(dob_sum_str)
+            last_initial=matched_seat.last_initial,
+            dob_sum=dob_sum
         ).all()
 
         for student in all_students:
             if student.first_name == matched_seat.first_name:
-                # Verify credential matches
-                credential = f"{first_initial}{dob_sum_str}"
-                if student.first_half_hash == hash_hmac(credential.encode(), student.salt):
+                credential_matches, student_primary_match, canonical_hash = match_claim_hash(
+                    student.first_half_hash,
+                    first_initial,
+                    student.last_initial,
+                    student.dob_sum,
+                    student.salt,
+                )
+
+                last_name_valid = verify_last_name_parts(
+                    last_name,
+                    student.last_name_hash_by_part,
+                    student.salt
+                )
+
+                if credential_matches and last_name_valid:
+                    if canonical_hash and not student_primary_match:
+                        student.first_half_hash = canonical_hash
                     existing_student = student
                     break
 
@@ -163,6 +191,9 @@ def claim_account():
             matched_seat.student_id = existing_student.id
             matched_seat.is_claimed = True
             matched_seat.claimed_at = datetime.utcnow()
+
+            if canonical_claim_hash:
+                existing_student.first_half_hash = canonical_claim_hash
 
             # Create StudentTeacher link
             existing_link = StudentTeacher.query.filter_by(
@@ -193,14 +224,14 @@ def claim_account():
 
         # New student - create Student record
         # Generate second_half_hash (DOB hash) for backward compatibility
-        second_half_hash = hash_hmac(dob_sum_str.encode(), matched_seat.salt)
+        second_half_hash = hash_hmac(str(dob_sum).encode(), matched_seat.salt)
 
         new_student = Student(
             first_name=matched_seat.first_name,
             last_initial=matched_seat.last_initial,
             block=matched_seat.block,
             salt=matched_seat.salt,
-            first_half_hash=matched_seat.first_half_hash,
+            first_half_hash=canonical_claim_hash or matched_seat.first_half_hash,
             second_half_hash=second_half_hash,
             dob_sum=matched_seat.dob_sum,
             last_name_hash_by_part=matched_seat.last_name_hash_by_part,
@@ -341,12 +372,14 @@ def add_class():
             flash("DOB sum must be a number.", "danger")
             return redirect(url_for('student.add_class'))
 
+        dob_sum = int(dob_sum_str)
+
         # Verify the credentials match the logged-in student
         if first_initial != student.first_name[:1].upper():
             flash("The first initial doesn't match your account. Please check and try again.", "danger")
             return redirect(url_for('student.add_class'))
 
-        if int(dob_sum_str) != student.dob_sum:
+        if dob_sum != student.dob_sum:
             flash("The DOB sum doesn't match your account. Please check and try again.", "danger")
             return redirect(url_for('student.add_class'))
 
@@ -368,9 +401,13 @@ def add_class():
         # Try to find a matching seat for this student
         matched_seat = None
         for seat in unclaimed_seats:
-            # Check credential: CONCAT(first_initial, DOB_sum)
-            credential = f"{first_initial}{dob_sum_str}"
-            credential_matches = seat.first_half_hash == hash_hmac(credential.encode(), seat.salt)
+            credential_matches, matched_primary, canonical_hash = match_claim_hash(
+                seat.first_half_hash,
+                first_initial,
+                seat.last_initial,
+                seat.dob_sum,
+                seat.salt,
+            )
 
             # Check last name with fuzzy matching
             last_name_matches = verify_last_name_parts(
@@ -382,7 +419,9 @@ def add_class():
             # Check if names match (encrypted first name comparison)
             name_matches = seat.first_name == student.first_name and seat.last_initial == student.last_initial
 
-            if credential_matches and last_name_matches and name_matches and str(seat.dob_sum) == dob_sum_str:
+            if credential_matches and last_name_matches and name_matches and seat.dob_sum == dob_sum:
+                if canonical_hash and not matched_primary:
+                    seat.first_half_hash = canonical_hash
                 matched_seat = seat
                 break
 
@@ -399,6 +438,12 @@ def add_class():
         if existing_link:
             flash("You are already enrolled in this teacher's class.", "warning")
             return redirect(url_for('student.dashboard'))
+
+        # Normalize claim hash to canonical pattern
+        canonical_claim_hash = compute_primary_claim_hash(first_initial, dob_sum, matched_seat.salt)
+        if canonical_claim_hash:
+            matched_seat.first_half_hash = canonical_claim_hash
+            student.first_half_hash = canonical_claim_hash
 
         # Link the seat to the existing student
         matched_seat.student_id = student.id

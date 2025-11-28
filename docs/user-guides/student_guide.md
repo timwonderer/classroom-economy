@@ -27,12 +27,16 @@ Before you can log in, you need to set up your account.
 
 ### Step 1: Claim Your Account
 
-Your teacher will provide you with two pieces of information:
+Your teacher will provide you with a **join code** for your class period.
 
-1.  A **name code**.
-2.  A **number**.
+When you're ready, go to the "Claim Account" page and enter:
 
-Go to the "Claim Account" page and enter this information to begin the setup process.
+1.  The join code from your teacher.
+2.  The **first initial of your first name**.
+3.  Your **last name**.
+4.  Your **birthday sum** (month + day + year as numbers, e.g., March 2, 2012 → 3 + 2 + 2012 = **2017**).
+
+These details match what your teacher entered. If anything doesn't work, double-check the spelling of your name and the birthday sum math.
 
 ### Step 2: Create Your Username
 

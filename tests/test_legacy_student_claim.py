@@ -10,6 +10,8 @@ import pyotp
 from app import db
 from app.models import Admin, Student, StudentTeacher, TeacherBlock
 from hash_utils import get_random_salt, hash_username, hash_hmac
+from app.utils.name_utils import hash_last_name_parts
+from app.utils.claim_credentials import compute_primary_claim_hash
 
 
 def _create_admin(username: str) -> tuple[Admin, str]:
@@ -196,3 +198,111 @@ def test_join_code_persists_when_new_students_added(client):
     
     assert join_code_1 == join_code_2, \
         f"Join code changed: {join_code_1} -> {join_code_2}. It should persist!"
+
+
+def test_claim_succeeds_when_seat_uses_last_initial_hash(client):
+    """Students can claim even if the seat hash was generated with the last initial."""
+
+    teacher, _ = _create_admin("teacher-last-initial-hash")
+
+    salt = get_random_salt()
+    join_code = "P2C7FZ"
+    last_name = "Hayslett"
+
+    seat = TeacherBlock(
+        teacher_id=teacher.id,
+        block="B",
+        first_name="Benjamin",
+        last_initial="H",
+        last_name_hash_by_part=hash_last_name_parts(last_name, salt),
+        dob_sum=2030,
+        salt=salt,
+        first_half_hash=hash_hmac("H2030".encode(), salt),
+        join_code=join_code,
+        is_claimed=False,
+    )
+    db.session.add(seat)
+    db.session.commit()
+
+    response = client.post(
+        "/student/claim-account",
+        data={
+            "join_code": join_code,
+            "first_initial": "B",
+            "last_name": last_name,
+            "dob_sum": "2030",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302
+    assert "/student/create-username" in response.location
+
+    refreshed_seat = TeacherBlock.query.get(seat.id)
+    expected_hash = hash_hmac("B2030".encode(), salt)
+
+    assert refreshed_seat.is_claimed is True
+    assert refreshed_seat.first_half_hash == expected_hash
+
+    student = Student.query.get(refreshed_seat.student_id)
+    assert student is not None
+    assert student.first_half_hash == expected_hash
+    assert StudentTeacher.query.filter_by(student_id=student.id, admin_id=teacher.id).count() == 1
+
+
+def test_students_page_normalizes_legacy_claim_hashes(client):
+    """Visiting the students page backfills legacy claim hashes to the canonical format."""
+
+    teacher, secret = _create_admin("teacher-normalize-hashes")
+
+    # Create a TeacherBlock entry using the legacy last-initial credential
+    seat_salt = get_random_salt()
+    legacy_seat_hash = hash_hmac("L2035".encode(), seat_salt)
+    seat = TeacherBlock(
+        teacher_id=teacher.id,
+        block="C",
+        first_name="Ada",
+        last_initial="L",
+        last_name_hash_by_part=hash_last_name_parts("Lovelace", seat_salt),
+        dob_sum=2035,
+        salt=seat_salt,
+        first_half_hash=legacy_seat_hash,
+        join_code="LEGACY1",
+        is_claimed=False,
+    )
+
+    # Create a Student record still using the legacy last-initial credential
+    student_salt = get_random_salt()
+    legacy_student_hash = hash_hmac("L2035".encode(), student_salt)
+    student = Student(
+        first_name="Aria",
+        last_initial="L",
+        block="C",
+        salt=student_salt,
+        first_half_hash=legacy_student_hash,
+        dob_sum=2035,
+        has_completed_setup=False,
+        teacher_id=teacher.id,
+    )
+    db.session.add_all([seat, student])
+    db.session.flush()
+    db.session.add(StudentTeacher(student_id=student.id, admin_id=teacher.id))
+    db.session.commit()
+
+    _login_admin(client, teacher, secret)
+
+    # Visiting the students page should normalize both hashes to the canonical first-initial pattern
+    response = client.get("/admin/students")
+    assert response.status_code == 200
+
+    updated_seat = TeacherBlock.query.get(seat.id)
+    updated_student = Student.query.get(student.id)
+
+    expected_seat_hash = compute_primary_claim_hash("A", 2035, seat_salt)
+    expected_student_hash = compute_primary_claim_hash("A", 2035, student_salt)
+
+    assert updated_seat.first_half_hash == expected_seat_hash
+    assert updated_student.first_half_hash == expected_student_hash
+    # Confirm the original legacy hashes were different so a change occurred
+    assert updated_seat.first_half_hash != legacy_seat_hash
+    assert updated_student.first_half_hash != legacy_student_hash

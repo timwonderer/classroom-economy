@@ -12,8 +12,10 @@ from app.utils.join_code import generate_join_code
 from app.routes.admin import (
     MAX_JOIN_CODE_RETRIES,
     FALLBACK_BLOCK_PREFIX_LENGTH,
-    FALLBACK_CODE_MODULO
+    FALLBACK_CODE_MODULO,
+    LEGACY_PLACEHOLDER_FIRST_NAME,
 )
+from app.utils.claim_credentials import normalize_claim_hash
 
 
 @click.command('migrate-legacy-students')
@@ -519,7 +521,58 @@ def fix_missing_teacher_blocks_command():
         raise click.Abort()
 
 
+@click.command('normalize-claim-credentials')
+def normalize_claim_credentials_command():
+    """Backfill canonical claim hashes for all students and roster seats."""
+
+    click.echo("Normalizing student and roster claim credentials to canonical format...")
+
+    updated = 0
+
+    # Normalize TeacherBlock entries
+    for seat in TeacherBlock.query.all():
+        # Skip placeholder rows that only store join codes
+        if seat.first_name == LEGACY_PLACEHOLDER_FIRST_NAME:
+            continue
+
+        first_initial = seat.first_name.strip()[0].upper() if seat.first_name else None
+        updated_hash, changed = normalize_claim_hash(
+            seat.first_half_hash,
+            first_initial,
+            seat.last_initial,
+            seat.dob_sum,
+            seat.salt,
+        )
+        if changed and updated_hash:
+            seat.first_half_hash = updated_hash
+            updated += 1
+
+    # Normalize Student entries
+    for student in Student.query.all():
+        first_initial = student.first_name.strip()[0].upper() if student.first_name else None
+        updated_hash, changed = normalize_claim_hash(
+            student.first_half_hash,
+            first_initial,
+            student.last_initial,
+            student.dob_sum,
+            student.salt,
+        )
+        if changed and updated_hash:
+            student.first_half_hash = updated_hash
+            updated += 1
+
+    try:
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        click.echo(f"✗ Failed to normalize claim credentials: {exc}", err=True)
+        raise click.Abort()
+
+    click.echo(f"✓ Updated {updated} record(s) to use canonical claim hashes.")
+
+
 def init_app(app):
     """Register CLI commands with Flask app."""
     app.cli.add_command(migrate_legacy_students_command)
+    app.cli.add_command(normalize_claim_credentials_command)
     app.cli.add_command(fix_missing_teacher_blocks_command)

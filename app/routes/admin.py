@@ -46,6 +46,11 @@ from forms import (
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso, generate_anonymous_code, render_template_with_fallback as render_template
 from app.utils.join_code import generate_join_code
+from app.utils.claim_credentials import (
+    compute_primary_claim_hash,
+    match_claim_hash,
+    normalize_claim_hash,
+)
 from app.utils.ip_handler import get_real_ip
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll
@@ -113,6 +118,66 @@ def _link_student_to_admin(student: Student, admin_id):
     existing_link = StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin_id).first()
     if not existing_link:
         db.session.add(StudentTeacher(student_id=student.id, admin_id=admin_id))
+
+
+def _normalize_claim_credentials_for_admin(admin_id: int) -> int:
+    """Normalize claim hashes for all students and seats the admin can access.
+
+    This keeps legacy last-initial hashes claimable while ensuring future
+    matches use the canonical first-initial credential. Returns the number of
+    records updated.
+    """
+
+    if not admin_id:
+        return 0
+
+    updated = 0
+
+    # Normalize TeacherBlock seats (claimed and unclaimed)
+    teacher_blocks = TeacherBlock.query.filter_by(teacher_id=admin_id).all()
+    for seat in teacher_blocks:
+        if seat.first_name == LEGACY_PLACEHOLDER_FIRST_NAME:
+            # Placeholder rows only store join codes and should not be mutated
+            continue
+
+        first_initial = seat.first_name.strip()[0].upper() if seat.first_name else None
+        updated_hash, changed = normalize_claim_hash(
+            seat.first_half_hash,
+            first_initial,
+            seat.last_initial,
+            seat.dob_sum,
+            seat.salt,
+        )
+        if changed and updated_hash:
+            seat.first_half_hash = updated_hash
+            updated += 1
+
+    # Normalize Student records scoped to this admin
+    students = _scoped_students().all()
+    for student in students:
+        first_initial = student.first_name.strip()[0].upper() if student.first_name else None
+        updated_hash, changed = normalize_claim_hash(
+            student.first_half_hash,
+            first_initial,
+            student.last_initial,
+            student.dob_sum,
+            student.salt,
+        )
+        if changed and updated_hash:
+            student.first_half_hash = updated_hash
+            updated += 1
+
+    if updated:
+        try:
+            db.session.commit()
+        except Exception as exc:
+            current_app.logger.error(
+                "Failed to normalize claim credentials for admin %s: %s", admin_id, exc
+            )
+            db.session.rollback()
+            return 0
+
+    return updated
 
 def auto_tapout_all_over_limit():
     """
@@ -492,6 +557,13 @@ def students():
     """View all students with basic information organized by block."""
     current_admin = session.get('admin_id')
 
+    # Backfill any legacy credential hashes to the canonical format for this admin's data
+    updated_records = _normalize_claim_credentials_for_admin(current_admin)
+    if updated_records:
+        current_app.logger.info(
+            "Normalized %s student/seat claim credential(s) for admin %s", updated_records, current_admin
+        )
+
     # Get claimed students (Student records)
     all_students = _scoped_students().order_by(Student.block, Student.first_name).all()
 
@@ -737,23 +809,18 @@ def edit_student():
 
     # Check if name changed (need to recalculate hashes)
     name_changed = (new_first_name != student.first_name or new_last_initial != student.last_initial)
+    dob_changed = False
 
     # Update basic fields
     student.first_name = new_first_name
     student.last_initial = new_last_initial
     student.block = new_blocks
 
-    # If name changed, recalculate name code and hashes
+    # If name changed, refresh last name hashes
     if name_changed:
-        # Generate new name code (MUST match original algorithm for consistency)
-        # vowels from first_name + consonants from last_name
-        # Note: We only have last_initial, so we reconstruct using last_name_input
-        vowels = re.findall(r'[AEIOUaeiou]', new_first_name)
-        consonants = re.findall(r'[^AEIOUaeiou\W\d_]', last_name_input)
-        name_code = ''.join(vowels + consonants).lower()
+        from app.utils.name_utils import hash_last_name_parts
 
-        # Regenerate first_half_hash (name code hash)
-        student.first_half_hash = hash_hmac(name_code.encode(), student.salt)
+        student.last_name_hash_by_part = hash_last_name_parts(last_name_input, student.salt)
 
     # Update DOB sum if provided (and recalculate second_half_hash)
     dob_sum_str = request.form.get('dob_sum', '').strip()
@@ -763,6 +830,12 @@ def edit_student():
             student.dob_sum = new_dob_sum
             # Regenerate second_half_hash (DOB sum hash)
             student.second_half_hash = hash_hmac(str(new_dob_sum).encode(), student.salt)
+            dob_changed = True
+
+    if name_changed or dob_changed:
+        claim_hash = compute_primary_claim_hash(new_first_name[:1], student.dob_sum, student.salt)
+        if claim_hash:
+            student.first_half_hash = claim_hash
 
     # Handle login reset
     reset_login = request.form.get('reset_login') == 'on'
@@ -783,8 +856,20 @@ def edit_student():
             'is_claimed': False,
             'claimed_at': None
         })
-        
+
         flash(f"{student.full_name}'s login has been reset. They will need to re-claim their account.", "warning")
+
+    if name_changed or dob_changed:
+        TeacherBlock.query.filter_by(
+            student_id=student.id,
+            teacher_id=current_admin_id
+        ).update({
+            'first_name': student.first_name,
+            'last_initial': student.last_initial,
+            'last_name_hash_by_part': student.last_name_hash_by_part or [],
+            'dob_sum': student.dob_sum or 0,
+            'first_half_hash': student.first_half_hash,
+        })
 
     # Handle block changes - update TeacherBlock entries
     removed_blocks = old_blocks - new_blocks_set
@@ -1013,7 +1098,8 @@ def add_individual_student():
             flash("All fields are required.", "error")
             return redirect(url_for('admin.students'))
 
-        # Generate last_initial
+        # Generate initials
+        first_initial = first_name[0].upper()
         last_initial = last_name[0].upper()
 
         # Parse DOB and calculate sum
@@ -1023,10 +1109,8 @@ def add_individual_student():
         # Generate salt
         salt = get_random_salt()
 
-        # Compute first_half_hash: CONCAT(last_initial, DOB_sum)
-        # Updated to match new credential system
-        credential = f"{last_initial}{dob_sum}"  # e.g., "S2025"
-        first_half_hash = hash_hmac(credential.encode(), salt)
+        # Compute first_half_hash using canonical claim credential (first initial + DOB sum)
+        first_half_hash = compute_primary_claim_hash(first_initial, dob_sum, salt)
         second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
         # Compute last_name_hash_by_part for fuzzy matching
@@ -1046,8 +1130,13 @@ def add_individual_student():
         for existing_student in potential_duplicates:
             if existing_student.first_name == first_name:
                 # Verify credential matches
-                test_credential = f"{last_initial}{dob_sum}"
-                credential_matches = existing_student.first_half_hash == hash_hmac(test_credential.encode(), existing_student.salt)
+                credential_matches, is_primary, canonical_hash = match_claim_hash(
+                    existing_student.first_half_hash,
+                    first_initial,
+                    last_initial,
+                    dob_sum,
+                    existing_student.salt,
+                )
 
                 # Also check fuzzy last name matching
                 fuzzy_match = False
@@ -1060,6 +1149,8 @@ def add_individual_student():
 
                 # Match if BOTH credential AND last name match
                 if credential_matches and fuzzy_match:
+                    if canonical_hash and not is_primary:
+                        existing_student.first_half_hash = canonical_hash
                     # Student already exists - link to this teacher instead of creating duplicate
                     current_admin_id = session.get("admin_id")
 
@@ -1171,7 +1262,8 @@ def add_manual_student():
             flash("Required fields missing.", "error")
             return redirect(url_for('admin.students'))
 
-        # Generate last_initial
+        # Generate initials
+        first_initial = first_name[0].upper()
         last_initial = last_name[0].upper()
 
         # Parse DOB and calculate sum
@@ -1181,10 +1273,8 @@ def add_manual_student():
         # Generate salt
         salt = get_random_salt()
 
-        # Compute first_half_hash: CONCAT(last_initial, DOB_sum)
-        # Updated to match new credential system
-        credential = f"{last_initial}{dob_sum}"  # e.g., "S2025"
-        first_half_hash = hash_hmac(credential.encode(), salt)
+        # Compute first_half_hash using canonical claim credential (first initial + DOB sum)
+        first_half_hash = compute_primary_claim_hash(first_initial, dob_sum, salt)
         second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
         # Compute last_name_hash_by_part for fuzzy matching
@@ -1199,9 +1289,14 @@ def add_manual_student():
 
         for existing_student in potential_duplicates:
             if existing_student.first_name == first_name:
-                # Verify credential matches
-                test_credential = f"{last_initial}{dob_sum}"
-                credential_matches = existing_student.first_half_hash == hash_hmac(test_credential.encode(), existing_student.salt)
+                # Verify credential matches (canonical + legacy)
+                credential_matches, is_primary, canonical_hash = match_claim_hash(
+                    existing_student.first_half_hash,
+                    first_initial,
+                    last_initial,
+                    dob_sum,
+                    existing_student.salt,
+                )
 
                 # Also check fuzzy last name matching
                 fuzzy_match = False
@@ -1213,6 +1308,8 @@ def add_manual_student():
                     )
 
                 if credential_matches and fuzzy_match:
+                    if canonical_hash and not is_primary:
+                        existing_student.first_half_hash = canonical_hash
                     flash(f"Student {first_name} {last_name} already exists. Linking to your class.", "warning")
                     # Link to this teacher
                     from app.models import StudentTeacher
@@ -3183,7 +3280,8 @@ def upload_students():
             if not all([first_name, last_name, dob_str, block]):
                 raise ValueError("Missing required fields.")
 
-            # Generate last_initial
+            # Generate initials
+            first_initial = first_name[0].upper()
             last_initial = last_name[0].upper()
 
             # Get or generate join code for this teacher-block combination
@@ -3251,10 +3349,8 @@ def upload_students():
             # Generate salt
             salt = get_random_salt()
 
-            # Compute first_half_hash: CONCAT(first_initial, DOB_sum)
-            # Simpler credential: student just needs to know their initial and birthday
-            credential = f"{last_initial}{dob_sum}"  # e.g., "S2025"
-            first_half_hash = hash_hmac(credential.encode(), salt)
+            # Compute first_half_hash using canonical claim credential (first initial + DOB sum)
+            first_half_hash = compute_primary_claim_hash(first_initial, dob_sum, salt)
 
             # Compute last_name_hash_by_part for fuzzy matching
             from app.utils.name_utils import hash_last_name_parts
