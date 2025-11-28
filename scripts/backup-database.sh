@@ -42,7 +42,8 @@ log "Starting database backup..."
 
 # Load DATABASE_URL from environment
 if [ -f /root/classroom-economy/.env ]; then
-    export $(grep "^DATABASE_URL=" /root/classroom-economy/.env | xargs)
+    DATABASE_URL=$(grep "^DATABASE_URL=" /root/classroom-economy/.env | cut -d'=' -f2-)
+    export DATABASE_URL
 fi
 
 if [ -z "$DATABASE_URL" ]; then
