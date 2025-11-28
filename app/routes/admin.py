@@ -203,7 +203,7 @@ def _check_onboarding_redirect():
                 teacher_id=admin_id,
                 is_completed=True,
                 is_skipped=True,
-                completed_at=datetime.utcnow()
+                completed_at=datetime.now(timezone.utc)
             )
             db.session.add(onboarding)
             db.session.commit()
