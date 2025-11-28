@@ -153,7 +153,7 @@ def _normalize_claim_credentials_for_admin(admin_id: int) -> int:
             updated += 1
 
     # Normalize Student records scoped to this admin
-    students = _scoped_students().all()
+    students = _scoped_students().yield_per(100)
     for student in students:
         first_initial = student.first_name.strip()[0].upper() if student.first_name else None
         updated_hash, changed = normalize_claim_hash(
