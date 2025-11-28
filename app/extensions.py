@@ -34,7 +34,7 @@ def get_real_ip_for_limiter():
             return forwarded_for.split(',')[0].strip()
         # Final fallback to remote_addr
         return request.remote_addr
-    except:
+    except RuntimeError:
         return get_remote_address()
 
 limiter = Limiter(
