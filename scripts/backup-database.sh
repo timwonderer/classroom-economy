@@ -78,7 +78,7 @@ fi
 
 # Clean up old backups (keep last 30 days)
 log "Cleaning up old backups (retention: $RETENTION_DAYS days)..."
-DELETED_COUNT=$(find "$BACKUP_DIR" -name "backup_*.sql.gz" -mtime +$RETENTION_DAYS -delete -print | wc -l)
+DELETED_COUNT=$(find "$BACKUP_DIR" -name "backup_*.sql.gz" -mtime +$RETENTION_DAYS -print -delete | wc -l)
 if [ "$DELETED_COUNT" -gt 0 ]; then
     log "  Deleted $DELETED_COUNT old backup(s)"
 else
