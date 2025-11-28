@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
-from flask import session
+from unittest.mock import patch
+
 from app import Transaction, apply_savings_interest, db
 
 
