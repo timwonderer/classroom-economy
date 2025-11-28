@@ -530,7 +530,7 @@ def normalize_claim_credentials_command():
     updated = 0
 
     # Normalize TeacherBlock entries
-    for seat in TeacherBlock.query.all():
+    for seat in TeacherBlock.query.yield_per(100):
         # Skip placeholder rows that only store join codes
         if seat.first_name == LEGACY_PLACEHOLDER_FIRST_NAME:
             continue
