@@ -422,10 +422,6 @@ def create_app():
         # Prevents browsers from interpreting files as a different MIME type
         response.headers['X-Content-Type-Options'] = 'nosniff'
 
-        # XSS Protection (legacy, but still useful for older browsers)
-        # Enables browser's built-in XSS filter
-        response.headers['X-XSS-Protection'] = '1; mode=block'
-
         # Referrer Policy
         # Only send full URL to same origin, origin only to other HTTPS sites
         response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
