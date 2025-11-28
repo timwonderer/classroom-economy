@@ -1,7 +1,7 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField
 from wtforms.validators import DataRequired, ValidationError, Length
-from wtforms import HiddenField, TextAreaField, FloatField, SelectField, IntegerField, DateField, BooleanField
+from wtforms import HiddenField, TextAreaField, FloatField, SelectField, IntegerField, DateField, BooleanField, SelectMultipleField
 from wtforms.validators import Optional
 
 from wtforms import SubmitField
@@ -22,6 +22,7 @@ class StoreItemForm(FlaskForm):
     auto_delist_date = DateField('Auto-Delist Date (optional)', format='%Y-%m-%d', validators=[Optional()])
     auto_expiry_days = IntegerField('Item Expiry in Days (optional, for delayed-use items)', validators=[Optional()])
     is_active = BooleanField('Item is Active', default=True)
+    blocks = SelectMultipleField('Visible to Periods/Blocks (leave empty for all)', choices=[], validators=[Optional()])
 
     # Bundle settings
     is_bundle = BooleanField('This is a Bundled Item', default=False)
@@ -209,6 +210,7 @@ class InsurancePolicyForm(FlaskForm):
     ], default='advanced')
 
     is_active = BooleanField('Policy is Active', default=True)
+    blocks = SelectMultipleField('Visible to Periods/Blocks (leave empty for all)', choices=[], validators=[Optional()])
     submit = SubmitField('Save Policy')
 
 

@@ -32,10 +32,10 @@ import pytz
 from app.extensions import db, limiter
 from app.models import (
     Student, Admin, AdminInviteCode, StudentTeacher, Transaction, TapEvent, StoreItem, StudentItem,
-    RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings, TeacherBlock,
-    DeletionRequest, DeletionRequestType, DeletionRequestStatus, UserReport,
-    FeatureSettings, TeacherOnboarding
+    StoreItemBlock, RentSettings, RentPayment, RentWaiver, InsurancePolicy, InsurancePolicyBlock,
+    StudentInsurance, InsuranceClaim, HallPassLog, PayrollSettings, PayrollReward, PayrollFine,
+    BankingSettings, TeacherBlock, DeletionRequest, DeletionRequestType, DeletionRequestStatus,
+    UserReport, FeatureSettings, TeacherOnboarding
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
@@ -82,6 +82,15 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 def _scoped_students(include_unassigned=True):
     """Return a query for students the current admin can access."""
     return get_admin_student_query(include_unassigned=include_unassigned)
+
+
+def _get_teacher_blocks():
+    """Get sorted list of blocks from teacher's students."""
+    students_blocks = _scoped_students().with_entities(Student.block).all()
+    return sorted(set(
+        b.strip().upper() for s_blocks, in students_blocks if s_blocks
+        for b in s_blocks.split(',') if b.strip()
+    ))
 
 
 def _student_scope_subquery(include_unassigned=True):
@@ -1520,6 +1529,11 @@ def store_management():
     admin_id = session.get("admin_id")
     student_ids_subq = _student_scope_subquery()
     form = StoreItemForm()
+
+    # Populate blocks choices from teacher's students
+    blocks = _get_teacher_blocks()
+    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+
     if form.validate_on_submit():
         new_item = StoreItem(
             teacher_id=admin_id,
@@ -1541,6 +1555,10 @@ def store_management():
             bulk_discount_percentage=form.bulk_discount_percentage.data if form.bulk_discount_enabled.data else None
         )
         db.session.add(new_item)
+        db.session.flush()  # Get the ID for the item before adding blocks
+        # Set blocks using many-to-many relationship
+        if form.blocks.data:
+            new_item.set_blocks(form.blocks.data)
         db.session.commit()
         flash(f"'{new_item.name}' has been added to the store.", "success")
         return redirect(url_for('admin.store_management'))
@@ -1570,8 +1588,20 @@ def edit_store_item(item_id):
     admin_id = session.get("admin_id")
     item = StoreItem.query.filter_by(id=item_id, teacher_id=admin_id).first_or_404()
     form = StoreItemForm(obj=item)
+
+    # Populate blocks choices from teacher's students
+    blocks = _get_teacher_blocks()
+    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+
+    # Pre-populate selected blocks on GET request (using many-to-many relationship)
+    if request.method == 'GET':
+        form.blocks.data = item.blocks_list
+
     if form.validate_on_submit():
+        # Populate other fields first
         form.populate_obj(item)
+        # Set blocks using many-to-many relationship
+        item.set_blocks(form.blocks.data if form.blocks.data else [])
         db.session.commit()
         flash(f"'{item.name}' has been updated.", "success")
         return redirect(url_for('admin.store_management'))
@@ -1865,6 +1895,10 @@ def insurance_management():
     student_ids_subq = _student_scope_subquery()
     form = InsurancePolicyForm()
 
+    # Populate blocks choices from teacher's students
+    blocks = _get_teacher_blocks()
+    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+
     current_teacher_id = session.get('admin_id')
     existing_policies = InsurancePolicy.query.filter_by(teacher_id=current_teacher_id).all()
 
@@ -1928,6 +1962,10 @@ def insurance_management():
             is_active=form.is_active.data
         )
         db.session.add(policy)
+        db.session.flush()  # Get the ID for the policy before adding blocks
+        # Set blocks using many-to-many relationship
+        if form.blocks.data:
+            policy.set_blocks(form.blocks.data)
         db.session.commit()
         flash(f"Insurance policy '{policy.title}' created successfully!", "success")
         return redirect(url_for('admin.insurance_management'))
@@ -1990,6 +2028,14 @@ def edit_insurance_policy(policy_id):
 
     form = InsurancePolicyForm(obj=policy)
 
+    # Populate blocks choices from teacher's students
+    blocks = _get_teacher_blocks()
+    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+
+    # Pre-populate selected blocks on GET request (using many-to-many relationship)
+    if request.method == 'GET':
+        form.blocks.data = policy.blocks_list
+
     teacher_policies = InsurancePolicy.query.filter_by(teacher_id=session.get('admin_id')).all()
     tier_groups_map = {}
     for teacher_policy in teacher_policies:
@@ -2031,6 +2077,8 @@ def edit_insurance_policy(policy_id):
         policy.bundle_discount_percent = form.bundle_discount_percent.data
         policy.bundle_discount_amount = form.bundle_discount_amount.data
         policy.marketing_badge = form.marketing_badge.data if form.marketing_badge.data else None
+        # Set blocks using many-to-many relationship
+        policy.set_blocks(form.blocks.data if form.blocks.data else [])
         if form.tier_category_id.data:
             policy.tier_category_id = form.tier_category_id.data
         elif form.tier_name.data or form.tier_color.data:
@@ -4192,6 +4240,10 @@ def feature_settings():
                 'bug_rewards_enabled': 'bug_rewards_enabled' in request.form,
             }
 
+            # Bug rewards is a subfeature of bug reports - if bug reports is disabled, disable bug rewards too
+            if not features_data['bug_reports_enabled']:
+                features_data['bug_rewards_enabled'] = False
+
             # Apply settings to selected periods
             if apply_to == 'all':
                 # Update global settings
@@ -4335,6 +4387,10 @@ def update_period_feature_settings(period):
         for feature_key, db_column in feature_map.items():
             if feature_key in data:
                 setattr(settings, db_column, bool(data[feature_key]))
+
+        # Bug rewards is a subfeature of bug reports - if bug reports is disabled, disable bug rewards too
+        if not settings.bug_reports_enabled:
+            settings.bug_rewards_enabled = False
 
         settings.updated_at = datetime.utcnow()
         db.session.commit()

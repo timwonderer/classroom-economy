@@ -355,6 +355,7 @@ class HallPassSettings(db.Model):
     __tablename__ = 'hall_pass_settings'
     id = db.Column(db.Integer, primary_key=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    block = db.Column(db.String(10), nullable=True)  # NULL = global default, otherwise period/block identifier
 
     # Queue system toggle
     queue_enabled = db.Column(db.Boolean, default=True, nullable=False)
@@ -370,6 +371,7 @@ class HallPassSettings(db.Model):
 
 
 # -------------------- STORE MODELS --------------------
+
 class StoreItem(db.Model):
     __tablename__ = 'store_items'
     id = db.Column(db.Integer, primary_key=True)
@@ -404,6 +406,42 @@ class StoreItem(db.Model):
     teacher = db.relationship('Admin', backref=db.backref('store_items', lazy='dynamic'))
     student_items = db.relationship('StudentItem', backref='store_item', lazy=True)
 
+    # Many-to-many relationship for block visibility
+    visible_blocks = db.relationship(
+        'StoreItemBlock',
+        backref='store_item',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+
+    @property
+    def blocks_list(self):
+        """Return list of block names this item is visible to (empty list means all blocks)."""
+        return [b.block for b in self.visible_blocks]
+
+    def set_blocks(self, block_list):
+        """Set the blocks this item is visible to. Pass empty list for all blocks."""
+        # Clear existing blocks
+        StoreItemBlock.query.filter_by(store_item_id=self.id).delete()
+        # Add new blocks
+        if block_list:
+            db.session.add_all([
+                StoreItemBlock(store_item_id=self.id, block=block.strip().upper())
+                for block in block_list
+            ])
+
+
+class StoreItemBlock(db.Model):
+    """Association model for store item block visibility."""
+    __tablename__ = 'store_item_blocks'
+    store_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id', ondelete='CASCADE'), primary_key=True)
+    block = db.Column(db.String(10), primary_key=True)
+
+    __table_args__ = (
+        db.Index('ix_store_item_blocks_item', 'store_item_id'),
+        db.Index('ix_store_item_blocks_block', 'block'),
+    )
+
 
 class StudentItem(db.Model):
     __tablename__ = 'student_items'
@@ -431,6 +469,7 @@ class RentSettings(db.Model):
     __tablename__ = 'rent_settings'
     id = db.Column(db.Integer, primary_key=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    block = db.Column(db.String(10), nullable=True)  # NULL = global default, otherwise period/block identifier
 
     # Main toggle
     is_enabled = db.Column(db.Boolean, default=True)
@@ -552,9 +591,45 @@ class InsurancePolicy(db.Model):
     student_policies = db.relationship('StudentInsurance', backref='policy', lazy='dynamic')
     claims = db.relationship('InsuranceClaim', backref='policy', lazy='dynamic')
 
+    # Many-to-many relationship for block visibility
+    visible_blocks = db.relationship(
+        'InsurancePolicyBlock',
+        backref='policy',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+
+    @property
+    def blocks_list(self):
+        """Return list of block names this policy is visible to (empty list means all blocks)."""
+        return [b.block for b in self.visible_blocks]
+
+    def set_blocks(self, block_list):
+        """Set the blocks this policy is visible to. Pass empty list for all blocks."""
+        # Clear existing blocks
+        InsurancePolicyBlock.query.filter_by(policy_id=self.id).delete()
+        # Add new blocks
+        if block_list:
+            db.session.add_all([
+                InsurancePolicyBlock(policy_id=self.id, block=block.strip().upper())
+                for block in block_list
+            ])
+
     @property
     def is_monetary_claim(self):
         return self.claim_type != 'non_monetary'
+
+
+class InsurancePolicyBlock(db.Model):
+    """Association model for insurance policy block visibility."""
+    __tablename__ = 'insurance_policy_blocks'
+    policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id', ondelete='CASCADE'), primary_key=True)
+    block = db.Column(db.String(10), primary_key=True)
+
+    __table_args__ = (
+        db.Index('ix_insurance_policy_blocks_policy', 'policy_id'),
+        db.Index('ix_insurance_policy_blocks_block', 'block'),
+    )
 
 
 class StudentInsurance(db.Model):
@@ -766,6 +841,7 @@ class BankingSettings(db.Model):
     __tablename__ = 'banking_settings'
     id = db.Column(db.Integer, primary_key=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    block = db.Column(db.String(10), nullable=True)  # NULL = global default, otherwise period/block identifier
 
     # Interest settings for savings
     savings_apy = db.Column(db.Float, default=0.0)  # Annual Percentage Yield (e.g., 5.0 for 5%)
