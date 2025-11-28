@@ -21,7 +21,7 @@ Guide for identifying and safely removing duplicate student records that may hav
 
 ### [Demo Session Lifecycle and Cleanup](DEMO_SESSIONS.md)
 
-How to monitor and clean demo student sessions that power the admin “view as student” experience.
+How to monitor and clean demo student sessions that power the admin "view as student" experience.
 
 **Use this when:**
 - You need to verify demo sessions are expiring after the 10-minute limit
@@ -32,6 +32,40 @@ How to monitor and clean demo student sessions that power the admin “view as s
 - Documents automatic cleanup paths (logout, scheduled job, route guard)
 - Provides a manual cleanup snippet using `cleanup_demo_student_data`
 - Notes the foreign-key-safe deletion order and required transaction commit
+
+### [UptimeRobot Monitoring Setup](UPTIMEROBOT_SETUP.md)
+
+Complete guide for setting up UptimeRobot monitoring and creating a public status page.
+
+**Use this when:**
+- Setting up uptime monitoring for production
+- Creating a public status page for users
+- Configuring maintenance windows
+- Troubleshooting monitoring issues
+
+**Key features:**
+- Health endpoint configuration (`/health`, `/health/deep`)
+- Public status page setup
+- Firewall configuration for UptimeRobot IPs
+- Alert contact configuration
+
+### [DigitalOcean & Cloudflare Setup](DIGITALOCEAN_CLOUDFLARE_SETUP.md)
+
+Infrastructure setup guide for production deployment.
+
+**Use this when:**
+- Setting up production infrastructure
+- Configuring firewall rules
+- Managing Cloudflare proxy settings
+
+### [PII Audit](PII_AUDIT.md)
+
+Review of personally identifiable information handling in the multi-tenancy system.
+
+**Use this when:**
+- Conducting privacy audits
+- Reviewing data handling practices
+- Verifying PII encryption implementation
 
 ## Adding New Operational Guides
 
@@ -65,5 +99,5 @@ For critical issues:
 
 ---
 
-**Last Updated:** 2025-11-20
+**Last Updated:** 2025-11-28
 **Maintained by:** Project maintainers and operations team

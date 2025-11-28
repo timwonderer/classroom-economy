@@ -64,10 +64,10 @@ Welcome to the Classroom Token Hub documentation! This index points you to the m
 | [Student Guide](user-guides/student_guide.md) | Students | How to use the platform | 2025-11-18 |
 | [Teacher Manual](user-guides/teacher_manual.md) | Teachers | Admin features and workflows | 2025-11-18 |
 | [TODO](development/TODO.md) | Developers | Current tasks and priorities | 2025-11-23 |
-| [Deployment Guide](DEPLOYMENT.md) | DevOps | Deployment instructions | 2025-11-18 |
+| [Deployment Guide](DEPLOYMENT.md) | DevOps | Deployment instructions | 2025-11-25 |
 | [Multi-Tenancy Status](development/MULTI_TENANCY_TODO.md) | Developers | Multi-teacher rollout plan | 2025-11-23 |
 | [Migration Guide](development/MIGRATION_GUIDE.md) | Developers | Database migration help | 2025-11-18 |
-| [Operations Guides](operations/) | Ops | Operational procedures | 2025-11-20 |
-| [Changelog](../CHANGELOG.md) | All | Version history and changes | 2025-11-20 |
+| [Operations Guides](operations/) | Ops | Operational procedures | 2025-11-28 |
+| [Changelog](../CHANGELOG.md) | All | Version history and changes | 2025-11-28 |
 
 ---

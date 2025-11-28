@@ -1,11 +1,12 @@
 # Archived PR Reports
 
-This directory contains historical pull request reports and documentation that were generated during specific development cycles. These files are kept for historical reference but are no longer actively maintained. For PR template, please use the instructions found in agent.md
+This directory contains historical pull request reports and documentation that were generated during specific development cycles. These files are kept for historical reference but are no longer actively maintained. For the current PR template, see `.github/PULL_REQUEST_TEMPLATE.md`.
 
 ## Contents
 
 ### PR Descriptions
 - `PR_DESCRIPTION.md` - Insurance policy scoping and marketing badges fix
+- `PR_DESCRIPTION_LEGACY_STUDENT_MIGRATION.md` - Legacy student migration and join code system
 - `PR_DESCRIPTION_SECURITY_FIXES.md` - Security fixes for insurance claims
 - `PRODUCTION_DEPLOYMENT_INSTRUCTIONS.md` - Deployment instructions for insurance overhaul PR
 
@@ -17,6 +18,10 @@ This directory contains historical pull request reports and documentation that w
 ### Migration & Testing Reports
 - `MIGRATION_REPORT_STAGING.md` - Staging environment migration report
 - `REGRESSION_TEST_REPORT_STAGING.md` - Staging regression testing results
+- `FIX_MISSING_TEACHER_BLOCKS.md` - Instructions for fixing missing TeacherBlock entries
+
+### Readiness Reports
+- `MULTI_TENANCY_READINESS_REPORT.md` - Multi-tenancy readiness assessment (2025-11-24)
 
 ### Security Audits
 - `SECURITY_AUDIT_INSURANCE_OVERHAUL.md` - Comprehensive insurance system security audit
@@ -26,7 +31,7 @@ This directory contains historical pull request reports and documentation that w
 
 ## Purpose
 
-These reports were moved here during repository housekeeping (2025-11-24) to:
+These reports were moved here during repository housekeeping to:
 1. Keep the root directory clean and focused on active documentation
 2. Preserve historical development artifacts for reference
 3. Maintain a clear audit trail of security reviews and fixes
@@ -38,7 +43,8 @@ These reports were moved here during repository housekeeping (2025-11-24) to:
 - Reviewing past code review processes and standards
 - Auditing migration procedures that were followed
 - Learning from previous PR documentation practices
+- Understanding multi-tenancy implementation decisions
 
 ---
 
-**Last Updated:** 2025-11-24
+**Last Updated:** 2025-11-28

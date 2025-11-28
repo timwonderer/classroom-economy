@@ -45,7 +45,9 @@ Reference file containing all Cloudflare and UptimeRobot IP ranges in JSON forma
 
 ---
 
-### `cleanup_duplicates_flask.py`
+### Data Management
+
+#### `cleanup_duplicates_flask.py`
 Identifies and safely removes duplicate student records while preserving all related data (transactions, attendance, hall passes, etc.).
 
 **Usage:**
@@ -56,10 +58,32 @@ python scripts/cleanup_duplicates_flask.py --delete  # Remove duplicates
 
 **Documentation:** [Cleanup Duplicates Guide](../docs/operations/CLEANUP_DUPLICATES.md)
 
-### `cleanup_duplicates.py`
+#### `cleanup_duplicates.py`
 Legacy cleanup script (simpler version). Use `cleanup_duplicates_flask.py` for production as it properly handles data migration.
 
-### `check_migration.py`
+#### `migrate_legacy_students.py`
+Migrates legacy students (pre-join-code system) to use proper `StudentTeacher` associations and `TeacherBlock` entries.
+
+**Usage:**
+```bash
+python scripts/migrate_legacy_students.py
+```
+
+**Note:** Also available as Flask CLI command: `flask migrate-legacy-students`
+
+#### `backfill_join_codes.py`
+Backfills join codes for teacher-block combinations that are missing them.
+
+**Usage:**
+```bash
+python scripts/backfill_join_codes.py
+```
+
+---
+
+### Diagnostics
+
+#### `check_migration.py`
 Checks the current Alembic migration version in the database and lists recent migration files.
 
 **Usage:**
@@ -67,13 +91,23 @@ Checks the current Alembic migration version in the database and lists recent mi
 python scripts/check_migration.py
 ```
 
-### `check_orphaned_insurance.py`
+#### `check_orphaned_insurance.py`
 Finds insurance policies with NULL teacher_id that won't show up in any teacher's admin panel.
 
 **Usage:**
 ```bash
 python scripts/check_orphaned_insurance.py
 ```
+
+#### `debug_student_state.py`
+Diagnostic script to inspect student and TeacherBlock state in the database.
+
+**Usage:**
+```bash
+python scripts/debug_student_state.py
+```
+
+---
 
 ## Development Scripts
 
@@ -90,6 +124,14 @@ This prevents migration conflicts by checking for multiple migration heads befor
 ### `check-migrations.sh`
 Pre-push git hook that validates migration integrity. Installed by `setup-hooks.sh`.
 
+### `check-migration-heads.sh`
+Quick script to verify there's exactly one migration head. Use before pushing migration changes.
+
+**Usage:**
+```bash
+bash scripts/check-migration-heads.sh
+```
+
 ### `update_packages.sh`
 Updates Python package dependencies.
 
@@ -98,9 +140,15 @@ Updates Python package dependencies.
 bash scripts/update_packages.sh
 ```
 
+---
+
 ## Development Utilities
 
 The `dev-utilities/` subdirectory contains additional development tools. See its README for details.
+
+**⚠️ WARNING:** Scripts in `dev-utilities/` can cause permanent data loss. Only use in development environments.
+
+---
 
 ## Adding New Scripts
 
@@ -137,4 +185,4 @@ When adding new scripts to this directory:
 
 ---
 
-**Last Updated:** 2025-11-24
+**Last Updated:** 2025-11-28
