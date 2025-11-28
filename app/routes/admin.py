@@ -52,6 +52,7 @@ from app.utils.claim_credentials import (
     normalize_claim_hash,
 )
 from app.utils.ip_handler import get_real_ip
+from app.utils.name_utils import hash_last_name_parts, verify_last_name_parts
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
@@ -818,8 +819,6 @@ def edit_student():
 
     # If name changed, refresh last name hashes
     if name_changed:
-        from app.utils.name_utils import hash_last_name_parts
-
         student.last_name_hash_by_part = hash_last_name_parts(last_name_input, student.salt)
 
     # Update DOB sum if provided (and recalculate second_half_hash)
@@ -1114,7 +1113,6 @@ def add_individual_student():
         second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
         # Compute last_name_hash_by_part for fuzzy matching
-        from app.utils.name_utils import hash_last_name_parts
         last_name_parts = hash_last_name_parts(last_name, salt)
 
         # Check for duplicates - need to check ALL students GLOBALLY (not scoped to teacher)
@@ -1125,8 +1123,6 @@ def add_individual_student():
         ).all()
 
         # Check if any existing student matches (using new credential system)
-        from app.utils.name_utils import verify_last_name_parts
-
         for existing_student in potential_duplicates:
             if existing_student.first_name == first_name:
                 # Verify credential matches
@@ -1278,7 +1274,6 @@ def add_manual_student():
         second_half_hash = hash_hmac(str(dob_sum).encode(), salt)
 
         # Compute last_name_hash_by_part for fuzzy matching
-        from app.utils.name_utils import hash_last_name_parts, verify_last_name_parts
         last_name_parts = hash_last_name_parts(last_name, salt)
 
         # Check for duplicates GLOBALLY (not scoped to teacher)
@@ -3353,7 +3348,6 @@ def upload_students():
             first_half_hash = compute_primary_claim_hash(first_initial, dob_sum, salt)
 
             # Compute last_name_hash_by_part for fuzzy matching
-            from app.utils.name_utils import hash_last_name_parts
             last_name_parts = hash_last_name_parts(last_name, salt)
 
             # Create TeacherBlock seat (unclaimed account)

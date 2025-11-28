@@ -119,7 +119,4 @@ def normalize_claim_hash(
     if stored_hash == canonical_hash:
         return stored_hash, False
 
-    if is_primary:
-        return stored_hash, False
-
     return canonical_hash, True

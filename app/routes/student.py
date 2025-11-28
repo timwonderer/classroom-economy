@@ -151,11 +151,6 @@ def claim_account():
             flash("No matching account found. Please check your join code and credentials.", "claim")
             return redirect(url_for('student.claim_account'))
 
-        # Normalize the seat hash to the canonical pattern when available
-        canonical_claim_hash = compute_primary_claim_hash(first_initial, dob_sum, matched_seat.salt)
-        if canonical_claim_hash:
-            matched_seat.first_half_hash = canonical_claim_hash
-
         # Check if this student already has an account (claiming from another teacher)
         # Look for existing students with same credentials across all teachers
         existing_student = None
@@ -191,9 +186,6 @@ def claim_account():
             matched_seat.student_id = existing_student.id
             matched_seat.is_claimed = True
             matched_seat.claimed_at = datetime.utcnow()
-
-            if canonical_claim_hash:
-                existing_student.first_half_hash = canonical_claim_hash
 
             # Create StudentTeacher link
             existing_link = StudentTeacher.query.filter_by(
@@ -231,7 +223,7 @@ def claim_account():
             last_initial=matched_seat.last_initial,
             block=matched_seat.block,
             salt=matched_seat.salt,
-            first_half_hash=canonical_claim_hash or matched_seat.first_half_hash,
+            first_half_hash=matched_seat.first_half_hash,
             second_half_hash=second_half_hash,
             dob_sum=matched_seat.dob_sum,
             last_name_hash_by_part=matched_seat.last_name_hash_by_part,
