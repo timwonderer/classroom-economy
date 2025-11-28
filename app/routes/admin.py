@@ -134,7 +134,7 @@ def _normalize_claim_credentials_for_admin(admin_id: int) -> int:
     updated = 0
 
     # Normalize TeacherBlock seats (claimed and unclaimed)
-    teacher_blocks = TeacherBlock.query.filter_by(teacher_id=admin_id).all()
+    teacher_blocks = TeacherBlock.query.filter_by(teacher_id=admin_id).yield_per(100)
     for seat in teacher_blocks:
         if seat.first_name == LEGACY_PLACEHOLDER_FIRST_NAME:
             # Placeholder rows only store join codes and should not be mutated
