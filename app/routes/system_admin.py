@@ -736,48 +736,62 @@ def delete_period(admin_id, period):
     try:
         # Get students in this period linked to this teacher
         # Must check BOTH student_teachers join table AND legacy teacher_id column
+        # Use LIKE to handle comma-separated block lists (e.g., "X,A,B")
+        period_upper = period.upper()
+        
         students_via_link = db.session.query(Student).join(
             StudentTeacher,
             Student.id == StudentTeacher.student_id
         ).filter(
-            StudentTeacher.admin_id == admin.id,
-            Student.block == period
+            StudentTeacher.admin_id == admin.id
         ).all()
 
         # Also get students linked via legacy teacher_id column
         students_via_legacy = Student.query.filter(
-            Student.teacher_id == admin.id,
-            Student.block == period
+            Student.teacher_id == admin.id
         ).all()
 
         # Combine both sets (use dict to deduplicate by student ID)
         all_students = {s.id: s for s in students_via_link + students_via_legacy}
-        students_in_period = list(all_students.values())
+        
+        # Filter to only students who have this period in their block list
+        students_in_period = []
+        for student in all_students.values():
+            student_blocks = [b.strip().upper() for b in (student.block or '').split(',') if b.strip()]
+            if period_upper in student_blocks:
+                students_in_period.append(student)
 
         removed_count = 0
         for student in students_in_period:
-            # If this was the primary teacher, reassign to another linked teacher BEFORE deleting
-            if student.teacher_id == admin.id:
-                fallback = StudentTeacher.query.filter(
-                    StudentTeacher.student_id == student.id,
-                    StudentTeacher.admin_id != admin.id
-                ).order_by(StudentTeacher.created_at.asc()).first()
-                student.teacher_id = fallback.admin_id if fallback else None
+            # Remove the deleted period from the student's block list
+            student_blocks = [b.strip() for b in (student.block or '').split(',') if b.strip()]
+            # Remove all case-insensitive matches of the period
+            updated_blocks = [b for b in student_blocks if b.upper() != period_upper]
+            student.block = ','.join(updated_blocks) if updated_blocks else ''
+            
+            # Check if student still has any blocks associated with this teacher
+            remaining_blocks_for_teacher = []
+            for block in updated_blocks:
+                # Check if there's still a TeacherBlock linking this student to this teacher for this block
+                has_teacher_block = TeacherBlock.query.filter_by(
+                    teacher_id=admin.id,
+                    block=block.upper(),
+                    student_id=student.id
+                ).first() is not None
+                if has_teacher_block:
+                    remaining_blocks_for_teacher.append(block)
+            
+            # If student no longer has any blocks with this teacher, remove the StudentTeacher link
+            if not remaining_blocks_for_teacher:
+                # If this was the primary teacher, reassign to another linked teacher
+                if student.teacher_id == admin.id:
+                    fallback = StudentTeacher.query.filter(
+                        StudentTeacher.student_id == student.id,
+                        StudentTeacher.admin_id != admin.id
+                    ).order_by(StudentTeacher.created_at.asc()).first()
+                    student.teacher_id = fallback.admin_id if fallback else None
 
-            # Remove the teacher-student link after reassignment
-            # Only remove the StudentTeacher link if the student is not taught by this teacher in any other period
-            other_periods = Student.query.filter(
-                Student.id == student.id,
-                Student.teacher_id == admin.id,
-                Student.block != period
-            ).count()
-            other_links = StudentTeacher.query.filter(
-                StudentTeacher.student_id == student.id,
-                StudentTeacher.admin_id == admin.id
-            ).join(Student, Student.id == StudentTeacher.student_id).filter(
-                Student.block != period
-            ).count()
-            if other_periods == 0 and other_links == 0:
+                # Remove the teacher-student link
                 StudentTeacher.query.filter_by(
                     student_id=student.id,
                     admin_id=admin.id
@@ -802,7 +816,7 @@ def delete_period(admin_id, period):
 
         flash(
             f"✅ Period '{period}' deleted for teacher '{admin.username}'. "
-            f"Removed {removed_count} student links. Students maintain access to other classes.",
+            f"Updated {removed_count} students. Students maintain access to other classes.",
             "success"
         )
 

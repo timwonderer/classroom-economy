@@ -1155,7 +1155,12 @@ def bulk_delete_students():
 @admin_bp.route('/students/delete-block', methods=['POST'])
 @admin_required
 def delete_block():
-    """Delete all students in a specific block."""
+    """Delete all students in a specific block.
+    
+    For students with multiple blocks (comma-separated), this removes the specified
+    block from their block list. Only students whose ONLY block is the deleted block
+    will have their account and data deleted.
+    """
     data = request.get_json()
     block = data.get('block', '').strip().upper()
     current_admin_id = session.get('admin_id')
@@ -1164,36 +1169,67 @@ def delete_block():
         return jsonify({"status": "error", "message": "No block specified."}), 400
 
     try:
-        students = _scoped_students().filter_by(block=block).all()
-        deleted_count = len(students)
-
-        for student in students:
-            # Delete associated records
-            Transaction.query.filter_by(student_id=student.id).delete()
-            TapEvent.query.filter_by(student_id=student.id).delete()
-            StudentItem.query.filter_by(student_id=student.id).delete()
-            RentPayment.query.filter_by(student_id=student.id).delete()
-            RentWaiver.query.filter_by(student_id=student.id).delete()
-            StudentInsurance.query.filter_by(student_id=student.id).delete()
-            InsuranceClaim.query.filter_by(student_id=student.id).delete()
-            HallPassLog.query.filter_by(student_id=student.id).delete()
+        # Get all students scoped to this admin
+        all_students = _scoped_students().all()
+        
+        # Filter to students who have this block in their block list
+        students_in_block = []
+        for student in all_students:
+            student_blocks = [b.strip().upper() for b in (student.block or '').split(',') if b.strip()]
+            if block in student_blocks:
+                students_in_block.append(student)
+        
+        deleted_count = 0
+        updated_count = 0
+        
+        for student in students_in_block:
+            student_blocks = [b.strip() for b in (student.block or '').split(',') if b.strip()]
+            # Remove all case-insensitive matches of the block
+            updated_blocks = [b for b in student_blocks if b.upper() != block]
             
-            # Delete the student
-            db.session.delete(student)
+            if not updated_blocks:
+                # Student only had this block - delete the student and all their data
+                Transaction.query.filter_by(student_id=student.id).delete()
+                TapEvent.query.filter_by(student_id=student.id).delete()
+                StudentItem.query.filter_by(student_id=student.id).delete()
+                RentPayment.query.filter_by(student_id=student.id).delete()
+                RentWaiver.query.filter_by(student_id=student.id).delete()
+                StudentInsurance.query.filter_by(student_id=student.id).delete()
+                InsuranceClaim.query.filter_by(student_id=student.id).delete()
+                HallPassLog.query.filter_by(student_id=student.id).delete()
+                StudentTeacher.query.filter_by(student_id=student.id).delete()
+                
+                # Delete the student
+                db.session.delete(student)
+                deleted_count += 1
+            else:
+                # Student has other blocks - just update their block list
+                student.block = ','.join(updated_blocks)
+                updated_count += 1
 
-        # Also delete unclaimed TeacherBlock entries for this block
+        # Also delete TeacherBlock entries for this block (claimed and unclaimed)
         TeacherBlock.query.filter_by(
             teacher_id=current_admin_id,
             block=block
         ).delete()
 
         db.session.commit()
+        
+        message_parts = []
+        if deleted_count > 0:
+            message_parts.append(f"deleted {deleted_count} student(s)")
+        if updated_count > 0:
+            message_parts.append(f"removed Block {block} from {updated_count} student(s) with multiple blocks")
+        
+        message = f"Successfully {' and '.join(message_parts)} in Block {block}."
+        
         return jsonify({
             "status": "success",
-            "message": f"Successfully deleted all {deleted_count} student(s) in Block {block} and all associated data."
+            "message": message
         })
     except Exception as e:
         db.session.rollback()
+        current_app.logger.exception(f"Error deleting block {block}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 

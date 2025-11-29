@@ -244,3 +244,137 @@ def test_sysadmin_delete_teacher_removes_teacher_blocks(client):
     # Verify TeacherBlocks are deleted
     assert TeacherBlock.query.get(tb1_id) is None
     assert TeacherBlock.query.get(tb2_id) is None
+
+
+def _create_student_multi_block(first_name: str, teacher: Admin, blocks: str) -> tuple[Student, list]:
+    """Create a student with multiple blocks and associated TeacherBlock entries."""
+    salt = get_random_salt()
+    credential = f"{first_name[0].upper()}2025"
+    first_half_hash = hash_hmac(credential.encode(), salt)
+    
+    student = Student(
+        first_name=first_name,
+        last_initial=first_name[0].upper(),
+        block=blocks,  # e.g., "A,B,X"
+        salt=salt,
+        first_half_hash=first_half_hash,
+        dob_sum=2025,
+        teacher_id=teacher.id,
+    )
+    db.session.add(student)
+    db.session.flush()
+    
+    # Create StudentTeacher link
+    db.session.add(StudentTeacher(student_id=student.id, admin_id=teacher.id))
+    
+    # Create TeacherBlock entries for each block
+    teacher_blocks = []
+    for block in [b.strip().upper() for b in blocks.split(',') if b.strip()]:
+        teacher_block = TeacherBlock(
+            teacher_id=teacher.id,
+            block=block,
+            first_name=first_name,
+            last_initial=first_name[0].upper(),
+            last_name_hash_by_part=[],
+            dob_sum=2025,
+            salt=salt,
+            first_half_hash=first_half_hash,
+            join_code=f"TEST{teacher.id}{block}",
+            is_claimed=True,
+            student_id=student.id,
+        )
+        db.session.add(teacher_block)
+        teacher_blocks.append(teacher_block)
+    
+    db.session.commit()
+    return student, teacher_blocks
+
+
+def test_delete_block_updates_multi_block_students(client):
+    """When a block is deleted, students with multiple blocks should have that block removed from their block list."""
+    teacher, secret = _create_admin("teacher-multi-block")
+    
+    # Create a student with multiple blocks
+    student, tbs = _create_student_multi_block("Alice", teacher, "A,B,X")
+    student_id = student.id
+    
+    _login_admin(client, teacher, secret)
+    
+    # Delete block X
+    response = client.post(
+        "/admin/students/delete-block",
+        json={"block": "X"},
+        content_type="application/json"
+    )
+    
+    assert response.status_code == 200
+    
+    # Verify student still exists (because they have other blocks)
+    db.session.refresh(student)
+    assert Student.query.get(student_id) is not None
+    
+    # Verify student's block list no longer contains X
+    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+    assert "X" not in student_blocks
+    assert "A" in student_blocks
+    assert "B" in student_blocks
+    
+    # Verify TeacherBlock for X is deleted
+    assert TeacherBlock.query.filter_by(teacher_id=teacher.id, block="X").count() == 0
+
+
+def test_sysadmin_delete_period_updates_student_blocks(client):
+    """When sysadmin deletes a period, student block fields should be updated."""
+    teacher, _ = _create_admin("teacher-sysadmin-multi")
+    sysadmin, sys_secret = _create_sysadmin()
+    
+    # Make teacher inactive so sysadmin can delete without request
+    teacher.last_login = None
+    db.session.commit()
+    
+    # Create a student with multiple blocks
+    student, tbs = _create_student_multi_block("Alice", teacher, "A,B,X")
+    student_id = student.id
+    
+    _login_sysadmin(client, sysadmin, sys_secret)
+    
+    # Delete period X
+    response = client.post(
+        f"/sysadmin/delete-period/{teacher.id}/X",
+        follow_redirects=True
+    )
+    
+    assert response.status_code == 200
+    
+    # Verify student still exists
+    db.session.refresh(student)
+    assert Student.query.get(student_id) is not None
+    
+    # Verify student's block list no longer contains X
+    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+    assert "X" not in student_blocks
+    assert "A" in student_blocks
+    assert "B" in student_blocks
+
+
+def test_delete_block_deletes_student_with_only_that_block(client):
+    """When a block is deleted and a student has only that block, the student should be deleted."""
+    teacher, secret = _create_admin("teacher-single-block")
+    
+    # Create a student with only one block (X)
+    student, tb = _create_student_with_teacher_block("Alice", teacher, block="X")
+    student_id = student.id
+    
+    _login_admin(client, teacher, secret)
+    
+    # Delete block X
+    response = client.post(
+        "/admin/students/delete-block",
+        json={"block": "X"},
+        content_type="application/json"
+    )
+    
+    assert response.status_code == 200
+    
+    # Verify student is deleted (because X was their only block)
+    assert Student.query.get(student_id) is None
