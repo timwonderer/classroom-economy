@@ -3376,10 +3376,27 @@ def attendance_log():
             'status': log.status,
             'reason': log.reason
         })
+
+    # Get distinct periods from TapEvent for filter dropdown (scoped to teacher's students)
+    student_ids_subquery = _student_scope_subquery()
+    periods = sorted(set(
+        p for p, in TapEvent.query
+        .filter(TapEvent.student_id.in_(student_ids_subquery))
+        .with_entities(TapEvent.period)
+        .distinct()
+        .all()
+        if p
+    ))
+
+    # Get distinct blocks from teacher's students for filter dropdown
+    blocks = _get_teacher_blocks()
+
     return render_template(
         'admin_attendance_log.html',
         logs=attendance_logs,
         students=students,
+        periods=periods,
+        blocks=blocks,
         current_page="attendance"
     )
 
