@@ -41,7 +41,8 @@ from app.auth import admin_required, get_admin_student_query, get_student_for_ad
 from forms import (
     AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, StoreItemForm,
     InsurancePolicyForm, AdminClaimProcessForm, PayrollSettingsForm,
-    PayrollRewardForm, PayrollFineForm, ManualPaymentForm, BankingSettingsForm
+    PayrollRewardForm, PayrollFineForm, ManualPaymentForm, BankingSettingsForm,
+    RentSettingsForm
 )
 
 # Import utility functions
@@ -54,6 +55,7 @@ from app.utils.claim_credentials import (
 )
 from app.utils.ip_handler import get_real_ip
 from app.utils.name_utils import hash_last_name_parts, verify_last_name_parts
+from app.utils.settings import get_settings_for_block, get_or_create_settings_for_blocks, normalize_block
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
@@ -1658,68 +1660,102 @@ def hard_delete_store_item(item_id):
 def rent_settings():
     """Configure rent settings."""
     admin_id = session.get("admin_id")
+    teacher_blocks = _get_teacher_blocks()
+    selected_block = normalize_block(request.args.get('settings_block'))
     student_ids_subq = _student_scope_subquery()
+
     # Get or create rent settings for this teacher
-    settings = RentSettings.query.filter_by(teacher_id=admin_id).first()
-    if not settings:
-        settings = RentSettings(teacher_id=admin_id)
-        db.session.add(settings)
+    settings = get_settings_for_block(
+        RentSettings, admin_id, selected_block, create_global=True
+    )
+    using_global_rent_defaults = bool(selected_block and settings.block is None)
+
+    # Initialize form with current settings data
+    form = RentSettingsForm(obj=settings)
+    form.target_block.choices = [('', 'All Blocks (Global Default)')] + [
+        (block, f"Period {block}") for block in teacher_blocks
+    ]
+    # Pre-select the current block in the dropdown
+    if not form.is_submitted():
+        form.target_block.data = selected_block or ''
+
+    if form.validate_on_submit():
+        target_block = normalize_block(form.target_block.data)
+        apply_to_all_blocks = form.apply_to_all_blocks.data
+        target_blocks = [None] + teacher_blocks if apply_to_all_blocks else [target_block]
+
+        # Update settings for all target blocks using helper
+        for settings_record, _is_new in get_or_create_settings_for_blocks(
+            RentSettings, admin_id, target_blocks
+        ):
+            settings_record.is_enabled = form.is_enabled.data
+
+            # Rent amount and frequency
+            settings_record.rent_amount = form.rent_amount.data or 50.0
+            settings_record.frequency_type = form.frequency_type.data or 'monthly'
+
+            if settings_record.frequency_type == 'custom':
+                settings_record.custom_frequency_value = form.custom_frequency_value.data or 1
+                settings_record.custom_frequency_unit = form.custom_frequency_unit.data or 'days'
+            else:
+                settings_record.custom_frequency_value = None
+                settings_record.custom_frequency_unit = None
+
+            # Due date settings
+            settings_record.first_rent_due_date = form.first_rent_due_date.data
+            settings_record.due_day_of_month = form.due_day_of_month.data or 1
+
+            # Grace period and late penalties
+            settings_record.grace_period_days = form.grace_period_days.data or 3
+            settings_record.late_penalty_amount = form.late_penalty_amount.data or 10.0
+            settings_record.late_penalty_type = form.late_penalty_type.data or 'once'
+
+            if settings_record.late_penalty_type == 'recurring':
+                settings_record.late_penalty_frequency_days = form.late_penalty_frequency_days.data or 7
+            else:
+                settings_record.late_penalty_frequency_days = None
+
+            # Student payment options
+            settings_record.bill_preview_enabled = form.bill_preview_enabled.data
+            settings_record.bill_preview_days = form.bill_preview_days.data or 7
+            settings_record.allow_incremental_payment = form.allow_incremental_payment.data
+            settings_record.prevent_purchase_when_late = form.prevent_purchase_when_late.data
+
         db.session.commit()
-
-    if request.method == 'POST':
-        # Main toggle
-        settings.is_enabled = request.form.get('is_enabled') == 'on'
-
-        # Rent amount and frequency
-        settings.rent_amount = float(request.form.get('rent_amount', 50.0))
-        settings.frequency_type = request.form.get('frequency_type', 'monthly')
-
-        if settings.frequency_type == 'custom':
-            settings.custom_frequency_value = int(request.form.get('custom_frequency_value', 1))
-            settings.custom_frequency_unit = request.form.get('custom_frequency_unit', 'days')
-        else:
-            settings.custom_frequency_value = None
-            settings.custom_frequency_unit = None
-
-        # Due date settings
-        first_due_date_str = request.form.get('first_rent_due_date')
-        if first_due_date_str:
-            settings.first_rent_due_date = datetime.strptime(first_due_date_str, '%Y-%m-%d')
-        else:
-            settings.first_rent_due_date = None
-
-        settings.due_day_of_month = int(request.form.get('due_day_of_month', 1))
-
-        # Grace period and late penalties
-        settings.grace_period_days = int(request.form.get('grace_period_days', 3))
-        settings.late_penalty_amount = float(request.form.get('late_penalty_amount', 10.0))
-        settings.late_penalty_type = request.form.get('late_penalty_type', 'once')
-
-        if settings.late_penalty_type == 'recurring':
-            settings.late_penalty_frequency_days = int(request.form.get('late_penalty_frequency_days', 7))
-        else:
-            settings.late_penalty_frequency_days = None
-
-        # Student payment options
-        settings.bill_preview_enabled = request.form.get('bill_preview_enabled') == 'on'
-        settings.bill_preview_days = int(request.form.get('bill_preview_days', 7))
-        settings.allow_incremental_payment = request.form.get('allow_incremental_payment') == 'on'
-        settings.prevent_purchase_when_late = request.form.get('prevent_purchase_when_late') == 'on'
-
-        db.session.commit()
-        flash("Rent settings updated successfully!", "success")
-        return redirect(url_for('admin.rent_settings'))
+        flash(
+            "Rent settings applied to all periods successfully!" if apply_to_all_blocks else "Rent settings updated successfully!",
+            "success"
+        )
+        return redirect(url_for('admin.rent_settings', settings_block=target_block))
 
     # Get statistics
-    total_students = _scoped_students().filter_by(is_rent_enabled=True).count()
+    scoped_students_query = _scoped_students().filter_by(is_rent_enabled=True)
+    if selected_block:
+        # Escape SQL LIKE special characters to prevent injection
+        escaped_block = selected_block.replace('%', r'\%').replace('_', r'\_')
+        # Filter at database level using LIKE for comma-separated blocks
+        # Matches: exact block, block at start (BLOCK,), block in middle (,BLOCK,), block at end (,BLOCK)
+        scoped_students_query = scoped_students_query.filter(
+            db.or_(
+                Student.block == selected_block,
+                Student.block.like(f'{escaped_block},%', escape='\\'),
+                Student.block.like(f'%,{escaped_block},%', escape='\\'),
+                Student.block.like(f'%,{escaped_block}', escape='\\')
+            )
+        )
+    scoped_students = scoped_students_query.all()
+
+    total_students = len(scoped_students)
     current_month = datetime.now().month
     current_year = datetime.now().year
-    paid_this_month = (
+    rent_payment_query = (
         RentPayment.query
         .filter(RentPayment.student_id.in_(student_ids_subq))
         .filter_by(period_month=current_month, period_year=current_year)
-        .count()
     )
+    if selected_block:
+        rent_payment_query = rent_payment_query.filter(RentPayment.period == selected_block)
+    paid_this_month = rent_payment_query.count()
 
     # Get active waivers
     now = datetime.now(timezone.utc)
@@ -1763,7 +1799,11 @@ def rent_settings():
                 payroll_warning = f"Rent (${rent_per_month:.2f}/month) exceeds recommended 80% of estimated monthly payroll (${estimated_monthly_payroll:.2f}). Students may struggle to afford rent."
 
     return render_template('admin_rent_settings.html',
+                          form=form,
                           settings=settings,
+                          blocks=teacher_blocks,
+                          settings_block=selected_block,
+                          using_global_rent_defaults=using_global_rent_defaults,
                           total_students=total_students,
                           paid_this_month=paid_this_month,
                           active_waivers=active_waivers,
@@ -3805,16 +3845,21 @@ def banking():
     """Banking management page with transactions and settings."""
     admin_id = session.get("admin_id")
 
-    # Get current banking settings for this teacher
-    settings = BankingSettings.query.filter_by(teacher_id=admin_id).first()
-    if not settings:
-        # Create default settings for this teacher
-        settings = BankingSettings(teacher_id=admin_id)
-        db.session.add(settings)
-        db.session.commit()
+    teacher_blocks = _get_teacher_blocks()
+    selected_settings_block = normalize_block(request.args.get('settings_block'))
+
+    # Get current banking settings for this teacher (block-specific with fallback)
+    settings = get_settings_for_block(
+        BankingSettings, admin_id, selected_settings_block, create_global=True
+    )
+    using_global_banking_defaults = bool(selected_settings_block and settings.block is None)
 
     # Create form and populate with existing data
     form = BankingSettingsForm()
+    form.target_block.choices = [('', 'All Blocks (Global Default)')] + [
+        (block, f"Period {block}") for block in teacher_blocks
+    ]
+    form.target_block.data = selected_settings_block or ''
     if settings:
         form.savings_apy.data = settings.savings_apy
         form.savings_monthly_rate.data = settings.savings_monthly_rate
@@ -3940,7 +3985,7 @@ def banking():
     average_savings_balance = total_savings / len(students) if len(students) > 0 else 0
 
     # Get all blocks for filter
-    blocks = sorted(set(s.block for s in students))
+    blocks = teacher_blocks
 
     # Get transaction types for filter (filtered to this teacher's students)
     transaction_types = (
@@ -3971,7 +4016,9 @@ def banking():
         total_pages=total_pages,
         total_transactions=total_transactions,
         current_page="banking",
-        format_utc_iso=format_utc_iso
+        format_utc_iso=format_utc_iso,
+        settings_block=selected_settings_block,
+        using_global_banking_defaults=using_global_banking_defaults
     )
 
 
@@ -3982,34 +4029,44 @@ def banking_settings_update():
     admin_id = session.get("admin_id")
     form = BankingSettingsForm()
 
-    if form.validate_on_submit():
-        # Get or create settings for this teacher
-        settings = BankingSettings.query.filter_by(teacher_id=admin_id).first()
-        if not settings:
-            settings = BankingSettings(teacher_id=admin_id)
-            db.session.add(settings)
+    teacher_blocks = _get_teacher_blocks()
+    form.target_block.choices = [('', 'All Blocks (Global Default)')] + [
+        (block, f"Period {block}") for block in teacher_blocks
+    ]
 
-        # Update settings from form
-        settings.savings_apy = form.savings_apy.data or 0.0
-        settings.savings_monthly_rate = form.savings_monthly_rate.data or 0.0
-        settings.interest_calculation_type = form.interest_calculation_type.data or 'simple'
-        settings.compound_frequency = form.compound_frequency.data or 'monthly'
-        settings.interest_schedule_type = form.interest_schedule_type.data
-        settings.interest_schedule_cycle_days = form.interest_schedule_cycle_days.data or 30
-        settings.interest_payout_start_date = form.interest_payout_start_date.data
-        settings.overdraft_protection_enabled = form.overdraft_protection_enabled.data
-        settings.overdraft_fee_enabled = form.overdraft_fee_enabled.data
-        settings.overdraft_fee_type = form.overdraft_fee_type.data
-        settings.overdraft_fee_flat_amount = form.overdraft_fee_flat_amount.data or 0.0
-        settings.overdraft_fee_progressive_1 = form.overdraft_fee_progressive_1.data or 0.0
-        settings.overdraft_fee_progressive_2 = form.overdraft_fee_progressive_2.data or 0.0
-        settings.overdraft_fee_progressive_3 = form.overdraft_fee_progressive_3.data or 0.0
-        settings.overdraft_fee_progressive_cap = form.overdraft_fee_progressive_cap.data
-        settings.updated_at = datetime.utcnow()
+    if form.validate_on_submit():
+        target_block = normalize_block(form.target_block.data)
+        apply_to_all_blocks = form.apply_to_all_blocks.data
+
+        target_blocks = [None] + teacher_blocks if apply_to_all_blocks else [target_block]
+
+        for settings, _is_new in get_or_create_settings_for_blocks(
+            BankingSettings, admin_id, target_blocks
+        ):
+            # Update settings from form
+            settings.savings_apy = form.savings_apy.data or 0.0
+            settings.savings_monthly_rate = form.savings_monthly_rate.data or 0.0
+            settings.interest_calculation_type = form.interest_calculation_type.data or 'simple'
+            settings.compound_frequency = form.compound_frequency.data or 'monthly'
+            settings.interest_schedule_type = form.interest_schedule_type.data
+            settings.interest_schedule_cycle_days = form.interest_schedule_cycle_days.data or 30
+            settings.interest_payout_start_date = form.interest_payout_start_date.data
+            settings.overdraft_protection_enabled = form.overdraft_protection_enabled.data
+            settings.overdraft_fee_enabled = form.overdraft_fee_enabled.data
+            settings.overdraft_fee_type = form.overdraft_fee_type.data
+            settings.overdraft_fee_flat_amount = form.overdraft_fee_flat_amount.data or 0.0
+            settings.overdraft_fee_progressive_1 = form.overdraft_fee_progressive_1.data or 0.0
+            settings.overdraft_fee_progressive_2 = form.overdraft_fee_progressive_2.data or 0.0
+            settings.overdraft_fee_progressive_3 = form.overdraft_fee_progressive_3.data or 0.0
+            settings.overdraft_fee_progressive_cap = form.overdraft_fee_progressive_cap.data
+            settings.updated_at = datetime.utcnow()
 
         try:
             db.session.commit()
-            flash('Banking settings updated successfully!', 'success')
+            if apply_to_all_blocks:
+                flash('Banking settings applied to all periods successfully!', 'success')
+            else:
+                flash('Banking settings updated successfully!', 'success')
             current_app.logger.info(f"Banking settings updated by admin")
         except SQLAlchemyError as e:
             db.session.rollback()
@@ -4020,7 +4077,7 @@ def banking_settings_update():
             for error in errors:
                 flash(f'{field}: {error}', 'error')
 
-    return redirect(url_for('admin.banking'))
+    return redirect(url_for('admin.banking', settings_block=form.target_block.data or None))
 
 
 # -------------------- DELETION REQUESTS --------------------

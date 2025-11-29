@@ -278,6 +278,9 @@ class ManualPaymentForm(FlaskForm):
 
 # -------------------- BANKING FORMS --------------------
 class BankingSettingsForm(FlaskForm):
+    target_block = SelectField('Period/Block', choices=[], validators=[Optional()])
+    apply_to_all_blocks = BooleanField('Apply to All Periods', default=False)
+
     # Interest settings
     rate_input_mode = SelectField('Interest Rate Input Mode', choices=[
         ('apy', 'Annual Percentage Yield (APY)'),
@@ -321,6 +324,50 @@ class BankingSettingsForm(FlaskForm):
     overdraft_fee_progressive_cap = FloatField('Fee Cap per Period ($, optional)', validators=[Optional()])
 
     submit = SubmitField('Save Banking Settings')
+
+
+# -------------------- RENT FORMS --------------------
+class RentSettingsForm(FlaskForm):
+    target_block = SelectField('Period/Block', choices=[], validators=[Optional()])
+    apply_to_all_blocks = BooleanField('Apply to All Periods', default=False)
+
+    # Main toggle
+    is_enabled = BooleanField('Enable Rent System', default=False)
+
+    # Rent amount and frequency
+    rent_amount = FloatField('Rent Amount ($)', validators=[DataRequired()], default=50.0)
+    frequency_type = SelectField('Rent Frequency', choices=[
+        ('daily', 'Daily'),
+        ('weekly', 'Weekly'),
+        ('monthly', 'Monthly'),
+        ('custom', 'Custom')
+    ], default='monthly', validators=[DataRequired()])
+    custom_frequency_value = IntegerField('Custom Frequency Value', validators=[Optional()], default=1)
+    custom_frequency_unit = SelectField('Custom Frequency Unit', choices=[
+        ('days', 'Days'),
+        ('weeks', 'Weeks')
+    ], default='days', validators=[Optional()])
+
+    # Due date settings
+    first_rent_due_date = DateField('First Rent Due Date', format='%Y-%m-%d', validators=[Optional()])
+    due_day_of_month = IntegerField('Due Day of Month', validators=[Optional()], default=1)
+
+    # Grace period and late penalties
+    grace_period_days = IntegerField('Grace Period (days)', validators=[DataRequired()], default=3)
+    late_penalty_amount = FloatField('Late Penalty Amount ($)', validators=[DataRequired()], default=10.0)
+    late_penalty_type = SelectField('Late Penalty Type', choices=[
+        ('once', 'One-time Penalty'),
+        ('recurring', 'Recurring Penalty')
+    ], default='once', validators=[DataRequired()])
+    late_penalty_frequency_days = IntegerField('Late Penalty Frequency (days)', validators=[Optional()], default=7)
+
+    # Student payment options
+    bill_preview_enabled = BooleanField('Enable Bill Preview', default=False)
+    bill_preview_days = IntegerField('Bill Preview Days', validators=[Optional()], default=7)
+    allow_incremental_payment = BooleanField('Allow Incremental Payment', default=False)
+    prevent_purchase_when_late = BooleanField('Prevent Purchase When Late', default=False)
+
+    submit = SubmitField('Save Rent Settings')
 
 
 class StudentAddClassForm(FlaskForm):

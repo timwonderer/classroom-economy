@@ -236,7 +236,29 @@
   <!-- SETTINGS TAB -->
   <div class="tab-pane fade" id="settings" role="tabpanel">
     <form method="POST" id="rentSettingsForm">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      {{ form.hidden_tag() }}
+
+      <div class="alert alert-light border mb-4">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-6">
+            <label class="form-label fw-bold" for="target_block">Apply settings to:</label>
+            {{ form.target_block(class="form-select", id="target_block") }}
+            <small class="text-muted">Select a block to view/edit its settings or choose global defaults.</small>
+          </div>
+          <div class="col-md-6">
+            <div class="form-check mt-4">
+              {{ form.apply_to_all_blocks(class="form-check-input", id="apply_to_all_blocks") }}
+              <label class="form-check-label fw-bold" for="apply_to_all_blocks">Apply changes to all periods</label>
+              <div class="form-text">Updates every block plus the global default when checked.</div>
+            </div>
+            {% if settings_block and using_global_rent_defaults %}
+            <div class="mt-2 text-warning small">
+              Showing global defaults because Period {{ settings_block }} has no custom rent settings yet.
+            </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
 
       <!-- Main Toggle Card -->
       <div class="card shadow mb-4">
@@ -245,9 +267,7 @@
         </div>
         <div class="card-body">
           <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" id="is_enabled"
-                   name="is_enabled" {% if settings.is_enabled %}checked{% endif %}
-                   onchange="toggleRentSettings()">
+            {{ form.is_enabled(class="form-check-input", id="is_enabled", onchange="toggleRentSettings()") }}
             <label class="form-check-label" for="is_enabled">
               <strong>Enable Rent System</strong>
             </label>
@@ -547,6 +567,20 @@
 </div>
 
 <script>
+const rentBlockSelector = document.getElementById('target_block');
+if (rentBlockSelector) {
+  rentBlockSelector.addEventListener('change', (event) => {
+    const url = new URL(window.location.href);
+    const value = event.target.value;
+    if (value) {
+      url.searchParams.set('settings_block', value);
+    } else {
+      url.searchParams.delete('settings_block');
+    }
+    window.location.href = url.toString();
+  });
+}
+
 function toggleRentSettings() {
   const isEnabled = document.getElementById('is_enabled').checked;
   const container = document.getElementById('rentSettingsContainer');

@@ -7,6 +7,9 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
+### Added
+- Per-block banking and rent configuration with insurance policy visibility respecting student periods.
+
 ### Changed
 - Continued repository organization and documentation cleanup
 - Moved `UPTIMEROBOT_SETUP.md` to `docs/operations/` for better organization
