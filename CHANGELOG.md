@@ -17,6 +17,9 @@ and this project follows semantic versioning principles.
 - Updated `docs/operations/README.md` with comprehensive guide listings
 - Updated `docs/archive/pr-reports/README.md` with new archived files
 
+### Fixed
+- Added migration to align `rent_settings` schema with application model by including the `block` column.
+
 ---
 
 ## [2025-11-25] - Maintenance & Bypass Enhancements
