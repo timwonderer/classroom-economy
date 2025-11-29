@@ -1160,6 +1160,10 @@ def delete_block():
     For students with multiple blocks (comma-separated), this removes the specified
     block from their block list. Only students whose ONLY block is the deleted block
     will have their account and data deleted.
+    
+    If a student with multiple blocks loses their connection to this teacher
+    (no remaining blocks with TeacherBlock entries), their insurance policies
+    with this teacher are cancelled and the StudentTeacher link is removed.
     """
     data = request.get_json()
     block = data.get('block', '').strip().upper()
@@ -1181,6 +1185,7 @@ def delete_block():
         
         deleted_count = 0
         updated_count = 0
+        insurance_cancelled_count = 0
         
         for student in students_in_block:
             student_blocks = [b.strip() for b in (student.block or '').split(',') if b.strip()]
@@ -1203,8 +1208,46 @@ def delete_block():
                 db.session.delete(student)
                 deleted_count += 1
             else:
-                # Student has other blocks - just update their block list
+                # Student has other blocks - update their block list
                 student.block = ','.join(updated_blocks)
+                
+                # Check if student still has any blocks with TeacherBlock entries for this teacher
+                remaining_blocks_for_teacher = []
+                for remaining_block in updated_blocks:
+                    has_teacher_block = TeacherBlock.query.filter_by(
+                        teacher_id=current_admin_id,
+                        block=remaining_block.upper(),
+                        student_id=student.id
+                    ).first() is not None
+                    if has_teacher_block:
+                        remaining_blocks_for_teacher.append(remaining_block)
+                
+                # If student no longer has any blocks with this teacher, clean up their connection
+                if not remaining_blocks_for_teacher:
+                    # Cancel active insurance policies for this student with this teacher
+                    teacher_policy_ids = [p.id for p in InsurancePolicy.query.filter_by(teacher_id=current_admin_id).all()]
+                    if teacher_policy_ids:
+                        cancelled = StudentInsurance.query.filter(
+                            StudentInsurance.student_id == student.id,
+                            StudentInsurance.policy_id.in_(teacher_policy_ids),
+                            StudentInsurance.status == 'active'
+                        ).update({'status': 'cancelled'}, synchronize_session=False)
+                        insurance_cancelled_count += cancelled
+                    
+                    # If this was the primary teacher, reassign to another linked teacher
+                    if student.teacher_id == current_admin_id:
+                        fallback = StudentTeacher.query.filter(
+                            StudentTeacher.student_id == student.id,
+                            StudentTeacher.admin_id != current_admin_id
+                        ).order_by(StudentTeacher.created_at.asc()).first()
+                        student.teacher_id = fallback.admin_id if fallback else None
+                    
+                    # Remove the StudentTeacher link
+                    StudentTeacher.query.filter_by(
+                        student_id=student.id,
+                        admin_id=current_admin_id
+                    ).delete()
+                
                 updated_count += 1
 
         # Also delete TeacherBlock entries for this block (claimed and unclaimed)
@@ -1220,6 +1263,8 @@ def delete_block():
             message_parts.append(f"deleted {deleted_count} student(s)")
         if updated_count > 0:
             message_parts.append(f"removed Block {block} from {updated_count} student(s) with multiple blocks")
+        if insurance_cancelled_count > 0:
+            message_parts.append(f"cancelled {insurance_cancelled_count} insurance policy enrollment(s)")
         
         message = f"Successfully {' and '.join(message_parts)} in Block {block}."
         

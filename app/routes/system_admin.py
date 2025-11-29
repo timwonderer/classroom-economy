@@ -19,7 +19,7 @@ from app.extensions import db, limiter
 from app.models import (
     SystemAdmin, Admin, Student, AdminInviteCode, ErrorLog,
     Transaction, TapEvent, HallPassLog, StudentItem, RentPayment,
-    StudentInsurance, InsuranceClaim, StudentTeacher, DeletionRequest,
+    StudentInsurance, InsuranceClaim, InsurancePolicy, StudentTeacher, DeletionRequest,
     DeletionRequestType, DeletionRequestStatus, TeacherBlock
 )
 from app.auth import system_admin_required
@@ -762,6 +762,7 @@ def delete_period(admin_id, period):
                 students_in_period.append(student)
 
         removed_count = 0
+        insurance_cancelled_count = 0
         for student in students_in_period:
             # Remove the deleted period from the student's block list
             student_blocks = [b.strip() for b in (student.block or '').split(',') if b.strip()]
@@ -782,7 +783,18 @@ def delete_period(admin_id, period):
                     remaining_blocks_for_teacher.append(block)
             
             # If student no longer has any blocks with this teacher, remove the StudentTeacher link
+            # and cancel their insurance policies with this teacher
             if not remaining_blocks_for_teacher:
+                # Cancel active insurance policies for this student with policies from this teacher
+                teacher_policy_ids = [p.id for p in InsurancePolicy.query.filter_by(teacher_id=admin.id).all()]
+                if teacher_policy_ids:
+                    cancelled = StudentInsurance.query.filter(
+                        StudentInsurance.student_id == student.id,
+                        StudentInsurance.policy_id.in_(teacher_policy_ids),
+                        StudentInsurance.status == 'active'
+                    ).update({'status': 'cancelled'}, synchronize_session=False)
+                    insurance_cancelled_count += cancelled
+                
                 # If this was the primary teacher, reassign to another linked teacher
                 if student.teacher_id == admin.id:
                     fallback = StudentTeacher.query.filter(
