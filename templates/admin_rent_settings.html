@@ -236,23 +236,18 @@
   <!-- SETTINGS TAB -->
   <div class="tab-pane fade" id="settings" role="tabpanel">
     <form method="POST" id="rentSettingsForm">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+      {{ form.hidden_tag() }}
 
       <div class="alert alert-light border mb-4">
         <div class="row g-3 align-items-end">
           <div class="col-md-6">
             <label class="form-label fw-bold" for="target_block">Apply settings to:</label>
-            <select class="form-select" id="target_block" name="target_block">
-              <option value="" {% if not settings_block %}selected{% endif %}>All Blocks (Global Default)</option>
-              {% for block in blocks %}
-              <option value="{{ block }}" {% if settings_block == block %}selected{% endif %}>Period {{ block }}</option>
-              {% endfor %}
-            </select>
+            {{ form.target_block(class="form-select", id="target_block") }}
             <small class="text-muted">Select a block to view/edit its settings or choose global defaults.</small>
           </div>
           <div class="col-md-6">
             <div class="form-check mt-4">
-              <input class="form-check-input" type="checkbox" id="apply_to_all_blocks" name="apply_to_all_blocks">
+              {{ form.apply_to_all_blocks(class="form-check-input", id="apply_to_all_blocks") }}
               <label class="form-check-label fw-bold" for="apply_to_all_blocks">Apply changes to all periods</label>
               <div class="form-text">Updates every block plus the global default when checked.</div>
             </div>
@@ -272,9 +267,7 @@
         </div>
         <div class="card-body">
           <div class="form-check form-switch">
-            <input class="form-check-input" type="checkbox" id="is_enabled"
-                   name="is_enabled" {% if settings.is_enabled %}checked{% endif %}
-                   onchange="toggleRentSettings()">
+            {{ form.is_enabled(class="form-check-input", id="is_enabled", onchange="toggleRentSettings()") }}
             <label class="form-check-label" for="is_enabled">
               <strong>Enable Rent System</strong>
             </label>

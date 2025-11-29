@@ -80,7 +80,42 @@ def get_settings_for_block(
     if create_global:
         global_settings = model(teacher_id=teacher_id, block=None)
         db.session.add(global_settings)
-        db.session.commit()
+        # Note: caller is responsible for committing the session
         return global_settings
 
     return None
+
+
+def get_or_create_settings_for_blocks(
+    model: Type[db.Model],
+    teacher_id: int,
+    target_blocks: list,
+):
+    """Get or create settings records for a list of blocks.
+
+    This is a helper for admin routes that need to apply settings to multiple
+    blocks at once (e.g., when "apply to all blocks" is checked).
+
+    Args:
+        model: SQLAlchemy model class with ``teacher_id`` and ``block`` columns.
+        teacher_id: Current teacher/admin identifier.
+        target_blocks: List of block values to get or create settings for.
+            May contain ``None`` for global settings.
+
+    Yields:
+        Tuple of (settings_record, is_new) for each block. The caller is
+        responsible for updating the settings and committing the session.
+    """
+    for block_value in target_blocks:
+        settings_record = model.query.filter_by(
+            teacher_id=teacher_id,
+            block=block_value
+        ).first()
+
+        is_new = False
+        if not settings_record:
+            settings_record = model(teacher_id=teacher_id, block=block_value)
+            db.session.add(settings_record)
+            is_new = True
+
+        yield settings_record, is_new
