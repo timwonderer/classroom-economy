@@ -14,9 +14,6 @@ def client():
     os.environ["FLASK_ENV"] = "testing"
     os.environ["SECRET_KEY"] = "test_secret"
     os.environ["DATABASE_URL"] = "sqlite:///:memory:"
-    os.environ["ENCRYPTION_KEY"] = "test_key_32_chars_exact_length!!" # Needs to be correct length? No, fernet key is base64.
-    # Let's generate a valid fernet key just in case
-    from cryptography.fernet import Fernet
     os.environ["ENCRYPTION_KEY"] = Fernet.generate_key().decode()
     os.environ["PEPPER_KEY"] = "test_pepper"
 
