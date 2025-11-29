@@ -36,6 +36,7 @@ from app.utils.turnstile import verify_turnstile_token
 from app.utils.demo_sessions import cleanup_demo_student_data
 from app.utils.ip_handler import get_real_ip
 from app.utils.claim_credentials import compute_primary_claim_hash, match_claim_hash
+from app.utils.settings import get_primary_block_for_student, get_settings_for_block
 from hash_utils import hash_hmac, hash_username, hash_username_lookup
 from attendance import get_all_block_statuses
 
@@ -598,7 +599,8 @@ def dashboard():
 
     rent_status = None
     teacher_id = get_current_teacher_id()
-    rent_settings = RentSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
+    current_block = get_primary_block_for_student(student)
+    rent_settings = get_settings_for_block(RentSettings, teacher_id, current_block) if teacher_id else None
     if rent_settings and rent_settings.is_enabled and student.is_rent_enabled:
         now = datetime.now()
         due_date, grace_end_date = _calculate_rent_deadlines(rent_settings, now)
@@ -830,7 +832,8 @@ def transfer():
     # Get banking settings for interest rate display
     from app.models import BankingSettings
     teacher_id = get_current_teacher_id()
-    settings = BankingSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
+    current_block = get_primary_block_for_student(student)
+    settings = get_settings_for_block(BankingSettings, teacher_id, current_block) if teacher_id else None
     annual_rate = settings.savings_apy / 100 if settings else 0.045
     calculation_type = settings.interest_calculation_type if settings else 'simple'
     compound_frequency = settings.compound_frequency if settings else 'monthly'
@@ -884,7 +887,8 @@ def apply_savings_interest(student, annual_rate=0.045):
 
     # Get banking settings for current teacher
     teacher_id = get_current_teacher_id()
-    settings = BankingSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
+    current_block = get_primary_block_for_student(student)
+    settings = get_settings_for_block(BankingSettings, teacher_id, current_block) if teacher_id else None
     if not settings:
         # Use default simple interest if no settings
         calculation_type = 'simple'
@@ -975,6 +979,7 @@ def insurance_marketplace():
         return redirect(url_for('student.dashboard'))
 
     student = get_logged_in_student()
+    current_block = get_primary_block_for_student(student)
 
     # Get student's active policies
     my_policies = StudentInsurance.query.filter_by(
@@ -990,6 +995,12 @@ def insurance_marketplace():
         InsurancePolicy.is_active == True,
         InsurancePolicy.teacher_id.in_(teacher_ids)
     ).all() if teacher_ids else []
+
+    if current_block:
+        available_policies = [
+            policy for policy in available_policies
+            if not policy.blocks_list or current_block in policy.blocks_list
+        ]
 
     # Check which policies can be purchased
     can_purchase = {}
@@ -1565,7 +1576,8 @@ def rent():
 
     student = get_logged_in_student()
     teacher_id = get_current_teacher_id()
-    settings = RentSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
+    current_block = get_primary_block_for_student(student)
+    settings = get_settings_for_block(RentSettings, teacher_id, current_block) if teacher_id else None
 
     if not settings or not settings.is_enabled:
         flash("Rent system is currently disabled.", "info")
@@ -1676,7 +1688,8 @@ def rent_pay(period):
     """Process rent payment for a specific period."""
     student = get_logged_in_student()
     teacher_id = get_current_teacher_id()
-    settings = RentSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
+    current_block = get_primary_block_for_student(student)
+    settings = get_settings_for_block(RentSettings, teacher_id, current_block) if teacher_id else None
 
     if not settings or not settings.is_enabled:
         flash("Rent system is currently disabled.", "error")
@@ -1779,7 +1792,7 @@ def rent_pay(period):
         payment_amount = remaining_amount
 
     # Get banking settings for overdraft handling (reuse teacher_id from above)
-    banking_settings = BankingSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
+    banking_settings = get_settings_for_block(BankingSettings, teacher_id, current_block) if teacher_id else None
 
     # Check if student has enough funds for this payment
     if student.checking_balance < payment_amount:

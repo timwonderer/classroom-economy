@@ -348,6 +348,30 @@
     <form method="POST" action="{{ url_for('admin.banking_settings_update') }}" id="bankingSettingsForm">
       {{ form.hidden_tag() }}
 
+      <div class="alert alert-light border mb-4">
+        <div class="row g-3 align-items-end">
+          <div class="col-md-6">
+            <label class="form-label fw-bold" for="target_block">Apply settings to:</label>
+            {{ form.target_block(class="form-select", id="target_block") }}
+            <small class="text-muted">Choose a specific period/block or leave blank to set global defaults.</small>
+          </div>
+          <div class="col-md-6">
+            <div class="form-check mt-4">
+              {{ form.apply_to_all_blocks(class="form-check-input", id="apply_to_all_blocks") }}
+              <label class="form-check-label fw-bold" for="apply_to_all_blocks">
+                Apply these settings to all periods
+              </label>
+              <div class="form-text">Global + every period will be updated when checked.</div>
+            </div>
+            {% if settings_block and using_global_banking_defaults %}
+              <div class="mt-2 text-warning small">
+                Showing global defaults because Period {{ settings_block }} has no custom banking settings yet.
+              </div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+
       <div class="row">
         <!-- Interest Settings Card -->
         <div class="col-lg-6 mb-4">
@@ -552,6 +576,22 @@
 <script>
 // Convert UTC timestamps to local time
 document.addEventListener("DOMContentLoaded", () => {
+    const blockSelector = document.getElementById('target_block');
+    if (blockSelector) {
+        blockSelector.addEventListener('change', (event) => {
+            const url = new URL(window.location.href);
+            const value = event.target.value;
+
+            if (value) {
+                url.searchParams.set('settings_block', value);
+            } else {
+                url.searchParams.delete('settings_block');
+            }
+
+            window.location.href = url.toString();
+        });
+    }
+
     // Timestamp conversion
     document.querySelectorAll(".local-timestamp").forEach(el => {
         const utcString = el.dataset.timestamp;

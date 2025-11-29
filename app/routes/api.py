@@ -23,6 +23,7 @@ from app.models import (
 )
 from app.auth import login_required, admin_required, get_logged_in_student
 from app.routes.student import get_current_teacher_id
+from app.utils.settings import get_primary_block_for_student, get_settings_for_block
 
 # Import external modules
 from attendance import (
@@ -126,7 +127,9 @@ def purchase_item():
     teacher_id = get_current_teacher_id()
     if not teacher_id:
         return jsonify({"status": "error", "message": "No teacher context available."}), 400
-    
+
+    current_block = get_primary_block_for_student(student)
+
     item = StoreItem.query.filter_by(id=item_id, teacher_id=teacher_id).first()
 
     # 2. Validate item and purchase conditions
@@ -145,7 +148,7 @@ def purchase_item():
     total_price = unit_price * quantity
 
     # Get banking settings for overdraft handling (reuse teacher_id from above)
-    banking_settings = BankingSettings.query.filter_by(teacher_id=teacher_id).first()
+    banking_settings = get_settings_for_block(BankingSettings, teacher_id, current_block)
 
     # Check if student has sufficient funds
     if student.checking_balance < total_price:

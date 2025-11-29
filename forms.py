@@ -278,6 +278,9 @@ class ManualPaymentForm(FlaskForm):
 
 # -------------------- BANKING FORMS --------------------
 class BankingSettingsForm(FlaskForm):
+    target_block = SelectField('Period/Block', choices=[], validators=[Optional()])
+    apply_to_all_blocks = BooleanField('Apply to All Periods', default=False)
+
     # Interest settings
     rate_input_mode = SelectField('Interest Rate Input Mode', choices=[
         ('apy', 'Annual Percentage Yield (APY)'),
