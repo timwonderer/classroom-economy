@@ -4607,7 +4607,7 @@ def onboarding_step(step_name):
         try:
             current_index = step_order.index(step_name)
             if current_index < len(step_order) - 1:
-                onboarding_record.current_step = current_index + 1  # Advance to next step (1-indexed)
+                onboarding_record.current_step = current_index + 2  # Advance to next step (1-indexed)
             else:
                 # Last step completed
                 onboarding_record.complete_onboarding()
