@@ -433,6 +433,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
+        const teacherId = {{ teacher_id or 'null' }};
         let currentPassNumber = '';
 
         // Check In/Out Functions
@@ -660,7 +661,12 @@
         }
 
         function fetchQueue() {
-            fetch('/api/hall-pass/queue')
+            if (!teacherId) {
+                console.error('Hall pass queue requires a teacher context.');
+                return;
+            }
+
+            fetch(`/api/hall-pass/public/queue?teacher_id=${teacherId}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {

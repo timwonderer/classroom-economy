@@ -400,11 +400,17 @@
 
 <!-- Queue Status and Limit Logic -->
 <script>
+    const hallPassTeacherId = {{ current_teacher_id or 'null' }};
     let currentQueueTotal = 0;
     let queueEnabled = true;
 
     function updateQueueStatus() {
-        fetch('/api/hall-pass/queue')
+        if (!hallPassTeacherId) {
+            console.warn('Hall pass queue unavailable: no teacher selected.');
+            return;
+        }
+
+        fetch(`/api/hall-pass/public/queue?teacher_id=${hallPassTeacherId}`)
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {

@@ -37,7 +37,7 @@ from app.models import (
     BankingSettings, TeacherBlock, DeletionRequest, DeletionRequestType, DeletionRequestStatus,
     UserReport, FeatureSettings, TeacherOnboarding
 )
-from app.auth import admin_required, get_admin_student_query, get_student_for_admin
+from app.auth import admin_required, get_admin_student_query, get_student_for_admin, get_current_admin
 from forms import (
     AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, StoreItemForm,
     InsurancePolicyForm, AdminClaimProcessForm, PayrollSettingsForm,
@@ -2519,6 +2519,7 @@ def void_transaction(transaction_id):
 @admin_required
 def hall_pass():
     """Manage hall pass requests and active passes."""
+    current_admin = get_current_admin()
     student_ids_subq = _student_scope_subquery()
     pending_requests = (
         HallPassLog.query
@@ -2550,7 +2551,8 @@ def hall_pass():
         pending_requests=pending_requests,
         approved_queue=approved_queue,
         out_of_class=out_of_class,
-        current_page="hall_pass"
+        current_page="hall_pass",
+        hall_pass_teacher_id=current_admin.id if current_admin else None,
     )
 
 

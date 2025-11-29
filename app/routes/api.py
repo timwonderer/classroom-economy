@@ -11,17 +11,24 @@ import re
 import pytz
 from datetime import datetime, timedelta, timezone
 
+import sqlalchemy as sa
 from flask import Blueprint, request, jsonify, session, current_app
-from sqlalchemy import func, text
+from sqlalchemy import func, or_, text
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.security import check_password_hash
 
 from app.extensions import db
 from app.models import (
-    Student, StoreItem, StudentItem, Transaction, TapEvent,
-    HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings
+    Student, StudentTeacher, StoreItem, StudentItem, Transaction, TapEvent,
+    HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings, Admin
 )
-from app.auth import login_required, admin_required, get_logged_in_student
+from app.auth import (
+    login_required,
+    admin_required,
+    get_logged_in_student,
+    get_current_admin,
+    get_admin_student_query,
+)
 from app.routes.student import get_current_teacher_id
 
 # Import external modules
@@ -495,10 +502,124 @@ def approve_redemption():
 
 # -------------------- HALL PASS API --------------------
 
+
+def _get_teacher_student_ids(teacher_id):
+    """Return a subquery of student IDs linked to the given teacher."""
+    shared_student_ids = (
+        db.session.query(StudentTeacher.student_id)
+        .filter(StudentTeacher.admin_id == teacher_id)
+        .subquery()
+    )
+
+    student_subquery = (
+        Student.query
+        .with_entities(Student.id)
+        .filter(
+            or_(
+                Student.teacher_id == teacher_id,
+                Student.id.in_(shared_student_ids),
+            )
+        )
+        .subquery()
+    )
+
+    return sa.select(student_subquery.c.id)
+
+
+def _get_or_create_hall_pass_settings(teacher_id, block=None):
+    """Fetch hall pass settings for a teacher/block combination or create defaults."""
+    if not teacher_id:
+        return None
+
+    query = HallPassSettings.query.filter_by(teacher_id=teacher_id)
+    if block:
+        query = query.filter_by(block=block)
+    else:
+        query = query.filter(HallPassSettings.block.is_(None))
+
+    settings = query.first()
+    if not settings:
+        settings = HallPassSettings(
+            teacher_id=teacher_id,
+            block=block,
+            queue_enabled=True,
+            queue_limit=10,
+        )
+        db.session.add(settings)
+        db.session.commit()
+
+    return settings
+
+
+def _get_admin_hall_pass_query():
+    """Return a HallPassLog query scoped to the current admin's students."""
+    return HallPassLog.query.filter(HallPassLog.student_id.in_(_get_admin_student_scope()))
+
+
+def _get_admin_student_scope():
+    student_subquery = (
+        get_admin_student_query(include_unassigned=False)
+        .with_entities(Student.id)
+        .subquery()
+    )
+    return sa.select(student_subquery.c.id)
+
+
+def _resolve_timezone_from_request(default_timezone='America/Los_Angeles'):
+    """Resolve timezone from request args or session with fallback."""
+    tz_name = request.args.get('tz') or session.get('timezone') or default_timezone
+    try:
+        return pytz.timezone(tz_name)
+    except pytz.UnknownTimeZoneError:
+        current_app.logger.warning(f"Invalid timezone '{tz_name}' provided; defaulting to {default_timezone}.")
+        return pytz.timezone(default_timezone)
+
+
+def _get_queue_payload(student_scope):
+    """Return queue data and counts for a given student scope."""
+    user_tz = _resolve_timezone_from_request()
+
+    now_user_tz = datetime.now(user_tz)
+    today_start_user_tz = now_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start_utc = today_start_user_tz.astimezone(pytz.utc).replace(tzinfo=None)
+
+    queue = HallPassLog.query.filter(
+        HallPassLog.student_id.in_(student_scope),
+        HallPassLog.status == 'approved',
+        HallPassLog.decision_time >= today_start_utc
+    ).order_by(HallPassLog.decision_time.asc()).all()
+
+    currently_out_count = HallPassLog.query.filter(
+        HallPassLog.student_id.in_(student_scope),
+        HallPassLog.status == 'left',
+        HallPassLog.left_time >= today_start_utc
+    ).count()
+
+    def format_utc_time(dt):
+        if not dt:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+
+    queue_data = []
+    for log_entry in queue:
+        student = log_entry.student
+        queue_data.append({
+            "student_name": student.full_name,
+            "destination": log_entry.reason,
+            "pass_number": log_entry.pass_number,
+            "approved_time": format_utc_time(log_entry.decision_time),
+            "period": log_entry.period,
+        })
+
+    return queue_data, currently_out_count
+
+
 @api_bp.route('/hall-pass/<int:pass_id>/<string:action>', methods=['POST'])
 @admin_required
 def handle_hall_pass_action(pass_id, action):
-    log_entry = HallPassLog.query.get_or_404(pass_id)
+    log_entry = _get_admin_hall_pass_query().filter_by(id=pass_id).first_or_404()
     student = log_entry.student
     now = datetime.now(timezone.utc)
 
@@ -582,11 +703,14 @@ def handle_hall_pass_action(pass_id, action):
 
 
 @api_bp.route('/hall-pass/verification/active', methods=['GET'])
+@admin_required
 def get_active_hall_passes():
     """Get last 10 students who used hall passes for verification display"""
+    student_scope = _get_admin_student_scope()
     # Get the last 10 students who have left class (both currently out and recently returned)
     # Ordered by left_time descending (most recent first)
     recent_passes = HallPassLog.query.filter(
+        HallPassLog.student_id.in_(student_scope),
         HallPassLog.status.in_(['left', 'returned']),
         HallPassLog.left_time.isnot(None)
     ).order_by(HallPassLog.left_time.desc()).limit(10).all()
@@ -596,6 +720,51 @@ def get_active_hall_passes():
         if not dt:
             return None
         # Ensure datetime is treated as UTC
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.isoformat()
+
+    passes_data = []
+    for log_entry in recent_passes:
+        student = log_entry.student
+        passes_data.append({
+            "student_name": student.full_name,
+            "period": log_entry.period,
+            "destination": log_entry.reason,
+            "left_time": format_utc_time(log_entry.left_time),
+            "return_time": format_utc_time(log_entry.return_time),
+            "pass_number": log_entry.pass_number,
+            "status": log_entry.status
+        })
+
+    return jsonify({
+        "status": "success",
+        "passes": passes_data
+    })
+
+
+@api_bp.route('/hall-pass/public/verification', methods=['GET'])
+def get_public_active_hall_passes():
+    """Public verification feed scoped to a teacher (no auth required)."""
+    teacher_id = request.args.get('teacher_id', type=int)
+
+    if not teacher_id:
+        return jsonify({"status": "error", "message": "teacher_id is required."}), 400
+
+    if not Admin.query.get(teacher_id):
+        return jsonify({"status": "error", "message": "Teacher not found."}), 404
+
+    student_scope = _get_teacher_student_ids(teacher_id)
+
+    recent_passes = HallPassLog.query.filter(
+        HallPassLog.student_id.in_(student_scope),
+        HallPassLog.status.in_(['left', 'returned']),
+        HallPassLog.left_time.isnot(None)
+    ).order_by(HallPassLog.left_time.desc()).limit(10).all()
+
+    def format_utc_time(dt):
+        if not dt:
+            return None
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
         return dt.isoformat()
@@ -770,62 +939,44 @@ def cancel_hall_pass(pass_id):
 
 
 @api_bp.route('/hall-pass/queue', methods=['GET'])
+@admin_required
 def get_hall_pass_queue():
     """Get current hall pass queue (approved but not yet checked out) and currently out count"""
-    # Get hall pass settings (or create with defaults if doesn't exist)
-    settings = HallPassSettings.query.first()
-    if not settings:
-        settings = HallPassSettings(queue_enabled=True, queue_limit=10)
-        db.session.add(settings)
-        db.session.commit()
+    admin = get_current_admin()
+    block = request.args.get('block')
 
-    # Get user's timezone from session, default to Pacific Time
-    tz_name = session.get('timezone', 'America/Los_Angeles')
-    try:
-        user_tz = pytz.timezone(tz_name)
-    except pytz.UnknownTimeZoneError:
-        current_app.logger.warning(f"Invalid timezone '{tz_name}' in session, defaulting to Pacific Time.")
-        user_tz = pytz.timezone('America/Los_Angeles')
+    settings = _get_or_create_hall_pass_settings(admin.id, block)
+    student_scope = _get_admin_student_scope()
 
-    # Get current time in user's timezone
-    now_user_tz = datetime.now(user_tz)
+    queue_data, currently_out_count = _get_queue_payload(student_scope)
 
-    # Get start of today (midnight) in user's timezone
-    today_start_user_tz = now_user_tz.replace(hour=0, minute=0, second=0, microsecond=0)
+    return jsonify({
+        "status": "success",
+        "queue": queue_data,
+        "currently_out": currently_out_count,
+        "total": len(queue_data) + currently_out_count,
+        "queue_enabled": settings.queue_enabled,
+        "queue_limit": settings.queue_limit
+    })
 
-    # Convert to UTC for database comparison (database stores times in UTC)
-    today_start_utc = today_start_user_tz.astimezone(pytz.utc).replace(tzinfo=None)
 
-    # Get approved passes from today that haven't been used yet (not left, not returned)
-    queue = HallPassLog.query.filter(
-        HallPassLog.status == 'approved',
-        HallPassLog.decision_time >= today_start_utc
-    ).order_by(HallPassLog.decision_time.asc()).all()
+@api_bp.route('/hall-pass/public/queue', methods=['GET'])
+def get_public_hall_pass_queue():
+    """Public hall pass queue scoped by teacher ID (no auth required)."""
+    teacher_id = request.args.get('teacher_id', type=int)
+    block = request.args.get('block')
 
-    # Get count of students currently out from today (status = 'left')
-    currently_out_count = HallPassLog.query.filter(
-        HallPassLog.status == 'left',
-        HallPassLog.left_time >= today_start_utc
-    ).count()
+    if not teacher_id:
+        return jsonify({"status": "error", "message": "teacher_id is required."}), 400
 
-    # Helper function to ensure times are marked as UTC
-    def format_utc_time(dt):
-        if not dt:
-            return None
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.isoformat()
+    if not Admin.query.get(teacher_id):
+        return jsonify({"status": "error", "message": "Teacher not found."}), 404
 
-    queue_data = []
-    for log_entry in queue:
-        student = log_entry.student
-        queue_data.append({
-            "student_name": student.full_name,
-            "destination": log_entry.reason,
-            "pass_number": log_entry.pass_number,
-            "approved_time": format_utc_time(log_entry.decision_time),
-            "period": log_entry.period
-        })
+    normalized_block = block.strip().upper() if block else None
+    settings = _get_or_create_hall_pass_settings(teacher_id, normalized_block)
+    student_scope = _get_teacher_student_ids(teacher_id)
+
+    queue_data, currently_out_count = _get_queue_payload(student_scope)
 
     return jsonify({
         "status": "success",
@@ -841,16 +992,15 @@ def get_hall_pass_queue():
 @admin_required
 def hall_pass_settings():
     """Get or update hall pass settings (admin only)"""
-    settings = HallPassSettings.query.first()
-    if not settings:
-        settings = HallPassSettings(queue_enabled=True, queue_limit=10)
-        db.session.add(settings)
-        db.session.commit()
+    admin = get_current_admin()
+    block = request.args.get('block') if request.method == 'GET' else None
+    settings = _get_or_create_hall_pass_settings(admin.id, block)
 
     if request.method == 'GET':
         return jsonify({
             "status": "success",
             "settings": {
+                "block": settings.block,
                 "queue_enabled": settings.queue_enabled,
                 "queue_limit": settings.queue_limit
             }
@@ -858,6 +1008,15 @@ def hall_pass_settings():
 
     # POST - update settings
     data = request.get_json()
+
+    block = data.get('block') or request.args.get('block')
+    if block:
+        block = block.strip().upper()
+        if len(block) > 10:
+            return jsonify({"status": "error", "message": "Block name must be 10 characters or fewer."}), 400
+
+    if block is not None:
+        settings = _get_or_create_hall_pass_settings(admin.id, block)
 
     if 'queue_enabled' in data:
         settings.queue_enabled = bool(data['queue_enabled'])
@@ -875,6 +1034,7 @@ def hall_pass_settings():
         "status": "success",
         "message": "Settings updated successfully",
         "settings": {
+            "block": settings.block,
             "queue_enabled": settings.queue_enabled,
             "queue_limit": settings.queue_limit
         }
@@ -896,8 +1056,10 @@ def hall_pass_history():
         start_date = request.args.get('start_date', '').strip()
         end_date = request.args.get('end_date', '').strip()
 
-        # Build query
-        query = HallPassLog.query
+        # Build query scoped to admin's students
+        student_scope = _get_admin_student_scope()
+        query = HallPassLog.query.join(Student, HallPassLog.student_id == Student.id)
+        query = query.filter(Student.id.in_(student_scope))
 
         # Apply filters
         if period:
@@ -1110,11 +1272,13 @@ def handle_tap():
         else:
             # All other reasons go through the hall pass approval flow
             # Check hall pass settings and queue limits
-            settings = HallPassSettings.query.first()
-            if not settings:
-                settings = HallPassSettings(queue_enabled=True, queue_limit=10)
-                db.session.add(settings)
-                db.session.commit()
+            teacher_id = get_current_teacher_id()
+            if not teacher_id:
+                return jsonify({"error": "No teacher selected for hall pass."}), 400
+
+            block_for_settings = (session.get('current_period') or period or '').strip().upper() or None
+            settings = _get_or_create_hall_pass_settings(teacher_id, block_for_settings)
+            teacher_student_scope = _get_teacher_student_ids(teacher_id)
 
             # Define restricted pass types (affected by queue system)
             restricted_reasons = ['Restroom', 'Office', 'Locker']
@@ -1145,12 +1309,14 @@ def handle_tap():
 
                 # Count approved (waiting) passes from today
                 queue_count = HallPassLog.query.filter(
+                    HallPassLog.student_id.in_(teacher_student_scope),
                     HallPassLog.status == 'approved',
                     HallPassLog.decision_time >= today_start_utc
                 ).count()
 
                 # Count currently out students from today
                 out_count = HallPassLog.query.filter(
+                    HallPassLog.student_id.in_(teacher_student_scope),
                     HallPassLog.status == 'left',
                     HallPassLog.left_time >= today_start_utc
                 ).count()

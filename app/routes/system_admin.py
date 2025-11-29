@@ -18,7 +18,7 @@ import pyotp
 from app.extensions import db, limiter
 from app.models import (
     SystemAdmin, Admin, Student, AdminInviteCode, ErrorLog,
-    Transaction, TapEvent, HallPassLog, StudentItem, RentPayment,
+    Transaction, TapEvent, HallPassLog, HallPassSettings, StudentItem, RentPayment,
     StudentInsurance, InsuranceClaim, StudentTeacher, DeletionRequest,
     DeletionRequestType, DeletionRequestStatus, TeacherBlock
 )
@@ -890,6 +890,9 @@ def delete_teacher(admin_id):
         # Delete all TeacherBlock entries for this teacher
         # This cleans up roster seats associated with the teacher
         TeacherBlock.query.filter_by(teacher_id=admin.id).delete()
+
+        # Remove hall pass settings scoped to this teacher to prevent leakage
+        HallPassSettings.query.filter_by(teacher_id=admin.id).delete()
 
         admin_username = admin.username
         db.session.delete(admin)

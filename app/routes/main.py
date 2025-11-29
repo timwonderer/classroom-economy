@@ -126,22 +126,25 @@ def terms():
 
 # -------------------- HALL PASS TERMINALS (NO AUTH REQUIRED) --------------------
 
-@main_bp.route('/hall-pass/terminal')
-def hall_pass_terminal():
+@main_bp.route('/hall-pass/<int:teacher_id>/terminal')
+def hall_pass_terminal(teacher_id):
     """Hall Pass Check in/out terminal page (no login required)."""
-    return render_template('hall_pass_terminal.html')
+    Admin.query.get_or_404(teacher_id)
+    return render_template('hall_pass_terminal.html', teacher_id=teacher_id)
 
 
-@main_bp.route('/hall-pass/verification')
-def hall_pass_verification():
+@main_bp.route('/hall-pass/<int:teacher_id>/verification')
+def hall_pass_verification(teacher_id):
     """Hall Pass Verification page for display (no login required)."""
-    return render_template('hall_pass_verification.html')
+    Admin.query.get_or_404(teacher_id)
+    return render_template('hall_pass_verification.html', teacher_id=teacher_id)
 
 
-@main_bp.route('/hall-pass/queue')
-def hall_pass_queue():
+@main_bp.route('/hall-pass/<int:teacher_id>/queue')
+def hall_pass_queue(teacher_id):
     """Hall Pass Queue display page (no login required)."""
-    return render_template('hall_pass_queue.html')
+    Admin.query.get_or_404(teacher_id)
+    return render_template('hall_pass_queue.html', teacher_id=teacher_id)
 
 
 # -------------------- DEBUG ROUTES --------------------

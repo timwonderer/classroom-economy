@@ -1,5 +1,6 @@
 import pytest
 import os
+from cryptography.fernet import Fernet
 
 # Set env before importing app or running tests
 os.environ["FLASK_ENV"] = "testing"

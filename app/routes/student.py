@@ -700,6 +700,7 @@ def dashboard():
         student_name=student_name,
         total_unpaid_elapsed=total_unpaid_elapsed,
         feature_settings=feature_settings,
+        current_teacher_id=get_current_teacher_id(),
     )
 
 

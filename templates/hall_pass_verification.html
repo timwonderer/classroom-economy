@@ -235,6 +235,8 @@
     </div>
 
     <script>
+        const teacherId = {{ teacher_id or 'null' }};
+
         function formatTime(isoString) {
             const date = new Date(isoString);
             return date.toLocaleTimeString(undefined, {
@@ -302,7 +304,13 @@
         }
 
         function fetchActivePasses() {
-            fetch('/api/hall-pass/verification/active')
+            if (!teacherId) {
+                const passesList = document.getElementById('passesList');
+                passesList.innerHTML = '<div class="alert alert-warning">Hall pass verification requires a teacher selection.</div>';
+                return;
+            }
+
+            fetch(`/api/hall-pass/public/verification?teacher_id=${teacherId}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {

@@ -243,6 +243,8 @@
     </div>
 
     <script>
+        const teacherId = {{ teacher_id or 'null' }};
+
         function formatTime(isoString) {
             const date = new Date(isoString);
             return date.toLocaleTimeString(undefined, {
@@ -326,7 +328,17 @@
         }
 
         function fetchQueue() {
-            fetch('/api/hall-pass/queue')
+            const limitWarning = document.getElementById('limitWarning');
+            const limitWarningText = document.getElementById('limitWarningText');
+
+            if (!teacherId) {
+                console.error('Hall pass queue requires a teacher context.');
+                limitWarning.style.display = 'block';
+                limitWarningText.textContent = 'Hall pass queue unavailable: no teacher selected.';
+                return;
+            }
+
+            fetch(`/api/hall-pass/public/queue?teacher_id=${teacherId}`)
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {

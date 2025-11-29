@@ -5,10 +5,11 @@ Validates that API endpoints properly scope data access to the current admin's s
 """
 
 import pyotp
+import pyotp
 from datetime import datetime, timezone
 
 from app import app, db
-from app.models import Admin, Student, StudentTeacher, TapEvent
+from app.models import Admin, Student, StudentTeacher, TapEvent, HallPassLog
 from hash_utils import get_random_salt, hash_username
 
 
@@ -212,3 +213,102 @@ def test_attendance_history_api_system_admin_sees_all(client):
     # System admins accessing via /api routes would need admin session too
     # For now, just verify the scoping logic works for regular admins
     # (System admins typically don't use the API routes directly)
+
+
+def test_hall_pass_queue_scoped_to_teacher(client):
+    """Hall pass queue should be limited to the logged-in teacher's students."""
+    teacher_a, secret_a = _create_admin("teacher-a")
+    teacher_b, secret_b = _create_admin("teacher-b")
+
+    student_a = _create_student("StudentA", primary_teacher=teacher_a)
+    student_b = _create_student("StudentB", primary_teacher=teacher_b)
+
+    now = datetime.now(timezone.utc)
+    db.session.add_all([
+        HallPassLog(student_id=student_a.id, reason="Restroom", status="approved", decision_time=now),
+        HallPassLog(student_id=student_b.id, reason="Restroom", status="approved", decision_time=now),
+    ])
+    db.session.commit()
+
+    _login_admin(client, teacher_a, secret_a)
+    response = client.get("/api/hall-pass/queue")
+
+    assert response.status_code == 200
+    data = response.get_json()
+
+    assert data["status"] == "success"
+    assert len(data["queue"]) == 1
+    assert data["queue"][0]["student_name"] == student_a.full_name
+    assert data["total"] == 1
+
+
+def test_hall_pass_settings_are_per_teacher(client):
+    """Updating hall pass settings should not affect other teachers."""
+    teacher_a, secret_a = _create_admin("teacher-a")
+    teacher_b, secret_b = _create_admin("teacher-b")
+
+    _login_admin(client, teacher_a, secret_a)
+    update_response = client.post(
+        "/api/hall-pass/settings",
+        json={"queue_limit": 3}
+    )
+
+    assert update_response.status_code == 200
+    assert update_response.get_json()["settings"]["queue_limit"] == 3
+
+    _login_admin(client, teacher_b, secret_b)
+    fetch_response = client.get("/api/hall-pass/settings")
+    assert fetch_response.status_code == 200
+    assert fetch_response.get_json()["settings"]["queue_limit"] == 10
+
+
+def test_public_hall_pass_queue_scoped_to_teacher(client):
+    """Public queue endpoint should be filtered by teacher_id."""
+    teacher_a, _ = _create_admin("teacher-a")
+    teacher_b, _ = _create_admin("teacher-b")
+
+    student_a = _create_student("StudentA", primary_teacher=teacher_a)
+    student_b = _create_student("StudentB", primary_teacher=teacher_b)
+
+    now = datetime.now(timezone.utc)
+    db.session.add_all([
+        HallPassLog(student_id=student_a.id, reason="Restroom", status="approved", decision_time=now),
+        HallPassLog(student_id=student_b.id, reason="Restroom", status="approved", decision_time=now),
+    ])
+    db.session.commit()
+
+    response = client.get(f"/api/hall-pass/public/queue?teacher_id={teacher_a.id}")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "success"
+    assert len(data["queue"]) == 1
+    assert data["queue"][0]["student_name"] == student_a.full_name
+
+    missing_teacher_response = client.get("/api/hall-pass/public/queue")
+    assert missing_teacher_response.status_code == 400
+
+    not_found_response = client.get("/api/hall-pass/public/queue?teacher_id=99999")
+    assert not_found_response.status_code == 404
+
+
+def test_public_verification_feed_scoped_to_teacher(client):
+    """Public verification feed should only include passes for the selected teacher."""
+    teacher_a, _ = _create_admin("teacher-a")
+    teacher_b, _ = _create_admin("teacher-b")
+
+    student_a = _create_student("StudentA", primary_teacher=teacher_a)
+    student_b = _create_student("StudentB", primary_teacher=teacher_b)
+
+    now = datetime.now(timezone.utc)
+    db.session.add_all([
+        HallPassLog(student_id=student_a.id, reason="Restroom", status="left", left_time=now),
+        HallPassLog(student_id=student_b.id, reason="Restroom", status="left", left_time=now),
+    ])
+    db.session.commit()
+
+    response = client.get(f"/api/hall-pass/public/verification?teacher_id={teacher_a.id}")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "success"
+    assert len(data["passes"]) == 1
+    assert data["passes"][0]["student_name"] == student_a.full_name

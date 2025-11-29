@@ -134,14 +134,17 @@ Tracks hall pass lifecycle.
 | `left_time` / `return_time` | DateTime | Movement timestamps. |
 
 ### `hall_pass_settings`
-Global hall pass configuration.
+Per-teacher hall pass configuration scoped by optional class block.
 
 | Column | Type | Description |
 |---|---|---|
 | `id` | Integer | Primary key. |
-| `daily_limit` | Integer | Daily limit per student. |
-| `cooldown_minutes` | Integer | Cooldown between passes. |
-| `max_duration_minutes` | Integer | Max active duration. |
+| `teacher_id` | Integer | FK to `admins.id`; enforces tenancy. |
+| `block` | String(10) | Optional block/period identifier; NULL for global teacher defaults. |
+| `queue_enabled` | Boolean | Whether restricted passes are queued. |
+| `queue_limit` | Integer | Maximum queued + out passes when queueing is enabled. |
+| `created_at` | DateTime | Creation timestamp. |
+| `updated_at` | DateTime | Update timestamp. |
 
 ---
 
