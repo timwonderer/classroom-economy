@@ -19,7 +19,7 @@ and this project follows semantic versioning principles.
 
 ### Fixed
 - Added migration to align `rent_settings` schema with application model by including the `block` column.
-
+- Added migration to bring the `banking_settings` table in sync with the model by introducing the missing `block` column.
 ---
 
 ## [2025-11-25] - Maintenance & Bypass Enhancements
