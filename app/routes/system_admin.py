@@ -734,9 +734,8 @@ def delete_period(admin_id, period):
         return redirect(url_for('sysadmin.teacher_overview'))
 
     try:
-        # Get students in this period linked to this teacher
-        # Must check BOTH student_teachers join table AND legacy teacher_id column
-        # Use LIKE to handle comma-separated block lists (e.g., "X,A,B")
+        # Get ALL students linked to this teacher (via StudentTeacher or legacy teacher_id)
+        # We fetch all because we need to filter by comma-separated block lists in Python
         period_upper = period.upper()
         
         students_via_link = db.session.query(Student).join(
@@ -755,6 +754,7 @@ def delete_period(admin_id, period):
         all_students = {s.id: s for s in students_via_link + students_via_legacy}
         
         # Filter to only students who have this period in their block list
+        # This must be done in Python because blocks are stored as comma-separated values
         students_in_period = []
         for student in all_students.values():
             student_blocks = [b.strip().upper() for b in (student.block or '').split(',') if b.strip()]
@@ -786,7 +786,7 @@ def delete_period(admin_id, period):
             # and cancel their insurance policies with this teacher
             if not remaining_blocks_for_teacher:
                 # Cancel active insurance policies for this student with policies from this teacher
-                teacher_policy_ids = [p.id for p in InsurancePolicy.query.filter_by(teacher_id=admin.id).all()]
+                teacher_policy_ids = [pid for pid, in InsurancePolicy.query.filter_by(teacher_id=admin.id).with_entities(InsurancePolicy.id).all()]
                 if teacher_policy_ids:
                     cancelled = StudentInsurance.query.filter(
                         StudentInsurance.student_id == student.id,

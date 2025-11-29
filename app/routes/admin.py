@@ -1225,7 +1225,7 @@ def delete_block():
                 # If student no longer has any blocks with this teacher, clean up their connection
                 if not remaining_blocks_for_teacher:
                     # Cancel active insurance policies for this student with this teacher
-                    teacher_policy_ids = [p.id for p in InsurancePolicy.query.filter_by(teacher_id=current_admin_id).all()]
+                    teacher_policy_ids = [pid for pid, in InsurancePolicy.query.filter_by(teacher_id=current_admin_id).with_entities(InsurancePolicy.id).all()]
                     if teacher_policy_ids:
                         cancelled = StudentInsurance.query.filter(
                             StudentInsurance.student_id == student.id,
