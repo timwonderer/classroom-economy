@@ -305,6 +305,13 @@ class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
+
+    # CRITICAL: join_code is the source of truth for class isolation
+    # Each join code represents a distinct class economy, even if same teacher
+    # Example: Teacher has Period A (join=MATH1A) and Period B (join=MATH3B)
+    # Student in both periods should see separate balances/transactions
+    join_code = db.Column(db.String(20), nullable=True, index=True)
+
     amount = db.Column(db.Float, nullable=False)
     # All times stored as UTC (see header note)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
