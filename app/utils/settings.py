@@ -103,8 +103,10 @@ def get_or_create_settings_for_blocks(
             May contain ``None`` for global settings.
 
     Yields:
-        Tuple of (settings_record, is_new) for each block. The caller is
-        responsible for updating the settings and committing the session.
+        Tuple[model, bool]: A tuple of (settings_record, is_new) where:
+            - settings_record: Instance of ``model`` for the block
+            - is_new: True if the record was just created, False if it existed
+        The caller is responsible for updating the settings and committing the session.
     """
     for block_value in target_blocks:
         settings_record = model.query.filter_by(

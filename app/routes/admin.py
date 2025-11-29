@@ -1731,14 +1731,16 @@ def rent_settings():
     # Get statistics
     scoped_students_query = _scoped_students().filter_by(is_rent_enabled=True)
     if selected_block:
+        # Escape SQL LIKE special characters to prevent injection
+        escaped_block = selected_block.replace('%', r'\%').replace('_', r'\_')
         # Filter at database level using LIKE for comma-separated blocks
         # Matches: exact block, block at start (BLOCK,), block in middle (,BLOCK,), block at end (,BLOCK)
         scoped_students_query = scoped_students_query.filter(
             db.or_(
                 Student.block == selected_block,
-                Student.block.like(f'{selected_block},%'),
-                Student.block.like(f'%,{selected_block},%'),
-                Student.block.like(f'%,{selected_block}')
+                Student.block.like(f'{escaped_block},%', escape='\\'),
+                Student.block.like(f'%,{escaped_block},%', escape='\\'),
+                Student.block.like(f'%,{escaped_block}', escape='\\')
             )
         )
     scoped_students = scoped_students_query.all()
