@@ -28,8 +28,16 @@ def upgrade():
     """
     Ensure the enum has lowercase values that match the Python enum.
     This migration is idempotent and safe to run multiple times.
+    
+    NOTE: This migration is PostgreSQL-specific as it handles PostgreSQL ENUMs.
+    The application requires PostgreSQL in production.
     """
     conn = op.get_bind()
+    
+    # Check if we're running on PostgreSQL
+    if conn.dialect.name != 'postgresql':
+        print("⚠️  This migration is PostgreSQL-specific, skipping on non-PostgreSQL database")
+        return
     
     # Check if the enum type exists
     result = conn.execute(sa.text(
@@ -106,6 +114,16 @@ def upgrade():
             """))
             stored_values = [row[0] for row in result]
             print(f"  ℹ️  Stored values: {stored_values}")
+            
+            # Validate that all stored values are valid (case-insensitive)
+            valid_values = {'period', 'account', 'PERIOD', 'ACCOUNT'}
+            invalid_values = [v for v in stored_values if v not in valid_values]
+            if invalid_values:
+                raise ValueError(
+                    f"Found unexpected enum values in deletion_requests: {invalid_values}. "
+                    f"Expected only 'period', 'account', 'PERIOD', or 'ACCOUNT'. "
+                    f"Please manually fix these values before running this migration."
+                )
         
         # Convert the column to use the new enum
         # This handles any combination of uppercase/lowercase in both enum definition and stored data
@@ -115,7 +133,6 @@ def upgrade():
             USING CASE 
                 WHEN LOWER(request_type::text) = 'period' THEN 'period'::deletionrequesttype_temp
                 WHEN LOWER(request_type::text) = 'account' THEN 'account'::deletionrequesttype_temp
-                ELSE 'period'::deletionrequesttype_temp
             END
         """))
         print("  ✓ Converted request_type column to use temporary enum")

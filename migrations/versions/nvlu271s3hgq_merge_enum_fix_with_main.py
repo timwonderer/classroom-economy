@@ -28,8 +28,16 @@ def upgrade():
     
     However, we'll add an extra safety check here to ensure the enum
     is properly fixed after the merge.
+    
+    NOTE: This migration is PostgreSQL-specific as it checks PostgreSQL ENUMs.
+    The application requires PostgreSQL in production.
     """
     conn = op.get_bind()
+    
+    # Skip checks on non-PostgreSQL databases (e.g., SQLite in tests)
+    if conn.dialect.name != 'postgresql':
+        print("⚠️  This is a merge migration, no action needed on non-PostgreSQL database")
+        return
     
     # Check if the enum type exists
     result = conn.execute(sa.text(
