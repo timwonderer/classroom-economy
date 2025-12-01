@@ -99,11 +99,9 @@ def upgrade():
                 ALTER TABLE deletion_requests 
                 ALTER COLUMN request_type TYPE deletionrequesttype 
                 USING CASE 
-                    WHEN LOWER(request_type::text) = 'student_data_only' THEN 'period'::deletionrequesttype
-                    WHEN LOWER(request_type::text) = 'full_account' THEN 'account'::deletionrequesttype
                     WHEN LOWER(request_type::text) = 'period' THEN 'period'::deletionrequesttype
                     WHEN LOWER(request_type::text) = 'account' THEN 'account'::deletionrequesttype
-                    ELSE NULL -- Or handle as an error, but avoid incorrect data assignment.
+                    ELSE NULL
                 END
             """))
             print("✅ Converted request_type column to enum type with case handling")
