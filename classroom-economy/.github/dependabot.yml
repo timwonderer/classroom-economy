@@ -1,0 +1,45 @@
+version: 2
+updates:
+  # Enable version updates for pip dependencies
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    # Limit the number of open pull requests for version updates
+    open-pull-requests-limit: 10
+    # Add labels to pull requests
+    labels:
+      - "dependencies"
+      - "security"
+    # Assign reviewers (update with your GitHub username)
+    reviewers:
+      - "timwonderer"
+    # Group all patch updates into a single PR
+    groups:
+      patch-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "patch"
+    # Allow both direct and indirect updates
+    allow:
+      - dependency-type: "all"
+    # Uncomment to ignore specific packages or version ranges
+    # ignore:
+    #   - dependency-name: "flask"
+    #     update-types: ["version-update:semver-major"]
+
+  # Enable version updates for GitHub Actions
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+    labels:
+      - "dependencies"
+      - "github-actions"
+    reviewers:
+      - "timwonderer"

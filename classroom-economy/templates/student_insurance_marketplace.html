@@ -1,0 +1,470 @@
+{% extends "layout_student.html" %}
+{% set page_title = "Insurance" %}
+{% set current_page = "insurance" %}
+{% block title %}Insurance{% endblock %}
+{% block page_icon %}shield{% endblock %}
+
+{% block extra_head %}
+{% endblock %}
+
+{% block content %}
+
+<!-- Tabs Navigation -->
+<ul class="nav nav-tabs mb-4" id="insuranceTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="my-policies-tab" data-bs-toggle="tab" data-bs-target="#my-policies" type="button" role="tab">
+            <span class="material-symbols-outlined align-middle" style="font-size: 1.2rem;">shield</span>
+            My Policies
+            {% if my_policies %}<span class="badge bg-primary ms-1">{{ my_policies|length }}</span>{% endif %}
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="available-plans-tab" data-bs-toggle="tab" data-bs-target="#available-plans" type="button" role="tab">
+            <span class="material-symbols-outlined align-middle" style="font-size: 1.2rem;">shopping_cart</span>
+            Available Plans
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="claims-tab" data-bs-toggle="tab" data-bs-target="#claims" type="button" role="tab">
+            <span class="material-symbols-outlined align-middle" style="font-size: 1.2rem;">receipt_long</span>
+            Claims History
+            {% if my_claims %}<span class="badge bg-secondary ms-1">{{ my_claims|length }}</span>{% endif %}
+        </button>
+    </li>
+</ul>
+
+<!-- Tab Content -->
+<div class="tab-content" id="insuranceTabContent">
+    <!-- My Policies Tab -->
+    <div class="tab-pane fade show active" id="my-policies" role="tabpanel">
+        {% if my_policies %}
+            {% for enrollment in my_policies %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-lg-8">
+                            <h4 class="mb-2">{{ enrollment.policy.title }}</h4>
+                            <div class="text-muted mb-3">{{ enrollment.policy.description | markdown }}</div>
+
+                            <!-- Quick Facts -->
+                            <div class="row g-2 mb-3">
+                                <div class="col-md-3">
+                                    <div class="text-center p-2 bg-primary bg-opacity-10 rounded">
+                                        <div class="fw-bold">${{ "%.2f"|format(enrollment.policy.premium) }}</div>
+                                        <small class="text-muted">{{ enrollment.policy.charge_frequency }}</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="text-center p-2 {% if enrollment.payment_current %}bg-success{% else %}bg-danger{% endif %} bg-opacity-10 rounded">
+                                        <div class="fw-bold">
+                                            {% if enrollment.payment_current %}
+                                                <span class="material-symbols-outlined text-success">check_circle</span>
+                                            {% else %}
+                                                {{ enrollment.days_unpaid }}
+                                            {% endif %}
+                                        </div>
+                                        <small class="text-muted">{% if enrollment.payment_current %}Paid{% else %}Days Overdue{% endif %}</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="text-center p-2 bg-info bg-opacity-10 rounded">
+                                        <div class="fw-bold">{{ enrollment.policy.waiting_period_days }}</div>
+                                        <small class="text-muted">Wait Days</small>
+                                    </div>
+                                </div>
+                                <div class="col-md-3">
+                                    <div class="text-center p-2 bg-secondary bg-opacity-10 rounded">
+                                        <div class="fw-bold">
+                                            {% if enrollment.policy.max_claims_count %}{{ enrollment.policy.max_claims_count }}{% else %}∞{% endif %}
+                                        </div>
+                                        <small class="text-muted">Max Claims</small>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Status Badges -->
+                            <div class="mb-2">
+                                {% if enrollment.policy.claim_type == 'transaction_monetary' %}
+                                    <span class="badge bg-info"><span class="material-symbols-outlined" style="font-size: 1rem;">payments</span> TXN-based</span>
+                                {% elif enrollment.policy.claim_type == 'non_monetary' %}
+                                    <span class="badge bg-warning text-dark"><span class="material-symbols-outlined" style="font-size: 1rem;">redeem</span> Non-monetary</span>
+                                {% else %}
+                                    <span class="badge bg-primary"><span class="material-symbols-outlined" style="font-size: 1rem;">payments</span> Legacy monetary</span>
+                                {% endif %}
+                                {% if enrollment.coverage_start_date %}
+                                    <span class="badge bg-success">
+                                        <span class="material-symbols-outlined" style="font-size: 1rem;">event_available</span>
+                                        Active Since {{ enrollment.coverage_start_date.strftime('%b %d, %Y') }}
+                                    </span>
+                                {% else %}
+                                    <span class="badge bg-warning text-dark">
+                                        <span class="material-symbols-outlined" style="font-size: 1rem;">schedule</span>
+                                        Waiting Period ({{ enrollment.policy.waiting_period_days }} days)
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-lg-4 text-lg-end">
+                            <div class="d-grid gap-2">
+                                {% set in_waiting_period = not enrollment.coverage_start_date or enrollment.coverage_start_date > now %}
+                                {% if in_waiting_period %}
+                                    <button class="btn btn-outline-secondary" disabled title="Coverage not active yet - still in waiting period">
+                                        <span class="material-symbols-outlined">schedule</span> Waiting Period
+                                    </button>
+                                {% else %}
+                                    <a href="{{ url_for('student.file_claim', policy_id=enrollment.policy.id) }}" class="btn btn-primary">
+                                        <span class="material-symbols-outlined">add_circle</span> File Claim
+                                    </a>
+                                {% endif %}
+                                <a href="{{ url_for('student.view_policy', enrollment_id=enrollment.id) }}" class="btn btn-outline-secondary">
+                                    <span class="material-symbols-outlined">visibility</span> View Details
+                                </a>
+                                <form action="{{ url_for('student.cancel_insurance', enrollment_id=enrollment.id) }}" method="POST">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                    <button type="submit" class="btn btn-outline-danger w-100" onclick="return confirm('Are you sure you want to cancel this policy?')">
+                                        <span class="material-symbols-outlined">cancel</span> Cancel Policy
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="text-center text-muted py-5">
+                <span class="material-symbols-outlined" style="font-size: 4rem; opacity: 0.3;">shield_with_heart</span>
+                <h5 class="mt-3">No Active Policies</h5>
+                <p>You don't have any insurance policies yet.</p>
+                <button class="btn btn-primary" id="goToAvailablePlans">
+                    <span class="material-symbols-outlined">shopping_cart</span> Browse Available Plans
+                </button>
+            </div>
+        {% endif %}
+    </div>
+
+    <!-- Available Plans Tab -->
+    <div class="tab-pane fade" id="available-plans" role="tabpanel">
+        {% if available_policies or tier_groups %}
+
+        <!-- Tier Groups (if any) -->
+        {% for tier_id, tier_data in tier_groups.items() %}
+        <div class="card mb-4 border-{{ tier_data.color }} border-2">
+            <div class="card-header bg-{{ tier_data.color }} bg-opacity-10">
+                <button class="btn btn-link text-decoration-none w-100 text-start p-0" type="button" data-bs-toggle="collapse" data-bs-target="#tier-{{ tier_id }}" aria-expanded="true">
+                    <h5 class="mb-0 text-{{ tier_data.color }}">
+                        <span class="material-symbols-outlined align-middle">layers</span>
+                        {{ tier_data.name }}
+                        <span class="material-symbols-outlined float-end">expand_more</span>
+                    </h5>
+                    <small class="text-muted">
+                        {% if tier_id in enrolled_tiers %}
+                            ✓ You have selected a policy from this tier
+                        {% else %}
+                            Select ONE policy from this tier
+                        {% endif %}
+                    </small>
+                </button>
+            </div>
+            <div id="tier-{{ tier_id }}" class="collapse show">
+                <div class="accordion accordion-flush" id="accordion-tier-{{ tier_id }}">
+                    {% for policy in tier_data.policies %}
+                        {% set is_enrolled = not can_purchase[policy.id] and policy.id not in repurchase_blocks %}
+                        {% set tier_is_enrolled = tier_id in enrolled_tiers %}
+                        {% set can_buy = can_purchase[policy.id] and not tier_is_enrolled %}
+                        {% set badge_config = {
+                            'best_value': {'color': 'warning', 'text': 'Best Value!', 'icon': 'grade'},
+                            'most_popular': {'color': 'primary', 'text': 'Most Popular', 'icon': 'trending_up'},
+                            'recommended': {'color': 'success', 'text': 'Recommended', 'icon': 'verified'},
+                            'premium': {'color': 'dark', 'text': 'Premium Coverage', 'icon': 'workspace_premium'},
+                            'limited_time': {'color': 'danger', 'text': 'Limited Time Offer', 'icon': 'schedule'},
+                            'new': {'color': 'info', 'text': 'New!', 'icon': 'new_releases'},
+                            'fan_favorite': {'color': 'primary', 'text': 'Fan Favorite', 'icon': 'favorite'},
+                            'yolo': {'color': 'danger', 'text': 'YOLO Protection', 'icon': 'casino'},
+                            'trust_me': {'color': 'warning', 'text': 'Trust Me Bro', 'icon': 'handshake'},
+                            'definitely_not_scam': {'color': 'success', 'text': 'Definitely Not a Scam', 'icon': 'verified_user'},
+                            'parents_approved': {'color': 'info', 'text': 'Your Parents Would Approve', 'icon': 'family_restroom'},
+                            'as_seen_on_tv': {'color': 'primary', 'text': 'As Seen on TV', 'icon': 'live_tv'},
+                            'industry_leading': {'color': 'dark', 'text': 'Industry Leading*', 'icon': 'emoji_events'},
+                            'chaos_insurance': {'color': 'danger', 'text': 'Chaos Insurance', 'icon': 'tornado'},
+                            'responsible_choice': {'color': 'success', 'text': 'The Responsible Choice™', 'icon': 'check_circle'},
+                            'your_friend_has_it': {'color': 'info', 'text': 'The One Your Friend Has', 'icon': 'groups'}
+                        } %}
+                        {% set badge = badge_config.get(policy.marketing_badge, {'color': 'secondary', 'text': None, 'icon': None}) %}
+
+                        <div class="accordion-item {% if not can_buy and not is_enrolled %}opacity-50{% endif %}">
+                            <h2 class="accordion-header" id="heading-{{ policy.id }}">
+                                <button class="accordion-button {% if not loop.first %}collapsed{% endif %} {% if is_enrolled %}bg-success bg-opacity-10{% elif not can_buy %}bg-light text-muted{% endif %}"
+                                        type="button"
+                                        data-bs-toggle="collapse"
+                                        data-bs-target="#collapse-{{ policy.id }}"
+                                        aria-expanded="{% if loop.first %}true{% else %}false{% endif %}"
+                                        aria-controls="collapse-{{ policy.id }}">
+                                    <div class="d-flex justify-content-between align-items-center w-100 me-3">
+                                        <div class="flex-grow-1">
+                                            <div class="d-flex align-items-center gap-2">
+                                                {% if is_enrolled %}
+                                                    <span class="material-symbols-outlined text-success" style="font-size: 1.5rem;">check_circle</span>
+                                                {% endif %}
+                                                <div>
+                                                    <h5 class="mb-0">{{ policy.title }}</h5>
+                                                    {% if badge.text %}
+                                                    <small class="badge bg-{{ badge.color }} {% if badge.color in ['warning', 'info'] %}text-dark{% else %}text-white{% endif %} mt-1">
+                                                        {% if badge.icon %}<span class="material-symbols-outlined" style="font-size: 0.9rem;">{{ badge.icon }}</span>{% endif %}
+                                                        {{ badge.text }}
+                                                    </small>
+                                                    {% endif %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div class="text-end">
+                                            <div class="h4 mb-0 text-{{ badge.color if badge else 'primary' }}">${{ "%.2f"|format(policy.premium) }}</div>
+                                            <small class="text-muted">/ {{ policy.charge_frequency }}</small>
+                                        </div>
+                                    </div>
+                                </button>
+                            </h2>
+                            <div id="collapse-{{ policy.id }}"
+                                 class="accordion-collapse collapse {% if loop.first %}show{% endif %}"
+                                 aria-labelledby="heading-{{ policy.id }}"
+                                 data-bs-parent="#accordion-tier-{{ tier_id }}">
+                                <div class="accordion-body">
+                                    <h5>What this plan does</h5>
+                                    <div class="mb-4">{{ (policy.description or 'Comprehensive coverage for your needs.') | markdown }}</div>
+
+                                    <h5>What's Covered:</h5>
+                                    <ul class="mb-4">
+                                        <li>Up to {% if policy.max_claims_count %}{{ policy.max_claims_count }}{% else %}unlimited{% endif %} claims per {{ policy.max_claims_period }}</li>
+                                        {% if policy.claim_type != 'non_monetary' %}
+                                            {% if policy.max_claim_amount %}
+                                            <li>Maximum claim amount: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
+                                            {% else %}
+                                            <li>Unlimited claim amounts</li>
+                                            {% endif %}
+                                        {% endif %}
+                                    </ul>
+
+                                    <h5>Important Rules</h5>
+                                    <ul class="mb-4">
+                                        <li>You must wait {{ policy.waiting_period_days }} days after purchasing to begin using your insurance</li>
+                                        <li>You must file your claim within {{ policy.claim_time_limit_days }} days of returning to school</li>
+                                        {% if policy.no_repurchase_after_cancel %}
+                                        <li>If your policy got cancelled (either by you or non-payment), you must wait {{ policy.repurchase_wait_days }} days before you can repurchase again.</li>
+                                        {% endif %}
+                                    </ul>
+
+                                    <h5>Policy Details:</h5>
+                                    <ul class="small mb-4">
+                                        <li>Claim type:
+                                            {% if policy.claim_type == 'transaction_monetary' %}
+                                                <span class="badge bg-info">Transaction-based</span>
+                                            {% elif policy.claim_type == 'non_monetary' %}
+                                                <span class="badge bg-warning text-dark">Non-monetary</span>
+                                            {% else %}
+                                                <span class="badge bg-primary">Legacy monetary</span>
+                                            {% endif %}
+                                        </li>
+                                        <li>Waiting period: {{ policy.waiting_period_days }} days</li>
+                                        {% if policy.max_claims_count %}
+                                            <li>Max claims: {{ policy.max_claims_count }} per {{ policy.max_claims_period }}</li>
+                                        {% else %}
+                                            <li>Unlimited claims</li>
+                                        {% endif %}
+                                        {% if policy.claim_type != 'non_monetary' and policy.max_claim_amount %}
+                                            <li>Max claim amount: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
+                                        {% endif %}
+                                        {% if policy.claim_type == 'transaction_monetary' %}
+                                            <li>One claim per transaction; amount pulled from spending</li>
+                                        {% endif %}
+                                    </ul>
+
+                                    {% if can_buy %}
+                                        <form action="{{ url_for('student.purchase_insurance', policy_id=policy.id) }}" method="POST">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-{{ badge.color if badge.color else 'primary' }} btn-lg w-100">
+                                                <span class="material-symbols-outlined">shopping_cart</span> Purchase Plan
+                                            </button>
+                                        </form>
+                                    {% elif is_enrolled %}
+                                        <div class="alert alert-success mb-0">
+                                            <span class="material-symbols-outlined align-middle">check_circle</span>
+                                            You are enrolled in this plan
+                                        </div>
+                                    {% elif tier_is_enrolled %}
+                                        <div class="alert alert-warning mb-0">
+                                            <span class="material-symbols-outlined align-middle">info</span>
+                                            You can only have one policy per tier
+                                        </div>
+                                    {% elif repurchase_blocks.get(policy.id) %}
+                                        <div class="alert alert-danger mb-0">
+                                            <span class="material-symbols-outlined align-middle">block</span>
+                                            Can't repurchase for {{ repurchase_blocks[policy.id] }} more days
+                                        </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+
+        <!-- Ungrouped Policies (not in any tier) -->
+        {% if available_policies %}
+        <div class="row">
+            {% for policy in available_policies %}
+            <div class="col-md-6 col-lg-4 mb-4">
+                <div class="card h-100">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0">{{ policy.title }}</h5>
+                    </div>
+                    <div class="card-body">
+                        <h3 class="text-primary mb-3">
+                            ${{ "%.2f"|format(policy.premium) }}<small class="text-muted fs-6"> / {{ policy.charge_frequency }}</small>
+                        </h3>
+                        <div class="mb-3">{{ (policy.description or 'Comprehensive coverage for your needs.') | markdown }}</div>
+
+                        <ul class="small mb-3">
+                            <li>Up to {% if policy.max_claims_count %}{{ policy.max_claims_count }}{% else %}unlimited{% endif %} claims</li>
+                            <li>{{ policy.waiting_period_days }} day waiting period</li>
+                            {% if policy.claim_type != 'non_monetary' and policy.max_claim_amount %}
+                            <li>Max claim: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
+                            {% endif %}
+                        </ul>
+
+                        {% if can_purchase[policy.id] %}
+                        <form action="{{ url_for('student.purchase_insurance', policy_id=policy.id) }}" method="POST">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <span class="material-symbols-outlined">shopping_cart</span> Purchase
+                            </button>
+                        </form>
+                        {% else %}
+                        <button class="btn btn-secondary w-100" disabled>
+                            {% if repurchase_blocks.get(policy.id) %}
+                                Can't Repurchase ({{ repurchase_blocks[policy.id] }} days)
+                            {% else %}
+                                Already Enrolled
+                            {% endif %}
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        {% else %}
+        <div class="alert alert-info">
+            <h5>No Insurance Plans Available</h5>
+            <p class="mb-0">There are currently no insurance plans available for purchase. Check back later!</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Claims History Tab -->
+    <div class="tab-pane fade" id="claims" role="tabpanel">
+        {% if my_claims %}
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Policy</th>
+                        <th>Incident Date</th>
+                        <th>Filed Date</th>
+                        <th>Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for claim in my_claims %}
+                    <tr>
+                        <td>{{ claim.policy.title }}</td>
+                        <td>{{ claim.incident_date.strftime('%b %d, %Y') }}</td>
+                        <td>{{ claim.filed_date.strftime('%b %d, %Y') }}</td>
+                        <td>
+                            {% if claim.approved_amount %}
+                                ${{ "%.2f"|format(claim.approved_amount) }}
+                            {% elif claim.claim_amount %}
+                                ${{ "%.2f"|format(claim.claim_amount) }}
+                            {% else %}
+                                N/A
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge
+                                {% if claim.status == 'pending' %}bg-warning text-dark
+                                {% elif claim.status == 'approved' %}bg-success
+                                {% elif claim.status == 'rejected' %}bg-danger
+                                {% elif claim.status == 'paid' %}bg-info
+                                {% endif %}">
+                                <span class="material-symbols-outlined" style="font-size: 1rem;">
+                                    {% if claim.status == 'pending' %}schedule
+                                    {% elif claim.status == 'approved' %}check_circle
+                                    {% elif claim.status == 'rejected' %}cancel
+                                    {% elif claim.status == 'paid' %}payments
+                                    {% endif %}
+                                </span>
+                                {{ claim.status|title }}
+                            </span>
+                            {% if claim.status == 'rejected' and claim.rejection_reason %}
+                                <button class="btn btn-sm btn-link" data-bs-toggle="modal" data-bs-target="#rejectionModal{{ claim.id }}">
+                                    <span class="material-symbols-outlined">info</span>
+                                </button>
+                            {% endif %}
+                        </td>
+                    </tr>
+
+                    <!-- Rejection Reason Modal -->
+                    {% if claim.status == 'rejected' and claim.rejection_reason %}
+                    <div class="modal fade" id="rejectionModal{{ claim.id }}" tabindex="-1">
+                        <div class="modal-dialog">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title">Claim Rejection Reason</h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p><strong>Policy:</strong> {{ claim.policy.title }}</p>
+                                    <p><strong>Incident Date:</strong> {{ claim.incident_date.strftime('%B %d, %Y') }}</p>
+                                    <hr>
+                                    <p class="mb-0">{{ claim.rejection_reason }}</p>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-5">
+            <span class="material-symbols-outlined" style="font-size: 4rem; opacity: 0.3;">receipt_long</span>
+            <h5 class="mt-3">No Claims History</h5>
+            <p>You haven't filed any insurance claims yet.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle "Browse Available Plans" button
+    const goToAvailablePlansBtn = document.getElementById('goToAvailablePlans');
+    if (goToAvailablePlansBtn) {
+        goToAvailablePlansBtn.addEventListener('click', function() {
+            const availablePlansTab = document.getElementById('available-plans-tab');
+            const tab = new bootstrap.Tab(availablePlansTab);
+            tab.show();
+        });
+    }
+});
+</script>
+
+{% endblock %}

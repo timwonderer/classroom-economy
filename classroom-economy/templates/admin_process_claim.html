@@ -1,0 +1,293 @@
+{% extends "layout_admin.html" %}
+{% set page_title = "Process Insurance Claim" %}
+{% set current_page = "insurance" %}
+{% block title %}Process Claim{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+<style>
+    .EasyMDEContainer .CodeMirror {
+        min-height: 100px;
+    }
+    .editor-toolbar {
+        border-radius: 4px 4px 0 0;
+    }
+    .CodeMirror {
+        border-radius: 0 0 4px 4px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="row">
+  <div class="col-md-8">
+    <div class="card shadow mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">Claim Details</h5>
+      </div>
+      <div class="card-body">
+        <dl class="row">
+          <dt class="col-sm-4">Student:</dt>
+          <dd class="col-sm-8">{{ claim.student.full_name }}</dd>
+
+          <dt class="col-sm-4">Insurance Policy:</dt>
+          <dd class="col-sm-8">{{ claim.policy.title }}</dd>
+
+          <dt class="col-sm-4">Claim Type:</dt>
+          <dd class="col-sm-8">
+            {% if claim.policy.claim_type == 'transaction_monetary' %}
+              <span class="badge bg-info">[TXN] Transaction-based</span>
+            {% elif claim.policy.claim_type == 'non_monetary' %}
+              <span class="badge bg-warning text-dark">[NON-MONETARY]</span>
+            {% else %}
+              <span class="badge bg-primary">[LEGACY]</span>
+            {% endif %}
+          </dd>
+
+          <dt class="col-sm-4">Incident Date:</dt>
+          <dd class="col-sm-8">{{ claim.incident_date.strftime('%B %d, %Y') }}</dd>
+
+          <dt class="col-sm-4">Filed Date:</dt>
+          <dd class="col-sm-8">{{ claim.filed_date.strftime('%B %d, %Y at %I:%M %p') }}</dd>
+
+          {% if claim.transaction %}
+          <dt class="col-sm-4">Linked Transaction:</dt>
+          <dd class="col-sm-8">
+            <div class="d-flex flex-column">
+              <span class="fw-semibold">{{ claim.transaction.timestamp.strftime('%Y-%m-%d') }}</span>
+              <span class="text-muted">{{ claim.transaction.description or 'No description' }}</span>
+              <span class="badge bg-secondary mt-1">Amount: ${{ '%.2f'|format(claim.transaction.amount|abs) }}</span>
+            </div>
+          </dd>
+          {% endif %}
+
+          {% if claim.claim_amount %}
+          <dt class="col-sm-4">Claim Amount:</dt>
+          <dd class="col-sm-8">
+            ${{ "%.2f"|format(claim.claim_amount) }}
+          </dd>
+          {% endif %}
+
+          {% if claim.claim_item %}
+          <dt class="col-sm-4">Claiming:</dt>
+          <dd class="col-sm-8">
+            <span class="badge bg-warning text-dark">{{ claim.claim_item }}</span>
+          </dd>
+          {% endif %}
+
+          <dt class="col-sm-4">Current Status:</dt>
+          <dd class="col-sm-8">
+            <span class="badge
+              {% if claim.status == 'pending' %}bg-warning text-dark
+              {% elif claim.status == 'approved' %}bg-success
+              {% elif claim.status == 'rejected' %}bg-danger
+              {% elif claim.status == 'paid' %}bg-info
+              {% endif %}">
+              {{ claim.status|title }}
+            </span>
+          </dd>
+        </dl>
+
+        <hr>
+
+        <h6>Claim Description:</h6>
+        <div class="bg-light p-3 rounded">{{ claim.description | markdown }}</div>
+
+        {% if claim.comments %}
+        <h6>Student Comments:</h6>
+        <div class="bg-light p-3 rounded">{{ claim.comments | markdown }}</div>
+        {% endif %}
+
+        {% if claim.rejection_reason %}
+        <h6>Rejection Reason:</h6>
+        <div class="bg-danger bg-opacity-10 p-3 rounded text-danger">{{ claim.rejection_reason | markdown }}</div>
+        {% endif %}
+
+        {% if claim.admin_notes %}
+        <h6>Admin Notes:</h6>
+        <div class="bg-info bg-opacity-10 p-3 rounded">{{ claim.admin_notes | markdown }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="col-md-4">
+    <div class="card shadow mb-4">
+      <div class="card-header">
+        <h5 class="mb-0">Policy Information</h5>
+      </div>
+      <div class="card-body">
+        <p><strong>Claim Type:</strong><br>
+          {% if claim.policy.claim_type == 'transaction_monetary' %}
+            <span class="badge bg-info">[TXN] Transaction-based</span>
+          {% elif claim.policy.claim_type == 'non_monetary' %}
+            <span class="badge bg-warning text-dark">[NON-MONETARY]</span>
+          {% else %}
+            <span class="badge bg-primary">[LEGACY]</span>
+          {% endif %}
+        </p>
+
+        <p><strong>Coverage Start:</strong><br>
+          {% if enrollment.coverage_start_date %}
+            {{ enrollment.coverage_start_date.strftime('%B %d, %Y') }}
+          {% else %}
+            <span class="text-warning">Still in waiting period</span>
+          {% endif %}
+        </p>
+
+        <p><strong>Waiting Period:</strong><br>
+          {{ claim.policy.waiting_period_days }} days
+        </p>
+
+        <p><strong>Claim Time Limit:</strong><br>
+          {{ claim.policy.claim_time_limit_days }} days from incident
+        </p>
+
+        <p><strong>Max Claim Amount:</strong><br>
+          {% if claim.policy.max_claim_amount %}
+            ${{ "%.2f"|format(claim.policy.max_claim_amount) }}
+          {% else %}
+            Unlimited
+          {% endif %}
+        </p>
+
+        <p><strong>Max Claims:</strong><br>
+          {% if claim.policy.max_claims_count %}
+            {{ claim.policy.max_claims_count }} per {{ claim.policy.max_claims_period }}
+          {% else %}
+            Unlimited
+          {% endif %}
+        </p>
+
+        <p><strong>Premium Status:</strong><br>
+          {% if enrollment.payment_current %}
+            <span class="badge bg-success">Current</span>
+          {% else %}
+            <span class="badge bg-danger">{{ enrollment.days_unpaid }} days overdue</span>
+          {% endif %}
+        </p>
+
+        {% if remaining_period_cap is not none and claim.policy.max_payout_per_period %}
+          <p><strong>Remaining Period Cap:</strong><br>
+            ${{ '%.2f'|format(remaining_period_cap) }} left this {{ claim.policy.max_claims_period }}
+          </p>
+        {% endif %}
+
+        <hr>
+
+        <h6>Validation Status:</h6>
+        {% if validation_errors %}
+          {% for error in validation_errors %}
+            <div class="alert alert-danger py-2 small">{{ error }}</div>
+          {% endfor %}
+        {% else %}
+          <div class="alert alert-success py-2 small">✓ Claim meets all requirements</div>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card shadow">
+      <div class="card-header">
+        <h5 class="mb-0">Student's Claims History</h5>
+      </div>
+      <div class="card-body">
+        <p class="mb-2"><strong>This Policy:</strong></p>
+        <ul class="small mb-3">
+          <li>Pending: {{ claims_stats.pending }} claims</li>
+          <li>Approved: {{ claims_stats.approved }} claims</li>
+          <li>Rejected: {{ claims_stats.rejected }} claims</li>
+          <li>Paid: {{ claims_stats.paid }} claims</li>
+        </ul>
+
+        {% if claim.policy.max_claims_count %}
+          <p class="text-muted small">
+            Used {{ claims_stats.approved + claims_stats.paid }} of {{ claim.policy.max_claims_count }} claims this {{ claim.policy.max_claims_period }}
+          </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Process Claim Form -->
+<div class="card shadow">
+  <div class="card-header">
+    <h5 class="mb-0">Process This Claim</h5>
+  </div>
+  <div class="card-body">
+    <form method="POST" action="{{ url_for('admin.process_claim', claim_id=claim.id) }}">
+      {{ form.hidden_tag() }}
+
+      <div class="row">
+        <div class="col-md-6 mb-3">
+          {{ form.status.label(class="form-label") }}
+          {{ form.status(class="form-select") }}
+        </div>
+        {% if claim.policy.claim_type == 'legacy_monetary' %}
+          <div class="col-md-6 mb-3">
+            {{ form.approved_amount.label(class="form-label") }}
+            <div class="input-group">
+              <span class="input-group-text">$</span>
+              {{ form.approved_amount(class="form-control") }}
+            </div>
+            <small class="text-muted">Leave blank to use requested amount</small>
+          </div>
+        {% elif claim.policy.claim_type == 'transaction_monetary' %}
+          <div class="col-md-6 mb-3">
+            <label class="form-label">Approved Amount</label>
+            <input type="text" class="form-control" value="Auto-calculated from the linked transaction" disabled>
+            <small class="text-muted">Per-claim and period caps will be applied automatically.</small>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="mb-3">
+        {{ form.rejection_reason.label(class="form-label") }}
+        {{ form.rejection_reason(class="form-control", rows=3) }}
+        <small class="text-muted">Required if rejecting claim</small>
+      </div>
+
+      <div class="mb-3">
+        {{ form.admin_notes.label(class="form-label") }}
+        {{ form.admin_notes(class="form-control", rows=3) }}
+      </div>
+
+      <div class="d-flex gap-2">
+        {{ form.submit(class="btn btn-primary") }}
+        <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-secondary">Back to Insurance</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+<script>
+  // Initialize markdown editors for rejection reason and admin notes
+  document.addEventListener('DOMContentLoaded', function() {
+    const rejectionReasonField = document.getElementById('rejection_reason');
+    const adminNotesField = document.getElementById('admin_notes');
+
+    if (rejectionReasonField) {
+      new EasyMDE({
+        element: rejectionReasonField,
+        spellChecker: false,
+        toolbar: ["bold", "italic", "|", "unordered-list", "ordered-list", "|", "link", "|", "preview"],
+        status: false,
+        placeholder: "Explain why this claim is being rejected (Markdown supported)...",
+      });
+    }
+
+    if (adminNotesField) {
+      new EasyMDE({
+        element: adminNotesField,
+        spellChecker: false,
+        toolbar: ["bold", "italic", "|", "unordered-list", "ordered-list", "|", "link", "|", "preview"],
+        status: false,
+        placeholder: "Internal notes about this claim (Markdown supported)...",
+      });
+    }
+  });
+</script>
+
+{% endblock %}

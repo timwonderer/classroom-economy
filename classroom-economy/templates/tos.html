@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Terms of Service - Classroom Economy</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body {
+      background-color: #02301b;
+      font-family: 'Inter', sans-serif;
+      padding: 2rem;
+    }
+    .container {
+      background-color: white;
+      padding: 2rem;
+      border-radius: 10px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+      max-width: 800px;
+      margin: auto;
+    }
+    h2 {
+      margin-bottom: 1.5rem;
+    }
+    h4 {
+      margin-top: 1.5rem;
+    }
+    p, ul {
+      margin-top: 0.5rem;
+      font-size: 1rem;
+      color: #333;
+    }
+    ul {
+      padding-left: 1.25rem;
+    }
+    a.btn {
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2 class="mb-4">Terms of Service</h2>
+
+    <h4>1. Acceptance of Terms</h4>
+    <p>By accessing or using the Classroom Economy application ("Service"), you agree to be bound by these Terms of Service ("Terms"). If you disagree with any part of the terms, you may not access the Service.</p>
+
+    <h4>2. Description of Service</h4>
+    <p>Classroom Economy is a web-based application designed for educational purposes to simulate a classroom economy. The Service allows educators to manage virtual currency, student participation, and other related activities.</p>
+
+    <h4>3. User Accounts</h4>
+    <p>To use certain features of the Service, you must create an account. You are responsible for safeguarding your account credentials, including your username, PIN, and passphrase. You agree not to disclose your credentials to any third party. You must notify us immediately upon becoming aware of any breach of security or unauthorized use of your account.</p>
+
+    <h4>4. User Conduct</h4>
+    <p>You agree not to use the Service to:</p>
+    <ul>
+      <li>Violate any local, state, national, or international law.</li>
+      <li>Impersonate any person or entity or falsely state or otherwise misrepresent your affiliation with a person or entity.</li>
+      <li>Interfere with or disrupt the Service or servers or networks connected to the Service.</li>
+      <li>Attempt to gain unauthorized access to the Service, other accounts, or computer systems or networks connected to the Service.</li>
+    </ul>
+
+    <h4>5. Intellectual Property and License</h4>
+    <p>The Service and its original content, features, and functionality are and will remain the exclusive property of Timothy Chang and its licensors. The Service is protected by copyright, trademark, and other laws of both the United States and foreign countries.</p>
+    <p>This application is licensed under the <strong>PolyForm Noncommercial License 1.0.0</strong>. You may use, copy, and modify the software for non-commercial educational purposes only. A copy of the license is available at <a href="https://polyformproject.org/licenses/noncommercial/1.0.0/">https://polyformproject.org/licenses/noncommercial/1.0.0/</a>.</p>
+    <p>The source code is available on GitHub at <a href="https://github.com/timwonderer/classroom-economy">https://github.com/timwonderer/classroom-economy</a>.</p>
+
+    <h4>6. Termination</h4>
+    <p>We may terminate or suspend your account and bar access to the Service immediately, without prior notice or liability, under our sole discretion, for any reason whatsoever and without limitation, including but not to a breach of the Terms.</p>
+
+    <h4>7. Disclaimer of Warranties</h4>
+    <p>The Service is provided on an "AS IS" and "AS AVAILABLE" basis. Your use of the Service is at your sole risk. The Service is provided without warranties of any kind, whether express or implied, including, but not limited to, implied warranties of merchantability, fitness for a particular purpose, non-infringement, or course of performance.</p>
+
+    <h4>8. Limitation of Liability</h4>
+    <p>In no event shall Timothy Chang, nor its directors, employees, partners, agents, suppliers, or affiliates, be liable for any indirect, incidental, special, consequential or punitive damages, including without limitation, loss of profits, data, use, goodwill, or other intangible losses, resulting from your access to or use of or inability to access or use the Service.</p>
+
+    <h4>9. Governing Law</h4>
+    <p>These Terms shall be governed and construed in accordance with the laws of the jurisdiction in which the service is operated, without regard to its conflict of law provisions.</p>
+
+    <h4>10. Changes to Terms</h4>
+    <p>We reserve the right, at our sole discretion, to modify or replace these Terms at any time. If a revision is material, we will provide at least 30 days' notice prior to any new terms taking effect. What constitutes a material change will be determined at our sole discretion.</p>
+
+    <h4>11. Contact Us</h4>
+    <p>If you have any questions about these Terms, please contact Timothy Chang at <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a>.</p>
+
+    <a href="{{ url_for('student.login') }}" class="btn btn-secondary mt-4">← Back to Login</a>
+  </div>
+</body>
+</html>

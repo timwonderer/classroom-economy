@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>503 - Service Unavailable</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Noto Sans', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .error-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            max-width: 700px;
+            width: 100%;
+            overflow: hidden;
+        }
+
+        .error-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+
+        .error-header h1 {
+            font-size: 5rem;
+            font-weight: 700;
+            margin: 0;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .error-header p {
+            font-size: 1.3rem;
+            margin: 0.5rem 0 0 0;
+            opacity: 0.95;
+        }
+
+        .error-body {
+            padding: 2rem;
+        }
+
+        .friendly-message {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .friendly-message h3 {
+            color: #333;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .friendly-message p {
+            color: #666;
+            font-size: 1.05rem;
+            line-height: 1.6;
+        }
+
+        .status-box {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .status-box h5 {
+            color: #667eea;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .status-box p {
+            color: #555;
+            margin: 0;
+            line-height: 1.6;
+        }
+
+        .troubleshooting {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .troubleshooting h5 {
+            color: #333;
+            margin-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        .troubleshooting ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .troubleshooting li {
+            padding: 0.5rem 0;
+            color: #555;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .troubleshooting li:before {
+            content: "→";
+            color: #667eea;
+            font-weight: bold;
+            margin-right: 0.75rem;
+            font-size: 1.2rem;
+        }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .btn-primary-custom {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: transform 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-primary-custom:hover {
+            transform: translateY(-2px);
+            color: white;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        .btn-secondary-custom {
+            background: #6c757d;
+            color: white;
+            border: none;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: transform 0.2s;
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn-secondary-custom:hover {
+            transform: translateY(-2px);
+            color: white;
+            background: #5a6268;
+        }
+
+        .emoji {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+
+        .auto-refresh {
+            background: #e8f5e9;
+            border: 1px solid #81c784;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1.5rem;
+            text-align: center;
+        }
+
+        .auto-refresh p {
+            margin: 0;
+            color: #2e7d32;
+            font-size: 0.95rem;
+        }
+
+        .countdown {
+            font-weight: 700;
+            color: #1b5e20;
+        }
+
+        @media (max-width: 768px) {
+            .error-header h1 {
+                font-size: 4rem;
+            }
+
+            .error-body {
+                padding: 1.5rem;
+            }
+
+            .actions {
+                flex-direction: column;
+            }
+
+            .btn-primary-custom,
+            .btn-secondary-custom {
+                width: 100%;
+                text-align: center;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="error-container">
+        <div class="error-header">
+            <h1>503</h1>
+            <p>Service Unavailable</p>
+        </div>
+
+        <div class="error-body">
+            <div class="friendly-message">
+                <div class="emoji">🔧</div>
+                <h3>We're temporarily down for maintenance.</h3>
+                <p>The service is currently unavailable. This is usually temporary!</p>
+            </div>
+
+            <div class="status-box">
+                <h5>What's happening?</h5>
+                <p>
+                    The Classroom Token Hub is currently undergoing maintenance or experiencing high traffic.
+                    Our team is working to restore normal service as quickly as possible.
+                </p>
+            </div>
+
+            <div class="troubleshooting">
+                <h5>What can you do?</h5>
+                <ul>
+                    <li><strong>Wait a few minutes:</strong> This is usually temporary. The page will auto-refresh in 30 seconds</li>
+                    <li><strong>Try refreshing:</strong> Click the "Try Again" button below to check if the service is back</li>
+                    <li><strong>Check back later:</strong> If the issue persists, please try again in 5-10 minutes</li>
+                    <li><strong>Contact support:</strong> If you continue to see this error for an extended period, let us know</li>
+                </ul>
+            </div>
+
+            <div class="actions">
+                <a href="javascript:window.location.reload()" class="btn-primary-custom">Try Again</a>
+                <a href="/" class="btn-secondary-custom">Go to Home</a>
+                {% if status_page_url %}
+                <a href="{{ status_page_url }}" target="_blank" rel="noopener noreferrer" class="btn-primary-custom" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                    📊 Check System Status
+                </a>
+                {% endif %}
+                <a href="/student/help-support" class="btn-primary-custom" style="background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+                    🐛 Report This Issue
+                </a>
+            </div>
+
+            <div class="auto-refresh">
+                <p>This page will automatically refresh in <span class="countdown" id="countdown">30</span> seconds</p>
+            </div>
+
+            <div class="mt-4 text-center">
+                <p class="text-muted" style="font-size: 0.9rem;">
+                    If this persists, contact support at
+                    <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a>
+                    {% if status_page_url %}
+                    <br>
+                    Check our <a href="{{ status_page_url }}" target="_blank" rel="noopener noreferrer">system status page</a> for real-time updates.
+                    {% endif %}
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Auto-refresh countdown
+        let secondsLeft = 30;
+        const countdownElement = document.getElementById('countdown');
+
+        const countdownInterval = setInterval(() => {
+            secondsLeft--;
+            if (countdownElement) {
+                countdownElement.textContent = secondsLeft;
+            }
+
+            if (secondsLeft <= 0) {
+                clearInterval(countdownInterval);
+                window.location.reload();
+            }
+        }, 1000);
+    </script>
+</body>
+
+</html>

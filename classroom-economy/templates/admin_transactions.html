@@ -1,0 +1,161 @@
+{% extends "layout_admin.html" %}
+{% set page_title = "Transaction History" %}
+{% block title %}Transaction History{% endblock %}
+{% block page_icon %}account_balance_wallet{% endblock %}
+{% block content %}
+<div class="container-fluid">
+  
+  <div class="mb-4">
+    <div class="card-header">
+      Most Recent Transactions
+    </div>
+    <div class="card-body">
+      <form method="get" class="row g-2 mb-3">
+        <div class="col-auto">
+          <input type="text" name="student" value="{{ request.args.get('student','') }}"
+                 class="form-control" placeholder="Student name or ID">
+        </div>
+        <div class="col-auto">
+          <select name="block" class="form-select">
+            <option value="">All Blocks</option>
+            {% for b in ['A','B','C','D'] %}
+              <option value="{{ b }}" {% if request.args.get('block')==b %}selected{% endif %}>Block {{ b }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <select name="type" class="form-select">
+            <option value="">All Types</option>
+            {% for t in ['Deposit','Withdrawal','Refund','Fees','Interest'] %}
+              <option value="{{ t }}" {% if request.args.get('type')==t %}selected{% endif %}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <input type="date" name="start_date" value="{{ request.args.get('start_date','') }}" class="form-control">
+        </div>
+        <div class="col-auto">
+          <input type="date" name="end_date" value="{{ request.args.get('end_date','') }}" class="form-control">
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">Filter</button>
+        </div>
+      </form>
+      <div class="table-responsive" style="max-height:600px; overflow-y:auto; border-style:solid; border-color:#2f4f4f; border-width:2px;"> 
+       <table id="transactionsTable" class="table table-striped styled-table" >
+          <thead class="table-dark sticky-top">
+            <tr>
+              <th style="width:220px">Date</th>
+              <th style="width:300px">Name</th>
+              <th style="width:60px">Block</th>
+              <th style="width:105px">Type</th>
+              <th style="width:110px">Amount</th>
+              <th>Note</th>
+              <th style="width:100px">Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for tx in transactions %}
+            <tr>
+              <td>
+                {% if tx.timestamp %}
+                  <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
+                {% else %}
+                  —
+                {% endif %}
+              </td>
+              <td>{{ tx.student.full_name if tx.student else tx.student_name }}</td>
+              <td>{{ tx.student_block }}</td>
+              <td>{{ tx.type }}</td>
+              <td>{{ tx.amount }}</td>
+              <td>{{ tx.reason or '—' }}</td>
+              <td>
+                {% if not tx.is_void %}
+                  <button type="button" class="btn btn-sm btn-outline-danger void-btn" data-id="{{ tx.id }}">❌ Void</button>
+                {% else %}
+                  <span class="badge bg-secondary">Voided</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <nav aria-label="Transaction pages" class="mt-3">
+        <ul class="pagination justify-content-center">
+          {% set current = page %}
+          {% for p in range(1, total_pages+1) %}
+            <li class="page-item {% if p==current %}active{% endif %}">
+              <a class="page-link" href="?{% for key,value in request.args.items() if key!='page' %}{{ key }}={{ value }}&{% endfor %}page={{ p }}">{{ p }}</a>
+            </li>
+          {% endfor %}
+        </ul>
+        <p class="text-center">Page {{ page }} of {{ total_pages }}</p>
+      </nav>
+    </div>
+  </div>
+</div>
+
+<script>
+// AJAX void transaction, reusing existing helper
+function voidTransaction(id) {
+  fetch(`/admin/void-transaction/${id}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
+    },
+    body: JSON.stringify({})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.status === 'success') {
+      showToast('success', data.message);
+      const btn = document.querySelector(`.void-btn[data-id="${id}"]`);
+      const row = btn.closest('tr');
+      row.classList.add('text-muted', 'text-decoration-line-through');
+      const cell = btn.parentElement;
+      cell.innerHTML = '<span class="badge bg-secondary">Voided</span>';
+    } else {
+      showToast('warning', data.message || 'Error voiding transaction');
+    }
+  })
+  .catch(() => {
+    showToast('warning', 'Network error');
+  });
+}
+
+// Bind void buttons after DOM load
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('.void-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (confirm('Void this transaction?')) {
+        const id = btn.getAttribute('data-id');
+        voidTransaction(id);
+      }
+    });
+  });
+});
+
+// Convert UTC timestamps to local time display
+document.addEventListener("DOMContentLoaded", () => {
+    document.querySelectorAll(".local-timestamp").forEach(el => {
+        const utcString = el.dataset.timestamp;
+        if (utcString) {
+            const date = new Date(utcString);
+            const options = {
+                year: 'numeric',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: 'numeric',
+                hour12: true
+            };
+            el.textContent = date.toLocaleString(undefined, options);
+        } else {
+            el.textContent = '—';
+        }
+    });
+});
+</script>
+{% endblock %}

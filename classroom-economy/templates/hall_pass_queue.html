@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hall Pass Queue</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+            vertical-align: middle;
+        }
+    </style>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            color: #1a202c;
+            padding: 2rem;
+            min-height: 100vh;
+        }
+
+        h1 {
+            text-align: center;
+            font-weight: 800;
+            margin-bottom: 0.5rem;
+            font-size: 3rem;
+            color: white;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        .subtitle {
+            text-align: center;
+            font-size: 1.3rem;
+            color: rgba(255, 255, 255, 0.9);
+            margin-bottom: 2.5rem;
+            font-weight: 500;
+        }
+
+        .queue-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .queue-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 3rem;
+        }
+
+        .stat-card {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 15px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .stat-number {
+            font-size: 3.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-number.warning {
+            background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-number.danger {
+            background: linear-gradient(135deg, #f56565 0%, #c53030 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .stat-label {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #4a5568;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .queue-list-container {
+            background: white;
+            border-radius: 20px;
+            padding: 2.5rem;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+        }
+
+        .queue-list-header {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 2rem;
+            padding-bottom: 1rem;
+            border-bottom: 3px solid #e2e8f0;
+        }
+
+        .queue-item {
+            display: grid;
+            grid-template-columns: 60px 1fr 120px;
+            gap: 1rem;
+            align-items: center;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            background: #f7fafc;
+            border-radius: 12px;
+            border-left: 4px solid #667eea;
+            transition: all 0.3s ease;
+        }
+
+        .queue-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+
+        .queue-position {
+            font-size: 1.8rem;
+            font-weight: 800;
+            color: #667eea;
+            text-align: center;
+        }
+
+        .queue-student-name {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #2d3748;
+        }
+
+        .queue-destination {
+            font-size: 1rem;
+            color: #718096;
+            font-weight: 500;
+        }
+
+        .queue-time {
+            font-size: 0.9rem;
+            color: #a0aec0;
+            text-align: right;
+        }
+
+        .empty-queue {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: #718096;
+        }
+
+        .empty-queue-icon {
+            font-size: 5rem;
+            margin-bottom: 1rem;
+        }
+
+        .empty-queue-text {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .limit-warning {
+            background: linear-gradient(135deg, #fff5f5 0%, #fed7d7 100%);
+            color: #742a2a;
+            padding: 1.5rem;
+            border-radius: 16px;
+            margin-bottom: 2rem;
+            text-align: center;
+            font-weight: 600;
+            font-size: 1.1rem;
+            border: 2px solid #fc8181;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .queue-item {
+            animation: fadeIn 0.4s ease-out;
+        }
+    </style>
+</head>
+<body>
+    <div class="queue-container">
+        <h1><span class="material-symbols-outlined" style="font-size: 3rem;">list_alt</span> Hall Pass Queue</h1>
+        <p class="subtitle">Current Restroom Queue Status</p>
+
+        <div class="queue-stats">
+            <div class="stat-card">
+                <div class="stat-number" id="queueCount">0</div>
+                <div class="stat-label">In Queue</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="outNowCount">0</div>
+                <div class="stat-label">Currently Out</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="availableSlots">10</div>
+                <div class="stat-label">Available Slots</div>
+            </div>
+        </div>
+
+        <div id="limitWarning" class="limit-warning" style="display: none;">
+            <span class="material-symbols-outlined">warning</span> <span id="limitWarningText">Queue limit reached! Restroom, Locker, and Office passes are temporarily unavailable.</span>
+        </div>
+
+        <div class="queue-list-container">
+            <div class="queue-list-header">Queue (Approved, Not Yet Checked Out)</div>
+            <div id="queueList"></div>
+            <div id="emptyQueue" class="empty-queue" style="display: none;">
+                <div class="empty-queue-icon"><span class="material-symbols-outlined" style="font-size: 5rem; color: #48bb78;">check_circle</span></div>
+                <div class="empty-queue-text">No one in queue</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function formatTime(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleTimeString(undefined, {
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true
+            });
+        }
+
+        function getTimeElapsed(isoString) {
+            const approvedTime = new Date(isoString);
+            const now = new Date();
+            const diffMs = now - approvedTime;
+            const diffMins = Math.floor(diffMs / 60000);
+
+            if (diffMins < 1) return 'Just now';
+            if (diffMins === 1) return '1 min ago';
+            return `${diffMins} mins ago`;
+        }
+
+        function renderQueue(data) {
+            const queueList = document.getElementById('queueList');
+            const emptyQueue = document.getElementById('emptyQueue');
+            const queueCount = document.getElementById('queueCount');
+            const outNowCount = document.getElementById('outNowCount');
+            const availableSlots = document.getElementById('availableSlots');
+            const limitWarning = document.getElementById('limitWarning');
+            const limitWarningText = document.getElementById('limitWarningText');
+
+            const queueSize = data.queue.length;
+            const outCount = data.currently_out;
+            const totalOccupied = queueSize + outCount;
+            const queueLimit = data.queue_limit || 10;
+            const available = Math.max(0, queueLimit - totalOccupied);
+            const queueEnabled = data.queue_enabled !== false;
+
+            // Update stats
+            queueCount.textContent = queueSize;
+            queueCount.className = 'stat-number' + (queueSize >= 7 ? ' warning' : '');
+
+            outNowCount.textContent = outCount;
+            outNowCount.className = 'stat-number' + (outCount >= 7 ? ' warning' : '');
+
+            availableSlots.textContent = available;
+            availableSlots.className = 'stat-number' + (available === 0 ? ' danger' : available <= 3 ? ' warning' : '');
+
+            // Show/hide warning
+            if (!queueEnabled) {
+                limitWarning.style.display = 'block';
+                limitWarningText.textContent = 'Queue System Disabled! Only Summon and Nurse passes are available.';
+            } else if (totalOccupied >= queueLimit) {
+                limitWarning.style.display = 'block';
+                limitWarningText.textContent = 'Queue limit reached! Restroom, Locker, and Office passes are temporarily unavailable.';
+            } else {
+                limitWarning.style.display = 'none';
+            }
+
+            // Render queue
+            if (data.queue.length === 0) {
+                queueList.innerHTML = '';
+                emptyQueue.style.display = 'block';
+                return;
+            }
+
+            emptyQueue.style.display = 'none';
+
+            const html = data.queue.map((item, index) => {
+                return `
+                <div class="queue-item">
+                    <div class="queue-position">#${index + 1}</div>
+                    <div>
+                        <div class="queue-student-name">${item.student_name}</div>
+                        <div class="queue-destination">${item.destination}</div>
+                    </div>
+                    <div class="queue-time">${getTimeElapsed(item.approved_time)}</div>
+                </div>
+            `;
+            }).join('');
+
+            queueList.innerHTML = html;
+        }
+
+        function fetchQueue() {
+            fetch('/api/hall-pass/queue')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        renderQueue(data);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching queue:', error);
+                });
+        }
+
+        // Initial fetch
+        fetchQueue();
+
+        // Refresh every 30 seconds
+        setInterval(fetchQueue, 30000);
+    </script>
+</body>
+</html>

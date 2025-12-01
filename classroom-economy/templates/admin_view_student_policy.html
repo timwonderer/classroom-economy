@@ -1,0 +1,200 @@
+{% extends "layout_admin.html" %}
+{% set current_page = "insurance" %}
+
+{% block title %}Student Policy Details{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>{{ student.full_name }} - {{ enrollment.policy.title }}</h1>
+    <p class="subtitle">Policy Enrollment Details and Claims History</p>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <!-- Policy Overview -->
+        <div class="card mb-4">
+            <div class="card-header">
+                Policy Overview
+            </div>
+            <div class="card-body">
+                <h5>{{ enrollment.policy.title }}</h5>
+                <div class="text-muted">{{ enrollment.policy.description | markdown }}</div>
+
+                <hr>
+
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Student:</strong> {{ student.full_name }}</p>
+                        <p><strong>Premium:</strong> ${{ "%.2f"|format(enrollment.policy.premium) }} / {{ enrollment.policy.charge_frequency }}</p>
+                        <p><strong>Autopay:</strong> {{ 'Enabled' if enrollment.policy.autopay else 'Disabled' }}</p>
+                        <p><strong>Status:</strong>
+                            <span class="badge {% if enrollment.status == 'active' %}bg-success{% else %}bg-secondary{% endif %}">
+                                {{ enrollment.status|title }}
+                            </span>
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Purchase Date:</strong> {{ enrollment.purchase_date.strftime('%B %d, %Y') }}</p>
+                        <p><strong>Coverage Start:</strong>
+                            {% if enrollment.coverage_start_date %}
+                                {{ enrollment.coverage_start_date.strftime('%B %d, %Y') }}
+                            {% else %}
+                                <span class="text-warning">In waiting period ({{ enrollment.policy.waiting_period_days }} days)</span>
+                            {% endif %}
+                        </p>
+                        <p><strong>Payment Status:</strong>
+                            {% if enrollment.payment_current %}
+                                <span class="badge bg-success">Current</span>
+                            {% else %}
+                                <span class="badge bg-danger">Overdue {{ enrollment.days_unpaid }} days</span>
+                            {% endif %}
+                        </p>
+                        {% if enrollment.next_payment_due %}
+                            <p><strong>Next Payment:</strong> {{ enrollment.next_payment_due.strftime('%B %d, %Y') }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Coverage Details -->
+        <div class="card mb-4">
+            <div class="card-header">
+                Coverage Details
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Claim Limits</h6>
+                        <ul>
+                            <li>Waiting period: {{ enrollment.policy.waiting_period_days }} days</li>
+                            <li>Claim deadline: {{ enrollment.policy.claim_time_limit_days }} days from incident</li>
+                            {% if enrollment.policy.max_claim_amount %}
+                                <li>Max per claim: ${{ "%.2f"|format(enrollment.policy.max_claim_amount) }}</li>
+                            {% else %}
+                                <li>Max per claim: Unlimited</li>
+                            {% endif %}
+                            {% if enrollment.policy.max_claims_count %}
+                                <li>Max claims: {{ enrollment.policy.max_claims_count }} per {{ enrollment.policy.max_claims_period }}</li>
+                            {% else %}
+                                <li>Max claims: Unlimited</li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Payment Terms</h6>
+                        <ul>
+                            <li>Frequency: {{ enrollment.policy.charge_frequency|title }}</li>
+                            <li>Autopay: {{ 'Yes' if enrollment.policy.autopay else 'No' }}</li>
+                            <li>Auto-cancel after {{ enrollment.policy.auto_cancel_nonpay_days }} days of non-payment</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Claims History -->
+        <div class="card mb-4">
+            <div class="card-header">
+                Claims for This Policy
+            </div>
+            <div class="card-body">
+                {% if claims %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Incident Date</th>
+                                    <th>Filed Date</th>
+                                    <th>Amount</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for claim in claims %}
+                                <tr>
+                                    <td>{{ claim.incident_date.strftime('%Y-%m-%d') }}</td>
+                                    <td>{{ claim.filed_date.strftime('%Y-%m-%d') }}</td>
+                                    <td>
+                                        {% if claim.approved_amount %}
+                                            ${{ "%.2f"|format(claim.approved_amount) }}
+                                        {% elif claim.claim_amount %}
+                                            ${{ "%.2f"|format(claim.claim_amount) }}
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <span class="badge
+                                            {% if claim.status == 'pending' %}bg-warning text-dark
+                                            {% elif claim.status == 'approved' %}bg-success
+                                            {% elif claim.status == 'rejected' %}bg-danger
+                                            {% elif claim.status == 'paid' %}bg-info
+                                            {% endif %}">
+                                            {{ claim.status|title }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        <a href="{{ url_for('admin.process_claim', claim_id=claim.id) }}" class="btn btn-sm btn-outline-primary">
+                                            Process
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <p class="text-muted mb-0">No claims filed yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <!-- Quick Actions -->
+        <div class="card mb-4">
+            <div class="card-header">
+                Quick Actions
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <a href="{{ url_for('admin.student_detail', student_id=student.id) }}" class="btn btn-primary">
+                        View Student Details
+                    </a>
+                    <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-outline-secondary">
+                        Back to Insurance Management
+                    </a>
+                </div>
+            </div>
+        </div>
+
+        <!-- Policy Info -->
+        <div class="card">
+            <div class="card-header">
+                Policy Information
+            </div>
+            <div class="card-body">
+                <p class="small mb-2"><strong>Policy Type:</strong></p>
+                <p class="mb-3">
+                    {% if policy.claim_type == 'transaction_monetary' %}
+                        <span class="badge bg-info">[TXN] Transaction-based</span>
+                    {% elif policy.claim_type == 'non_monetary' %}
+                        <span class="badge bg-warning text-dark">[NON-MONETARY] Approval only</span>
+                    {% else %}
+                        <span class="badge bg-primary">[LEGACY] Manual amounts</span>
+                    {% endif %}
+                </p>
+
+                {% if enrollment.policy.no_repurchase_after_cancel %}
+                    <p class="small text-danger mb-0">
+                        <strong>⚠️ Repurchase Restriction:</strong> {{ enrollment.policy.repurchase_wait_days }} day waiting period if cancelled
+                    </p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}

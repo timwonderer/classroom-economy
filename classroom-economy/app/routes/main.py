@@ -1,0 +1,187 @@
+"""
+Main routes for Classroom Token Hub.
+
+Contains public-facing utility routes including health checks, legal pages,
+debug endpoints, and hall pass terminals (no authentication required).
+"""
+
+from flask import Blueprint, redirect, url_for, jsonify, current_app, session, request
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.extensions import db
+from app.models import Admin
+from app.utils.helpers import render_template_with_fallback as render_template, is_safe_url
+
+# Create blueprint
+main_bp = Blueprint('main', __name__)
+
+
+# -------------------- HOME AND LEGAL PAGES --------------------
+
+@main_bp.route('/')
+def home():
+    """Redirect to student login page."""
+    return redirect(url_for('student.login'))
+
+
+@main_bp.route('/health')
+def health_check():
+    """Simple health check endpoint for uptime monitoring."""
+    try:
+        db.session.execute(text('SELECT 1'))
+        return 'ok', 200
+    except SQLAlchemyError as e:
+        current_app.logger.exception('Health check failed')
+        return jsonify(error='Database error'), 500
+
+
+@main_bp.route('/health/deep')
+def health_check_deep():
+    """
+    Extended health check that validates critical system components.
+
+    Checks:
+    - Database connectivity
+    - Student table accessibility
+    - Admin table accessibility
+    - Hall passes table accessibility (if accessible)
+
+    Returns JSON with component status for detailed monitoring.
+    Individual table checks that fail are logged but don't fail the entire check.
+    """
+    checks = {}
+    overall_status = 'ok'
+
+    # Check database connectivity
+    try:
+        db.session.execute(text('SELECT 1'))
+        checks['database'] = 'connected'
+    except SQLAlchemyError as e:
+        current_app.logger.exception('Database connectivity check failed')
+        checks['database'] = 'error'
+        overall_status = 'degraded'
+
+    # Check if student table is accessible
+    try:
+        student_count = db.session.execute(
+            text('SELECT COUNT(*) FROM students')
+        ).scalar()
+        checks['students_table'] = 'accessible'
+        checks['student_count'] = student_count
+    except SQLAlchemyError as e:
+        current_app.logger.warning('Students table check failed: %s', str(e))
+        checks['students_table'] = 'error'
+        overall_status = 'degraded'
+
+    # Check if admin table is accessible
+    try:
+        admin_count = db.session.execute(
+            text('SELECT COUNT(*) FROM admins')
+        ).scalar()
+        checks['admins_table'] = 'accessible'
+        checks['admin_count'] = admin_count
+    except SQLAlchemyError as e:
+        current_app.logger.warning('Admins table check failed: %s', str(e))
+        checks['admins_table'] = 'error'
+        overall_status = 'degraded'
+
+    # Check if hall pass logs table is accessible (may fail due to RLS/tenant context)
+    try:
+        hall_pass_count = db.session.execute(
+            text('SELECT COUNT(*) FROM hall_pass_logs')
+        ).scalar()
+        checks['hall_pass_logs_table'] = 'accessible'
+        checks['hall_pass_count'] = hall_pass_count
+    except SQLAlchemyError as e:
+        current_app.logger.warning('Hall pass logs table check failed: %s', str(e))
+        checks['hall_pass_logs_table'] = 'not_accessible'
+        # Don't mark as degraded - this might be expected due to RLS
+
+    # Return 200 if at least database is working, 500 if database is down
+    if checks.get('database') == 'connected':
+        return jsonify({
+            'status': overall_status,
+            'checks': checks
+        }), 200
+    else:
+        return jsonify({
+            'status': 'error',
+            'error': 'Database connectivity failed',
+            'checks': checks
+        }), 500
+
+
+@main_bp.route('/privacy')
+def privacy():
+    """Render the Privacy & Data Handling Policy page."""
+    return render_template('privacy.html')
+
+
+@main_bp.route('/terms')
+def terms():
+    """Render the Terms of Service page."""
+    return render_template('tos.html')
+
+
+# -------------------- HALL PASS TERMINALS (NO AUTH REQUIRED) --------------------
+
+@main_bp.route('/hall-pass/terminal')
+def hall_pass_terminal():
+    """Hall Pass Check in/out terminal page (no login required)."""
+    return render_template('hall_pass_terminal.html')
+
+
+@main_bp.route('/hall-pass/verification')
+def hall_pass_verification():
+    """Hall Pass Verification page for display (no login required)."""
+    return render_template('hall_pass_verification.html')
+
+
+@main_bp.route('/hall-pass/queue')
+def hall_pass_queue():
+    """Hall Pass Queue display page (no login required)."""
+    return render_template('hall_pass_queue.html')
+
+
+# -------------------- DEBUG ROUTES --------------------
+
+@main_bp.route('/debug/filters')
+def debug_filters():
+    """List all available Jinja2 filters for debugging."""
+    return jsonify(list(current_app.jinja_env.filters.keys()))
+
+
+@main_bp.route('/switch-view')
+def switch_view():
+    """Switches the view between mobile and desktop."""
+    view = request.args.get('view', 'mobile')
+    next_url = request.args.get('next', url_for('main.home'))
+
+    if view == 'desktop':
+        session['force_desktop'] = True
+    else:
+        session.pop('force_desktop', None)
+
+    if not is_safe_url(next_url):
+        return redirect(url_for('main.home'))
+
+    return redirect(next_url)
+
+
+@main_bp.route('/debug/admin-db-test')
+def debug_admin_db_test():
+    """
+    Temporary route to confirm admin and invite codes tables are accessible.
+    """
+    try:
+        admins = Admin.query.all()
+        invite_codes_count = db.session.execute(text('SELECT COUNT(*) FROM admin_invite_codes')).scalar()
+        return jsonify({
+            "admin_count": len(admins),
+            "invite_codes_count": invite_codes_count,
+            "status": "success"
+        }), 200
+    except Exception as e:
+        current_app.logger.exception("Admin DB test failed")
+        return jsonify({"status": "error", "error": str(e)}), 500

@@ -1,0 +1,11 @@
+# This file specifies which files and directories should be ignored by Docker when building images.
+
+.env
+*.log
+*.tmp
+*.swp
+*.swo
+.DS_Store
+node_modules
+venv
+__pycache__

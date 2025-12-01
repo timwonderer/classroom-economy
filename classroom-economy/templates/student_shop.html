@@ -1,0 +1,660 @@
+{% extends "layout_student.html" %}
+{% set page_title = "Store" %}
+{% set current_page = "store" %}
+{% block title %}Store{% endblock %}
+{% block page_icon %}storefront{% endblock %}
+
+{% block content %}
+<!-- Tabs -->
+<ul class="nav nav-tabs mb-4" id="storeTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="browse-tab" data-bs-toggle="tab" data-bs-target="#browse" type="button" role="tab">
+            <span class="material-symbols-outlined">shopping_cart</span> Browse Items
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link" id="my-items-tab" data-bs-toggle="tab" data-bs-target="#my-items" type="button" role="tab">
+            <span class="material-symbols-outlined">inventory_2</span> My Items
+            {% if student_items %}<span class="badge bg-primary ms-1">{{ student_items|length }}</span>{% endif %}
+        </button>
+    </li>
+</ul>
+
+<!-- Tab Content -->
+<div class="tab-content" id="storeTabContent">
+    <!-- Browse Items Tab -->
+    <div class="tab-pane fade show active" id="browse" role="tabpanel">
+        {% if items %}
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+            {% for item in items %}
+            <div class="col">
+                <div class="card h-100 {% if item.is_bundle or item.bulk_discount_enabled %}border-primary{% endif %}">
+                    <div class="card-body d-flex flex-column">
+                        <h5 class="card-title">{{ item.name }}</h5>
+                        <div class="mb-2">
+                            <span class="badge bg-primary fs-6">${{ "%.2f"|format(item.price) }}</span>
+                            {% if item.item_type == 'immediate' %}
+                                <span class="badge bg-success">Immediate Use</span>
+                            {% elif item.item_type == 'delayed' %}
+                                <span class="badge bg-warning text-dark">Delayed Use</span>
+                            {% elif item.item_type == 'collective' %}
+                                <span class="badge bg-info">Collective Goal</span>
+                            {% elif item.item_type == 'hall_pass' %}
+                                <span class="badge bg-secondary">Hall Pass</span>
+                            {% endif %}
+                        </div>
+
+                        <!-- Bundle and Discount Badges -->
+                        {% if item.is_bundle %}
+                        <div class="mb-2">
+                            <span class="badge bg-warning text-dark">
+                                <i class="bi bi-box-seam"></i> Bundle: {{ item.bundle_quantity }} items
+                            </span>
+                        </div>
+                        {% endif %}
+
+                        {% if item.bulk_discount_enabled %}
+                        <div class="mb-2">
+                            <span class="badge bg-success">
+                                <i class="bi bi-percent"></i> {{ item.bulk_discount_percentage }}% off when you buy {{ item.bulk_discount_quantity }}+
+                            </span>
+                        </div>
+                        {% endif %}
+
+                        <!-- Collective Goal Progress -->
+                        {% if item.item_type == 'collective' and item.collective_goal_type %}
+                        <div class="mb-3">
+                            {% set purchases_count = item.student_items|selectattr('status', 'in', ['pending', 'processing', 'purchased', 'redeemed', 'completed'])|list|length %}
+                            {% if item.collective_goal_type == 'whole_class' %}
+                                {% set class_size = student.teacher.students|selectattr('block', 'equalto', student.block)|list|length %}
+                                {% set target = class_size %}
+                                <div class="alert alert-info p-2 mb-2">
+                                    <small><strong>Whole Class Goal:</strong> All {{ class_size }} students must purchase!</small>
+                                </div>
+                            {% elif item.collective_goal_type == 'fixed' %}
+                                {% set target = item.collective_goal_target %}
+                                <div class="alert alert-info p-2 mb-2">
+                                    <small><strong>Collective Goal:</strong> {{ target }} purchases needed to unlock</small>
+                                </div>
+                            {% endif %}
+                            <div class="progress" style="height: 25px;">
+                                {% set progress_percent = (purchases_count / target * 100) if target > 0 else 0 %}
+                                <div class="progress-bar {% if progress_percent >= 100 %}bg-success{% else %}bg-warning{% endif %}"
+                                     role="progressbar"
+                                     style="width: {{ progress_percent }}%;"
+                                     aria-valuenow="{{ purchases_count }}"
+                                     aria-valuemin="0"
+                                     aria-valuemax="{{ target }}">
+                                    {{ purchases_count }}/{{ target }}
+                                </div>
+                            </div>
+                            {% if purchases_count < target %}
+                                <small class="text-muted">{{ target - purchases_count }} more needed!</small>
+                            {% else %}
+                                <small class="text-success"><i class="bi bi-check-circle"></i> Goal reached! Item will unlock soon.</small>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        <div class="card-text text-muted flex-grow-1">{{ (item.description or 'No description available.') | markdown }}</div>
+
+                        {% if item.inventory is not none %}
+                            <p class="text-muted small mb-2">
+                                <strong>Available:</strong> {{ item.inventory }} left
+                            </p>
+                        {% endif %}
+
+                        {% if item.limit_per_student %}
+                            <p class="text-muted small mb-2">
+                                <strong>Limit:</strong> {{ item.limit_per_student }} per student
+                            </p>
+                        {% endif %}
+
+                        <div class="mt-auto">
+                            <button class="btn btn-primary w-100"
+                                    data-bs-toggle="modal"
+                                    data-bs-target="#buyItemModal"
+                                    data-item-id="{{ item.id }}"
+                                    data-item-name="{{ item.name }}"
+                                    data-item-price="{{ "%.2f"|format(item.price) }}"
+                                    data-item-type="{{ item.item_type }}"
+                                    data-is-bundle="{{ 'true' if item.is_bundle else 'false' }}"
+                                    data-bundle-quantity="{{ item.bundle_quantity if item.is_bundle else 0 }}"
+                                    data-bulk-discount-enabled="{{ 'true' if item.bulk_discount_enabled else 'false' }}"
+                                    data-bulk-discount-quantity="{{ item.bulk_discount_quantity if item.bulk_discount_enabled else 0 }}"
+                                    data-bulk-discount-percentage="{{ item.bulk_discount_percentage if item.bulk_discount_enabled else 0 }}"
+                                    data-inventory="{{ item.inventory if item.inventory is not none else 'unlimited' }}"
+                                    {% if item.inventory is not none and item.inventory <= 0 %}disabled{% endif %}>
+                                {% if item.inventory is not none and item.inventory <= 0 %}
+                                    Out of Stock
+                                {% else %}
+                                    Purchase
+                                {% endif %}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info text-center">
+            <h5>No Items Available</h5>
+            <p class="mb-0">There are currently no items in the store. Check back later!</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- My Items Tab -->
+    <div class="tab-pane fade" id="my-items" role="tabpanel">
+        {% if student_items %}
+        <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+            {% for student_item in student_items %}
+            <div class="col">
+                <div class="card h-100">
+                    <div class="card-body d-flex flex-column">
+                        <h5 class="card-title">{{ student_item.store_item.name }}</h5>
+                        <div class="mb-2">
+                            {% if student_item.status == 'purchased' %}
+                                <span class="badge bg-success">Ready to Use</span>
+                            {% elif student_item.status == 'pending' %}
+                                <span class="badge bg-warning text-dark">Pending Approval</span>
+                            {% elif student_item.status == 'processing' %}
+                                <span class="badge bg-info">Processing</span>
+                            {% endif %}
+
+                            {% if student_item.store_item.item_type == 'immediate' %}
+                                <span class="badge bg-success">Immediate</span>
+                            {% elif student_item.store_item.item_type == 'delayed' %}
+                                <span class="badge bg-warning text-dark">Delayed</span>
+                            {% elif student_item.store_item.item_type == 'collective' %}
+                                <span class="badge bg-info">Collective</span>
+                            {% elif student_item.store_item.item_type == 'hall_pass' %}
+                                <span class="badge bg-secondary">Hall Pass</span>
+                            {% endif %}
+                        </div>
+
+                        <p class="text-muted small mb-2">
+                            <strong>Purchased:</strong> {{ student_item.purchase_date.strftime('%m/%d/%y %I:%M %p') if student_item.purchase_date else 'N/A' }}
+                        </p>
+
+                        {% if student_item.expiry_date %}
+                        <p class="text-muted small mb-2">
+                            <strong>Expires:</strong> {{ student_item.expiry_date.strftime('%m/%d/%y') }}
+                        </p>
+                        {% endif %}
+
+                        <div class="card-text text-muted flex-grow-1">{{ (student_item.store_item.description or 'No description available.') | markdown }}</div>
+
+                        <div class="mt-auto">
+                            {% if student_item.store_item.item_type == 'hall_pass' %}
+                                <!-- Hall Pass - Use immediately -->
+                                <button class="btn btn-success w-100 use-item-btn"
+                                        data-item-id="{{ student_item.id }}"
+                                        data-item-name="{{ student_item.store_item.name }}"
+                                        data-item-type="hall_pass"
+                                        data-redemption-prompt="">
+                                    <span class="material-symbols-outlined">exit_to_app</span> Request Hall Pass
+                                </button>
+                            {% elif student_item.store_item.item_type == 'immediate' and student_item.status == 'purchased' %}
+                                <!-- Immediate use item - redeem now -->
+                                <button class="btn btn-primary w-100 use-item-btn"
+                                        data-item-id="{{ student_item.id }}"
+                                        data-item-name="{{ student_item.store_item.name }}"
+                                        data-item-type="immediate"
+                                        data-redemption-prompt="">
+                                    <span class="material-symbols-outlined">redeem</span> Use Now
+                                </button>
+                            {% elif student_item.store_item.item_type == 'delayed' and student_item.status == 'purchased' %}
+                                <!-- Delayed use item - request redemption -->
+                                <button class="btn btn-warning w-100 use-item-btn"
+                                        data-item-id="{{ student_item.id }}"
+                                        data-item-name="{{ student_item.store_item.name }}"
+                                        data-item-type="delayed"
+                                        data-redemption-prompt="{{ student_item.store_item.redemption_prompt or '' }}">
+                                    <span class="material-symbols-outlined">schedule</span> Request Redemption
+                                </button>
+                            {% elif student_item.status == 'pending' %}
+                                <button class="btn btn-secondary w-100" disabled>
+                                    <span class="material-symbols-outlined">hourglass_empty</span> Awaiting Approval
+                                </button>
+                            {% elif student_item.status == 'processing' %}
+                                <button class="btn btn-info w-100" disabled>
+                                    <span class="material-symbols-outlined">sync</span> Processing
+                                </button>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="alert alert-info text-center">
+            <span class="material-symbols-outlined" style="font-size: 3rem;">inventory_2</span>
+            <h5 class="mt-2">No Purchased Items</h5>
+            <p class="mb-0">You haven't purchased any items yet. Browse the store to get started!</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Buy Item Modal -->
+<div class="modal fade" id="buyItemModal" tabindex="-1" aria-labelledby="buyItemModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="buyItemModalLabel">Confirm Purchase</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <strong>Item:</strong> <span id="modalItemName"></span><br>
+                    <strong>Unit Price:</strong> $<span id="modalItemPrice"></span><br>
+                    <span id="modalBundleInfo" style="display: none;">
+                        <strong>Bundle:</strong> <span id="modalBundleQuantity"></span> items per bundle<br>
+                    </span>
+                    <span id="modalDiscountInfo" style="display: none;">
+                        <strong>Bulk Discount:</strong> <span id="modalDiscountPercentage"></span>% off when buying <span id="modalDiscountQuantity"></span>+<br>
+                    </span>
+                </div>
+
+                <!-- Item Type Explanation -->
+                <div id="itemTypeExplanation" class="alert mb-3" style="display: none;">
+                    <h6 class="alert-heading mb-2"><i class="bi bi-info-circle me-2"></i>How This Item Works</h6>
+                    <p id="explanationText" class="mb-0"></p>
+                </div>
+
+                <form id="buyItemForm">
+                    <input type="hidden" id="modalItemId" name="item_id">
+                    <input type="hidden" id="modalItemType" name="item_type">
+                    <input type="hidden" id="modalIsBundle" name="is_bundle">
+                    <input type="hidden" id="modalBulkDiscountEnabled" name="bulk_discount_enabled">
+                    <input type="hidden" id="modalBulkDiscountQuantity" name="bulk_discount_quantity">
+                    <input type="hidden" id="modalBulkDiscountPercentage" name="bulk_discount_percentage">
+                    <input type="hidden" id="modalBasePrice" name="base_price">
+                    <input type="hidden" id="modalInventory" name="inventory">
+
+                    <div class="mb-3">
+                        <label for="quantity" class="form-label">Quantity:</label>
+                        <div class="input-group">
+                            <button class="btn btn-outline-secondary" type="button" id="decreaseQty">-</button>
+                            <input type="number" class="form-control text-center" id="quantity" name="quantity" value="1" min="1" required>
+                            <button class="btn btn-outline-secondary" type="button" id="increaseQty">+</button>
+                        </div>
+                        <small class="text-muted" id="quantityHint"></small>
+                    </div>
+
+                    <div class="alert alert-success" id="totalPriceDisplay">
+                        <strong>Total Price:</strong> $<span id="totalPrice">0.00</span>
+                        <span id="savingsDisplay" style="display: none;">
+                            <br><small class="text-success"><i class="bi bi-check-circle"></i> You save $<span id="savingsAmount">0.00</span>!</small>
+                        </span>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="passphrase" class="form-label">Enter your Passphrase to confirm:</label>
+                        <input type="password" class="form-control" id="passphrase" name="passphrase" autocomplete="current-password" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmPurchaseBtn">Confirm Purchase</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Use Item Modal -->
+<div class="modal fade" id="useItemModal" tabindex="-1" aria-labelledby="useItemModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="useItemModalLabel">Use Item</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <strong>Item:</strong> <span id="useModalItemName"></span>
+                </div>
+                <p id="useModalMessage"></p>
+                <form id="useItemForm">
+                    <input type="hidden" id="useModalItemId" name="item_id">
+                    <input type="hidden" id="useModalItemType" name="item_type">
+                    <div class="mb-3" id="redemptionDetailsDiv" style="display: none;">
+                        <label for="redemptionDetails" class="form-label fw-bold">
+                            <span id="redemptionPromptLabel">Additional Information</span>
+                        </label>
+                        <textarea class="form-control" id="redemptionDetails" name="redemption_details" rows="3" placeholder="Please provide details about your redemption request..."></textarea>
+                        <small class="text-muted">This information will be sent to your teacher for review.</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="usePassphrase" class="form-label">Enter your Passphrase to confirm:</label>
+                        <input type="password" class="form-control" id="usePassphrase" name="pin" inputmode="numeric" pattern="[0-9]*" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmUseBtn">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    let currentItemData = {};
+
+    // Buy Item Modal Logic
+    const buyItemModal = document.getElementById('buyItemModal');
+    buyItemModal.addEventListener('show.bs.modal', event => {
+        const button = event.relatedTarget;
+
+        // Store item data
+        currentItemData = {
+            itemName: button.getAttribute('data-item-name'),
+            itemId: button.getAttribute('data-item-id'),
+            itemType: button.getAttribute('data-item-type'),
+            basePrice: parseFloat(button.getAttribute('data-item-price')),
+            isBundle: button.getAttribute('data-is-bundle') === 'true',
+            bundleQuantity: parseInt(button.getAttribute('data-bundle-quantity')) || 0,
+            bulkDiscountEnabled: button.getAttribute('data-bulk-discount-enabled') === 'true',
+            bulkDiscountQuantity: parseInt(button.getAttribute('data-bulk-discount-quantity')) || 0,
+            bulkDiscountPercentage: parseFloat(button.getAttribute('data-bulk-discount-percentage')) || 0,
+            inventory: button.getAttribute('data-inventory')
+        };
+
+        // Populate modal
+        document.getElementById('modalItemName').textContent = currentItemData.itemName;
+        document.getElementById('modalItemId').value = currentItemData.itemId;
+        document.getElementById('modalItemType').value = currentItemData.itemType;
+        document.getElementById('modalItemPrice').textContent = currentItemData.basePrice.toFixed(2);
+        document.getElementById('modalIsBundle').value = currentItemData.isBundle;
+        document.getElementById('modalBulkDiscountEnabled').value = currentItemData.bulkDiscountEnabled;
+        document.getElementById('modalBulkDiscountQuantity').value = currentItemData.bulkDiscountQuantity;
+        document.getElementById('modalBulkDiscountPercentage').value = currentItemData.bulkDiscountPercentage;
+        document.getElementById('modalBasePrice').value = currentItemData.basePrice;
+        document.getElementById('modalInventory').value = currentItemData.inventory;
+
+        // Show bundle info
+        if (currentItemData.isBundle) {
+            document.getElementById('modalBundleInfo').style.display = 'block';
+            document.getElementById('modalBundleQuantity').textContent = currentItemData.bundleQuantity;
+        } else {
+            document.getElementById('modalBundleInfo').style.display = 'none';
+        }
+
+        // Show discount info
+        if (currentItemData.bulkDiscountEnabled) {
+            document.getElementById('modalDiscountInfo').style.display = 'block';
+            document.getElementById('modalDiscountPercentage').textContent = currentItemData.bulkDiscountPercentage;
+            document.getElementById('modalDiscountQuantity').textContent = currentItemData.bulkDiscountQuantity;
+        } else {
+            document.getElementById('modalDiscountInfo').style.display = 'none';
+        }
+
+        // Show item type explanation
+        const explanationDiv = document.getElementById('itemTypeExplanation');
+        const explanationText = document.getElementById('explanationText');
+        let explanation = '';
+        let alertClass = 'alert-primary';
+
+        switch (currentItemData.itemType) {
+            case 'immediate':
+                explanation = '<strong>Immediate Use:</strong> This item is used instantly upon purchase. You won\'t need to redeem it later - it\'s applied to your account right away.';
+                alertClass = 'alert-success';
+                break;
+            case 'delayed':
+                explanation = '<strong>Delayed Use:</strong> After purchase, this item will appear in your "My Items" tab. You can redeem it whenever you\'re ready by clicking "Use Item" and entering your passphrase.';
+                alertClass = 'alert-info';
+                break;
+            case 'hall_pass':
+                explanation = '<strong>Hall Pass:</strong> This is a special hall pass item. Upon purchase, it\'s added to your hall pass balance and can be used during class when you need to leave.';
+                alertClass = 'alert-warning';
+                break;
+            case 'collective':
+                explanation = '<strong>Collective Goal:</strong> This is a class goal! Multiple students must purchase this item before it unlocks for everyone. Your purchase counts toward the goal, and you\'ll receive the item once enough classmates have also purchased it. Check the progress bar on the item card to see how close you are!';
+                alertClass = 'alert-primary';
+                break;
+            default:
+                explanation = '';
+        }
+
+        if (explanation) {
+            explanationDiv.className = `alert mb-3 ${alertClass}`;
+            explanationText.innerHTML = explanation;
+            explanationDiv.style.display = 'block';
+        } else {
+            explanationDiv.style.display = 'none';
+        }
+
+        // Set max quantity if inventory limited
+        const quantityInput = document.getElementById('quantity');
+        if (currentItemData.inventory !== 'unlimited') {
+            quantityInput.max = currentItemData.inventory;
+        } else {
+            quantityInput.removeAttribute('max');
+        }
+
+        // Reset quantity
+        quantityInput.value = 1;
+        updateTotalPrice();
+    });
+
+    buyItemModal.addEventListener('shown.bs.modal', function () {
+        document.getElementById('passphrase').focus();
+    });
+
+    // Quantity controls
+    document.getElementById('decreaseQty').addEventListener('click', () => {
+        const input = document.getElementById('quantity');
+        if (input.value > 1) {
+            input.value = parseInt(input.value) - 1;
+            updateTotalPrice();
+        }
+    });
+
+    document.getElementById('increaseQty').addEventListener('click', () => {
+        const input = document.getElementById('quantity');
+        const max = input.max ? parseInt(input.max) : Infinity;
+        if (parseInt(input.value) < max) {
+            input.value = parseInt(input.value) + 1;
+            updateTotalPrice();
+        }
+    });
+
+    document.getElementById('quantity').addEventListener('input', updateTotalPrice);
+
+    function updateTotalPrice() {
+        const quantity = parseInt(document.getElementById('quantity').value) || 1;
+        let unitPrice = currentItemData.basePrice;
+        let hasDiscount = false;
+
+        // Apply bulk discount if applicable
+        if (currentItemData.bulkDiscountEnabled && quantity >= currentItemData.bulkDiscountQuantity) {
+            const discountMultiplier = 1 - (currentItemData.bulkDiscountPercentage / 100);
+            unitPrice = currentItemData.basePrice * discountMultiplier;
+            hasDiscount = true;
+        }
+
+        const totalPrice = unitPrice * quantity;
+        const originalTotal = currentItemData.basePrice * quantity;
+        const savings = originalTotal - totalPrice;
+
+        document.getElementById('totalPrice').textContent = totalPrice.toFixed(2);
+
+        // Show savings if discount applied
+        if (hasDiscount && savings > 0) {
+            document.getElementById('savingsAmount').textContent = savings.toFixed(2);
+            document.getElementById('savingsDisplay').style.display = 'block';
+        } else {
+            document.getElementById('savingsDisplay').style.display = 'none';
+        }
+
+        // Update quantity hint
+        let hint = '';
+        if (currentItemData.isBundle) {
+            const totalItems = quantity * currentItemData.bundleQuantity;
+            hint = `You will get ${totalItems} total uses (${quantity} bundle${quantity > 1 ? 's' : ''})`;
+        }
+        if (currentItemData.bulkDiscountEnabled) {
+            if (quantity >= currentItemData.bulkDiscountQuantity) {
+                hint += hint ? ' • ' : '';
+                hint += `Bulk discount applied!`;
+            } else {
+                const needed = currentItemData.bulkDiscountQuantity - quantity;
+                hint += hint ? ' • ' : '';
+                hint += `Buy ${needed} more for ${currentItemData.bulkDiscountPercentage}% off`;
+            }
+        }
+        document.getElementById('quantityHint').textContent = hint;
+    }
+
+    document.getElementById('confirmPurchaseBtn').addEventListener('click', () => {
+        const form = document.getElementById('buyItemForm');
+        const itemId = form.querySelector('#modalItemId').value;
+        const passphrase = form.querySelector('#passphrase').value;
+        const quantity = parseInt(form.querySelector('#quantity').value);
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+        if (!passphrase) {
+            alert('Please enter your passphrase.');
+            return;
+        }
+
+        if (quantity < 1) {
+            alert('Quantity must be at least 1.');
+            return;
+        }
+
+        fetch('/api/purchase-item', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify({
+                item_id: itemId,
+                passphrase: passphrase,
+                quantity: quantity
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const modal = bootstrap.Modal.getInstance(buyItemModal);
+                modal.hide();
+                alert(data.message);
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Purchase error:', error);
+            alert('An unexpected error occurred. Please try again or contact your teacher if the problem persists. Error details have been logged.');
+        });
+    });
+
+    // Use Item Modal Logic
+    const useItemModal = document.getElementById('useItemModal');
+    document.querySelectorAll('.use-item-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const itemId = this.getAttribute('data-item-id');
+            const itemName = this.getAttribute('data-item-name');
+            const itemType = this.getAttribute('data-item-type');
+            const redemptionPrompt = this.getAttribute('data-redemption-prompt');
+
+            document.getElementById('useModalItemId').value = itemId;
+            document.getElementById('useModalItemName').textContent = itemName;
+            document.getElementById('useModalItemType').value = itemType;
+
+            // Show/hide redemption details based on item type
+            const redemptionDetailsDiv = document.getElementById('redemptionDetailsDiv');
+            const redemptionDetailsTextarea = document.getElementById('redemptionDetails');
+            const redemptionPromptLabel = document.getElementById('redemptionPromptLabel');
+
+            if (itemType === 'delayed') {
+                // Show redemption details for delayed items
+                redemptionDetailsDiv.style.display = 'block';
+
+                // Set custom prompt if provided, otherwise use default
+                if (redemptionPrompt && redemptionPrompt.trim() !== '') {
+                    redemptionPromptLabel.textContent = redemptionPrompt;
+                } else {
+                    redemptionPromptLabel.textContent = 'Additional Information';
+                }
+
+                document.getElementById('useModalMessage').textContent = 'This will request redemption. Your teacher will review and approve it.';
+            } else {
+                // Hide for other item types
+                redemptionDetailsDiv.style.display = 'none';
+                redemptionDetailsTextarea.value = ''; // Clear previous value
+
+                if (itemType === 'hall_pass') {
+                    document.getElementById('useModalMessage').textContent = 'This will request a hall pass. Your teacher will be notified.';
+                } else if (itemType === 'immediate') {
+                    document.getElementById('useModalMessage').textContent = 'This item will be redeemed immediately upon confirmation.';
+                }
+            }
+
+            const modal = new bootstrap.Modal(useItemModal);
+            modal.show();
+        });
+    });
+
+    useItemModal.addEventListener('shown.bs.modal', function () {
+        document.getElementById('usePassphrase').focus();
+    });
+
+    document.getElementById('confirmUseBtn').addEventListener('click', () => {
+        const form = document.getElementById('useItemForm');
+        const itemId = form.querySelector('#useModalItemId').value;
+        const pin = form.querySelector('#usePassphrase').value;
+        const redemptionDetails = form.querySelector('#redemptionDetails').value;
+        const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+        if (!pin) {
+            alert('Please enter your PIN.');
+            return;
+        }
+
+        const requestBody = {
+            student_item_id: itemId,
+            passphrase: pin
+        };
+
+        // Include redemption details if provided
+        if (redemptionDetails && redemptionDetails.trim() !== '') {
+            requestBody.redemption_details = redemptionDetails.trim();
+        }
+
+        fetch('/api/use-item', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken
+            },
+            body: JSON.stringify(requestBody)
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const modal = bootstrap.Modal.getInstance(useItemModal);
+                modal.hide();
+                alert(data.message);
+                setTimeout(() => window.location.reload(), 1000);
+            } else {
+                alert(data.message);
+            }
+        })
+        .catch(error => {
+            console.error('Use item error:', error);
+            alert('An unexpected error occurred.');
+        });
+    });
+</script>
+{% endblock %}

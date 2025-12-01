@@ -1,0 +1,41 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4 shadow-sm">
+  <div class="container-fluid">
+    <a class="navbar-brand" href="{{ url_for('admin.dashboard') }}">Admin Portal</a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#adminNavbar" aria-controls="adminNavbar" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="adminNavbar">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item">
+          <a class="nav-link {% if current_page == 'dashboard' %}active{% endif %}" href="{{ url_for('admin.dashboard') }}">Dashboard</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if current_page == 'students' %}active{% endif %}" href="{{ url_for('admin.students') }}">Students</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if current_page == 'hall_pass' %}active{% endif %}" href="{{ url_for('admin.hall_pass') }}">Hall Pass</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if current_page == 'transactions' %}active{% endif %}" href="{{ url_for('admin.transactions') }}">Transactions</a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {% if current_page == 'store' %}active{% endif %}" href="{{ url_for('admin.store_management') }}">Store</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if current_page == 'payroll' %}active{% endif %}" href="{{ url_for('admin.payroll') }}">
+            Payroll
+            {% if not has_payroll_settings %}
+            <span class="badge bg-warning text-dark ms-1">!</span>
+            {% endif %}
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link {% if current_page == 'help' %}active{% endif %}" href="{{ url_for('admin.help_support') }}">Help & Support</a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link text-danger" href="{{ url_for('admin.logout') }}">Logout</a>
+        </li>
+      </ul>
+    </div>
+  </div>
+</nav>

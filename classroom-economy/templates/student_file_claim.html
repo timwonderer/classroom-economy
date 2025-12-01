@@ -1,0 +1,259 @@
+{% extends "layout_student.html" %}
+
+{% block title %}File Insurance Claim{% endblock %}
+
+{% block extra_styles %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+<style>
+    .EasyMDEContainer .CodeMirror {
+        min-height: 120px;
+    }
+    .editor-toolbar {
+        border-radius: 4px 4px 0 0;
+    }
+    .CodeMirror {
+        border-radius: 0 0 4px 4px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>File Insurance Claim</h1>
+    <p class="subtitle">Submit a claim for {{ policy.title }}</p>
+</div>
+
+<div class="row">
+    <div class="col-md-8">
+        <div class="card mb-4">
+            <div class="card-header">
+                Claim Information
+            </div>
+            <div class="card-body">
+                {% if errors %}
+                    {% for error in errors %}
+                        <div class="alert alert-danger">{{ error }}</div>
+                    {% endfor %}
+                {% endif %}
+
+                <form method="POST" action="{{ url_for('student.file_claim', policy_id=policy.id) }}">
+                    {{ form.hidden_tag() }}
+                    {% set is_transaction = policy.claim_type == 'transaction_monetary' %}
+                    {% set is_non_monetary = policy.claim_type == 'non_monetary' %}
+                    {% set is_legacy = policy.claim_type == 'legacy_monetary' %}
+
+                    <div class="mb-3">
+                        <label class="form-label">Insurance Policy</label>
+                        <input type="text" class="form-control" value="{{ policy.title }}" disabled>
+                    </div>
+
+                    {% if is_transaction %}
+                        <div class="mb-3">
+                            {{ form.transaction_id.label(class="form-label") }}
+                            {{ form.transaction_id(class="form-select", required=True) }}
+                            <small class="form-text text-muted">
+                                One claim per transaction. Select a spending transaction within {{ policy.claim_time_limit_days }} days.
+                            </small>
+                            {% if not eligible_transactions %}
+                                <div class="alert alert-warning mt-2 mb-0 py-2">
+                                    No eligible transactions available to claim right now.
+                                </div>
+                            {% endif %}
+                        </div>
+                        {{ form.incident_date(type="hidden") }}
+                        <div class="mb-3">
+                            <label class="form-label">Incident Date</label>
+                            <input type="text" class="form-control" value="Auto-selected from the transaction date" disabled>
+                            <small class="form-text text-muted">Claims must be filed within {{ policy.claim_time_limit_days }} days of the transaction.</small>
+                        </div>
+                    {% else %}
+                        <div class="mb-3">
+                            {{ form.incident_date.label(class="form-label") }}
+                            {{ form.incident_date(class="form-control") }}
+                            <small class="form-text text-muted">
+                                Claims must be filed within {{ policy.claim_time_limit_days }} days of the incident.
+                            </small>
+                        </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        {{ form.description.label(class="form-label") }}
+                        {{ form.description(class="form-control", rows=5, placeholder="Describe the incident in detail. Include what happened, when it happened, and any relevant context.") }}
+                        <small class="form-text text-muted">Be as detailed as possible to help with processing your claim.</small>
+                    </div>
+
+                    {% if is_transaction %}
+                        <div class="alert alert-info d-flex align-items-start gap-2">
+                            <span class="material-symbols-outlined">payments</span>
+                            <div>
+                                <div class="fw-bold">Transaction-based reimbursement</div>
+                                <div class="small mb-1">Claim amount is based on the transaction total (no manual entry).</div>
+                                {% if policy.max_claim_amount %}
+                                    <div class="small">Per-claim cap: ${{ '%.2f'|format(policy.max_claim_amount) }}</div>
+                                {% endif %}
+                                {% if remaining_period_cap is not none %}
+                                    <div class="small">Remaining period cap: ${{ '%.2f'|format(remaining_period_cap) }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    {% elif is_non_monetary %}
+                        <div class="mb-3">
+                            {{ form.claim_item.label(class="form-label") }}
+                            {{ form.claim_item(class="form-control", placeholder="e.g., Calculator, Textbook, etc.", required=True) }}
+                            <small class="form-text text-muted">
+                                Specify what item or service you're claiming.
+                            </small>
+                        </div>
+                    {% elif is_legacy %}
+                        <div class="mb-3">
+                            {{ form.claim_amount.label(class="form-label") }}
+                            <div class="input-group">
+                                <span class="input-group-text">$</span>
+                                {{ form.claim_amount(class="form-control", placeholder="Enter amount", required=True) }}
+                            </div>
+                            <small class="form-text text-muted">
+                                {% if policy.max_claim_amount %}
+                                    Maximum: ${{ "%.2f"|format(policy.max_claim_amount) }} per claim.
+                                {% else %}
+                                    Enter the amount you are requesting.
+                                {% endif %}
+                            </small>
+                        </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        {{ form.comments.label(class="form-label") }}
+                        {{ form.comments(class="form-control", rows=3, placeholder="Any additional information...") }}
+                        <small class="form-text text-muted">Optional: Add any additional comments or context.</small>
+                    </div>
+
+                    <div class="d-flex gap-2">
+                        {% if errors %}
+                            {{ form.submit(class="btn btn-primary", disabled=True) }}
+                        {% else %}
+                            {{ form.submit(class="btn btn-primary") }}
+                        {% endif %}
+                        <a href="{{ url_for('student.student_insurance') }}" class="btn btn-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4">
+        <div class="card mb-4">
+            <div class="card-header">
+                Policy Information
+            </div>
+            <div class="card-body">
+                <h6>{{ policy.title }}</h6>
+                <div class="small text-muted">{{ policy.description | markdown }}</div>
+
+                <hr>
+
+                <p class="mb-2"><strong>Claim Type:</strong></p>
+                <p class="mb-3">
+                    {% if policy.claim_type == 'transaction_monetary' %}
+                        <span class="badge bg-info">[TXN] Transaction-based</span>
+                    {% elif policy.claim_type == 'non_monetary' %}
+                        <span class="badge bg-warning text-dark">[NON-MONETARY] Approval only</span>
+                    {% else %}
+                        <span class="badge bg-primary">[LEGACY] Manual amount</span>
+                    {% endif %}
+                </p>
+
+                <p class="mb-2"><strong>Coverage Details:</strong></p>
+                <ul class="small mb-3">
+                    <li>Waiting period: {{ policy.waiting_period_days }} days</li>
+                    <li>Claim deadline: {{ policy.claim_time_limit_days }} days from incident</li>
+                    {% if policy.claim_type != 'non_monetary' and policy.max_claim_amount %}
+                        <li>Max claim: ${{ "%.2f"|format(policy.max_claim_amount) }}</li>
+                    {% endif %}
+                    {% if policy.max_claims_count %}
+                        <li>Max claims: {{ policy.max_claims_count }} per {{ policy.max_claims_period }}</li>
+                    {% endif %}
+                    {% if policy.claim_type == 'transaction_monetary' %}
+                        <li>One claim per transaction (no splitting)</li>
+                    {% endif %}
+                </ul>
+
+                {% if enrollment.coverage_start_date %}
+                    <div class="alert alert-success py-2 small">
+                        ✓ Coverage active since {{ enrollment.coverage_start_date.strftime('%b %d, %Y') }}
+                    </div>
+                {% else %}
+                    <div class="alert alert-warning py-2 small">
+                        ⚠️ Still in {{ policy.waiting_period_days }}-day waiting period
+                    </div>
+                {% endif %}
+
+                {% if not enrollment.payment_current %}
+                    <div class="alert alert-danger py-2 small">
+                        ⚠️ Payment overdue ({{ enrollment.days_unpaid }} days)
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                Claims This {{ policy.max_claims_period|title }}
+            </div>
+            <div class="card-body">
+                {% if claims_this_period %}
+                    <p class="mb-2">You have {{ claims_this_period|length }} claim(s):</p>
+                    <ul class="small mb-0">
+                        {% for claim in claims_this_period %}
+                            <li>{{ claim.incident_date.strftime('%Y-%m-%d') }} -
+                                <span class="badge {% if claim.status == 'approved' or claim.status == 'paid' %}bg-success{% elif claim.status == 'pending' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+                                    {{ claim.status|title }}
+                                </span>
+                            </li>
+                        {% endfor %}
+                    </ul>
+
+                    {% if policy.max_claims_count and (claims_this_period|length >= policy.max_claims_count) %}
+                        <div class="alert alert-warning py-2 small mt-2">
+                            ⚠️ You've reached the maximum number of claims for this {{ policy.max_claims_period }}.
+                        </div>
+                    {% endif %}
+                {% else %}
+                    <p class="text-muted small mb-0">No claims this {{ policy.max_claims_period }}.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
+<script>
+  // Initialize markdown editors for claim form
+  document.addEventListener('DOMContentLoaded', function() {
+    const descriptionField = document.getElementById('description');
+    const commentsField = document.getElementById('comments');
+
+    if (descriptionField) {
+      new EasyMDE({
+        element: descriptionField,
+        spellChecker: false,
+        toolbar: ["bold", "italic", "heading", "|", "unordered-list", "ordered-list", "|", "link", "quote", "|", "preview", "guide"],
+        status: false,
+        placeholder: "Describe the incident in detail (Markdown supported)...",
+      });
+    }
+
+    if (commentsField) {
+      new EasyMDE({
+        element: commentsField,
+        spellChecker: false,
+        toolbar: ["bold", "italic", "|", "unordered-list", "ordered-list", "|", "link", "|", "preview"],
+        status: false,
+        placeholder: "Any additional information (Markdown supported)...",
+      });
+    }
+  });
+</script>
+{% endblock %}

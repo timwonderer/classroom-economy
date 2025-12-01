@@ -1,0 +1,40 @@
+# Database Migrations
+
+This directory contains Alembic database migrations for the Classroom Token Hub application.
+
+## Overview
+
+Single-database configuration for Flask using Alembic for database schema version control.
+
+## Quick Commands
+
+```bash
+# Create a new migration after model changes
+flask db migrate -m "Description of changes"
+
+# Apply migrations to database
+flask db upgrade
+
+# Revert last migration
+flask db downgrade
+
+# View migration history
+flask db history
+```
+
+## Documentation
+
+For detailed information about managing migrations, including:
+- Resolving migration conflicts
+- Consolidating migration history
+- Troubleshooting migration issues
+
+See: [docs/development/MIGRATION_GUIDE.md](../docs/development/MIGRATION_GUIDE.md)
+
+## Migration Best Practices
+
+- Always review auto-generated migrations before applying
+- Test migrations on a backup database first
+- Never edit migrations that have been committed to main
+- Use descriptive migration messages
+- Check for data loss before applying destructive changes

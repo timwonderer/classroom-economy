@@ -1,0 +1,226 @@
+{% extends "layout_system_admin.html" %}
+{% set page_title = "Teacher Overview" %}
+{% set page_subtitle = "Privacy-compliant view of teacher accounts and student counts" %}
+{% set current_page = current_page or "teacher_overview" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="alert alert-info">
+                <h6 class="mb-2"><span class="material-symbols-outlined align-middle">info</span> Privacy Policy</h6>
+                <ul class="mb-0">
+                    <li><strong>Student names are never displayed</strong> to system administrators.</li>
+                    <li>You can only view aggregated counts (total students and counts by period/block).</li>
+                    <li>Deletions require authorization: teacher request OR {{ inactivity_threshold_days }} days of inactivity.</li>
+                    <li>Deleting a period removes teacher-student links; students maintain access to other classes.</li>
+                    <li>Deleting a teacher account removes all links; students maintain access if linked to other teachers.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Teacher Accounts</h5>
+            <small class="text-muted">{{ teachers|length }} total teachers</small>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Username</th>
+                        <th>Total Students</th>
+                        <th>Period/Block Breakdown</th>
+                        <th>Last Login</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                {% for teacher in teachers %}
+                    <tr>
+                        <td>
+                            <div class="fw-semibold">{{ teacher.username }}</div>
+                            {% if teacher.pending_requests %}
+                                <div class="badge bg-warning text-dark mt-1">{{ teacher.pending_requests|length }} pending request(s)</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-secondary">{{ teacher.total_students }} students</span>
+                        </td>
+                        <td>
+                            {% if teacher.periods %}
+                                <div class="d-flex flex-wrap gap-1">
+                                    {% for period, count in teacher.periods.items() %}
+                                        <span class="badge bg-info">{{ period|upper }}: {{ count }}</span>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <span class="text-muted">No students</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if teacher.last_login %}
+                                <small>{{ teacher.last_login.strftime('%b %d, %Y') }}</small>
+                            {% else %}
+                                <small class="text-muted">Never</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if teacher.is_inactive %}
+                                <span class="badge bg-danger">Inactive ({{ inactivity_threshold_days }}+ days)</span>
+                            {% else %}
+                                <span class="badge bg-success">Active</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                {% if teacher.can_delete_account or teacher.authorized_periods %}
+                                    <!-- Period deletion dropdown -->
+                                    {% if teacher.periods %}
+                                        <div class="btn-group" role="group">
+                                            <button type="button" class="btn btn-sm btn-outline-warning dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                                                Delete Period
+                                            </button>
+                                            <ul class="dropdown-menu">
+                                                {% for period, count in teacher.periods.items() %}
+                                                    {% if period in teacher.authorized_periods %}
+                                                        <li>
+                                                            <form method="POST" action="{{ url_for('sysadmin.delete_period', admin_id=teacher.id, period=period) }}" class="delete-form" data-type="period" data-period="{{ period|upper }}" data-username="{{ teacher.username }}" data-count="{{ count }}">
+                                                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                                                <button type="submit" class="dropdown-item">
+                                                                    {{ period|upper }} ({{ count }} students)
+                                                                </button>
+                                                            </form>
+                                                        </li>
+                                                    {% else %}
+                                                        <li>
+                                                            <button type="button" class="dropdown-item disabled" disabled title="No authorization for this period">
+                                                                {{ period|upper }} ({{ count }} students) 🔒
+                                                            </button>
+                                                        </li>
+                                                    {% endif %}
+                                                {% endfor %}
+                                            </ul>
+                                        </div>
+                                    {% endif %}
+                                    <!-- Account deletion -->
+                                    {% if teacher.can_delete_account %}
+                                        <form method="POST" action="{{ url_for('sysadmin.delete_teacher', admin_id=teacher.id) }}" class="d-inline delete-form" data-type="account" data-username="{{ teacher.username }}">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger">
+                                                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;" aria-hidden="true">delete</span>
+                                                Delete Account
+                                            </button>
+                                        </form>
+                                    {% else %}
+                                        <button type="button" class="btn btn-sm btn-secondary" disabled title="Account deletion requires teacher request or {{ inactivity_threshold_days }}+ days of inactivity">
+                                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;" aria-hidden="true">lock</span>
+                                            Delete Account
+                                        </button>
+                                    {% endif %}
+                                {% else %}
+                                    <button type="button" class="btn btn-sm btn-secondary" disabled title="Deletion requires teacher request or {{ inactivity_threshold_days }}+ days of inactivity">
+                                        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;" aria-hidden="true">lock</span>
+                                        Locked
+                                    </button>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">No teachers found</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% if teachers %}
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Pending Deletion Requests</h5>
+                </div>
+                <div class="card-body">
+                    {% set has_pending = namespace(value=False) %}
+                    {% for teacher in teachers %}
+                        {% if teacher.pending_requests %}
+                            {% set has_pending.value = True %}
+                        {% endif %}
+                    {% endfor %}
+
+                    {% if has_pending.value %}
+                        <table class="table table-sm">
+                            <thead>
+                                <tr>
+                                    <th>Teacher</th>
+                                    <th>Request Type</th>
+                                    <th>Period</th>
+                                    <th>Reason</th>
+                                    <th>Requested</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for teacher in teachers %}
+                                    {% for request in teacher.pending_requests %}
+                                        <tr>
+                                            <td>{{ teacher.username }}</td>
+                                            <td>
+                                                {% if request.request_type.value == 'period' %}
+                                                    <span class="badge bg-warning text-dark">Period Deletion</span>
+                                                {% else %}
+                                                    <span class="badge bg-danger">Account Deletion</span>
+                                                {% endif %}
+                                            </td>
+                                            <td>{{ request.period|upper if request.period else 'N/A' }}</td>
+                                            <td>{{ request.reason if request.reason else 'Not provided' }}</td>
+                                            <td><small>{{ request.requested_at.strftime('%b %d, %Y') }}</small></td>
+                                        </tr>
+                                    {% endfor %}
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    {% else %}
+                        <p class="text-muted mb-0">No pending deletion requests.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<script>
+// Handle deletion form confirmations
+document.addEventListener('DOMContentLoaded', function() {
+    const deleteForms = document.querySelectorAll('.delete-form');
+    
+    deleteForms.forEach(function(form) {
+        form.addEventListener('submit', function(e) {
+            const type = form.getAttribute('data-type');
+            const username = form.getAttribute('data-username');
+            
+            let message;
+            if (type === 'period') {
+                const period = form.getAttribute('data-period');
+                const count = form.getAttribute('data-count');
+                message = 'Delete period ' + period + ' for ' + username + '? This will remove ' + count + ' student link(s).';
+            } else if (type === 'account') {
+                message = 'Delete teacher account ' + username + '? This will remove all student links.';
+            } else {
+                message = 'Are you sure you want to proceed with this deletion?';
+            }
+            
+            if (!confirm(message)) {
+                e.preventDefault();
+            }
+        });
+    });
+});
+</script>
+{% endblock %}

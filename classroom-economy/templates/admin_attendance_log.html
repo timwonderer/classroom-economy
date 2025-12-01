@@ -1,0 +1,395 @@
+{% extends "layout_admin.html" %}
+{% set page_title = "Attendance Log" %}
+{% block title %}Attendance Log{% endblock %}
+{% block page_icon %}fact_check{% endblock %}
+{% block content %}
+
+<!-- Stats Summary Card -->
+<div class="card shadow mb-4">
+    <div class="card-body py-3">
+        <div class="row align-items-center g-3">
+            <div class="col-auto">
+                <span class="material-symbols-outlined" style="font-size: 2rem; color: var(--brand-primary);">summarize</span>
+            </div>
+            <div class="col">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center">
+                            <span class="material-symbols-outlined me-2 text-primary">event</span>
+                            <div>
+                                <div class="small text-muted">Total Records</div>
+                                <div class="fw-bold" id="totalRecords">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center">
+                            <span class="material-symbols-outlined me-2 text-success">login</span>
+                            <div>
+                                <div class="small text-muted">Tap Ins</div>
+                                <div class="fw-bold text-success" id="tapInCount">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center">
+                            <span class="material-symbols-outlined me-2 text-danger">logout</span>
+                            <div>
+                                <div class="small text-muted">Tap Outs</div>
+                                <div class="fw-bold text-danger" id="tapOutCount">0</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="d-flex align-items-center">
+                            <span class="material-symbols-outlined me-2 text-info">schedule</span>
+                            <div>
+                                <div class="small text-muted">Showing</div>
+                                <div class="fw-bold" id="showingRange">—</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Content Card -->
+<div class="card shadow">
+    <div class="card-header bg-white py-3">
+        <div class="d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fw-bold">
+                <span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">history</span>
+                Attendance History
+            </h5>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card-body border-bottom bg-light">
+        <div class="row g-3">
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Period</label>
+                <select class="form-select form-select-sm" id="filterPeriod">
+                    <option value="">All Periods</option>
+                    {% for period in periods %}
+                    <option value="{{ period }}">{{ period }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Block</label>
+                <select class="form-select form-select-sm" id="filterBlock">
+                    <option value="">All Blocks</option>
+                    {% for block in blocks %}
+                    <option value="{{ block }}">{{ block }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Status</label>
+                <select class="form-select form-select-sm" id="filterStatus">
+                    <option value="">All</option>
+                    <option value="active">Tap In (Active)</option>
+                    <option value="inactive">Tap Out (Inactive)</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">Start Date</label>
+                <input type="date" class="form-control form-control-sm" id="filterStartDate">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small fw-bold">End Date</label>
+                <input type="date" class="form-control form-control-sm" id="filterEndDate">
+            </div>
+            <div class="col-md-2 d-flex align-items-end gap-2">
+                <button class="btn btn-sm btn-primary flex-fill" onclick="loadAttendanceHistory()">
+                    <span class="material-symbols-outlined" style="font-size: 1rem; vertical-align: text-bottom;">filter_alt</span>
+                    Apply
+                </button>
+                <button class="btn btn-sm btn-outline-secondary" onclick="resetFilters()" title="Reset filters">
+                    <span class="material-symbols-outlined" style="font-size: 1rem;">refresh</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="card-body p-0">
+        <div id="loadingIndicator" class="text-center py-5 d-none">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="text-muted mt-2">Loading attendance records...</p>
+        </div>
+
+        <div id="attendanceTableContainer">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="attendanceTable">
+                    <thead style="background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%); color: white; position: sticky; top: 0; z-index: 10;">
+                        <tr>
+                            <th class="ps-4">Student</th>
+                            <th>Block</th>
+                            <th>Period</th>
+                            <th>Timestamp</th>
+                            <th>Status</th>
+                            <th>Reason</th>
+                        </tr>
+                    </thead>
+                    <tbody id="attendanceTableBody">
+                        <!-- Data will be populated by JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div id="emptyState" class="text-center py-5 text-muted d-none">
+                <span class="material-symbols-outlined d-block mb-2" style="font-size: 3rem; opacity: 0.3;">search_off</span>
+                <p class="mb-0">No attendance records found</p>
+                <small>Try adjusting your filters</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <div class="card-footer bg-white border-top">
+        <div class="d-flex justify-content-between align-items-center">
+            <div class="text-muted small" id="paginationInfo">
+                Showing 0 - 0 of 0 records
+            </div>
+            <nav aria-label="Attendance pagination">
+                <ul class="pagination pagination-sm mb-0" id="paginationControls">
+                    <!-- Pagination buttons will be populated by JavaScript -->
+                </ul>
+            </nav>
+        </div>
+    </div>
+</div>
+
+<script>
+// Global state
+let currentPage = 1;
+let totalPages = 1;
+let totalRecords = 0;
+const pageSize = 50;
+
+// HTML escape function to prevent XSS
+function escapeHtml(text) {
+    if (text == null) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+// Convert UTC timestamps to local time display
+function formatTimestamp(utcString) {
+    if (!utcString) return '—';
+    const date = new Date(utcString);
+    const options = {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: 'numeric',
+        hour12: true
+    };
+    return date.toLocaleString(undefined, options);
+}
+
+// Get status badge HTML (status is validated server-side but we escape for defense in depth)
+function getStatusBadge(status) {
+    const escapedStatus = escapeHtml(status);
+    if (status === 'active') {
+        return '<span class="badge bg-success"><span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: text-bottom;">login</span> Tap In</span>';
+    } else if (status === 'inactive') {
+        return '<span class="badge bg-danger"><span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: text-bottom;">logout</span> Tap Out</span>';
+    }
+    return '<span class="badge bg-secondary">' + escapedStatus + '</span>';
+}
+
+// Load attendance history with filters
+async function loadAttendanceHistory(page = 1) {
+    currentPage = page;
+
+    // Show loading indicator
+    document.getElementById('loadingIndicator').classList.remove('d-none');
+    document.getElementById('attendanceTableContainer').classList.add('d-none');
+
+    // Build query parameters
+    const params = new URLSearchParams({
+        page: page,
+        page_size: pageSize
+    });
+
+    // Add filters
+    const period = document.getElementById('filterPeriod').value;
+    const block = document.getElementById('filterBlock').value;
+    const status = document.getElementById('filterStatus').value;
+    const startDate = document.getElementById('filterStartDate').value;
+    const endDate = document.getElementById('filterEndDate').value;
+
+    if (period) params.append('period', period);
+    if (block) params.append('block', block);
+    if (status) params.append('status', status);
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+
+    try {
+        const response = await fetch(`/api/attendance/history?${params.toString()}`);
+        const data = await response.json();
+
+        if (data.status === 'success') {
+            totalRecords = data.total;
+            totalPages = data.total_pages;
+            renderAttendanceTable(data.records);
+            renderPagination();
+            updateStats(data.records);
+        } else {
+            console.error('Error loading attendance history:', data.message);
+            showEmptyState();
+        }
+    } catch (error) {
+        console.error('Error fetching attendance history:', error);
+        showEmptyState();
+    } finally {
+        // Hide loading indicator
+        document.getElementById('loadingIndicator').classList.add('d-none');
+        document.getElementById('attendanceTableContainer').classList.remove('d-none');
+    }
+}
+
+// Render attendance table
+function renderAttendanceTable(records) {
+    const tbody = document.getElementById('attendanceTableBody');
+
+    if (records.length === 0) {
+        tbody.innerHTML = '';
+        document.getElementById('emptyState').classList.remove('d-none');
+        return;
+    }
+
+    document.getElementById('emptyState').classList.add('d-none');
+
+    tbody.innerHTML = records.map(record => `
+        <tr>
+            <td class="ps-4">
+                <div class="d-flex align-items-center">
+                    <span class="material-symbols-outlined me-2 text-muted" style="font-size: 1.25rem;">person</span>
+                    <span class="fw-medium">${escapeHtml(record.student_name)}</span>
+                </div>
+            </td>
+            <td><span class="badge bg-primary bg-opacity-10 text-primary">${escapeHtml(record.student_block) || '—'}</span></td>
+            <td><span class="badge bg-info bg-opacity-10 text-info">${escapeHtml(record.period)}</span></td>
+            <td><span class="text-muted small">${formatTimestamp(record.timestamp)}</span></td>
+            <td>${getStatusBadge(record.status)}</td>
+            <td class="text-muted small">${escapeHtml(record.reason) || '—'}</td>
+        </tr>
+    `).join('');
+}
+
+// Update stats summary
+function updateStats(records) {
+    const tapIns = records.filter(r => r.status === 'active').length;
+    const tapOuts = records.filter(r => r.status === 'inactive').length;
+
+    document.getElementById('totalRecords').textContent = totalRecords.toLocaleString();
+    document.getElementById('tapInCount').textContent = tapIns.toLocaleString();
+    document.getElementById('tapOutCount').textContent = tapOuts.toLocaleString();
+
+    const start = (currentPage - 1) * pageSize + 1;
+    const end = Math.min(currentPage * pageSize, totalRecords);
+    document.getElementById('showingRange').textContent = totalRecords > 0 ? `${start} - ${end}` : '—';
+}
+
+// Render pagination controls
+function renderPagination() {
+    const paginationControls = document.getElementById('paginationControls');
+    const paginationInfo = document.getElementById('paginationInfo');
+
+    // Update info text
+    const start = (currentPage - 1) * pageSize + 1;
+    const end = Math.min(currentPage * pageSize, totalRecords);
+    paginationInfo.textContent = `Showing ${start.toLocaleString()} - ${end.toLocaleString()} of ${totalRecords.toLocaleString()} records`;
+
+    // Build pagination buttons
+    let html = '';
+
+    // Previous button
+    html += `
+        <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="loadAttendanceHistory(${currentPage - 1}); return false;">
+                <span class="material-symbols-outlined" style="font-size: 1rem;">chevron_left</span>
+            </a>
+        </li>
+    `;
+
+    // Page numbers (show smart pagination)
+    const maxVisible = 5;
+    let startPage = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+    let endPage = Math.min(totalPages, startPage + maxVisible - 1);
+
+    if (endPage - startPage < maxVisible - 1) {
+        startPage = Math.max(1, endPage - maxVisible + 1);
+    }
+
+    if (startPage > 1) {
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="loadAttendanceHistory(1); return false;">1</a></li>`;
+        if (startPage > 2) {
+            html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+        html += `
+            <li class="page-item ${i === currentPage ? 'active' : ''}">
+                <a class="page-link" href="#" onclick="loadAttendanceHistory(${i}); return false;">${i}</a>
+            </li>
+        `;
+    }
+
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            html += `<li class="page-item disabled"><span class="page-link">...</span></li>`;
+        }
+        html += `<li class="page-item"><a class="page-link" href="#" onclick="loadAttendanceHistory(${totalPages}); return false;">${totalPages}</a></li>`;
+    }
+
+    // Next button
+    html += `
+        <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="loadAttendanceHistory(${currentPage + 1}); return false;">
+                <span class="material-symbols-outlined" style="font-size: 1rem;">chevron_right</span>
+            </a>
+        </li>
+    `;
+
+    paginationControls.innerHTML = html;
+}
+
+// Show empty state
+function showEmptyState() {
+    document.getElementById('attendanceTableBody').innerHTML = '';
+    document.getElementById('emptyState').classList.remove('d-none');
+    document.getElementById('totalRecords').textContent = '0';
+    document.getElementById('tapInCount').textContent = '0';
+    document.getElementById('tapOutCount').textContent = '0';
+    document.getElementById('showingRange').textContent = '—';
+}
+
+// Reset filters
+function resetFilters() {
+    document.getElementById('filterPeriod').value = '';
+    document.getElementById('filterBlock').value = '';
+    document.getElementById('filterStatus').value = '';
+    document.getElementById('filterStartDate').value = '';
+    document.getElementById('filterEndDate').value = '';
+    loadAttendanceHistory(1);
+}
+
+// Load data on page load
+document.addEventListener('DOMContentLoaded', () => {
+    loadAttendanceHistory(1);
+});
+</script>
+
+{% endblock %}
