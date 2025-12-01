@@ -79,13 +79,13 @@ def downgrade():
     # Drop indexes first - only if they exist
     if index_exists('transaction', 'ix_transaction_student_join_code'):
         op.drop_index('ix_transaction_student_join_code', table_name='transaction')
-        print("✅ Dropped index ix_transaction_student_join_code")
+        print("❌ Dropped index ix_transaction_student_join_code")
     else:
         print("⚠️  Index 'ix_transaction_student_join_code' does not exist, skipping...")
 
     if index_exists('transaction', 'ix_transaction_join_code'):
         op.drop_index('ix_transaction_join_code', table_name='transaction')
-        print("✅ Dropped index ix_transaction_join_code")
+        print("❌ Dropped index ix_transaction_join_code")
     else:
         print("⚠️  Index 'ix_transaction_join_code' does not exist, skipping...")
 
