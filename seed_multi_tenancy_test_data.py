@@ -27,11 +27,11 @@ from app import create_app
 from app.extensions import db
 from app.models import (
     Admin, Student, TeacherBlock, StudentTeacher, Transaction,
-    StoreItem, StudentItem, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    PayrollSettings, RentSettings, StoreItemBlock, InsurancePolicyBlock
+    StoreItem, InsurancePolicy, StudentInsurance, InsuranceClaim,
+    PayrollSettings, RentSettings
 )
 from app.utils.join_code import generate_join_code
-from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
+from hash_utils import get_random_salt, hash_username, hash_username_lookup
 from app.utils.claim_credentials import compute_primary_claim_hash
 from app.utils.name_utils import hash_last_name_parts
 from werkzeug.security import generate_password_hash
