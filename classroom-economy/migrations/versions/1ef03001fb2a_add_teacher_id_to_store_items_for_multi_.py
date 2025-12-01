@@ -27,7 +27,7 @@ def upgrade():
     enum_exists = result.scalar()
     
     if not enum_exists:
-        deletionrequesttype = postgresql.ENUM('full_account', 'student_data_only', name='deletionrequesttype')
+        deletionrequesttype = postgresql.ENUM('period', 'account', name='deletionrequesttype')
         deletionrequesttype.create(op.get_bind())
     
     # Add teacher_id to store_items
@@ -49,10 +49,28 @@ def upgrade():
     # Handle deletion_requests table if it exists
     inspector = sa.inspect(conn)
     if 'deletion_requests' in inspector.get_table_names():
-        # Use raw SQL with USING clause for type conversion
-        conn.execute(sa.text(
-            "ALTER TABLE deletion_requests ALTER COLUMN request_type TYPE deletionrequesttype USING request_type::deletionrequesttype"
-        ))
+        # Check if already an enum type
+        result = conn.execute(sa.text("""
+            SELECT data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'deletion_requests' AND column_name = 'request_type'
+        """))
+        current_type = result.scalar()
+        
+        if current_type and 'deletionrequesttype' not in current_type.lower():
+            # Convert with proper case handling
+            conn.execute(sa.text("""
+                ALTER TABLE deletion_requests 
+                ALTER COLUMN request_type TYPE deletionrequesttype 
+                USING CASE 
+                    WHEN LOWER(request_type::text) = 'period' THEN 'period'::deletionrequesttype
+                    WHEN LOWER(request_type::text) = 'account' THEN 'account'::deletionrequesttype
+                    ELSE 'period'::deletionrequesttype
+                END
+            """))
+            print("✅ Converted request_type column to enum type with case handling")
+        else:
+            print("⚠️  Column 'request_type' is already using enum type, skipping conversion...")
 
 
 def downgrade():
@@ -72,5 +90,5 @@ def downgrade():
         ))
     
     # Drop the enum type
-    deletionrequesttype = postgresql.ENUM('full_account', 'student_data_only', name='deletionrequesttype')
+    deletionrequesttype = postgresql.ENUM('period', 'account', name='deletionrequesttype')
     deletionrequesttype.drop(op.get_bind(), checkfirst=True)
