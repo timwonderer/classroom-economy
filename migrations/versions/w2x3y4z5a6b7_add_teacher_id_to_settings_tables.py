@@ -37,10 +37,10 @@ def upgrade():
     
     if first_admin_id:
         # Update NULL values with the first admin's ID
-        conn.execute(sa.text(f"UPDATE rent_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
-        conn.execute(sa.text(f"UPDATE payroll_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
-        conn.execute(sa.text(f"UPDATE banking_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
-        conn.execute(sa.text(f"UPDATE hall_pass_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
+        conn.execute(sa.text("UPDATE rent_settings SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
+        conn.execute(sa.text("UPDATE payroll_settings SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
+        conn.execute(sa.text("UPDATE banking_settings SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
+        conn.execute(sa.text("UPDATE hall_pass_settings SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
     
     # Step 3: Now make columns NOT NULL (only if we have data)
     if first_admin_id:
