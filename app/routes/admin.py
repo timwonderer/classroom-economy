@@ -1277,11 +1277,12 @@ def bulk_delete_pending_students():
 
         if block:
             # Delete all unclaimed TeacherBlock entries for this teacher and block
-            deleted_count = TeacherBlock.query.filter_by(
-                teacher_id=current_admin_id,
-                block=block,
-                is_claimed=False
-            ).filter(TeacherBlock.student_id.is_(None)).delete(synchronize_session=False)
+            deleted_count = TeacherBlock.query.filter(
+                TeacherBlock.teacher_id == current_admin_id,
+                TeacherBlock.block == block,
+                TeacherBlock.is_claimed == False,
+                TeacherBlock.student_id.is_(None)
+            ).delete(synchronize_session=False)
         else:
             # Delete specific TeacherBlock entries
             for tb_id in teacher_block_ids:
