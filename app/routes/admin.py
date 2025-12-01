@@ -1197,6 +1197,123 @@ def delete_block():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+@admin_bp.route('/pending-students/delete', methods=['POST'])
+@admin_required
+def delete_pending_student():
+    """
+    Delete a single pending student (unclaimed TeacherBlock entry).
+    
+    Pending students are roster entries that have not yet been claimed by students.
+    This route ensures comprehensive cleanup with no leftover traces.
+    """
+    data = request.get_json()
+    teacher_block_id = data.get('teacher_block_id')
+    if teacher_block_id:
+        try:
+            teacher_block_id = int(teacher_block_id)
+        except (ValueError, TypeError):
+            return jsonify({"status": "error", "message": "Invalid teacher block ID."}), 400
+    
+    current_admin_id = session.get('admin_id')
+
+    if not teacher_block_id:
+        return jsonify({"status": "error", "message": "No teacher block ID provided."}), 400
+
+    try:
+        # Find the TeacherBlock entry
+        teacher_block = TeacherBlock.query.filter_by(
+            id=teacher_block_id,
+            teacher_id=current_admin_id
+        ).first()
+
+        if not teacher_block:
+            return jsonify({"status": "error", "message": "Pending student not found or access denied."}), 404
+
+        # Verify it's actually unclaimed
+        if teacher_block.is_claimed or teacher_block.student_id is not None:
+            return jsonify({
+                "status": "error",
+                "message": "This seat has already been claimed. Use the regular student deletion route instead."
+            }), 400
+
+        student_name = f"{teacher_block.first_name} {teacher_block.last_initial}."
+        
+        # Delete the TeacherBlock entry (this is the only record for unclaimed seats)
+        db.session.delete(teacher_block)
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully deleted pending student {student_name}."
+        })
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting pending student: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@admin_bp.route('/pending-students/bulk-delete', methods=['POST'])
+@admin_required
+def bulk_delete_pending_students():
+    """
+    Delete multiple pending students (unclaimed TeacherBlock entries) at once.
+    
+    This route ensures comprehensive cleanup with no leftover traces.
+    Accepts a list of TeacherBlock IDs or a block name to delete all pending students in that block.
+    """
+    data = request.get_json()
+    teacher_block_ids = data.get('teacher_block_ids', [])
+    block = data.get('block', '').strip().upper()
+    current_admin_id = session.get('admin_id')
+
+    if not teacher_block_ids and not block:
+        return jsonify({
+            "status": "error",
+            "message": "Either teacher_block_ids or block must be provided."
+        }), 400
+
+    try:
+        deleted_count = 0
+
+        if block:
+            # Delete all unclaimed TeacherBlock entries for this teacher and block
+            deleted_count = TeacherBlock.query.filter(
+                TeacherBlock.teacher_id == current_admin_id,
+                TeacherBlock.block == block,
+                TeacherBlock.is_claimed == False,
+                TeacherBlock.student_id.is_(None)
+            ).delete(synchronize_session=False)
+        else:
+            # Delete specific TeacherBlock entries
+            for tb_id in teacher_block_ids:
+                teacher_block = TeacherBlock.query.filter_by(
+                    id=tb_id,
+                    teacher_id=current_admin_id
+                ).first()
+
+                if teacher_block:
+                    # Verify it's actually unclaimed
+                    if not teacher_block.is_claimed and teacher_block.student_id is None:
+                        db.session.delete(teacher_block)
+                        deleted_count += 1
+
+        db.session.commit()
+        
+        message = f"Successfully deleted {deleted_count} pending student(s)."
+        if block:
+            message = f"Successfully deleted {deleted_count} pending student(s) from Block {block}."
+
+        return jsonify({
+            "status": "success",
+            "message": message,
+            "deleted_count": deleted_count
+        })
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error bulk deleting pending students: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
 @admin_bp.route('/student/add-individual', methods=['POST'])
 @admin_required
 def add_individual_student():

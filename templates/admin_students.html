@@ -165,11 +165,17 @@
             {% set total_unclaimed = unclaimed_seats|length + unclaimed_students|length %}
             {% if block != "Unassigned" and total_unclaimed > 0 %}
             <div class="card border-warning mb-3">
-              <div class="card-header bg-warning bg-opacity-10">
+              <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
                 <h6 class="mb-0 text-dark">
                   <span class="material-symbols-outlined me-2" style="vertical-align: middle;">pending</span>
                   Unclaimed Seats ({{ total_unclaimed }})
                 </h6>
+                {% if unclaimed_seats|length > 0 %}
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteAllPendingInBlock('{{ block }}')">
+                  <span class="material-symbols-outlined me-1" style="vertical-align: middle; font-size: 16px;">delete_sweep</span>
+                  Delete All Unclaimed
+                </button>
+                {% endif %}
               </div>
               <div class="card-body">
                 <p class="text-muted mb-3">These students are in your roster but haven't set up their username yet. Share the join code above with them.</p>
@@ -195,7 +201,11 @@
                         <td>
                           <span class="badge bg-warning text-dark">Waiting for Claim</span>
                         </td>
-                        <td>-</td>
+                        <td>
+                          <button type="button" class="btn btn-sm btn-outline-danger" onclick="deletePendingStudent({{ seat.id }}, '{{ seat.first_name }} {{ seat.last_initial }}.')">
+                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">delete</span>
+                          </button>
+                        </td>
                       </tr>
                       {% endfor %}
                       {% for student in unclaimed_students %}
@@ -901,6 +911,74 @@ function deleteEntireBlock(block) {
   .catch(error => {
     console.error('Error:', error);
     alert('Network error occurred while deleting block.');
+  });
+}
+
+function deletePendingStudent(teacherBlockId, studentName) {
+  const confirmation = confirm(
+    `⚠️ Are you sure you want to delete the pending roster entry for ${studentName}?\n\n` +
+    `This student has not yet claimed their account. This action will remove them from your roster.\n\n` +
+    `This action CANNOT be undone!`
+  );
+
+  if (!confirmation) return;
+
+  // Send delete request
+  fetch('/admin/pending-students/delete', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    },
+    body: JSON.stringify({ teacher_block_id: teacherBlockId })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.status === 'success') {
+      alert(data.message);
+      location.reload();
+    } else {
+      alert('Error: ' + data.message);
+    }
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    alert('Network error occurred while deleting pending student.');
+  });
+}
+
+function deleteAllPendingInBlock(block) {
+  const confirmation = confirm(
+    `⚠️ WARNING: You are about to delete ALL unclaimed roster entries in Block ${block.toUpperCase()}.\n\n` +
+    `These are students who have been added to your roster but haven't claimed their accounts yet.\n\n` +
+    `Students who have already claimed their accounts will NOT be affected.\n\n` +
+    `This action CANNOT be undone!\n\n` +
+    `Are you sure you want to continue?`
+  );
+
+  if (!confirmation) return;
+
+  // Send bulk delete request
+  fetch('/admin/pending-students/bulk-delete', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    },
+    body: JSON.stringify({ block: block })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.status === 'success') {
+      alert(data.message + ` (${data.deleted_count} pending student(s) removed)`);
+      location.reload();
+    } else {
+      alert('Error: ' + data.message);
+    }
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    alert('Network error occurred while deleting pending students.');
   });
 }
 
