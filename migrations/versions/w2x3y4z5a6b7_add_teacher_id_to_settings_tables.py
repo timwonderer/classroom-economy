@@ -2,7 +2,7 @@
 
 Revision ID: w2x3y4z5a6b7
 Revises: v1w2x3y4z5a6
-Create Date: 2024-XX-XX XX:XX:XX.XXXXXX
+Create Date: [original timestamp]
 
 """
 from alembic import op
@@ -17,31 +17,31 @@ depends_on = None
 
 
 def upgrade():
-    # Add teacher_id columns as NULLABLE first
+    # Step 1: Add teacher_id columns as NULLABLE
     op.add_column('rent_settings', sa.Column('teacher_id', sa.Integer(), nullable=True))
     op.add_column('payroll_settings', sa.Column('teacher_id', sa.Integer(), nullable=True))
     op.add_column('banking_settings', sa.Column('teacher_id', sa.Integer(), nullable=True))
     op.add_column('hall_pass_settings', sa.Column('teacher_id', sa.Integer(), nullable=True))
     
-    # Backfill with the first admin's ID (or a default value)
+    # Step 2: Backfill existing rows with first admin's ID
     conn = op.get_bind()
     result = conn.execute(sa.text("SELECT id FROM admins ORDER BY id LIMIT 1"))
     first_admin_id = result.scalar()
     
     if first_admin_id:
-        # Update all existing rows with the first admin's ID
-        op.execute(f"UPDATE rent_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL")
-        op.execute(f"UPDATE payroll_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL")
-        op.execute(f"UPDATE banking_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL")
-        op.execute(f"UPDATE hall_pass_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL")
+        # Update all NULL values
+        conn.execute(sa.text(f"UPDATE rent_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
+        conn.execute(sa.text(f"UPDATE payroll_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
+        conn.execute(sa.text(f"UPDATE banking_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
+        conn.execute(sa.text(f"UPDATE hall_pass_settings SET teacher_id = {first_admin_id} WHERE teacher_id IS NULL"))
     
-    # Now make them NOT NULL
+    # Step 3: Now make columns NOT NULL
     op.alter_column('rent_settings', 'teacher_id', nullable=False)
     op.alter_column('payroll_settings', 'teacher_id', nullable=False)
     op.alter_column('banking_settings', 'teacher_id', nullable=False)
     op.alter_column('hall_pass_settings', 'teacher_id', nullable=False)
     
-    # Add foreign key constraints
+    # Step 4: Add foreign key constraints
     op.create_foreign_key('fk_rent_settings_teacher', 'rent_settings', 'admins', ['teacher_id'], ['id'])
     op.create_foreign_key('fk_payroll_settings_teacher', 'payroll_settings', 'admins', ['teacher_id'], ['id'])
     op.create_foreign_key('fk_banking_settings_teacher', 'banking_settings', 'admins', ['teacher_id'], ['id'])
