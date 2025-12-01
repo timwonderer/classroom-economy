@@ -53,7 +53,9 @@ def upgrade():
     
     if first_admin_id:
         # Update NULL values with the first admin's ID
+        # NOTE: table names are from a hardcoded list, not user input - safe from SQL injection
         for table in tables:
+            # Using text() with bound parameters for safe execution
             result = conn.execute(sa.text(f"UPDATE {table} SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
             if result.rowcount > 0:
                 print(f"✅ Backfilled {result.rowcount} rows in {table} with teacher_id = {first_admin_id}")

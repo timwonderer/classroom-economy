@@ -128,6 +128,7 @@ def test_migration_w2x3y4z5a6b7_idempotency(test_db):
     
     with db.engine.connect() as conn:
         # Create test tables without teacher_id first
+        # NOTE: table names are from a hardcoded list in this test, not user input
         for table in test_tables:
             conn.execute(text(f"""
                 CREATE TABLE IF NOT EXISTS {table} (
@@ -144,6 +145,7 @@ def test_migration_w2x3y4z5a6b7_idempotency(test_db):
         assert 'teacher_id' not in columns, f"teacher_id should not exist initially in {table}"
     
     # Now add teacher_id to all test tables
+    # NOTE: table names are from a hardcoded list in this test, not user input
     with db.engine.connect() as conn:
         for table in test_tables:
             conn.execute(text(f"ALTER TABLE {table} ADD COLUMN teacher_id INTEGER"))
