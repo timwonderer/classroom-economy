@@ -1354,7 +1354,6 @@ def delete_legacy_unclaimed_student():
         except (ValueError, TypeError):
             return jsonify({"status": "error", "message": "Invalid student ID."}), 400
     
-    current_admin_id = session.get('admin_id')
 
     if not student_id:
         return jsonify({"status": "error", "message": "No student ID provided."}), 400
