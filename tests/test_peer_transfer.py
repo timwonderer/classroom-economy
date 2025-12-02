@@ -1,8 +1,14 @@
 """
 Tests for student-to-student (peer) transfer functionality.
 
-Ensures that peer transfers work correctly with proper validation,
-class scoping, and transaction recording.
+Ensures that peer transfers work correctly with:
+- Passphrase verification for security
+- Balance checking to prevent overdrafts
+- Class isolation (can only send to classmates)
+- Transaction recording for both sender and recipient
+- Prevention of self-transfers
+- Validation of recipient existence
+- Amount validation (must be positive)
 """
 
 import pytest

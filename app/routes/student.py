@@ -21,7 +21,7 @@ from app.extensions import db, limiter
 from app.models import (
     Student, Transaction, TapEvent, StoreItem, StudentItem,
     RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    BankingSettings, UserReport, FeatureSettings
+    BankingSettings, UserReport, FeatureSettings, TeacherBlock
 )
 from app.auth import admin_required, login_required, get_logged_in_student, SESSION_TIMEOUT_MINUTES
 from forms import (
@@ -1320,9 +1320,6 @@ def transfer_to_student():
         return jsonify(status="error", message="Amount must be greater than 0."), 400
     
     # Find recipient by username in the same class
-    from app.models import TeacherBlock
-    from hash_utils import hash_username_lookup
-    
     # Hash the recipient username for lookup
     try:
         recipient_lookup_hash = hash_username_lookup(recipient_username)

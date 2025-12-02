@@ -819,7 +819,8 @@ def get_hall_pass_queue():
     # Get hall pass settings for this teacher (or use defaults)
     settings = HallPassSettings.query.filter_by(teacher_id=teacher_id, block=None).first()
     if not settings:
-        # Use default settings if none configured for this teacher
+        # Use temporary default settings if none configured for this teacher
+        # Note: These are not persisted to the database, just used for this request
         settings = HallPassSettings(teacher_id=teacher_id, queue_enabled=True, queue_limit=10)
 
     # Get user's timezone from session, default to Pacific Time
