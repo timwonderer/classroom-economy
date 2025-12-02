@@ -865,9 +865,9 @@ def delete_teacher(admin_id):
                 )
                 student.teacher_id = fallback.admin_id if fallback else None
 
-        # Delete all deletion requests for this teacher
-        # Since the account is being deleted, all pending/approved requests become moot
-        # and will be cascade deleted anyway. Explicitly delete them to avoid FK conflicts.
+        # Delete all deletion requests for this teacher to prevent NOT NULL violations.
+        # Explicit deletion needed because SQLAlchemy flush might try to nullify the FK
+        # before database CASCADE can execute, despite FK having ondelete='CASCADE'.
         DeletionRequest.query.filter_by(admin_id=admin.id).delete()
 
         # Delete all TeacherBlock entries for this teacher
