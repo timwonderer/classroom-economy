@@ -225,7 +225,7 @@
                           <a href="{{ url_for('admin.student_detail', student_id=student.id) }}" class="btn btn-sm btn-outline-primary me-1">
                             <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">visibility</span>
                           </a>
-                          <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteLegacyUnclaimedStudent({{ student.id }}, '{{ student.first_name }} {{ student.last_initial }}.')">
+                          <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteLegacyUnclaimedStudent({{ student.id }}, '{{ (student.first_name ~ ' ' ~ student.last_initial ~ '.')|replace("'", "\\'") }}')">
                             <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">delete</span>
                           </button>
                         </td>
@@ -959,12 +959,19 @@ function deleteLegacyUnclaimedStudent(studentId, studentName) {
 
   if (!confirmation) return;
 
+  // Get CSRF token
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+  if (!csrfToken) {
+    alert('Error: CSRF token not found. Please refresh the page and try again.');
+    return;
+  }
+
   // Send delete request
   fetch('/admin/legacy-students/delete', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+      'X-CSRFToken': csrfToken
     },
     body: JSON.stringify({ student_id: studentId })
   })

@@ -1285,10 +1285,13 @@ def bulk_delete_pending_students():
             ).delete(synchronize_session=False)
             
             # Also delete legacy unclaimed students (students without username_hash) in this block
-            legacy_students = _scoped_students().filter(
-                Student.block.like(f"%{block}%"),
-                Student.username_hash.is_(None)
-            ).all()
+            # Handle both single block and comma-separated blocks (e.g., "A" or "A, B")
+            legacy_students = []
+            for student in _scoped_students().filter(Student.username_hash.is_(None)).all():
+                # Split blocks by comma and check if any match the target block
+                student_blocks = [b.strip().upper() for b in (student.block or "").split(',')]
+                if block in student_blocks:
+                    legacy_students.append(student)
             
             for student in legacy_students:
                 # Delete all associated records for each legacy student
