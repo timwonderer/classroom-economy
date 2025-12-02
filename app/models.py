@@ -271,10 +271,10 @@ class DeletionRequest(db.Model):
     __tablename__ = 'deletion_requests'
     id = db.Column(db.Integer, primary_key=True)
     admin_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
-    request_type = db.Column(db.Enum(DeletionRequestType), nullable=False)
+    request_type = db.Column(db.Enum(DeletionRequestType, values_callable=lambda x: [e.value for e in x]), nullable=False)
     period = db.Column(db.String(10), nullable=True)  # Specified for period deletions only
     reason = db.Column(db.Text, nullable=True)  # Optional reason from teacher
-    status = db.Column(db.Enum(DeletionRequestStatus), default=DeletionRequestStatus.PENDING, nullable=False)
+    status = db.Column(db.Enum(DeletionRequestStatus, values_callable=lambda x: [e.value for e in x]), default=DeletionRequestStatus.PENDING, nullable=False)
     requested_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
     resolved_at = db.Column(db.DateTime, nullable=True)
     resolved_by = db.Column(db.Integer, db.ForeignKey('system_admins.id'), nullable=True)
