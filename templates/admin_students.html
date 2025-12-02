@@ -170,8 +170,8 @@
                   <span class="material-symbols-outlined me-2" style="vertical-align: middle;">pending</span>
                   Unclaimed Seats ({{ total_unclaimed }})
                 </h6>
-                {% if unclaimed_seats|length > 0 %}
-                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteAllPendingInBlock('{{ block }}')">
+                {% if unclaimed_seats|length > 0 or unclaimed_students|length > 0 %}
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteAllPendingInBlock('{{ block }}', {{ unclaimed_seats|length }}, {{ unclaimed_students|length }})">
                   <span class="material-symbols-outlined me-1" style="vertical-align: middle; font-size: 16px;">delete_sweep</span>
                   Delete All Unclaimed
                 </button>
@@ -954,9 +954,13 @@ function deletePendingStudent(teacherBlockId, studentName) {
   });
 }
 
-function deleteAllPendingInBlock(block) {
+function deleteAllPendingInBlock(block, unclaimedSeatsCount, unclaimedStudentsCount) {
+  const totalCount = unclaimedSeatsCount + unclaimedStudentsCount;
   const confirmation = confirm(
-    `⚠️ WARNING: You are about to delete ALL unclaimed roster entries in Block ${block.toUpperCase()}.\n\n` +
+    `⚠️ WARNING: You are about to delete ALL ${totalCount} unclaimed roster entries in Block ${block.toUpperCase()}.\n\n` +
+    `This includes:\n` +
+    `• ${unclaimedSeatsCount} unclaimed seat(s) (TeacherBlock entries)\n` +
+    `• ${unclaimedStudentsCount} legacy unclaimed student(s) (Students without usernames)\n\n` +
     `These are students who have been added to your roster but haven't claimed their accounts yet.\n\n` +
     `Students who have already claimed their accounts will NOT be affected.\n\n` +
     `This action CANNOT be undone!\n\n` +
@@ -965,28 +969,51 @@ function deleteAllPendingInBlock(block) {
 
   if (!confirmation) return;
 
-  // Send bulk delete request
-  fetch('/admin/pending-students/bulk-delete', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-    },
-    body: JSON.stringify({ block: block })
-  })
-  .then(response => response.json())
-  .then(data => {
-    if (data.status === 'success') {
-      alert(data.message + ` (${data.deleted_count} pending student(s) removed)`);
+  // Helper function to delete a type of unclaimed students
+  const deleteUnclaimedType = (endpoint, errorPrefix) => {
+    return fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+      },
+      body: JSON.stringify({ block: block })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.status === 'success') {
+        return data.deleted_count;
+      } else {
+        throw new Error(`${errorPrefix}: ${data.message}`);
+      }
+    });
+  };
+
+  // Use Promise.all to delete both types in parallel
+  const promises = [];
+  
+  // Delete pending TeacherBlock entries if any
+  if (unclaimedSeatsCount > 0) {
+    promises.push(deleteUnclaimedType('/admin/pending-students/bulk-delete', 'Pending students'));
+  }
+  
+  // Delete legacy unclaimed students if any
+  if (unclaimedStudentsCount > 0) {
+    promises.push(deleteUnclaimedType('/admin/legacy-unclaimed-students/bulk-delete', 'Legacy unclaimed students'));
+  }
+  
+  // Wait for all deletions to complete
+  Promise.all(promises)
+    .then(deletedCounts => {
+      const totalDeleted = deletedCounts.reduce((sum, count) => sum + count, 0);
+      alert(`✓ Successfully deleted ${totalDeleted} unclaimed student(s) from Block ${block.toUpperCase()}`);
       location.reload();
-    } else {
-      alert('Error: ' + data.message);
-    }
-  })
-  .catch(error => {
-    console.error('Error:', error);
-    alert('Network error occurred while deleting pending students.');
-  });
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('Error: ' + error.message);
+      location.reload(); // Reload anyway to show current state
+    });
 }
 
 function tapOutSelected(block) {

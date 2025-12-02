@@ -1201,42 +1201,61 @@ def delete_block():
         return jsonify({"status": "error", "message": "No block specified."}), 400
 
     try:
+        # Get all students in this block that the current admin can access
         students = _scoped_students().filter_by(block=block).all()
+        student_ids = [s.id for s in students]
         deleted_count = len(students)
+        
+        current_app.logger.info(f"Deleting block {block} with {deleted_count} students (IDs: {student_ids})")
 
-        for student in students:
-            # Delete associated records
-            Transaction.query.filter_by(student_id=student.id).delete()
-            TapEvent.query.filter_by(student_id=student.id).delete()
-            StudentItem.query.filter_by(student_id=student.id).delete()
-            RentPayment.query.filter_by(student_id=student.id).delete()
-            RentWaiver.query.filter_by(student_id=student.id).delete()
-            StudentInsurance.query.filter_by(student_id=student.id).delete()
-            InsuranceClaim.query.filter_by(student_id=student.id).delete()
-            HallPassLog.query.filter_by(student_id=student.id).delete()
+        if deleted_count > 0:
+            # Delete all associated records in bulk where possible to avoid N+1 queries
+            # Using synchronize_session=False to avoid session synchronization issues
+            Transaction.query.filter(Transaction.student_id.in_(student_ids)).delete(synchronize_session=False)
+            TapEvent.query.filter(TapEvent.student_id.in_(student_ids)).delete(synchronize_session=False)
+            StudentItem.query.filter(StudentItem.student_id.in_(student_ids)).delete(synchronize_session=False)
+            RentPayment.query.filter(RentPayment.student_id.in_(student_ids)).delete(synchronize_session=False)
+            RentWaiver.query.filter(RentWaiver.student_id.in_(student_ids)).delete(synchronize_session=False)
+            StudentInsurance.query.filter(StudentInsurance.student_id.in_(student_ids)).delete(synchronize_session=False)
+            InsuranceClaim.query.filter(InsuranceClaim.student_id.in_(student_ids)).delete(synchronize_session=False)
+            HallPassLog.query.filter(HallPassLog.student_id.in_(student_ids)).delete(synchronize_session=False)
             
             # Delete StudentTeacher associations
-            StudentTeacher.query.filter_by(student_id=student.id).delete()
+            StudentTeacher.query.filter(StudentTeacher.student_id.in_(student_ids)).delete(synchronize_session=False)
             
-            # Delete TeacherBlock entries for this student
-            TeacherBlock.query.filter_by(student_id=student.id).delete()
+            # Delete TeacherBlock entries for these students
+            TeacherBlock.query.filter(TeacherBlock.student_id.in_(student_ids)).delete(synchronize_session=False)
             
-            # Delete the student
-            db.session.delete(student)
+            # Flush to ensure all associated records are deleted before deleting students
+            db.session.flush()
+            
+            # Delete the students themselves
+            for student in students:
+                db.session.delete(student)
+            
+            # Flush student deletions
+            db.session.flush()
 
-        # Also delete unclaimed TeacherBlock entries for this block
-        TeacherBlock.query.filter_by(
-            teacher_id=current_admin_id,
-            block=block
-        ).delete()
+        # Also delete unclaimed TeacherBlock entries for this block and teacher
+        unclaimed_deleted = TeacherBlock.query.filter(
+            TeacherBlock.teacher_id == current_admin_id,
+            TeacherBlock.block == block,
+            TeacherBlock.student_id.is_(None)
+        ).delete(synchronize_session=False)
+        
+        current_app.logger.info(f"Deleted {unclaimed_deleted} unclaimed TeacherBlock entries for block {block}")
 
+        # Final commit
         db.session.commit()
+        current_app.logger.info(f"Successfully deleted block {block}")
+        
         return jsonify({
             "status": "success",
             "message": f"Successfully deleted all {deleted_count} student(s) in Block {block} and all associated data."
         })
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"Error deleting block {block}: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -1323,7 +1342,7 @@ def bulk_delete_pending_students():
             deleted_count = TeacherBlock.query.filter(
                 TeacherBlock.teacher_id == current_admin_id,
                 TeacherBlock.block == block,
-                TeacherBlock.is_claimed == False,
+                TeacherBlock.is_claimed.is_(False),
                 TeacherBlock.student_id.is_(None)
             ).delete(synchronize_session=False)
         else:
@@ -1354,6 +1373,70 @@ def bulk_delete_pending_students():
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error bulk deleting pending students: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@admin_bp.route('/legacy-unclaimed-students/bulk-delete', methods=['POST'])
+@admin_required
+def bulk_delete_legacy_unclaimed_students():
+    """
+    Delete multiple legacy unclaimed students (Student records without username_hash) at once.
+    
+    Legacy unclaimed students are Student records that exist but don't have a username_hash set yet.
+    This route ensures comprehensive cleanup with no leftover traces.
+    Accepts a block name to delete all legacy unclaimed students in that block.
+    """
+    data = request.get_json()
+    block = data.get('block', '').strip().upper()
+    current_admin_id = session.get('admin_id')
+
+    if not block:
+        return jsonify({
+            "status": "error",
+            "message": "Block must be provided."
+        }), 400
+
+    try:
+        # Query for legacy unclaimed students in this block for this teacher
+        students = _scoped_students().filter(
+            Student.block == block,
+            Student.username_hash.is_(None)
+        ).all()
+        
+        deleted_count = 0
+        for student in students:
+            # Delete associated records
+            Transaction.query.filter_by(student_id=student.id).delete()
+            TapEvent.query.filter_by(student_id=student.id).delete()
+            StudentItem.query.filter_by(student_id=student.id).delete()
+            RentPayment.query.filter_by(student_id=student.id).delete()
+            RentWaiver.query.filter_by(student_id=student.id).delete()
+            StudentInsurance.query.filter_by(student_id=student.id).delete()
+            InsuranceClaim.query.filter_by(student_id=student.id).delete()
+            HallPassLog.query.filter_by(student_id=student.id).delete()
+            
+            # Delete StudentTeacher associations
+            StudentTeacher.query.filter_by(student_id=student.id).delete()
+            
+            # Delete TeacherBlock entries for this student
+            TeacherBlock.query.filter_by(student_id=student.id).delete()
+            
+            # Delete the student
+            db.session.delete(student)
+            deleted_count += 1
+
+        db.session.commit()
+        
+        message = f"Successfully deleted {deleted_count} legacy unclaimed student(s) from Block {block}."
+
+        return jsonify({
+            "status": "success",
+            "message": message,
+            "deleted_count": deleted_count
+        })
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error bulk deleting legacy unclaimed students: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
