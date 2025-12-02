@@ -330,3 +330,93 @@ def test_bulk_delete_does_not_delete_claimed_legacy_students(client):
     
     # Verify claimed still exists
     assert Student.query.get(claimed_id) is not None
+
+
+def test_bulk_delete_handles_multi_block_students(client):
+    """Bulk delete should correctly handle students assigned to multiple blocks."""
+    teacher, secret = _create_admin("teacher-legacy8")
+    
+    # Create unclaimed student in blocks "G, H" (multi-block)
+    salt = get_random_salt()
+    credential = "J2025"
+    first_half_hash = hash_hmac(credential.encode(), salt)
+    
+    multi_block_student = Student(
+        first_name="Jack",
+        last_initial="J",
+        block="G, H",  # Student is in both blocks
+        salt=salt,
+        first_half_hash=first_half_hash,
+        username_hash=None,
+        last_name_hash_by_part=[],
+        dob_sum=2025,
+    )
+    db.session.add(multi_block_student)
+    db.session.flush()
+    
+    link = StudentTeacher(student_id=multi_block_student.id, admin_id=teacher.id)
+    db.session.add(link)
+    
+    # Create another unclaimed student only in block G
+    only_g_student = _create_legacy_unclaimed_student("Kate", teacher, "G")
+    
+    # Create unclaimed student only in block H
+    only_h_student = _create_legacy_unclaimed_student("Liam", teacher, "H")
+    
+    db.session.commit()
+    
+    multi_block_id = multi_block_student.id
+    only_g_id = only_g_student.id
+    only_h_id = only_h_student.id
+    
+    _login_admin(client, teacher, secret)
+    
+    # Bulk delete all unclaimed in block G
+    response = client.post(
+        "/admin/pending-students/bulk-delete",
+        json={"block": "G"},
+        content_type="application/json"
+    )
+    
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "success"
+    assert data["deleted_count"] == 2  # Multi-block student + only-G student
+    
+    # Verify correct deletions
+    assert Student.query.get(multi_block_id) is None  # In both G and H, deleted when deleting G
+    assert Student.query.get(only_g_id) is None  # Only in G, deleted
+    assert Student.query.get(only_h_id) is not None  # Only in H, should still exist
+
+
+def test_bulk_delete_does_not_match_partial_block_names(client):
+    """Bulk delete should not match partial block names (e.g., 'A' shouldn't match 'AB')."""
+    teacher, secret = _create_admin("teacher-legacy9")
+    
+    # Create unclaimed students in different blocks
+    student_a = _create_legacy_unclaimed_student("Mary", teacher, "A")
+    student_ab = _create_legacy_unclaimed_student("Nancy", teacher, "AB")
+    student_ba = _create_legacy_unclaimed_student("Oliver", teacher, "BA")
+    
+    student_a_id = student_a.id
+    student_ab_id = student_ab.id
+    student_ba_id = student_ba.id
+    
+    _login_admin(client, teacher, secret)
+    
+    # Bulk delete all unclaimed in block A (should NOT delete AB or BA)
+    response = client.post(
+        "/admin/pending-students/bulk-delete",
+        json={"block": "A"},
+        content_type="application/json"
+    )
+    
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["status"] == "success"
+    assert data["deleted_count"] == 1  # Only student in block 'A'
+    
+    # Verify correct deletions
+    assert Student.query.get(student_a_id) is None  # Block A - deleted
+    assert Student.query.get(student_ab_id) is not None  # Block AB - should still exist
+    assert Student.query.get(student_ba_id) is not None  # Block BA - should still exist
