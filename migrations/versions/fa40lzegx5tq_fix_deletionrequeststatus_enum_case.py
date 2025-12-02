@@ -140,13 +140,31 @@ def upgrade():
                 f"Please fix these values before running this migration."
             )
         
+        # Drop the default constraint before converting the column type
+        # PostgreSQL can't automatically cast string defaults to enum
+        print("  Step 3a: Dropping default constraint...")
+        conn.execute(sa.text("""
+            ALTER TABLE deletion_requests 
+            ALTER COLUMN status DROP DEFAULT
+        """))
+        print("  ✓ Dropped default constraint")
+        
         # Convert the column type
+        print("  Step 3b: Converting column type to enum...")
         conn.execute(sa.text("""
             ALTER TABLE deletion_requests 
             ALTER COLUMN status TYPE deletionrequeststatus 
             USING status::deletionrequeststatus
         """))
         print("  ✓ Converted status column to deletionrequeststatus enum")
+        
+        # Recreate the default constraint with the proper enum value
+        print("  Step 3c: Recreating default constraint...")
+        conn.execute(sa.text("""
+            ALTER TABLE deletion_requests 
+            ALTER COLUMN status SET DEFAULT 'pending'::deletionrequeststatus
+        """))
+        print("  ✓ Recreated default constraint")
     else:
         print("  ✓ Status column is already deletionrequeststatus enum type")
     
@@ -178,6 +196,13 @@ def downgrade():
     
     print("⚠️  Downgrading status column from Enum to String...")
     
+    # Drop the default constraint before converting the column type
+    conn.execute(sa.text("""
+        ALTER TABLE deletion_requests 
+        ALTER COLUMN status DROP DEFAULT
+    """))
+    print("  ✓ Dropped enum default constraint")
+    
     # Convert column back to String
     conn.execute(sa.text("""
         ALTER TABLE deletion_requests 
@@ -185,6 +210,13 @@ def downgrade():
         USING status::text
     """))
     print("  ✓ Converted status column back to String")
+    
+    # Recreate the string default
+    conn.execute(sa.text("""
+        ALTER TABLE deletion_requests 
+        ALTER COLUMN status SET DEFAULT 'pending'
+    """))
+    print("  ✓ Recreated string default constraint")
     
     # Drop the enum type
     result = conn.execute(sa.text(
