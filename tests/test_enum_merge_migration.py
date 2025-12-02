@@ -192,7 +192,9 @@ def test_migration_chain_is_linear_after_merge():
         f"Expected exactly one migration head after merge, found {len(heads)}: {heads}"
     )
     
-    # The head should be our comprehensive fix
-    assert heads[0] == '5esz32blgjej', (
-        f"Expected head to be 5esz32blgjej (comprehensive enum fix), found {heads[0]}"
+    # The head should be one of our comprehensive enum fixes
+    # Note: fa40lzegx5tq is the DeletionRequestStatus enum fix that comes after 5esz32blgjej
+    expected_heads = ['5esz32blgjej', 'fa40lzegx5tq']
+    assert heads[0] in expected_heads, (
+        f"Expected head to be one of {expected_heads} (enum fix migrations), found {heads[0]}"
     )
