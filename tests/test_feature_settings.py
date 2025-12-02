@@ -257,7 +257,7 @@ class TestOnboardingRoutes:
 class TestTeacherDeletionCascade:
     """Tests for CASCADE deletion when a teacher is deleted."""
 
-    def test_feature_settings_cascade_on_teacher_delete(self, client):
+    def test_feature_settings_cascade_on_teacher_delete(self, client_with_fk):
         """Test that FeatureSettings are CASCADE deleted when teacher is deleted."""
         import pyotp
         
@@ -287,7 +287,7 @@ class TestTeacherDeletionCascade:
         # Verify feature settings were CASCADE deleted
         assert FeatureSettings.query.filter_by(teacher_id=teacher_id).count() == 0
 
-    def test_teacher_onboarding_cascade_on_teacher_delete(self, client):
+    def test_teacher_onboarding_cascade_on_teacher_delete(self, client_with_fk):
         """Test that TeacherOnboarding is CASCADE deleted when teacher is deleted."""
         import pyotp
         
@@ -315,7 +315,7 @@ class TestTeacherDeletionCascade:
         # Verify onboarding was CASCADE deleted
         assert TeacherOnboarding.query.filter_by(teacher_id=teacher_id).first() is None
 
-    def test_teacher_blocks_cascade_on_teacher_delete(self, client):
+    def test_teacher_blocks_cascade_on_teacher_delete(self, client_with_fk):
         """Test that TeacherBlocks are CASCADE deleted when teacher is deleted."""
         import pyotp
         import os
