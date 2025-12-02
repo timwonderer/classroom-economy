@@ -911,11 +911,10 @@ def edit_student():
         
         if not existing_st:
             # Create StudentTeacher association for this legacy student
-            new_st = StudentTeacher(
+            db.session.add(StudentTeacher(
                 student_id=student.id,
                 admin_id=current_admin_id
-            )
-            db.session.add(new_st)
+            ))
             db.session.flush()  # Ensure it's saved before we continue
 
     # Get form data
@@ -1007,8 +1006,6 @@ def edit_student():
     
     # For legacy students (those being upgraded), ensure TeacherBlock entries exist
     # for ALL their blocks, not just newly added ones
-    blocks_to_ensure = added_blocks.copy()
-    
     # Check if this is a legacy student being upgraded (had no TeacherBlock entries)
     existing_tb_count = TeacherBlock.query.filter_by(
         student_id=student.id,
@@ -1018,6 +1015,9 @@ def edit_student():
     if existing_tb_count == 0:
         # This is a legacy student - ensure TeacherBlock entries for ALL blocks
         blocks_to_ensure = new_blocks_set
+    else:
+        # Normal case - only create TeacherBlock entries for newly added blocks
+        blocks_to_ensure = added_blocks
 
     # Remove TeacherBlock entries for blocks the student is no longer in
     for block in removed_blocks:
