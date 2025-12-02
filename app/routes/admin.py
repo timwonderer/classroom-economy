@@ -1283,6 +1283,26 @@ def bulk_delete_pending_students():
                 TeacherBlock.is_claimed == False,
                 TeacherBlock.student_id.is_(None)
             ).delete(synchronize_session=False)
+            
+            # Also delete legacy unclaimed students (students without username_hash) in this block
+            legacy_students = _scoped_students().filter(
+                Student.block.like(f"%{block}%"),
+                Student.username_hash.is_(None)
+            ).all()
+            
+            for student in legacy_students:
+                # Delete all associated records for each legacy student
+                Transaction.query.filter_by(student_id=student.id).delete()
+                TapEvent.query.filter_by(student_id=student.id).delete()
+                StudentItem.query.filter_by(student_id=student.id).delete()
+                RentPayment.query.filter_by(student_id=student.id).delete()
+                RentWaiver.query.filter_by(student_id=student.id).delete()
+                StudentInsurance.query.filter_by(student_id=student.id).delete()
+                InsuranceClaim.query.filter_by(student_id=student.id).delete()
+                HallPassLog.query.filter_by(student_id=student.id).delete()
+                TeacherBlock.query.filter_by(student_id=student.id).delete()
+                db.session.delete(student)
+                deleted_count += 1
         else:
             # Delete specific TeacherBlock entries
             for tb_id in teacher_block_ids:
@@ -1311,6 +1331,75 @@ def bulk_delete_pending_students():
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error bulk deleting pending students: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@admin_bp.route('/legacy-students/delete', methods=['POST'])
+@admin_required
+def delete_legacy_unclaimed_student():
+    """
+    Delete a single legacy unclaimed student (Student record without username_hash).
+    
+    Legacy students are Student records created before the TeacherBlock system.
+    They have no username_hash set and should be deletable like new unclaimed seats.
+    """
+    data = request.get_json()
+    student_id = data.get('student_id')
+    if student_id:
+        try:
+            student_id = int(student_id)
+        except (ValueError, TypeError):
+            return jsonify({"status": "error", "message": "Invalid student ID."}), 400
+    
+    current_admin_id = session.get('admin_id')
+
+    if not student_id:
+        return jsonify({"status": "error", "message": "No student ID provided."}), 400
+
+    try:
+        # Find the student - must belong to current admin
+        from app.auth import get_student_for_admin
+        student = get_student_for_admin(student_id)
+        
+        if not student:
+            return jsonify({
+                "status": "error",
+                "message": "Student not found or access denied."
+            }), 404
+        
+        # Verify the student is actually unclaimed (no username_hash)
+        if student.username_hash:
+            return jsonify({
+                "status": "error",
+                "message": "This student has already set up a username. Use the regular student deletion instead."
+            }), 400
+
+        student_name = student.full_name
+        
+        # Delete all associated records (same as regular student deletion)
+        Transaction.query.filter_by(student_id=student.id).delete()
+        TapEvent.query.filter_by(student_id=student.id).delete()
+        StudentItem.query.filter_by(student_id=student.id).delete()
+        RentPayment.query.filter_by(student_id=student.id).delete()
+        RentWaiver.query.filter_by(student_id=student.id).delete()
+        StudentInsurance.query.filter_by(student_id=student.id).delete()
+        InsuranceClaim.query.filter_by(student_id=student.id).delete()
+        HallPassLog.query.filter_by(student_id=student.id).delete()
+        
+        # Delete any associated TeacherBlock entries if they exist
+        TeacherBlock.query.filter_by(student_id=student.id).delete()
+        
+        # Delete the student record itself
+        db.session.delete(student)
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully deleted legacy unclaimed student {student_name}."
+        })
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting legacy unclaimed student: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
