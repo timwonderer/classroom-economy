@@ -735,28 +735,9 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<!-- Local Timestamp Conversion -->
-<script>
-    document.addEventListener("DOMContentLoaded", () => {
-        document.querySelectorAll(".local-timestamp").forEach(el => {
-            const utcString = el.dataset.timestamp;
-            if (utcString) {
-                const date = new Date(utcString);
-                const options = {
-                    year: 'numeric',
-                    month: 'short',
-                    day: 'numeric',
-                    hour: 'numeric',
-                    minute: 'numeric',
-                    hour12: true
-                };
-                el.textContent = date.toLocaleString(undefined, options);
-            } else {
-                el.textContent = '—';
-            }
-        });
-    });
+<!-- Timestamp conversion handled by timezone-utils.js -->
 
+<script>
     // Edit modal - reset login checkbox toggle warning
     const resetLoginCheckbox = document.getElementById('edit_reset_login');
     const resetLoginWarning = document.getElementById('reset_login_warning');
