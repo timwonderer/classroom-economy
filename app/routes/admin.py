@@ -3629,26 +3629,26 @@ def payroll_manual_payment():
 @admin_required
 def attendance_log():
     """View complete attendance log."""
-    # Build student lookup for names and blocks, streaming in batches
-    students = {s.id: {'name': s.full_name, 'block': s.block} for s in _scoped_students().yield_per(50)}
-    # Fetch attendance events from TapEvent, streaming in batches
-    raw_logs = TapEvent.query.order_by(TapEvent.timestamp.desc()).yield_per(100)
-    attendance_logs = []
-    for log in raw_logs:
-        student_info = students.get(log.student_id, {'name': 'Unknown', 'block': 'Unknown'})
-        attendance_logs.append({
-            'student_id': log.student_id,
-            'student_name': student_info['name'],
-            'student_block': student_info['block'],
-            'timestamp': log.timestamp,
-            'period': log.period,
-            'status': log.status,
-            'reason': log.reason
-        })
+    # Get accessible student IDs for tenant scoping
+    student_ids_subq = _student_scope_subquery(include_unassigned=False)
+    
+    # Get distinct periods from TapEvents for this admin's students
+    periods_query = (
+        db.session.query(TapEvent.period)
+        .filter(TapEvent.student_id.in_(student_ids_subq))
+        .filter(TapEvent.is_deleted.is_not(True))
+        .distinct()
+        .order_by(TapEvent.period)
+    )
+    periods = [p[0] for p in periods_query.all() if p[0]]
+    
+    # Get distinct blocks from Students for this admin's students
+    blocks = _get_teacher_blocks()
+    
     return render_template(
         'admin_attendance_log.html',
-        logs=attendance_logs,
-        students=students,
+        periods=periods,
+        blocks=blocks,
         current_page="attendance"
     )
 
