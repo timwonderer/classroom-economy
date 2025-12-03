@@ -21,7 +21,9 @@ from app.models import (
     Transaction, TapEvent, HallPassLog, StudentItem, RentPayment,
     StudentInsurance, InsuranceClaim, StudentTeacher, DeletionRequest,
     DeletionRequestType, DeletionRequestStatus, TeacherBlock, UserReport,
-    FeatureSettings, TeacherOnboarding, RentSettings
+    FeatureSettings, TeacherOnboarding, RentSettings, BankingSettings,
+    DemoStudent, HallPassSettings, PayrollFine, PayrollReward,
+    PayrollSettings, StoreItem
 )
 from app.auth import system_admin_required
 from forms import SystemAdminLoginForm, SystemAdminInviteForm
@@ -875,15 +877,18 @@ def delete_teacher(admin_id):
         # This cleans up roster seats associated with the teacher
         TeacherBlock.query.filter_by(teacher_id=admin.id).delete()
 
-        # Delete FeatureSettings and TeacherOnboarding for this teacher
-        # While these models have passive_deletes=True and ondelete='CASCADE',
-        # explicit deletion provides defense-in-depth and consistent patterns
+        # Systematically delete all dependent records to prevent IntegrityError due to NOT NULL constraints.
+        # Many of these models have a non-nullable teacher_id without a DB-level ON DELETE CASCADE.
+        BankingSettings.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        DemoStudent.query.filter_by(admin_id=admin.id).delete(synchronize_session=False)
         FeatureSettings.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
-        TeacherOnboarding.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
-
-        # Delete RentSettings for this teacher to prevent NOT NULL violations
-        # RentSettings.teacher_id is nullable=False without CASCADE, so explicit deletion is required
+        HallPassSettings.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        PayrollFine.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        PayrollReward.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        PayrollSettings.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
         RentSettings.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        StoreItem.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        TeacherOnboarding.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
 
         admin_username = admin.username
         db.session.delete(admin)
