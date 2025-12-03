@@ -981,8 +981,22 @@ def hall_pass_history():
         start_date = request.args.get('start_date', '').strip()
         end_date = request.args.get('end_date', '').strip()
 
-        # Build query
-        query = HallPassLog.query
+        # Import auth helper for tenant scoping
+        from app.auth import get_admin_student_query
+        
+        # Get student IDs that the current admin can access (tenant-scoped)
+        # Includes both primary ownership and shared students
+        student_ids_subquery = (
+            get_admin_student_query(include_unassigned=False)
+            .with_entities(Student.id)
+            .subquery()
+        )
+
+        # Build query with tenant scoping
+        query = (
+            HallPassLog.query
+            .filter(HallPassLog.student_id.in_(student_ids_subquery))
+        )
 
         # Apply filters
         if period:
