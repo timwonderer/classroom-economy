@@ -79,15 +79,16 @@ def setup_multi_teacher_hall_pass_history(client):
     now = datetime.now(timezone.utc)
     
     # Multiple hall pass logs for student1 (teacher1)
+    # Timeline: request -> decision (5 min later) -> left (10 min later) -> return (15 min later)
     pass1 = HallPassLog(
         student_id=student1.id,
         reason="Restroom",
         status="returned",
         period="A",
         request_time=now - timedelta(hours=2),
-        decision_time=now - timedelta(hours=2, minutes=-5),
-        left_time=now - timedelta(hours=2, minutes=-10),
-        return_time=now - timedelta(hours=2, minutes=-15)
+        decision_time=now - timedelta(hours=2) + timedelta(minutes=5),
+        left_time=now - timedelta(hours=2) + timedelta(minutes=10),
+        return_time=now - timedelta(hours=2) + timedelta(minutes=15)
     )
     
     pass2 = HallPassLog(
@@ -96,9 +97,9 @@ def setup_multi_teacher_hall_pass_history(client):
         status="returned",
         period="B",
         request_time=now - timedelta(hours=1),
-        decision_time=now - timedelta(hours=1, minutes=-5),
-        left_time=now - timedelta(hours=1, minutes=-10),
-        return_time=now - timedelta(hours=1, minutes=-15)
+        decision_time=now - timedelta(hours=1) + timedelta(minutes=5),
+        left_time=now - timedelta(hours=1) + timedelta(minutes=10),
+        return_time=now - timedelta(hours=1) + timedelta(minutes=15)
     )
 
     # Create hall pass history for teacher2's students
@@ -108,9 +109,9 @@ def setup_multi_teacher_hall_pass_history(client):
         status="returned",
         period="C",
         request_time=now - timedelta(hours=3),
-        decision_time=now - timedelta(hours=3, minutes=-5),
-        left_time=now - timedelta(hours=3, minutes=-10),
-        return_time=now - timedelta(hours=3, minutes=-15)
+        decision_time=now - timedelta(hours=3) + timedelta(minutes=5),
+        left_time=now - timedelta(hours=3) + timedelta(minutes=10),
+        return_time=now - timedelta(hours=3) + timedelta(minutes=15)
     )
     
     pass4 = HallPassLog(
