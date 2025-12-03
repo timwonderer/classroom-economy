@@ -1020,6 +1020,7 @@ def dashboard():
         # FIX: Pass scoped balances to template instead of using unscoped properties
         checking_balance=checking_balance,
         savings_balance=savings_balance,
+        teacher_id=teacher_id,
     )
 
 

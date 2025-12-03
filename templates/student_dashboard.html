@@ -404,7 +404,7 @@
     let queueEnabled = true;
 
     function updateQueueStatus() {
-        fetch('/api/hall-pass/queue')
+        fetch('/api/hall-pass/queue?teacher_id={{ teacher_id }}')
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
