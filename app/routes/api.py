@@ -22,7 +22,7 @@ from app.models import (
     HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
     StudentTeacher
 )
-from app.auth import login_required, admin_required, get_logged_in_student
+from app.auth import login_required, admin_required, get_logged_in_student, get_current_admin
 from app.routes.student import get_current_teacher_id
 
 # Import external modules
@@ -1484,7 +1484,7 @@ def get_tap_entries(student_id):
     Get all tap entries for a student with pairing validation.
     Returns entries grouped by period with pairing status.
     """
-    admin = get_logged_in_admin()
+    admin = get_current_admin()
     if not admin:
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -1556,7 +1556,7 @@ def delete_tap_entry(event_id):
     Soft-delete a tap entry by marking it as deleted.
     Only allows deletion of unpaired or invalid entries.
     """
-    admin = get_logged_in_admin()
+    admin = get_current_admin()
     if not admin:
         return jsonify({"error": "Unauthorized"}), 401
 
@@ -1590,7 +1590,7 @@ def update_student_block_settings():
     """
     Update StudentBlock settings (tap_enabled toggle) for a student-period combination.
     """
-    admin = get_logged_in_admin()
+    admin = get_current_admin()
     if not admin:
         return jsonify({"error": "Unauthorized"}), 401
 

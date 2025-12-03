@@ -1,7 +1,7 @@
 """Add StudentBlock model and tap deletion fields
 
 Revision ID: a1b2c3d4e5f7
-Revises: fa40lzegx5tq
+Revises: 1n7bslh69u6x
 Create Date: 2025-12-03 00:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'a1b2c3d4e5f7'
-down_revision = 'fa40lzegx5tq'
+down_revision = '1n7bslh69u6x'
 branch_labels = None
 depends_on = None
 
