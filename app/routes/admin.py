@@ -131,6 +131,51 @@ def _link_student_to_admin(student: Student, admin_id):
         db.session.add(StudentTeacher(student_id=student.id, admin_id=admin_id))
 
 
+def _get_students_needing_transaction_backfill(teacher_id):
+    """
+    Get students who have transactions missing proper scoping (teacher_id and/or join_code).
+    
+    These are orphaned transactions that need to be associated with a join_code
+    for proper class isolation. This is CRITICAL because join_code is the source
+    of truth for class scoping, not teacher_id.
+    
+    Args:
+        teacher_id: The teacher's admin ID
+        
+    Returns:
+        list: Student objects that have unscoped transactions
+    """
+    # Get students that belong to this teacher
+    student_ids_query = _scoped_students().with_entities(Student.id).all()
+    student_ids = [sid[0] for sid in student_ids_query]
+    
+    if not student_ids:
+        return []
+    
+    # Find transactions for these students that have NO join_code
+    # (regardless of whether they have teacher_id)
+    transactions_needing_backfill = (
+        Transaction.query
+        .filter(
+            Transaction.student_id.in_(student_ids),
+            Transaction.join_code.is_(None)
+        )
+        .with_entities(Transaction.student_id)
+        .distinct()
+        .all()
+    )
+    
+    if not transactions_needing_backfill:
+        return []
+    
+    affected_student_ids = [tx.student_id for tx in transactions_needing_backfill]
+    
+    # Get the student objects
+    students = Student.query.filter(Student.id.in_(affected_student_ids)).all()
+    
+    return students
+
+
 def _get_feature_settings(teacher_id, block=None):
     """
     Get feature settings for a teacher, optionally scoped to a specific block.
@@ -331,6 +376,13 @@ def dashboard():
     if onboarding_redirect:
         return onboarding_redirect
 
+    # Check for students with transactions needing join_code backfill
+    current_admin_id = session.get('admin_id')
+    students_needing_backfill = _get_students_needing_transaction_backfill(current_admin_id)
+    if students_needing_backfill:
+        # Redirect to backfill page
+        return redirect(url_for('admin.backfill_transactions'))
+
     student_ids_subq = _student_scope_subquery()
     # Auto-tapout students who have exceeded their daily limit
     auto_tapout_all_over_limit()
@@ -498,6 +550,104 @@ def give_bonus_all():
     db.session.commit()
     flash("Bonus/Payroll posted successfully!")
     return redirect(url_for('admin.dashboard'))
+
+
+@admin_bp.route('/backfill-transactions', methods=['GET', 'POST'])
+@admin_required
+def backfill_transactions():
+    """
+    Backfill join_code for orphaned transactions (CRITICAL for proper class isolation).
+    
+    join_code is the SOURCE OF TRUTH for class scoping because:
+    - A teacher can have multiple periods (Period 1 Math, Period 3 Math)
+    - Each period has a unique join_code
+    - Students in both periods should see SEPARATE balances for each
+    
+    Teacher selects which period/block each affected student belongs to,
+    and we update:
+    1. Transaction join_code (CRITICAL - required for balance scoping)
+    2. Transaction teacher_id (if not already set)
+    3. Student teacher_id (if not already set)
+    4. StudentTeacher association (if not already exists)
+    """
+    current_admin_id = session.get('admin_id')
+    students_needing_backfill = _get_students_needing_transaction_backfill(current_admin_id)
+    
+    if not students_needing_backfill:
+        # No students need backfill, redirect to dashboard
+        return redirect(url_for('admin.dashboard'))
+    
+    # Get teacher's available periods/blocks with join codes
+    teacher_blocks = (
+        TeacherBlock.query
+        .filter_by(teacher_id=current_admin_id, is_claimed=True)
+        .with_entities(TeacherBlock.block, TeacherBlock.join_code)
+        .distinct()
+        .all()
+    )
+    
+    # Create a mapping of block to join_code
+    block_to_join_code = {}
+    for block, join_code in teacher_blocks:
+        if block and join_code:
+            block_to_join_code[block] = join_code
+    
+    # If no blocks available, create a default mapping
+    if not block_to_join_code:
+        flash("No periods/blocks found. Please add students to periods first.", "error")
+        return redirect(url_for('admin.dashboard'))
+    
+    if request.method == 'POST':
+        try:
+            # Process each student assignment
+            for student in students_needing_backfill:
+                block_key = f"student_{student.id}_block"
+                selected_block = request.form.get(block_key)
+                
+                if selected_block and selected_block in block_to_join_code:
+                    join_code = block_to_join_code[selected_block]
+                    
+                    # 1. Update all transactions that have NO join_code
+                    #    (CRITICAL: join_code is source of truth, not teacher_id)
+                    transactions_to_update = Transaction.query.filter_by(
+                        student_id=student.id,
+                        join_code=None
+                    ).all()
+                    
+                    for tx in transactions_to_update:
+                        # Set join_code (critical for scoping)
+                        tx.join_code = join_code
+                        # Also set teacher_id if not already set
+                        if not tx.teacher_id:
+                            tx.teacher_id = current_admin_id
+                    
+                    # 2. Update student's primary teacher_id if not set
+                    if not student.teacher_id:
+                        student.teacher_id = current_admin_id
+                    
+                    # 3. Ensure StudentTeacher association exists
+                    _link_student_to_admin(student, current_admin_id)
+                    
+                    current_app.logger.info(
+                        f"Backfilled teacher_id={current_admin_id} and join_code={join_code} "
+                        f"for {len(transactions_to_update)} transactions for student {student.id}"
+                    )
+            
+            db.session.commit()
+            flash(f"Successfully backfilled transactions for {len(students_needing_backfill)} student(s)! Balances should now be correct.", "success")
+            return redirect(url_for('admin.dashboard'))
+            
+        except SQLAlchemyError as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error backfilling transactions: {e}", exc_info=True)
+            flash("Error backfilling transactions. Please try again.", "error")
+    
+    # GET request - show form
+    return render_template(
+        'admin_backfill_join_codes.html',
+        students=students_needing_backfill,
+        available_blocks=sorted(block_to_join_code.keys())
+    )
 
 
 # -------------------- AUTHENTICATION --------------------
@@ -2903,9 +3053,15 @@ def run_payroll():
     Run payroll by computing earned seconds from TapEvent append-only log.
     For each student, for each block, match active/inactive pairs since last payroll,
     sum total seconds, and post Transaction(s) of type 'payroll'.
+    
+    CRITICAL: Creates one transaction per student with join_code for proper scoping.
+    If student has multiple blocks with this teacher, uses first block's join_code.
     """
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
     try:
+        # Get current admin's teacher_id for proper transaction scoping
+        current_admin_id = session.get('admin_id')
+        
         last_payroll_tx = Transaction.query.filter_by(type="payroll").order_by(Transaction.timestamp.desc()).first()
         last_payroll_time = last_payroll_tx.timestamp if last_payroll_tx else None
         current_app.logger.info(f"🧮 RUN PAYROLL: Last payroll at {last_payroll_time}")
@@ -2914,8 +3070,20 @@ def run_payroll():
         summary = calculate_payroll(students, last_payroll_time)
 
         for student_id, amount in summary.items():
+            # Find the join_code for this student with this teacher
+            # If student has multiple periods, use the first one
+            teacher_block = TeacherBlock.query.filter_by(
+                teacher_id=current_admin_id,
+                student_id=student_id,
+                is_claimed=True
+            ).first()
+            
+            join_code = teacher_block.join_code if teacher_block else None
+            
             tx = Transaction(
                 student_id=student_id,
+                teacher_id=current_admin_id,
+                join_code=join_code,  # CRITICAL: Add join_code for proper scoping
                 amount=amount,
                 description=f"Payroll based on attendance",
                 account_type="checking",

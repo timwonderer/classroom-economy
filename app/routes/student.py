@@ -1210,8 +1210,7 @@ def transfer():
                          forecast_interest=forecast_interest,
                          settings=settings,
                          calculation_type=calculation_type,
-                         compound_frequency=compound_frequency,
-                         teacher_id=teacher_id)
+                         compound_frequency=compound_frequency)
 
 
 def apply_savings_interest(student, annual_rate=0.045):
