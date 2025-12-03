@@ -185,6 +185,36 @@ def is_feature_enabled(feature_name):
     return settings.get(feature_key, True)  # Default to enabled
 
 
+def calculate_scoped_balances(student: 'Student', join_code: str, teacher_id: int) -> tuple[float, float]:
+    """Calculate checking and savings balances scoped to a specific class.
+    
+    This function ensures consistent balance calculation across the application
+    by including transactions with matching join_code OR NULL join_code (legacy)
+    with matching teacher_id.
+    
+    Args:
+        student (Student): Student object whose balances to calculate
+        join_code (str): The join code for the current class context
+        teacher_id (int): The teacher ID for the current class context
+    
+    Returns:
+        tuple[float, float]: (checking_balance, savings_balance) as rounded floats
+    """
+    checking_balance = round(sum(
+        tx.amount for tx in student.transactions
+        if tx.account_type == 'checking' and not tx.is_void and
+        (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
+    ), 2)
+    
+    savings_balance = round(sum(
+        tx.amount for tx in student.transactions
+        if tx.account_type == 'savings' and not tx.is_void and
+        (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
+    ), 2)
+    
+    return checking_balance, savings_balance
+
+
 # -------------------- LEGACY PROFILE MIGRATION --------------------
 
 @student_bp.before_request
@@ -1066,17 +1096,7 @@ def transfer():
         amount = float(request.form.get('amount'))
 
         # CRITICAL FIX: Calculate balances using join_code scoping
-        # Include transactions with matching join_code OR NULL join_code (legacy) with matching teacher_id
-        checking_balance = round(sum(
-            tx.amount for tx in student.transactions
-            if tx.account_type == 'checking' and not tx.is_void and 
-            (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
-        ), 2)
-        savings_balance = round(sum(
-            tx.amount for tx in student.transactions
-            if tx.account_type == 'savings' and not tx.is_void and 
-            (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
-        ), 2)
+        checking_balance, savings_balance = calculate_scoped_balances(student, join_code, teacher_id)
 
         if from_account == to_account:
             if is_json:
@@ -1161,17 +1181,7 @@ def transfer():
 
     # Calculate forecast interest based on settings
     # CRITICAL FIX v3: Calculate BOTH checking and savings balances using join_code scoping
-    # Include transactions with matching join_code OR NULL join_code (legacy) with matching teacher_id
-    checking_balance = round(sum(
-        tx.amount for tx in student.transactions
-        if tx.account_type == 'checking' and not tx.is_void and
-        (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
-    ), 2)
-    savings_balance = round(sum(
-        tx.amount for tx in student.transactions
-        if tx.account_type == 'savings' and not tx.is_void and
-        (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
-    ), 2)
+    checking_balance, savings_balance = calculate_scoped_balances(student, join_code, teacher_id)
 
     if calculation_type == 'compound':
         if compound_frequency == 'daily':

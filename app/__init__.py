@@ -410,9 +410,13 @@ def create_app():
             )
 
             # Build list of available classes with teacher names
+            # Fetch all teachers at once to avoid N+1 query
+            teacher_ids = [seat.teacher_id for seat in claimed_seats]
+            teachers = {t.id: t for t in Admin.query.filter(Admin.id.in_(teacher_ids)).all()}
+            
             available_classes = []
             for seat in claimed_seats:
-                teacher = Admin.query.get(seat.teacher_id)
+                teacher = teachers.get(seat.teacher_id)
                 available_classes.append({
                     'join_code': seat.join_code,
                     'teacher_name': teacher.username if teacher else 'Unknown',
@@ -421,8 +425,8 @@ def create_app():
                     'is_current': seat.join_code == current_seat.join_code
                 })
 
-            # Build current class context
-            current_teacher = Admin.query.get(current_seat.teacher_id)
+            # Build current class context - reuse teacher from dictionary
+            current_teacher = teachers.get(current_seat.teacher_id)
             current_class_context = {
                 'join_code': current_seat.join_code,
                 'teacher_name': current_teacher.username if current_teacher else 'Unknown',
