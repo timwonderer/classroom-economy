@@ -4,7 +4,7 @@ Tests for the /api/attendance/history endpoint to ensure it returns attendance r
 import pytest
 from datetime import datetime, timezone, timedelta
 from app import app, db
-from app.models import Admin, Student, TapEvent, StudentTeacher
+from app.models import Admin, Student, TapEvent
 from hash_utils import hash_username, get_random_salt
 from werkzeug.security import generate_password_hash
 
