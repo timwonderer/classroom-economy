@@ -1421,12 +1421,22 @@ def handle_tap():
         db.session.add(event)
 
         # Update "done for the day" status when tapping out with reason "done"
-        if action == "tap_out" and reason and reason.lower() in ['done', 'done for the day']:
-            pacific = pytz.timezone('America/Los_Angeles')
-            now_pacific = now.astimezone(pacific)
-            today_pacific = now_pacific.date()
-            student_block.done_for_day_date = today_pacific
-            current_app.logger.info(f"Student {student.id} marked as done for the day in period {period}")
+        pacific = pytz.timezone('America/Los_Angeles')
+        now_pacific = now.astimezone(pacific)
+        today_pacific = now_pacific.date()
+        # Clear done_for_day_date if it's a new day
+        if student_block.done_for_day_date and student_block.done_for_day_date != today_pacific:
+            student_block.done_for_day_date = None
+            current_app.logger.info(f"Cleared done_for_day_date for student {student.id} in period {period} (new day)")
+        # Set or clear done_for_day_date based on tap out reason
+        if action == "tap_out":
+            if reason and reason.lower() in ['done', 'done for the day']:
+                student_block.done_for_day_date = today_pacific
+                current_app.logger.info(f"Student {student.id} marked as done for the day in period {period}")
+            else:
+                if student_block.done_for_day_date is not None:
+                    student_block.done_for_day_date = None
+                    current_app.logger.info(f"Cleared done_for_day_date for student {student.id} in period {period} (reason: {reason})")
 
         db.session.commit()
         current_app.logger.info(f"TAP success - student {student.id} {period} {action}")
