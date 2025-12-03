@@ -12,7 +12,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, redirect, url_for, flash, request, session, jsonify, current_app
-from sqlalchemy import or_, func, select
+from sqlalchemy import or_, func, select, and_
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
 import pytz
@@ -1066,13 +1066,16 @@ def transfer():
         amount = float(request.form.get('amount'))
 
         # CRITICAL FIX: Calculate balances using join_code scoping
+        # Include transactions with matching join_code OR NULL join_code (legacy) with matching teacher_id
         checking_balance = round(sum(
             tx.amount for tx in student.transactions
-            if tx.account_type == 'checking' and not tx.is_void and tx.join_code == join_code
+            if tx.account_type == 'checking' and not tx.is_void and 
+            (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
         ), 2)
         savings_balance = round(sum(
             tx.amount for tx in student.transactions
-            if tx.account_type == 'savings' and not tx.is_void and tx.join_code == join_code
+            if tx.account_type == 'savings' and not tx.is_void and 
+            (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
         ), 2)
 
         if from_account == to_account:
@@ -1137,10 +1140,14 @@ def transfer():
             return redirect(url_for('student.dashboard'))
 
     # CRITICAL FIX v2: Get transactions for display - scope by join_code
-    transactions = Transaction.query.filter_by(
-        student_id=student.id,
-        join_code=join_code,  # FIX: Use join_code (class code) as it's guaranteed unique
-        is_void=False
+    # Include transactions with matching join_code OR NULL join_code (legacy) with matching teacher_id
+    transactions = Transaction.query.filter(
+        Transaction.student_id == student.id,
+        Transaction.is_void == False,
+        or_(
+            Transaction.join_code == join_code,
+            and_(Transaction.join_code.is_(None), Transaction.teacher_id == teacher_id)
+        )
     ).order_by(Transaction.timestamp.desc()).all()
     checking_transactions = [t for t in transactions if t.account_type == 'checking']
     savings_transactions = [t for t in transactions if t.account_type == 'savings']
@@ -1154,9 +1161,11 @@ def transfer():
 
     # Calculate forecast interest based on settings
     # CRITICAL FIX v2: Calculate savings balance using join_code scoping
+    # Include transactions with matching join_code OR NULL join_code (legacy) with matching teacher_id
     savings_balance = round(sum(
         tx.amount for tx in student.transactions
-        if tx.account_type == 'savings' and not tx.is_void and tx.join_code == join_code
+        if tx.account_type == 'savings' and not tx.is_void and 
+        (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
     ), 2)
 
     if calculation_type == 'compound':

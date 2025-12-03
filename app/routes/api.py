@@ -12,14 +12,15 @@ import pytz
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, request, jsonify, session, current_app
-from sqlalchemy import func, text
+from sqlalchemy import func, or_
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.security import check_password_hash
 
 from app.extensions import db
 from app.models import (
     Student, StoreItem, StudentItem, Transaction, TapEvent,
-    HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings
+    HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
+    StudentTeacher
 )
 from app.auth import login_required, admin_required, get_logged_in_student
 from app.routes.student import get_current_teacher_id
@@ -794,13 +795,51 @@ def cancel_hall_pass(pass_id):
 
 @api_bp.route('/hall-pass/queue', methods=['GET'])
 def get_hall_pass_queue():
-    """Get current hall pass queue (approved but not yet checked out) and currently out count"""
-    # Get hall pass settings (or create with defaults if doesn't exist)
-    settings = HallPassSettings.query.first()
+    """Get current hall pass queue (approved but not yet checked out) and currently out count
+    
+    This endpoint supports teacher scoping via query parameter.
+    Usage: /api/hall-pass/queue?teacher_id=123
+    If no teacher_id is provided and user is logged in as admin, uses session admin_id.
+    """
+    
+    from app.models import Admin
+    
+    # Determine which teacher's data to show
+    teacher_id = request.args.get('teacher_id', type=int)
+    
+    # If no teacher_id param, try to get from session (if admin is logged in)
+    if not teacher_id and session.get('is_admin'):
+        teacher_id = session.get('admin_id')
+    
+    # If still no teacher_id, return error - we need to know which teacher's queue to show
+    if not teacher_id:
+        return jsonify({
+            "status": "error",
+            "message": "teacher_id parameter required for queue display"
+        }), 400
+    
+    # Validate teacher exists
+    teacher = Admin.query.get(teacher_id)
+    if not teacher:
+        return jsonify({
+            "status": "error",
+            "message": "Invalid teacher_id"
+        }), 404
+    
+    # If querying as admin, verify authorization (only their own data unless system admin)
+    if session.get('is_admin') and not session.get('is_system_admin'):
+        if session.get('admin_id') != teacher_id:
+            return jsonify({
+                "status": "error",
+                "message": "Unauthorized"
+            }), 403
+    
+    # Get hall pass settings for this teacher (or use defaults)
+    settings = HallPassSettings.query.filter_by(teacher_id=teacher_id, block=None).first()
     if not settings:
-        settings = HallPassSettings(queue_enabled=True, queue_limit=10)
-        db.session.add(settings)
-        db.session.commit()
+        # Use temporary default settings if none configured for this teacher
+        # Note: These are not persisted to the database, just used for this request
+        settings = HallPassSettings(teacher_id=teacher_id, queue_enabled=True, queue_limit=10)
 
     # Get user's timezone from session, default to Pacific Time
     tz_name = session.get('timezone', 'America/Los_Angeles')
@@ -819,16 +858,39 @@ def get_hall_pass_queue():
     # Convert to UTC for database comparison (database stores times in UTC)
     today_start_utc = today_start_user_tz.astimezone(pytz.utc).replace(tzinfo=None)
 
+    # Build subquery for students belonging to this teacher
+    # Include both primary ownership (teacher_id) and shared access (student_teachers)
+    shared_student_ids = (
+        StudentTeacher.query.with_entities(StudentTeacher.student_id)
+        .filter(StudentTeacher.admin_id == teacher_id)
+        .subquery()
+    )
+    
+    student_ids_subquery = (
+        Student.query.with_entities(Student.id)
+        .filter(
+            or_(
+                Student.teacher_id == teacher_id,
+                Student.id.in_(shared_student_ids)
+            )
+        )
+        .subquery()
+    )
+
     # Get approved passes from today that haven't been used yet (not left, not returned)
+    # SCOPED to this teacher's students
     queue = HallPassLog.query.filter(
         HallPassLog.status == 'approved',
-        HallPassLog.decision_time >= today_start_utc
+        HallPassLog.decision_time >= today_start_utc,
+        HallPassLog.student_id.in_(student_ids_subquery)
     ).order_by(HallPassLog.decision_time.asc()).all()
 
     # Get count of students currently out from today (status = 'left')
+    # SCOPED to this teacher's students
     currently_out_count = HallPassLog.query.filter(
         HallPassLog.status == 'left',
-        HallPassLog.left_time >= today_start_utc
+        HallPassLog.left_time >= today_start_utc,
+        HallPassLog.student_id.in_(student_ids_subquery)
     ).count()
 
     # Helper function to ensure times are marked as UTC
