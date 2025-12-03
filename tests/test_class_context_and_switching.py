@@ -15,6 +15,15 @@ from app.extensions import db
 from hash_utils import get_random_salt, hash_username
 
 
+def _get_inject_class_context_processor(client):
+    """Helper to get the inject_class_context processor function."""
+    from app import app as flask_app
+    for processor in flask_app.template_context_processors[None]:
+        if processor.__name__ == 'inject_class_context':
+            return processor
+    return None
+
+
 @pytest.fixture
 def setup_multi_class_student(client):
     """Create a student with multiple class enrollments for testing."""
@@ -137,15 +146,9 @@ def setup_single_class_student(client):
 def test_inject_class_context_no_student(client):
     """Test that inject_class_context returns empty context when no student is logged in."""
     with client.application.test_request_context('/'):
-        from app import app as flask_app
-        # Get the context processor function
-        ctx_processor = None
-        for processor in flask_app.template_context_processors[None]:
-            if processor.__name__ == 'inject_class_context':
-                ctx_processor = processor
-                break
-        
+        ctx_processor = _get_inject_class_context_processor(client)
         assert ctx_processor is not None, "inject_class_context not found"
+        
         context = ctx_processor()
         assert context['current_class_context'] is None
         assert context['available_classes'] == []
@@ -166,21 +169,11 @@ def test_inject_class_context_no_claimed_seats(client):
     db.session.add(student)
     db.session.commit()
 
-    with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-
     with client.application.test_request_context('/'):
-        # Manually set session for request context
         with client.session_transaction() as sess:
             session['student_id'] = student.id
         
-        from app import app as flask_app
-        ctx_processor = None
-        for processor in flask_app.template_context_processors[None]:
-            if processor.__name__ == 'inject_class_context':
-                ctx_processor = processor
-                break
-        
+        ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
         assert context['current_class_context'] is None
         assert context['available_classes'] == []
@@ -191,21 +184,12 @@ def test_inject_class_context_defaults_to_first_seat(client, setup_multi_class_s
     data = setup_multi_class_student
     student = data['student']
     
-    with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        # No current_join_code set - should default to first seat
-    
     with client.application.test_request_context('/'):
         with client.session_transaction() as sess:
             session['student_id'] = student.id
+            # No current_join_code set - should default to first seat
         
-        from app import app as flask_app
-        ctx_processor = None
-        for processor in flask_app.template_context_processors[None]:
-            if processor.__name__ == 'inject_class_context':
-                ctx_processor = processor
-                break
-        
+        ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
         
         # Should default to first claimed seat
@@ -220,22 +204,12 @@ def test_inject_class_context_uses_session_join_code(client, setup_multi_class_s
     data = setup_multi_class_student
     student = data['student']
     
-    with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        sess['current_join_code'] = "TEACHER2B"
-    
     with client.application.test_request_context('/'):
         with client.session_transaction() as sess:
             session['student_id'] = student.id
             session['current_join_code'] = "TEACHER2B"
         
-        from app import app as flask_app
-        ctx_processor = None
-        for processor in flask_app.template_context_processors[None]:
-            if processor.__name__ == 'inject_class_context':
-                ctx_processor = processor
-                break
-        
+        ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
         
         # Should use session join_code
@@ -250,22 +224,12 @@ def test_inject_class_context_available_classes_list(client, setup_multi_class_s
     data = setup_multi_class_student
     student = data['student']
     
-    with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        sess['current_join_code'] = "TEACHER2B"
-    
     with client.application.test_request_context('/'):
         with client.session_transaction() as sess:
             session['student_id'] = student.id
             session['current_join_code'] = "TEACHER2B"
         
-        from app import app as flask_app
-        ctx_processor = None
-        for processor in flask_app.template_context_processors[None]:
-            if processor.__name__ == 'inject_class_context':
-                ctx_processor = processor
-                break
-        
+        ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
         
         # Should have all 3 classes
@@ -301,20 +265,11 @@ def test_inject_class_context_handles_missing_teacher(client, setup_single_class
     # rather than direct dictionary access which would raise KeyError
     
     # The test now just verifies normal operation works
-    with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-    
     with client.application.test_request_context('/'):
         with client.session_transaction() as sess:
             session['student_id'] = student.id
         
-        from app import app as flask_app
-        ctx_processor = None
-        for processor in flask_app.template_context_processors[None]:
-            if processor.__name__ == 'inject_class_context':
-                ctx_processor = processor
-                break
-        
+        ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
         
         # Should successfully return context with valid teacher
@@ -327,19 +282,11 @@ def test_inject_class_context_handles_missing_teacher(client, setup_single_class
 def test_inject_class_context_exception_handling(client):
     """Test that inject_class_context handles exceptions without breaking template rendering."""
     # Create a scenario that would cause an error
-    with client.session_transaction() as sess:
-        sess['student_id'] = 999999  # Non-existent student
-    
     with client.application.test_request_context('/'):
         with client.session_transaction() as sess:
-            session['student_id'] = 999999
+            session['student_id'] = 999999  # Non-existent student
         
-        from app import app as flask_app
-        ctx_processor = None
-        for processor in flask_app.template_context_processors[None]:
-            if processor.__name__ == 'inject_class_context':
-                ctx_processor = processor
-                break
+        ctx_processor = _get_inject_class_context_processor(client)
         
         # Should not raise exception, should return empty context
         context = ctx_processor()
