@@ -1585,8 +1585,8 @@ def update_student_block_settings():
     if not student:
         return jsonify({"error": "Student not found"}), 404
 
-    # Check if admin has access to this student
-    if not student.teachers.filter_by(id=admin.id).first():
+    # Check if admin has access to this student (many-to-many or legacy teacher_id)
+    if not (student.teachers.filter_by(id=admin.id).first() or student.teacher_id == admin.id):
         return jsonify({"error": "Access denied"}), 403
 
     # Get or create StudentBlock record
