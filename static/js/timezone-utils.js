@@ -17,6 +17,7 @@
     /**
      * Detect user's timezone from browser
      * Falls back to PST if detection fails
+     * @note Requires Intl.DateTimeFormat API with timeZone support (IE not supported)
      * @returns {string} IANA timezone name (e.g., 'America/New_York', 'America/Los_Angeles')
      */
     function detectTimezone() {
@@ -192,6 +193,21 @@
     async function syncTimezoneToServer() {
         try {
             const timezone = detectTimezone();
+            
+            // Validate timezone before sending to prevent malicious data
+            // Check if Intl.supportedValuesOf is available (modern browsers)
+            if (typeof Intl.supportedValuesOf === 'function') {
+                try {
+                    const validTimezones = Intl.supportedValuesOf('timeZone');
+                    if (!validTimezones.includes(timezone)) {
+                        console.warn('Invalid timezone detected, not syncing to server:', timezone);
+                        return false;
+                    }
+                } catch (e) {
+                    // If supportedValuesOf fails, proceed anyway (timezone was already detected successfully)
+                    console.debug('Could not validate timezone, proceeding anyway:', e);
+                }
+            }
             
             const response = await fetch('/api/set-timezone', {
                 method: 'POST',
