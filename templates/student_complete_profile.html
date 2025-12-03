@@ -1,0 +1,177 @@
+{% extends "layout_student.html" %}
+
+{% block page_icon %}account_circle{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="bi bi-person-fill-gear me-2"></i>Complete Your Profile</h4>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-info mb-4">
+                        <i class="bi bi-info-circle-fill me-2"></i>
+                        <strong>Profile Update Required</strong><br>
+                        We need a few additional details to complete your profile. This is a one-time update to improve your account security.
+                    </div>
+
+                    {% if not confirmed %}
+                    <!-- Step 1: Data Entry -->
+                    <form method="POST" action="{{ url_for('student.complete_profile') }}" id="profileForm">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <h5 class="mb-3">Personal Information</h5>
+                        
+                        <div class="mb-3">
+                            <label for="first_name" class="form-label">First Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="first_name" name="first_name" 
+                                   value="{{ form.first_name.data or student.first_name }}" required maxlength="50">
+                            <small class="form-text text-muted">This can be edited if needed.</small>
+                        </div>
+
+                        <div class="mb-3">
+                            <label for="last_name" class="form-label">Full Last Name <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="last_name" name="last_name" 
+                                   value="{{ form.last_name.data or '' }}" required maxlength="100" placeholder="Smith">
+                            <small class="form-text text-muted">Enter your complete last name.</small>
+                        </div>
+
+                        <h5 class="mb-3 mt-4">Date of Birth</h5>
+                        <p class="text-muted small">This information is used to generate a secure identifier and is not stored directly.</p>
+                        
+                        <div class="row">
+                            <div class="col-md-5 mb-3">
+                                <label for="dob_month" class="form-label">Month <span class="text-danger">*</span></label>
+                                <select class="form-select" id="dob_month" name="dob_month" required>
+                                    <option value="">Select Month</option>
+                                    <option value="01">January</option>
+                                    <option value="02">February</option>
+                                    <option value="03">March</option>
+                                    <option value="04">April</option>
+                                    <option value="05">May</option>
+                                    <option value="06">June</option>
+                                    <option value="07">July</option>
+                                    <option value="08">August</option>
+                                    <option value="09">September</option>
+                                    <option value="10">October</option>
+                                    <option value="11">November</option>
+                                    <option value="12">December</option>
+                                </select>
+                            </div>
+                            <div class="col-md-3 mb-3">
+                                <label for="dob_day" class="form-label">Day <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="dob_day" name="dob_day" 
+                                       value="{{ form.dob_day.data or '' }}" min="1" max="31" required placeholder="15">
+                            </div>
+                            <div class="col-md-4 mb-3">
+                                <label for="dob_year" class="form-label">Year <span class="text-danger">*</span></label>
+                                <input type="number" class="form-control" id="dob_year" name="dob_year" 
+                                       value="{{ form.dob_year.data or '' }}" min="1900" max="{{ max_birth_year or 2020 }}" required placeholder="2010">
+                            </div>
+                        </div>
+
+                        <input type="hidden" name="step" value="confirm">
+                        
+                        <div class="d-grid gap-2 mt-4">
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                <i class="bi bi-arrow-right-circle me-2"></i>Continue to Confirmation
+                            </button>
+                        </div>
+                    </form>
+
+                    {% else %}
+                    <!-- Step 2: Confirmation -->
+                    <div class="alert alert-warning mb-4">
+                        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                        <strong>Please Confirm Your Information</strong><br>
+                        Make sure all details are correct before submitting. This information cannot be changed easily.
+                    </div>
+
+                    <div class="card mb-4">
+                        <div class="card-body">
+                            <h5 class="card-title mb-3">Review Your Information</h5>
+                            <dl class="row mb-0">
+                                <dt class="col-sm-4">First Name:</dt>
+                                <dd class="col-sm-8"><strong>{{ confirm_data.first_name }}</strong></dd>
+                                
+                                <dt class="col-sm-4">Last Name:</dt>
+                                <dd class="col-sm-8"><strong>{{ confirm_data.last_name }}</strong></dd>
+                                
+                                <dt class="col-sm-4">Date of Birth:</dt>
+                                <dd class="col-sm-8"><strong>{{ confirm_data.dob_display }}</strong></dd>
+                            </dl>
+                        </div>
+                    </div>
+
+                    <form method="POST" action="{{ url_for('student.complete_profile') }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="first_name" value="{{ confirm_data.first_name }}">
+                        <input type="hidden" name="last_name" value="{{ confirm_data.last_name }}">
+                        <input type="hidden" name="dob_month" value="{{ confirm_data.dob_month }}">
+                        <input type="hidden" name="dob_day" value="{{ confirm_data.dob_day }}">
+                        <input type="hidden" name="dob_year" value="{{ confirm_data.dob_year }}">
+                        <input type="hidden" name="step" value="submit">
+
+                        <div class="d-grid gap-2">
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="bi bi-check-circle me-2"></i>Confirm and Complete Profile
+                            </button>
+                            <button type="button" class="btn btn-secondary" onclick="window.location.reload();">
+                                <i class="bi bi-arrow-left me-2"></i>Go Back to Edit
+                            </button>
+                        </div>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Simple date validation
+    document.getElementById('profileForm')?.addEventListener('submit', function(e) {
+        const month = parseInt(document.getElementById('dob_month').value);
+        const day = parseInt(document.getElementById('dob_day').value);
+        const year = parseInt(document.getElementById('dob_year').value);
+        
+        if (month < 1 || month > 12) {
+            e.preventDefault();
+            alert('Please select a valid month.');
+            return false;
+        }
+        
+        if (day < 1 || day > 31) {
+            e.preventDefault();
+            alert('Day must be between 1 and 31.');
+            return false;
+        }
+        
+        const maxYear = {{ max_birth_year or 2020 }};
+        if (year < 1900 || year > maxYear) {
+            e.preventDefault();
+            alert(`Please enter a valid birth year (1900-${maxYear}).`);
+            return false;
+        }
+        
+        // Check for valid day in month, including leap year validation for February
+        function isLeapYear(y) {
+            return (y % 4 === 0 && (y % 100 !== 0 || y % 400 === 0));
+        }
+        let maxDay;
+        if (month === 2) {
+            maxDay = isLeapYear(year) ? 29 : 28;
+        } else {
+            const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+            maxDay = daysInMonth[month - 1];
+        }
+        if (day > maxDay) {
+            e.preventDefault();
+            alert(`Invalid day for the selected month. Maximum day is ${maxDay}.`);
+            return false;
+        }
+    });
+</script>
+{% endblock %}

@@ -165,11 +165,17 @@
             {% set total_unclaimed = unclaimed_seats|length + unclaimed_students|length %}
             {% if block != "Unassigned" and total_unclaimed > 0 %}
             <div class="card border-warning mb-3">
-              <div class="card-header bg-warning bg-opacity-10">
+              <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
                 <h6 class="mb-0 text-dark">
                   <span class="material-symbols-outlined me-2" style="vertical-align: middle;">pending</span>
                   Unclaimed Seats ({{ total_unclaimed }})
                 </h6>
+                {% if unclaimed_seats|length > 0 or unclaimed_students|length > 0 %}
+                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteAllPendingInBlock('{{ block }}', {{ unclaimed_seats|length }}, {{ unclaimed_students|length }})">
+                  <span class="material-symbols-outlined me-1" style="vertical-align: middle; font-size: 16px;">delete_sweep</span>
+                  Delete All Unclaimed
+                </button>
+                {% endif %}
               </div>
               <div class="card-body">
                 <p class="text-muted mb-3">These students are in your roster but haven't set up their username yet. Share the join code above with them.</p>
@@ -195,7 +201,11 @@
                         <td>
                           <span class="badge bg-warning text-dark">Waiting for Claim</span>
                         </td>
-                        <td>-</td>
+                        <td>
+                          <button type="button" class="btn btn-sm btn-outline-danger" onclick="deletePendingStudent({{ seat.id }}, '{{ seat.first_name }} {{ seat.last_initial }}.')">
+                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">delete</span>
+                          </button>
+                        </td>
                       </tr>
                       {% endfor %}
                       {% for student in unclaimed_students %}
@@ -215,6 +225,13 @@
                           <a href="{{ url_for('admin.student_detail', student_id=student.id) }}" class="btn btn-sm btn-outline-primary">
                             <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">visibility</span>
                           </a>
+                          <button type="button" class="btn btn-sm btn-outline-danger"
+                                  data-bs-toggle="modal"
+                                  data-bs-target="#deleteStudentModal"
+                                  data-student-id="{{ student.id }}"
+                                  data-student-name="{{ student.full_name }}">
+                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">delete</span>
+                          </button>
                         </td>
                       </tr>
                       {% endfor %}
@@ -902,6 +919,101 @@ function deleteEntireBlock(block) {
     console.error('Error:', error);
     alert('Network error occurred while deleting block.');
   });
+}
+
+function deletePendingStudent(teacherBlockId, studentName) {
+  const confirmation = confirm(
+    `⚠️ Are you sure you want to delete the pending roster entry for ${studentName}?\n\n` +
+    `This student has not yet claimed their account. This action will remove them from your roster.\n\n` +
+    `This action CANNOT be undone!`
+  );
+
+  if (!confirmation) return;
+
+  // Send delete request
+  fetch('/admin/pending-students/delete', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    },
+    body: JSON.stringify({ teacher_block_id: teacherBlockId })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.status === 'success') {
+      alert(data.message);
+      location.reload();
+    } else {
+      alert('Error: ' + data.message);
+    }
+  })
+  .catch(error => {
+    console.error('Error:', error);
+    alert('Network error occurred while deleting pending student.');
+  });
+}
+
+function deleteAllPendingInBlock(block, unclaimedSeatsCount, unclaimedStudentsCount) {
+  const totalCount = unclaimedSeatsCount + unclaimedStudentsCount;
+  const confirmation = confirm(
+    `⚠️ WARNING: You are about to delete ALL ${totalCount} unclaimed roster entries in Block ${block.toUpperCase()}.\n\n` +
+    `This includes:\n` +
+    `• ${unclaimedSeatsCount} unclaimed seat(s) (TeacherBlock entries)\n` +
+    `• ${unclaimedStudentsCount} legacy unclaimed student(s) (Students without usernames)\n\n` +
+    `These are students who have been added to your roster but haven't claimed their accounts yet.\n\n` +
+    `Students who have already claimed their accounts will NOT be affected.\n\n` +
+    `This action CANNOT be undone!\n\n` +
+    `Are you sure you want to continue?`
+  );
+
+  if (!confirmation) return;
+
+  // Helper function to delete a type of unclaimed students
+  const deleteUnclaimedType = (endpoint, errorPrefix) => {
+    return fetch(endpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+      },
+      body: JSON.stringify({ block: block })
+    })
+    .then(response => response.json())
+    .then(data => {
+      if (data.status === 'success') {
+        return data.deleted_count;
+      } else {
+        throw new Error(`${errorPrefix}: ${data.message}`);
+      }
+    });
+  };
+
+  // Use Promise.all to delete both types in parallel
+  const promises = [];
+  
+  // Delete pending TeacherBlock entries if any
+  if (unclaimedSeatsCount > 0) {
+    promises.push(deleteUnclaimedType('/admin/pending-students/bulk-delete', 'Pending students'));
+  }
+  
+  // Delete legacy unclaimed students if any
+  if (unclaimedStudentsCount > 0) {
+    promises.push(deleteUnclaimedType('/admin/legacy-unclaimed-students/bulk-delete', 'Legacy unclaimed students'));
+  }
+  
+  // Wait for all deletions to complete
+  Promise.all(promises)
+    .then(deletedCounts => {
+      const totalDeleted = deletedCounts.reduce((sum, count) => sum + count, 0);
+      alert(`✓ Successfully deleted ${totalDeleted} unclaimed student(s) from Block ${block.toUpperCase()}`);
+      location.reload();
+    })
+    .catch(error => {
+      console.error('Error:', error);
+      alert('Error: ' + error.message);
+      location.reload(); // Reload anyway to show current state
+    });
 }
 
 function tapOutSelected(block) {

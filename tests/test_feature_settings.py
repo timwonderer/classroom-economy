@@ -1,9 +1,11 @@
 """
 Tests for feature settings and teacher onboarding functionality.
 """
+import os
 import pytest
+import pyotp
 from app import app, db
-from app.models import Admin, FeatureSettings, TeacherOnboarding
+from app.models import Admin, FeatureSettings, TeacherOnboarding, TeacherBlock
 
 
 @pytest.fixture
@@ -252,3 +254,112 @@ class TestOnboardingRoutes:
             teacher_id=test_admin.id
         ).first()
         assert onboarding.is_skipped is True
+
+
+class TestTeacherDeletionCascade:
+    """Tests for CASCADE deletion when a teacher is deleted."""
+
+    def test_feature_settings_cascade_on_teacher_delete(self, client_with_fk):
+        """Test that FeatureSettings are CASCADE deleted when teacher is deleted."""
+        # Create a teacher
+        admin = Admin(
+            username='cascade_test_teacher',
+            totp_secret=pyotp.random_base32(),
+        )
+        db.session.add(admin)
+        db.session.commit()
+        teacher_id = admin.id
+
+        # Create feature settings for the teacher
+        settings1 = FeatureSettings(teacher_id=teacher_id, block=None)
+        settings2 = FeatureSettings(teacher_id=teacher_id, block='A')
+        db.session.add(settings1)
+        db.session.add(settings2)
+        db.session.commit()
+
+        # Verify settings exist
+        assert FeatureSettings.query.filter_by(teacher_id=teacher_id).count() == 2
+
+        # Delete the teacher
+        db.session.delete(admin)
+        db.session.commit()
+
+        # Verify feature settings were CASCADE deleted
+        assert FeatureSettings.query.filter_by(teacher_id=teacher_id).count() == 0
+
+    def test_teacher_onboarding_cascade_on_teacher_delete(self, client_with_fk):
+        """Test that TeacherOnboarding is CASCADE deleted when teacher is deleted."""
+        # Create a teacher
+        admin = Admin(
+            username='onboarding_cascade_test',
+            totp_secret=pyotp.random_base32(),
+        )
+        db.session.add(admin)
+        db.session.commit()
+        teacher_id = admin.id
+
+        # Create onboarding record for the teacher
+        onboarding = TeacherOnboarding(teacher_id=teacher_id)
+        db.session.add(onboarding)
+        db.session.commit()
+
+        # Verify onboarding exists
+        assert TeacherOnboarding.query.filter_by(teacher_id=teacher_id).first() is not None
+
+        # Delete the teacher
+        db.session.delete(admin)
+        db.session.commit()
+
+        # Verify onboarding was CASCADE deleted
+        assert TeacherOnboarding.query.filter_by(teacher_id=teacher_id).first() is None
+
+    def test_teacher_blocks_cascade_on_teacher_delete(self, client_with_fk):
+        """Test that TeacherBlocks are CASCADE deleted when teacher is deleted."""
+        # Create a teacher
+        admin = Admin(
+            username='blocks_cascade_test',
+            totp_secret=pyotp.random_base32(),
+        )
+        db.session.add(admin)
+        db.session.commit()
+        teacher_id = admin.id
+
+        # Create teacher blocks
+        # PIIEncryptedType will handle encryption automatically
+        block1 = TeacherBlock(
+            teacher_id=teacher_id,
+            block='A',
+            first_name='John',
+            last_initial='D',
+            last_name_hash_by_part=['hash1'],
+            dob_sum=2025,
+            salt=os.urandom(16),
+            first_half_hash='test_hash_1',
+            join_code='TEST123',
+            is_claimed=False
+        )
+        block2 = TeacherBlock(
+            teacher_id=teacher_id,
+            block='B',
+            first_name='Jane',
+            last_initial='S',
+            last_name_hash_by_part=['hash2'],
+            dob_sum=2026,
+            salt=os.urandom(16),
+            first_half_hash='test_hash_2',
+            join_code='TEST456',
+            is_claimed=False
+        )
+        db.session.add(block1)
+        db.session.add(block2)
+        db.session.commit()
+
+        # Verify blocks exist
+        assert TeacherBlock.query.filter_by(teacher_id=teacher_id).count() == 2
+
+        # Delete the teacher
+        db.session.delete(admin)
+        db.session.commit()
+
+        # Verify teacher blocks were CASCADE deleted
+        assert TeacherBlock.query.filter_by(teacher_id=teacher_id).count() == 0

@@ -2,7 +2,7 @@
 
 Revision ID: w2x3y4z5a6b7
 Revises: v1w2x3y4z5a6
-Create Date: 2025-11-24 20:00:00.000000
+Create Date: [keep original timestamp]
 
 """
 from alembic import op
@@ -16,130 +16,103 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
-    # Add teacher_id to BankingSettings
-    op.add_column(
-        'banking_settings',
-        sa.Column('teacher_id', sa.Integer(), nullable=True)
-    )
-    op.create_foreign_key(
-        'fk_banking_settings_teacher_id',
-        'banking_settings', 'admins',
-        ['teacher_id'], ['id']
-    )
-
-    # Add teacher_id to RentSettings
-    op.add_column(
-        'rent_settings',
-        sa.Column('teacher_id', sa.Integer(), nullable=True)
-    )
-    op.create_foreign_key(
-        'fk_rent_settings_teacher_id',
-        'rent_settings', 'admins',
-        ['teacher_id'], ['id']
-    )
-
-    # Add teacher_id to PayrollSettings
-    op.add_column(
-        'payroll_settings',
-        sa.Column('teacher_id', sa.Integer(), nullable=True)
-    )
-    op.create_foreign_key(
-        'fk_payroll_settings_teacher_id',
-        'payroll_settings', 'admins',
-        ['teacher_id'], ['id']
-    )
-
-    # Add teacher_id to PayrollReward
-    op.add_column(
-        'payroll_rewards',
-        sa.Column('teacher_id', sa.Integer(), nullable=True)
-    )
-    op.create_foreign_key(
-        'fk_payroll_rewards_teacher_id',
-        'payroll_rewards', 'admins',
-        ['teacher_id'], ['id']
-    )
-
-    # Add teacher_id to PayrollFine
-    op.add_column(
-        'payroll_fines',
-        sa.Column('teacher_id', sa.Integer(), nullable=True)
-    )
-    op.create_foreign_key(
-        'fk_payroll_fines_teacher_id',
-        'payroll_fines', 'admins',
-        ['teacher_id'], ['id']
-    )
-
-    # Add teacher_id to StoreItem
-    op.add_column(
-        'store_items',
-        sa.Column('teacher_id', sa.Integer(), nullable=True)
-    )
-    op.create_foreign_key(
-        'fk_store_items_teacher_id',
-        'store_items', 'admins',
-        ['teacher_id'], ['id']
-    )
-
-    # Add teacher_id to HallPassSettings
-    op.add_column(
-        'hall_pass_settings',
-        sa.Column('teacher_id', sa.Integer(), nullable=True)
-    )
-    op.create_foreign_key(
-        'fk_hall_pass_settings_teacher_id',
-        'hall_pass_settings', 'admins',
-        ['teacher_id'], ['id']
-    )
-
-    # Data migration: assign all existing records to the first admin
-    # This prevents immediate breakage, but teachers should be notified to set up their own settings
+def column_exists(table_name, column_name):
+    """Check if a column exists in a table."""
     conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    columns = [col['name'] for col in inspector.get_columns(table_name)]
+    return column_name in columns
 
-    # Get the first admin ID
+
+def foreign_key_exists(table_name, fk_name):
+    """Check if a foreign key constraint exists on a table."""
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    foreign_keys = [fk['name'] for fk in inspector.get_foreign_keys(table_name)]
+    return fk_name in foreign_keys
+
+
+def upgrade():
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    
+    # Step 1: Add teacher_id columns as NULLABLE first (only if they don't exist)
+    tables = ['rent_settings', 'payroll_settings', 'banking_settings', 'hall_pass_settings']
+    
+    for table in tables:
+        if not column_exists(table, 'teacher_id'):
+            with op.batch_alter_table(table, schema=None) as batch_op:
+                batch_op.add_column(sa.Column('teacher_id', sa.Integer(), nullable=True))
+            print(f"✅ Added teacher_id column to {table}")
+        else:
+            print(f"⚠️  Column 'teacher_id' already exists on '{table}', skipping...")
+    
+    # Step 2: Backfill existing rows with the first admin's ID
     result = conn.execute(sa.text("SELECT id FROM admins ORDER BY id LIMIT 1"))
-    first_admin_id = result.fetchone()
-
+    first_admin_id = result.scalar()
+    
     if first_admin_id:
-        first_admin_id = first_admin_id[0]
-
-        # Update all existing settings to belong to the first admin
-        # Use parameterized queries to prevent SQL injection
-        conn.execute(sa.text("UPDATE banking_settings SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
-        conn.execute(sa.text("UPDATE rent_settings SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
-        conn.execute(sa.text("UPDATE payroll_settings SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
-        conn.execute(sa.text("UPDATE payroll_rewards SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
-        conn.execute(sa.text("UPDATE payroll_fines SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
-        conn.execute(sa.text("UPDATE store_items SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
-        conn.execute(sa.text("UPDATE hall_pass_settings SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
-
-    # Make teacher_id NOT NULL after data migration
-    op.alter_column('banking_settings', 'teacher_id', nullable=False)
-    op.alter_column('rent_settings', 'teacher_id', nullable=False)
-    op.alter_column('payroll_settings', 'teacher_id', nullable=False)
-    op.alter_column('payroll_rewards', 'teacher_id', nullable=False)
-    op.alter_column('payroll_fines', 'teacher_id', nullable=False)
-    op.alter_column('store_items', 'teacher_id', nullable=False)
-    op.alter_column('hall_pass_settings', 'teacher_id', nullable=False)
+        # Update NULL values with the first admin's ID
+        # NOTE: table names are from a hardcoded list, not user input - safe from SQL injection
+        for table in tables:
+            # Using text() with bound parameters for safe execution
+            result = conn.execute(sa.text(f"UPDATE {table} SET teacher_id = :admin_id WHERE teacher_id IS NULL"), {"admin_id": first_admin_id})
+            if result.rowcount > 0:
+                print(f"✅ Backfilled {result.rowcount} rows in {table} with teacher_id = {first_admin_id}")
+    
+    # Step 3: Now make columns NOT NULL (only if we have data and they're currently nullable)
+    if first_admin_id:
+        for table in tables:
+            columns = inspector.get_columns(table)
+            teacher_id_col = next((col for col in columns if col['name'] == 'teacher_id'), None)
+            if teacher_id_col and teacher_id_col.get('nullable', True):
+                with op.batch_alter_table(table, schema=None) as batch_op:
+                    batch_op.alter_column('teacher_id', nullable=False)
+                print(f"✅ Set teacher_id to NOT NULL on {table}")
+            else:
+                print(f"⚠️  Column 'teacher_id' is already NOT NULL on '{table}', skipping...")
+    
+    # Step 4: Add foreign key constraints (only if they don't exist)
+    fk_names = {
+        'rent_settings': 'fk_rent_settings_teacher',
+        'payroll_settings': 'fk_payroll_settings_teacher',
+        'banking_settings': 'fk_banking_settings_teacher',
+        'hall_pass_settings': 'fk_hall_pass_settings_teacher'
+    }
+    
+    for table, fk_name in fk_names.items():
+        if not foreign_key_exists(table, fk_name):
+            with op.batch_alter_table(table, schema=None) as batch_op:
+                batch_op.create_foreign_key(fk_name, 'admins', ['teacher_id'], ['id'])
+            print(f"✅ Added foreign key constraint {fk_name} on {table}")
+        else:
+            print(f"⚠️  Foreign key '{fk_name}' already exists on '{table}', skipping...")
 
 
 def downgrade():
-    # Remove foreign keys first
-    op.drop_constraint('fk_hall_pass_settings_teacher_id', 'hall_pass_settings', type_='foreignkey')
-    op.drop_constraint('fk_store_items_teacher_id', 'store_items', type_='foreignkey')
-    op.drop_constraint('fk_payroll_fines_teacher_id', 'payroll_fines', type_='foreignkey')
-    op.drop_constraint('fk_payroll_rewards_teacher_id', 'payroll_rewards', type_='foreignkey')
-    op.drop_constraint('fk_payroll_settings_teacher_id', 'payroll_settings', type_='foreignkey')
-    op.drop_constraint('fk_rent_settings_teacher_id', 'rent_settings', type_='foreignkey')
-    op.drop_constraint('fk_banking_settings_teacher_id', 'banking_settings', type_='foreignkey')
-
-    # Drop columns
-    op.drop_column('hall_pass_settings', 'teacher_id')
-    op.drop_column('store_items', 'teacher_id')
-    op.drop_column('payroll_fines', 'teacher_id')
-    op.drop_column('payroll_rewards', 'teacher_id')
-    op.drop_column('payroll_settings', 'teacher_id')
-    op.drop_column('rent_settings', 'teacher_id')
-    op.drop_column('banking_settings', 'teacher_id')
+    tables = ['hall_pass_settings', 'banking_settings', 'payroll_settings', 'rent_settings']
+    fk_names = {
+        'hall_pass_settings': 'fk_hall_pass_settings_teacher',
+        'banking_settings': 'fk_banking_settings_teacher',
+        'payroll_settings': 'fk_payroll_settings_teacher',
+        'rent_settings': 'fk_rent_settings_teacher'
+    }
+    
+    # Drop foreign key constraints (only if they exist)
+    for table in tables:
+        fk_name = fk_names[table]
+        if foreign_key_exists(table, fk_name):
+            with op.batch_alter_table(table, schema=None) as batch_op:
+                batch_op.drop_constraint(fk_name, type_='foreignkey')
+            print(f"❌ Dropped foreign key constraint {fk_name} from {table}")
+        else:
+            print(f"⚠️  Foreign key '{fk_name}' does not exist on '{table}', skipping...")
+    
+    # Drop columns (only if they exist)
+    for table in tables:
+        if column_exists(table, 'teacher_id'):
+            with op.batch_alter_table(table, schema=None) as batch_op:
+                batch_op.drop_column('teacher_id')
+            print(f"❌ Dropped teacher_id column from {table}")
+        else:
+            print(f"⚠️  Column 'teacher_id' does not exist on '{table}', skipping...")

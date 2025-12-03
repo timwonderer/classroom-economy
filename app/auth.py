@@ -277,8 +277,10 @@ def get_admin_student_query(include_unassigned=True):
         Student.teacher_id == admin.id,
         Student.id.in_(shared_student_ids),
     ]
-    if include_unassigned:
-        filters.append(Student.teacher_id.is_(None))
+    # Critical P0 fix: Disable automatic visibility of unassigned students for regular admins
+    # This prevents new teachers from seeing students that belong to other teachers but haven't been fully migrated
+    # if include_unassigned:
+    #     filters.append(Student.teacher_id.is_(None))
     return Student.query.filter(sa.or_(*filters))
 
 

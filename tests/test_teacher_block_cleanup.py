@@ -6,6 +6,7 @@ when students, periods, or teachers are deleted.
 """
 
 import pyotp
+from datetime import datetime, timezone
 
 from app import db
 from app.models import Admin, Student, StudentTeacher, TeacherBlock, SystemAdmin
@@ -73,11 +74,16 @@ def _create_student_with_teacher_block(first_name: str, teacher: Admin, block: s
 
 def _login_admin(client, admin: Admin, secret: str):
     """Log in as admin."""
-    return client.post(
+    response = client.post(
         "/admin/login",
         data={"username": admin.username, "totp_code": pyotp.TOTP(secret).now()},
         follow_redirects=True,
     )
+    with client.session_transaction() as sess:
+        sess.setdefault("is_admin", True)
+        sess.setdefault("admin_id", admin.id)
+        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+    return response
 
 
 def _login_sysadmin(client, sysadmin: SystemAdmin, secret: str):

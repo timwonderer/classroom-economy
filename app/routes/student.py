@@ -12,7 +12,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, redirect, url_for, flash, request, session, jsonify, current_app
-from sqlalchemy import or_, func, select
+from sqlalchemy import or_, func, select, and_
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
 import pytz
@@ -26,7 +26,7 @@ from app.models import (
 from app.auth import admin_required, login_required, get_logged_in_student, SESSION_TIMEOUT_MINUTES
 from forms import (
     StudentClaimAccountForm, StudentCreateUsernameForm, StudentPinPassphraseForm,
-    StudentLoginForm, InsuranceClaimForm
+    StudentLoginForm, InsuranceClaimForm, StudentCompleteProfileForm
 )
 
 # Import utility functions
@@ -36,6 +36,7 @@ from app.utils.turnstile import verify_turnstile_token
 from app.utils.demo_sessions import cleanup_demo_student_data
 from app.utils.ip_handler import get_real_ip
 from app.utils.claim_credentials import compute_primary_claim_hash, match_claim_hash
+from app.utils.name_utils import hash_last_name_parts
 from hash_utils import hash_hmac, hash_username, hash_username_lookup
 from attendance import get_all_block_statuses
 
@@ -45,38 +46,80 @@ student_bp = Blueprint('student', __name__, url_prefix='/student')
 
 # -------------------- PERIOD SELECTION HELPERS --------------------
 
-def get_current_teacher_id():
-    """Get the currently selected teacher ID from session.
+def get_current_class_context():
+    """Get the currently selected class context (join_code, teacher_id, block).
 
-    Returns the teacher_id for the period/class the student is currently viewing.
-    If no period is selected, defaults to the student's primary teacher.
+    CRITICAL: This function enforces proper multi-tenancy isolation by using
+    join_code as the source of truth. Each join code represents a distinct
+    class economy, even if they share the same teacher.
+
+    Returns:
+        dict with keys: join_code, teacher_id, block, seat_id
+        None if no context available
     """
+    from app.models import TeacherBlock
+
     student = get_logged_in_student()
     if not student:
         return None
 
-    # Check if a period is already selected in session
-    current_teacher_id = session.get('current_teacher_id')
+    # Check if a join code is already selected in session
+    current_join_code = session.get('current_join_code')
 
-    # Get all linked teachers
-    all_teachers = student.get_all_teachers()
-    if not all_teachers:
+    # Get all claimed seats for this student
+    claimed_seats = TeacherBlock.query.filter_by(
+        student_id=student.id,
+        is_claimed=True
+    ).all()
+
+    if not claimed_seats:
         return None
 
-    # If no period selected, default to first linked teacher
-    if not current_teacher_id:
-        current_teacher_id = all_teachers[0].id
+    # If no join code selected, default to first claimed seat
+    if not current_join_code:
+        first_seat = claimed_seats[0]
+        current_join_code = first_seat.join_code
         # Store in session for future requests
-        session['current_teacher_id'] = current_teacher_id
+        session['current_join_code'] = current_join_code
 
-    # Verify student still has access to this teacher
-    teacher_ids = [t.id for t in all_teachers]
-    if current_teacher_id not in teacher_ids:
-        # Teacher no longer accessible, reset to first available
-        current_teacher_id = all_teachers[0].id
-        session['current_teacher_id'] = current_teacher_id
+    # Find the seat matching current join code
+    current_seat = next(
+        (seat for seat in claimed_seats if seat.join_code == current_join_code),
+        None
+    )
 
-    return current_teacher_id
+    # If join code not found in student's seats, reset to first seat
+    if not current_seat:
+        current_seat = claimed_seats[0]
+        session['current_join_code'] = current_seat.join_code
+
+    # Return full class context
+    return {
+        'join_code': current_seat.join_code,
+        'teacher_id': current_seat.teacher_id,
+        'block': current_seat.block,
+        'seat_id': current_seat.id
+    }
+
+
+def get_current_teacher_id():
+    """DEPRECATED: Get teacher_id from current class context.
+
+    This function is maintained for backward compatibility but should be
+    replaced with get_current_class_context() for proper multi-tenancy.
+    """
+    context = get_current_class_context()
+    return context['teacher_id'] if context else None
+
+
+def get_current_join_code():
+    """Get the currently selected join code from class context.
+
+    Join code is the absolute source of truth for class association.
+    Returns None if no class context is available.
+    """
+    context = get_current_class_context()
+    return context['join_code'] if context else None
 
 
 def get_feature_settings_for_student():
@@ -140,6 +183,248 @@ def is_feature_enabled(feature_name):
     settings = get_feature_settings_for_student()
     feature_key = f"{feature_name}_enabled"
     return settings.get(feature_key, True)  # Default to enabled
+
+
+def calculate_scoped_balances(student: 'Student', join_code: str, teacher_id: int) -> tuple[float, float]:
+    """Calculate checking and savings balances scoped to a specific class.
+    
+    This function ensures consistent balance calculation across the application
+    by including transactions with matching join_code OR NULL join_code (legacy)
+    with matching teacher_id.
+    
+    Args:
+        student (Student): Student object whose balances to calculate
+        join_code (str): The join code for the current class context
+        teacher_id (int): The teacher ID for the current class context
+    
+    Returns:
+        tuple[float, float]: (checking_balance, savings_balance) as rounded floats
+    """
+    checking_balance = round(sum(
+        tx.amount for tx in student.transactions
+        if tx.account_type == 'checking' and not tx.is_void and
+        (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
+    ), 2)
+    
+    savings_balance = round(sum(
+        tx.amount for tx in student.transactions
+        if tx.account_type == 'savings' and not tx.is_void and
+        (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
+    ), 2)
+    
+    return checking_balance, savings_balance
+
+
+# -------------------- LEGACY PROFILE MIGRATION --------------------
+
+@student_bp.before_request
+def check_legacy_profile():
+    """
+    Check if logged-in student needs to complete legacy profile migration.
+    
+    Legacy students are those who:
+    - have completed setup (has_completed_setup=True)
+    - but are missing last_name_hash_by_part or dob_sum
+    - and have not completed the migration (has_completed_profile_migration=False)
+    """
+    # Skip for non-student routes, login, logout, and profile completion itself
+    excluded_endpoints = [
+        'student.login', 'student.logout', 'student.complete_profile',
+        'student.claim_account', 'student.create_username', 'student.setup_pin_passphrase',
+        'student.demo_login', 'student.setup_complete', 'student.add_class'
+    ]
+    
+    # Skip if endpoint is None or not in student blueprint
+    if not request.endpoint or not request.endpoint.startswith('student.'):
+        return
+    
+    if request.endpoint in excluded_endpoints:
+        return
+    
+    # Only check for logged-in students
+    student = get_logged_in_student()
+    
+    if not student:
+        return
+    
+    # Check if this is a legacy student needing migration
+    needs_migration = (
+        student.has_completed_setup and
+        not student.has_completed_profile_migration and
+        (not student.last_name_hash_by_part or student.dob_sum is None)
+    )
+    
+    if needs_migration:
+        return redirect(url_for('student.complete_profile'))
+
+
+@student_bp.route('/complete-profile', methods=['GET', 'POST'])
+@login_required
+def complete_profile():
+    """
+    One-time profile completion for legacy students missing last name and DOB.
+    
+    This route collects:
+    - First name (editable, from existing)
+    - Last name (new, required)
+    - Date of birth (new, required)
+    
+    Then updates the student record with hashed values and regenerates credential hashes.
+    """
+    student = get_logged_in_student()
+    if not student:
+        return redirect(url_for('student.login'))
+    
+    # Check if already completed migration
+    if student.has_completed_profile_migration:
+        flash("You have already completed your profile.", "info")
+        return redirect(url_for('student.dashboard'))
+    
+    form = StudentCompleteProfileForm()
+    
+    # Handle form submission
+    if form.validate_on_submit():
+        step = request.form.get('step', 'confirm')
+        
+        # Get form data from WTForms
+        first_name = form.first_name.data.strip()
+        last_name = form.last_name.data.strip()
+        dob_month = form.dob_month.data
+        dob_day = form.dob_day.data.strip()
+        dob_year = form.dob_year.data.strip()
+        
+        # Validation
+        if not all([first_name, last_name, dob_month, dob_day, dob_year]):
+            flash("All fields are required.", "error")
+            return redirect(url_for('student.complete_profile'))
+        
+        if not last_name:
+            flash("Last name is required.", "error")
+            return redirect(url_for('student.complete_profile'))
+        
+        try:
+            month = int(dob_month)
+            day = int(dob_day)
+            year = int(dob_year)
+            
+            # Validate ranges
+            current_year = datetime.now().year
+            if not (1 <= month <= 12):
+                flash("Invalid month.", "error")
+                return redirect(url_for('student.complete_profile'))
+            if not (1 <= day <= 31):
+                flash("Invalid day.", "error")
+                return redirect(url_for('student.complete_profile'))
+            # Students should be born between 1900 and (current year - 5) for elementary/middle school
+            if not (1900 <= year <= current_year - 5):
+                flash(f"Invalid year. Students should be born between 1900 and {current_year - 5}.", "error")
+                return redirect(url_for('student.complete_profile'))
+            
+            # Validate that the date is real
+            try:
+                datetime(year, month, day)
+            except ValueError:
+                flash("Invalid date. Please check the month and day.", "error")
+                return redirect(url_for('student.complete_profile'))
+            
+            # Calculate DOB sum
+            dob_sum = month + day + year
+            
+        except (ValueError, TypeError):
+            flash("Invalid date format.", "error")
+            return redirect(url_for('student.complete_profile'))
+        
+        if step == 'confirm':
+            # Show confirmation page
+            month_names = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+                          'July', 'August', 'September', 'October', 'November', 'December']
+            dob_display = f"{month_names[month]} {day}, {year}"
+            current_year = datetime.now().year
+            max_birth_year = current_year - 5
+            
+            return render_template(
+                'student_complete_profile.html',
+                current_page='profile',
+                page_title='Complete Profile',
+                form=form,
+                student=student,
+                confirmed=True,
+                max_birth_year=max_birth_year,
+                confirm_data={
+                    'first_name': first_name,
+                    'last_name': last_name,
+                    'dob_month': dob_month,
+                    'dob_day': dob_day,
+                    'dob_year': dob_year,
+                    'dob_display': dob_display
+                }
+            )
+        
+        elif step == 'submit':
+            # Final submission - update student record
+            try:
+                # Recalculate dob_sum for submit step (needed since it's only calculated in confirm step's try block)
+                # This prevents NameError when submitting the form
+                month = int(dob_month)
+                day = int(dob_day)
+                year = int(dob_year)
+                dob_sum = month + day + year
+                
+                # Update first name (encrypted)
+                student.first_name = first_name
+                
+                # Update last initial from last name (already validated to not be empty)
+                student.last_initial = last_name[0].upper()
+                
+                # Calculate and store DOB sum
+                student.dob_sum = dob_sum
+                
+                # Generate last_name_hash_by_part
+                student.last_name_hash_by_part = hash_last_name_parts(last_name, student.salt)
+                
+                # Regenerate first_half_hash using first initial + dob_sum
+                first_initial_char = first_name[0].upper() if first_name else ''
+                student.first_half_hash = compute_primary_claim_hash(first_initial_char, dob_sum, student.salt)
+                
+                # Regenerate second_half_hash using just dob_sum
+                dob_sum_str = str(dob_sum)
+                student.second_half_hash = hash_hmac(dob_sum_str.encode('utf-8'), student.salt)
+                
+                # Mark migration as completed
+                student.has_completed_profile_migration = True
+                
+                # Update all TeacherBlock entries for this student with new hashes
+                from app.models import TeacherBlock
+                teacher_blocks = TeacherBlock.query.filter_by(student_id=student.id).all()
+                for block in teacher_blocks:
+                    block.last_name_hash_by_part = student.last_name_hash_by_part
+                    block.first_half_hash = student.first_half_hash
+                    block.last_initial = student.last_initial
+                
+                db.session.commit()
+                
+                flash("Profile completed successfully! Thank you.", "success")
+                return redirect(url_for('student.dashboard'))
+                
+            except Exception as e:
+                db.session.rollback()
+                current_app.logger.error(f"Error completing profile for student {student.id}: {str(e)}")
+                flash("An error occurred. Please try again.", "error")
+                return redirect(url_for('student.complete_profile'))
+    
+    # GET request - show form
+    current_year = datetime.now().year
+    max_birth_year = current_year - 5  # Students should be at least 5 years old
+    
+    return render_template(
+        'student_complete_profile.html',
+        current_page='profile',
+        page_title='Complete Profile',
+        form=form,
+        student=student,
+        confirmed=False,
+        max_birth_year=max_birth_year
+    )
 
 
 # -------------------- STUDENT ONBOARDING --------------------
@@ -540,16 +825,48 @@ def add_class():
 def dashboard():
     """Student dashboard with balance, attendance, transactions, and quick actions."""
     student = get_logged_in_student()
+
+    # CRITICAL FIX v2: Use join_code as source of truth (not just teacher_id)
+    # This properly isolates same-teacher, different-period classes
+    context = get_current_class_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.login'))
+
+    join_code = context['join_code']
+    teacher_id = context['teacher_id']
+
     apply_savings_interest(student)  # Apply savings interest if not already applied
-    transactions = Transaction.query.filter_by(student_id=student.id).order_by(Transaction.timestamp.desc()).all()
-    student_items = student.items.filter(
-        StudentItem.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired'])
+
+    # CRITICAL FIX: Filter transactions by join_code (not just teacher_id)
+    # This ensures Period A and Period B with same teacher are isolated
+    transactions = Transaction.query.filter_by(
+        student_id=student.id,
+        join_code=join_code  # FIX: Use join_code for proper isolation
+    ).order_by(Transaction.timestamp.desc()).all()
+
+    # FIX: Filter student items by current teacher's store
+    student_items = student.items.join(
+        StoreItem, StudentItem.store_item_id == StoreItem.id
+    ).filter(
+        StudentItem.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired']),
+        StoreItem.teacher_id == teacher_id
     ).order_by(StudentItem.purchase_date.desc()).all()
 
     checking_transactions = [tx for tx in transactions if tx.account_type == 'checking']
     savings_transactions = [tx for tx in transactions if tx.account_type == 'savings']
 
-    forecast_interest = round(student.savings_balance * (0.045 / 12), 2)
+    # CRITICAL FIX: Calculate balances using join_code scoping
+    # Sum only transactions for THIS specific class (join_code)
+    checking_balance = round(sum(
+        tx.amount for tx in student.transactions
+        if tx.account_type == 'checking' and not tx.is_void and tx.join_code == join_code
+    ), 2)
+    savings_balance = round(sum(
+        tx.amount for tx in student.transactions
+        if tx.account_type == 'savings' and not tx.is_void and tx.join_code == join_code
+    ), 2)
+    forecast_interest = round(savings_balance * (0.045 / 12), 2)
 
     period_states = get_all_block_statuses(student)
     student_blocks = list(period_states.keys())
@@ -700,6 +1017,9 @@ def dashboard():
         student_name=student_name,
         total_unpaid_elapsed=total_unpaid_elapsed,
         feature_settings=feature_settings,
+        # FIX: Pass scoped balances to template instead of using unscoped properties
+        checking_balance=checking_balance,
+        savings_balance=savings_balance,
     )
 
 
@@ -753,6 +1073,15 @@ def transfer():
     """Transfer funds between checking and savings accounts."""
     student = get_logged_in_student()
 
+    # CRITICAL FIX v2: Get full class context (join_code, teacher_id, block)
+    context = get_current_class_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    join_code = context['join_code']
+    teacher_id = context['teacher_id']
+
     if request.method == 'POST':
         is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
         passphrase = request.form.get("passphrase")
@@ -766,6 +1095,9 @@ def transfer():
         to_account = request.form.get('to_account')
         amount = float(request.form.get('amount'))
 
+        # CRITICAL FIX: Calculate balances using join_code scoping
+        checking_balance, savings_balance = calculate_scoped_balances(student, join_code, teacher_id)
+
         if from_account == to_account:
             if is_json:
                 return jsonify(status="error", message="Cannot transfer to the same account."), 400
@@ -776,20 +1108,23 @@ def transfer():
                 return jsonify(status="error", message="Amount must be greater than 0."), 400
             flash("Amount must be greater than 0.", "transfer_error")
             return redirect(url_for("student.transfer"))
-        elif from_account == 'checking' and amount > student.checking_balance:
+        elif from_account == 'checking' and amount > checking_balance:
             if is_json:
                 return jsonify(status="error", message="Insufficient checking funds."), 400
             flash("Insufficient checking funds.", "transfer_error")
             return redirect(url_for("student.transfer"))
-        elif from_account == 'savings' and amount > student.savings_balance:
+        elif from_account == 'savings' and amount > savings_balance:
             if is_json:
                 return jsonify(status="error", message="Insufficient savings funds."), 400
             flash("Insufficient savings funds.", "transfer_error")
             return redirect(url_for("student.transfer"))
         else:
+            # CRITICAL FIX v2: Add BOTH teacher_id AND join_code for proper isolation
             # Record the withdrawal side of the transfer
             db.session.add(Transaction(
                 student_id=student.id,
+                teacher_id=teacher_id,
+                join_code=join_code,  # CRITICAL: Add join_code for period isolation
                 amount=-amount,
                 account_type=from_account,
                 type='Withdrawal',
@@ -798,6 +1133,8 @@ def transfer():
             # Record the deposit side of the transfer
             db.session.add(Transaction(
                 student_id=student.id,
+                teacher_id=teacher_id,
+                join_code=join_code,  # CRITICAL: Add join_code for period isolation
                 amount=amount,
                 account_type=to_account,
                 type='Deposit',
@@ -822,31 +1159,41 @@ def transfer():
             flash("Transfer completed successfully!", "transfer_success")
             return redirect(url_for('student.dashboard'))
 
-    # Get transactions for display
-    transactions = Transaction.query.filter_by(student_id=student.id, is_void=False).order_by(Transaction.timestamp.desc()).all()
+    # CRITICAL FIX v2: Get transactions for display - scope by join_code
+    # Include transactions with matching join_code OR NULL join_code (legacy) with matching teacher_id
+    transactions = Transaction.query.filter(
+        Transaction.student_id == student.id,
+        Transaction.is_void == False,
+        or_(
+            Transaction.join_code == join_code,
+            and_(Transaction.join_code.is_(None), Transaction.teacher_id == teacher_id)
+        )
+    ).order_by(Transaction.timestamp.desc()).all()
     checking_transactions = [t for t in transactions if t.account_type == 'checking']
     savings_transactions = [t for t in transactions if t.account_type == 'savings']
 
     # Get banking settings for interest rate display
     from app.models import BankingSettings
-    teacher_id = get_current_teacher_id()
     settings = BankingSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
     annual_rate = settings.savings_apy / 100 if settings else 0.045
     calculation_type = settings.interest_calculation_type if settings else 'simple'
     compound_frequency = settings.compound_frequency if settings else 'monthly'
 
     # Calculate forecast interest based on settings
+    # CRITICAL FIX v3: Calculate BOTH checking and savings balances using join_code scoping
+    checking_balance, savings_balance = calculate_scoped_balances(student, join_code, teacher_id)
+
     if calculation_type == 'compound':
         if compound_frequency == 'daily':
             periods_per_month = 30
             rate_per_period = annual_rate / 365
-            forecast_interest = student.savings_balance * ((1 + rate_per_period) ** periods_per_month - 1)
+            forecast_interest = savings_balance * ((1 + rate_per_period) ** periods_per_month - 1)
         elif compound_frequency == 'weekly':
             periods_per_month = 4.33
             rate_per_period = annual_rate / 52
-            forecast_interest = student.savings_balance * ((1 + rate_per_period) ** periods_per_month - 1)
+            forecast_interest = savings_balance * ((1 + rate_per_period) ** periods_per_month - 1)
         else:  # monthly
-            forecast_interest = student.savings_balance * (annual_rate / 12)
+            forecast_interest = savings_balance * (annual_rate / 12)
     else:
         # Simple interest: calculate only on principal (excluding interest earnings)
         principal = sum(tx.amount for tx in savings_transactions if tx.type != 'Interest' and 'Interest' not in (tx.description or ''))
@@ -857,6 +1204,8 @@ def transfer():
                          transactions=transactions,
                          checking_transactions=checking_transactions,
                          savings_transactions=savings_transactions,
+                         checking_balance=checking_balance,
+                         savings_balance=savings_balance,
                          forecast_interest=forecast_interest,
                          settings=settings,
                          calculation_type=calculation_type,
@@ -952,15 +1301,21 @@ def apply_savings_interest(student, annual_rate=0.045):
         interest = round((eligible_balance or 0.0) * monthly_rate, 2)
 
     if interest > 0:
-        interest_tx = Transaction(
-            student_id=student.id,
-            amount=interest,
-            account_type='savings',
-            type='Interest',
-            description="Monthly Savings Interest"
-        )
-        db.session.add(interest_tx)
-        db.session.commit()
+        # CRITICAL FIX v2: Add join_code to interest transactions
+        # Interest must be scoped to specific class, not just teacher
+        context = get_current_class_context()
+        if context:
+            interest_tx = Transaction(
+                student_id=student.id,
+                teacher_id=teacher_id,
+                join_code=context['join_code'],  # CRITICAL: Add join_code for period isolation
+                amount=interest,
+                account_type='savings',
+                type='Interest',
+                description="Monthly Savings Interest"
+            )
+            db.session.add(interest_tx)
+            db.session.commit()
 
 
 # -------------------- INSURANCE --------------------
@@ -976,20 +1331,28 @@ def insurance_marketplace():
 
     student = get_logged_in_student()
 
-    # Get student's active policies
-    my_policies = StudentInsurance.query.filter_by(
-        student_id=student.id,
-        status='active'
+    # CRITICAL FIX v2: Get full class context (join_code is source of truth)
+    context = get_current_class_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    teacher_id = context['teacher_id']
+
+    # FIX: Get student's active policies scoped to current class only
+    my_policies = StudentInsurance.query.join(
+        InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id
+    ).filter(
+        StudentInsurance.student_id == student.id,
+        StudentInsurance.status == 'active',
+        InsurancePolicy.teacher_id == teacher_id  # FIX: Only show current class policies
     ).all()
 
-    # Get teacher IDs associated with this student
-    teacher_ids = [teacher.id for teacher in student.teachers]
-
-    # Get available policies (only from student's teachers)
+    # FIX: Get available policies (only from current teacher)
     available_policies = InsurancePolicy.query.filter(
         InsurancePolicy.is_active == True,
-        InsurancePolicy.teacher_id.in_(teacher_ids)
-    ).all() if teacher_ids else []
+        InsurancePolicy.teacher_id == teacher_id  # FIX: Only current class
+    ).all()
 
     # Check which policies can be purchased
     can_purchase = {}
@@ -1024,8 +1387,13 @@ def insurance_marketplace():
 
         can_purchase[policy.id] = True
 
-    # Get claims for my policies
-    my_claims = InsuranceClaim.query.filter_by(student_id=student.id).all()
+    # FIX: Get claims for my policies (scoped to current teacher)
+    my_claims = InsuranceClaim.query.join(
+        InsurancePolicy, InsuranceClaim.policy_id == InsurancePolicy.id
+    ).filter(
+        InsuranceClaim.student_id == student.id,
+        InsurancePolicy.teacher_id == teacher_id  # FIX: Only current class claims
+    ).all()
 
     # Group policies by tier for display
     tier_groups = {}
@@ -1065,12 +1433,21 @@ def insurance_marketplace():
 def purchase_insurance(policy_id):
     """Purchase insurance policy."""
     student = get_logged_in_student()
+
+    # CRITICAL FIX v2: Get full class context
+    context = get_current_class_context()
+    if not context:
+        flash("No class selected.", "danger")
+        return redirect(url_for('student.dashboard'))
+
+    join_code = context['join_code']
+    teacher_id = context['teacher_id']
+
     policy = InsurancePolicy.query.get_or_404(policy_id)
 
-    # Verify policy belongs to one of student's teachers
-    teacher_ids = [teacher.id for teacher in student.teachers]
-    if policy.teacher_id not in teacher_ids:
-        flash("This insurance policy is not available to you.", "danger")
+    # FIX: Verify policy belongs to CURRENT teacher only
+    if policy.teacher_id != teacher_id:
+        flash("This insurance policy is not available in your current class.", "danger")
         return redirect(url_for('student.student_insurance'))
 
     # Check if already enrolled
@@ -1118,8 +1495,12 @@ def purchase_insurance(policy_id):
             flash(f"You already have a policy from the '{policy.tier_name or 'this'}' tier. You can only have one policy per tier.", "warning")
             return redirect(url_for('student.student_insurance'))
 
-    # Check sufficient funds
-    if student.checking_balance < policy.premium:
+    # CRITICAL FIX v2: Check sufficient funds using join_code scoped balance
+    checking_balance = round(sum(
+        tx.amount for tx in student.transactions
+        if tx.account_type == 'checking' and not tx.is_void and tx.join_code == join_code
+    ), 2)
+    if checking_balance < policy.premium:
         flash("Insufficient funds to purchase this insurance policy.", "danger")
         return redirect(url_for('student.student_insurance'))
 
@@ -1136,9 +1517,11 @@ def purchase_insurance(policy_id):
     )
     db.session.add(enrollment)
 
-    # Create transaction to charge premium
+    # CRITICAL FIX v2: Create transaction with join_code
     transaction = Transaction(
         student_id=student.id,
+        teacher_id=teacher_id,
+        join_code=join_code,  # CRITICAL: Add join_code for period isolation
         amount=-policy.premium,
         account_type='checking',
         type='insurance_premium',
@@ -1429,18 +1812,28 @@ def shop():
         return redirect(url_for('student.dashboard'))
 
     student = get_logged_in_student()
-    # Fetch active items that haven't passed their auto-delist date
-    teacher_id = get_current_teacher_id()
+
+    # CRITICAL FIX v2: Get full class context
+    context = get_current_class_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    teacher_id = context['teacher_id']
+
     now = datetime.now(timezone.utc)
     items = StoreItem.query.filter(
         StoreItem.teacher_id == teacher_id,
         StoreItem.is_active == True,
         or_(StoreItem.auto_delist_date == None, StoreItem.auto_delist_date > now)
-    ).order_by(StoreItem.name).all() if teacher_id else []
+    ).order_by(StoreItem.name).all()
 
-    # Fetch student's purchased items
-    student_items = student.items.filter(
-        StudentItem.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired'])
+    # FIX: Fetch student's purchased items scoped to current teacher's store
+    student_items = student.items.join(
+        StoreItem, StudentItem.store_item_id == StoreItem.id
+    ).filter(
+        StudentItem.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired']),
+        StoreItem.teacher_id == teacher_id  # FIX: Only current class items
     ).order_by(StudentItem.purchase_date.desc()).all()
 
     return render_template('student_shop.html', student=student, items=items, student_items=student_items)
@@ -1801,7 +2194,7 @@ def rent_pay(period):
             flash(f"Insufficient funds. You need ${payment_amount:.2f} but only have ${student.checking_balance:.2f}.", "error")
             return redirect(url_for('student.rent'))
 
-    # Process payment
+    # FIX: Process payment with teacher_id
     # Deduct from checking account
     is_partial = payment_amount < remaining_amount
     payment_description = f'Rent for Period {period} - {now.strftime("%B %Y")}'
@@ -1810,8 +2203,14 @@ def rent_pay(period):
     elif late_fee > 0:
         payment_description += f' (includes ${late_fee:.2f} late fee)'
 
+    # CRITICAL FIX v2: Add join_code to rent payment transaction
+    context = get_current_class_context()
+    join_code = context['join_code'] if context else None
+
     transaction = Transaction(
         student_id=student.id,
+        teacher_id=teacher_id,
+        join_code=join_code,  # CRITICAL: Add join_code for period isolation
         amount=-payment_amount,
         account_type='checking',
         type='Rent Payment',
@@ -1847,9 +2246,11 @@ def rent_pay(period):
     if banking_settings and banking_settings.overdraft_protection_enabled and student.checking_balance < 0:
         shortfall = abs(student.checking_balance)
         if student.savings_balance >= shortfall:
-            # Transfer from savings to checking
+            # CRITICAL FIX v2: Transfer from savings to checking with join_code
             transfer_tx_withdraw = Transaction(
                 student_id=student.id,
+                teacher_id=teacher_id,
+                join_code=join_code,  # CRITICAL: Add join_code for period isolation
                 amount=-shortfall,
                 account_type='savings',
                 type='Withdrawal',
@@ -1857,6 +2258,8 @@ def rent_pay(period):
             )
             transfer_tx_deposit = Transaction(
                 student_id=student.id,
+                teacher_id=teacher_id,
+                join_code=join_code,  # CRITICAL: Add join_code for period isolation
                 amount=shortfall,
                 account_type='checking',
                 type='Deposit',
@@ -1909,12 +2312,20 @@ def login():
 
         username = form.username.data.strip()
         pin = form.pin.data.strip()
+        
+        current_app.logger.info(f"🔍 LOGIN ATTEMPT - Username: {username}, PIN length: {len(pin)}")
+        
         lookup_hash = hash_username_lookup(username)
         student = Student.query.filter_by(username_lookup_hash=lookup_hash).first()
+
+        current_app.logger.info(f"🔍 Lookup hash: {lookup_hash[:16]}... | Student found: {student is not None}")
+        if student:
+            current_app.logger.info(f"🔍 Student ID: {student.id} | Has PIN hash: {student.pin_hash is not None}")
 
         try:
             # Fallback for legacy accounts without deterministic lookup hashes
             if not student:
+                current_app.logger.info(f"🔍 No student found via lookup_hash, trying legacy fallback...")
                 legacy_students_missing_lookup_hash = Student.query.filter(
                     Student.username_lookup_hash.is_(None),
                     Student.username_hash.isnot(None),
@@ -1926,9 +2337,17 @@ def login():
                         candidate_hash = hash_username(username, s.salt)
                         if candidate_hash == s.username_hash:
                             student = s
+                            current_app.logger.info(f"🔍 Found via legacy lookup! Student ID: {s.id}")
                             break
 
-            if not student or not check_password_hash(student.pin_hash or '', pin):
+            # Validate PIN
+            pin_valid = False
+            if student:
+                pin_valid = check_password_hash(student.pin_hash or '', pin)
+                current_app.logger.info(f"🔍 PIN check result: {pin_valid}")
+            
+            if not student or not pin_valid:
+                current_app.logger.warning(f"❌ LOGIN FAILED - Student found: {student is not None}, PIN valid: {pin_valid if student else 'N/A'}")
                 if is_json:
                     return jsonify(status="error", message="Invalid credentials"), 401
                 flash("Invalid credentials", "error")
@@ -1937,6 +2356,8 @@ def login():
             if not student.username_lookup_hash:
                 student.username_lookup_hash = lookup_hash
                 db.session.commit()
+                current_app.logger.info(f"✅ Updated username_lookup_hash for student {student.id}")
+                
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error during student login authentication: {str(e)}")
@@ -1944,6 +2365,8 @@ def login():
                 return jsonify(status="error", message="An error occurred during login. Please try again."), 500
             flash("An error occurred during login. Please try again.", "error")
             return redirect(url_for('student.login'))
+
+        current_app.logger.info(f"✅ LOGIN SUCCESS - Student {student.id} ({username})")
 
         # --- Set session timeout ---
         # Clear old student-specific session keys without wiping the CSRF token
@@ -2078,10 +2501,46 @@ def logout():
     return redirect(url_for('student.login'))
 
 
+@student_bp.route('/switch-class/<join_code>', methods=['POST'])
+@login_required
+def switch_class(join_code):
+    """Switch to a different class using join_code for proper multi-tenancy isolation."""
+    from app.models import TeacherBlock, Admin
+
+    student = get_logged_in_student()
+
+    # Verify student has a claimed seat for this join_code
+    seat = TeacherBlock.query.filter_by(
+        student_id=student.id,
+        join_code=join_code,
+        is_claimed=True
+    ).first()
+
+    if not seat:
+        return jsonify(status="error", message="You don't have access to that class."), 403
+
+    # Update session with new join code
+    session['current_join_code'] = join_code
+
+    # Get teacher name for response
+    teacher = Admin.query.get(seat.teacher_id)
+    teacher_name = teacher.username if teacher else "Unknown"
+
+    # Get block/period info
+    block_display = f"Block {seat.block.upper()}" if seat.block else "Unknown Block"
+
+    return jsonify(
+        status="success",
+        message=f"Switched to {teacher_name}'s class ({block_display})",
+        teacher_name=teacher_name,
+        block=seat.block
+    )
+
+
 @student_bp.route('/switch-period/<int:teacher_id>', methods=['POST'])
 @login_required
 def switch_period(teacher_id):
-    """Switch to a different period/teacher's class economy."""
+    """DEPRECATED: Use switch_class instead. Kept for backwards compatibility."""
     student = get_logged_in_student()
 
     # Verify student has access to this teacher
@@ -2090,7 +2549,7 @@ def switch_period(teacher_id):
         flash("You don't have access to that class.", "error")
         return redirect(url_for('student.dashboard'))
 
-    # Update session with new teacher
+    # Update session with new teacher (old method)
     session['current_teacher_id'] = teacher_id
 
     # Get teacher name for flash message

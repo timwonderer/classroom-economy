@@ -35,7 +35,7 @@ class TeacherBlock(db.Model):
     __tablename__ = 'teacher_blocks'
 
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
     block = db.Column(db.String(10), nullable=False)
 
     # Student identifiers (used for matching during claim)
@@ -65,7 +65,7 @@ class TeacherBlock(db.Model):
     claimed_at = db.Column(db.DateTime, nullable=True)
 
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('roster_seats', lazy='dynamic'))
+    teacher = db.relationship('Admin', backref=db.backref('roster_seats', lazy='dynamic', passive_deletes=True))
     student = db.relationship('Student', backref='roster_seats')
 
     # Indexes for efficient lookups
@@ -128,6 +128,8 @@ class Student(db.Model):
     has_completed_setup = db.Column(db.Boolean, default=False)
     # Privacy-aligned DOB sum for username generation (non-reversible)
     dob_sum = db.Column(db.Integer, nullable=True)
+    # Track if student has completed the legacy profile migration
+    has_completed_profile_migration = db.Column(db.Boolean, default=False)
 
     @property
     def full_name(self):
@@ -271,15 +273,16 @@ class DeletionRequest(db.Model):
     __tablename__ = 'deletion_requests'
     id = db.Column(db.Integer, primary_key=True)
     admin_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
-    request_type = db.Column(db.Enum(DeletionRequestType), nullable=False)
+    request_type = db.Column(db.Enum(DeletionRequestType, values_callable=lambda x: [e.value for e in x]), nullable=False)
     period = db.Column(db.String(10), nullable=True)  # Specified for period deletions only
     reason = db.Column(db.Text, nullable=True)  # Optional reason from teacher
-    status = db.Column(db.Enum(DeletionRequestStatus), default=DeletionRequestStatus.PENDING, nullable=False)
+    status = db.Column(db.Enum(DeletionRequestStatus, values_callable=lambda x: [e.value for e in x]), default=DeletionRequestStatus.PENDING, nullable=False)
     requested_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
     resolved_at = db.Column(db.DateTime, nullable=True)
     resolved_by = db.Column(db.Integer, db.ForeignKey('system_admins.id'), nullable=True)
 
     # Relationships
+    # No ORM cascade needed - explicit deletion in system_admin.py:871 + DB CASCADE
     admin = db.relationship('Admin', backref=db.backref('deletion_requests', lazy='dynamic'))
     resolver = db.relationship('SystemAdmin', backref=db.backref('resolved_deletion_requests', lazy='dynamic'))
 
@@ -305,6 +308,13 @@ class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
+
+    # CRITICAL: join_code is the source of truth for class isolation
+    # Each join code represents a distinct class economy, even if same teacher
+    # Example: Teacher has Period A (join=MATH1A) and Period B (join=MATH3B)
+    # Student in both periods should see separate balances/transactions
+    join_code = db.Column(db.String(20), nullable=True, index=True)
+
     amount = db.Column(db.Float, nullable=False)
     # All times stored as UTC (see header note)
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
@@ -320,6 +330,35 @@ class Transaction(db.Model):
 
 
 # ---- TapEvent Model (append-only) ----
+class StudentBlock(db.Model):
+    """
+    Stores per-student, per-period settings and state.
+    """
+    __tablename__ = 'student_blocks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    period = db.Column(db.String(10), nullable=False)
+
+    # Toggle for enabling/disabling tap in/out for this student in this period
+    tap_enabled = db.Column(db.Boolean, default=True, nullable=False)
+
+    # When student marks "done for the day", store the date (Pacific time)
+    # This locks them out until 11:59 PM same day
+    done_for_day_date = db.Column(db.Date, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    student = db.relationship("Student", backref="student_blocks")
+
+    __table_args__ = (
+        db.UniqueConstraint('student_id', 'period', name='uq_student_blocks_student_period'),
+        db.Index('ix_student_blocks_student_id', 'student_id'),
+        db.Index('ix_student_blocks_period', 'period'),
+    )
+
+
 class TapEvent(db.Model):
     __tablename__ = 'tap_events'
 
@@ -331,7 +370,13 @@ class TapEvent(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     reason = db.Column(db.String(50), nullable=True)
 
+    # Flag to indicate if this event was deleted by a teacher
+    is_deleted = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    deleted_at = db.Column(db.DateTime, nullable=True)
+    deleted_by = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='SET NULL'), nullable=True)
+
     student = db.relationship("Student", backref="tap_events")
+    deleted_by_admin = db.relationship("Admin", foreign_keys=[deleted_by])
 
 
 # ---- Hall Pass Log Model ----
@@ -354,7 +399,8 @@ class HallPassLog(db.Model):
 class HallPassSettings(db.Model):
     __tablename__ = 'hall_pass_settings'
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False, index=True)
+    block = db.Column(db.String(10), nullable=True)  # NULL = global default, otherwise period/block identifier
 
     # Queue system toggle
     queue_enabled = db.Column(db.Boolean, default=True, nullable=False)
@@ -370,6 +416,7 @@ class HallPassSettings(db.Model):
 
 
 # -------------------- STORE MODELS --------------------
+
 class StoreItem(db.Model):
     __tablename__ = 'store_items'
     id = db.Column(db.Integer, primary_key=True)
@@ -404,6 +451,42 @@ class StoreItem(db.Model):
     teacher = db.relationship('Admin', backref=db.backref('store_items', lazy='dynamic'))
     student_items = db.relationship('StudentItem', backref='store_item', lazy=True)
 
+    # Many-to-many relationship for block visibility
+    visible_blocks = db.relationship(
+        'StoreItemBlock',
+        backref='store_item',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+
+    @property
+    def blocks_list(self):
+        """Return list of block names this item is visible to (empty list means all blocks)."""
+        return [b.block for b in self.visible_blocks]
+
+    def set_blocks(self, block_list):
+        """Set the blocks this item is visible to. Pass empty list for all blocks."""
+        # Clear existing blocks
+        StoreItemBlock.query.filter_by(store_item_id=self.id).delete()
+        # Add new blocks
+        if block_list:
+            db.session.add_all([
+                StoreItemBlock(store_item_id=self.id, block=block.strip().upper())
+                for block in block_list
+            ])
+
+
+class StoreItemBlock(db.Model):
+    """Association model for store item block visibility."""
+    __tablename__ = 'store_item_blocks'
+    store_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id', ondelete='CASCADE'), primary_key=True)
+    block = db.Column(db.String(10), primary_key=True)
+
+    __table_args__ = (
+        db.Index('ix_store_item_blocks_item', 'store_item_id'),
+        db.Index('ix_store_item_blocks_block', 'block'),
+    )
+
 
 class StudentItem(db.Model):
     __tablename__ = 'student_items'
@@ -430,7 +513,8 @@ class StudentItem(db.Model):
 class RentSettings(db.Model):
     __tablename__ = 'rent_settings'
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False, index=True)
+    block = db.Column(db.String(10), nullable=True)  # NULL = global default, otherwise period/block identifier
 
     # Main toggle
     is_enabled = db.Column(db.Boolean, default=True)
@@ -552,9 +636,45 @@ class InsurancePolicy(db.Model):
     student_policies = db.relationship('StudentInsurance', backref='policy', lazy='dynamic')
     claims = db.relationship('InsuranceClaim', backref='policy', lazy='dynamic')
 
+    # Many-to-many relationship for block visibility
+    visible_blocks = db.relationship(
+        'InsurancePolicyBlock',
+        backref='policy',
+        lazy='dynamic',
+        cascade='all, delete-orphan'
+    )
+
+    @property
+    def blocks_list(self):
+        """Return list of block names this policy is visible to (empty list means all blocks)."""
+        return [b.block for b in self.visible_blocks]
+
+    def set_blocks(self, block_list):
+        """Set the blocks this policy is visible to. Pass empty list for all blocks."""
+        # Clear existing blocks
+        InsurancePolicyBlock.query.filter_by(policy_id=self.id).delete()
+        # Add new blocks
+        if block_list:
+            db.session.add_all([
+                InsurancePolicyBlock(policy_id=self.id, block=block.strip().upper())
+                for block in block_list
+            ])
+
     @property
     def is_monetary_claim(self):
         return self.claim_type != 'non_monetary'
+
+
+class InsurancePolicyBlock(db.Model):
+    """Association model for insurance policy block visibility."""
+    __tablename__ = 'insurance_policy_blocks'
+    policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id', ondelete='CASCADE'), primary_key=True)
+    block = db.Column(db.String(10), primary_key=True)
+
+    __table_args__ = (
+        db.Index('ix_insurance_policy_blocks_policy', 'policy_id'),
+        db.Index('ix_insurance_policy_blocks_block', 'block'),
+    )
 
 
 class StudentInsurance(db.Model):
@@ -685,7 +805,7 @@ class Admin(db.Model):
 class PayrollSettings(db.Model):
     __tablename__ = 'payroll_settings'
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False, index=True)
     block = db.Column(db.String(10), nullable=True)  # NULL = global/default settings
     pay_rate = db.Column(db.Float, nullable=False, default=0.25)  # $ per minute
     payroll_frequency_days = db.Column(db.Integer, nullable=False, default=14)
@@ -765,7 +885,8 @@ class PayrollFine(db.Model):
 class BankingSettings(db.Model):
     __tablename__ = 'banking_settings'
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False, index=True)
+    block = db.Column(db.String(10), nullable=True)  # NULL = global default, otherwise period/block identifier
 
     # Interest settings for savings
     savings_apy = db.Column(db.Float, default=0.0)  # Annual Percentage Yield (e.g., 5.0 for 5%)
@@ -864,7 +985,7 @@ class FeatureSettings(db.Model):
     """
     __tablename__ = 'feature_settings'
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
     block = db.Column(db.String(10), nullable=True)  # NULL = global defaults for teacher
 
     # Feature toggles - all default to True (enabled)
@@ -884,7 +1005,7 @@ class FeatureSettings(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('feature_settings', lazy='dynamic'))
+    teacher = db.relationship('Admin', backref=db.backref('feature_settings', lazy='dynamic', passive_deletes=True))
 
     # Unique constraint: one settings row per teacher-block combination
     __table_args__ = (
@@ -941,7 +1062,7 @@ class TeacherOnboarding(db.Model):
     """
     __tablename__ = 'teacher_onboarding'
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False, unique=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False, unique=True)
 
     # Onboarding status
     is_completed = db.Column(db.Boolean, default=False, nullable=False)
@@ -962,7 +1083,7 @@ class TeacherOnboarding(db.Model):
     last_activity_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('onboarding', uselist=False))
+    teacher = db.relationship('Admin', backref=db.backref('onboarding', uselist=False, passive_deletes=True))
 
     def __repr__(self):
         status = 'completed' if self.is_completed else ('skipped' if self.is_skipped else 'in_progress')

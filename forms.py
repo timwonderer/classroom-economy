@@ -1,7 +1,7 @@
 from flask_wtf import FlaskForm
 from wtforms import StringField, PasswordField
 from wtforms.validators import DataRequired, ValidationError, Length
-from wtforms import HiddenField, TextAreaField, FloatField, SelectField, IntegerField, DateField, BooleanField
+from wtforms import HiddenField, TextAreaField, FloatField, SelectField, IntegerField, DateField, BooleanField, SelectMultipleField
 from wtforms.validators import Optional
 
 from wtforms import SubmitField
@@ -22,6 +22,7 @@ class StoreItemForm(FlaskForm):
     auto_delist_date = DateField('Auto-Delist Date (optional)', format='%Y-%m-%d', validators=[Optional()])
     auto_expiry_days = IntegerField('Item Expiry in Days (optional, for delayed-use items)', validators=[Optional()])
     is_active = BooleanField('Item is Active', default=True)
+    blocks = SelectMultipleField('Visible to Periods/Blocks (leave empty for all)', choices=[], validators=[Optional()])
 
     # Bundle settings
     is_bundle = BooleanField('This is a Bundled Item', default=False)
@@ -209,6 +210,7 @@ class InsurancePolicyForm(FlaskForm):
     ], default='advanced')
 
     is_active = BooleanField('Policy is Active', default=True)
+    blocks = SelectMultipleField('Visible to Periods/Blocks (leave empty for all)', choices=[], validators=[Optional()])
     submit = SubmitField('Save Policy')
 
 
@@ -328,3 +330,19 @@ class StudentAddClassForm(FlaskForm):
     last_name = StringField('Last Name', validators=[DataRequired()])
     dob_sum = StringField('DOB Sum (MM + DD + YYYY)', validators=[DataRequired()])
     submit = SubmitField('Add Class')
+
+
+class StudentCompleteProfileForm(FlaskForm):
+    """Form for legacy students to complete their profile with missing information."""
+    first_name = StringField('First Name', validators=[DataRequired(), Length(min=1, max=50)])
+    last_name = StringField('Last Name', validators=[DataRequired(), Length(min=1, max=100)])
+    dob_month = SelectField('Birth Month', choices=[
+        ('', 'Select Month'),
+        ('01', 'January'), ('02', 'February'), ('03', 'March'),
+        ('04', 'April'), ('05', 'May'), ('06', 'June'),
+        ('07', 'July'), ('08', 'August'), ('09', 'September'),
+        ('10', 'October'), ('11', 'November'), ('12', 'December')
+    ], validators=[DataRequired()])
+    dob_day = StringField('Day (1-31)', validators=[DataRequired(), Length(min=1, max=2)])
+    dob_year = StringField('Year (4 digits)', validators=[DataRequired(), Length(min=4, max=4)])
+    submit = SubmitField('Complete Profile')

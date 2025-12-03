@@ -32,10 +32,10 @@ import pytz
 from app.extensions import db, limiter
 from app.models import (
     Student, Admin, AdminInviteCode, StudentTeacher, Transaction, TapEvent, StoreItem, StudentItem,
-    RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    HallPassLog, PayrollSettings, PayrollReward, PayrollFine, BankingSettings, TeacherBlock,
-    DeletionRequest, DeletionRequestType, DeletionRequestStatus, UserReport,
-    FeatureSettings, TeacherOnboarding
+    StoreItemBlock, RentSettings, RentPayment, RentWaiver, InsurancePolicy, InsurancePolicyBlock,
+    StudentInsurance, InsuranceClaim, HallPassLog, PayrollSettings, PayrollReward, PayrollFine,
+    BankingSettings, TeacherBlock, DeletionRequest, DeletionRequestType, DeletionRequestStatus,
+    UserReport, FeatureSettings, TeacherOnboarding
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
@@ -82,6 +82,15 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 def _scoped_students(include_unassigned=True):
     """Return a query for students the current admin can access."""
     return get_admin_student_query(include_unassigned=include_unassigned)
+
+
+def _get_teacher_blocks():
+    """Get sorted list of blocks from teacher's students."""
+    students_blocks = _scoped_students().with_entities(Student.block).all()
+    return sorted(set(
+        b.strip().upper() for s_blocks, in students_blocks if s_blocks
+        for b in s_blocks.split(',') if b.strip()
+    ))
 
 
 def _student_scope_subquery(include_unassigned=True):
@@ -864,7 +873,21 @@ def student_detail(student_id):
     all_students = _scoped_students().all()
     blocks = sorted({b.strip() for s in all_students for b in (s.block or "").split(',') if b.strip()})
 
-    return render_template('student_detail.html', student=student, transactions=transactions, student_items=student_items, latest_tap_event=latest_tap_event, active_insurance=active_insurance, blocks=blocks)
+    # Get StudentBlock settings for this student
+    from app.models import StudentBlock
+    student_blocks_settings = {}
+    student_periods = [b.strip().upper() for b in (student.block or "").split(',') if b.strip()]
+    for period in student_periods:
+        student_block = StudentBlock.query.filter_by(
+            student_id=student.id,
+            period=period
+        ).first()
+        student_blocks_settings[period] = {
+            'tap_enabled': student_block.tap_enabled if student_block else True,
+            'done_for_day_date': student_block.done_for_day_date if student_block else None
+        }
+
+    return render_template('student_detail.html', student=student, transactions=transactions, student_items=student_items, latest_tap_event=latest_tap_event, active_insurance=active_insurance, blocks=blocks, student_blocks_settings=student_blocks_settings)
 
 
 @admin_bp.route('/student/<int:student_id>/set-hall-passes', methods=['POST'])
@@ -891,6 +914,22 @@ def edit_student():
     student_id = request.form.get('student_id', type=int)
     student = _get_student_or_404(student_id)
     current_admin_id = session.get('admin_id')
+
+    # Check if this is a legacy student (has teacher_id but no StudentTeacher record)
+    # If so, create the StudentTeacher association to upgrade them to the new system
+    if student.teacher_id == current_admin_id:
+        existing_st = StudentTeacher.query.filter_by(
+            student_id=student.id,
+            admin_id=current_admin_id
+        ).first()
+        
+        if not existing_st:
+            # Create StudentTeacher association for this legacy student
+            db.session.add(StudentTeacher(
+                student_id=student.id,
+                admin_id=current_admin_id
+            ))
+            db.session.flush()  # Ensure it's saved before we continue
 
     # Get form data
     new_first_name = request.form.get('first_name', '').strip()
@@ -978,6 +1017,21 @@ def edit_student():
     # Handle block changes - update TeacherBlock entries
     removed_blocks = old_blocks - new_blocks_set
     added_blocks = new_blocks_set - old_blocks
+    
+    # For legacy students (those being upgraded), ensure TeacherBlock entries exist
+    # for ALL their blocks, not just newly added ones
+    # Check if this is a legacy student being upgraded (had no TeacherBlock entries)
+    existing_tb_count = TeacherBlock.query.filter_by(
+        student_id=student.id,
+        teacher_id=current_admin_id
+    ).count()
+    
+    if existing_tb_count == 0:
+        # This is a legacy student - ensure TeacherBlock entries for ALL blocks
+        blocks_to_ensure = new_blocks_set
+    else:
+        # Normal case - only create TeacherBlock entries for newly added blocks
+        blocks_to_ensure = added_blocks
 
     # Remove TeacherBlock entries for blocks the student is no longer in
     for block in removed_blocks:
@@ -987,8 +1041,8 @@ def edit_student():
             block=block
         ).delete()
 
-    # Create TeacherBlock entries for new blocks (reusing existing join codes)
-    for block in added_blocks:
+    # Create TeacherBlock entries for blocks that need them (reusing existing join codes)
+    for block in blocks_to_ensure:
         # Check if there's already an unclaimed TeacherBlock for this student in this block
         existing_tb = TeacherBlock.query.filter_by(
             teacher_id=current_admin_id,
@@ -1086,6 +1140,9 @@ def delete_student():
         StudentInsurance.query.filter_by(student_id=student.id).delete()
         HallPassLog.query.filter_by(student_id=student.id).delete()
         
+        # Delete StudentTeacher associations
+        StudentTeacher.query.filter_by(student_id=student.id).delete()
+        
         # Delete TeacherBlock entries for this student
         TeacherBlock.query.filter_by(student_id=student.id).delete()
 
@@ -1126,6 +1183,9 @@ def bulk_delete_students():
                 InsuranceClaim.query.filter_by(student_id=student.id).delete()
                 HallPassLog.query.filter_by(student_id=student.id).delete()
                 
+                # Delete StudentTeacher associations
+                StudentTeacher.query.filter_by(student_id=student.id).delete()
+                
                 # Delete TeacherBlock entries for this student
                 TeacherBlock.query.filter_by(student_id=student.id).delete()
 
@@ -1155,9 +1215,209 @@ def delete_block():
         return jsonify({"status": "error", "message": "No block specified."}), 400
 
     try:
+        # Get all students in this block that the current admin can access
         students = _scoped_students().filter_by(block=block).all()
+        student_ids = [s.id for s in students]
         deleted_count = len(students)
+        
+        current_app.logger.info(f"Deleting block {block} with {deleted_count} students (IDs: {student_ids})")
 
+        if deleted_count > 0:
+            # Delete all associated records in bulk where possible to avoid N+1 queries
+            # Using synchronize_session=False to avoid session synchronization issues
+            Transaction.query.filter(Transaction.student_id.in_(student_ids)).delete(synchronize_session=False)
+            TapEvent.query.filter(TapEvent.student_id.in_(student_ids)).delete(synchronize_session=False)
+            StudentItem.query.filter(StudentItem.student_id.in_(student_ids)).delete(synchronize_session=False)
+            RentPayment.query.filter(RentPayment.student_id.in_(student_ids)).delete(synchronize_session=False)
+            RentWaiver.query.filter(RentWaiver.student_id.in_(student_ids)).delete(synchronize_session=False)
+            StudentInsurance.query.filter(StudentInsurance.student_id.in_(student_ids)).delete(synchronize_session=False)
+            InsuranceClaim.query.filter(InsuranceClaim.student_id.in_(student_ids)).delete(synchronize_session=False)
+            HallPassLog.query.filter(HallPassLog.student_id.in_(student_ids)).delete(synchronize_session=False)
+            
+            # Delete StudentTeacher associations
+            StudentTeacher.query.filter(StudentTeacher.student_id.in_(student_ids)).delete(synchronize_session=False)
+            
+            # Delete TeacherBlock entries for these students
+            TeacherBlock.query.filter(TeacherBlock.student_id.in_(student_ids)).delete(synchronize_session=False)
+            
+            # Flush to ensure all associated records are deleted before deleting students
+            db.session.flush()
+            
+            # Delete the students themselves
+            for student in students:
+                db.session.delete(student)
+            
+            # Flush student deletions
+            db.session.flush()
+
+        # Also delete unclaimed TeacherBlock entries for this block and teacher
+        unclaimed_deleted = TeacherBlock.query.filter(
+            TeacherBlock.teacher_id == current_admin_id,
+            TeacherBlock.block == block,
+            TeacherBlock.student_id.is_(None)
+        ).delete(synchronize_session=False)
+        
+        current_app.logger.info(f"Deleted {unclaimed_deleted} unclaimed TeacherBlock entries for block {block}")
+
+        # Final commit
+        db.session.commit()
+        current_app.logger.info(f"Successfully deleted block {block}")
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully deleted all {deleted_count} student(s) in Block {block} and all associated data."
+        })
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting block {block}: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@admin_bp.route('/pending-students/delete', methods=['POST'])
+@admin_required
+def delete_pending_student():
+    """
+    Delete a single pending student (unclaimed TeacherBlock entry).
+    
+    Pending students are roster entries that have not yet been claimed by students.
+    This route ensures comprehensive cleanup with no leftover traces.
+    """
+    data = request.get_json()
+    teacher_block_id = data.get('teacher_block_id')
+    if teacher_block_id:
+        try:
+            teacher_block_id = int(teacher_block_id)
+        except (ValueError, TypeError):
+            return jsonify({"status": "error", "message": "Invalid teacher block ID."}), 400
+    
+    current_admin_id = session.get('admin_id')
+
+    if not teacher_block_id:
+        return jsonify({"status": "error", "message": "No teacher block ID provided."}), 400
+
+    try:
+        # Find the TeacherBlock entry
+        teacher_block = TeacherBlock.query.filter_by(
+            id=teacher_block_id,
+            teacher_id=current_admin_id
+        ).first()
+
+        if not teacher_block:
+            return jsonify({"status": "error", "message": "Pending student not found or access denied."}), 404
+
+        # Verify it's actually unclaimed
+        if teacher_block.is_claimed or teacher_block.student_id is not None:
+            return jsonify({
+                "status": "error",
+                "message": "This seat has already been claimed. Use the regular student deletion route instead."
+            }), 400
+
+        student_name = f"{teacher_block.first_name} {teacher_block.last_initial}."
+        
+        # Delete the TeacherBlock entry (this is the only record for unclaimed seats)
+        db.session.delete(teacher_block)
+        db.session.commit()
+
+        return jsonify({
+            "status": "success",
+            "message": f"Successfully deleted pending student {student_name}."
+        })
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting pending student: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@admin_bp.route('/pending-students/bulk-delete', methods=['POST'])
+@admin_required
+def bulk_delete_pending_students():
+    """
+    Delete multiple pending students (unclaimed TeacherBlock entries) at once.
+    
+    This route ensures comprehensive cleanup with no leftover traces.
+    Accepts a list of TeacherBlock IDs or a block name to delete all pending students in that block.
+    """
+    data = request.get_json()
+    teacher_block_ids = data.get('teacher_block_ids', [])
+    block = data.get('block', '').strip().upper()
+    current_admin_id = session.get('admin_id')
+
+    if not teacher_block_ids and not block:
+        return jsonify({
+            "status": "error",
+            "message": "Either teacher_block_ids or block must be provided."
+        }), 400
+
+    try:
+        deleted_count = 0
+
+        if block:
+            # Delete all unclaimed TeacherBlock entries for this teacher and block
+            deleted_count = TeacherBlock.query.filter(
+                TeacherBlock.teacher_id == current_admin_id,
+                TeacherBlock.block == block,
+                TeacherBlock.is_claimed.is_(False),
+                TeacherBlock.student_id.is_(None)
+            ).delete(synchronize_session=False)
+        else:
+            # Delete specific TeacherBlock entries
+            for tb_id in teacher_block_ids:
+                teacher_block = TeacherBlock.query.filter_by(
+                    id=tb_id,
+                    teacher_id=current_admin_id
+                ).first()
+
+                if teacher_block:
+                    # Verify it's actually unclaimed
+                    if not teacher_block.is_claimed and teacher_block.student_id is None:
+                        db.session.delete(teacher_block)
+                        deleted_count += 1
+
+        db.session.commit()
+        
+        message = f"Successfully deleted {deleted_count} pending student(s)."
+        if block:
+            message = f"Successfully deleted {deleted_count} pending student(s) from Block {block}."
+
+        return jsonify({
+            "status": "success",
+            "message": message,
+            "deleted_count": deleted_count
+        })
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error bulk deleting pending students: {e}", exc_info=True)
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+
+@admin_bp.route('/legacy-unclaimed-students/bulk-delete', methods=['POST'])
+@admin_required
+def bulk_delete_legacy_unclaimed_students():
+    """
+    Delete multiple legacy unclaimed students (Student records without username_hash) at once.
+    
+    Legacy unclaimed students are Student records that exist but don't have a username_hash set yet.
+    This route ensures comprehensive cleanup with no leftover traces.
+    Accepts a block name to delete all legacy unclaimed students in that block.
+    """
+    data = request.get_json()
+    block = data.get('block', '').strip().upper()
+    current_admin_id = session.get('admin_id')
+
+    if not block:
+        return jsonify({
+            "status": "error",
+            "message": "Block must be provided."
+        }), 400
+
+    try:
+        # Query for legacy unclaimed students in this block for this teacher
+        students = _scoped_students().filter(
+            Student.block == block,
+            Student.username_hash.is_(None)
+        ).all()
+        
+        deleted_count = 0
         for student in students:
             # Delete associated records
             Transaction.query.filter_by(student_id=student.id).delete()
@@ -1169,22 +1429,28 @@ def delete_block():
             InsuranceClaim.query.filter_by(student_id=student.id).delete()
             HallPassLog.query.filter_by(student_id=student.id).delete()
             
+            # Delete StudentTeacher associations
+            StudentTeacher.query.filter_by(student_id=student.id).delete()
+            
+            # Delete TeacherBlock entries for this student
+            TeacherBlock.query.filter_by(student_id=student.id).delete()
+            
             # Delete the student
             db.session.delete(student)
-
-        # Also delete unclaimed TeacherBlock entries for this block
-        TeacherBlock.query.filter_by(
-            teacher_id=current_admin_id,
-            block=block
-        ).delete()
+            deleted_count += 1
 
         db.session.commit()
+        
+        message = f"Successfully deleted {deleted_count} legacy unclaimed student(s) from Block {block}."
+
         return jsonify({
             "status": "success",
-            "message": f"Successfully deleted all {deleted_count} student(s) in Block {block} and all associated data."
+            "message": message,
+            "deleted_count": deleted_count
         })
     except Exception as e:
         db.session.rollback()
+        current_app.logger.error(f"Error bulk deleting legacy unclaimed students: {e}", exc_info=True)
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
@@ -1520,6 +1786,11 @@ def store_management():
     admin_id = session.get("admin_id")
     student_ids_subq = _student_scope_subquery()
     form = StoreItemForm()
+
+    # Populate blocks choices from teacher's students
+    blocks = _get_teacher_blocks()
+    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+
     if form.validate_on_submit():
         new_item = StoreItem(
             teacher_id=admin_id,
@@ -1541,6 +1812,10 @@ def store_management():
             bulk_discount_percentage=form.bulk_discount_percentage.data if form.bulk_discount_enabled.data else None
         )
         db.session.add(new_item)
+        db.session.flush()  # Get the ID for the item before adding blocks
+        # Set blocks using many-to-many relationship
+        if form.blocks.data:
+            new_item.set_blocks(form.blocks.data)
         db.session.commit()
         flash(f"'{new_item.name}' has been added to the store.", "success")
         return redirect(url_for('admin.store_management'))
@@ -1570,8 +1845,20 @@ def edit_store_item(item_id):
     admin_id = session.get("admin_id")
     item = StoreItem.query.filter_by(id=item_id, teacher_id=admin_id).first_or_404()
     form = StoreItemForm(obj=item)
+
+    # Populate blocks choices from teacher's students
+    blocks = _get_teacher_blocks()
+    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+
+    # Pre-populate selected blocks on GET request (using many-to-many relationship)
+    if request.method == 'GET':
+        form.blocks.data = item.blocks_list
+
     if form.validate_on_submit():
+        # Populate other fields first
         form.populate_obj(item)
+        # Set blocks using many-to-many relationship
+        item.set_blocks(form.blocks.data if form.blocks.data else [])
         db.session.commit()
         flash(f"'{item.name}' has been updated.", "success")
         return redirect(url_for('admin.store_management'))
@@ -1865,6 +2152,10 @@ def insurance_management():
     student_ids_subq = _student_scope_subquery()
     form = InsurancePolicyForm()
 
+    # Populate blocks choices from teacher's students
+    blocks = _get_teacher_blocks()
+    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+
     current_teacher_id = session.get('admin_id')
     existing_policies = InsurancePolicy.query.filter_by(teacher_id=current_teacher_id).all()
 
@@ -1928,6 +2219,10 @@ def insurance_management():
             is_active=form.is_active.data
         )
         db.session.add(policy)
+        db.session.flush()  # Get the ID for the policy before adding blocks
+        # Set blocks using many-to-many relationship
+        if form.blocks.data:
+            policy.set_blocks(form.blocks.data)
         db.session.commit()
         flash(f"Insurance policy '{policy.title}' created successfully!", "success")
         return redirect(url_for('admin.insurance_management'))
@@ -1990,6 +2285,14 @@ def edit_insurance_policy(policy_id):
 
     form = InsurancePolicyForm(obj=policy)
 
+    # Populate blocks choices from teacher's students
+    blocks = _get_teacher_blocks()
+    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+
+    # Pre-populate selected blocks on GET request (using many-to-many relationship)
+    if request.method == 'GET':
+        form.blocks.data = policy.blocks_list
+
     teacher_policies = InsurancePolicy.query.filter_by(teacher_id=session.get('admin_id')).all()
     tier_groups_map = {}
     for teacher_policy in teacher_policies:
@@ -2031,6 +2334,8 @@ def edit_insurance_policy(policy_id):
         policy.bundle_discount_percent = form.bundle_discount_percent.data
         policy.bundle_discount_amount = form.bundle_discount_amount.data
         policy.marketing_badge = form.marketing_badge.data if form.marketing_badge.data else None
+        # Set blocks using many-to-many relationship
+        policy.set_blocks(form.blocks.data if form.blocks.data else [])
         if form.tier_category_id.data:
             policy.tier_category_id = form.tier_category_id.data
         elif form.tier_name.data or form.tier_color.data:
@@ -2497,11 +2802,23 @@ def hall_pass():
         .all()
     )
 
+    # Get available periods/blocks from teacher's students
+    available_periods = (
+        db.session.query(Student.block)
+        .filter(Student.id.in_(student_ids_subq))
+        .distinct()
+        .order_by(Student.block)
+        .all()
+    )
+    # Extract just the block values from tuples and filter out None/empty
+    periods = sorted([p[0] for p in available_periods if p[0]])
+
     return render_template(
         'admin_hall_pass.html',
         pending_requests=pending_requests,
         approved_queue=approved_queue,
         out_of_class=out_of_class,
+        available_periods=periods,
         current_page="hall_pass"
     )
 
@@ -3417,21 +3734,7 @@ def upload_students():
 
             join_code = join_codes_by_block[block]
 
-            # Check if this seat already exists for this teacher
-            # Duplicate detection: same teacher + block + first_name + last_initial
-            existing_seat = TeacherBlock.query.filter_by(
-                teacher_id=teacher_id,
-                block=block,
-                first_name=first_name,
-                last_initial=last_initial
-            ).first()
-
-            if existing_seat:
-                current_app.logger.info(f"Seat for {first_name} {last_name} already exists in block {block}, skipping.")
-                duplicated += 1
-                continue
-
-            # Generate dob_sum
+            # Generate dob_sum first (needed for duplicate detection)
             # Handle both mm/dd/yy and mm/dd/yyyy formats
             date_parts = dob_str.split('/')
             mm = int(date_parts[0])
@@ -3445,6 +3748,28 @@ def upload_students():
                 yyyy = year
 
             dob_sum = mm + dd + yyyy
+
+            # Check if this seat already exists for this teacher
+            # Duplicate detection: same teacher + block + last_initial + dob_sum + first_name
+            # Note: first_name is encrypted, so we must fetch candidates and check in Python
+            candidate_seats = TeacherBlock.query.filter_by(
+                teacher_id=teacher_id,
+                block=block,
+                last_initial=last_initial,
+                dob_sum=dob_sum
+            ).all()
+            
+            # Check if any candidate has matching first name (after decryption)
+            existing_seat = None
+            for seat in candidate_seats:
+                if seat.first_name == first_name:
+                    existing_seat = seat
+                    break
+
+            if existing_seat:
+                current_app.logger.info(f"Seat for {first_name} {last_name} (DOB sum: {dob_sum}) already exists in block {block}, skipping.")
+                duplicated += 1
+                continue
 
             # Generate salt
             salt = get_random_salt()
@@ -4192,6 +4517,10 @@ def feature_settings():
                 'bug_rewards_enabled': 'bug_rewards_enabled' in request.form,
             }
 
+            # Bug rewards is a subfeature of bug reports - if bug reports is disabled, disable bug rewards too
+            if not features_data['bug_reports_enabled']:
+                features_data['bug_rewards_enabled'] = False
+
             # Apply settings to selected periods
             if apply_to == 'all':
                 # Update global settings
@@ -4335,6 +4664,10 @@ def update_period_feature_settings(period):
         for feature_key, db_column in feature_map.items():
             if feature_key in data:
                 setattr(settings, db_column, bool(data[feature_key]))
+
+        # Bug rewards is a subfeature of bug reports - if bug reports is disabled, disable bug rewards too
+        if not settings.bug_reports_enabled:
+            settings.bug_rewards_enabled = False
 
         settings.updated_at = datetime.utcnow()
         db.session.commit()
@@ -4551,7 +4884,7 @@ def onboarding_step(step_name):
         try:
             current_index = step_order.index(step_name)
             if current_index < len(step_order) - 1:
-                onboarding_record.current_step = current_index + 1  # Advance to next step (1-indexed)
+                onboarding_record.current_step = current_index + 2  # Advance to next step (1-indexed)
             else:
                 # Last step completed
                 onboarding_record.complete_onboarding()

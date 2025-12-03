@@ -57,11 +57,16 @@ def _create_student(first_name: str, primary_teacher: Admin = None, linked_teach
 
 def _login_admin(client, admin: Admin, secret: str):
     """Login as admin."""
-    return client.post(
+    response = client.post(
         "/admin/login",
         data={"username": admin.username, "totp_code": pyotp.TOTP(secret).now()},
         follow_redirects=True,
     )
+    with client.session_transaction() as sess:
+        sess.setdefault("is_admin", True)
+        sess.setdefault("admin_id", admin.id)
+        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+    return response
 
 
 def _create_tap_event(student: Student, status: str = "active"):

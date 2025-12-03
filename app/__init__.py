@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+
 # Validate required environment variables
 required_env_vars = ["SECRET_KEY", "DATABASE_URL", "FLASK_ENV", "ENCRYPTION_KEY", "PEPPER_KEY"]
 missing_vars = [var for var in required_env_vars if not os.getenv(var)]
@@ -378,6 +379,70 @@ def create_app():
             from app.models import FeatureSettings
             return {'feature_settings': FeatureSettings.get_defaults()}
 
+    @app.context_processor
+    def inject_class_context():
+        """Inject current class context and available classes for student navigation."""
+        try:
+            from app.auth import get_logged_in_student
+            from app.models import TeacherBlock, Admin
+            from flask import session
+
+            student = get_logged_in_student()
+            if not student:
+                return {'current_class_context': None, 'available_classes': []}
+
+            # Get all claimed seats for this student
+            claimed_seats = TeacherBlock.query.filter_by(
+                student_id=student.id,
+                is_claimed=True
+            ).order_by(TeacherBlock.teacher_id, TeacherBlock.block).all()
+
+            if not claimed_seats:
+                return {'current_class_context': None, 'available_classes': []}
+
+            # Get current join code from session
+            current_join_code = session.get('current_join_code')
+
+            # Find current seat or default to first
+            current_seat = next(
+                (seat for seat in claimed_seats if seat.join_code == current_join_code),
+                claimed_seats[0]
+            )
+
+            # Build list of available classes with teacher names
+            # Fetch all teachers at once to avoid N+1 query
+            teacher_ids = [seat.teacher_id for seat in claimed_seats]
+            teachers = {t.id: t for t in Admin.query.filter(Admin.id.in_(teacher_ids)).all()}
+            
+            available_classes = []
+            for seat in claimed_seats:
+                teacher = teachers.get(seat.teacher_id)
+                available_classes.append({
+                    'join_code': seat.join_code,
+                    'teacher_name': teacher.username if teacher else 'Unknown',
+                    'block': seat.block,
+                    'block_display': f"Block {seat.block.upper()}" if seat.block else 'Unknown',
+                    'is_current': seat.join_code == current_seat.join_code
+                })
+
+            # Build current class context - reuse teacher from dictionary
+            current_teacher = teachers.get(current_seat.teacher_id)
+            current_class_context = {
+                'join_code': current_seat.join_code,
+                'teacher_name': current_teacher.username if current_teacher else 'Unknown',
+                'teacher_id': current_seat.teacher_id,
+                'block': current_seat.block,
+                'block_display': f"Block {current_seat.block.upper()}" if current_seat.block else 'Unknown'
+            }
+
+            return {
+                'current_class_context': current_class_context,
+                'available_classes': available_classes
+            }
+        except Exception as e:
+            app.logger.warning(f"Could not load class context: {e}")
+            return {'current_class_context': None, 'available_classes': []}
+
     # -------------------- REGISTER BLUEPRINTS --------------------
     from app.routes.main import main_bp
     from app.routes.api import api_bp
@@ -428,14 +493,14 @@ def create_app():
 
         # Content Security Policy (CSP)
         # Restricts resource loading to prevent XSS attacks
-        # Adjusted for Google Fonts, Material Icons, Cloudflare Turnstile, and jsdelivr CDN (Bootstrap, EasyMDE, zxcvbn)
+        # Adjusted for Google Fonts, Material Icons, Cloudflare Turnstile, jsdelivr CDN (Bootstrap, EasyMDE, zxcvbn), and Font Awesome
         csp_directives = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.jsdelivr.net",
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net",
-            "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net",
+            "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com",
+            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
+            "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
             "img-src 'self' data: https:",
-            "connect-src 'self' https://challenges.cloudflare.com",
+            "connect-src 'self' https://challenges.cloudflare.com https://cdn.jsdelivr.net",
             "frame-src https://challenges.cloudflare.com",
             "base-uri 'self'",
             "form-action 'self'",

@@ -20,7 +20,10 @@ from app.models import (
     SystemAdmin, Admin, Student, AdminInviteCode, ErrorLog,
     Transaction, TapEvent, HallPassLog, StudentItem, RentPayment,
     StudentInsurance, InsuranceClaim, StudentTeacher, DeletionRequest,
-    DeletionRequestType, DeletionRequestStatus, TeacherBlock
+    DeletionRequestType, DeletionRequestStatus, TeacherBlock, UserReport,
+    FeatureSettings, TeacherOnboarding, RentSettings, BankingSettings,
+    DemoStudent, HallPassSettings, PayrollFine, PayrollReward,
+    PayrollSettings, StoreItem
 )
 from app.auth import system_admin_required
 from forms import SystemAdminLoginForm, SystemAdminInviteForm
@@ -865,31 +868,42 @@ def delete_teacher(admin_id):
                 )
                 student.teacher_id = fallback.admin_id if fallback else None
 
-        # Mark any pending deletion requests for this teacher as approved
-        if pending_request:
-            pending_request.status = DeletionRequestStatus.APPROVED
-            pending_request.resolved_at = datetime.now(timezone.utc)
-            pending_request.resolved_by = session.get('sysadmin_id')
-
-        # Also resolve all other pending deletion requests for this teacher
-        # Since the account is being deleted, all pending requests become moot
-        other_pending_requests = (
-            DeletionRequest.query
-            .filter(
-                DeletionRequest.admin_id == admin.id,
-                DeletionRequest.status == DeletionRequestStatus.PENDING,
-                DeletionRequest.id != (pending_request.id if pending_request else None)
-            )
-            .all()
-        )
-        for req in other_pending_requests:
-            req.status = DeletionRequestStatus.APPROVED
-            req.resolved_at = datetime.now(timezone.utc)
-            req.resolved_by = session.get('sysadmin_id')
+        # Delete all deletion requests for this teacher to prevent NOT NULL violations.
+        # Explicit deletion needed because SQLAlchemy flush might try to nullify the FK
+        # before database CASCADE can execute, despite FK having ondelete='CASCADE'.
+        DeletionRequest.query.filter_by(admin_id=admin.id).delete()
 
         # Delete all TeacherBlock entries for this teacher
         # This cleans up roster seats associated with the teacher
         TeacherBlock.query.filter_by(teacher_id=admin.id).delete()
+
+        # Systematically delete all dependent records to prevent IntegrityError due to NOT NULL constraints.
+        # Many of these models have a non-nullable teacher_id without a DB-level ON DELETE CASCADE.
+        BankingSettings.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        DemoStudent.query.filter_by(admin_id=admin.id).delete(synchronize_session=False)
+        FeatureSettings.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        HallPassSettings.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        PayrollFine.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        PayrollReward.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        PayrollSettings.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        RentSettings.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        # Delete StudentItem records for items owned by this teacher
+        StudentItem.query.filter(
+            StudentItem.store_item_id.in_(
+                db.session.query(StoreItem.id).filter_by(teacher_id=admin.id)
+            )
+        ).delete(synchronize_session=False)
+        
+        # Delete StudentItem records for items owned by this teacher
+        # Must be done before deleting StoreItem to avoid FK constraint violations
+        StudentItem.query.filter(
+            StudentItem.store_item_id.in_(
+                db.session.query(StoreItem.id).filter_by(teacher_id=admin.id)
+            )
+        ).delete(synchronize_session=False)
+        
+        StoreItem.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        TeacherOnboarding.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
 
         admin_username = admin.username
         db.session.delete(admin)
@@ -907,3 +921,168 @@ def delete_teacher(admin_id):
         flash(f"❌ Error deleting teacher: {str(e)}", "error")
 
     return redirect(url_for('sysadmin.teacher_overview'))
+
+
+# -------------------- USER REPORTS --------------------
+
+@sysadmin_bp.route('/user-reports')
+@system_admin_required
+def user_reports():
+    """View all user-submitted bug reports with filtering."""
+    # Get filter parameters
+    status_filter = request.args.get('status', 'all')
+    report_type_filter = request.args.get('type', 'all')
+    
+    # Build query
+    query = UserReport.query
+    
+    # Apply filters
+    if status_filter != 'all':
+        query = query.filter(UserReport.status == status_filter)
+    if report_type_filter != 'all':
+        query = query.filter(UserReport.report_type == report_type_filter)
+    
+    # Get all reports ordered by newest first
+    reports = query.order_by(UserReport.submitted_at.desc()).all()
+    
+    # Count by status - optimized to use single query
+    from sqlalchemy import func
+    status_counts = dict(db.session.query(UserReport.status, func.count(UserReport.id)).group_by(UserReport.status).all())
+    new_count = status_counts.get('new', 0)
+    reviewed_count = status_counts.get('reviewed', 0)
+    rewarded_count = status_counts.get('rewarded', 0)
+    
+    return render_template(
+        'sysadmin_user_reports.html',
+        current_page='user_reports',
+        page_title='User Reports',
+        reports=reports,
+        new_count=new_count,
+        reviewed_count=reviewed_count,
+        rewarded_count=rewarded_count,
+        status_filter=status_filter,
+        report_type_filter=report_type_filter
+    )
+
+
+@sysadmin_bp.route('/user-reports/<int:report_id>')
+@system_admin_required
+def view_user_report(report_id):
+    """View details of a specific user report."""
+    report = UserReport.query.get_or_404(report_id)
+    
+    return render_template(
+        'sysadmin_user_report_detail.html',
+        current_page='user_reports',
+        page_title=f'Report #{report_id}',
+        report=report
+    )
+
+
+@sysadmin_bp.route('/user-reports/<int:report_id>/update', methods=['POST'])
+@system_admin_required
+def update_user_report(report_id):
+    """Update the status and notes of a user report."""
+    report = UserReport.query.get_or_404(report_id)
+    
+    # Get form data
+    new_status = request.form.get('status')
+    admin_notes = request.form.get('admin_notes', '').strip()
+    
+    # Validate status
+    valid_statuses = ['new', 'reviewed', 'rewarded', 'closed', 'spam']
+    if new_status not in valid_statuses:
+        flash("Invalid status selected.", "error")
+        return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+    
+    # Update report
+    report.status = new_status
+    report.admin_notes = admin_notes if admin_notes else None
+    report.reviewed_at = datetime.now(timezone.utc)
+    report.reviewed_by_sysadmin_id = session.get('sysadmin_id')
+    
+    try:
+        db.session.commit()
+        flash(f"Report #{report_id} updated successfully.", "success")
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating report {report_id}: {str(e)}")
+        flash("Error updating report. Please try again.", "error")
+    
+    return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+
+
+@sysadmin_bp.route('/user-reports/<int:report_id>/send-reward', methods=['POST'])
+@system_admin_required
+def send_reward_to_reporter(report_id):
+    """Send a reward to a student who submitted a bug report."""
+    report = UserReport.query.get_or_404(report_id)
+    
+    # Verify this is a student report with a linked student
+    if report.user_type != 'student' or not report._student_id:
+        flash("Rewards can only be sent to student reports.", "error")
+        return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+    
+    # Check if reward already sent
+    if report.reward_sent_at is not None:
+        flash("A reward has already been sent for this report.", "error")
+        return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+    
+    # Get reward amount
+    try:
+        reward_amount = float(request.form.get('reward_amount', 0))
+        if reward_amount <= 0:
+            flash("Reward amount must be greater than 0.", "error")
+            return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+    except (ValueError, TypeError):
+        flash("Invalid reward amount.", "error")
+        return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+    
+    # Get the student
+    student = Student.query.get(report._student_id)
+    if not student:
+        flash("Student not found. Cannot send reward.", "error")
+        return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+    
+    # Get student's primary teacher for the transaction
+    # Try to get from teacher_id first, otherwise from student_teachers
+    teacher_id = student.teacher_id
+    if not teacher_id:
+        # Get first associated teacher
+        first_link = StudentTeacher.query.filter_by(student_id=student.id).first()
+        if first_link:
+            teacher_id = first_link.admin_id
+    
+    if not teacher_id:
+        flash("Cannot determine student's teacher. Reward not sent.", "error")
+        return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+    
+    try:
+        # Create transaction for the reward
+        transaction = Transaction(
+            student_id=student.id,
+            teacher_id=teacher_id,
+            amount=reward_amount,
+            account_type='checking',
+            description=f"Bug Report Reward (Report #{report_id})",
+            timestamp=datetime.now(timezone.utc),
+            is_void=False
+        )
+        db.session.add(transaction)
+        
+        # Update report
+        report.reward_amount = reward_amount
+        report.reward_sent_at = datetime.now(timezone.utc)
+        report.status = 'rewarded'
+        report.reviewed_at = datetime.now(timezone.utc)
+        report.reviewed_by_sysadmin_id = session.get('sysadmin_id')
+        
+        db.session.commit()
+        
+        flash(f"Reward of ${reward_amount:.2f} sent successfully!", "success")
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error sending reward for report {report_id}: {str(e)}")
+        flash("Error sending reward. Please try again.", "error")
+    
+    return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
