@@ -283,8 +283,10 @@ def test_inject_class_context_exception_handling(client):
     """Test that inject_class_context handles exceptions without breaking template rendering."""
     from flask import session
     # Create a scenario that would cause an error
+    # Use a very large ID that's guaranteed to not exist
+    non_existent_id = 2**31 - 1  # Max signed 32-bit integer
     with client.application.test_request_context('/'):
-        session['student_id'] = 999999  # Non-existent student
+        session['student_id'] = non_existent_id
         
         ctx_processor = _get_inject_class_context_processor(client)
         
