@@ -887,6 +887,15 @@ def delete_teacher(admin_id):
         PayrollReward.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
         PayrollSettings.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
         RentSettings.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
+        
+        # Delete StudentItem records for items owned by this teacher
+        # Must be done before deleting StoreItem to avoid FK constraint violations
+        StudentItem.query.filter(
+            StudentItem.store_item_id.in_(
+                db.session.query(StoreItem.id).filter_by(teacher_id=admin.id)
+            )
+        ).delete(synchronize_session=False)
+        
         StoreItem.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
         TeacherOnboarding.query.filter_by(teacher_id=admin.id).delete(synchronize_session=False)
 
