@@ -1007,16 +1007,18 @@ def hall_pass_history():
 
         if start_date:
             try:
+                # Parse date and treat as UTC midnight (start of day)
                 start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+                start_datetime = start_datetime.replace(tzinfo=timezone.utc)
                 query = query.filter(HallPassLog.request_time >= start_datetime)
             except ValueError:
                 return jsonify({"status": "error", "message": "Invalid start date format"}), 400
 
         if end_date:
             try:
-                # End date should include the entire day
+                # Parse date and treat as UTC end of day (23:59:59)
                 end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
-                end_datetime = end_datetime.replace(hour=23, minute=59, second=59)
+                end_datetime = end_datetime.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
                 query = query.filter(HallPassLog.request_time <= end_datetime)
             except ValueError:
                 return jsonify({"status": "error", "message": "Invalid end date format"}), 400
@@ -1031,6 +1033,18 @@ def hall_pass_history():
         offset = (page - 1) * page_size
         records = query.offset(offset).limit(page_size).all()
 
+        # Helper function to format timestamp as UTC with 'Z' suffix
+        def format_timestamp(dt):
+            if not dt:
+                return None
+            # Ensure timestamp is treated as UTC and format properly
+            if dt.tzinfo is None:
+                # Naive datetime - assume UTC
+                return dt.replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
+            else:
+                # Convert to UTC if not already
+                return dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        
         # Format records for response
         records_data = []
         for record in records:
@@ -1041,10 +1055,10 @@ def hall_pass_history():
                 "reason": record.reason,
                 "pass_number": record.pass_number,
                 "status": record.status,
-                "request_time": record.request_time.isoformat() if record.request_time else None,
-                "decision_time": record.decision_time.isoformat() if record.decision_time else None,
-                "left_time": record.left_time.isoformat() if record.left_time else None,
-                "return_time": record.return_time.isoformat() if record.return_time else None
+                "request_time": format_timestamp(record.request_time),
+                "decision_time": format_timestamp(record.decision_time),
+                "left_time": format_timestamp(record.left_time),
+                "return_time": format_timestamp(record.return_time)
             })
 
         return jsonify({
