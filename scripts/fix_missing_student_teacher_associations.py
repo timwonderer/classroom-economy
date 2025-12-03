@@ -26,12 +26,15 @@ def fix_missing_associations():
     """Create StudentTeacher records for students missing them."""
     with app.app_context():
         # Find all students with teacher_id but no StudentTeacher record
-        students_with_teacher = Student.query.filter(Student.teacher_id.isnot(None)).all()
+        # Use yield_per for memory efficiency with large datasets
+        students_query = Student.query.filter(Student.teacher_id.isnot(None)).yield_per(1000)
         
         fixed_count = 0
         already_ok_count = 0
+        batch_size = 100
+        batch = []
         
-        for student in students_with_teacher:
+        for student in students_query:
             # Check if StudentTeacher record already exists
             existing = StudentTeacher.query.filter_by(
                 student_id=student.id,
@@ -44,14 +47,24 @@ def fix_missing_associations():
                     student_id=student.id,
                     admin_id=student.teacher_id
                 )
-                db.session.add(st)
+                batch.append(st)
                 fixed_count += 1
                 print(f"✓ Created StudentTeacher for student {student.id} -> teacher {student.teacher_id}")
+                
+                # Commit in batches for better performance
+                if len(batch) >= batch_size:
+                    db.session.bulk_save_objects(batch)
+                    db.session.commit()
+                    batch = []
             else:
                 already_ok_count += 1
         
-        if fixed_count > 0:
+        # Commit any remaining records in the batch
+        if batch:
+            db.session.bulk_save_objects(batch)
             db.session.commit()
+        
+        if fixed_count > 0:
             print(f"\n✅ Fixed {fixed_count} students with missing StudentTeacher associations")
         else:
             print("\n✅ No missing StudentTeacher associations found")

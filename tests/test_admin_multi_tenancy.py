@@ -330,7 +330,10 @@ def test_orphaned_students_from_deleted_teacher(client):
     # This requires raw SQL since SQLAlchemy won't let us set the ID directly
     teacher2_original_id = teacher2.id
     connection = db.session.connection()
-    connection.execute(sa.text(f"UPDATE admins SET id = {teacher1_id} WHERE id = {teacher2_original_id}"))
+    connection.execute(
+        sa.text("UPDATE admins SET id = :new_id WHERE id = :old_id"),
+        {'new_id': teacher1_id, 'old_id': teacher2_original_id}
+    )
     db.session.commit()
     
     # Verify teacher2 now has the same ID as teacher1 had
@@ -372,7 +375,7 @@ def test_students_with_mismatched_teacher_id_not_visible(client):
     # Create a student with teacher_id=teacher1 but NO StudentTeacher record
     salt = get_random_salt()
     mismatched_student = Student(
-            first_name="MismatchedStudent",
+        first_name="MismatchedStudent",
         last_initial="M",
         block="M",
         salt=salt,

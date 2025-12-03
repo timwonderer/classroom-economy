@@ -168,6 +168,11 @@ def test_attendance_history_tenant_scoping(client):
     db.session.add_all([student1, student2])
     db.session.flush()
 
+    # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
+    db.session.add(StudentTeacher(student_id=student1.id, admin_id=admin1.id))
+    db.session.add(StudentTeacher(student_id=student2.id, admin_id=admin2.id))
+    db.session.flush()
+
     # Create tap events for both students
     now_utc = datetime.now(timezone.utc)
     
