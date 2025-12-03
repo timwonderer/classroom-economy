@@ -56,11 +56,8 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function formatTimestamp(utcString) {
-    if (!utcString) return '—';
-    const date = new Date(utcString);
-    return date.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: 'numeric', hour12: true });
-}
+// Use centralized timezone utility for timestamp formatting
+const formatTimestamp = window.TimezoneUtils?.formatTimestamp || ((ts) => ts || '—');
 
 async function loadAttendanceHistory(page = 1) {
     currentPage = page;

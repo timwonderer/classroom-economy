@@ -435,14 +435,8 @@ function renderHistoryTable(records) {
     }
 
     const html = records.map(record => {
-        const requestTime = new Date(record.request_time);
-        const formattedTime = requestTime.toLocaleString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true
-        });
+        // Use centralized timezone utility for consistent formatting
+        const formattedTime = window.TimezoneUtils?.formatTimestamp(record.request_time) || record.request_time || '—';
 
         let statusBadge = '';
         switch (record.status) {

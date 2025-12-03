@@ -158,49 +158,7 @@
     <a href="{{ url_for('main.switch_view', view='desktop', next=request.path) }}">View Full Site</a>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-    // Class switcher functionality for mobile
-    document.addEventListener('DOMContentLoaded', () => {
-        const classSwitchItems = document.querySelectorAll('.class-switch-item');
-        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
-
-        classSwitchItems.forEach(item => {
-            item.addEventListener('click', async (e) => {
-                e.preventDefault();
-
-                const joinCode = item.getAttribute('data-join-code');
-                if (!joinCode) return;
-
-                // Don't switch if already on this class
-                if (item.classList.contains('active')) {
-                    return;
-                }
-
-                try {
-                    const response = await fetch(`/student/switch-class/${joinCode}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-CSRFToken': csrfToken
-                        }
-                    });
-
-                    const data = await response.json();
-
-                    if (data.status === 'success') {
-                        // Reload the page to reflect new class context
-                        window.location.reload();
-                    } else {
-                        alert(data.message || 'Failed to switch class');
-                    }
-                } catch (error) {
-                    console.error('Error switching class:', error);
-                    alert('Failed to switch class. Please try again.');
-                }
-            });
-        });
-    });
-    </script>
+    <script src="{{ url_for('static', filename='js/timezone-utils.js') }}"></script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

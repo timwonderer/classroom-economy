@@ -181,20 +181,8 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Convert UTC timestamps to local time display
-function formatTimestamp(utcString) {
-    if (!utcString) return '—';
-    const date = new Date(utcString);
-    const options = {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: 'numeric',
-        minute: 'numeric',
-        hour12: true
-    };
-    return date.toLocaleString(undefined, options);
-}
+// Use centralized timezone utility for timestamp formatting
+const formatTimestamp = window.TimezoneUtils.formatTimestamp;
 
 // Get status badge HTML (status is validated server-side but we escape for defense in depth)
 function getStatusBadge(status) {

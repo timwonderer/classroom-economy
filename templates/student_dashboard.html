@@ -303,7 +303,7 @@
                                     <div style="flex: 1; min-width: 0;">
                                         <div class="fw-medium" style="font-size: 0.85rem;">{{ tx.description }}</div>
                                         <small class="text-muted" style="font-size: 0.7rem;">
-                                            {{ tx.timestamp.strftime('%b %d, %I:%M %p') }}
+                                            <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
                                             {% if tx.account_type %}
                                                 <span class="badge bg-secondary" style="font-size: 0.6rem;">{{ tx.account_type }}</span>
                                             {% endif %}
