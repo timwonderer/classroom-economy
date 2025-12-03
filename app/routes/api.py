@@ -22,7 +22,7 @@ from app.models import (
     HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
     StudentTeacher
 )
-from app.auth import login_required, admin_required, get_logged_in_student
+from app.auth import login_required, admin_required, get_logged_in_student, get_current_admin
 from app.routes.student import get_current_teacher_id
 
 # Import external modules
@@ -1181,6 +1181,48 @@ def handle_tap():
 
     now = datetime.now(timezone.utc)
 
+    # --- Check if tap is enabled for this student in this period ---
+    from app.models import StudentBlock
+    student_block = StudentBlock.query.filter_by(
+        student_id=student.id,
+        period=period
+    ).first()
+
+    # If no StudentBlock record exists, create one with default settings (tap_enabled=True)
+    if not student_block:
+        try:
+            student_block = StudentBlock(
+                student_id=student.id,
+                period=period,
+                tap_enabled=True
+            )
+            db.session.add(student_block)
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            student_block = StudentBlock.query.filter_by(
+                student_id=student.id,
+                period=period
+            ).first()
+
+    # Check if tap is disabled for this period
+    if not student_block.tap_enabled:
+        return jsonify({"error": "Tap in/out is currently disabled for this period."}), 403
+
+    # --- Check "done for the day" lock ---
+    if action == "tap_in":
+        # Use Pacific timezone for "done for the day" check
+        pacific = pytz.timezone('America/Los_Angeles')
+        now_pacific = now.astimezone(pacific)
+        today_pacific = now_pacific.date()
+
+        # Automatically clear "done for the day" lock if it's from a previous day
+        if student_block.done_for_day_date is not None and student_block.done_for_day_date < today_pacific:
+            student_block.done_for_day_date = None
+            db.session.commit()
+        if student_block.done_for_day_date == today_pacific:
+            return jsonify({"error": "You are done for the day. You cannot tap in again until tomorrow."}), 403
+
 
     # --- Hall Pass Logic for Tap Out ---
     if action == 'tap_out':
@@ -1292,10 +1334,36 @@ def handle_tap():
         status = "active" if action == "tap_in" else "inactive"
         reason = data.get("reason") if action == "tap_out" else None
 
+        # Auto-tap-out from other periods when tapping into a new period
+        if action == "tap_in":
+            # Find all other periods where student is currently active
+            for other_period in valid_periods:
+                if other_period == period:
+                    continue  # Skip the period we're tapping into
+
+                latest_other = (
+                    TapEvent.query
+                    .filter_by(student_id=student.id, period=other_period, is_deleted=False)
+                    .order_by(TapEvent.timestamp.desc())
+                    .first()
+                )
+
+                if latest_other and latest_other.status == "active":
+                    # Auto tap-out from this period
+                    auto_tapout = TapEvent(
+                        student_id=student.id,
+                        period=other_period,
+                        status="inactive",
+                        timestamp=now,
+                        reason="auto_switch"  # Mark as automatic switch
+                    )
+                    db.session.add(auto_tapout)
+                    current_app.logger.info(f"Auto-tapped out student {student.id} from period {other_period} when tapping into {period}")
+
         # Prevent duplicate tap-in or tap-out
         latest_event = (
             TapEvent.query
-            .filter_by(student_id=student.id, period=period)
+            .filter_by(student_id=student.id, period=period, is_deleted=False)
             .order_by(TapEvent.timestamp.desc())
             .first()
         )
@@ -1362,6 +1430,25 @@ def handle_tap():
             reason=reason
         )
         db.session.add(event)
+
+        # Update "done for the day" status when tapping out with reason "done"
+        pacific = pytz.timezone('America/Los_Angeles')
+        now_pacific = now.astimezone(pacific)
+        today_pacific = now_pacific.date()
+        # Clear done_for_day_date if it's a new day
+        if student_block.done_for_day_date and student_block.done_for_day_date != today_pacific:
+            student_block.done_for_day_date = None
+            current_app.logger.info(f"Cleared done_for_day_date for student {student.id} in period {period} (new day)")
+        # Set or clear done_for_day_date based on tap out reason
+        if action == "tap_out":
+            if reason and reason.lower() in ['done', 'done for the day']:
+                student_block.done_for_day_date = today_pacific
+                current_app.logger.info(f"Student {student.id} marked as done for the day in period {period}")
+            else:
+                if student_block.done_for_day_date is not None:
+                    student_block.done_for_day_date = None
+                    current_app.logger.info(f"Cleared done_for_day_date for student {student.id} in period {period} (reason: {reason})")
+
         db.session.commit()
         current_app.logger.info(f"TAP success - student {student.id} {period} {action}")
     except SQLAlchemyError as e:
@@ -1372,7 +1459,7 @@ def handle_tap():
     # Fetch latest status and unpaid duration for the tapped period
     latest_event = (
         TapEvent.query
-        .filter_by(student_id=student.id, period=period)
+        .filter_by(student_id=student.id, period=period, is_deleted=False)
         .order_by(TapEvent.timestamp.desc())
         .first()
     )
@@ -1388,6 +1475,165 @@ def handle_tap():
         "active": is_active,
         "duration": duration,
         "projected_pay": projected_pay
+    })
+
+
+@api_bp.route('/admin/tap-entries/<int:student_id>', methods=['GET'])
+def get_tap_entries(student_id):
+    """
+    Get all tap entries for a student with pairing validation.
+    Returns entries grouped by period with pairing status.
+    """
+    admin = get_current_admin()
+    if not admin:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from app.models import Student, TapEvent
+    student = Student.query.get(student_id)
+    if not student:
+        return jsonify({"error": "Student not found"}), 404
+
+    # Check if admin has access to this student (many-to-many or legacy teacher_id)
+    if not (student.teachers.filter_by(id=admin.id).first() or student.teacher_id == admin.id):
+        return jsonify({"error": "Access denied"}), 403
+
+    # Get all tap events for this student
+    events = TapEvent.query.filter_by(
+        student_id=student_id
+    ).order_by(TapEvent.period, TapEvent.timestamp.asc()).all()
+
+    # Group by period and validate pairing
+    periods = {}
+    for event in events:
+        if event.period not in periods:
+            periods[event.period] = []
+        periods[event.period].append({
+            'id': event.id,
+            'status': event.status,
+            'timestamp': event.timestamp.isoformat() if event.timestamp else None,
+            'reason': event.reason,
+            'is_deleted': event.is_deleted,
+            'deleted_at': event.deleted_at.isoformat() if event.deleted_at else None
+        })
+
+    # Validate pairing for each period
+    period_data = {}
+    for period, events_list in periods.items():
+        # Filter out deleted events for pairing validation
+        active_events = [e for e in events_list if not e['is_deleted']]
+
+        # Check for unpaired entries
+        unpaired = []
+        expected_status = 'active'
+        for event in active_events:
+            if event['status'] == expected_status:
+                expected_status = 'inactive' if expected_status == 'active' else 'active'
+            else:
+                unpaired.append(event['id'])
+
+        # If we end on 'active', the last event is unpaired (student still tapped in)
+        if active_events and active_events[-1]['status'] == 'active':
+            # This is actually valid (student is currently working), remove from unpaired
+            if active_events[-1]['id'] in unpaired:
+                unpaired.remove(active_events[-1]['id'])
+
+        period_data[period] = {
+            'events': events_list,
+            'unpaired_event_ids': unpaired,
+            'is_valid': len(unpaired) == 0
+        }
+
+    return jsonify({
+        'student_id': student_id,
+        'student_name': student.full_name,
+        'periods': period_data
+    })
+
+
+@api_bp.route('/admin/tap-entries/<int:event_id>', methods=['DELETE'])
+def delete_tap_entry(event_id):
+    """
+    Soft-delete a tap entry by marking it as deleted.
+    Only allows deletion of unpaired or invalid entries.
+    """
+    admin = get_current_admin()
+    if not admin:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    from app.models import TapEvent, Student
+    event = TapEvent.query.get(event_id)
+    if not event:
+        return jsonify({"error": "Tap entry not found"}), 404
+
+    # Check if admin has access to this student
+    student = Student.query.get(event.student_id)
+    if not student or (not student.teachers.filter_by(id=admin.id).first() and student.teacher_id != admin.id):
+        return jsonify({"error": "Access denied"}), 403
+
+    # Mark as deleted
+    event.is_deleted = True
+    event.deleted_at = datetime.now(timezone.utc)
+    event.deleted_by = admin.id
+
+    db.session.commit()
+
+    current_app.logger.info(f"Admin {admin.id} deleted tap entry {event_id} for student {event.student_id}")
+
+    return jsonify({
+        "status": "ok",
+        "message": "Tap entry deleted successfully"
+    })
+
+
+@api_bp.route('/admin/student-block-settings', methods=['POST'])
+def update_student_block_settings():
+    """
+    Update StudentBlock settings (tap_enabled toggle) for a student-period combination.
+    """
+    admin = get_current_admin()
+    if not admin:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    data = request.get_json()
+    student_id = data.get('student_id')
+    period = data.get('period', '').upper()
+    tap_enabled = data.get('tap_enabled')
+
+    if not student_id or not period or tap_enabled is None:
+        return jsonify({"error": "Missing required fields"}), 400
+
+    from app.models import Student, StudentBlock
+    student = Student.query.get(student_id)
+    if not student:
+        return jsonify({"error": "Student not found"}), 404
+
+    # Check if admin has access to this student (many-to-many or legacy teacher_id)
+    if not (student.teachers.filter_by(id=admin.id).first() or student.teacher_id == admin.id):
+        return jsonify({"error": "Access denied"}), 403
+
+    # Get or create StudentBlock record
+    student_block = StudentBlock.query.filter_by(
+        student_id=student_id,
+        period=period
+    ).first()
+
+    if not student_block:
+        student_block = StudentBlock(
+            student_id=student_id,
+            period=period,
+            tap_enabled=tap_enabled
+        )
+        db.session.add(student_block)
+    else:
+        student_block.tap_enabled = tap_enabled
+
+    db.session.commit()
+
+    current_app.logger.info(f"Admin {admin.id} set tap_enabled={tap_enabled} for student {student_id} period {period}")
+
+    return jsonify({
+        "status": "ok",
+        "tap_enabled": tap_enabled
     })
 
 

@@ -873,7 +873,21 @@ def student_detail(student_id):
     all_students = _scoped_students().all()
     blocks = sorted({b.strip() for s in all_students for b in (s.block or "").split(',') if b.strip()})
 
-    return render_template('student_detail.html', student=student, transactions=transactions, student_items=student_items, latest_tap_event=latest_tap_event, active_insurance=active_insurance, blocks=blocks)
+    # Get StudentBlock settings for this student
+    from app.models import StudentBlock
+    student_blocks_settings = {}
+    student_periods = [b.strip().upper() for b in (student.block or "").split(',') if b.strip()]
+    for period in student_periods:
+        student_block = StudentBlock.query.filter_by(
+            student_id=student.id,
+            period=period
+        ).first()
+        student_blocks_settings[period] = {
+            'tap_enabled': student_block.tap_enabled if student_block else True,
+            'done_for_day_date': student_block.done_for_day_date if student_block else None
+        }
+
+    return render_template('student_detail.html', student=student, transactions=transactions, student_items=student_items, latest_tap_event=latest_tap_event, active_insurance=active_insurance, blocks=blocks, student_blocks_settings=student_blocks_settings)
 
 
 @admin_bp.route('/student/<int:student_id>/set-hall-passes', methods=['POST'])

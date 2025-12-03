@@ -29,7 +29,8 @@ def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
 
     base_query = TapEvent.query.filter(
         TapEvent.student_id == student_id,
-        TapEvent.period == period
+        TapEvent.period == period,
+        TapEvent.is_deleted == False  # Exclude deleted events
     ).order_by(TapEvent.timestamp.asc())
 
     # If there's no payroll history for the system, calculate from all events.
@@ -54,7 +55,8 @@ def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
     last_event_before_payroll = TapEvent.query.filter(
         TapEvent.student_id == student_id,
         TapEvent.period == period,
-        TapEvent.timestamp <= last_payroll_time
+        TapEvent.timestamp <= last_payroll_time,
+        TapEvent.is_deleted == False  # Exclude deleted events
     ).order_by(TapEvent.timestamp.desc()).first()
 
     events_after_payroll = base_query.filter(TapEvent.timestamp > last_payroll_time).all()
@@ -96,7 +98,8 @@ def calculate_period_attendance(student_id, period, date):
     events = TapEvent.query.filter(
         TapEvent.student_id == student_id,
         TapEvent.period == period,
-        func.date(TapEvent.timestamp) == date
+        func.date(TapEvent.timestamp) == date,
+        TapEvent.is_deleted == False  # Exclude deleted events
     ).order_by(TapEvent.timestamp.asc()).all()
 
     total_seconds = 0
@@ -134,7 +137,8 @@ def calculate_period_attendance_utc_range(student_id, period, start_utc, end_utc
         TapEvent.student_id == student_id,
         TapEvent.period == period,
         TapEvent.timestamp >= start_utc,
-        TapEvent.timestamp < end_utc
+        TapEvent.timestamp < end_utc,
+        TapEvent.is_deleted == False  # Exclude deleted events
     ).order_by(TapEvent.timestamp.asc()).all()
 
     total_seconds = 0
@@ -164,7 +168,7 @@ def get_session_status(student_id, period):
     # Check if student is currently active
     latest_event = (
         TapEvent.query
-        .filter_by(student_id=student_id, period=period)
+        .filter_by(student_id=student_id, period=period, is_deleted=False)
         .order_by(TapEvent.timestamp.desc())
         .first()
     )
@@ -175,7 +179,8 @@ def get_session_status(student_id, period):
         TapEvent.student_id == student_id,
         TapEvent.period == period,
         func.date(TapEvent.timestamp) == today,
-        TapEvent.reason != None
+        TapEvent.reason != None,
+        TapEvent.is_deleted == False  # Exclude deleted events
     ).filter(func.lower(TapEvent.reason) == 'done').first() is not None
 
     # Calculate unpaid duration
@@ -205,7 +210,7 @@ def get_all_block_statuses(student):
 
         latest_event = (
             TapEvent.query
-            .filter_by(student_id=student.id, period=blk)
+            .filter_by(student_id=student.id, period=blk, is_deleted=False)
             .order_by(TapEvent.timestamp.desc())
             .first()
         )
@@ -215,7 +220,8 @@ def get_all_block_statuses(student):
             TapEvent.student_id == student.id,
             TapEvent.period == blk,
             func.date(TapEvent.timestamp) == today,
-            TapEvent.reason != None
+            TapEvent.reason != None,
+            TapEvent.is_deleted == False  # Exclude deleted events
         ).filter(func.lower(TapEvent.reason) == 'done').first() is not None
 
         duration = calculate_unpaid_attendance_seconds(student.id, blk, last_payroll_time)

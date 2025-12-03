@@ -330,6 +330,35 @@ class Transaction(db.Model):
 
 
 # ---- TapEvent Model (append-only) ----
+class StudentBlock(db.Model):
+    """
+    Stores per-student, per-period settings and state.
+    """
+    __tablename__ = 'student_blocks'
+
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    period = db.Column(db.String(10), nullable=False)
+
+    # Toggle for enabling/disabling tap in/out for this student in this period
+    tap_enabled = db.Column(db.Boolean, default=True, nullable=False)
+
+    # When student marks "done for the day", store the date (Pacific time)
+    # This locks them out until 11:59 PM same day
+    done_for_day_date = db.Column(db.Date, nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    student = db.relationship("Student", backref="student_blocks")
+
+    __table_args__ = (
+        db.UniqueConstraint('student_id', 'period', name='uq_student_blocks_student_period'),
+        db.Index('ix_student_blocks_student_id', 'student_id'),
+        db.Index('ix_student_blocks_period', 'period'),
+    )
+
+
 class TapEvent(db.Model):
     __tablename__ = 'tap_events'
 
@@ -341,7 +370,13 @@ class TapEvent(db.Model):
     timestamp = db.Column(db.DateTime, default=datetime.utcnow)
     reason = db.Column(db.String(50), nullable=True)
 
+    # Flag to indicate if this event was deleted by a teacher
+    is_deleted = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    deleted_at = db.Column(db.DateTime, nullable=True)
+    deleted_by = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='SET NULL'), nullable=True)
+
     student = db.relationship("Student", backref="tap_events")
+    deleted_by_admin = db.relationship("Admin", foreign_keys=[deleted_by])
 
 
 # ---- Hall Pass Log Model ----
