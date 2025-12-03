@@ -2802,11 +2802,23 @@ def hall_pass():
         .all()
     )
 
+    # Get available periods/blocks from teacher's students
+    available_periods = (
+        db.session.query(Student.block)
+        .filter(Student.id.in_(student_ids_subq))
+        .distinct()
+        .order_by(Student.block)
+        .all()
+    )
+    # Extract just the block values from tuples and filter out None/empty
+    periods = sorted([p[0] for p in available_periods if p[0]])
+
     return render_template(
         'admin_hall_pass.html',
         pending_requests=pending_requests,
         approved_queue=approved_queue,
         out_of_class=out_of_class,
+        available_periods=periods,
         current_page="hall_pass"
     )
 

@@ -981,8 +981,35 @@ def hall_pass_history():
         start_date = request.args.get('start_date', '').strip()
         end_date = request.args.get('end_date', '').strip()
 
-        # Build query
-        query = HallPassLog.query
+        # Get current admin for tenant scoping
+        admin = get_current_admin()
+        if not admin:
+            return jsonify({"status": "error", "message": "Unauthorized"}), 403
+
+        # Build subquery for students belonging to this admin
+        # Include both primary ownership (teacher_id) and shared access (student_teachers)
+        shared_student_ids = (
+            StudentTeacher.query.with_entities(StudentTeacher.student_id)
+            .filter(StudentTeacher.admin_id == admin.id)
+            .subquery()
+        )
+        
+        student_ids_subquery = (
+            Student.query.with_entities(Student.id)
+            .filter(
+                or_(
+                    Student.teacher_id == admin.id,
+                    Student.id.in_(shared_student_ids)
+                )
+            )
+            .subquery()
+        )
+
+        # Build query with tenant scoping
+        query = (
+            HallPassLog.query
+            .filter(HallPassLog.student_id.in_(student_ids_subquery))
+        )
 
         # Apply filters
         if period:
