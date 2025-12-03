@@ -1354,7 +1354,7 @@ def transfer_to_student():
     try:
         # Lock the student row to prevent race conditions during balance check
         # This ensures atomicity between balance check and transaction creation
-        locked_student = db.session.query(Student).filter_by(id=student.id).with_for_update().first()
+        db.session.query(Student).filter_by(id=student.id).with_for_update().first()
         
         # Calculate sender's checking balance for this class using database aggregation
         checking_balance = db.session.query(
