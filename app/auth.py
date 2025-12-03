@@ -255,8 +255,14 @@ def get_admin_student_query(include_unassigned=True):
     """Return a Student query scoped to the current admin's ownership.
 
     System admins are allowed to see all students. Regular admins only see
-    students they own, with optional access to unassigned students during
-    migration.
+    students linked to them via the StudentTeacher association table.
+    
+    CRITICAL SECURITY NOTE: We ONLY use the StudentTeacher table as the source of truth.
+    The teacher_id column on Student is DEPRECATED and should NOT be used for scoping
+    because it can contain stale data from deleted teachers or data migration issues.
+    
+    Args:
+        include_unassigned (bool): [DEPRECATED] No longer used. Kept for backward compatibility.
     """
     from app.models import Student, StudentTeacher  # Imported lazily to avoid circular import
 
@@ -267,21 +273,18 @@ def get_admin_student_query(include_unassigned=True):
     if not admin:
         return Student.query.filter(sa.text("0=1"))
 
+    # Get student IDs that are explicitly linked to this admin via StudentTeacher table
+    # This is the ONLY source of truth for student-teacher associations
     shared_student_ids = (
         StudentTeacher.query.with_entities(StudentTeacher.student_id)
         .filter(StudentTeacher.admin_id == admin.id)
         .subquery()
     )
 
-    filters = [
-        Student.teacher_id == admin.id,
-        Student.id.in_(shared_student_ids),
-    ]
-    # Critical P0 fix: Disable automatic visibility of unassigned students for regular admins
-    # This prevents new teachers from seeing students that belong to other teachers but haven't been fully migrated
-    # if include_unassigned:
-    #     filters.append(Student.teacher_id.is_(None))
-    return Student.query.filter(sa.or_(*filters))
+    # SECURITY FIX: Only use StudentTeacher associations, NOT the deprecated teacher_id column
+    # The old code used: sa.or_(Student.teacher_id == admin.id, Student.id.in_(shared_student_ids))
+    # This caused multi-tenancy leaks when teacher_id had stale data
+    return Student.query.filter(Student.id.in_(shared_student_ids))
 
 
 def get_student_for_admin(student_id, include_unassigned=True):

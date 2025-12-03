@@ -4,7 +4,7 @@ Tests for the attendance log page to ensure it renders with proper context.
 import pytest
 from datetime import datetime, timezone
 from app import app, db
-from app.models import Admin, Student, TapEvent
+from app.models import Admin, Student, TapEvent, StudentTeacher
 from hash_utils import hash_username, get_random_salt
 
 
@@ -56,6 +56,11 @@ def admin_with_data(client):
         teacher_id=admin.id
     )
     db.session.add_all([student1, student2])
+    db.session.flush()
+    
+    # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
+    db.session.add(StudentTeacher(student_id=student1.id, admin_id=admin.id))
+    db.session.add(StudentTeacher(student_id=student2.id, admin_id=admin.id))
     db.session.flush()
     
     # Create tap events with different periods
@@ -173,6 +178,11 @@ def test_attendance_log_tenant_scoping(client):
         teacher_id=admin2.id
     )
     db.session.add_all([student1, student2])
+    db.session.flush()
+    
+    # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
+    db.session.add(StudentTeacher(student_id=student1.id, admin_id=admin1.id))
+    db.session.add(StudentTeacher(student_id=student2.id, admin_id=admin2.id))
     db.session.flush()
     
     # Create tap events

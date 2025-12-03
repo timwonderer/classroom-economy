@@ -4,7 +4,7 @@ Tests for the /api/attendance/history endpoint to ensure it returns attendance r
 import pytest
 from datetime import datetime, timezone, timedelta
 from app import app, db
-from app.models import Admin, Student, TapEvent
+from app.models import Admin, Student, TapEvent, StudentTeacher
 from hash_utils import hash_username, get_random_salt
 from werkzeug.security import generate_password_hash
 
@@ -33,6 +33,10 @@ def admin_with_students(client):
         teacher_id=admin.id  # Primary ownership
     )
     db.session.add(student)
+    db.session.flush()
+
+    # CRITICAL FIX: Create StudentTeacher association for multi-tenancy
+    db.session.add(StudentTeacher(student_id=student.id, admin_id=admin.id))
     db.session.flush()
 
     # Create some tap events for this student
@@ -162,6 +166,11 @@ def test_attendance_history_tenant_scoping(client):
         teacher_id=admin2.id
     )
     db.session.add_all([student1, student2])
+    db.session.flush()
+
+    # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
+    db.session.add(StudentTeacher(student_id=student1.id, admin_id=admin1.id))
+    db.session.add(StudentTeacher(student_id=student2.id, admin_id=admin2.id))
     db.session.flush()
 
     # Create tap events for both students
