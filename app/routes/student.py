@@ -1160,11 +1160,16 @@ def transfer():
     compound_frequency = settings.compound_frequency if settings else 'monthly'
 
     # Calculate forecast interest based on settings
-    # CRITICAL FIX v2: Calculate savings balance using join_code scoping
+    # CRITICAL FIX v3: Calculate BOTH checking and savings balances using join_code scoping
     # Include transactions with matching join_code OR NULL join_code (legacy) with matching teacher_id
+    checking_balance = round(sum(
+        tx.amount for tx in student.transactions
+        if tx.account_type == 'checking' and not tx.is_void and
+        (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
+    ), 2)
     savings_balance = round(sum(
         tx.amount for tx in student.transactions
-        if tx.account_type == 'savings' and not tx.is_void and 
+        if tx.account_type == 'savings' and not tx.is_void and
         (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
     ), 2)
 
@@ -1189,6 +1194,8 @@ def transfer():
                          transactions=transactions,
                          checking_transactions=checking_transactions,
                          savings_transactions=savings_transactions,
+                         checking_balance=checking_balance,
+                         savings_balance=savings_balance,
                          forecast_interest=forecast_interest,
                          settings=settings,
                          calculation_type=calculation_type,
