@@ -185,6 +185,36 @@ def is_feature_enabled(feature_name):
     return settings.get(feature_key, True)  # Default to enabled
 
 
+def calculate_scoped_balances(student: 'Student', join_code: str, teacher_id: int) -> tuple[float, float]:
+    """Calculate checking and savings balances scoped to a specific class.
+    
+    This function ensures consistent balance calculation across the application
+    by including transactions with matching join_code OR NULL join_code (legacy)
+    with matching teacher_id.
+    
+    Args:
+        student (Student): Student object whose balances to calculate
+        join_code (str): The join code for the current class context
+        teacher_id (int): The teacher ID for the current class context
+    
+    Returns:
+        tuple[float, float]: (checking_balance, savings_balance) as rounded floats
+    """
+    checking_balance = round(sum(
+        tx.amount for tx in student.transactions
+        if tx.account_type == 'checking' and not tx.is_void and
+        (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
+    ), 2)
+    
+    savings_balance = round(sum(
+        tx.amount for tx in student.transactions
+        if tx.account_type == 'savings' and not tx.is_void and
+        (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
+    ), 2)
+    
+    return checking_balance, savings_balance
+
+
 # -------------------- LEGACY PROFILE MIGRATION --------------------
 
 @student_bp.before_request
@@ -1066,17 +1096,7 @@ def transfer():
         amount = float(request.form.get('amount'))
 
         # CRITICAL FIX: Calculate balances using join_code scoping
-        # Include transactions with matching join_code OR NULL join_code (legacy) with matching teacher_id
-        checking_balance = round(sum(
-            tx.amount for tx in student.transactions
-            if tx.account_type == 'checking' and not tx.is_void and 
-            (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
-        ), 2)
-        savings_balance = round(sum(
-            tx.amount for tx in student.transactions
-            if tx.account_type == 'savings' and not tx.is_void and 
-            (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
-        ), 2)
+        checking_balance, savings_balance = calculate_scoped_balances(student, join_code, teacher_id)
 
         if from_account == to_account:
             if is_json:
@@ -1160,13 +1180,8 @@ def transfer():
     compound_frequency = settings.compound_frequency if settings else 'monthly'
 
     # Calculate forecast interest based on settings
-    # CRITICAL FIX v2: Calculate savings balance using join_code scoping
-    # Include transactions with matching join_code OR NULL join_code (legacy) with matching teacher_id
-    savings_balance = round(sum(
-        tx.amount for tx in student.transactions
-        if tx.account_type == 'savings' and not tx.is_void and 
-        (tx.join_code == join_code or (tx.join_code is None and tx.teacher_id == teacher_id))
-    ), 2)
+    # CRITICAL FIX v3: Calculate BOTH checking and savings balances using join_code scoping
+    checking_balance, savings_balance = calculate_scoped_balances(student, join_code, teacher_id)
 
     if calculation_type == 'compound':
         if compound_frequency == 'daily':
@@ -1189,6 +1204,8 @@ def transfer():
                          transactions=transactions,
                          checking_transactions=checking_transactions,
                          savings_transactions=savings_transactions,
+                         checking_balance=checking_balance,
+                         savings_balance=savings_balance,
                          forecast_interest=forecast_interest,
                          settings=settings,
                          calculation_type=calculation_type,
@@ -2484,10 +2501,46 @@ def logout():
     return redirect(url_for('student.login'))
 
 
+@student_bp.route('/switch-class/<join_code>', methods=['POST'])
+@login_required
+def switch_class(join_code):
+    """Switch to a different class using join_code for proper multi-tenancy isolation."""
+    from app.models import TeacherBlock, Admin
+
+    student = get_logged_in_student()
+
+    # Verify student has a claimed seat for this join_code
+    seat = TeacherBlock.query.filter_by(
+        student_id=student.id,
+        join_code=join_code,
+        is_claimed=True
+    ).first()
+
+    if not seat:
+        return jsonify(status="error", message="You don't have access to that class."), 403
+
+    # Update session with new join code
+    session['current_join_code'] = join_code
+
+    # Get teacher name for response
+    teacher = Admin.query.get(seat.teacher_id)
+    teacher_name = teacher.username if teacher else "Unknown"
+
+    # Get block/period info
+    block_display = f"Block {seat.block.upper()}" if seat.block else "Unknown Block"
+
+    return jsonify(
+        status="success",
+        message=f"Switched to {teacher_name}'s class ({block_display})",
+        teacher_name=teacher_name,
+        block=seat.block
+    )
+
+
 @student_bp.route('/switch-period/<int:teacher_id>', methods=['POST'])
 @login_required
 def switch_period(teacher_id):
-    """Switch to a different period/teacher's class economy."""
+    """DEPRECATED: Use switch_class instead. Kept for backwards compatibility."""
     student = get_logged_in_student()
 
     # Verify student has access to this teacher
@@ -2496,7 +2549,7 @@ def switch_period(teacher_id):
         flash("You don't have access to that class.", "error")
         return redirect(url_for('student.dashboard'))
 
-    # Update session with new teacher
+    # Update session with new teacher (old method)
     session['current_teacher_id'] = teacher_id
 
     # Get teacher name for flash message
