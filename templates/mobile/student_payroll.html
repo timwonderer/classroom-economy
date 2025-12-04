@@ -44,7 +44,13 @@
                             <span class="badge bg-danger">Tap Out</span>
                         {% endif %}
                     </div>
-                    <small class="text-muted">{{ event.timestamp.strftime('%b %d, %I:%M %p') }}</small>
+                    <small class="text-muted">
+                        {% if event.timestamp %}
+                            <span class="local-timestamp" data-timestamp="{{ event.timestamp.isoformat() }}Z"></span>
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </small>
                 </div>
                 {% endfor %}
             </div>

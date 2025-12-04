@@ -410,7 +410,13 @@
                   <tr>
                     <td>{{ student_item.student.full_name if student_item.student else 'Unknown' }}</td>
                     <td>{{ item.name }}</td>
-                    <td>{{ student_item.purchase_date.strftime('%Y-%m-%d %H:%M') if student_item.purchase_date else 'N/A' }}</td>
+                    <td>
+                        {% if student_item.purchase_date %}
+                            <span class="local-timestamp" data-timestamp="{{ student_item.purchase_date.isoformat() }}Z"></span>
+                        {% else %}
+                            N/A
+                        {% endif %}
+                    </td>
                     <td><span class="badge bg-{{ 'success' if student_item.status == 'completed' else 'warning' }}">{{ student_item.status|title }}</span></td>
                     <td>{{ student_item.quantity_purchased }}</td>
                     <td>

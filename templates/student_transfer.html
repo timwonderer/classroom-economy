@@ -239,7 +239,13 @@
                             <tbody>
                                 {% for tx in checking_transactions[:50] %}
                                 <tr {% if tx.is_void %}class="table-secondary text-decoration-line-through"{% endif %}>
-                                    <td>{{ tx.timestamp.strftime('%m/%d/%y %I:%M %p') if tx.timestamp else 'N/A' }}</td>
+                                    <td>
+                                        {% if tx.timestamp %}
+                                            <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
                                     <td><span class="badge bg-info">{{ tx.type|title if tx.type else 'General' }}</span></td>
                                     <td class="{% if tx.amount < 0 %}text-danger{% else %}text-success{% endif %} fw-bold">
                                         ${{ "%.2f"|format(tx.amount) }}
@@ -284,7 +290,13 @@
                             <tbody>
                                 {% for tx in savings_transactions[:50] %}
                                 <tr {% if tx.is_void %}class="table-secondary text-decoration-line-through"{% endif %}>
-                                    <td>{{ tx.timestamp.strftime('%m/%d/%y %I:%M %p') if tx.timestamp else 'N/A' }}</td>
+                                    <td>
+                                        {% if tx.timestamp %}
+                                            <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
+                                        {% else %}
+                                            N/A
+                                        {% endif %}
+                                    </td>
                                     <td><span class="badge bg-info">{{ tx.type|title if tx.type else 'General' }}</span></td>
                                     <td class="{% if tx.amount < 0 %}text-danger{% else %}text-success{% endif %} fw-bold">
                                         ${{ "%.2f"|format(tx.amount) }}

@@ -491,16 +491,9 @@
                     document.getElementById('period').textContent = pass.period;
                     document.getElementById('destination').textContent = pass.destination;
 
-                    const requestDate = new Date(pass.request_time);
-                    const options = {
-                        year: 'numeric',
-                        month: '2-digit',
-                        day: '2-digit',
-                        hour: 'numeric',
-                        minute: '2-digit',
-                        hour12: true
-                    };
-                    document.getElementById('requestTime').textContent = requestDate.toLocaleString(undefined, options);
+                    document.getElementById('requestTime').textContent = window.TimezoneUtils 
+                        ? window.TimezoneUtils.formatTimestamp(pass.request_time) 
+                        : new Date(pass.request_time).toLocaleString();
 
                     document.getElementById('usePassBtn').style.display = 'none';
                     document.getElementById('returnBtn').style.display = 'none';
