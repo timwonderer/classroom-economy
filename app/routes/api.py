@@ -1195,7 +1195,6 @@ def attendance_history():
 
 @api_bp.route('/tap', methods=['POST'])
 def handle_tap():
-    print("🛠️ TAP ROUTE HIT")
     data = request.get_json()
     safe_data = {k: ('***' if k == 'pin' else v) for k, v in data.items()}
     current_app.logger.info(f"TAP DEBUG: Received data {safe_data}")

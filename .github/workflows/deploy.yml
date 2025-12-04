@@ -32,7 +32,7 @@ jobs:
         SSH_ENV_VARS="MAINT_MODE=$(printf %q "$MAINT_MODE") MAINT_MESSAGE=$(printf %q "$MAINT_MESSAGE") MAINT_END=$(printf %q "$MAINT_END") MAINT_CONTACT=$(printf %q "$MAINT_CONTACT") TURNSTILE_SITE=$(printf %q "$TURNSTILE_SITE") TURNSTILE_SECRET=$(printf %q "$TURNSTILE_SECRET")"
 
         # Connect to the production server and deploy
-        ssh -o StrictHostKeyChecking=no root@24.199.127.184 "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
+        ssh -o StrictHostKeyChecking=no root@${{ secrets.PRODUCTION_SERVER_IP }} "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
 
           set -e  # Exit immediately if a command exits with a non-zero status
 

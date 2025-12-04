@@ -2,6 +2,8 @@
 
 An interactive banking and classroom management platform for teaching students about money while tracking classroom participation.
 
+**Version:** 0.9.0 (Pre-Release) - Approaching 1.0!
+
 ---
 
 ## Overview
@@ -9,6 +11,8 @@ An interactive banking and classroom management platform for teaching students a
 **Classroom Token Hub** is an educational banking simulation that helps students learn financial literacy through hands-on experience. Students earn tokens by attending class, which they can spend in a classroom store, use for hall passes, or manage through savings and checking accounts.
 
 **License:** [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) - Free for educational and nonprofit use, not for commercial applications.
+
+**Project Status:** Active development in preparation for version 1.0 release. The platform is functional and used in classroom testing, but some features are still being refined. See [docs/development/TODO.md](docs/development/TODO.md) for current priorities.
 
 ---
 
@@ -172,9 +176,10 @@ An interactive banking and classroom management platform for teaching students a
 - pytest and pytest-flask
 
 **Deployment:**
-- Docker support
-- GitHub Actions CI/CD
-- DigitalOcean production hosting
+- Docker support with multi-stage builds
+- GitHub Actions CI/CD pipeline
+- Production-ready for Linux servers (tested on Ubuntu/Debian)
+- Compatible with major cloud providers
 
 ---
 
@@ -293,4 +298,4 @@ This project is licensed under the [PolyForm Noncommercial License 1.0.0](https:
 
 Built for educators and students to make learning about finance engaging and practical.
 
-**Last Updated:** 2025-11-28
+**Last Updated:** 2025-12-04

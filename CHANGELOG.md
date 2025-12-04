@@ -5,21 +5,41 @@ All notable changes to the Classroom Token Hub project will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows semantic versioning principles.
 
-## [Unreleased]
+## [Unreleased] - Version 0.9.0 (Pre-1.0 Candidate)
 
-### Changed
+### Project Status
+The project is approaching version 1.0 release. Core features are complete and tested, but a **critical data isolation issue** (same-teacher multi-period data leak) must be resolved before 1.0. See [docs/security/CRITICAL_SAME_TEACHER_LEAK.md](docs/security/CRITICAL_SAME_TEACHER_LEAK.md) for details.
+
+### Added (2025-12-04)
+- **PROJECT_HISTORY.md** — Comprehensive document capturing project philosophy, evolution, and key milestones
+- **docs/development/DEPRECATED_CODE_PATTERNS.md** — Technical debt tracking for Python 3.12+ and SQLAlchemy 2.0+ compatibility
+- Documentation index updated with new security and archive sections
+
+### Changed (2025-12-04)
+- **Major documentation reorganization:**
+  - Moved security audits to `docs/security/` (CRITICAL_SAME_TEACHER_LEAK.md, MULTI_TENANCY_AUDIT.md)
+  - Moved development guides to `docs/development/` (JULES_SETUP.md, SEEDING_INSTRUCTIONS.md, TESTING_SUMMARY.md, MIGRATION_STATUS_REPORT.md)
+  - Moved operations docs to `docs/operations/` (MULTI_TENANCY_FIX_DEPLOYMENT.md)
+  - Archived historical fix summaries to `docs/archive/` (FIXES_SUMMARY.md, JOIN_CODE_FIX_SUMMARY.md, MIGRATION_FIX_SUMMARY.md, STAGING_MIGRATION_FIX.md)
+- Updated `docs/README.md` with comprehensive documentation map including security and archive sections
+- Updated main README with version 0.9.0 status and platform-agnostic deployment language
+- Removed hardcoded IP addresses from GitHub Actions workflows (now use `secrets.PRODUCTION_SERVER_IP`)
+
+### Removed (2025-12-04)
+- **scripts/cleanup_duplicates.py** — Obsolete duplicate cleanup script (superseded by cleanup_duplicates_flask.py)
+- Debug print statement in `app/routes/api.py:1198` (replaced with proper logging)
+
+### Fixed (2025-12-04)
+- Security: Removed hardcoded production server IP from CI/CD workflows
+
+### Previous Changes
 - Continued repository organization and documentation cleanup
 - Moved `UPTIMEROBOT_SETUP.md` to `docs/operations/` for better organization
-- Moved additional PR-specific reports to `docs/archive/pr-reports/`:
-  - `PR_DESCRIPTION.md` (legacy student migration)
-  - `FIX_MISSING_TEACHER_BLOCKS.md`
-  - `MULTI_TENANCY_READINESS_REPORT.md`
+- Moved additional PR-specific reports to `docs/archive/pr-reports/`
 - Updated `docs/operations/README.md` with comprehensive guide listings
-- Updated `docs/archive/pr-reports/README.md` with new archived files
+- Added migration to align `rent_settings` schema with application model by including the `block` column
+- Added migration to bring the `banking_settings` table in sync with the model by introducing the missing `block` column
 
-### Fixed
-- Added migration to align `rent_settings` schema with application model by including the `block` column.
-- Added migration to bring the `banking_settings` table in sync with the model by introducing the missing `block` column.
 ---
 
 ## [2025-11-25] - Maintenance & Bypass Enhancements
@@ -115,4 +135,4 @@ When adding entries:
 - Keep entries concise but informative
 - Update the date when moving Unreleased to a version
 
-**Last Updated:** 2025-11-28
+**Last Updated:** 2025-12-04

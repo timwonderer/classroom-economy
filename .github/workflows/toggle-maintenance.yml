@@ -64,7 +64,7 @@ jobs:
 
         SSH_ENV_VARS="MODE_VALUE=$(printf %q "${MODE_VALUE}") MESSAGE=$(printf %q "${MESSAGE}") EXPECTED_END=$(printf %q "${EXPECTED_END}") CONTACT=$(printf %q "${CONTACT}") BADGE_TYPE=$(printf %q "${BADGE_TYPE}") STATUS_DESCRIPTION=$(printf %q "${STATUS_DESCRIPTION}")"
 
-        ssh -o StrictHostKeyChecking=no root@24.199.127.184 "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
+        ssh -o StrictHostKeyChecking=no root@${{ secrets.PRODUCTION_SERVER_IP }} "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
           set -e
 
           echo 'Navigating to project directory...'

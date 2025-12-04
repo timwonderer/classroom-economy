@@ -29,11 +29,28 @@ Welcome to the Classroom Token Hub documentation! This index points you to the m
 - **[Multi-Tenancy Status](development/MULTI_TENANCY_TODO.md)** — Rollout notes and remaining hardening tasks.
 - **[System Admin Interface](development/SYSADMIN_INTERFACE_DESIGN.md)** — Capabilities and UX principles for sysadmin flows.
 - **[Migration Guide](development/MIGRATION_GUIDE.md)** — Alembic tips, consolidation steps, and conflict resolution.
+- **[Jules Setup](development/JULES_SETUP.md)** — Development environment setup guide.
+- **[Seeding Instructions](development/SEEDING_INSTRUCTIONS.md)** — Test data seeding procedures.
+- **[Testing Summary](development/TESTING_SUMMARY.md)** — Test coverage and validation results.
+- **[Migration Status](development/MIGRATION_STATUS_REPORT.md)** — Database migration status tracking.
 
 ### 🚀 Deployment & Operations
 - **[Deployment Guide](DEPLOYMENT.md)** — Environment variables, CI/CD references, and production checklist.
 - **[Operations Guides](operations/)** — Cleanup, demo session hygiene, and PII audit procedures.
+- **[Multi-Tenancy Fix Deployment](operations/MULTI_TENANCY_FIX_DEPLOYMENT.md)** — Deployment procedures for multi-tenancy fixes.
 - **[Changelog](../CHANGELOG.md)** — Notable changes and release notes.
+
+### 🔒 Security
+- **[Security Audit 2025](security/SECURITY_AUDIT_2025.md)** — Comprehensive security audit findings.
+- **[Multi-Tenancy Audit](security/MULTI_TENANCY_AUDIT.md)** — Multi-tenancy security analysis.
+- **[Critical Same-Teacher Leak](security/CRITICAL_SAME_TEACHER_LEAK.md)** — ⚠️ **P0 BLOCKER** - Data isolation issue requiring fix before 1.0.
+- **[Validation Report](security/VALIDATION_REPORT.md)** — Input/output validation audit.
+- **[Access & Secrets Report](security/ACCESS_AND_SECRETS_REPORT.md)** — Access control and secrets review.
+- **[Source Code Vulnerability Report](security/SOURCE_CODE_VULNERABILITY_REPORT.md)** — Code security analysis.
+- **[Network Vulnerability Report](security/NETWORK_VULNERABILITY_REPORT.md)** — Network security assessment.
+
+### 📦 Archive
+- **[Archived Fix Reports](archive/)** — Historical bug fix and feature implementation summaries.
 
 ---
 
