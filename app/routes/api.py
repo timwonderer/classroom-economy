@@ -1007,16 +1007,18 @@ def hall_pass_history():
 
         if start_date:
             try:
+                # Parse date and treat as UTC midnight (start of day)
                 start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+                start_datetime = start_datetime.replace(tzinfo=timezone.utc)
                 query = query.filter(HallPassLog.request_time >= start_datetime)
             except ValueError:
                 return jsonify({"status": "error", "message": "Invalid start date format"}), 400
 
         if end_date:
             try:
-                # End date should include the entire day
+                # Parse date and treat as UTC end of day (23:59:59)
                 end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
-                end_datetime = end_datetime.replace(hour=23, minute=59, second=59)
+                end_datetime = end_datetime.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
                 query = query.filter(HallPassLog.request_time <= end_datetime)
             except ValueError:
                 return jsonify({"status": "error", "message": "Invalid end date format"}), 400
@@ -1031,6 +1033,18 @@ def hall_pass_history():
         offset = (page - 1) * page_size
         records = query.offset(offset).limit(page_size).all()
 
+        # Helper function to format timestamp as UTC with 'Z' suffix
+        def format_timestamp(dt):
+            if not dt:
+                return None
+            # Ensure timestamp is treated as UTC and format properly
+            if dt.tzinfo is None:
+                # Naive datetime - assume UTC
+                return dt.replace(tzinfo=timezone.utc).isoformat().replace('+00:00', 'Z')
+            else:
+                # Convert to UTC if not already
+                return dt.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        
         # Format records for response
         records_data = []
         for record in records:
@@ -1041,10 +1055,10 @@ def hall_pass_history():
                 "reason": record.reason,
                 "pass_number": record.pass_number,
                 "status": record.status,
-                "request_time": record.request_time.isoformat() if record.request_time else None,
-                "decision_time": record.decision_time.isoformat() if record.decision_time else None,
-                "left_time": record.left_time.isoformat() if record.left_time else None,
-                "return_time": record.return_time.isoformat() if record.return_time else None
+                "request_time": format_timestamp(record.request_time),
+                "decision_time": format_timestamp(record.decision_time),
+                "left_time": format_timestamp(record.left_time),
+                "return_time": format_timestamp(record.return_time)
             })
 
         return jsonify({
@@ -1083,8 +1097,11 @@ def attendance_history():
         # Get student IDs that the current admin can access (tenant-scoped)
         accessible_student_ids_query = get_admin_student_query(include_unassigned=False).with_entities(Student.id)
         
-        # Build query scoped to admin's students
-        query = TapEvent.query.filter(TapEvent.student_id.in_(accessible_student_ids_query))
+        # Build query scoped to admin's students and exclude deleted records
+        query = TapEvent.query.filter(
+            TapEvent.student_id.in_(accessible_student_ids_query),
+            TapEvent.is_deleted.is_(False)
+        )
 
         # Apply filters
         if period:
@@ -1095,16 +1112,18 @@ def attendance_history():
 
         if start_date:
             try:
+                # Parse date and treat as UTC midnight (start of day)
                 start_datetime = datetime.strptime(start_date, '%Y-%m-%d')
+                start_datetime = start_datetime.replace(tzinfo=timezone.utc)
                 query = query.filter(TapEvent.timestamp >= start_datetime)
             except ValueError:
                 return jsonify({"status": "error", "message": "Invalid start date format"}), 400
 
         if end_date:
             try:
-                # End date should include the entire day
+                # Parse date and treat as UTC end of day (23:59:59)
                 end_datetime = datetime.strptime(end_date, '%Y-%m-%d')
-                end_datetime = end_datetime.replace(hour=23, minute=59, second=59)
+                end_datetime = end_datetime.replace(hour=23, minute=59, second=59, tzinfo=timezone.utc)
                 query = query.filter(TapEvent.timestamp <= end_datetime)
             except ValueError:
                 return jsonify({"status": "error", "message": "Invalid end date format"}), 400
@@ -1133,6 +1152,20 @@ def attendance_history():
         records_data = []
         for record in records:
             student_info = students.get(record.student_id, {'name': 'Unknown', 'block': 'Unknown'})
+            
+            # Format timestamp as UTC with 'Z' suffix
+            timestamp_str = None
+            if record.timestamp:
+                # Ensure timestamp is treated as UTC and format properly
+                if record.timestamp.tzinfo is None:
+                    # Naive datetime - assume UTC
+                    timestamp_str = record.timestamp.replace(tzinfo=timezone.utc).isoformat()
+                else:
+                    # Convert to UTC if not already
+                    timestamp_str = record.timestamp.astimezone(timezone.utc).isoformat()
+                # Replace +00:00 with Z for cleaner UTC representation
+                timestamp_str = timestamp_str.replace('+00:00', 'Z')
+            
             records_data.append({
                 "id": record.id,
                 "student_id": record.student_id,
@@ -1141,7 +1174,7 @@ def attendance_history():
                 "period": record.period,
                 "status": record.status,
                 "reason": record.reason if record.reason else None,
-                "timestamp": record.timestamp.isoformat() + 'Z' if record.timestamp else None
+                "timestamp": timestamp_str
             })
 
         return jsonify({
@@ -1154,7 +1187,7 @@ def attendance_history():
         })
 
     except Exception as e:
-        current_app.logger.error(f"Error fetching attendance history: {e}")
+        current_app.logger.error(f"Error fetching attendance history: {e}", exc_info=True)
         return jsonify({"status": "error", "message": "Failed to fetch attendance history"}), 500
 
 
@@ -1507,8 +1540,9 @@ def get_tap_entries(student_id):
     if not student:
         return jsonify({"error": "Student not found"}), 404
 
-    # Check if admin has access to this student (many-to-many or legacy teacher_id)
-    if not (student.teachers.filter_by(id=admin.id).first() or student.teacher_id == admin.id):
+    # Check if admin has access to this student via StudentTeacher association
+    # SECURITY: Only use StudentTeacher table, NOT the deprecated teacher_id field
+    if student.teachers.filter_by(id=admin.id).count() == 0:
         return jsonify({"error": "Access denied"}), 403
 
     # Get all tap events for this student
@@ -1579,9 +1613,10 @@ def delete_tap_entry(event_id):
     if not event:
         return jsonify({"error": "Tap entry not found"}), 404
 
-    # Check if admin has access to this student
+    # Check if admin has access to this student via StudentTeacher association
+    # SECURITY: Only use StudentTeacher table, NOT the deprecated teacher_id field
     student = Student.query.get(event.student_id)
-    if not student or (not student.teachers.filter_by(id=admin.id).first() and student.teacher_id != admin.id):
+    if not student or student.teachers.filter_by(id=admin.id).count() == 0:
         return jsonify({"error": "Access denied"}), 403
 
     # Mark as deleted
@@ -1892,6 +1927,124 @@ def create_demo_student():
             "status": "error",
             "message": "Failed to create demo student session. Please try again."
         }), 500
+
+
+@api_bp.route('/admin/block-tap-settings', methods=['GET'])
+@admin_required
+def get_block_tap_settings():
+    """
+    Get tap_enabled settings for all students in a specific block.
+    Returns true if any student has tap enabled, false if all are disabled.
+    """
+    admin = get_current_admin()
+    if not admin:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    block = request.args.get('block', '').strip().upper()
+    if not block:
+        return jsonify({"error": "Block parameter is required"}), 400
+    
+    from app.models import Student, StudentBlock
+    from app.auth import _scoped_students
+    
+    # Get all students for this admin in this block
+    students = _scoped_students().all()
+    students_in_block = [
+        s for s in students
+        if s.block and block.upper() in [b.strip().upper() for b in s.block.split(',')]
+    ]
+    
+    if not students_in_block:
+        # No students in this block, default to enabled
+        return jsonify({"tap_enabled": True})
+    
+    # Check if tap is enabled for any student in this block
+    # Returns the overall block state: true if at least one student has tap enabled,
+    # false if all students have it disabled
+    any_enabled = False
+    for student in students_in_block:
+        student_block = StudentBlock.query.filter_by(
+            student_id=student.id,
+            period=block
+        ).first()
+        
+        if student_block:
+            if student_block.tap_enabled:
+                any_enabled = True
+                break
+        else:
+            # No StudentBlock record means tap is enabled by default
+            any_enabled = True
+            break
+    
+    return jsonify({"tap_enabled": any_enabled})
+
+
+@api_bp.route('/admin/block-tap-settings', methods=['POST'])
+@admin_required
+def update_block_tap_settings():
+    """
+    Update tap_enabled settings for all students in a specific block/period.
+    This sets the tap_enabled flag for all students in the specified block.
+    """
+    admin = get_current_admin()
+    if not admin:
+        return jsonify({"error": "Unauthorized"}), 401
+    
+    data = request.get_json()
+    block = data.get('block', '').strip().upper()
+    tap_enabled = data.get('tap_enabled')
+    
+    if not block or tap_enabled is None:
+        return jsonify({"error": "Missing required fields"}), 400
+    
+    from app.models import Student, StudentBlock
+    from app.auth import _scoped_students
+    
+    try:
+        # Get all students for this admin in this block
+        students = _scoped_students().all()
+        students_in_block = [
+            s for s in students
+            if s.block and block.upper() in [b.strip().upper() for b in s.block.split(',')]
+        ]
+        
+        updated_count = 0
+        for student in students_in_block:
+            # Get or create StudentBlock record
+            student_block = StudentBlock.query.filter_by(
+                student_id=student.id,
+                period=block
+            ).first()
+            
+            if not student_block:
+                student_block = StudentBlock(
+                    student_id=student.id,
+                    period=block,
+                    tap_enabled=tap_enabled
+                )
+                db.session.add(student_block)
+            else:
+                student_block.tap_enabled = tap_enabled
+            
+            updated_count += 1
+        
+        db.session.commit()
+        
+        current_app.logger.info(
+            f"Admin {admin.id} set tap_enabled={tap_enabled} for {updated_count} students in block {block}"
+        )
+        
+        return jsonify({
+            "status": "ok",
+            "tap_enabled": tap_enabled,
+            "updated_count": updated_count
+        })
+    
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating block tap settings: {e}", exc_info=True)
+        return jsonify({"error": "Failed to update tap settings"}), 500
 
 
 @api_bp.route('/admin/view-as-student-status', methods=['GET'])

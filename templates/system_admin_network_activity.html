@@ -136,7 +136,13 @@
               {% for log in network_logs %}
                 <tr>
                   <td>
-                    <small>{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else 'N/A' }}</small>
+                    <small>
+                      {% if log.timestamp %}
+                        <span class="local-timestamp" data-timestamp="{{ log.timestamp.isoformat() }}Z"></span>
+                      {% else %}
+                        N/A
+                      {% endif %}
+                    </small>
                   </td>
                   <td>
                     <span class="badge
@@ -185,7 +191,12 @@
                       <div class="modal-body">
                         <div class="row mb-3">
                           <div class="col-md-6">
-                            <strong>Timestamp:</strong> {{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') if log.timestamp else 'N/A' }}
+                            <strong>Timestamp:</strong>
+                            {% if log.timestamp %}
+                              <span class="local-timestamp" data-timestamp="{{ log.timestamp.isoformat() }}Z"></span>
+                            {% else %}
+                              N/A
+                            {% endif %}
                           </div>
                           <div class="col-md-3">
                             <strong>Method:</strong> <span class="badge bg-primary">{{ log.request_method or 'N/A' }}</span>

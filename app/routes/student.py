@@ -1020,6 +1020,7 @@ def dashboard():
         # FIX: Pass scoped balances to template instead of using unscoped properties
         checking_balance=checking_balance,
         savings_balance=savings_balance,
+        teacher_id=teacher_id,
     )
 
 
@@ -1027,6 +1028,11 @@ def dashboard():
 @login_required
 def payroll():
     """Student payroll page with attendance record, productivity stats, and projected pay."""
+    # Check if payroll feature is enabled
+    if not is_feature_enabled('payroll'):
+        flash("The payroll feature is currently disabled for your class.", "warning")
+        return redirect(url_for('student.dashboard'))
+
     student = get_logged_in_student()
 
     period_states = get_all_block_statuses(student)
@@ -1071,6 +1077,11 @@ def payroll():
 @login_required
 def transfer():
     """Transfer funds between checking and savings accounts."""
+    # Check if banking feature is enabled
+    if not is_feature_enabled('banking'):
+        flash("The banking feature is currently disabled for your class.", "warning")
+        return redirect(url_for('student.dashboard'))
+
     student = get_logged_in_student()
 
     # CRITICAL FIX v2: Get full class context (join_code, teacher_id, block)

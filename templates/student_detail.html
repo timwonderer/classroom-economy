@@ -920,7 +920,7 @@
                 html += `
                     <tr class="${rowClass}">
                         <td>${event.id}</td>
-                        <td><small>${new Date(event.timestamp).toLocaleString()}</small></td>
+                        <td><small>${window.TimezoneUtils ? window.TimezoneUtils.formatTimestamp(event.timestamp) : new Date(event.timestamp).toLocaleString()}</small></td>
                         <td>${statusBadge}</td>
                         <td>${event.reason || 'N/A'}</td>
                         <td>${deletedBadge}</td>
@@ -962,6 +962,7 @@
                         method: 'DELETE',
                         headers: {
                             'Content-Type': 'application/json',
+                            'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
                         }
                     });
 

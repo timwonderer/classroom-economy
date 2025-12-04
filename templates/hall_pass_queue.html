@@ -243,6 +243,10 @@
     </div>
 
     <script>
+        // Get teacher_id from URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        const teacherId = urlParams.get('teacher_id');
+        
         function formatTime(isoString) {
             const date = new Date(isoString);
             return date.toLocaleTimeString(undefined, {
@@ -326,11 +330,19 @@
         }
 
         function fetchQueue() {
-            fetch('/api/hall-pass/queue')
+            // Build URL with teacher_id if available
+            let url = '/api/hall-pass/queue';
+            if (teacherId) {
+                url += `?teacher_id=${teacherId}`;
+            }
+            
+            fetch(url)
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
                         renderQueue(data);
+                    } else {
+                        console.error('Error response from queue API:', data?.message || 'Unknown error');
                     }
                 })
                 .catch(error => {

@@ -175,7 +175,12 @@
                         </div>
 
                         <p class="text-muted small mb-2">
-                            <strong>Purchased:</strong> {{ student_item.purchase_date.strftime('%m/%d/%y %I:%M %p') if student_item.purchase_date else 'N/A' }}
+                            <strong>Purchased:</strong>
+                            {% if student_item.purchase_date %}
+                                <span class="local-timestamp" data-timestamp="{{ student_item.purchase_date.isoformat() }}Z"></span>
+                            {% else %}
+                                N/A
+                            {% endif %}
                         </p>
 
                         {% if student_item.expiry_date %}

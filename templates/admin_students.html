@@ -156,6 +156,37 @@
             </div>
             {% endif %}
 
+            <!-- Tap In/Out Control for Entire Block -->
+            {% if block != "Unassigned" %}
+            <div class="card border-primary mb-3">
+              <div class="card-header bg-primary bg-opacity-10">
+                <div class="d-flex justify-content-between align-items-center">
+                  <h6 class="mb-0 text-primary">
+                    <span class="material-symbols-outlined me-2" style="vertical-align: middle;">schedule</span>
+                    Tap In/Out Settings for Block {{ block|upper }}
+                  </h6>
+                </div>
+              </div>
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div>
+                    <p class="mb-1"><strong>Enable tap in/out for entire block</strong></p>
+                    <small class="text-muted">When disabled, all students in this block cannot tap in or out</small>
+                  </div>
+                  <div class="form-check form-switch" style="font-size: 1.5rem;">
+                    <input
+                      class="form-check-input block-tap-toggle"
+                      type="checkbox"
+                      id="blockTapToggle{{ block|upper }}"
+                      data-block="{{ block|upper }}"
+                      checked>
+                    <label class="form-check-label" for="blockTapToggle{{ block|upper }}"></label>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endif %}
+
             <!-- Unclaimed Seats Section - includes both TeacherBlock seats and students without username -->
             {% set unclaimed_seats = unclaimed_seats_list_by_block.get(block|upper, []) %}
             {% set unclaimed_students = [] %}
@@ -1126,5 +1157,71 @@ function tapOutAllBlock(block) {
     alert('Network error occurred while tapping out block.');
   });
 }
+
+// Block-level tap toggle handler
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('.block-tap-toggle').forEach(function(toggle) {
+    const block = toggle.getAttribute('data-block');
+    
+    // Load current state from server on page load
+    fetch(`/api/admin/block-tap-settings?block=${block}`)
+      .then(response => response.json())
+      .then(data => {
+        if (data.tap_enabled !== undefined) {
+          toggle.checked = data.tap_enabled;
+        }
+      })
+      .catch(error => {
+        console.error('Error loading tap settings:', error);
+      });
+    
+    // Handle toggle changes
+    toggle.addEventListener('change', function() {
+      const isEnabled = this.checked;
+      
+      fetch('/api/admin/block-tap-settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          block: block,
+          tap_enabled: isEnabled
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === 'ok') {
+          const message = isEnabled ? `Tap in/out enabled for all students in Block ${block}` : `Tap in/out disabled for all students in Block ${block}`;
+          
+          // Show a temporary notification
+          const notification = document.createElement('div');
+          notification.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+          notification.style.zIndex = '9999';
+          notification.innerHTML = `
+            <span class="material-symbols-outlined me-2" style="vertical-align: middle;">check_circle</span>
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+          `;
+          document.body.appendChild(notification);
+          
+          setTimeout(() => {
+            notification.remove();
+          }, 3000);
+        } else {
+          alert('Error: ' + (data.error || 'Failed to update tap settings'));
+          // Revert the toggle
+          toggle.checked = !isEnabled;
+        }
+      })
+      .catch(error => {
+        console.error('Error updating tap settings:', error);
+        alert('Network error occurred while updating tap settings.');
+        // Revert the toggle
+        toggle.checked = !isEnabled;
+      });
+    });
+  });
+});
 </script>
 {% endblock %}

@@ -1,0 +1,101 @@
+{% extends "layout_admin.html" %}
+{% set page_title = "Fix Student Balances" %}
+{% block title %}Fix Student Balances{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-lg-10">
+            <div class="card shadow">
+                <div class="card-header bg-warning text-dark">
+                    <h4 class="mb-0">
+                        <i class="bi bi-exclamation-triangle-fill"></i> Action Required: Fix Student Balances
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-warning">
+                        <h5><i class="bi bi-info-circle"></i> Balance Issue Detected</h5>
+                        <p>
+                            <strong>Some of your students have incorrect balances showing lower than they should be.</strong>
+                        </p>
+                        <p>
+                            This happened because past transactions (like payroll) weren't properly associated with your teacher account.
+                            To fix this, we need to know which period/block each affected student belongs to.
+                        </p>
+                        <p class="mb-0">
+                            <strong>Please assign each student below to their correct period/block to restore their full balance.</strong>
+                        </p>
+                    </div>
+
+                    <form method="POST">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-hover">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th width="40%">Student</th>
+                                        <th width="60%">Assign to Period/Block</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for student in students %}
+                                    <tr>
+                                        <td>
+                                            <strong>{{ student.first_name }} {{ student.last_initial }}.</strong>
+                                            <br>
+                                            <small class="text-muted">Student ID: {{ student.id }}</small>
+                                        </td>
+                                        <td>
+                                            <select 
+                                                name="student_{{ student.id }}_block" 
+                                                class="form-select" 
+                                                required
+                                            >
+                                                <option value="">-- Select Period --</option>
+                                                {% for block in available_blocks %}
+                                                <option value="{{ block }}" {% if student.block == block %}selected{% endif %}>
+                                                    Period {{ block }}
+                                                </option>
+                                                {% endfor %}
+                                            </select>
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div class="d-flex justify-content-between align-items-center mt-4">
+                            <div class="text-muted">
+                                <small>
+                                    <i class="bi bi-shield-check"></i> 
+                                    This will fix balances for {{ students|length }} student(s) by updating their transaction records.
+                                </small>
+                            </div>
+                            <button type="submit" class="btn btn-success btn-lg">
+                                <i class="bi bi-check-circle"></i> Fix Balances &amp; Continue
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div class="mt-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h6 class="card-title">What caused this?</h6>
+                        <p class="card-text small">
+                            Earlier versions of the system created payroll transactions without properly linking them
+                            to teacher accounts. This caused student balances to appear incorrectly low because the 
+                            system couldn't determine which transactions belonged to which class. This one-time fix 
+                            will correctly associate all past transactions with your account and the appropriate period,
+                            restoring the full balance that students actually earned.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

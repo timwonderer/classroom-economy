@@ -89,7 +89,13 @@
                                         <span class="text-muted">N/A</span>
                                     {% endif %}
                                 </td>
-                                <td>{{ report.submitted_at.strftime('%m/%d/%Y %I:%M %p') }}</td>
+                                <td>
+                                    {% if report.submitted_at %}
+                                        <span class="local-timestamp" data-timestamp="{{ report.submitted_at.isoformat() }}Z"></span>
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </td>
                                 <td>
                                     <span class="badge
                                         {% if report.status == 'new' %}bg-primary
