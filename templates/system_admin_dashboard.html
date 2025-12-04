@@ -120,7 +120,13 @@
                                     <div class="flex-grow-1">
                                         <div class="d-flex align-items-center mb-1">
                                             <span class="badge bg-danger me-2">{{ error.error_type }}</span>
-                                            <small class="text-muted">{{ error.timestamp.strftime('%b %d, %I:%M %p') }}</small>
+                                            <small class="text-muted">
+                                                {% if error.timestamp %}
+                                                    <span class="local-timestamp" data-timestamp="{{ error.timestamp.isoformat() }}Z"></span>
+                                                {% else %}
+                                                    N/A
+                                                {% endif %}
+                                            </small>
                                         </div>
                                         <small class="text-muted">
                                             {{ error.request_method }} {{ error.request_path }}
@@ -198,7 +204,15 @@
                                 <tr>
                                     <td><span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">person</span> {{ admin.username }}</td>
                                     <td><span class="badge bg-success">Active</span></td>
-                                    <td><small class="text-muted">{{ admin.last_login.strftime('%b %d, %Y %I:%M %p') if admin.last_login else 'Never' }}</small></td>
+                                    <td>
+                                        <small class="text-muted">
+                                            {% if admin.last_login %}
+                                                <span class="local-timestamp" data-timestamp="{{ admin.last_login.isoformat() }}Z"></span>
+                                            {% else %}
+                                                Never
+                                            {% endif %}
+                                        </small>
+                                    </td>
                                 </tr>
                                 {% else %}
                                 <tr>

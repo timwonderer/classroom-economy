@@ -47,7 +47,7 @@
                   </td>
                   <td>
                     {% if admin.last_login %}
-                      <small>{{ admin.last_login.strftime('%Y-%m-%d %H:%M') }}</small>
+                      <small><span class="local-timestamp" data-timestamp="{{ admin.last_login.isoformat() }}Z"></span></small>
                     {% else %}
                       <small class="text-muted">Never</small>
                     {% endif %}
@@ -87,7 +87,7 @@
                           </li>
                           <li>Last login:
                             {% if admin.last_login %}
-                              {{ admin.last_login.strftime('%Y-%m-%d %H:%M') }}
+                              <span class="local-timestamp" data-timestamp="{{ admin.last_login.isoformat() }}Z"></span>
                             {% else %}
                               Never
                             {% endif %}

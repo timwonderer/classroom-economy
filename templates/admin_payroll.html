@@ -999,28 +999,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     {% endif %}
 
-    // Timestamp conversion
-    document.querySelectorAll(".local-timestamp").forEach(el => {
-        const utcString = el.dataset.timestamp;
-        if (utcString) {
-            const normalized = utcString
-                .replace(' ', 'T')
-                .replace('+00:00Z', 'Z')
-                .replace('+00:00', 'Z');
-            const date = new Date(normalized);
-            const options = {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: 'numeric',
-                minute: 'numeric',
-                hour12: true
-            };
-            el.textContent = date.toLocaleString(undefined, options);
-        } else {
-            el.textContent = '—';
-        }
-    });
+    // Timestamp conversion handled by timezone-utils.js
 
     // Manual Payment Tab: Block Filter for Students
     const studentBlockFilter = document.getElementById('studentBlockFilter');

@@ -32,7 +32,15 @@
                             <tbody>
                                 {% for error in recent_errors[:10] %}
                                 <tr>
-                                    <td><small>{{ error.timestamp.strftime('%H:%M:%S') }}</small></td>
+                                    <td>
+                                        <small>
+                                            {% if error.timestamp %}
+                                                <span class="local-timestamp" data-timestamp="{{ error.timestamp.isoformat() }}Z" data-format="time"></span>
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
+                                        </small>
+                                    </td>
                                     <td><span class="badge bg-danger">{{ error.error_type }}</span></td>
                                     <td><small><span class="badge bg-secondary">{{ error.request_method }}</span> {{ error.request_path }}</small></td>
                                     <td><small class="text-truncate d-inline-block" style="max-width: 400px;">{{ error.error_message }}</small></td>

@@ -196,7 +196,11 @@
                                     <div>
                                         <h6 class="mb-1">{{ report.title }}</h6>
                                         <small class="text-muted">
-                                            {{ report.submitted_at.strftime('%m/%d/%Y %I:%M %p') }}
+                                            {% if report.submitted_at %}
+                                                <span class="local-timestamp" data-timestamp="{{ report.submitted_at.isoformat() }}Z"></span>
+                                            {% else %}
+                                                N/A
+                                            {% endif %}
                                         </small>
                                     </div>
                                     <span class="badge
