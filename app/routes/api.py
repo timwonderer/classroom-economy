@@ -22,7 +22,7 @@ from app.models import (
     HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
     StudentTeacher
 )
-from app.auth import login_required, admin_required, get_logged_in_student, get_current_admin
+from app.auth import login_required, admin_required, get_logged_in_student, get_current_admin, SESSION_TIMEOUT_MINUTES
 from app.routes.student import get_current_teacher_id
 
 # Import external modules
@@ -1812,7 +1812,39 @@ def student_status():
 def set_timezone():
     """Store user's timezone in session for datetime formatting"""
     # Allow access if user is logged in as student OR admin
-    if 'student_id' not in session and not session.get('is_admin'):
+    is_authenticated = False
+    now = datetime.now(timezone.utc)
+
+    # Check Admin Session
+    if session.get('is_admin'):
+        last_activity = session.get('last_activity')
+        if last_activity:
+            try:
+                last_activity_dt = datetime.fromisoformat(last_activity)
+                if (now - last_activity_dt) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+                    is_authenticated = True
+                    session['last_activity'] = now.isoformat()
+            except ValueError:
+                pass # Invalid date format, treat as unauthenticated
+        else:
+             # If no last_activity but is_admin is set, treat as active for now
+             # (matches admin_required logic which would set it if missing)
+             is_authenticated = True
+             session['last_activity'] = now.isoformat()
+
+    # Check Student Session (if not already authenticated as admin)
+    if not is_authenticated and 'student_id' in session:
+        login_time_str = session.get('login_time')
+        if login_time_str:
+            try:
+                login_time = datetime.fromisoformat(login_time_str)
+                if (now - login_time) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+                    is_authenticated = True
+                    session['last_activity'] = now.isoformat()
+            except ValueError:
+                pass
+
+    if not is_authenticated:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
 
     data = request.get_json()
@@ -1820,6 +1852,10 @@ def set_timezone():
 
     if not timezone_name:
         return jsonify({"status": "error", "message": "Timezone is required."}), 400
+
+    # Validate Timezone
+    if timezone_name not in pytz.all_timezones:
+         return jsonify({"status": "error", "message": "Invalid timezone."}), 400
 
     # Store in session
     session['timezone'] = timezone_name

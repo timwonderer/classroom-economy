@@ -4,7 +4,7 @@ Tests for Timezone API Fix:
 2. Return 401 instead of redirect for unauthenticated users
 """
 import pytest
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from app import db
 from app.models import Admin
 
@@ -78,3 +78,33 @@ def test_set_timezone_student(client, test_student):
     # Verify timezone was stored in session
     with client.session_transaction() as sess:
         assert sess.get('timezone') == 'America/Los_Angeles'
+
+def test_set_timezone_invalid(client, admin_user):
+    """Test that /api/set-timezone rejects invalid timezones."""
+
+    # Login as admin
+    with client.session_transaction() as sess:
+        sess['is_admin'] = True
+        sess['admin_id'] = admin_user.id
+        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+
+    response = client.post('/api/set-timezone', json={'timezone': 'Mars/Crater'})
+    assert response.status_code == 400
+    data = response.get_json()
+    assert data['message'] == 'Invalid timezone.'
+
+def test_set_timezone_expired(client, test_student):
+    """Test that /api/set-timezone rejects expired sessions."""
+
+    # Login as student with old time
+    with client.session_transaction() as sess:
+        sess['student_id'] = test_student.id
+        sess['login_time'] = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+
+    response = client.post(
+        '/api/set-timezone',
+        json={'timezone': 'America/Los_Angeles'}
+    )
+
+    # Should be unauthorized due to timeout
+    assert response.status_code == 401
