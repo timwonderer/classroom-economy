@@ -35,7 +35,7 @@ from app.models import (
     StoreItemBlock, RentSettings, RentPayment, RentWaiver, InsurancePolicy, InsurancePolicyBlock,
     StudentInsurance, InsuranceClaim, HallPassLog, PayrollSettings, PayrollReward, PayrollFine,
     BankingSettings, TeacherBlock, DeletionRequest, DeletionRequestType, DeletionRequestStatus,
-    UserReport, FeatureSettings, TeacherOnboarding
+    UserReport, FeatureSettings, TeacherOnboarding, StudentBlock
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
@@ -4207,10 +4207,32 @@ def tap_out_students():
                 reason=reason
             )
             db.session.add(tap_out_event)
+            
+            # Lock student out until midnight when teacher taps them out
+            # Get or create StudentBlock record
+            student_block = StudentBlock.query.filter_by(
+                student_id=student.id,
+                period=period
+            ).first()
+            
+            if not student_block:
+                student_block = StudentBlock(
+                    student_id=student.id,
+                    period=period,
+                    tap_enabled=True
+                )
+                db.session.add(student_block)
+            
+            # Set done_for_day_date to lock them out until midnight
+            pacific = pytz.timezone('America/Los_Angeles')
+            now_pacific = now_utc.astimezone(pacific)
+            today_pacific = now_pacific.date()
+            student_block.done_for_day_date = today_pacific
+            
             tapped_out.append(student.full_name)
 
             current_app.logger.info(
-                f"Admin tapped out student {student.id} ({student.full_name}) from period {period}"
+                f"Admin tapped out student {student.id} ({student.full_name}) from period {period}, locked until midnight"
             )
 
         # Commit all tap-outs
