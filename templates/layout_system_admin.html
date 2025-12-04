@@ -225,7 +225,7 @@
     <div id="flashToastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050;"></div>
 
     <!-- Sidebar -->
-    <div class="sidebar border-end vh-100 p-3 d-flex flex-column" style="width: 260px;">
+    <div class="sidebar border-end p-3 d-flex flex-column" style="width: 260px; min-height: 100vh; position: sticky; top: 0; align-self: flex-start;">
         <div class="text-center mb-3">
             <img src="{{ url_for('static', filename='images/sys-admin-logo.svg') }}" alt="System Admin Logo" style="max-width: 80%; height: auto; margin-bottom: 1rem;">
             <h5><span class="material-symbols-outlined lock-icon">lock</span> System Admin</h5>

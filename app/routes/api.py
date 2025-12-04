@@ -1945,10 +1945,10 @@ def get_block_tap_settings():
         return jsonify({"error": "Block parameter is required"}), 400
     
     from app.models import Student, StudentBlock
-    from app.auth import _scoped_students
+    from app.auth import get_admin_student_query
     
     # Get all students for this admin in this block
-    students = _scoped_students().all()
+    students = get_admin_student_query().all()
     students_in_block = [
         s for s in students
         if s.block and block.upper() in [b.strip().upper() for b in s.block.split(',')]
@@ -1999,11 +1999,11 @@ def update_block_tap_settings():
         return jsonify({"error": "Missing required fields"}), 400
     
     from app.models import Student, StudentBlock
-    from app.auth import _scoped_students
+    from app.auth import get_admin_student_query
     
     try:
         # Get all students for this admin in this block
-        students = _scoped_students().all()
+        students = get_admin_student_query().all()
         students_in_block = [
             s for s in students
             if s.block and block.upper() in [b.strip().upper() for b in s.block.split(',')]
