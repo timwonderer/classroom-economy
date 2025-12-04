@@ -208,3 +208,44 @@ def test_attendance_history_tenant_scoping(client):
     assert data['total'] == 1, f"Admin1 should see exactly 1 record, got {data['total']}"
     assert len(data['records']) == 1
     assert data['records'][0]['student_id'] == student1.id
+
+
+def test_attendance_history_excludes_deleted_records(client, admin_with_students):
+    """Test that deleted tap events do not appear in attendance history."""
+    admin = admin_with_students['admin']
+    student = admin_with_students['student']
+    
+    # Create a new tap event that we'll mark as deleted
+    now_utc = datetime.now(timezone.utc)
+    deleted_tap = TapEvent(
+        student_id=student.id,
+        period='B',
+        status='active',
+        timestamp=now_utc - timedelta(minutes=15),
+        is_deleted=True,
+        deleted_at=now_utc - timedelta(minutes=5),
+        deleted_by=admin.id
+    )
+    db.session.add(deleted_tap)
+    db.session.commit()
+    
+    # Log in as the admin
+    with client.session_transaction() as sess:
+        sess['is_admin'] = True
+        sess['admin_id'] = admin.id
+        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+    
+    # Call the API endpoint
+    response = client.get('/api/attendance/history')
+    
+    assert response.status_code == 200
+    data = response.get_json()
+    
+    assert data['status'] == 'success'
+    # Should only see the 2 original tap events (tap_in and tap_out), not the deleted one
+    assert data['total'] == 2, f"Expected 2 records (excluding deleted), got {data['total']}"
+    assert len(data['records']) == 2
+    
+    # Verify none of the returned records are from period B (the deleted one)
+    for record in data['records']:
+        assert record['period'] != 'B', "Deleted tap event should not appear in results"

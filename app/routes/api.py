@@ -1097,8 +1097,11 @@ def attendance_history():
         # Get student IDs that the current admin can access (tenant-scoped)
         accessible_student_ids_query = get_admin_student_query(include_unassigned=False).with_entities(Student.id)
         
-        # Build query scoped to admin's students
-        query = TapEvent.query.filter(TapEvent.student_id.in_(accessible_student_ids_query))
+        # Build query scoped to admin's students and exclude deleted records
+        query = TapEvent.query.filter(
+            TapEvent.student_id.in_(accessible_student_ids_query),
+            TapEvent.is_deleted.is_(False)
+        )
 
         # Apply filters
         if period:
@@ -1537,8 +1540,9 @@ def get_tap_entries(student_id):
     if not student:
         return jsonify({"error": "Student not found"}), 404
 
-    # Check if admin has access to this student (many-to-many or legacy teacher_id)
-    if not (student.teachers.filter_by(id=admin.id).first() or student.teacher_id == admin.id):
+    # Check if admin has access to this student via StudentTeacher association
+    # SECURITY: Only use StudentTeacher table, NOT the deprecated teacher_id field
+    if student.teachers.filter_by(id=admin.id).count() == 0:
         return jsonify({"error": "Access denied"}), 403
 
     # Get all tap events for this student
@@ -1609,9 +1613,10 @@ def delete_tap_entry(event_id):
     if not event:
         return jsonify({"error": "Tap entry not found"}), 404
 
-    # Check if admin has access to this student
+    # Check if admin has access to this student via StudentTeacher association
+    # SECURITY: Only use StudentTeacher table, NOT the deprecated teacher_id field
     student = Student.query.get(event.student_id)
-    if not student or (not student.teachers.filter_by(id=admin.id).first() and student.teacher_id != admin.id):
+    if not student or student.teachers.filter_by(id=admin.id).count() == 0:
         return jsonify({"error": "Access denied"}), 403
 
     # Mark as deleted
