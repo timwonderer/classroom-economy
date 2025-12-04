@@ -1100,7 +1100,7 @@ def attendance_history():
         # Build query scoped to admin's students and exclude deleted records
         query = TapEvent.query.filter(
             TapEvent.student_id.in_(accessible_student_ids_query),
-            TapEvent.is_deleted == False
+            TapEvent.is_deleted.is_(False)
         )
 
         # Apply filters
