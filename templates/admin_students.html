@@ -1178,11 +1178,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Handle toggle changes
     toggle.addEventListener('change', function() {
       const isEnabled = this.checked;
-      
+
       fetch('/api/admin/block-tap-settings', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
         },
         body: JSON.stringify({
           block: block,
