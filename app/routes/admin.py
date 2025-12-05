@@ -1292,9 +1292,12 @@ def delete_student():
         
         # Delete StudentTeacher associations
         StudentTeacher.query.filter_by(student_id=student.id).delete()
-        
+
         # Delete TeacherBlock entries for this student
         TeacherBlock.query.filter_by(student_id=student.id).delete()
+
+        # Delete StudentBlock entries for this student
+        StudentBlock.query.filter_by(student_id=student.id).delete()
 
         # Delete the student
         db.session.delete(student)
@@ -1335,9 +1338,12 @@ def bulk_delete_students():
                 
                 # Delete StudentTeacher associations
                 StudentTeacher.query.filter_by(student_id=student.id).delete()
-                
+
                 # Delete TeacherBlock entries for this student
                 TeacherBlock.query.filter_by(student_id=student.id).delete()
+
+                # Delete StudentBlock entries for this student
+                StudentBlock.query.filter_by(student_id=student.id).delete()
 
                 # Delete the student
                 db.session.delete(student)
@@ -1386,10 +1392,13 @@ def delete_block():
             
             # Delete StudentTeacher associations
             StudentTeacher.query.filter(StudentTeacher.student_id.in_(student_ids)).delete(synchronize_session=False)
-            
+
             # Delete TeacherBlock entries for these students
             TeacherBlock.query.filter(TeacherBlock.student_id.in_(student_ids)).delete(synchronize_session=False)
-            
+
+            # Delete StudentBlock entries for these students
+            StudentBlock.query.filter(StudentBlock.student_id.in_(student_ids)).delete(synchronize_session=False)
+
             # Flush to ensure all associated records are deleted before deleting students
             db.session.flush()
             
@@ -1581,10 +1590,13 @@ def bulk_delete_legacy_unclaimed_students():
             
             # Delete StudentTeacher associations
             StudentTeacher.query.filter_by(student_id=student.id).delete()
-            
+
             # Delete TeacherBlock entries for this student
             TeacherBlock.query.filter_by(student_id=student.id).delete()
-            
+
+            # Delete StudentBlock entries for this student
+            StudentBlock.query.filter_by(student_id=student.id).delete()
+
             # Delete the student
             db.session.delete(student)
             deleted_count += 1
