@@ -20,7 +20,7 @@ from app.models import (
     SystemAdmin, Admin, Student, AdminInviteCode, ErrorLog,
     Transaction, TapEvent, HallPassLog, StudentItem, RentPayment,
     StudentInsurance, InsuranceClaim, StudentTeacher, DeletionRequest,
-    DeletionRequestType, DeletionRequestStatus, TeacherBlock, UserReport,
+    DeletionRequestType, DeletionRequestStatus, TeacherBlock, StudentBlock, UserReport,
     FeatureSettings, TeacherOnboarding, RentSettings, BankingSettings,
     DemoStudent, HallPassSettings, PayrollFine, PayrollReward,
     PayrollSettings, StoreItem
@@ -506,6 +506,8 @@ def delete_admin(admin_id):
             db.session.execute(delete(StudentInsurance).where(StudentInsurance.student_id.in_(exclusive_student_ids)))
             InsuranceClaim.query.filter(InsuranceClaim.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
             StudentTeacher.query.filter(StudentTeacher.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
+            StudentBlock.query.filter(StudentBlock.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
+            TeacherBlock.query.filter(TeacherBlock.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
             Student.query.filter(Student.id.in_(exclusive_student_ids)).delete(synchronize_session=False)
 
         admin_username = admin.username

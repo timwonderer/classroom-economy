@@ -350,7 +350,7 @@ class StudentBlock(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    student = db.relationship("Student", backref="student_blocks")
+    student = db.relationship("Student", backref=db.backref("student_blocks", passive_deletes=True))
 
     __table_args__ = (
         db.UniqueConstraint('student_id', 'period', name='uq_student_blocks_student_period'),
