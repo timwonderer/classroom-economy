@@ -123,12 +123,71 @@ def _get_student_or_404(student_id, include_unassigned=True):
 
 
 def _link_student_to_admin(student: Student, admin_id):
-    """Ensure the given admin is associated with the student."""
+    """
+    Ensure the given admin is associated with the student.
+    Creates both StudentTeacher link AND TeacherBlock record with join_code.
+    """
     if not admin_id:
         return
+
+    # 1. Create StudentTeacher link
     existing_link = StudentTeacher.query.filter_by(student_id=student.id, admin_id=admin_id).first()
     if not existing_link:
         db.session.add(StudentTeacher(student_id=student.id, admin_id=admin_id))
+
+    # 2. Create or update TeacherBlock record with join_code
+    # Check if TeacherBlock exists for this student + teacher + block
+    existing_teacher_block = TeacherBlock.query.filter_by(
+        teacher_id=admin_id,
+        student_id=student.id,
+        block=student.block
+    ).first()
+
+    if not existing_teacher_block:
+        # Find or create a join_code for this teacher+block combo
+        # Look for any existing TeacherBlock for this teacher+block (even unclaimed ones)
+        any_block_record = TeacherBlock.query.filter_by(
+            teacher_id=admin_id,
+            block=student.block
+        ).first()
+
+        if any_block_record and any_block_record.join_code:
+            # Reuse existing join_code for this block
+            join_code = any_block_record.join_code
+            # Preserve class_label if it exists
+            class_label = any_block_record.class_label
+        else:
+            # Generate new join_code for this teacher+block
+            join_code = generate_join_code()
+            class_label = None
+
+        # Create new TeacherBlock record
+        new_teacher_block = TeacherBlock(
+            teacher_id=admin_id,
+            student_id=student.id,
+            block=student.block,
+            join_code=join_code,
+            class_label=class_label,  # Preserve class_label if it exists
+            is_claimed=True,  # Mark as claimed since teacher manually added them
+            first_name=student.first_name,
+            last_initial=student.last_initial,
+            last_name_hash_by_part=student.last_name_hash_by_part,
+            dob_sum=student.dob_sum,
+            salt=student.salt,
+            first_half_hash=student.first_half_hash
+        )
+        db.session.add(new_teacher_block)
+        current_app.logger.info(
+            f"Created TeacherBlock for student {student.id} with teacher {admin_id}, "
+            f"block {student.block}, join_code {join_code}"
+        )
+    elif not existing_teacher_block.is_claimed:
+        # TeacherBlock exists but not claimed - mark as claimed now
+        existing_teacher_block.is_claimed = True
+        existing_teacher_block.student_id = student.id
+        current_app.logger.info(
+            f"Claimed existing TeacherBlock for student {student.id} with join_code {existing_teacher_block.join_code}"
+        )
 
 
 def _get_students_needing_transaction_backfill(teacher_id):
