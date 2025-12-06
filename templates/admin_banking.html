@@ -110,7 +110,7 @@
                 <tr>
                   <th>Date</th>
                   <th>Student</th>
-                  <th>Block</th>
+                  <th>Class</th>
                   <th>Type</th>
                   <th>Account</th>
                   <th>Amount</th>
@@ -132,7 +132,7 @@
                       {{ tx.student_name }}
                     </a>
                   </td>
-                  <td>{{ tx.student_block }}</td>
+                  <td>{{ class_labels_by_block.get(tx.student_block, tx.student_block) if tx.student_block else 'N/A' }}</td>
                   <td>
                     {% if tx.type %}
                       <span class="badge bg-secondary">{{ tx.type|title }}</span>
@@ -175,11 +175,11 @@
         <form method="GET" action="{{ url_for('admin.banking') }}" class="mb-4">
           <div class="row g-3">
             <div class="col-md-2">
-              <label for="block" class="form-label fw-bold">Block:</label>
+              <label for="block" class="form-label fw-bold">Class:</label>
               <select name="block" id="block" class="form-select form-select-sm">
                 <option value="">All</option>
                 {% for block in blocks %}
-                  <option value="{{ block }}" {% if request.args.get('block') == block %}selected{% endif %}>{{ block }}</option>
+                  <option value="{{ block }}" {% if request.args.get('block') == block %}selected{% endif %}>{{ class_labels_by_block.get(block, block) }}</option>
                 {% endfor %}
               </select>
             </div>
@@ -235,7 +235,7 @@
               <tr>
                 <th width="130">Date</th>
                 <th>Student</th>
-                <th width="80">Block</th>
+                <th width="80">Class</th>
                 <th width="100">Type</th>
                 <th width="100">Account</th>
                 <th width="100" class="text-end">Amount</th>
@@ -259,7 +259,7 @@
                       {{ tx.student_name }}
                     </a>
                   </td>
-                  <td>{{ tx.student_block }}</td>
+                  <td>{{ class_labels_by_block.get(tx.student_block, tx.student_block) if tx.student_block else 'N/A' }}</td>
                   <td>
                     {% if tx.type %}
                       <span class="badge bg-secondary">{{ tx.type|title }}</span>

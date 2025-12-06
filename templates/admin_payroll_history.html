@@ -9,11 +9,11 @@
 
     <form method="get" action="{{ url_for('admin.payroll_history') }}" class="form-inline mb-3">
         <div class="form-group mr-2">
-            <label for="block">Block:</label>
+            <label for="block">Class:</label>
             <select name="block" id="block" class="form-control ml-2" style="width: 150px;">
                 <option value="">All</option>
                 {% for b in blocks %}
-                <option value="{{ b }}" {% if request.args.get('block') == b %}selected{% endif %}>{{ b }}</option>
+                <option value="{{ b }}" {% if request.args.get('block') == b %}selected{% endif %}>{{ class_labels_by_block.get(b, b) }}</option>
                 {% endfor %}
             </select>
         </div>
@@ -32,7 +32,7 @@
         <thead>
             <tr>
                 <th>Date</th>
-                <th>Block</th>
+                <th>Class</th>
                 <th>Student</th>
                 <th>Amount</th>
                 <th>Notes</th>
@@ -49,7 +49,7 @@
                         —
                       {% endif %}
                     </td>
-                    <td>{{ entry.block }}</td>
+                    <td>{{ entry.class_label }}</td>
                     <td><a href="{{ url_for('admin.student_detail', student_id=entry.student_id) }}">{{ entry.student.full_name if entry.student else entry.student_name }}</a></td>
                     <td>${{ "%.2f"|format(entry.amount) }}</td>
                     <td>{{ entry.notes }}</td>

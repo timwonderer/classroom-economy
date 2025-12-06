@@ -3078,13 +3078,28 @@ def payroll_history():
     # Gather distinct block names for the dropdown
     blocks = sorted({s.block for s in student_lookup.values() if s.block})
 
+    # Build class_labels_by_block dictionary
+    admin_id = session.get("admin_id")
+    class_labels_by_block = {}
+    for block in blocks:
+        teacher_block = TeacherBlock.query.filter_by(
+            teacher_id=admin_id,
+            block=block
+        ).first()
+        if teacher_block:
+            class_labels_by_block[block] = teacher_block.get_class_label()
+        else:
+            class_labels_by_block[block] = block
+
     payroll_records = []
     for tx in payroll_transactions:
         student = student_lookup.get(tx.student_id)
+        student_block = student.block if student else 'Unknown'
         payroll_records.append({
             'id': tx.id,
             'timestamp': tx.timestamp,
-            'block': student.block if student else 'Unknown',
+            'block': student_block,
+            'class_label': class_labels_by_block.get(student_block, student_block) if student_block != 'Unknown' else 'Unknown',
             'student_id': student.id if student else tx.student_id,
             'student_name': student.full_name if student else 'Unknown',
             'amount': tx.amount,
@@ -3101,6 +3116,7 @@ def payroll_history():
         'admin_payroll_history.html',
         payroll_history=payroll_records,
         blocks=blocks,
+        class_labels_by_block=class_labels_by_block,
         current_page="payroll_history",
         selected_block=block,
         selected_start=start_date_str,
@@ -4501,6 +4517,18 @@ def banking():
     # Get all blocks for filter
     blocks = sorted(set(s.block for s in students))
 
+    # Build class_labels_by_block dictionary
+    class_labels_by_block = {}
+    for block in blocks:
+        teacher_block = TeacherBlock.query.filter_by(
+            teacher_id=admin_id,
+            block=block
+        ).first()
+        if teacher_block:
+            class_labels_by_block[block] = teacher_block.get_class_label()
+        else:
+            class_labels_by_block[block] = block
+
     # Get transaction types for filter (filtered to this teacher's students)
     transaction_types = (
         db.session.query(Transaction.type)
@@ -4525,6 +4553,7 @@ def banking():
         total_students=len(students),
         average_savings_balance=average_savings_balance,
         blocks=blocks,
+        class_labels_by_block=class_labels_by_block,
         transaction_types=transaction_types,
         page=page,
         total_pages=total_pages,
