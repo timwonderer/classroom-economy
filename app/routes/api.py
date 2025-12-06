@@ -1152,10 +1152,13 @@ def attendance_history():
         admin_id = session.get("admin_id")
         blocks_in_records = set(students[sid]['block'] for sid in students if students[sid]['block'])
         class_labels = {}
-        for block in blocks_in_records:
-            teacher_block = TeacherBlock.query.filter_by(teacher_id=admin_id, block=block).first()
-            if teacher_block:
-                class_labels[block] = teacher_block.get_class_label()
+        if blocks_in_records:
+            teacher_blocks = TeacherBlock.query.filter(
+                TeacherBlock.teacher_id == admin_id,
+                TeacherBlock.block.in_(blocks_in_records)
+            ).all()
+            for teacher_block in teacher_blocks:
+                class_labels[teacher_block.block] = teacher_block.get_class_label()
 
         # Format records for response
         records_data = []

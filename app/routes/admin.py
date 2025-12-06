@@ -93,6 +93,25 @@ def _get_teacher_blocks():
     ))
 
 
+def _get_class_labels_for_blocks(admin_id, blocks):
+    """Return mapping of block -> class label for the given admin without N+1 queries."""
+
+    if not blocks:
+        return {}
+
+    teacher_blocks = (
+        TeacherBlock.query
+        .filter(TeacherBlock.teacher_id == admin_id, TeacherBlock.block.in_(blocks))
+        .all()
+    )
+    labels = {tb.block: tb.get_class_label() for tb in teacher_blocks}
+
+    for block in blocks:
+        labels.setdefault(block, block)
+
+    return labels
+
+
 def _student_scope_subquery(include_unassigned=True):
     """Return a subquery of student IDs the current admin can access."""
     return (
@@ -128,6 +147,12 @@ def _link_student_to_admin(student: Student, admin_id):
     Creates both StudentTeacher link AND TeacherBlock record with join_code.
     """
     if not admin_id:
+        return
+
+    if not student.block:
+        current_app.logger.warning(
+            f"Student {student.id} has no block assigned, skipping TeacherBlock creation"
+        )
         return
 
     # 1. Create StudentTeacher link
@@ -3179,16 +3204,7 @@ def payroll_history():
 
     # Build class_labels_by_block dictionary
     admin_id = session.get("admin_id")
-    class_labels_by_block = {}
-    for block in blocks:
-        teacher_block = TeacherBlock.query.filter_by(
-            teacher_id=admin_id,
-            block=block
-        ).first()
-        if teacher_block:
-            class_labels_by_block[block] = teacher_block.get_class_label()
-        else:
-            class_labels_by_block[block] = block
+    class_labels_by_block = _get_class_labels_for_blocks(admin_id, blocks)
 
     payroll_records = []
     for tx in payroll_transactions:
@@ -3371,16 +3387,7 @@ def payroll():
     total_payroll_estimate = sum(payroll_summary.values())
 
     # Build class_labels_by_block dictionary
-    class_labels_by_block = {}
-    for block in blocks:
-        teacher_block = TeacherBlock.query.filter_by(
-            teacher_id=admin_id,
-            block=block
-        ).first()
-        if teacher_block:
-            class_labels_by_block[block] = teacher_block.get_class_label()
-        else:
-            class_labels_by_block[block] = block
+    class_labels_by_block = _get_class_labels_for_blocks(admin_id, blocks)
 
     # Next payroll by block
     next_payroll_by_block = []
@@ -4011,14 +4018,7 @@ def attendance_log():
 
     # Build class_labels_by_block dictionary
     admin_id = session.get("admin_id")
-    class_labels_by_block = {}
-    for block in blocks:
-        teacher_block = TeacherBlock.query.filter_by(
-            teacher_id=admin_id,
-            block=block
-        ).first()
-        if teacher_block:
-            class_labels_by_block[block] = teacher_block.get_class_label()
+    class_labels_by_block = _get_class_labels_for_blocks(admin_id, blocks)
 
     return render_template(
         'admin_attendance_log.html',
@@ -4627,16 +4627,7 @@ def banking():
     blocks = sorted(set(s.block for s in students))
 
     # Build class_labels_by_block dictionary
-    class_labels_by_block = {}
-    for block in blocks:
-        teacher_block = TeacherBlock.query.filter_by(
-            teacher_id=admin_id,
-            block=block
-        ).first()
-        if teacher_block:
-            class_labels_by_block[block] = teacher_block.get_class_label()
-        else:
-            class_labels_by_block[block] = block
+    class_labels_by_block = _get_class_labels_for_blocks(admin_id, blocks)
 
     # Get transaction types for filter (filtered to this teacher's students)
     transaction_types = (
