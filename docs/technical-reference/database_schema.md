@@ -42,10 +42,14 @@ Teacher/admin accounts.
 |---|---|---|
 | `id` | Integer | Primary key. |
 | `username` | String(80) | Unique username. |
+| `display_name` | String(100), nullable | Customizable display name shown in UI (falls back to username). |
 | `totp_secret` | String(32) | TOTP secret for login. |
 | `created_at` | DateTime | Creation timestamp. |
 | `last_login` | DateTime | Last login time. |
 | `has_assigned_students` | Boolean | One-time setup flag. |
+
+**Helper Methods**
+- `get_display_name()`: Returns display_name if set, otherwise username.
 
 ### `system_admins`
 Super-user accounts with global visibility.
@@ -75,7 +79,8 @@ Roster seats created during CSV uploads so students can self-claim via join code
 |---|---|---|
 | `id` | Integer | Primary key. |
 | `teacher_id` | Integer | FK to `admins.id`. |
-| `block` | String(10) | Class block identifier. |
+| `block` | String(10) | Class block identifier (technical). |
+| `class_label` | String(50), nullable | Teacher-customizable display name for this class (e.g., "AP Biology"). |
 | `first_name` | PIIEncryptedType | Encrypted first name from roster. |
 | `last_initial` | String(1) | Last initial from roster. |
 | `last_name_hash_by_part` | JSON | Hashes for fuzzy last-name matching. |
@@ -84,6 +89,9 @@ Roster seats created during CSV uploads so students can self-claim via join code
 | `join_code` | String(20) | Shared join code for the block. |
 | `student_id` | Integer | Claimed student FK. |
 | `is_claimed` | Boolean | Claim status. |
+
+**Helper Methods**
+- `get_class_label()`: Returns class_label if set, otherwise block.
 | `claimed_at` | DateTime | Claim timestamp. |
 
 ### `transactions`

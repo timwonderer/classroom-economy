@@ -419,9 +419,9 @@ def create_app():
                 teacher = teachers.get(seat.teacher_id)
                 available_classes.append({
                     'join_code': seat.join_code,
-                    'teacher_name': teacher.username if teacher else 'Unknown',
+                    'teacher_name': teacher.get_display_name() if teacher else 'Unknown',
                     'block': seat.block,
-                    'block_display': f"Block {seat.block.upper()}" if seat.block else 'Unknown',
+                    'block_display': seat.get_class_label(),
                     'is_current': seat.join_code == current_seat.join_code
                 })
 
@@ -429,10 +429,10 @@ def create_app():
             current_teacher = teachers.get(current_seat.teacher_id)
             current_class_context = {
                 'join_code': current_seat.join_code,
-                'teacher_name': current_teacher.username if current_teacher else 'Unknown',
+                'teacher_name': current_teacher.get_display_name() if current_teacher else 'Unknown',
                 'teacher_id': current_seat.teacher_id,
                 'block': current_seat.block,
-                'block_display': f"Block {current_seat.block.upper()}" if current_seat.block else 'Unknown'
+                'block_display': current_seat.get_class_label()
             }
 
             return {
@@ -442,6 +442,22 @@ def create_app():
         except Exception as e:
             app.logger.warning(f"Could not load class context: {e}")
             return {'current_class_context': None, 'available_classes': []}
+
+    @app.context_processor
+    def inject_current_admin():
+        """Inject current admin object into all templates."""
+        try:
+            from app.models import Admin
+            from flask import session
+
+            admin_id = session.get('admin_id')
+            if admin_id:
+                admin = Admin.query.get(admin_id)
+                return {'current_admin': admin}
+            return {'current_admin': None}
+        except Exception as e:
+            app.logger.warning(f"Could not load current admin: {e}")
+            return {'current_admin': None}
 
     # -------------------- REGISTER BLUEPRINTS --------------------
     from app.routes.main import main_bp

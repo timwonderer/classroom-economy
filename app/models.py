@@ -36,7 +36,8 @@ class TeacherBlock(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
-    block = db.Column(db.String(10), nullable=False)
+    block = db.Column(db.String(10), nullable=False)  # Legacy technical identifier
+    class_label = db.Column(db.String(50), nullable=True)  # Teacher-customizable display name for this class
 
     # Student identifiers (used for matching during claim)
     first_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
@@ -74,6 +75,10 @@ class TeacherBlock(db.Model):
         db.Index('ix_teacher_blocks_teacher_block', 'teacher_id', 'block'),
         db.Index('ix_teacher_blocks_claimed', 'is_claimed'),
     )
+
+    def get_class_label(self):
+        """Return class_label if set, otherwise fall back to block"""
+        return self.class_label if self.class_label else self.block
 
     def __repr__(self):
         status = "claimed" if self.is_claimed else "unclaimed"
@@ -904,11 +909,16 @@ class Admin(db.Model):
     __tablename__ = 'admins'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
+    display_name = db.Column(db.String(100), nullable=True)  # Teacher's display name (defaults to username if not set)
     # TOTP-only: store secret, remove password_hash
     totp_secret = db.Column(db.String(32), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)  # Nullable for existing records
     last_login = db.Column(db.DateTime, nullable=True)
     has_assigned_students = db.Column(db.Boolean, default=False, nullable=False)  # One-time setup flag
+
+    def get_display_name(self):
+        """Return display_name if set, otherwise fall back to username"""
+        return self.display_name if self.display_name else self.username
 
 
 # ---- Payroll Settings Model ----

@@ -1,6 +1,6 @@
 # Classroom Token Hub - Development TODO List
 
-**Last Updated:** 2025-11-23  
+**Last Updated:** 2025-12-06
 **Purpose:** Track active work and near-term follow-ups for the platform.
 
 ---
@@ -39,7 +39,8 @@
 - [ ] CSV exports for roster, transactions, attendance, payroll history, and store purchases
 
 ### 3. Mobile & Accessibility
-- [ ] Responsive navigation for student/admin portals
+- [x] Responsive navigation for admin portal (completed 2025-12-06)
+- [ ] Responsive navigation for student portal
 - [ ] Larger touch targets for tap in/out and store interactions
 - [ ] ARIA labels for key buttons and forms
 
@@ -53,8 +54,33 @@
 
 ---
 
+## 🔮 FUTURE CONSIDERATIONS (v1.5+)
+
+### Custom Condition Builder (Advanced Feature)
+- **Status:** Research completed, deferred to future release
+- **Description:** Drag-and-drop visual rule builder allowing teachers to create custom conditional logic for rent, insurance, store, payroll, and banking features
+- **Use Case:** Teachers could define custom triggers like "IF checking balance < $50 AND no insurance THEN charge $5 late fee"
+- **Implementation Options:**
+  - Phase 1: JSON-based rules engine with simple form builder (4-6 weeks)
+  - Phase 2: Enhanced drag-and-drop UI with SortableJS (2-3 weeks)
+  - Phase 3: Full Blockly integration for visual programming experience (4-6 weeks)
+- **Rationale for Deferral:** Power-user feature, not critical for core functionality; prioritize high-demand features first
+- **Estimated Effort:** 12-18 weeks for full implementation
+- **Dependencies:** None (standalone feature)
+- **References:**
+  - Research notes in conversation logs
+  - Potential libraries: json-rules-engine, Blockly, ZEN Engine (GoRules)
+
+---
+
 ## ✅ RECENTLY COMPLETED
 
+- ✅ Teacher display names and custom class labels (2025-12-06)
+  - Added `display_name` to Admin model
+  - Added `class_label` to TeacherBlock model
+  - Created teacher settings page at `/admin/settings`
+  - Updated templates to show custom labels instead of "Block X"
+  - Added responsive navigation (icon-only mode on mobile)
 - ✅ Configurable payroll settings with advanced schedule/rate options (global + per-block)
 - ✅ Insurance policies, enrollments, and claims flows in admin portal
 - ✅ Student/teacher sharing via `student_teachers` with scoped queries in `app/auth.py`

@@ -3,6 +3,11 @@
 {% block title %}Student Management{% endblock %}
 {% block page_icon %}school{% endblock %}
 
+{# Helper macro to display class label with fallback #}
+{% macro class_label(block) -%}
+{{ class_labels_by_block.get(block|upper, block|upper) }}
+{%- endmacro %}
+
 {% block extra_styles %}
 <style>
     .student-card {
@@ -47,7 +52,7 @@
   <div class="tab-pane fade show active" id="roster" role="tabpanel">
     <div class="card shadow">
           <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-          <h5 class="mb-0"><span class="material-symbols-outlined me-2" style="vertical-align: middle;">groups</span>Student Roster by Block</h5>
+          <h5 class="mb-0"><span class="material-symbols-outlined me-2" style="vertical-align: middle;">groups</span>Student Roster by Class</h5>
           <div>
             <a href="{{ url_for('admin.export_students') }}" class="btn btn-light btn-sm me-2">
               <span class="material-symbols-outlined me-1" style="vertical-align: middle;">download</span> Export All
@@ -55,7 +60,7 @@
           </div>
         </div>
       <div class="card-body">
-        <!-- Block Filter Tabs -->
+        <!-- Class Filter Tabs -->
         <ul class="nav nav-pills mb-3" id="blockTabs" role="tablist">
           {% for block in blocks %}
           <li class="nav-item" role="presentation">
@@ -68,7 +73,7 @@
               {% if block == "Unassigned" %}
                 <span class="material-symbols-outlined me-1" style="vertical-align: middle;">help</span>{{ block }}
               {% else %}
-                Block {{ block|upper }}
+                {{ class_label(block) }}
               {% endif %}
               {% set all_students_in_block = students_by_block[block] if block in students_by_block else [] %}
               {% set claimed_count = all_students_in_block|selectattr('username_hash')|list|length %}
@@ -85,7 +90,7 @@
           {% endfor %}
         </ul>
 
-        <!-- Block Content -->
+        <!-- Class Content -->
         <div class="tab-content block-tab-content" id="blockTabContent">
           {% for block in blocks %}
           <div class="tab-pane fade {% if loop.first %}show active{% endif %}"
@@ -100,7 +105,7 @@
                 <div class="d-flex justify-content-between align-items-center">
                   <h6 class="mb-0 text-success">
                     <span class="material-symbols-outlined me-2" style="vertical-align: middle;">key</span>
-                    Join Code for Block {{ block|upper }}
+                    Join Code for {{ class_label(block) }}
                   </h6>
                   {% set block_students_list = students_by_block[block] if block in students_by_block else [] %}
                   {% set unclaimed_students_in_block = block_students_list|rejectattr('username_hash')|list|length %}
@@ -123,7 +128,7 @@
                     <p class="mb-2"><strong>Students use this code to claim their accounts:</strong></p>
                     <div class="d-flex align-items-center gap-2">
                       <div class="input-group">
-                        <label for="join-code-{{ block }}" class="visually-hidden">Join code for Block {{ block|upper }}</label>
+                        <label for="join-code-{{ block }}" class="visually-hidden">Join code for {{ class_label(block) }}</label>
                         <input type="text"
                                class="form-control form-control-lg font-monospace text-center fw-bold"
                                id="join-code-{{ block }}"
@@ -156,14 +161,14 @@
             </div>
             {% endif %}
 
-            <!-- Tap In/Out Control for Entire Block -->
+            <!-- Tap In/Out Control for Entire Class -->
             {% if block != "Unassigned" %}
             <div class="card border-primary mb-3">
               <div class="card-header bg-primary bg-opacity-10">
                 <div class="d-flex justify-content-between align-items-center">
                   <h6 class="mb-0 text-primary">
                     <span class="material-symbols-outlined me-2" style="vertical-align: middle;">schedule</span>
-                    Tap In/Out Settings for Block {{ block|upper }}
+                    Tap In/Out Settings for {{ class_label(block) }}
                   </h6>
                 </div>
               </div>
@@ -297,7 +302,7 @@
                       <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px;">logout</span> Tap Out Selected
                     </button>
                     <button type="button" class="btn btn-secondary btn-sm me-2" onclick="tapOutAllBlock('{{ block }}')">
-                      <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px;">logout</span> Tap Out Entire Block
+                      <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px;">logout</span> Tap Out Entire Class
                     </button>
                     <button type="button" class="btn btn-danger btn-sm" onclick="bulkDeleteStudents('{{ block }}')">
                       <span class="material-symbols-outlined" style="vertical-align: middle;">delete</span> Delete Selected
@@ -311,7 +316,7 @@
 
                 <div class="mb-2">
                   <button type="button" class="btn btn-sm btn-outline-danger me-2" onclick="deleteEntireBlock('{{ block }}')">
-                    <span class="material-symbols-outlined" style="vertical-align: middle;">delete_forever</span> Delete All Students in Block {{ block|upper }}
+                    <span class="material-symbols-outlined" style="vertical-align: middle;">delete_forever</span> Delete All Students in {{ class_label(block) }}
                   </button>
                 </div>
 
@@ -389,7 +394,7 @@
               </div>
             {% else %}
               <div class="alert alert-info">
-                <span class="material-symbols-outlined me-2" style="vertical-align: middle;">info</span>No students have claimed accounts in Block {{ block|upper }} yet.
+                <span class="material-symbols-outlined me-2" style="vertical-align: middle;">info</span>No students have claimed accounts in {{ class_label(block) }} yet.
               </div>
             {% endif %}
           </div>
@@ -415,7 +420,7 @@
               <div class="card-body">
                 <ol class="mb-3">
                   <li class="mb-2">Download the CSV template using the button below</li>
-                  <li class="mb-2">Fill in student information (First Name, Last Name, Date of Birth in MM/DD/YYYY format, Period/Block)</li>
+                  <li class="mb-2">Fill in student information (First Name, Last Name, Date of Birth in MM/DD/YYYY format, Class/Block)</li>
                   <li class="mb-2">Save the file as CSV format</li>
                   <li class="mb-2">Upload the completed file</li>
                 </ol>
@@ -505,12 +510,12 @@
                       <div class="form-text">Format: MM/DD/YYYY</div>
                     </div>
                     <div class="col-md-6 mb-3">
-                      <label for="block" class="form-label fw-bold">Block/Period <span class="text-danger">*</span></label>
+                      <label for="block" class="form-label fw-bold">Class <span class="text-danger">*</span></label>
                       <select class="form-select" id="block" name="block" required>
                         <option value="">Select a block...</option>
                         {% for block in blocks %}
                         {% if block != "Unassigned" %}
-                        <option value="{{ block }}">Block {{ block|upper }}</option>
+                        <option value="{{ block }}">{{ class_label(block) }}</option>
                         {% endif %}
                         {% endfor %}
                       </select>
@@ -574,10 +579,10 @@
             </div>
           </div>
 
-          <!-- Block Assignment -->
+          <!-- Class Assignment -->
           <div class="card border-info mb-3">
             <div class="card-header bg-info bg-opacity-10">
-              <h6 class="mb-0 text-info"><span class="material-symbols-outlined me-2" style="vertical-align: middle;">calendar_today</span>Block Assignment</h6>
+              <h6 class="mb-0 text-info"><span class="material-symbols-outlined me-2" style="vertical-align: middle;">calendar_today</span>Class Assignment</h6>
             </div>
             <div class="card-body">
               <p class="text-muted small mb-2">Select all blocks this student attends (can select multiple):</p>
@@ -588,7 +593,7 @@
                   <div class="form-check">
                     <input class="form-check-input block-checkbox" type="checkbox" name="blocks" value="{{ block }}" id="edit_block_{{ block }}">
                     <label class="form-check-label" for="edit_block_{{ block }}">
-                      Block {{ block|upper }}
+                      {{ class_label(block) }}
                     </label>
                   </div>
                 </div>

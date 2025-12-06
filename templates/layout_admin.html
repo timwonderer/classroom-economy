@@ -372,6 +372,75 @@
         font-style: italic;
     }
 
+    /* Responsive Navigation for Smaller Screens */
+    @media (max-width: 1200px) {
+        .sidebar {
+            width: 220px;
+        }
+        .main-content {
+            margin-left: 220px;
+        }
+        .sidebar .btn {
+            font-size: 0.875rem;
+            padding: 0.625rem 0.875rem;
+        }
+        .sidebar h5 {
+            font-size: 1rem;
+        }
+    }
+
+    @media (max-width: 992px) {
+        .sidebar {
+            width: 200px;
+        }
+        .main-content {
+            margin-left: 200px;
+        }
+        .sidebar .btn {
+            font-size: 0.8125rem;
+            padding: 0.5rem 0.75rem;
+        }
+        .sidebar small {
+            font-size: 0.6875rem;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .sidebar {
+            width: 70px;
+            padding: 0.75rem 0.5rem;
+        }
+        .main-content {
+            margin-left: 70px;
+        }
+        .sidebar h5,
+        .sidebar small,
+        .sidebar .btn span:not(.material-symbols-outlined) {
+            display: none;
+        }
+        .sidebar .btn {
+            justify-content: center;
+            padding: 0.75rem;
+        }
+        .sidebar .material-symbols-outlined {
+            margin: 0 !important;
+        }
+        /* Hide Settings collapse on mobile */
+        .sidebar #adminSettingsCollapse .btn span:not(.material-symbols-outlined) {
+            display: none;
+        }
+    }
+
+    @media (max-width: 576px) {
+        .sidebar {
+            width: 60px;
+        }
+        .main-content {
+            margin-left: 60px;
+            padding: 1rem;
+        }
+    }
+
 </style>
 
     <title>{{ page_title }}</title>
@@ -396,6 +465,11 @@
         <div class="mb-4 text-center">
             <img src="{{ url_for('static', filename='images/admin-logo.svg') }}" alt="Admin Portal Logo" style="max-width: 80%; height: auto; margin-bottom: 1rem;">
             <h5 class="mb-0 d-flex align-items-center gap-2 justify-content-center"><span class="material-symbols-outlined">admin_panel_settings</span> Admin Portal</h5>
+            {% if current_admin %}
+            <small style="color: rgba(255, 255, 255, 0.8); font-size: 0.875rem; display: block; margin-top: 0.5rem;">
+                {{ current_admin.get_display_name() }}
+            </small>
+            {% endif %}
         </div>
         <div class="d-grid gap-2" style="overflow-y: auto;">
             <!-- Dashboard -->
@@ -489,6 +563,8 @@
                 </button>
                 <div class="collapse" id="adminSettingsCollapse">
                     <div class="d-flex flex-column gap-2 mt-2 ps-3">
+                        <a href="{{ url_for('admin.settings') }}"
+                           class="btn btn-sm text-start {% if current_page == 'settings' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">person</span> Profile</a>
                         <a href="{{ url_for('admin.feature_settings') }}"
                            class="btn btn-sm text-start {% if current_page == 'feature_settings' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">tune</span> Features</a>
                         <a href="{{ url_for('admin.deletion_requests') }}"

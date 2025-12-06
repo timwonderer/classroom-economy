@@ -804,6 +804,53 @@ def signup():
     return render_template("admin_signup.html", form=form)
 
 
+@admin_bp.route('/settings', methods=['GET', 'POST'])
+@admin_required
+def settings():
+    """Teacher account settings - configure display name and class labels."""
+    admin_id = session.get("admin_id")
+    admin = Admin.query.get_or_404(admin_id)
+
+    if request.method == 'POST':
+        # Update display name
+        display_name = request.form.get('display_name', '').strip()
+        if display_name:
+            admin.display_name = display_name
+        else:
+            admin.display_name = None  # Use username as fallback
+
+        # Update class labels for each block
+        blocks = TeacherBlock.query.filter_by(teacher_id=admin_id).distinct(TeacherBlock.block).all()
+        for block in blocks:
+            class_label_key = f'class_label_{block.block}'
+            class_label = request.form.get(class_label_key, '').strip()
+
+            # Update all TeacherBlock entries with this block value
+            TeacherBlock.query.filter_by(
+                teacher_id=admin_id,
+                block=block.block
+            ).update({'class_label': class_label if class_label else None})
+
+        db.session.commit()
+        flash("Settings updated successfully!", "success")
+        return redirect(url_for('admin.settings'))
+
+    # GET: Show settings form
+    # Get unique blocks for this teacher
+    blocks = db.session.query(TeacherBlock.block, TeacherBlock.class_label)\
+        .filter_by(teacher_id=admin_id)\
+        .distinct(TeacherBlock.block)\
+        .all()
+
+    return render_template(
+        'admin_settings.html',
+        admin=admin,
+        blocks=blocks,
+        current_page='settings',
+        page_title='Account Settings'
+    )
+
+
 @admin_bp.route('/logout')
 def logout():
     """Admin logout."""
@@ -882,8 +929,9 @@ def students():
         else:
             student.username_display = "Not Set"
 
-    # Fetch join codes and unclaimed seats for each block
+    # Fetch join codes, class labels, and unclaimed seats for each block
     join_codes_by_block = {}
+    class_labels_by_block = {}
     unclaimed_seats_by_block = {}
     unclaimed_seats_list_by_block = {}
 
@@ -898,6 +946,8 @@ def students():
                 # All TeacherBlock records for the same block should have the same join_code
                 # (enforced by roster import logic), so taking the first one is correct.
                 join_codes_by_block[block_name] = tb.join_code
+                # Store class label (use the first one; they should all be the same for a given block)
+                class_labels_by_block[block_name] = tb.get_class_label()
                 unclaimed_seats_by_block[block_name] = 0
 
             # Track unclaimed seats (excluding legacy placeholders)
@@ -976,6 +1026,7 @@ def students():
                          blocks=blocks,
                          students_by_block=students_by_block,
                          join_codes_by_block=join_codes_by_block,
+                         class_labels_by_block=class_labels_by_block,
                          unclaimed_seats_by_block=unclaimed_seats_by_block,
                          unclaimed_seats_list_by_block=unclaimed_seats_list_by_block,
                          current_page="students")
