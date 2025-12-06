@@ -3255,6 +3255,18 @@ def payroll():
     payroll_summary = calculate_payroll(students, last_payroll_time)
     total_payroll_estimate = sum(payroll_summary.values())
 
+    # Build class_labels_by_block dictionary
+    class_labels_by_block = {}
+    for block in blocks:
+        teacher_block = TeacherBlock.query.filter_by(
+            teacher_id=admin_id,
+            block=block
+        ).first()
+        if teacher_block:
+            class_labels_by_block[block] = teacher_block.get_class_label()
+        else:
+            class_labels_by_block[block] = block
+
     # Next payroll by block
     next_payroll_by_block = []
     for block in blocks:
@@ -3264,6 +3276,7 @@ def payroll():
         block_next_payroll = _compute_next_pay_date(setting, now_utc)
         next_payroll_by_block.append({
             'block': block,
+            'class_label': class_labels_by_block.get(block, block),
             'next_date': block_next_payroll,  # Keep in UTC
             'next_date_iso': format_utc_iso(block_next_payroll),
             'estimate': block_estimate
@@ -3299,6 +3312,7 @@ def payroll():
             'student_id': student.id,
             'student_name': student.full_name,
             'block': student.block,
+            'class_label': class_labels_by_block.get(student.block, student.block) if student.block else 'Unknown',
             'unpaid_minutes': int(unpaid_minutes),
             'estimated_payout': estimated_payout,
             'last_payroll_date': last_payroll.timestamp if last_payroll else None,
@@ -3333,11 +3347,13 @@ def payroll():
     payroll_history = []
     for tx in payroll_history_transactions:
         student = student_lookup.get(tx.student_id)
+        student_block = student.block if student else 'Unknown'
         payroll_history.append({
             'transaction_id': tx.id,
             'timestamp': tx.timestamp,
             'type': tx.type or 'manual_payment',
-            'block': student.block if student else 'Unknown',
+            'block': student_block,
+            'class_label': class_labels_by_block.get(student_block, student_block) if student_block != 'Unknown' else 'Unknown',
             'student_id': tx.student_id,
             'student': student,
             'student_name': student.full_name if student else 'Unknown',
@@ -3377,6 +3393,7 @@ def payroll():
         payroll_history=payroll_history,
         # General
         blocks=blocks,
+        class_labels_by_block=class_labels_by_block,
         current_page="payroll",
         format_utc_iso=format_utc_iso
     )

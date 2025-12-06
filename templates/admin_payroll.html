@@ -38,11 +38,11 @@
   <!-- OVERVIEW TAB -->
   <div class="tab-pane fade show active" id="overview" role="tabpanel">
     <div class="row">
-      <!-- Next Payroll by Block -->
+      <!-- Next Payroll by Class -->
       <div class="col-lg-6 mb-4">
         <div class="card shadow">
           <div class="card-header bg-primary text-white">
-            <h5 class="mb-0"><i class="bi bi-calendar-event me-2"></i>Next Payroll by Block</h5>
+            <h5 class="mb-0"><i class="bi bi-calendar-event me-2"></i>Next Payroll by Class</h5>
           </div>
           <div class="card-body">
             {% if next_payroll_by_block %}
@@ -50,7 +50,7 @@
                 <table class="table table-sm">
                   <thead>
                     <tr>
-                      <th>Block</th>
+                      <th>Class</th>
                       <th>Next Run Date</th>
                       <th>Estimated Payout</th>
                     </tr>
@@ -58,7 +58,7 @@
                   <tbody>
                     {% for block_info in next_payroll_by_block %}
                     <tr>
-                      <td><strong>{{ block_info.block }}</strong></td>
+                      <td><strong>{{ block_info.class_label }}</strong></td>
                       <td>
                         {% if block_info.next_date %}
                           <span class="local-timestamp" data-timestamp="{{ block_info.next_date_iso or format_utc_iso(block_info.next_date) }}"></span>
@@ -101,7 +101,7 @@
               </div>
               <div class="col-6">
                 <h3 class="text-warning">{{ total_blocks|default(0) }}</h3>
-                <small class="text-muted">Active Blocks</small>
+                <small class="text-muted">Active Classes</small>
               </div>
             </div>
             <hr>
@@ -126,7 +126,7 @@
                 <tr>
                   <th>Date</th>
                   <th>Student Name</th>
-                  <th>Block</th>
+                  <th>Class</th>
                   <th>Amount</th>
                   <th>Account</th>
                 </tr>
@@ -150,7 +150,7 @@
                       <em>Unknown</em>
                     {% endif %}
                   </td>
-                  <td>{{ record.student.block if record.student else "N/A" }}</td>
+                  <td>{{ class_labels_by_block.get(record.student.block, record.student.block) if record.student and record.student.block else "N/A" }}</td>
                   <td class="text-success fw-bold">${{ "%.2f"|format(record.amount) }}</td>
                   <td><span class="badge bg-secondary">{{ record.account_type|title }}</span></td>
                 </tr>
@@ -175,11 +175,11 @@
         <!-- Filter and Actions -->
         <div class="row mb-3">
           <div class="col-md-4">
-            <label for="historyBlockFilter" class="form-label fw-bold">Block:</label>
+            <label for="historyBlockFilter" class="form-label fw-bold">Class:</label>
             <select id="historyBlockFilter" class="form-select">
-              <option value="">All Blocks</option>
+              <option value="">All Classes</option>
               {% for block in blocks %}
-                <option value="{{ block }}">{{ block }}</option>
+                <option value="{{ block }}">{{ class_labels_by_block.get(block, block) }}</option>
               {% endfor %}
             </select>
           </div>
@@ -200,7 +200,7 @@
                 </th>
                 <th>Date</th>
                 <th>Type</th>
-                <th>Block</th>
+                <th>Class</th>
                 <th>Student</th>
                 <th>Amount</th>
                 <th>Notes</th>
@@ -228,7 +228,7 @@
                       {{ entry.type|title }}
                     </span>
                   </td>
-                  <td>{{ entry.block }}</td>
+                  <td>{{ entry.class_label }}</td>
                   <td>
                     {% if entry.student %}
                       <a href="{{ url_for('admin.student_detail', student_id=entry.student_id) }}">
@@ -321,11 +321,11 @@
               {% endif %}
               {% if settings_by_block %}
               <div class="mt-2">
-                <strong>Per-Block Settings:</strong>
+                <strong>Per-Class Settings:</strong>
                 <ul class="mb-0 mt-1 small">
                   {% for block, setting in settings_by_block.items() %}
                   <li>
-                    <strong>{{ block }}:</strong>
+                    <strong>{{ class_labels_by_block.get(block, block) }}:</strong>
                     {% if setting.settings_mode == 'simple' %}
                       ${{ "%.2f"|format(setting.pay_rate * 60) }}/hour, {{ setting.pay_schedule_type }}
                     {% else %}
@@ -393,17 +393,17 @@
                   <label class="form-label fw-bold">Apply Settings To:</label>
                   <div class="form-check">
                     <input class="form-check-input" type="radio" name="simple_apply_to" id="simpleApplyAll" value="all" checked>
-                    <label class="form-check-label" for="simpleApplyAll">All Periods/Blocks</label>
+                    <label class="form-check-label" for="simpleApplyAll">All Classes</label>
                   </div>
                   <div class="form-check">
                     <input class="form-check-input" type="radio" name="simple_apply_to" id="simpleApplySelected" value="selected">
-                    <label class="form-check-label" for="simpleApplySelected">Selected Periods:</label>
+                    <label class="form-check-label" for="simpleApplySelected">Selected Classes:</label>
                   </div>
                   <div id="simpleBlockCheckboxes" class="ms-4 mt-2" style="display:none;">
                     {% for block in blocks %}
                     <div class="form-check">
                       <input class="form-check-input simple-block-checkbox" type="checkbox" name="simple_blocks[]" value="{{ block }}" id="simple_block_{{ block }}">
-                      <label class="form-check-label" for="simple_block_{{ block }}">{{ block }}</label>
+                      <label class="form-check-label" for="simple_block_{{ block }}">{{ class_labels_by_block.get(block, block) }}</label>
                     </div>
                     {% endfor %}
                   </div>
@@ -545,17 +545,17 @@
                   <label class="form-label fw-bold">Apply Settings To:</label>
                   <div class="form-check">
                     <input class="form-check-input" type="radio" name="adv_apply_to" id="advApplyAll" value="all" checked>
-                    <label class="form-check-label" for="advApplyAll">All Periods/Blocks</label>
+                    <label class="form-check-label" for="advApplyAll">All Classes</label>
                   </div>
                   <div class="form-check">
                     <input class="form-check-input" type="radio" name="adv_apply_to" id="advApplySelected" value="selected">
-                    <label class="form-check-label" for="advApplySelected">Selected Periods:</label>
+                    <label class="form-check-label" for="advApplySelected">Selected Classes:</label>
                   </div>
                   <div id="advBlockCheckboxes" class="ms-4 mt-2" style="display:none;">
                     {% for block in blocks %}
                     <div class="form-check">
                       <input class="form-check-input adv-block-checkbox" type="checkbox" name="adv_blocks[]" value="{{ block }}" id="adv_block_{{ block }}">
-                      <label class="form-check-label" for="adv_block_{{ block }}">{{ block }}</label>
+                      <label class="form-check-label" for="adv_block_{{ block }}">{{ class_labels_by_block.get(block, block) }}</label>
                     </div>
                     {% endfor %}
                   </div>
@@ -774,13 +774,13 @@
             <h5 class="mb-0"><i class="bi bi-people me-2"></i>Select Students</h5>
           </div>
           <div class="card-body">
-            <!-- Block/Period Filter -->
+            <!-- Class Filter -->
             <div class="mb-3">
-              <label for="studentBlockFilter" class="form-label fw-bold">Filter by Period/Block:</label>
+              <label for="studentBlockFilter" class="form-label fw-bold">Filter by Class:</label>
               <select id="studentBlockFilter" class="form-select">
-                <option value="">All Periods</option>
+                <option value="">All Classes</option>
                 {% for block in blocks %}
-                  <option value="{{ block }}">{{ block }}</option>
+                  <option value="{{ block }}">{{ class_labels_by_block.get(block, block) }}</option>
                 {% endfor %}
               </select>
             </div>
@@ -807,7 +807,7 @@
                       </td>
                       <td>
                         <strong>{{ student.full_name }}</strong><br>
-                        <small class="text-muted">{{ student.block }}</small>
+                        <small class="text-muted">{{ class_labels_by_block.get(student.block, student.block) if student.block else 'N/A' }}</small>
                       </td>
                       <td class="text-end">${{ "%.2f"|format(student.checking_balance) }}</td>
                       <td class="text-end">${{ "%.2f"|format(student.savings_balance) }}</td>
