@@ -835,6 +835,7 @@ def dashboard():
 
     join_code = context['join_code']
     teacher_id = context['teacher_id']
+    current_block = context['block']  # Get current class block
 
     apply_savings_interest(student)  # Apply savings interest if not already applied
 
@@ -868,8 +869,12 @@ def dashboard():
     ), 2)
     forecast_interest = round(savings_balance * (0.045 / 12), 2)
 
+    # FIX: Only show tap in/out status for CURRENT class, not all classes
+    # Get status for only the current block (not all blocks)
     period_states = get_all_block_statuses(student)
-    student_blocks = list(period_states.keys())
+    # Filter to only current class block
+    period_states = {current_block.upper(): period_states.get(current_block.upper(), {})}
+    student_blocks = [current_block.upper()]  # Only current block
     period_states_json = json.dumps(period_states, separators=(',', ':'))
 
     unpaid_seconds_per_block = {

@@ -437,7 +437,8 @@ def create_app():
 
             return {
                 'current_class_context': current_class_context,
-                'available_classes': available_classes
+                'available_classes': available_classes,
+                'current_seat': current_seat  # Add seat object for template access
             }
         except Exception as e:
             app.logger.warning(f"Could not load class context: {e}")

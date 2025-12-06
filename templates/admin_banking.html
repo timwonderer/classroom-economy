@@ -110,7 +110,7 @@
                 <tr>
                   <th>Date</th>
                   <th>Student</th>
-                  <th>Block</th>
+                  <th>Class</th>
                   <th>Type</th>
                   <th>Account</th>
                   <th>Amount</th>
@@ -132,7 +132,7 @@
                       {{ tx.student_name }}
                     </a>
                   </td>
-                  <td>{{ tx.student_block }}</td>
+                  <td>{{ class_labels_by_block.get(tx.student_block, tx.student_block) if tx.student_block else 'N/A' }}</td>
                   <td>
                     {% if tx.type %}
                       <span class="badge bg-secondary">{{ tx.type|title }}</span>
@@ -175,11 +175,11 @@
         <form method="GET" action="{{ url_for('admin.banking') }}" class="mb-4">
           <div class="row g-3">
             <div class="col-md-2">
-              <label for="block" class="form-label fw-bold">Block:</label>
+              <label for="block" class="form-label fw-bold">Class:</label>
               <select name="block" id="block" class="form-select form-select-sm">
                 <option value="">All</option>
                 {% for block in blocks %}
-                  <option value="{{ block }}" {% if request.args.get('block') == block %}selected{% endif %}>{{ block }}</option>
+                  <option value="{{ block }}" {% if request.args.get('block') == block %}selected{% endif %}>{{ class_labels_by_block.get(block, block) }}</option>
                 {% endfor %}
               </select>
             </div>
@@ -235,7 +235,7 @@
               <tr>
                 <th width="130">Date</th>
                 <th>Student</th>
-                <th width="80">Block</th>
+                <th width="80">Class</th>
                 <th width="100">Type</th>
                 <th width="100">Account</th>
                 <th width="100" class="text-end">Amount</th>
@@ -259,7 +259,7 @@
                       {{ tx.student_name }}
                     </a>
                   </td>
-                  <td>{{ tx.student_block }}</td>
+                  <td>{{ class_labels_by_block.get(tx.student_block, tx.student_block) if tx.student_block else 'N/A' }}</td>
                   <td>
                     {% if tx.type %}
                       <span class="badge bg-secondary">{{ tx.type|title }}</span>
@@ -347,6 +347,31 @@
   <div class="tab-pane fade" id="settings" role="tabpanel">
     <form method="POST" action="{{ url_for('admin.banking_settings_update') }}" id="bankingSettingsForm">
       {{ form.hidden_tag() }}
+      <input type="hidden" name="settings_block" value="{{ settings_block }}">
+      <input type="hidden" name="apply_to_all" id="apply_to_all_input" value="false">
+
+      <!-- Class Selector Banner -->
+      <div class="alert alert-primary d-flex align-items-center justify-content-between mb-4">
+        <div class="d-flex align-items-center gap-3">
+          <span class="material-symbols-outlined" style="font-size: 2rem;">school</span>
+          <div>
+            <h6 class="mb-1 fw-bold">Configuring Banking Settings For:</h6>
+            <select class="form-select form-select-sm" id="settings_block_selector" style="width: auto; min-width: 200px;">
+              {% for block in teacher_blocks %}
+                <option value="{{ block }}" {% if block == settings_block %}selected{% endif %}>
+                  {{ class_labels_by_block.get(block, block) }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <div class="form-check form-switch">
+          <input class="form-check-input" type="checkbox" id="apply_to_all_checkbox" role="switch">
+          <label class="form-check-label fw-bold" for="apply_to_all_checkbox">
+            Apply to All Classes
+          </label>
+        </div>
+      </div>
 
       <div class="row">
         <!-- Interest Settings Card -->
@@ -743,6 +768,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
         // Initialize visibility
         compoundFrequencyField.style.display = calculationType.value === 'compound' ? 'block' : 'none';
+    }
+
+    // -------------------- CLASS SELECTOR & APPLY TO ALL --------------------
+    const settingsBlockSelector = document.getElementById('settings_block_selector');
+    const applyToAllCheckbox = document.getElementById('apply_to_all_checkbox');
+    const applyToAllInput = document.getElementById('apply_to_all_input');
+
+    // Handle class selector change - reload page with new settings_block
+    if (settingsBlockSelector) {
+        settingsBlockSelector.addEventListener('change', function() {
+            const selectedBlock = this.value;
+            const url = new URL(window.location.href);
+            url.searchParams.set('settings_block', selectedBlock);
+            window.location.href = url.toString();
+        });
+    }
+
+    // Handle apply to all checkbox
+    if (applyToAllCheckbox && applyToAllInput) {
+        applyToAllCheckbox.addEventListener('change', function() {
+            applyToAllInput.value = this.checked ? 'true' : 'false';
+
+            // Disable class selector when apply to all is checked
+            if (settingsBlockSelector) {
+                settingsBlockSelector.disabled = this.checked;
+            }
+        });
     }
 });
 

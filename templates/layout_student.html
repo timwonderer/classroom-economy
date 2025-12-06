@@ -601,6 +601,25 @@
             {% endblock %}
         </div>
 
+        <!-- Class Context Banner -->
+        {% if current_seat %}
+        <div class="alert alert-info d-flex align-items-center justify-content-between mb-3" style="background: linear-gradient(135deg, var(--student-light-blue) 0%, var(--brand-cyan) 100%); border: none; color: white; box-shadow: var(--shadow-md); border-radius: 12px; padding: 1rem 1.5rem;">
+            <div class="d-flex align-items-center gap-3">
+                <span class="material-symbols-outlined" style="font-size: 2rem;">school</span>
+                <div>
+                    <h6 class="mb-0" style="font-weight: 700; font-size: 1.1rem;">{{ current_seat.get_class_label() }}</h6>
+                    <small style="opacity: 0.9;">{{ current_seat.teacher.get_display_name() if current_seat.teacher else 'Teacher' }}</small>
+                </div>
+            </div>
+            {% if available_classes and available_classes|length > 1 %}
+            <a href="{{ url_for('student.profile') }}" class="btn btn-light btn-sm" style="font-weight: 600;">
+                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1.2rem;">swap_horiz</span>
+                Switch Class
+            </a>
+            {% endif %}
+        </div>
+        {% endif %}
+
         <!-- Flash Messages -->
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}
