@@ -146,27 +146,118 @@ class Student(db.Model):
     def savings_balance(self):
         return round(sum(tx.amount for tx in self.transactions if tx.account_type == 'savings' and not tx.is_void), 2)
 
-    def get_checking_balance(self, teacher_id):
-        """Get checking balance scoped to a specific teacher's economy."""
-        return round(sum(
-            tx.amount for tx in self.transactions
-            if tx.account_type == 'checking' and not tx.is_void and tx.teacher_id == teacher_id
-        ), 2)
+    def get_checking_balance(self, teacher_id=None, join_code=None):
+        """
+        Get checking balance scoped to a specific class economy.
 
-    def get_savings_balance(self, teacher_id):
-        """Get savings balance scoped to a specific teacher's economy."""
-        return round(sum(
-            tx.amount for tx in self.transactions
-            if tx.account_type == 'savings' and not tx.is_void and tx.teacher_id == teacher_id
-        ), 2)
+        CRITICAL: For proper period isolation, callers should pass join_code.
+        The teacher_id parameter is deprecated and only kept for backward compatibility.
 
-    def get_total_earnings(self, teacher_id):
-        """Get total earnings scoped to a specific teacher's economy."""
-        return round(sum(
-            tx.amount for tx in self.transactions
-            if tx.teacher_id == teacher_id and tx.amount > 0 and not tx.is_void
-            and not (tx.description or "").startswith("Transfer")
-        ), 2)
+        Args:
+            teacher_id: DEPRECATED - Only for backward compatibility
+            join_code: The unique class identifier for period-level isolation
+
+        Returns:
+            float: The checking balance rounded to 2 decimal places
+        """
+        if join_code:
+            # Proper scoping by join_code (period-level isolation)
+            # Include legacy transactions with NULL join_code but matching teacher_id
+            return round(sum(
+                tx.amount for tx in self.transactions
+                if tx.account_type == 'checking' and not tx.is_void and (
+                    tx.join_code == join_code or (tx.join_code is None and teacher_id and tx.teacher_id == teacher_id)
+                )
+            ), 2)
+        elif teacher_id:
+            # DEPRECATED: Only use this for backward compatibility during migration
+            # This will show aggregated balance across all periods with same teacher
+            return round(sum(
+                tx.amount for tx in self.transactions
+                if tx.account_type == 'checking' and not tx.is_void and tx.teacher_id == teacher_id
+            ), 2)
+        else:
+            # No scope provided - return total across all classes
+            return round(sum(
+                tx.amount for tx in self.transactions
+                if tx.account_type == 'checking' and not tx.is_void
+            ), 2)
+
+    def get_savings_balance(self, teacher_id=None, join_code=None):
+        """
+        Get savings balance scoped to a specific class economy.
+
+        CRITICAL: For proper period isolation, callers should pass join_code.
+        The teacher_id parameter is deprecated and only kept for backward compatibility.
+
+        Args:
+            teacher_id: DEPRECATED - Only for backward compatibility
+            join_code: The unique class identifier for period-level isolation
+
+        Returns:
+            float: The savings balance rounded to 2 decimal places
+        """
+        if join_code:
+            # Proper scoping by join_code (period-level isolation)
+            # Include legacy transactions with NULL join_code but matching teacher_id
+            return round(sum(
+                tx.amount for tx in self.transactions
+                if tx.account_type == 'savings' and not tx.is_void and (
+                    tx.join_code == join_code or (tx.join_code is None and teacher_id and tx.teacher_id == teacher_id)
+                )
+            ), 2)
+        elif teacher_id:
+            # DEPRECATED: Only use this for backward compatibility during migration
+            # This will show aggregated balance across all periods with same teacher
+            return round(sum(
+                tx.amount for tx in self.transactions
+                if tx.account_type == 'savings' and not tx.is_void and tx.teacher_id == teacher_id
+            ), 2)
+        else:
+            # No scope provided - return total across all classes
+            return round(sum(
+                tx.amount for tx in self.transactions
+                if tx.account_type == 'savings' and not tx.is_void
+            ), 2)
+
+    def get_total_earnings(self, teacher_id=None, join_code=None):
+        """
+        Get total earnings scoped to a specific class economy.
+
+        CRITICAL: For proper period isolation, callers should pass join_code.
+        The teacher_id parameter is deprecated and only kept for backward compatibility.
+
+        Args:
+            teacher_id: DEPRECATED - Only for backward compatibility
+            join_code: The unique class identifier for period-level isolation
+
+        Returns:
+            float: The total earnings rounded to 2 decimal places
+        """
+        if join_code:
+            # Proper scoping by join_code (period-level isolation)
+            # Include legacy transactions with NULL join_code but matching teacher_id
+            return round(sum(
+                tx.amount for tx in self.transactions
+                if (tx.join_code == join_code or (tx.join_code is None and teacher_id and tx.teacher_id == teacher_id))
+                and tx.amount > 0 and not tx.is_void
+                and not (tx.description or "").startswith("Transfer")
+            ), 2)
+        elif teacher_id:
+            # DEPRECATED: Only use this for backward compatibility during migration
+            # This will show aggregated earnings across all periods with same teacher
+            return round(sum(
+                tx.amount for tx in self.transactions
+                if tx.teacher_id == teacher_id and tx.amount > 0 and not tx.is_void
+                and not (tx.description or "").startswith("Transfer")
+            ), 2)
+        else:
+            # No scope provided - return total across all classes
+            return round(sum(
+                tx.amount for tx in self.transactions
+                if tx.amount > 0 and not tx.is_void
+                and not (tx.description or "").startswith("Transfer")
+            ), 2)
 
     def get_all_teachers(self):
         """
@@ -388,6 +479,11 @@ class HallPassLog(db.Model):
     status = db.Column(db.String(20), default='pending', nullable=False) # pending, approved, rejected, left, returned
     pass_number = db.Column(db.String(3), nullable=True, unique=True) # Format: letter + 2 digits (e.g., A42)
     period = db.Column(db.String(10), nullable=True) # Which period the request was made in
+
+    # CRITICAL: join_code is the source of truth for class isolation
+    # Each hall pass request should be scoped to the specific class/period
+    join_code = db.Column(db.String(20), nullable=True, index=True)
+
     request_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     decision_time = db.Column(db.DateTime, nullable=True)
     left_time = db.Column(db.DateTime, nullable=True)
@@ -493,6 +589,11 @@ class StudentItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     store_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id'), nullable=False)
+
+    # CRITICAL: join_code is the source of truth for class isolation
+    # Each purchase should be scoped to the specific class/period where it was made
+    join_code = db.Column(db.String(20), nullable=True, index=True)
+
     purchase_date = db.Column(db.DateTime, default=datetime.utcnow)
     expiry_date = db.Column(db.DateTime, nullable=True)
     # purchased, pending (for collective), processing, completed, expired, redeemed
@@ -558,6 +659,11 @@ class RentPayment(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     period = db.Column(db.String(10), nullable=False)  # Block/Period (e.g., 'A', 'B', 'C')
+
+    # CRITICAL: join_code is the source of truth for class isolation
+    # Each rent payment should be scoped to the specific class/period
+    join_code = db.Column(db.String(20), nullable=True, index=True)
+
     amount_paid = db.Column(db.Float, nullable=False)
     period_month = db.Column(db.Integer, nullable=False)  # Month (1-12)
     period_year = db.Column(db.Integer, nullable=False)  # Year (e.g., 2025)
@@ -682,6 +788,10 @@ class StudentInsurance(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id'), nullable=False)
+
+    # CRITICAL: join_code is the source of truth for class isolation
+    # Each insurance enrollment should be scoped to the specific class/period
+    join_code = db.Column(db.String(20), nullable=True, index=True)
 
     status = db.Column(db.String(20), default='active')  # active, cancelled, suspended
     purchase_date = db.Column(db.DateTime, default=datetime.utcnow)
