@@ -162,9 +162,12 @@ class Student(db.Model):
         """
         if join_code:
             # Proper scoping by join_code (period-level isolation)
+            # Include legacy transactions with NULL join_code but matching teacher_id
             return round(sum(
                 tx.amount for tx in self.transactions
-                if tx.account_type == 'checking' and not tx.is_void and tx.join_code == join_code
+                if tx.account_type == 'checking' and not tx.is_void and (
+                    tx.join_code == join_code or (tx.join_code is None and teacher_id and tx.teacher_id == teacher_id)
+                )
             ), 2)
         elif teacher_id:
             # DEPRECATED: Only use this for backward compatibility during migration
@@ -196,9 +199,12 @@ class Student(db.Model):
         """
         if join_code:
             # Proper scoping by join_code (period-level isolation)
+            # Include legacy transactions with NULL join_code but matching teacher_id
             return round(sum(
                 tx.amount for tx in self.transactions
-                if tx.account_type == 'savings' and not tx.is_void and tx.join_code == join_code
+                if tx.account_type == 'savings' and not tx.is_void and (
+                    tx.join_code == join_code or (tx.join_code is None and teacher_id and tx.teacher_id == teacher_id)
+                )
             ), 2)
         elif teacher_id:
             # DEPRECATED: Only use this for backward compatibility during migration
@@ -230,9 +236,11 @@ class Student(db.Model):
         """
         if join_code:
             # Proper scoping by join_code (period-level isolation)
+            # Include legacy transactions with NULL join_code but matching teacher_id
             return round(sum(
                 tx.amount for tx in self.transactions
-                if tx.join_code == join_code and tx.amount > 0 and not tx.is_void
+                if (tx.join_code == join_code or (tx.join_code is None and teacher_id and tx.teacher_id == teacher_id))
+                and tx.amount > 0 and not tx.is_void
                 and not (tx.description or "").startswith("Transfer")
             ), 2)
         elif teacher_id:
