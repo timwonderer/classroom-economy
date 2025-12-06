@@ -38,3 +38,7 @@ See: [docs/development/MIGRATION_GUIDE.md](../docs/development/MIGRATION_GUIDE.m
 - Never edit migrations that have been committed to main
 - Use descriptive migration messages
 - Check for data loss before applying destructive changes
+
+## Current Head Status
+
+The migration graph currently has a single head at revision `a1b2c3d4e5f7` (`a1b2c3d4e5f7_add_student_blocks_and_tap_deletion.py`).
