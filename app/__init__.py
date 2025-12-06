@@ -443,6 +443,22 @@ def create_app():
             app.logger.warning(f"Could not load class context: {e}")
             return {'current_class_context': None, 'available_classes': []}
 
+    @app.context_processor
+    def inject_current_admin():
+        """Inject current admin object into all templates."""
+        try:
+            from app.models import Admin
+            from flask import session
+
+            admin_id = session.get('admin_id')
+            if admin_id:
+                admin = Admin.query.get(admin_id)
+                return {'current_admin': admin}
+            return {'current_admin': None}
+        except Exception as e:
+            app.logger.warning(f"Could not load current admin: {e}")
+            return {'current_admin': None}
+
     # -------------------- REGISTER BLUEPRINTS --------------------
     from app.routes.main import main_bp
     from app.routes.api import api_bp

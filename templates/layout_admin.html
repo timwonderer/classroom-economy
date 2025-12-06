@@ -396,6 +396,11 @@
         <div class="mb-4 text-center">
             <img src="{{ url_for('static', filename='images/admin-logo.svg') }}" alt="Admin Portal Logo" style="max-width: 80%; height: auto; margin-bottom: 1rem;">
             <h5 class="mb-0 d-flex align-items-center gap-2 justify-content-center"><span class="material-symbols-outlined">admin_panel_settings</span> Admin Portal</h5>
+            {% if current_admin %}
+            <small style="color: rgba(255, 255, 255, 0.8); font-size: 0.875rem; display: block; margin-top: 0.5rem;">
+                {{ current_admin.get_display_name() }}
+            </small>
+            {% endif %}
         </div>
         <div class="d-grid gap-2" style="overflow-y: auto;">
             <!-- Dashboard -->
@@ -489,6 +494,8 @@
                 </button>
                 <div class="collapse" id="adminSettingsCollapse">
                     <div class="d-flex flex-column gap-2 mt-2 ps-3">
+                        <a href="{{ url_for('admin.settings') }}"
+                           class="btn btn-sm text-start {% if current_page == 'settings' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">person</span> Profile</a>
                         <a href="{{ url_for('admin.feature_settings') }}"
                            class="btn btn-sm text-start {% if current_page == 'feature_settings' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">tune</span> Features</a>
                         <a href="{{ url_for('admin.deletion_requests') }}"
