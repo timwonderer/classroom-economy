@@ -1148,11 +1148,22 @@ def attendance_history():
         student_ids = [r.student_id for r in records]
         students = {s.id: {'name': s.full_name, 'block': s.block} for s in Student.query.filter(Student.id.in_(student_ids)).all()}
 
+        # Get class labels for blocks
+        admin_id = session.get("admin_id")
+        blocks_in_records = set(students[sid]['block'] for sid in students if students[sid]['block'])
+        class_labels = {}
+        for block in blocks_in_records:
+            teacher_block = TeacherBlock.query.filter_by(teacher_id=admin_id, block=block).first()
+            if teacher_block:
+                class_labels[block] = teacher_block.get_class_label()
+
         # Format records for response
         records_data = []
         for record in records:
             student_info = students.get(record.student_id, {'name': 'Unknown', 'block': 'Unknown'})
-            
+            student_block = student_info['block']
+            student_class_label = class_labels.get(student_block, student_block) if student_block != 'Unknown' else 'Unknown'
+
             # Format timestamp as UTC with 'Z' suffix
             timestamp_str = None
             if record.timestamp:
@@ -1165,12 +1176,13 @@ def attendance_history():
                     timestamp_str = record.timestamp.astimezone(timezone.utc).isoformat()
                 # Replace +00:00 with Z for cleaner UTC representation
                 timestamp_str = timestamp_str.replace('+00:00', 'Z')
-            
+
             records_data.append({
                 "id": record.id,
                 "student_id": record.student_id,
                 "student_name": student_info['name'],
-                "student_block": student_info['block'],
+                "student_block": student_block,
+                "student_class_label": student_class_label,
                 "period": record.period,
                 "status": record.status,
                 "reason": record.reason if record.reason else None,

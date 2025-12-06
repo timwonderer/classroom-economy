@@ -3875,11 +3875,23 @@ def attendance_log():
     
     # Get distinct blocks from Students for this admin's students
     blocks = _get_teacher_blocks()
-    
+
+    # Build class_labels_by_block dictionary
+    admin_id = session.get("admin_id")
+    class_labels_by_block = {}
+    for block in blocks:
+        teacher_block = TeacherBlock.query.filter_by(
+            teacher_id=admin_id,
+            block=block
+        ).first()
+        if teacher_block:
+            class_labels_by_block[block] = teacher_block.get_class_label()
+
     return render_template(
         'admin_attendance_log.html',
         periods=periods,
         blocks=blocks,
+        class_labels_by_block=class_labels_by_block,
         current_page="attendance"
     )
 
