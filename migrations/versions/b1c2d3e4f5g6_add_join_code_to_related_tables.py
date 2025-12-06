@@ -108,7 +108,50 @@ def upgrade():
     print("")
     print("⚠️  WARNING: Existing records will have NULL join_code")
     print("⚠️  Action required: Backfill join_code for historical data")
-    print("⚠️  See docs/security/CRITICAL_SAME_TEACHER_LEAK.md for backfill strategy")
+    print("⚠️  See below for table-specific SQL examples to backfill join_code:")
+    print("")
+    print("----")
+    print("student_items: If you have a student_items.period column, you can backfill join_code like:")
+    print(\"\"\"UPDATE student_items
+    SET join_code = (
+        SELECT join_code FROM enrollments
+        WHERE enrollments.student_id = student_items.student_id
+          AND enrollments.period = student_items.period
+        LIMIT 1
+    )
+    WHERE join_code IS NULL;\"\"\")
+    print("")
+    print("student_insurance: If you have a period or enrollment reference, use:")
+    print(\"\"\"UPDATE student_insurance
+    SET join_code = (
+        SELECT join_code FROM enrollments
+        WHERE enrollments.student_id = student_insurance.student_id
+          AND enrollments.period = student_insurance.period
+        LIMIT 1
+    )
+    WHERE join_code IS NULL;\"\"\")
+    print("")
+    print("hall_pass_logs: If hall_pass_logs.period exists, use:")
+    print(\"\"\"UPDATE hall_pass_logs
+    SET join_code = (
+        SELECT join_code FROM enrollments
+        WHERE enrollments.student_id = hall_pass_logs.student_id
+          AND enrollments.period = hall_pass_logs.period
+        LIMIT 1
+    )
+    WHERE join_code IS NULL;\"\"\")
+    print("")
+    print("rent_payments: If rent_payments.period exists, use:")
+    print(\"\"\"UPDATE rent_payments
+    SET join_code = (
+        SELECT join_code FROM enrollments
+        WHERE enrollments.student_id = rent_payments.student_id
+          AND enrollments.period = rent_payments.period
+        LIMIT 1
+    )
+    WHERE join_code IS NULL;\"\"\")
+    print("----")
+    print("If your schema differs, see docs/security/CRITICAL_SAME_TEACHER_LEAK.md#backfill-join_code for more details.")
     print("")
     print("----")
     print("Table-specific SQL examples to backfill join_code using enrollments.period mapping:")
