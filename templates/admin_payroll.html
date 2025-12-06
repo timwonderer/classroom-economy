@@ -837,6 +837,7 @@
           <div class="card-body">
             <form id="manualPaymentForm">
               {{ manual_payment_form.hidden_tag() }}
+              {{ manual_payment_form.block(id="manualPaymentBlock") }}
 
               <!-- Preset Reward/Fine Selector -->
               <div class="mb-3">
@@ -1006,6 +1007,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const studentRows = document.querySelectorAll('.student-row');
     const selectAllCheckbox = document.getElementById('selectAllStudents');
     const selectedCountEl = document.getElementById('selectedCount');
+    const manualPaymentBlock = document.getElementById('manualPaymentBlock');
 
     // Set default block (first option after "All Periods")
     if (studentBlockFilter && studentBlockFilter.options.length > 1) {
@@ -1016,6 +1018,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (studentBlockFilter) {
         studentBlockFilter.addEventListener('change', function() {
             const selectedBlock = this.value;
+            if (manualPaymentBlock) {
+                manualPaymentBlock.value = selectedBlock;
+            }
             studentRows.forEach(row => {
                 const studentBlocks = row.dataset.blocks.split(',').map(b => b.trim());
                 if (!selectedBlock || studentBlocks.includes(selectedBlock)) {
@@ -1589,9 +1594,15 @@ function deleteFine(fineId) {
 // Manual Payment: Apply to Selected
 document.getElementById('applyToSelected')?.addEventListener('click', async function() {
   const selectedStudents = Array.from(document.querySelectorAll('.student-checkbox:checked')).map(cb => cb.value);
+  const selectedBlock = document.getElementById('studentBlockFilter')?.value;
 
   if (selectedStudents.length === 0) {
     alert('Please select at least one student.');
+    return;
+  }
+
+  if (!selectedBlock) {
+    alert('Please select a specific period/block before sending a manual payment.');
     return;
   }
 
@@ -1604,7 +1615,7 @@ document.getElementById('applyToSelected')?.addEventListener('click', async func
     return;
   }
 
-  await submitManualPayment(selectedStudents, description, amount, accountType);
+  await submitManualPayment(selectedStudents, description, amount, accountType, selectedBlock);
 });
 
 // Manual Payment: Apply to All in Period
@@ -1636,17 +1647,18 @@ document.getElementById('applyToAll')?.addEventListener('click', async function(
 
   if (!confirm(`Apply payment to all ${allStudentsInPeriod.length} students in this period?`)) return;
 
-  await submitManualPayment(allStudentsInPeriod, description, amount, accountType);
+  await submitManualPayment(allStudentsInPeriod, description, amount, accountType, selectedBlock);
 });
 
 // Submit Manual Payment
-async function submitManualPayment(studentIds, description, amount, accountType) {
+async function submitManualPayment(studentIds, description, amount, accountType, block) {
   const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
   const formData = new FormData();
   formData.append('description', description);
   formData.append('amount', amount);
   formData.append('account_type', accountType);
+  formData.append('block', block || '');
   studentIds.forEach(id => formData.append('student_ids', id));
 
   try {

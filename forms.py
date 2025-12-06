@@ -272,6 +272,7 @@ class ManualPaymentForm(FlaskForm):
         ('checking', 'Checking'),
         ('savings', 'Savings')
     ], default='checking', validators=[DataRequired()])
+    block = HiddenField('Block', validators=[Optional()])
     # student_ids will be handled in the template with checkboxes
     submit = SubmitField('Send Payment')
 

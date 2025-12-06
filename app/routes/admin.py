@@ -3814,12 +3814,27 @@ def payroll_manual_payment():
     """Send manual payments to selected students."""
     form = ManualPaymentForm()
 
+    admin_id = session.get("admin_id")
+    response_is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
     if form.validate_on_submit():
         try:
             student_ids = request.form.getlist('student_ids')
+            block = (request.form.get('block') or '').strip().upper()
 
             if not student_ids:
-                flash('Please select at least one student.', 'warning')
+                message = 'Please select at least one student.'
+                if response_is_json:
+                    return jsonify({'success': False, 'message': message}), 400
+                flash(message, 'warning')
+                return redirect(url_for('admin.payroll'))
+
+            # Require an explicit block when the student could belong to multiple classes
+            if not block:
+                message = 'Select a period/block before sending a manual payment so it can be scoped to the correct class.'
+                if response_is_json:
+                    return jsonify({'success': False, 'message': message}), 400
+                flash(message, 'warning')
                 return redirect(url_for('admin.payroll'))
 
             description = form.description.data
@@ -3828,26 +3843,58 @@ def payroll_manual_payment():
 
             # Create transactions for each selected student
             count = 0
+            missing_scope = []
             for student_id in student_ids:
                 student = _get_student_or_404(int(student_id))
-                if student:
-                    transaction = Transaction(
-                        student_id=student.id,
-                        amount=amount,
-                        description=f"Manual Payment: {description}",
-                        account_type=account_type,
-                        type='manual_payment',
-                        timestamp=datetime.utcnow()
-                    )
-                    db.session.add(transaction)
-                    count += 1
+                if not student:
+                    continue
+
+                teacher_block = TeacherBlock.query.filter_by(
+                    student_id=student.id,
+                    teacher_id=admin_id,
+                    block=block
+                ).first()
+
+                if not teacher_block:
+                    missing_scope.append(student.full_name)
+                    continue
+
+                transaction = Transaction(
+                    student_id=student.id,
+                    teacher_id=admin_id,
+                    join_code=teacher_block.join_code,
+                    amount=amount,
+                    description=f"Manual Payment: {description}",
+                    account_type=account_type,
+                    type='manual_payment',
+                    timestamp=datetime.utcnow()
+                )
+                db.session.add(transaction)
+                count += 1
+
+            if missing_scope:
+                db.session.rollback()
+                message = (
+                    "Could not determine class for: " + ', '.join(missing_scope) +
+                    ". Make sure you select the correct period and that the student belongs to it."
+                )
+                if response_is_json:
+                    return jsonify({'success': False, 'message': message}), 400
+                flash(message, 'error')
+                return redirect(url_for('admin.payroll'))
 
             db.session.commit()
-            flash(f'Manual payment of ${amount:.2f} sent to {count} student(s)!', 'success')
+            success_message = f'Manual payment of ${amount:.2f} sent to {count} student(s)!'
+            if response_is_json:
+                return jsonify({'success': True, 'message': success_message})
+            flash(success_message, 'success')
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error sending manual payments: {e}")
-            flash('Error sending manual payments. Please try again.', 'error')
+            message = 'Error sending manual payments. Please try again.'
+            if response_is_json:
+                return jsonify({'success': False, 'message': message}), 500
+            flash(message, 'error')
     else:
         flash('Invalid form data. Please check your inputs.', 'error')
 
