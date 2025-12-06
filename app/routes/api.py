@@ -20,7 +20,7 @@ from app.extensions import db
 from app.models import (
     Student, StoreItem, StudentItem, Transaction, TapEvent,
     HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
-    StudentTeacher
+    StudentTeacher, TeacherBlock
 )
 from app.auth import login_required, admin_required, get_logged_in_student, get_current_admin, SESSION_TIMEOUT_MINUTES
 from app.routes.student import get_current_teacher_id
