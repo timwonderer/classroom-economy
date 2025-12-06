@@ -8,7 +8,7 @@ For gunicorn: wsgi:app
 """
 
 from flask import render_template, request, session
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import traceback
 import collections
 import os
@@ -214,7 +214,7 @@ def log_error_to_db(error_type=None, error_message=None, stack_trace=None, log_o
 
         # Create error log entry
         error_log = ErrorLog(
-            timestamp=datetime.utcnow(),
+            timestamp=datetime.now(timezone.utc),
             error_type=error_type,
             error_message=error_message,
             request_path=request_path,
@@ -291,7 +291,7 @@ def not_found_error(error):
         app._404_cache = {}
 
     # Clean old entries (older than 1 hour)
-    current_time = datetime.utcnow()
+    current_time = datetime.now(timezone.utc)
     app._404_cache = {k: v for k, v in app._404_cache.items()
                       if (current_time - v).total_seconds() < 3600}
 

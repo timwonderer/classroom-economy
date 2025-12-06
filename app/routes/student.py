@@ -533,7 +533,7 @@ def claim_account():
             # Student already exists - link this seat to existing student
             matched_seat.student_id = existing_student.id
             matched_seat.is_claimed = True
-            matched_seat.claimed_at = datetime.utcnow()
+            matched_seat.claimed_at = datetime.now(timezone.utc)
 
             # Create StudentTeacher link
             existing_link = StudentTeacher.query.filter_by(
@@ -584,7 +584,7 @@ def claim_account():
         # Link seat to student
         matched_seat.student_id = new_student.id
         matched_seat.is_claimed = True
-        matched_seat.claimed_at = datetime.utcnow()
+        matched_seat.claimed_at = datetime.now(timezone.utc)
 
         # Create StudentTeacher link
         link = StudentTeacher(
@@ -788,7 +788,7 @@ def add_class():
         # Link the seat to the existing student
         matched_seat.student_id = student.id
         matched_seat.is_claimed = True
-        matched_seat.claimed_at = datetime.utcnow()
+        matched_seat.claimed_at = datetime.now(timezone.utc)
 
         # Create StudentTeacher link
         link = StudentTeacher(
@@ -1394,7 +1394,7 @@ def insurance_marketplace():
             ).order_by(StudentInsurance.cancel_date.desc()).first()
 
             if cancelled and cancelled.cancel_date:
-                days_since_cancel = (datetime.utcnow() - cancelled.cancel_date).days
+                days_since_cancel = (datetime.now(timezone.utc) - cancelled.cancel_date).days
                 if days_since_cancel < policy.repurchase_wait_days:
                     can_purchase[policy.id] = False
                     repurchase_blocks[policy.id] = policy.repurchase_wait_days - days_since_cancel
@@ -1440,7 +1440,7 @@ def insurance_marketplace():
                           can_purchase=can_purchase,
                           repurchase_blocks=repurchase_blocks,
                           my_claims=my_claims,
-                          now=datetime.utcnow())
+                          now=datetime.now(timezone.utc))
 
 
 @student_bp.route('/insurance/purchase/<int:policy_id>', methods=['POST'])
@@ -1491,7 +1491,7 @@ def purchase_insurance(policy_id):
 
         # Check for cooldown period (temporary restriction)
         if policy.enable_repurchase_cooldown and cancelled.cancel_date:
-            days_since_cancel = (datetime.utcnow() - cancelled.cancel_date).days
+            days_since_cancel = (datetime.now(timezone.utc) - cancelled.cancel_date).days
             if days_since_cancel < policy.repurchase_wait_days:
                 flash(f"You must wait {policy.repurchase_wait_days - days_since_cancel} more days before repurchasing this policy.", "warning")
                 return redirect(url_for('student.student_insurance'))
@@ -1524,10 +1524,10 @@ def purchase_insurance(policy_id):
         student_id=student.id,
         policy_id=policy.id,
         status='active',
-        purchase_date=datetime.utcnow(),
-        last_payment_date=datetime.utcnow(),
-        next_payment_due=datetime.utcnow() + timedelta(days=30),  # Simplified
-        coverage_start_date=datetime.utcnow() + timedelta(days=policy.waiting_period_days),
+        purchase_date=datetime.now(timezone.utc),
+        last_payment_date=datetime.now(timezone.utc),
+        next_payment_due=datetime.now(timezone.utc) + timedelta(days=30),  # Simplified
+        coverage_start_date=datetime.now(timezone.utc) + timedelta(days=policy.waiting_period_days),
         payment_current=True
     )
     db.session.add(enrollment)
@@ -1562,7 +1562,7 @@ def cancel_insurance(enrollment_id):
         return redirect(url_for('student.student_insurance'))
 
     enrollment.status = 'cancelled'
-    enrollment.cancel_date = datetime.utcnow()
+    enrollment.cancel_date = datetime.now(timezone.utc)
 
     db.session.commit()
     flash(f"Insurance policy '{enrollment.policy.title}' has been cancelled.", "info")
@@ -1589,13 +1589,13 @@ def file_claim(policy_id):
     policy = enrollment.policy
     form = InsuranceClaimForm()
     if policy.claim_type == 'transaction_monetary' and not form.incident_date.data:
-        form.incident_date.data = datetime.utcnow().date()
+        form.incident_date.data = datetime.now(timezone.utc).date()
 
     # Validation errors
     errors = []
 
     def _get_period_bounds():
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if policy.max_claims_period == 'year':
             return (
                 now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0),
@@ -1617,7 +1617,7 @@ def file_claim(policy_id):
         return period_start, period_end
 
     # Check if coverage has started
-    if not enrollment.coverage_start_date or enrollment.coverage_start_date > datetime.utcnow():
+    if not enrollment.coverage_start_date or enrollment.coverage_start_date > datetime.now(timezone.utc):
         errors.append(f"Coverage has not started yet. Please wait until {enrollment.coverage_start_date.strftime('%B %d, %Y') if enrollment.coverage_start_date else 'coverage starts'}.")
 
     # Check if payment is current
@@ -1655,7 +1655,7 @@ def file_claim(policy_id):
         claimed_tx_subq = db.session.query(InsuranceClaim.transaction_id).filter(
             InsuranceClaim.transaction_id.isnot(None)
         )
-        cutoff_date = datetime.utcnow() - timedelta(days=policy.claim_time_limit_days)
+        cutoff_date = datetime.now(timezone.utc) - timedelta(days=policy.claim_time_limit_days)
         tx_query = (
             Transaction.query
             .filter(Transaction.student_id == student.id)
@@ -1718,10 +1718,10 @@ def file_claim(policy_id):
             claim_amount_value = abs(selected_transaction.amount)
             transaction_id_value = selected_transaction.id
 
-            days_since_incident = (datetime.utcnow() - incident_date_value).days
+            days_since_incident = (datetime.now(timezone.utc) - incident_date_value).days
         else:
             incident_date_value = datetime.combine(form.incident_date.data, datetime.min.time())
-            days_since_incident = (datetime.utcnow() - incident_date_value).days
+            days_since_incident = (datetime.now(timezone.utc) - incident_date_value).days
 
         if policy.claim_type == 'non_monetary':
             if not form.claim_item.data:
@@ -1812,7 +1812,7 @@ def view_policy(enrollment_id):
                           enrollment=enrollment,
                           policy=enrollment.policy,
                           claims=claims,
-                          now=datetime.utcnow())
+                          now=datetime.now(timezone.utc))
 
 
 # -------------------- SHOPPING --------------------

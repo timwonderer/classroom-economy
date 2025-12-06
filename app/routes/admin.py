@@ -752,7 +752,7 @@ def login():
             totp = pyotp.TOTP(admin.totp_secret)
             if totp.verify(totp_code, valid_window=1):
                 # Update last login timestamp
-                admin.last_login = datetime.utcnow()
+                admin.last_login = datetime.now(timezone.utc)
                 db.session.commit()
 
                 session["is_admin"] = True
@@ -801,7 +801,7 @@ def signup():
                 return jsonify(status="error", message=msg), 400
             flash(msg, "error")
             return redirect(url_for('admin.signup'))
-        if code_row.expires_at and code_row.expires_at < datetime.utcnow():
+        if code_row.expires_at and code_row.expires_at < datetime.now(timezone.utc):
             current_app.logger.warning(f"🛑 Admin signup failed: invite code expired")
             msg = "Invite code expired."
             if is_json:
@@ -1375,7 +1375,7 @@ def edit_student():
                 join_code=join_code,
                 is_claimed=is_claimed,
                 student_id=student.id,  # Always link since student record exists
-                claimed_at=datetime.utcnow() if is_claimed else None
+                claimed_at=datetime.now(timezone.utc) if is_claimed else None
             )
             db.session.add(new_tb)
 
@@ -2058,7 +2058,7 @@ def add_manual_student():
             join_code=join_code,
             is_claimed=is_claimed,
             student_id=new_student.id,
-            claimed_at=datetime.utcnow() if is_claimed else None,
+            claimed_at=datetime.now(timezone.utc) if is_claimed else None,
         )
         db.session.add(new_tb)
         
@@ -2878,7 +2878,7 @@ def process_claim(claim_id):
     enrollment = StudentInsurance.query.get(claim.student_insurance_id)
 
     def _get_period_bounds():
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         if claim.policy.max_claims_period == 'year':
             return (
                 now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0),
@@ -2910,7 +2910,7 @@ def process_claim(claim_id):
     validation_errors = []
 
     # Check if coverage has started (past waiting period)
-    if not enrollment.coverage_start_date or enrollment.coverage_start_date > datetime.utcnow():
+    if not enrollment.coverage_start_date or enrollment.coverage_start_date > datetime.now(timezone.utc):
         validation_errors.append("Coverage has not started yet (still in waiting period)")
 
     # Check if payment is current
@@ -2944,7 +2944,7 @@ def process_claim(claim_id):
             validation_errors.append("Another claim is already tied to this transaction")
 
     incident_reference = claim.transaction.timestamp if claim.policy.claim_type == 'transaction_monetary' and claim.transaction else claim.incident_date
-    days_since_incident = (datetime.utcnow() - incident_reference).days
+    days_since_incident = (datetime.now(timezone.utc) - incident_reference).days
     if days_since_incident > claim.policy.claim_time_limit_days:
         validation_errors.append(f"Claim filed too late ({days_since_incident} days after incident, limit is {claim.policy.claim_time_limit_days} days)")
 
@@ -3000,7 +3000,7 @@ def process_claim(claim_id):
         claim.status = new_status
         claim.admin_notes = form.admin_notes.data
         claim.rejection_reason = form.rejection_reason.data if new_status == 'rejected' else None
-        claim.processed_date = datetime.utcnow()
+        claim.processed_date = datetime.now(timezone.utc)
         claim.processed_by_admin_id = session.get('admin_id')
 
         # Handle monetary claims - auto-deposit when approved/paid
@@ -3667,7 +3667,7 @@ def payroll_settings():
             for key, value in settings_data.items():
                 setattr(setting, key, value)
 
-            setting.updated_at = datetime.utcnow()
+            setting.updated_at = datetime.now(timezone.utc)
             db.session.add(setting)
 
         db.session.commit()
@@ -3901,7 +3901,7 @@ def payroll_apply_reward(reward_id):
                     description=f"Reward: {reward.name}",
                     account_type='checking',
                     type='reward',
-                    timestamp=datetime.utcnow()
+                    timestamp=datetime.now(timezone.utc)
                 )
                 db.session.add(transaction)
                 count += 1
@@ -3935,7 +3935,7 @@ def payroll_apply_fine(fine_id):
                     description=f"Fine: {fine.name}",
                     account_type='checking',
                     type='fine',
-                    timestamp=datetime.utcnow()
+                    timestamp=datetime.now(timezone.utc)
                 )
                 db.session.add(transaction)
                 count += 1
@@ -3977,7 +3977,7 @@ def payroll_manual_payment():
                         description=f"Manual Payment: {description}",
                         account_type=account_type,
                         type='manual_payment',
-                        timestamp=datetime.utcnow()
+                        timestamp=datetime.now(timezone.utc)
                     )
                     db.session.add(transaction)
                     count += 1
@@ -4703,7 +4703,7 @@ def banking_settings_update():
             settings.overdraft_fee_progressive_2 = form.overdraft_fee_progressive_2.data or 0.0
             settings.overdraft_fee_progressive_3 = form.overdraft_fee_progressive_3.data or 0.0
             settings.overdraft_fee_progressive_cap = form.overdraft_fee_progressive_cap.data
-            settings.updated_at = datetime.utcnow()
+            settings.updated_at = datetime.now(timezone.utc)
 
         try:
             db.session.commit()
@@ -4962,7 +4962,7 @@ def feature_settings():
                 for key, value in features_data.items():
                     setattr(global_settings, key, value)
 
-                global_settings.updated_at = datetime.utcnow()
+                global_settings.updated_at = datetime.now(timezone.utc)
 
                 # Also update all period-specific settings
                 for period in periods:
@@ -4978,7 +4978,7 @@ def feature_settings():
                     for key, value in features_data.items():
                         setattr(period_settings, key, value)
 
-                    period_settings.updated_at = datetime.utcnow()
+                    period_settings.updated_at = datetime.now(timezone.utc)
 
                 flash('Feature settings applied to all periods successfully!', 'success')
             else:
@@ -4999,7 +4999,7 @@ def feature_settings():
                     for key, value in features_data.items():
                         setattr(period_settings, key, value)
 
-                    period_settings.updated_at = datetime.utcnow()
+                    period_settings.updated_at = datetime.now(timezone.utc)
 
                 flash(f'Feature settings applied to {len(selected_periods)} period(s) successfully!', 'success')
 
@@ -5095,7 +5095,7 @@ def update_period_feature_settings(period):
         if not settings.bug_reports_enabled:
             settings.bug_rewards_enabled = False
 
-        settings.updated_at = datetime.utcnow()
+        settings.updated_at = datetime.now(timezone.utc)
         db.session.commit()
 
         return jsonify({
@@ -5175,7 +5175,7 @@ def copy_feature_settings():
                 if key in valid_feature_columns:
                     setattr(target_settings, key, value)
 
-            target_settings.updated_at = datetime.utcnow()
+            target_settings.updated_at = datetime.now(timezone.utc)
             copied_count += 1
 
         db.session.commit()
@@ -5299,7 +5299,7 @@ def onboarding_step(step_name):
                 if hasattr(global_settings, feature_column):
                     setattr(global_settings, feature_column, bool(enabled))
 
-            global_settings.updated_at = datetime.utcnow()
+            global_settings.updated_at = datetime.now(timezone.utc)
 
         elif step_name == 'periods':
             # Periods are set up via the regular student upload flow
@@ -5397,7 +5397,7 @@ def onboarding_reset():
             onboarding_record.steps_completed = {}
             onboarding_record.completed_at = None
             onboarding_record.skipped_at = None
-            onboarding_record.last_activity_at = datetime.utcnow()
+            onboarding_record.last_activity_at = datetime.now(timezone.utc)
             db.session.commit()
 
         return jsonify({

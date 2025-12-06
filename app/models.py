@@ -62,7 +62,7 @@ class TeacherBlock(db.Model):
     is_claimed = db.Column(db.Boolean, default=False, nullable=False)
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utc_now)
     claimed_at = db.Column(db.DateTime, nullable=True)
 
     # Relationships
@@ -320,7 +320,7 @@ class AdminInviteCode(db.Model):
     expires_at = db.Column(db.DateTime, nullable=True)
     used = db.Column(db.Boolean, default=False)
     # All times stored as UTC (see header note)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utc_now)
 
 
 class StudentTeacher(db.Model):
@@ -328,7 +328,7 @@ class StudentTeacher(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
     admin_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)
+    created_at = db.Column(db.DateTime, default=_utc_now, nullable=True)
 
     __table_args__ = (
         db.UniqueConstraint('student_id', 'admin_id', name='uq_student_teachers_student_admin'),
@@ -413,13 +413,13 @@ class Transaction(db.Model):
 
     amount = db.Column(db.Float, nullable=False)
     # All times stored as UTC (see header note)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=_utc_now)
     account_type = db.Column(db.String(20), default='checking')
     description = db.Column(db.String(255))
     is_void = db.Column(db.Boolean, default=False)
     type = db.Column(db.String(50))  # optional field to describe the transaction type
     # All times stored as UTC
-    date_funds_available = db.Column(db.DateTime, default=datetime.utcnow)
+    date_funds_available = db.Column(db.DateTime, default=_utc_now)
 
     # Relationship to track which teacher created this transaction
     teacher = db.relationship('Admin', backref=db.backref('transactions', lazy='dynamic'))
@@ -443,8 +443,8 @@ class StudentBlock(db.Model):
     # This locks them out until 11:59 PM same day
     done_for_day_date = db.Column(db.Date, nullable=True)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utc_now)
+    updated_at = db.Column(db.DateTime, default=_utc_now, onupdate=_utc_now)
 
     student = db.relationship("Student", backref=db.backref("student_blocks", passive_deletes=True))
 
@@ -463,7 +463,7 @@ class TapEvent(db.Model):
     period = db.Column(db.String(10), nullable=False)
     status = db.Column(db.String(10), nullable=False)  # 'active' or 'inactive'
     # All times stored as UTC (see header note)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow)
+    timestamp = db.Column(db.DateTime, default=_utc_now)
     reason = db.Column(db.String(50), nullable=True)
 
     # Flag to indicate if this event was deleted by a teacher
@@ -489,7 +489,7 @@ class HallPassLog(db.Model):
     # Each hall pass request should be scoped to the specific class/period
     join_code = db.Column(db.String(20), nullable=True, index=True)
 
-    request_time = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    request_time = db.Column(db.DateTime, default=_utc_now, nullable=False)
     decision_time = db.Column(db.DateTime, nullable=True)
     left_time = db.Column(db.DateTime, nullable=True)
     return_time = db.Column(db.DateTime, nullable=True)
@@ -509,8 +509,8 @@ class HallPassSettings(db.Model):
     # Queue limit (when queue + currently out >= this number, restrict certain passes)
     queue_limit = db.Column(db.Integer, default=10, nullable=False)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utc_now)
+    updated_at = db.Column(db.DateTime, default=_utc_now, onupdate=_utc_now)
 
     # Relationships
     teacher = db.relationship('Admin', backref=db.backref('hall_pass_settings', lazy='dynamic'))
@@ -599,7 +599,7 @@ class StudentItem(db.Model):
     # Each purchase should be scoped to the specific class/period where it was made
     join_code = db.Column(db.String(20), nullable=True, index=True)
 
-    purchase_date = db.Column(db.DateTime, default=datetime.utcnow)
+    purchase_date = db.Column(db.DateTime, default=_utc_now)
     expiry_date = db.Column(db.DateTime, nullable=True)
     # purchased, pending (for collective), processing, completed, expired, redeemed
     status = db.Column(db.String(20), default='purchased', nullable=False)
@@ -648,7 +648,7 @@ class RentSettings(db.Model):
     prevent_purchase_when_late = db.Column(db.Boolean, default=False)
 
     # Metadata
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=_utc_now, onupdate=_utc_now)
 
     # Relationships
     teacher = db.relationship('Admin', backref=db.backref('rent_settings', lazy='dynamic'))
@@ -672,7 +672,7 @@ class RentPayment(db.Model):
     amount_paid = db.Column(db.Float, nullable=False)
     period_month = db.Column(db.Integer, nullable=False)  # Month (1-12)
     period_year = db.Column(db.Integer, nullable=False)  # Year (e.g., 2025)
-    payment_date = db.Column(db.DateTime, default=datetime.utcnow)
+    payment_date = db.Column(db.DateTime, default=_utc_now)
     was_late = db.Column(db.Boolean, default=False)
     late_fee_charged = db.Column(db.Float, default=0.0)
 
@@ -688,7 +688,7 @@ class RentWaiver(db.Model):
     periods_count = db.Column(db.Integer, nullable=False)  # Number of rent periods to skip
     reason = db.Column(db.Text, nullable=True)
     created_by_admin_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utc_now)
 
     student = db.relationship('Student', backref='rent_waivers')
     created_by = db.relationship('Admin', backref='rent_waivers_created')
@@ -739,8 +739,8 @@ class InsurancePolicy(db.Model):
     settings_mode = db.Column(db.String(20), nullable=True, default='advanced')  # simple or advanced
 
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utc_now)
+    updated_at = db.Column(db.DateTime, default=_utc_now, onupdate=_utc_now)
 
     # Relationships
     teacher = db.relationship('Admin', foreign_keys=[teacher_id], backref='insurance_policies_owned')
@@ -799,7 +799,7 @@ class StudentInsurance(db.Model):
     join_code = db.Column(db.String(20), nullable=True, index=True)
 
     status = db.Column(db.String(20), default='active')  # active, cancelled, suspended
-    purchase_date = db.Column(db.DateTime, default=datetime.utcnow)
+    purchase_date = db.Column(db.DateTime, default=_utc_now)
     cancel_date = db.Column(db.DateTime, nullable=True)
     last_payment_date = db.Column(db.DateTime, nullable=True)
     next_payment_due = db.Column(db.DateTime, nullable=True)
@@ -825,7 +825,7 @@ class InsuranceClaim(db.Model):
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
 
     incident_date = db.Column(db.DateTime, nullable=False)  # When incident occurred
-    filed_date = db.Column(db.DateTime, default=datetime.utcnow)
+    filed_date = db.Column(db.DateTime, default=_utc_now)
     description = db.Column(db.Text, nullable=False)
     claim_amount = db.Column(db.Float, nullable=True)  # For monetary claims: requested amount
     claim_item = db.Column(db.Text, nullable=True)  # For non-monetary claims: what they're claiming
@@ -849,7 +849,7 @@ class InsuranceClaim(db.Model):
 class ErrorLog(db.Model):
     __tablename__ = 'error_logs'
     id = db.Column(db.Integer, primary_key=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    timestamp = db.Column(db.DateTime, default=_utc_now, nullable=False, index=True)
     error_type = db.Column(db.String(100), nullable=True)  # Type of error (e.g., Exception class name)
     error_message = db.Column(db.Text, nullable=True)  # Error message
     request_path = db.Column(db.String(500), nullable=True)  # URL path that caused the error
@@ -879,7 +879,7 @@ class UserReport(db.Model):
     page_url = db.Column(db.String(500), nullable=True)  # URL where error occurred
 
     # Metadata
-    submitted_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    submitted_at = db.Column(db.DateTime, default=_utc_now, nullable=False, index=True)
     ip_address = db.Column(db.String(50), nullable=True)
     user_agent = db.Column(db.String(500), nullable=True)
 
@@ -912,7 +912,7 @@ class Admin(db.Model):
     display_name = db.Column(db.String(100), nullable=True)  # Teacher's display name (defaults to username if not set)
     # TOTP-only: store secret, remove password_hash
     totp_secret = db.Column(db.String(32), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=True)  # Nullable for existing records
+    created_at = db.Column(db.DateTime, default=_utc_now, nullable=True)  # Nullable for existing records
     last_login = db.Column(db.DateTime, nullable=True)
     has_assigned_students = db.Column(db.Boolean, default=False, nullable=False)  # One-time setup flag
 
@@ -931,8 +931,8 @@ class PayrollSettings(db.Model):
     payroll_frequency_days = db.Column(db.Integer, nullable=False, default=14)
     next_payroll_date = db.Column(db.DateTime, nullable=True)
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utc_now)
+    updated_at = db.Column(db.DateTime, default=_utc_now, onupdate=_utc_now)
 
     # Optional: different rates for different scenarios
     overtime_multiplier = db.Column(db.Float, default=1.0)
@@ -974,7 +974,7 @@ class PayrollReward(db.Model):
     description = db.Column(db.Text, nullable=True)
     amount = db.Column(db.Float, nullable=False)
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utc_now)
 
     # Relationships
     teacher = db.relationship('Admin', backref=db.backref('payroll_rewards', lazy='dynamic'))
@@ -992,7 +992,7 @@ class PayrollFine(db.Model):
     description = db.Column(db.Text, nullable=True)
     amount = db.Column(db.Float, nullable=False)  # Positive value, will be deducted
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utc_now)
 
     # Relationships
     teacher = db.relationship('Admin', backref=db.backref('payroll_fines', lazy='dynamic'))
@@ -1035,8 +1035,8 @@ class BankingSettings(db.Model):
 
     # Metadata
     is_active = db.Column(db.Boolean, default=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utc_now)
+    updated_at = db.Column(db.DateTime, default=_utc_now, onupdate=_utc_now)
 
     # Relationships
     teacher = db.relationship('Admin', backref=db.backref('banking_settings', lazy='dynamic'))
@@ -1062,7 +1062,7 @@ class DemoStudent(db.Model):
 
     # Session tracking
     session_id = db.Column(db.String(255), nullable=False, unique=True)  # Flask session ID
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)  # Auto-cleanup after 10 minutes
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     ended_at = db.Column(db.DateTime, nullable=True)
@@ -1121,8 +1121,8 @@ class FeatureSettings(db.Model):
     bug_rewards_enabled = db.Column(db.Boolean, default=True, nullable=False)
 
     # Timestamps
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=_utc_now)
+    updated_at = db.Column(db.DateTime, default=_utc_now, onupdate=_utc_now)
 
     # Relationships
     teacher = db.relationship('Admin', backref=db.backref('feature_settings', lazy='dynamic', passive_deletes=True))
@@ -1197,10 +1197,10 @@ class TeacherOnboarding(db.Model):
     steps_completed = db.Column(db.JSON, default=dict, nullable=False)
 
     # Timestamps
-    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    started_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
     completed_at = db.Column(db.DateTime, nullable=True)
     skipped_at = db.Column(db.DateTime, nullable=True)
-    last_activity_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    last_activity_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
 
     # Relationships
     teacher = db.relationship('Admin', backref=db.backref('onboarding', uselist=False, passive_deletes=True))

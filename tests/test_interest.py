@@ -7,7 +7,7 @@ from app import Transaction, apply_savings_interest, db
 def test_apply_savings_interest_with_naive_datetimes(client, test_student):
     from unittest.mock import patch
 
-    past_date = datetime.utcnow() - timedelta(days=31)
+    past_date = datetime.now(timezone.utc) - timedelta(days=31)
     savings_tx = Transaction(
         student_id=test_student.id,
         amount=100.0,
@@ -38,8 +38,8 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
 
 
 def test_dashboard_renders_recent_deposit(client, test_student):
-    recent_deposit_time = datetime.utcnow() - timedelta(hours=12)
-    mature_savings_time = datetime.utcnow() - timedelta(days=31)
+    recent_deposit_time = datetime.now(timezone.utc) - timedelta(hours=12)
+    mature_savings_time = datetime.now(timezone.utc) - timedelta(days=31)
 
     recent_deposit = Transaction(
         student_id=test_student.id,

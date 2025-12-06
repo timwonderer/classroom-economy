@@ -543,7 +543,7 @@ def manage_teachers():
     if form.validate_on_submit():
         code = form.code.data or secrets.token_urlsafe(8)
         expiry_days = request.form.get('expiry_days', 30, type=int)
-        expires_at = datetime.utcnow() + timedelta(days=expiry_days)
+        expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
         invite = AdminInviteCode(code=code, expires_at=expires_at)
         db.session.add(invite)
         db.session.commit()

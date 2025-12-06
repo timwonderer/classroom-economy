@@ -35,7 +35,7 @@ def _enroll_student(student_id, policy_id):
         student_id=student_id,
         policy_id=policy_id,
         status="active",
-        coverage_start_date=datetime.utcnow() - timedelta(days=2),
+        coverage_start_date=datetime.now(timezone.utc) - timedelta(days=2),
         payment_current=True,
     )
     db.session.add(enrollment)

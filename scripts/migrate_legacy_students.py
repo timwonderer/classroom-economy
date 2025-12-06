@@ -28,7 +28,7 @@ import os
 # Add parent directory to path so we can import app modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app import create_app
 from app.extensions import db
@@ -98,7 +98,7 @@ def migrate_legacy_students():
                 st = StudentTeacher(
                     student_id=student.id,
                     admin_id=student.teacher_id,
-                    created_at=datetime.utcnow()
+                    created_at=datetime.now(timezone.utc)
                 )
                 db.session.add(st)
                 student_teacher_created += 1
@@ -205,7 +205,7 @@ def migrate_legacy_students():
                     join_code=join_code,
                     is_claimed=True,  # Mark as claimed since student already exists
                     student_id=student.id,  # Link to existing student
-                    claimed_at=datetime.utcnow()
+                    claimed_at=datetime.now(timezone.utc)
                 )
                 db.session.add(tb)
                 teacher_blocks_created += 1

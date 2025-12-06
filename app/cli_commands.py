@@ -4,7 +4,7 @@ Flask CLI commands for database operations and migrations.
 
 import click
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.extensions import db
 from app.models import Student, StudentTeacher, TeacherBlock
@@ -81,7 +81,7 @@ def migrate_legacy_students_command():
             st = StudentTeacher(
                 student_id=student.id,
                 admin_id=student.teacher_id,
-                created_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc)
             )
             db.session.add(st)
             student_teacher_created += 1
@@ -188,7 +188,7 @@ def migrate_legacy_students_command():
                 join_code=join_code,
                 is_claimed=True,  # Mark as claimed since student already exists
                 student_id=student.id,  # Link to existing student
-                claimed_at=datetime.utcnow()
+                claimed_at=datetime.now(timezone.utc)
             )
             db.session.add(tb)
             teacher_blocks_created += 1
@@ -453,7 +453,7 @@ def fix_missing_teacher_blocks_command():
                 join_code=join_code,
                 is_claimed=True,  # Mark as claimed since student already has account
                 student_id=assoc_student.id,  # Link to existing student
-                claimed_at=datetime.utcnow()
+                claimed_at=datetime.now(timezone.utc)
             )
             db.session.add(tb)
             teacher_blocks_created += 1
