@@ -173,7 +173,7 @@
         border: none;
         border-radius: 16px;
         box-shadow: var(--shadow-sm);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: none;
         overflow: hidden;
         position: relative;
     }
@@ -189,8 +189,8 @@
     }
 
     .card:hover {
-        transform: translateY(-4px);
-        box-shadow: var(--shadow-lg);
+        transform: none;
+        box-shadow: var(--shadow-sm);
     }
 
     .card-header {
@@ -611,12 +611,6 @@
                     <small style="opacity: 0.9;">{{ current_seat.teacher.get_display_name() if current_seat.teacher else 'Teacher' }}</small>
                 </div>
             </div>
-            {% if available_classes and available_classes|length > 1 %}
-            <a href="#" class="btn btn-light btn-sm class-switch-trigger" style="font-weight: 600;" data-bs-toggle="dropdown" data-bs-target="#classSwitcherDropdown" aria-haspopup="true" aria-expanded="false">
-                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1.2rem;">swap_horiz</span>
-                Switch Class
-            </a>
-            {% endif %}
         </div>
         {% endif %}
 

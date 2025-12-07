@@ -1150,15 +1150,7 @@ def student_detail(student_id):
 
     # Get student's active insurance policy (scoped to current teacher)
     teacher_id = session.get('admin_id')
-    active_insurance = None
-    if teacher_id:
-        active_insurance = StudentInsurance.query.join(
-            InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id
-        ).filter(
-            StudentInsurance.student_id == student.id,
-            StudentInsurance.status == 'active',
-            InsurancePolicy.teacher_id == teacher_id  # Scope to current teacher only
-        ).first()
+    active_insurance = student.get_active_insurance(teacher_id)
 
     # Get all blocks for the edit modal
     all_students = _scoped_students().all()
@@ -2499,8 +2491,26 @@ def insurance_management():
     blocks = _get_teacher_blocks()
     form.blocks.choices = [(block, f"Period {block}") for block in blocks]
 
+    # Optional block filter for scoping
+    selected_block = request.args.get('block', type=str)
+    if selected_block:
+        selected_block = selected_block.strip().upper()
+        if selected_block not in blocks:
+            selected_block = None
+
     current_teacher_id = session.get('admin_id')
-    existing_policies = InsurancePolicy.query.filter_by(teacher_id=current_teacher_id).all()
+    policies_query = InsurancePolicy.query.filter_by(teacher_id=current_teacher_id)
+    if selected_block:
+        policies_query = policies_query.outerjoin(
+            InsurancePolicyBlock,
+            InsurancePolicyBlock.policy_id == InsurancePolicy.id,
+        ).filter(
+            or_(
+                InsurancePolicyBlock.block == selected_block,
+                ~InsurancePolicy.visible_blocks.any(),
+            )
+        )
+    existing_policies = policies_query.all()
 
     # Collect existing tier groups for the current teacher
     tier_groups_map = {}
@@ -2573,37 +2583,69 @@ def insurance_management():
     # Get policies for current teacher only
     policies = existing_policies
 
+    # Map selected block to join_code for scoping enrollments/claims
+    block_join_code_map = {
+        b.block.strip().upper(): b.join_code
+        for b in TeacherBlock.query
+        .filter_by(teacher_id=current_teacher_id)
+        .with_entities(TeacherBlock.block, TeacherBlock.join_code)
+        .all()
+        if b.block and b.join_code
+    }
+    selected_join_code = block_join_code_map.get(selected_block) if selected_block else None
+
     # Get all student enrollments
-    active_enrollments = (
+    active_enrollments_query = (
         StudentInsurance.query
         .join(Student, StudentInsurance.student_id == Student.id)
         .filter(Student.id.in_(student_ids_subq))
         .filter(StudentInsurance.status == 'active')
-        .all()
     )
-    cancelled_enrollments = (
+    cancelled_enrollments_query = (
         StudentInsurance.query
         .join(Student, StudentInsurance.student_id == Student.id)
         .filter(Student.id.in_(student_ids_subq))
         .filter(StudentInsurance.status == 'cancelled')
-        .all()
     )
+    block_filter = None
+    if selected_join_code:
+        block_filter = StudentInsurance.join_code == selected_join_code
+    if selected_block:
+        fallback_block_filter = sa.and_(
+            StudentInsurance.join_code.is_(None),
+            Student.block.ilike(f"%{selected_block}%")
+        )
+        block_filter = sa.or_(block_filter, fallback_block_filter) if block_filter is not None else fallback_block_filter
+
+    if block_filter is not None:
+        active_enrollments_query = active_enrollments_query.filter(block_filter)
+        cancelled_enrollments_query = cancelled_enrollments_query.filter(block_filter)
+
+    active_enrollments = active_enrollments_query.all()
+    cancelled_enrollments = cancelled_enrollments_query.all()
 
     # Get all claims
-    claims = (
+    claims_query = (
         InsuranceClaim.query
+        .join(StudentInsurance, StudentInsurance.id == InsuranceClaim.student_insurance_id)
         .join(Student, InsuranceClaim.student_id == Student.id)
         .filter(Student.id.in_(student_ids_subq))
         .order_by(InsuranceClaim.filed_date.desc())
-        .all()
     )
-    pending_claims_count = (
+    if block_filter is not None:
+        claims_query = claims_query.filter(block_filter)
+    claims = claims_query.all()
+
+    pending_claims_count_query = (
         InsuranceClaim.query
+        .join(StudentInsurance, StudentInsurance.id == InsuranceClaim.student_insurance_id)
         .join(Student, InsuranceClaim.student_id == Student.id)
         .filter(Student.id.in_(student_ids_subq))
         .filter(InsuranceClaim.status == 'pending')
-        .count()
     )
+    if block_filter is not None:
+        pending_claims_count_query = pending_claims_count_query.filter(block_filter)
+    pending_claims_count = pending_claims_count_query.count()
 
     return render_template('admin_insurance.html',
                           form=form,
@@ -2613,7 +2655,9 @@ def insurance_management():
                           claims=claims,
                           pending_claims_count=pending_claims_count,
                           tier_groups=tier_groups,
-                          next_tier_category_id=next_tier_category_id)
+                          next_tier_category_id=next_tier_category_id,
+                          blocks=blocks,
+                          selected_block=selected_block)
 
 
 @admin_bp.route('/insurance/edit/<int:policy_id>', methods=['GET', 'POST'])
@@ -4237,17 +4281,26 @@ def export_students():
     # Write student data
     students = _scoped_students().order_by(Student.first_name, Student.last_initial).all()
     teacher_id = session.get('admin_id')
+
+    # Prefetch active insurances to avoid N+1 queries
+    student_ids = [s.id for s in students]
+    active_insurances_map = {}
+    if teacher_id and student_ids:
+        scoped_insurances = StudentInsurance.query.join(
+            InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id
+        ).filter(
+            StudentInsurance.student_id.in_(student_ids),
+            StudentInsurance.status == 'active',
+            InsurancePolicy.teacher_id == teacher_id
+        ).all()
+
+        for ins in scoped_insurances:
+            if ins.student_id not in active_insurances_map:
+                active_insurances_map[ins.student_id] = ins
+
     for student in students:
-        # Get active insurance for this student (scoped to current teacher)
-        active_insurance = None
-        if teacher_id:
-            active_insurance = StudentInsurance.query.join(
-                InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id
-            ).filter(
-                StudentInsurance.student_id == student.id,
-                StudentInsurance.status == 'active',
-                InsurancePolicy.teacher_id == teacher_id  # Scope to current teacher only
-            ).first()
+        # Get active insurance for this student from pre-fetched map
+        active_insurance = active_insurances_map.get(student.id)
         insurance_name = active_insurance.policy.title if active_insurance else 'None'
 
         writer.writerow([

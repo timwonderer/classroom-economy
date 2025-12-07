@@ -913,16 +913,9 @@ def dashboard():
         recent_deposit = None
 
     # Get student's active insurance policies (scoped to current class)
-    teacher_id = get_current_teacher_id()
-    active_insurance = None
-    if teacher_id:
-        active_insurance = StudentInsurance.query.join(
-            InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id
-        ).filter(
-            StudentInsurance.student_id == student.id,
-            StudentInsurance.status == 'active',
-            InsurancePolicy.teacher_id == teacher_id  # Scope to current class only
-        ).first()
+    context = get_current_class_context()
+    teacher_id = context['teacher_id'] if context else None
+    active_insurance = student.get_active_insurance(teacher_id)
 
     rent_status = None
     rent_settings = RentSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
@@ -1358,6 +1351,8 @@ def insurance_marketplace():
         return redirect(url_for('student.dashboard'))
 
     teacher_id = context['teacher_id']
+    current_join_code = context['join_code']
+    current_block = context.get('block').strip().upper() if context.get('block') else None
 
     # FIX: Get student's active policies scoped to current class only
     my_policies = StudentInsurance.query.join(
@@ -1365,7 +1360,8 @@ def insurance_marketplace():
     ).filter(
         StudentInsurance.student_id == student.id,
         StudentInsurance.status == 'active',
-        InsurancePolicy.teacher_id == teacher_id  # FIX: Only show current class policies
+        InsurancePolicy.teacher_id == teacher_id,  # FIX: Only show current class policies
+        StudentInsurance.join_code == current_join_code
     ).all()
 
     # FIX: Get available policies (only from current teacher)
@@ -1373,6 +1369,12 @@ def insurance_marketplace():
         InsurancePolicy.is_active == True,
         InsurancePolicy.teacher_id == teacher_id  # FIX: Only current class
     ).all()
+
+    if current_block:
+        available_policies = [
+            policy for policy in available_policies
+            if not policy.blocks_list or current_block in policy.blocks_list
+        ]
 
     # Check which policies can be purchased
     can_purchase = {}
@@ -1410,9 +1412,12 @@ def insurance_marketplace():
     # FIX: Get claims for my policies (scoped to current teacher)
     my_claims = InsuranceClaim.query.join(
         InsurancePolicy, InsuranceClaim.policy_id == InsurancePolicy.id
+    ).join(
+        StudentInsurance, StudentInsurance.id == InsuranceClaim.student_insurance_id
     ).filter(
         InsuranceClaim.student_id == student.id,
-        InsurancePolicy.teacher_id == teacher_id  # FIX: Only current class claims
+        InsurancePolicy.teacher_id == teacher_id,  # FIX: Only current class claims
+        StudentInsurance.join_code == current_join_code
     ).all()
 
     # Group policies by tier for display
@@ -1462,6 +1467,7 @@ def purchase_insurance(policy_id):
 
     join_code = context['join_code']
     teacher_id = context['teacher_id']
+    current_block = context.get('block').strip().upper() if context.get('block') else None
 
     policy = InsurancePolicy.query.get_or_404(policy_id)
 
@@ -1470,11 +1476,16 @@ def purchase_insurance(policy_id):
         flash("This insurance policy is not available in your current class.", "danger")
         return redirect(url_for('student.student_insurance'))
 
+    if current_block and policy.blocks_list and current_block not in policy.blocks_list:
+        flash("This insurance policy is not available for your current class.", "danger")
+        return redirect(url_for('student.student_insurance'))
+
     # Check if already enrolled
     existing = StudentInsurance.query.filter_by(
         student_id=student.id,
         policy_id=policy.id,
-        status='active'
+        status='active',
+        join_code=join_code
     ).first()
 
     if existing:
@@ -1485,7 +1496,8 @@ def purchase_insurance(policy_id):
     cancelled = StudentInsurance.query.filter_by(
         student_id=student.id,
         policy_id=policy.id,
-        status='cancelled'
+        status='cancelled',
+        join_code=join_code
     ).order_by(StudentInsurance.cancel_date.desc()).first()
 
     if cancelled:
@@ -1509,7 +1521,8 @@ def purchase_insurance(policy_id):
             StudentInsurance.student_id == student.id,
             StudentInsurance.status == 'active',
             InsurancePolicy.tier_category_id == policy.tier_category_id,
-            InsurancePolicy.teacher_id == teacher_id  # Scope to current class only
+            InsurancePolicy.teacher_id == teacher_id,  # Scope to current class only
+            StudentInsurance.join_code == join_code
         ).first()
 
         if existing_tier_enrollment:
@@ -1534,7 +1547,8 @@ def purchase_insurance(policy_id):
         last_payment_date=datetime.now(timezone.utc),
         next_payment_due=datetime.now(timezone.utc) + timedelta(days=30),  # Simplified
         coverage_start_date=datetime.now(timezone.utc) + timedelta(days=policy.waiting_period_days),
-        payment_current=True
+        payment_current=True,
+        join_code=join_code
     )
     db.session.add(enrollment)
 
@@ -1561,10 +1575,15 @@ def cancel_insurance(enrollment_id):
     """Cancel insurance policy."""
     student = get_logged_in_student()
     enrollment = StudentInsurance.query.get_or_404(enrollment_id)
+    context = get_current_class_context()
 
     # Verify ownership
     if enrollment.student_id != student.id:
         flash("Unauthorized access.", "danger")
+        return redirect(url_for('student.student_insurance'))
+
+    if context and enrollment.join_code and enrollment.join_code != context['join_code']:
+        flash("This policy belongs to a different class.", "danger")
         return redirect(url_for('student.student_insurance'))
 
     enrollment.status = 'cancelled'
@@ -1580,6 +1599,8 @@ def cancel_insurance(enrollment_id):
 def file_claim(policy_id):
     """File insurance claim."""
     student = get_logged_in_student()
+    context = get_current_class_context()
+    current_join_code = context['join_code'] if context else None
 
     # Get student's enrollment for this policy
     enrollment = StudentInsurance.query.filter_by(
@@ -1588,7 +1609,7 @@ def file_claim(policy_id):
         status='active'
     ).first()
 
-    if not enrollment:
+    if not enrollment or (current_join_code and enrollment.join_code and enrollment.join_code != current_join_code):
         flash("You are not enrolled in this policy.", "danger")
         return redirect(url_for('student.student_insurance'))
 
@@ -1978,15 +1999,21 @@ def rent():
         return redirect(url_for('student.dashboard'))
 
     student = get_logged_in_student()
-    teacher_id = get_current_teacher_id()
+    context = get_current_class_context()
+    if not context:
+        flash("No class selected. Please choose a class to view rent.", "warning")
+        return redirect(url_for('student.dashboard'))
+
+    teacher_id = context['teacher_id']
     settings = RentSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
 
     if not settings or not settings.is_enabled:
         flash("Rent system is currently disabled.", "info")
         return redirect(url_for('student.dashboard'))
 
-    # Get student's periods
-    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+    # Get currently selected period
+    current_block = context.get('block')
+    student_blocks = [current_block.strip().upper()] if current_block else []
 
     # Calculate rent status for each period
     now = datetime.now()
@@ -2021,7 +2048,8 @@ def rent():
             student_id=student.id,
             period=period,
             period_month=current_month,
-            period_year=current_year
+            period_year=current_year,
+            join_code=context['join_code']
         ).all()
 
         # Filter out payments where the corresponding transaction was voided
@@ -2069,7 +2097,10 @@ def rent():
         }
 
     # Get payment history (all periods)
-    payment_history = RentPayment.query.filter_by(student_id=student.id).order_by(
+    payment_history = RentPayment.query.filter_by(
+        student_id=student.id,
+        join_code=context['join_code']
+    ).order_by(
         RentPayment.payment_date.desc()
     ).limit(24).all()  # Increased to show more history with multiple periods
 
@@ -2089,7 +2120,12 @@ def rent():
 def rent_pay(period):
     """Process rent payment for a specific period."""
     student = get_logged_in_student()
-    teacher_id = get_current_teacher_id()
+    context = get_current_class_context()
+    if not context:
+        flash("No class selected. Please choose a class to pay rent.", "warning")
+        return redirect(url_for('student.dashboard'))
+
+    teacher_id = context['teacher_id']
     settings = RentSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
 
     if not settings or not settings.is_enabled:
@@ -2100,10 +2136,10 @@ def rent_pay(period):
         flash("Rent is not enabled for your account.", "error")
         return redirect(url_for('student.dashboard'))
 
-    # Validate period
-    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+    # Validate period against current class context
+    current_block = context.get('block')
     period = period.upper()
-    if period not in student_blocks:
+    if not current_block or period != current_block.strip().upper():
         flash("Invalid period.", "error")
         return redirect(url_for('student.rent'))
 
@@ -2130,7 +2166,8 @@ def rent_pay(period):
         student_id=student.id,
         period=period,
         period_month=current_month,
-        period_year=current_year
+        period_year=current_year,
+        join_code=context['join_code']
     ).all()
 
     # Filter out payments where the corresponding transaction was voided
@@ -2252,6 +2289,7 @@ def rent_pay(period):
     payment = RentPayment(
         student_id=student.id,
         period=period,
+        join_code=join_code,
         amount_paid=payment_amount,
         period_month=current_month,
         period_year=current_year,

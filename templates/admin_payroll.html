@@ -807,7 +807,18 @@
                       </td>
                       <td>
                         <strong>{{ student.full_name }}</strong><br>
-                        <small class="text-muted student-period-label">{{ class_labels_by_block.get(student.block, student.block) if student.block else 'N/A' }}</small>
+                        <small class="text-muted student-period-label">
+                          {% if student.block %}
+                            {% set blocks = student.block.split(',') %}
+                            {% if blocks|length > 1 %}
+                              {{ ', '.join([class_labels_by_block.get(b.strip(), b.strip()) for b in blocks]) }}
+                            {% else %}
+                              {{ class_labels_by_block.get(student.block, student.block) }}
+                            {% endif %}
+                          {% else %}
+                            N/A
+                          {% endif %}
+                        </small>
                       </td>
                       <td class="text-end">${{ "%.2f"|format(student.checking_balance) }}</td>
                       <td class="text-end">${{ "%.2f"|format(student.savings_balance) }}</td>

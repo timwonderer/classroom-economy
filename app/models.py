@@ -151,6 +151,19 @@ class Student(db.Model):
     def savings_balance(self):
         return round(sum(tx.amount for tx in self.transactions if tx.account_type == 'savings' and not tx.is_void), 2)
 
+    def get_active_insurance(self, teacher_id):
+        """Return the active insurance enrollment scoped to a teacher, if any."""
+        if not teacher_id:
+            return None
+
+        return StudentInsurance.query.join(
+            InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id
+        ).filter(
+            StudentInsurance.student_id == self.id,
+            StudentInsurance.status == 'active',
+            InsurancePolicy.teacher_id == teacher_id
+        ).first()
+
     def get_checking_balance(self, teacher_id=None, join_code=None):
         """
         Get checking balance scoped to a specific class economy.

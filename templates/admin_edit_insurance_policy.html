@@ -62,6 +62,11 @@
                   {{ form.marketing_badge(class="form-select") }}
                   <small class="text-muted">Add a fun marketing badge to attract students</small>
                 </div>
+                <div class="mb-3">
+                  {{ form.blocks.label(class="form-label fw-bold") }}
+                  {{ form.blocks(class="form-select", multiple=True) }}
+                  <small class="text-muted">Select which periods can see this policy. Leave empty for all.</small>
+                </div>
                 <div class="mb-0">
                   {{ form.claim_type.label(class="form-label fw-bold") }}
                   {{ form.claim_type(class="form-select", id="edit_claim_type") }}

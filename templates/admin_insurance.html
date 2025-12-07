@@ -21,6 +21,18 @@
 
 {% block content %}
 
+<!-- Class Scope Selector -->
+<form method="get" class="d-flex justify-content-end align-items-center mb-3 gap-2">
+  <label for="block" class="mb-0 fw-semibold">Show policies for:</label>
+  <select id="block" name="block" class="form-select" style="max-width: 200px;">
+    <option value="" {% if not selected_block %}selected{% endif %}>All Classes</option>
+    {% for block in blocks %}
+    <option value="{{ block }}" {% if selected_block == block %}selected{% endif %}>Period {{ block }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit" class="btn btn-outline-primary">Apply</button>
+</form>
+
 <!-- Nav Tabs -->
 <ul class="nav nav-tabs mb-4" id="insuranceTabs" role="tablist">
   <li class="nav-item" role="presentation">
@@ -230,6 +242,12 @@
                 </div>
               </div>
             </div>
+
+            <div class="mb-3">
+              {{ form.blocks.label(class="form-label fw-bold") }}
+              {{ form.blocks(class="form-select", multiple=True) }}
+              <small class="text-muted">Leave empty to make this policy available to all classes.</small>
+            </div>
           </div>
 
           <!-- ADVANCED MODE (hidden by default) -->
@@ -257,6 +275,11 @@
                     {{ form.marketing_badge.label(class="form-label fw-bold") }}
                     {{ form.marketing_badge(class="form-select") }}
                     <small class="text-muted">Add a fun marketing badge to attract students</small>
+                  </div>
+                  <div class="mb-3">
+                    {{ form.blocks.label(class="form-label fw-bold") }}
+                    {{ form.blocks(class="form-select", multiple=True) }}
+                    <small class="text-muted">Select which periods can see this policy. Leave empty for all.</small>
                   </div>
                   <div class="mb-0">
                     {{ form.claim_type.label(class="form-label fw-bold") }}
