@@ -94,14 +94,15 @@ Roster seats created during CSV uploads so students can self-claim via join code
 - `get_class_label()`: Returns class_label if set, otherwise block.
 | `claimed_at` | DateTime | Claim timestamp. |
 
-### `transactions`
-Ledger entries for checking/savings accounts, scoped by teacher economy.
+### `transaction`
+Ledger entries for checking/savings accounts, scoped by join code (class economy).
 
 | Column | Type | Description |
 |---|---|---|
 | `id` | Integer | Primary key. |
 | `student_id` | Integer | FK to `students.id`. |
-| `teacher_id` | Integer (nullable) | FK to `admins.id` indicating which teacher economy the transaction belongs to. |
+| `teacher_id` | Integer (nullable) | FK to `admins.id` indicating which teacher created the transaction (legacy scope). |
+| `join_code` | String(20), nullable | Source of truth for class/period isolation. Indexed for performance. |
 | `amount` | Float | Positive/negative amount. |
 | `timestamp` | DateTime | Transaction timestamp. |
 | `account_type` | String(20) | `checking` or `savings`. |

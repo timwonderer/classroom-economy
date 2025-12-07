@@ -93,20 +93,21 @@ The repository has experienced recurring "multiple heads" errors during deployme
 
 ## Multi-Tenancy Snapshot
 
-- Students have a **primary owner** (`teacher_id`, still nullable pending enforcement) and a **many-to-many association** via `student_teachers` for shared accounts.
-- Scoped query helpers live in `app/auth.py` (`_scoped_students`, `_get_student_or_404`, `_get_student_by_username_or_404`). Admin routes in `app/routes/admin.py` and system-admin tools in `app/routes/system_admin.py` rely on these—prefer them over direct `Student.query` calls.
-- Session stores `admin_id` and `is_system_admin`; route guards expect both.
+- **Join codes are the source of truth for class/period isolation.** Students pick a join code from their claimed seats, and all student-facing balances/transactions are scoped by that join code (see `get_current_class_context` in `app/routes/student.py` and the `Transaction.join_code` comment in `app/models.py`).
+- **Teacher ownership lives in the link table.** Student access for admins is enforced solely through the `student_teachers` association; the legacy `students.teacher_id` column is deprecated and ignored by scoped helpers (see `get_admin_student_query` in `app/auth.py`).
+- Scoped query helpers like `get_admin_student_query` and `get_student_for_admin` are centralized in `app/auth.py`. Admin routes in `app/routes/admin.py` and system-admin tools in `app/routes/system_admin.py` rely on these—prefer them over direct `Student.query` calls.
+- Student/admin sessions continue to store `admin_id` and `is_system_admin` for authorization checks; student sessions also persist the selected `current_join_code` for per-class context.
 - Maintenance page and middleware exist to keep downtime user-friendly during migrations.
 
 ## High-Priority Follow-Ups
 
 1. **Database hardening**
-   - Add migration to enforce `teacher_id` NOT NULL once all students are mapped.
-   - Add DB unique constraint on `(student_id, admin_id)` in `student_teachers`.
-   - Define safe ON DELETE behavior for admins (reassign primary before delete).
+   - Plan the retirement of legacy `students.teacher_id` once all routes depend solely on `student_teachers`.
+   - Consider enforcing non-null `join_code` for new ledger/attendance records after backfill verification.
+   - Define safe ON DELETE behavior for admins once the legacy column is removed (e.g., reassign links before delete).
 2. **Code audit**
    - Replace any residual direct `Student.query.get` usage outside helpers.
-   - Ensure legacy paths handle missing primary owner gracefully until NOT NULL lands.
+   - Remove reliance on the deprecated `teacher_id` column in any remaining legacy paths.
 3. **Testing gaps**
    - Add shared-student coverage for payroll and attendance flows.
    - Add DB-level uniqueness test once constraint exists.

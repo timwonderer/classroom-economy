@@ -1,16 +1,16 @@
 # Multi-Tenancy Implementation - TODO
 
 ## Overview
-The multi-teacher model is live: students can be shared across teachers through `student_teachers`, scoped query helpers enforce isolation, and system admins can manage ownership. Primary ownership is still stored on `students.teacher_id`, and scoped helpers consider that column the source of truth while the migration to move primary ownership into the link table is in progress.
+The multi-teacher model is live: students can be shared across teachers through `student_teachers`, scoped query helpers enforce isolation, and system admins can manage ownership. **Join codes are the source of truth for per-class isolation**, and the `student_teachers` link table is the authoritative ownership model; `students.teacher_id` is deprecated and ignored by access control helpers.
 
 ## Current State
 - ✅ Admin (teacher) accounts with TOTP-only authentication
 - ✅ System admin accounts with global visibility
-- ✅ Students linked to teachers via `student_teachers` with a unique constraint
+- ✅ Students linked to teachers via `student_teachers` with a unique constraint (authoritative source of truth)
 - ✅ Scoped helpers in `app/auth.py` (`get_admin_student_query`, `get_student_for_admin`) used across admin routes
-- ✅ CSV/manual creation auto-links the creating teacher; system admins can manage sharing and primary ownership via `/sysadmin/student-ownership`
+- ✅ CSV/manual creation auto-links the creating teacher; system admins can manage sharing/links via `/sysadmin/student-ownership`
 - ✅ Maintenance-mode banner/page available for low-disruption migrations
-- ⚠️ `students.teacher_id` remains the authoritative primary owner column; code still scopes access off this field alongside `student_teachers`
+- ✅ Student sessions persist the current join code to scope balances/transactions per class/period
 
 ## Goals
 - Teachers should only see/manage their own students (including shared students)
@@ -20,8 +20,9 @@ The multi-teacher model is live: students can be shared across teachers through 
 
 ## Database Notes
 - `student_teachers` enforces uniqueness on (`student_id`, `admin_id`) and cascades deletes
-- `students.teacher_id` is currently the primary owner marker and must be retired after all records are mapped to links and access control is updated to treat the link as authoritative
-- Consider ON DELETE behavior for admins that are primary owners before dropping the column
+- `students.teacher_id` is deprecated; plan retirement after confirming all routes depend solely on `student_teachers`
+- Consider ON DELETE behavior for admins with legacy references before dropping the column
+- Join codes partition transactions/attendance; long-term goal is to enforce `join_code` NOT NULL once backfill is complete
 
 ## Code Notes
 - Tenant-aware access is centralized in `app/auth.py`; avoid direct `Student.query.get` in routes
@@ -34,11 +35,12 @@ The multi-teacher model is live: students can be shared across teachers through 
 - [ ] Audit for any direct `Student.query` lookups in routes/services and replace with scoped helpers
 - [ ] Add audit logging for ownership changes
 - [ ] Extend automated tests for payroll/attendance flows with shared students
+- [ ] Backfill legacy ledger/attendance records to ensure `join_code` is consistently populated (prep for NOT NULL)
 
 ## Migration Strategy
 1. **Pre-checks**: confirm every student has at least one `student_teachers` row; identify any orphaned links.
 2. **Maintenance Banner**: enable maintenance mode during migration window if risk is medium/high.
-3. **Migration**: drop/lock `students.teacher_id`, ensure foreign keys and indexes are optimized for scoped queries.
+3. **Migration**: drop/lock `students.teacher_id` after verifying no remaining dependencies; ensure foreign keys and indexes are optimized for scoped queries and join-code enforcement.
 4. **Post-checks**: run smoke tests on admin/student portals and payroll/attendance with shared students.
 
 ## Success Criteria
