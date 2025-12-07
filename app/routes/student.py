@@ -1037,8 +1037,19 @@ def payroll():
 
     student = get_logged_in_student()
 
+    context = get_current_class_context()
+    if not context:
+        flash("No class selected. Please select a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    current_block = (context.get('block') or '').upper()
     period_states = get_all_block_statuses(student)
-    student_blocks = list(period_states.keys())
+
+    if current_block:
+        period_states = {current_block: period_states.get(current_block, {})}
+        student_blocks = [current_block]
+    else:
+        student_blocks = list(period_states.keys())
 
     unpaid_seconds_per_block = {
         blk: state.get("duration", 0)
@@ -1050,8 +1061,12 @@ def payroll():
         for blk, state in period_states.items()
     }
 
-    # Get all tap events grouped by block
-    all_tap_events = TapEvent.query.filter_by(student_id=student.id).order_by(TapEvent.timestamp.desc()).all()
+    # Get all tap events grouped by block (scoped to the current class when available)
+    tap_query = TapEvent.query.filter_by(student_id=student.id)
+    if current_block:
+        tap_query = tap_query.filter_by(period=current_block)
+
+    all_tap_events = tap_query.order_by(TapEvent.timestamp.desc()).all()
     tap_events_by_block = {}
     for event in all_tap_events:
         # Normalize to the action labels used by the template
