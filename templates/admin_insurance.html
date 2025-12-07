@@ -27,7 +27,7 @@
   <select id="block" name="block" class="form-select" style="max-width: 200px;">
     <option value="" {% if not selected_block %}selected{% endif %}>All Classes</option>
     {% for block in blocks %}
-    <option value="{{ block }}" {% if selected_block == block %}selected{% endif %}>Period {{ block }}</option>
+    <option value="{{ block }}" {% if selected_block == block %}selected{% endif %}>{{ class_labels_by_block.get(block, block) }}</option>
     {% endfor %}
   </select>
   <button type="submit" class="btn btn-outline-primary">Apply</button>

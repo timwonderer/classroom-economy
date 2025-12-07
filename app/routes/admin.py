@@ -2489,7 +2489,12 @@ def insurance_management():
 
     # Populate blocks choices from teacher's students
     blocks = _get_teacher_blocks()
-    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+    current_teacher_id = session.get('admin_id')
+    class_labels_by_block = _get_class_labels_for_blocks(current_teacher_id, blocks)
+    form.blocks.choices = [
+        (block, class_labels_by_block.get(block, block))
+        for block in blocks
+    ]
 
     # Optional block filter for scoping
     selected_block = request.args.get('block', type=str)
@@ -2498,16 +2503,17 @@ def insurance_management():
         if selected_block not in blocks:
             selected_block = None
 
-    current_teacher_id = session.get('admin_id')
     policies_query = InsurancePolicy.query.filter_by(teacher_id=current_teacher_id)
     if selected_block:
-        policies_query = policies_query.outerjoin(
-            InsurancePolicyBlock,
-            InsurancePolicyBlock.policy_id == InsurancePolicy.id,
-        ).filter(
+        block_policy_ids = (
+            db.session.query(InsurancePolicyBlock.policy_id)
+            .filter(InsurancePolicyBlock.block == selected_block)
+        )
+
+        policies_query = policies_query.filter(
             or_(
-                InsurancePolicyBlock.block == selected_block,
                 ~InsurancePolicy.visible_blocks.any(),
+                InsurancePolicy.id.in_(block_policy_ids)
             )
         )
     existing_policies = policies_query.all()
@@ -2607,15 +2613,17 @@ def insurance_management():
         .filter(Student.id.in_(student_ids_subq))
         .filter(StudentInsurance.status == 'cancelled')
     )
-    block_filter = None
+
+    filters = []
     if selected_join_code:
-        block_filter = StudentInsurance.join_code == selected_join_code
+        filters.append(StudentInsurance.join_code == selected_join_code)
     if selected_block:
-        fallback_block_filter = sa.and_(
+        filters.append(sa.and_(
             StudentInsurance.join_code.is_(None),
             Student.block.ilike(f"%{selected_block}%")
-        )
-        block_filter = sa.or_(block_filter, fallback_block_filter) if block_filter is not None else fallback_block_filter
+        ))
+
+    block_filter = sa.or_(*filters) if filters else None
 
     if block_filter is not None:
         active_enrollments_query = active_enrollments_query.filter(block_filter)
@@ -2657,7 +2665,8 @@ def insurance_management():
                           tier_groups=tier_groups,
                           next_tier_category_id=next_tier_category_id,
                           blocks=blocks,
-                          selected_block=selected_block)
+                          selected_block=selected_block,
+                          class_labels_by_block=class_labels_by_block)
 
 
 @admin_bp.route('/insurance/edit/<int:policy_id>', methods=['GET', 'POST'])
@@ -2674,7 +2683,11 @@ def edit_insurance_policy(policy_id):
 
     # Populate blocks choices from teacher's students
     blocks = _get_teacher_blocks()
-    form.blocks.choices = [(block, f"Period {block}") for block in blocks]
+    class_labels_by_block = _get_class_labels_for_blocks(session.get('admin_id'), blocks)
+    form.blocks.choices = [
+        (block, class_labels_by_block.get(block, block))
+        for block in blocks
+    ]
 
     # Pre-populate selected blocks on GET request (using many-to-many relationship)
     if request.method == 'GET':
