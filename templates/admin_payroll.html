@@ -811,7 +811,12 @@
                           {% if student.block %}
                             {% set blocks = student.block.split(',') %}
                             {% if blocks|length > 1 %}
-                              {{ ', '.join([class_labels_by_block.get(b.strip(), b.strip()) for b in blocks]) }}
+                              {% set ns = namespace(labels=[]) %}
+                              {% for b in blocks %}
+                                {% set trimmed_block = b.strip() %}
+                                {% set ns.labels = ns.labels + [class_labels_by_block.get(trimmed_block, trimmed_block)] %}
+                              {% endfor %}
+                              {{ ns.labels | join(', ') }}
                             {% else %}
                               {{ class_labels_by_block.get(student.block, student.block) }}
                             {% endif %}
