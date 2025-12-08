@@ -3583,6 +3583,10 @@ def payroll_settings():
         # Determine which mode we're in
         settings_mode = request.form.get('settings_mode', 'simple')
 
+        # Shared fields
+        expected_weekly_hours_raw = request.form.get('expected_weekly_hours')
+        expected_weekly_hours = float(expected_weekly_hours_raw) if expected_weekly_hours_raw else 5.0
+
         # Parse form data based on mode
         if settings_mode == 'simple':
             # Simple mode fields
@@ -3598,9 +3602,6 @@ def payroll_settings():
 
             daily_limit_hours = request.form.get('simple_daily_limit')
             daily_limit_hours = float(daily_limit_hours) if daily_limit_hours else None
-
-            expected_weekly_hours = request.form.get('expected_weekly_hours')
-            expected_weekly_hours = float(expected_weekly_hours) if expected_weekly_hours else 5.0
 
             apply_to = request.form.get('simple_apply_to', 'all')
             selected_blocks = request.form.getlist('simple_blocks[]') if apply_to == 'selected' else blocks
@@ -3674,9 +3675,6 @@ def payroll_settings():
             first_pay_date = datetime.strptime(first_pay_date_str, '%Y-%m-%d') if first_pay_date_str else None
 
             rounding = request.form.get('adv_rounding', 'down')
-
-            expected_weekly_hours = request.form.get('expected_weekly_hours')
-            expected_weekly_hours = float(expected_weekly_hours) if expected_weekly_hours else 5.0
 
             apply_to = request.form.get('adv_apply_to', 'all')
             selected_blocks = request.form.getlist('adv_blocks[]') if apply_to == 'selected' else blocks
@@ -5531,6 +5529,8 @@ def api_calculate_cwi():
         checker = EconomyBalanceChecker(admin_id, block)
         cwi_calc = checker.calculate_cwi(temp_settings, expected_weekly_hours)
 
+        recommendations = checker._generate_recommendations(cwi_calc.cwi, [])
+
         return jsonify({
             'status': 'success',
             'cwi': cwi_calc.cwi,
@@ -5540,7 +5540,8 @@ def api_calculate_cwi():
                 'expected_weekly_hours': expected_weekly_hours,
                 'expected_weekly_minutes': cwi_calc.expected_weekly_minutes,
                 'notes': cwi_calc.notes
-            }
+            },
+            'recommendations': recommendations
         })
 
     except Exception as e:
