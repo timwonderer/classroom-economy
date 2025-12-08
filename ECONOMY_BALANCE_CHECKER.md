@@ -54,7 +54,7 @@ Store Items:
 
 Three RESTful endpoints for real-time validation:
 
-#### `/api/economy/calculate-cwi` (POST)
+#### `/admin/api/economy/calculate-cwi` (POST)
 Calculate CWI based on pay rate.
 
 **Request:**
@@ -81,7 +81,7 @@ Calculate CWI based on pay rate.
 }
 ```
 
-#### `/api/economy/analyze` (POST)
+#### `/admin/api/economy/analyze` (POST)
 Perform comprehensive economy analysis.
 
 **Request:**
@@ -116,7 +116,7 @@ Perform comprehensive economy analysis.
 }
 ```
 
-#### `/api/economy/validate/<feature>` (POST)
+#### `/admin/api/economy/validate/<feature>` (POST)
 Validate a specific feature value.
 
 **Features:** `rent`, `insurance`, `fine`, `store_item`

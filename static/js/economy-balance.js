@@ -194,7 +194,7 @@ class EconomyBalanceChecker {
         const hours = expectedWeeklyHours || this.expectedWeeklyHours;
 
         try {
-            const response = await fetch('/api/economy/calculate-cwi', {
+            const response = await fetch('/admin/api/economy/calculate-cwi', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -224,7 +224,7 @@ class EconomyBalanceChecker {
      */
     async validate(feature, value, frequency = 'weekly') {
         try {
-            const response = await fetch(`/api/economy/validate/${feature}`, {
+            const response = await fetch(`/admin/api/economy/validate/${feature}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -257,7 +257,7 @@ class EconomyBalanceChecker {
         const hours = expectedWeeklyHours || this.expectedWeeklyHours;
 
         try {
-            const response = await fetch('/api/economy/analyze', {
+            const response = await fetch('/admin/api/economy/analyze', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
