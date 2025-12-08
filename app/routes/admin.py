@@ -3599,6 +3599,9 @@ def payroll_settings():
             daily_limit_hours = request.form.get('simple_daily_limit')
             daily_limit_hours = float(daily_limit_hours) if daily_limit_hours else None
 
+            expected_weekly_hours = request.form.get('expected_weekly_hours')
+            expected_weekly_hours = float(expected_weekly_hours) if expected_weekly_hours else 5.0
+
             apply_to = request.form.get('simple_apply_to', 'all')
             selected_blocks = request.form.getlist('simple_blocks[]') if apply_to == 'selected' else blocks
 
@@ -3609,6 +3612,7 @@ def payroll_settings():
                 'payroll_frequency_days': payroll_frequency_days,
                 'first_pay_date': first_pay_date,
                 'daily_limit_hours': daily_limit_hours,
+                'expected_weekly_hours': expected_weekly_hours,
                 'time_unit': 'minutes',
                 'pay_schedule_type': frequency,
                 'is_active': True,
@@ -3671,6 +3675,9 @@ def payroll_settings():
 
             rounding = request.form.get('adv_rounding', 'down')
 
+            expected_weekly_hours = request.form.get('expected_weekly_hours')
+            expected_weekly_hours = float(expected_weekly_hours) if expected_weekly_hours else 5.0
+
             apply_to = request.form.get('adv_apply_to', 'all')
             selected_blocks = request.form.getlist('adv_blocks[]') if apply_to == 'selected' else blocks
 
@@ -3691,6 +3698,7 @@ def payroll_settings():
                 'payroll_frequency_days': payroll_frequency_days,
                 'first_pay_date': first_pay_date,
                 'rounding_mode': rounding,
+                'expected_weekly_hours': expected_weekly_hours,
                 'is_active': True,
                 # Reset simple fields
                 'daily_limit_hours': None
