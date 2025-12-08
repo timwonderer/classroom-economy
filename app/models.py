@@ -474,6 +474,8 @@ class TapEvent(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     period = db.Column(db.String(10), nullable=False)
+    # CRITICAL: join_code scopes attendance to a specific class economy
+    join_code = db.Column(db.String(20), nullable=True, index=True)
     status = db.Column(db.String(10), nullable=False)  # 'active' or 'inactive'
     # All times stored as UTC (see header note)
     timestamp = db.Column(db.DateTime, default=_utc_now)

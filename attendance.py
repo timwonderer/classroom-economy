@@ -1,6 +1,38 @@
 from datetime import datetime, timezone
 from sqlalchemy import func
 
+
+def get_join_code_for_student_period(student_id, period, teacher_id=None):
+    """
+    Resolve the join_code for a student's specific period.
+
+    Args:
+        student_id (int): ID of the student.
+        period (str): Period/block identifier (case-insensitive).
+        teacher_id (int, optional): Restrict lookup to a specific teacher.
+
+    Returns:
+        str | None: join_code matching the student's seat for the requested period.
+    """
+    from app.models import TeacherBlock
+
+    filters = [
+        TeacherBlock.student_id == student_id,
+        func.upper(TeacherBlock.block) == func.upper(period)
+    ]
+
+    if teacher_id:
+        filters.append(TeacherBlock.teacher_id == teacher_id)
+
+    seat = (
+        TeacherBlock.query
+        .filter(*filters, TeacherBlock.is_claimed.is_(True))
+        .order_by(TeacherBlock.id.desc())
+        .first()
+    )
+
+    return seat.join_code if seat else None
+
 def get_last_payroll_time():
     """Fetches the timestamp of the most recent global payroll transaction."""
     from app.models import Transaction  # Local import to avoid circular dependency
@@ -15,7 +47,7 @@ def _as_utc(dt):
         return dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc)
 
-def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
+def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time, join_code=None):
     """
     Calculates total attendance seconds for a student in a specific period
     since the last payroll run. This version is corrected to prevent double-counting
@@ -31,7 +63,12 @@ def calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time):
         TapEvent.student_id == student_id,
         TapEvent.period == period,
         TapEvent.is_deleted == False  # Exclude deleted events
-    ).order_by(TapEvent.timestamp.asc())
+    )
+
+    if join_code:
+        base_query = base_query.filter(TapEvent.join_code == join_code)
+
+    base_query = base_query.order_by(TapEvent.timestamp.asc())
 
     # If there's no payroll history for the system, calculate from all events.
     if not last_payroll_time:
@@ -190,17 +227,26 @@ def get_session_status(student_id, period):
     return is_active, done, duration
 
 
-def get_all_block_statuses(student):
+def get_all_block_statuses(student, join_code=None):
     """
     Gets the status for all blocks assigned to a student for the /api/student-status endpoint.
     """
-    from app.models import TapEvent, HallPassLog
+    from app.models import TapEvent, HallPassLog, TeacherBlock
     from sqlalchemy import func
     from datetime import datetime, timezone
     from payroll import get_pay_rate_for_block
 
     today = datetime.now(timezone.utc).date()
-    student_blocks = [b.strip() for b in student.block.split(',') if b.strip()]
+    if join_code:
+        # Scope to claimed seats for the selected class
+        claimed_seats = TeacherBlock.query.filter_by(
+            student_id=student.id,
+            join_code=join_code,
+            is_claimed=True
+        ).all()
+        student_blocks = [seat.block.strip() for seat in claimed_seats if seat.block]
+    else:
+        student_blocks = [b.strip() for b in student.block.split(',') if b.strip()]
     period_states = {}
 
     last_payroll_time = get_last_payroll_time()
@@ -208,23 +254,32 @@ def get_all_block_statuses(student):
     for block_original in student_blocks:
         blk = block_original.upper()
 
-        latest_event = (
-            TapEvent.query
-            .filter_by(student_id=student.id, period=blk, is_deleted=False)
-            .order_by(TapEvent.timestamp.desc())
-            .first()
+        latest_event_query = TapEvent.query.filter_by(
+            student_id=student.id,
+            period=blk,
+            is_deleted=False
         )
+
+        if join_code:
+            latest_event_query = latest_event_query.filter_by(join_code=join_code)
+
+        latest_event = latest_event_query.order_by(TapEvent.timestamp.desc()).first()
         is_active = latest_event.status == "active" if latest_event else False
 
-        done = TapEvent.query.filter(
+        done_query = TapEvent.query.filter(
             TapEvent.student_id == student.id,
             TapEvent.period == blk,
             func.date(TapEvent.timestamp) == today,
             TapEvent.reason != None,
             TapEvent.is_deleted == False  # Exclude deleted events
-        ).filter(func.lower(TapEvent.reason) == 'done').first() is not None
+        )
 
-        duration = calculate_unpaid_attendance_seconds(student.id, blk, last_payroll_time)
+        if join_code:
+            done_query = done_query.filter(TapEvent.join_code == join_code)
+
+        done = done_query.filter(func.lower(TapEvent.reason) == 'done').first() is not None
+
+        duration = calculate_unpaid_attendance_seconds(student.id, blk, last_payroll_time, join_code=join_code)
 
         # Use block-specific payroll settings (fallback handled in helper)
         rate_per_second = get_pay_rate_for_block(block_original)
@@ -232,10 +287,15 @@ def get_all_block_statuses(student):
 
         # Get latest relevant hall pass for this period
         hall_pass = None
-        active_pass = HallPassLog.query.filter_by(
+        active_pass_query = HallPassLog.query.filter_by(
             student_id=student.id,
             period=blk
-        ).filter(
+        )
+
+        if join_code:
+            active_pass_query = active_pass_query.filter_by(join_code=join_code)
+
+        active_pass = active_pass_query.filter(
             HallPassLog.status.in_(['pending', 'approved', 'left', 'rejected'])
         ).order_by(HallPassLog.request_time.desc()).first()
 

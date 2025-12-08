@@ -871,7 +871,7 @@ def dashboard():
 
     # FIX: Only show tap in/out status for CURRENT class, not all classes
     # Get status for only the current block (not all blocks)
-    period_states = get_all_block_statuses(student)
+    period_states = get_all_block_statuses(student, join_code=join_code)
     # Filter to only current class block
     period_states = {current_block.upper(): period_states.get(current_block.upper(), {})}
     student_blocks = [current_block.upper()]  # Only current block
@@ -1043,13 +1043,12 @@ def payroll():
         return redirect(url_for('student.dashboard'))
 
     current_block = (context.get('block') or '').upper()
-    period_states = get_all_block_statuses(student)
+    join_code = context.get('join_code')
+    period_states = get_all_block_statuses(student, join_code=join_code)
 
-    if current_block:
-        period_states = {current_block: period_states.get(current_block, {})}
-        student_blocks = [current_block]
-    else:
-        student_blocks = list(period_states.keys())
+    # Scope dashboard data to the selected class context only
+    period_states = {current_block: period_states.get(current_block, {})}
+    student_blocks = [current_block]
 
     unpaid_seconds_per_block = {
         blk: state.get("duration", 0)
@@ -1062,9 +1061,11 @@ def payroll():
     }
 
     # Get all tap events grouped by block (scoped to the current class when available)
-    tap_query = TapEvent.query.filter_by(student_id=student.id)
-    if current_block:
-        tap_query = tap_query.filter_by(period=current_block)
+    tap_query = TapEvent.query.filter_by(
+        student_id=student.id,
+        period=current_block,
+        join_code=join_code
+    )
 
     all_tap_events = tap_query.order_by(TapEvent.timestamp.desc()).all()
     tap_events_by_block = {}

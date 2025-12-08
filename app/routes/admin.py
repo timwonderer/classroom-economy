@@ -56,7 +56,7 @@ from app.utils.ip_handler import get_real_ip
 from app.utils.name_utils import hash_last_name_parts, verify_last_name_parts
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll
-from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds
+from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds, get_join_code_for_student_period
 import time
 
 # Timezone
@@ -4371,6 +4371,7 @@ def tap_out_students():
     tapped_out = []
     already_inactive = []
     errors = []
+    current_admin_id = session.get('admin_id')
 
     try:
         # If tap_out_all is true, get all students with this period who are currently active
@@ -4382,10 +4383,13 @@ def tap_out_students():
                 if period not in student_blocks:
                     continue
 
+                join_code = get_join_code_for_student_period(student.id, period, teacher_id=current_admin_id)
+
                 # Check if student is currently active in this period
                 latest_event = (
                     TapEvent.query
                     .filter_by(student_id=student.id, period=period)
+                    .filter_by(join_code=join_code)
                     .order_by(TapEvent.timestamp.desc())
                     .first()
                 )
@@ -4407,10 +4411,13 @@ def tap_out_students():
                 errors.append(f"{student.full_name} is not enrolled in period {period}")
                 continue
 
+            join_code = get_join_code_for_student_period(student.id, period, teacher_id=current_admin_id)
+
             # Check if student is currently active in this period
             latest_event = (
                 TapEvent.query
                 .filter_by(student_id=student.id, period=period)
+                .filter_by(join_code=join_code)
                 .order_by(TapEvent.timestamp.desc())
                 .first()
             )
@@ -4425,7 +4432,8 @@ def tap_out_students():
                 period=period,
                 status="inactive",
                 timestamp=now_utc,
-                reason=reason
+                reason=reason,
+                join_code=join_code
             )
             db.session.add(tap_out_event)
             
