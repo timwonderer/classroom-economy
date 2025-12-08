@@ -29,7 +29,8 @@ from app.routes.student import get_current_teacher_id
 from attendance import (
     get_last_payroll_time,
     calculate_unpaid_attendance_seconds,
-    get_all_block_statuses
+    get_all_block_statuses,
+    get_join_code_for_student_period
 )
 from payroll import get_pay_rate_for_block
 
@@ -576,7 +577,8 @@ def handle_hall_pass_action(pass_id, action):
             period=log_entry.period,
             status='inactive',
             timestamp=now,
-            reason=log_entry.reason
+            reason=log_entry.reason,
+            join_code=log_entry.join_code
         )
         log_entry.status = 'left'
         log_entry.left_time = now
@@ -594,7 +596,8 @@ def handle_hall_pass_action(pass_id, action):
             period=log_entry.period,
             status='active',
             timestamp=now,
-            reason="Return from hall pass"
+            reason="Return from hall pass",
+            join_code=log_entry.join_code
         )
         log_entry.status = 'returned'
         log_entry.return_time = now
@@ -707,7 +710,8 @@ def hall_pass_terminal_use():
         period=log_entry.period,
         status='inactive',
         timestamp=now,
-        reason=log_entry.reason
+        reason=log_entry.reason,
+        join_code=log_entry.join_code
     )
     db.session.add(tap_out_event)
 
@@ -753,7 +757,8 @@ def hall_pass_terminal_return():
         period=log_entry.period,
         status='active',
         timestamp=now,
-        reason="Returned from hall pass"
+        reason="Returned from hall pass",
+        join_code=log_entry.join_code
     )
     db.session.add(tap_in_event)
 
@@ -1240,6 +1245,13 @@ def handle_tap():
         current_app.logger.warning(f"TAP ERROR: Invalid period or action: period={period}, valid_periods={valid_periods}, action={action}")
         return jsonify({"error": "Invalid period or action"}), 400
 
+    join_code = get_join_code_for_student_period(student.id, period)
+    if not join_code:
+        current_app.logger.warning(
+            f"TAP ERROR: Unable to resolve join_code for student_id={student.id}, period={period}"
+        )
+        return jsonify({"error": "Unable to resolve class context for this period."}), 400
+
     now = datetime.now(timezone.utc)
 
     # --- Check if tap is enabled for this student in this period ---
@@ -1362,6 +1374,7 @@ def handle_tap():
                 student_id=student.id,
                 reason=reason,
                 period=period,
+                join_code=join_code,
                 status='pending',
                 request_time=now
             )
@@ -1372,7 +1385,7 @@ def handle_tap():
             # We need to return the current state to the UI.
             is_active = True
             last_payroll_time = get_last_payroll_time()
-            duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time)
+            duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time, join_code=join_code)
             rate_per_second = get_pay_rate_for_block(block_lookup.get(period, period))
             projected_pay = duration * rate_per_second
 
@@ -1405,6 +1418,7 @@ def handle_tap():
                 latest_other = (
                     TapEvent.query
                     .filter_by(student_id=student.id, period=other_period, is_deleted=False)
+                    .filter_by(join_code=join_code)
                     .order_by(TapEvent.timestamp.desc())
                     .first()
                 )
@@ -1416,7 +1430,8 @@ def handle_tap():
                         period=other_period,
                         status="inactive",
                         timestamp=now,
-                        reason="auto_switch"  # Mark as automatic switch
+                        reason="auto_switch",  # Mark as automatic switch
+                        join_code=join_code
                     )
                     db.session.add(auto_tapout)
                     current_app.logger.info(f"Auto-tapped out student {student.id} from period {other_period} when tapping into {period}")
@@ -1425,13 +1440,14 @@ def handle_tap():
         latest_event = (
             TapEvent.query
             .filter_by(student_id=student.id, period=period, is_deleted=False)
+            .filter_by(join_code=join_code)
             .order_by(TapEvent.timestamp.desc())
             .first()
         )
         if latest_event and latest_event.status == status:
             current_app.logger.info(f"Duplicate {action} ignored for student {student.id} in period {period}")
             last_payroll_time = get_last_payroll_time()
-            duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time)
+            duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time, join_code=join_code)
             return jsonify({
                 "status": "ok",
                 "active": latest_event.status == "active",
@@ -1475,6 +1491,7 @@ def handle_tap():
             active_hall_pass = HallPassLog.query.filter_by(
                 student_id=student.id,
                 period=period,
+                join_code=join_code,
                 status='left'
             ).order_by(HallPassLog.request_time.desc()).first()
 
@@ -1488,7 +1505,8 @@ def handle_tap():
             period=period,
             status=status,
             timestamp=now,  # UTC-aware
-            reason=reason
+            reason=reason,
+            join_code=join_code
         )
         db.session.add(event)
 
@@ -1521,12 +1539,13 @@ def handle_tap():
     latest_event = (
         TapEvent.query
         .filter_by(student_id=student.id, period=period, is_deleted=False)
+        .filter_by(join_code=join_code)
         .order_by(TapEvent.timestamp.desc())
         .first()
     )
     is_active = latest_event.status == "active" if latest_event else False
     last_payroll_time = get_last_payroll_time()
-    duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time)
+    duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time, join_code=join_code)
 
     rate_per_second = get_pay_rate_for_block(block_lookup.get(period, period))
     projected_pay = duration * rate_per_second
@@ -1809,10 +1828,14 @@ def check_and_auto_tapout_if_limit_reached(student):
 def student_status():
     student = get_logged_in_student()
 
+    context = get_current_class_context()
+    if not context:
+        return jsonify({"status": "error", "message": "No class selected."}), 400
+
     # Check and auto-tap-out if daily limit reached
     check_and_auto_tapout_if_limit_reached(student)
 
-    period_states = get_all_block_statuses(student)
+    period_states = get_all_block_statuses(student, join_code=context['join_code'])
 
     return jsonify({
         "status": "ok",

@@ -32,6 +32,10 @@ The project is approaching version 1.0 release. Core features are complete and t
 ### Fixed (2025-12-04)
 - Security: Removed hardcoded production server IP from CI/CD workflows
 
+### Fixed (2025-12-05)
+- Student portal: Removed the non-functional class switch button from the class banner and eliminated hover animations to reduce UI confusion.
+- Student portal: Scoped payroll attendance and projection data to the currently selected class so multi-class students only see the active class statistics.
+
 ### Previous Changes
 - Continued repository organization and documentation cleanup
 - Moved `UPTIMEROBOT_SETUP.md` to `docs/operations/` for better organization
