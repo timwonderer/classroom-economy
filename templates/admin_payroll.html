@@ -345,7 +345,7 @@
             {% endif %}
 
             <form method="POST" action="{{ url_for('admin.payroll_settings') }}" id="payrollSettingsForm">
-              {{ settings_form.hidden_tag() }}
+              <input type="hidden" name="csrf_token" value="{{ settings_form.csrf_token._value() }}" id="settings_csrf_token"/>
               <input type="hidden" name="settings_mode" id="settingsModeInput" value="{% if default_setting and default_setting.settings_mode == 'advanced' %}advanced{% else %}simple{% endif %}">
 
               <!-- SIMPLE MODE -->
@@ -705,22 +705,22 @@
           <div class="card-body">
             <!-- Add Reward Form -->
             <form method="POST" action="{{ url_for('admin.payroll_add_reward') }}" class="mb-4">
-              {{ reward_form.hidden_tag() }}
+              <input type="hidden" name="csrf_token" value="{{ reward_form.csrf_token._value() }}" id="reward_csrf_token"/>
               <div class="mb-2">
-                {{ reward_form.name(class="form-control form-control-sm", placeholder="Reward Name") }}
+                {{ reward_form.name(class="form-control form-control-sm", placeholder="Reward Name", id="reward_name") }}
               </div>
               <div class="mb-2">
-                {{ reward_form.description(class="form-control form-control-sm", rows=2, placeholder="Description (optional)") }}
+                {{ reward_form.description(class="form-control form-control-sm", rows=2, placeholder="Description (optional)", id="reward_description") }}
               </div>
               <div class="input-group input-group-sm mb-2">
                 <span class="input-group-text">$</span>
-                {{ reward_form.amount(class="form-control", placeholder="Amount", step="0.01") }}
+                {{ reward_form.amount(class="form-control", placeholder="Amount", step="0.01", id="reward_amount") }}
               </div>
               <div class="form-check form-switch mb-2">
-                {{ reward_form.is_active(class="form-check-input", role="switch", checked="checked") }}
-                {{ reward_form.is_active.label(class="form-check-label") }}
+                {{ reward_form.is_active(class="form-check-input", role="switch", checked="checked", id="reward_is_active") }}
+                {{ reward_form.is_active.label(class="form-check-label", **{"for": "reward_is_active"}) }}
               </div>
-              {{ reward_form.submit(class="btn btn-success btn-sm w-100") }}
+              {{ reward_form.submit(class="btn btn-success btn-sm w-100", id="reward_submit") }}
             </form>
 
             <!-- Existing Rewards -->
@@ -766,22 +766,22 @@
           <div class="card-body">
             <!-- Add Fine Form -->
             <form method="POST" action="{{ url_for('admin.payroll_add_fine') }}" class="mb-4">
-              {{ fine_form.hidden_tag() }}
+              <input type="hidden" name="csrf_token" value="{{ fine_form.csrf_token._value() }}" id="fine_csrf_token"/>
               <div class="mb-2">
-                {{ fine_form.name(class="form-control form-control-sm", placeholder="Fine Name") }}
+                {{ fine_form.name(class="form-control form-control-sm", placeholder="Fine Name", id="fine_name") }}
               </div>
               <div class="mb-2">
-                {{ fine_form.description(class="form-control form-control-sm", rows=2, placeholder="Description (optional)") }}
+                {{ fine_form.description(class="form-control form-control-sm", rows=2, placeholder="Description (optional)", id="fine_description") }}
               </div>
               <div class="input-group input-group-sm mb-2">
                 <span class="input-group-text">$</span>
-                {{ fine_form.amount(class="form-control", placeholder="Amount", step="0.01") }}
+                {{ fine_form.amount(class="form-control", placeholder="Amount", step="0.01", id="fine_amount") }}
               </div>
               <div class="form-check form-switch mb-2">
-                {{ fine_form.is_active(class="form-check-input", role="switch", checked="checked") }}
-                {{ fine_form.is_active.label(class="form-check-label") }}
+                {{ fine_form.is_active(class="form-check-input", role="switch", checked="checked", id="fine_is_active") }}
+                {{ fine_form.is_active.label(class="form-check-label", **{"for": "fine_is_active"}) }}
               </div>
-              {{ fine_form.submit(class="btn btn-danger btn-sm w-100") }}
+              {{ fine_form.submit(class="btn btn-danger btn-sm w-100", id="fine_submit") }}
             </form>
 
             <!-- Existing Fines -->
@@ -908,7 +908,7 @@
           </div>
           <div class="card-body">
             <form id="manualPaymentForm">
-              {{ manual_payment_form.hidden_tag() }}
+              <input type="hidden" name="csrf_token" value="{{ manual_payment_form.csrf_token._value() }}" id="manual_payment_csrf_token"/>
 
               <!-- Preset Reward/Fine Selector -->
               <div class="mb-3">
