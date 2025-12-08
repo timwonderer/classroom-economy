@@ -5,6 +5,7 @@
 
 {% block extra_head %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
+<script src="{{ url_for('static', filename='js/economy-balance.js') }}"></script>
 <style>
     .EasyMDEContainer .CodeMirror {
         min-height: 150px;
@@ -84,21 +85,27 @@
                 <h6 class="mb-0"><i class="bi bi-currency-dollar me-2"></i>Pricing & Payment</h6>
               </div>
               <div class="card-body">
+                <!-- Economy Balance Check -->
+                <div id="cwi-info" class="mb-3"></div>
+
                 <div class="row">
                   <div class="col-md-6 mb-3">
                     {{ form.premium.label(class="form-label fw-bold") }}
                     <div class="input-group">
                       <span class="input-group-text">$</span>
-                      {{ form.premium(class="form-control", placeholder="0.00") }}
+                      {{ form.premium(class="form-control", placeholder="0.00", **{'data-economy-validate': 'insurance'}) }}
                     </div>
                     <small class="text-muted">Cost per cycle</small>
                   </div>
                   <div class="col-md-6 mb-3">
                     {{ form.charge_frequency.label(class="form-label fw-bold") }}
-                    {{ form.charge_frequency(class="form-select") }}
+                    {{ form.charge_frequency(class="form-select", **{'data-economy-frequency-field': 'true'}) }}
                     <small class="text-muted">Billing frequency</small>
                   </div>
                 </div>
+
+                <!-- Economy Balance Warnings -->
+                <div id="economy-warnings"></div>
                 <div class="mb-3">
                   <div class="form-check form-switch">
                     {{ form.autopay(class="form-check-input", role="switch") }}
@@ -453,6 +460,34 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // Initialize on load
   updateBundleIds();
+
+  // Initialize Economy Balance Checker
+  if (typeof EconomyBalanceChecker !== 'undefined') {
+    const economyChecker = new EconomyBalanceChecker({
+      warningsContainer: '#economy-warnings',
+      expectedWeeklyHours: {{ (payroll_settings.expected_weekly_hours if payroll_settings and payroll_settings.expected_weekly_hours is not none else 5.0) | float }}
+    });
+
+    // Display CWI info if payroll is configured
+    economyChecker.analyzeEconomy().then(analysis => {
+      economyChecker.displayCWIInfo(analysis, '#cwi-info');
+    }).catch(err => {
+      console.log('Payroll not configured yet, skipping CWI display');
+    });
+
+    // Update frequency data attribute when frequency field changes
+    const frequencyField = document.querySelector('[data-economy-frequency-field]');
+    const premiumField = document.querySelector('[data-economy-validate="insurance"]');
+    if (frequencyField && premiumField) {
+      frequencyField.addEventListener('change', function() {
+        premiumField.setAttribute('data-economy-frequency', this.value);
+        // Trigger validation
+        premiumField.dispatchEvent(new Event('input'));
+      });
+      // Set initial frequency
+      premiumField.setAttribute('data-economy-frequency', frequencyField.value);
+    }
+  }
 
   // Handle mutually exclusive repurchase restrictions
   const permanentBlockToggle = document.getElementById('permanentBlockToggle');

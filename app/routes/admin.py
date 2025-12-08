@@ -47,6 +47,7 @@ from forms import (
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso, generate_anonymous_code, render_template_with_fallback as render_template
 from app.utils.join_code import generate_join_code
+from app.utils.economy_balance import EconomyBalanceChecker
 from app.utils.claim_credentials import (
     compute_primary_claim_hash,
     match_claim_hash,
@@ -2157,7 +2158,8 @@ def edit_store_item(item_id):
         db.session.commit()
         flash(f"'{item.name}' has been updated.", "success")
         return redirect(url_for('admin.store_management'))
-    return render_template('admin_edit_item.html', form=form, item=item, current_page="store")
+    payroll_settings = PayrollSettings.query.filter_by(teacher_id=admin_id, is_active=True).first()
+    return render_template('admin_edit_item.html', form=form, item=item, current_page="store", payroll_settings=payroll_settings)
 
 
 @admin_bp.route('/store/delete/<int:item_id>', methods=['POST'])
@@ -2211,6 +2213,7 @@ def rent_settings():
     """Configure rent settings."""
     admin_id = session.get("admin_id")
     student_ids_subq = _student_scope_subquery()
+    payroll_settings = PayrollSettings.query.filter_by(teacher_id=admin_id, is_active=True).first()
 
     # Get teacher's blocks for class selector
     teacher_blocks = db.session.query(TeacherBlock.block).filter_by(teacher_id=admin_id).distinct().all()
@@ -2325,31 +2328,28 @@ def rent_settings():
 
     # Calculate payroll warning
     payroll_warning = None
-    if settings and settings.is_enabled and settings.rent_amount > 0:
-        # Get average payroll amount per student per month
-        payroll_settings = PayrollSettings.query.filter_by(is_active=True).first()
-        if payroll_settings:
-            # Calculate rent per month based on frequency
-            rent_per_month = settings.rent_amount
-            if settings.frequency_type == 'daily':
-                rent_per_month = settings.rent_amount * 30
-            elif settings.frequency_type == 'weekly':
-                rent_per_month = settings.rent_amount * 4
-            elif settings.frequency_type == 'custom':
-                if settings.custom_frequency_unit == 'days':
-                    rent_per_month = settings.rent_amount * (30 / settings.custom_frequency_value)
-                elif settings.custom_frequency_unit == 'weeks':
-                    rent_per_month = settings.rent_amount * (30 / (settings.custom_frequency_value * 7))
-                elif settings.custom_frequency_unit == 'months':
-                    rent_per_month = settings.rent_amount / settings.custom_frequency_value
+    if settings and settings.is_enabled and settings.rent_amount > 0 and payroll_settings:
+        # Calculate rent per month based on frequency
+        rent_per_month = settings.rent_amount
+        if settings.frequency_type == 'daily':
+            rent_per_month = settings.rent_amount * 30
+        elif settings.frequency_type == 'weekly':
+            rent_per_month = settings.rent_amount * 4
+        elif settings.frequency_type == 'custom':
+            if settings.custom_frequency_unit == 'days':
+                rent_per_month = settings.rent_amount * (30 / settings.custom_frequency_value)
+            elif settings.custom_frequency_unit == 'weeks':
+                rent_per_month = settings.rent_amount * (30 / (settings.custom_frequency_value * 7))
+            elif settings.custom_frequency_unit == 'months':
+                rent_per_month = settings.rent_amount / settings.custom_frequency_value
 
-            # Estimate monthly payroll (assuming average 20 work days, 6 hours per day)
-            # Using simple mode settings if available
-            pay_per_minute = payroll_settings.pay_rate
-            estimated_monthly_payroll = pay_per_minute * 60 * 6 * 20  # 6 hours/day * 20 days
+        # Estimate monthly payroll (assuming average 20 work days, 6 hours per day)
+        # Using simple mode settings if available
+        pay_per_minute = payroll_settings.pay_rate
+        estimated_monthly_payroll = pay_per_minute * 60 * 6 * 20  # 6 hours/day * 20 days
 
-            if rent_per_month > estimated_monthly_payroll * 0.8:  # If rent is more than 80% of payroll
-                payroll_warning = f"Rent (${rent_per_month:.2f}/month) exceeds recommended 80% of estimated monthly payroll (${estimated_monthly_payroll:.2f}). Students may struggle to afford rent."
+        if rent_per_month > estimated_monthly_payroll * 0.8:  # If rent is more than 80% of payroll
+            payroll_warning = f"Rent (${rent_per_month:.2f}/month) exceeds recommended 80% of estimated monthly payroll (${estimated_monthly_payroll:.2f}). Students may struggle to afford rent."
 
     return render_template('admin_rent_settings.html',
                           settings=settings,
@@ -2358,6 +2358,7 @@ def rent_settings():
                           active_waivers=active_waivers,
                           all_students=all_students,
                           payroll_warning=payroll_warning,
+                          payroll_settings=payroll_settings,
                           settings_block=settings_block,
                           teacher_blocks=teacher_blocks,
                           class_labels_by_block=class_labels_by_block)
@@ -2736,13 +2737,16 @@ def edit_insurance_policy(policy_id):
         InsurancePolicy.id != policy_id
     ).all()
 
+    payroll_settings = PayrollSettings.query.filter_by(teacher_id=session.get('admin_id'), is_active=True).first()
+
     return render_template(
         'admin_edit_insurance_policy.html',
         form=form,
         policy=policy,
         available_policies=available_policies,
         tier_groups=tier_groups,
-        next_tier_category_id=next_tier_category_id
+        next_tier_category_id=next_tier_category_id,
+        payroll_settings=payroll_settings
     )
 
 
@@ -5475,4 +5479,252 @@ def onboarding_reset():
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error resetting onboarding: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ==================== ECONOMY BALANCE CHECKER API ====================
+
+@admin_bp.route('/api/economy/calculate-cwi', methods=['POST'])
+@admin_required
+def api_calculate_cwi():
+    """
+    Calculate CWI (Classroom Wage Index) based on payroll settings.
+
+    Expected JSON payload:
+    {
+        "pay_rate": 15.0,          // Per hour rate
+        "expected_weekly_hours": 5.0,
+        "block": "A" (optional)
+    }
+
+    Returns CWI calculation with breakdown.
+    """
+    try:
+        admin_id = session.get('admin_id')
+        data = request.get_json()
+
+        # Get pay rate and convert to per-minute (as stored in DB)
+        pay_rate_per_hour = float(data.get('pay_rate', 15.0))
+        pay_rate_per_minute = pay_rate_per_hour / 60.0
+        expected_weekly_hours = float(data.get('expected_weekly_hours', 5.0))
+        block = data.get('block')
+
+        # Create a temporary PayrollSettings-like object for calculation
+        class TempPayrollSettings:
+            def __init__(self, pay_rate, time_unit='minutes', frequency_days=7, expected_weekly_hours=None):
+                self.pay_rate = pay_rate
+                self.time_unit = time_unit
+                self.payroll_frequency_days = frequency_days
+                self.expected_weekly_hours = expected_weekly_hours
+
+        temp_settings = TempPayrollSettings(pay_rate_per_minute, expected_weekly_hours=expected_weekly_hours)
+
+        # Calculate CWI
+        checker = EconomyBalanceChecker(admin_id, block)
+        cwi_calc = checker.calculate_cwi(temp_settings, expected_weekly_hours)
+
+        return jsonify({
+            'status': 'success',
+            'cwi': cwi_calc.cwi,
+            'breakdown': {
+                'pay_rate_per_hour': pay_rate_per_hour,
+                'pay_rate_per_minute': cwi_calc.pay_rate_per_minute,
+                'expected_weekly_hours': expected_weekly_hours,
+                'expected_weekly_minutes': cwi_calc.expected_weekly_minutes,
+                'notes': cwi_calc.notes
+            }
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"Error calculating CWI: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_bp.route('/api/economy/analyze', methods=['POST'])
+@admin_required
+def api_economy_analyze():
+    """
+    Perform comprehensive economy balance analysis.
+
+    Returns complete economy analysis including CWI, warnings, recommendations.
+    """
+    try:
+        admin_id = session.get('admin_id')
+        data = request.get_json() or {}
+        block = data.get('block')
+
+        # Get or create checker
+        checker = EconomyBalanceChecker(admin_id, block)
+
+        # Get current settings from database
+        payroll_settings = PayrollSettings.query.filter_by(
+            teacher_id=admin_id,
+            is_active=True
+        ).first()
+
+        if not payroll_settings:
+            return jsonify({
+                'status': 'error',
+                'message': 'Please configure payroll settings first to calculate CWI.'
+            }), 400
+
+        # Get other economy features
+        rent_settings = RentSettings.query.filter_by(
+            teacher_id=admin_id,
+            is_enabled=True
+        ).first() if block is None else RentSettings.query.filter_by(
+            teacher_id=admin_id,
+            block=block,
+            is_enabled=True
+        ).first()
+
+        insurance_policies = InsurancePolicy.query.filter_by(
+            teacher_id=admin_id,
+            is_active=True
+        ).all()
+
+        fines = PayrollFine.query.filter_by(
+            teacher_id=admin_id,
+            is_active=True
+        ).all()
+
+        store_items = StoreItem.query.filter_by(
+            teacher_id=admin_id,
+            is_active=True
+        ).all()
+
+        # Perform analysis
+        expected_weekly_hours = float(data.get('expected_weekly_hours', 5.0))
+        analysis = checker.analyze_economy(
+            payroll_settings=payroll_settings,
+            rent_settings=rent_settings,
+            insurance_policies=insurance_policies,
+            fines=fines,
+            store_items=store_items,
+            expected_weekly_hours=expected_weekly_hours
+        )
+
+        # Format response
+        warnings_by_level = {
+            'critical': [],
+            'warning': [],
+            'info': []
+        }
+
+        for w in analysis.warnings:
+            warnings_by_level[w.level.value].append({
+                'feature': w.feature,
+                'message': w.message,
+                'current_value': w.current_value,
+                'recommended_min': w.recommended_min,
+                'recommended_max': w.recommended_max,
+                'cwi_ratio': w.cwi_ratio
+            })
+
+        return jsonify({
+            'status': 'success',
+            'cwi': analysis.cwi.cwi,
+            'is_balanced': analysis.is_balanced,
+            'budget_survival_test_passed': analysis.budget_survival_test_passed,
+            'weekly_savings': analysis.weekly_savings,
+            'warnings': warnings_by_level,
+            'recommendations': analysis.recommendations,
+            'cwi_breakdown': {
+                'pay_rate_per_hour': analysis.cwi.pay_rate_per_minute * 60,
+                'pay_rate_per_minute': analysis.cwi.pay_rate_per_minute,
+                'expected_weekly_hours': expected_weekly_hours,
+                'expected_weekly_minutes': analysis.cwi.expected_weekly_minutes,
+                'notes': analysis.cwi.notes
+            }
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"Error analyzing economy: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+@admin_bp.route('/api/economy/validate/<feature>', methods=['POST'])
+@admin_required
+def api_economy_validate(feature):
+    """
+    Validate a specific feature value against CWI.
+
+    Features: 'rent', 'insurance', 'fine', 'store_item'
+
+    Expected JSON payload:
+    {
+        "value": 100.0,
+        "frequency": "weekly" (for insurance),
+        "block": "A" (optional)
+    }
+    """
+    try:
+        admin_id = session.get('admin_id')
+        data = request.get_json()
+
+        value = float(data.get('value', 0))
+        block = data.get('block')
+        feature = feature.lower()
+        valid_features = ['rent', 'insurance', 'fine', 'store_item']
+        if feature not in valid_features:
+            return jsonify({
+                'status': 'error',
+                'message': f"Invalid feature type. Must be one of: {', '.join(valid_features)}"
+            }), 400
+
+        # Get payroll settings to calculate CWI
+        payroll_settings = PayrollSettings.query.filter_by(
+            teacher_id=admin_id,
+            is_active=True
+        ).first()
+
+        if not payroll_settings:
+            return jsonify({
+                'status': 'warning',
+                'message': 'Configure payroll first to get recommendations.',
+                'is_valid': True,
+                'warnings': []
+            })
+
+        # Calculate CWI
+        checker = EconomyBalanceChecker(admin_id, block)
+        expected_weekly_hours = float(data.get('expected_weekly_hours', 5.0))
+        cwi_calc = checker.calculate_cwi(payroll_settings, expected_weekly_hours)
+        cwi = cwi_calc.cwi
+
+        warnings = []
+        recommendations = {}
+        ratio = None
+
+        validation_kwargs = {
+            'frequency': data.get('frequency', 'weekly'),
+            'frequency_type': data.get('frequency_type', data.get('frequency', 'monthly')),
+            'custom_frequency_value': data.get('custom_frequency_value'),
+            'custom_frequency_unit': data.get('custom_frequency_unit'),
+        }
+
+        warnings, recommendations, ratio = checker.validate_feature_value(
+            feature,
+            value,
+            cwi,
+            **validation_kwargs,
+        )
+
+        return jsonify({
+            'status': 'success',
+            'is_valid': len([w for w in warnings if w['level'] == 'critical']) == 0,
+            'warnings': warnings,
+            'recommendations': recommendations,
+            'cwi': cwi,
+            'ratio': ratio if feature != 'insurance' else None,
+            'cwi_breakdown': {
+                'pay_rate_per_hour': cwi_calc.pay_rate_per_minute * 60,
+                'pay_rate_per_minute': cwi_calc.pay_rate_per_minute,
+                'expected_weekly_hours': expected_weekly_hours,
+                'expected_weekly_minutes': cwi_calc.expected_weekly_minutes,
+            }
+        })
+
+    except Exception as e:
+        current_app.logger.error(f"Error validating {feature}: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500

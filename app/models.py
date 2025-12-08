@@ -973,6 +973,10 @@ class PayrollSettings(db.Model):
     first_pay_date = db.Column(db.DateTime, nullable=True)  # First payday
     rounding_mode = db.Column(db.String(20), nullable=False, default='down')  # 'up' or 'down'
 
+    # Economy Balance Check Field
+    # NOTE: This is NOT used for actual payroll calculations - only for economy balance validation
+    expected_weekly_hours = db.Column(db.Float, nullable=True, default=5.0)  # Expected class hours per week
+
     # Relationships
     teacher = db.relationship('Admin', backref=db.backref('payroll_settings', lazy='dynamic'))
 
