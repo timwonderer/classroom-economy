@@ -2612,18 +2612,18 @@ def insurance_management():
             .all()
         )
 
-        # Get claims for selected block
+        # Get claims for selected block, filtered by join_code for proper multi-tenancy isolation
         claims = (
             InsuranceClaim.query
-            .join(Student, InsuranceClaim.student_id == Student.id)
-            .filter(Student.id.in_(student_ids_in_block))
+            .join(StudentInsurance, InsuranceClaim.student_insurance_id == StudentInsurance.id)
+            .filter(StudentInsurance.join_code == join_code)
             .order_by(InsuranceClaim.filed_date.desc())
             .all()
         )
         pending_claims_count = (
             InsuranceClaim.query
-            .join(Student, InsuranceClaim.student_id == Student.id)
-            .filter(Student.id.in_(student_ids_in_block))
+            .join(StudentInsurance, InsuranceClaim.student_insurance_id == StudentInsurance.id)
+            .filter(StudentInsurance.join_code == join_code)
             .filter(InsuranceClaim.status == 'pending')
             .count()
         )
