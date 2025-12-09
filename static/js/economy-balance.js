@@ -62,8 +62,18 @@ class EconomyBalanceChecker {
 
         const frequency = input.dataset.economyFrequency || 'weekly';
 
-        // For rent validation, collect additional frequency parameters from the form
+        // Collect block parameter (important for multi-class teachers)
         let additionalParams = {};
+        const settingsBlockInput = document.getElementById('settings_block_selector') ||
+                                  document.querySelector('input[name="settings_block"]') ||
+                                  document.querySelector('select[name="block"]');
+
+        // CRITICAL: Always include block parameter so validation uses the correct payroll settings
+        if (settingsBlockInput) {
+            additionalParams.block = settingsBlockInput.value;
+        }
+
+        // For rent validation, collect additional frequency parameters from the form
         if (feature === 'rent') {
             const frequencyTypeInput = document.getElementById('frequency_type');
             const customFrequencyValueInput = document.getElementById('custom_frequency_value');
