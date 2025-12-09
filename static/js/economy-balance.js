@@ -189,6 +189,14 @@ class EconomyBalanceChecker {
     }
 
     /**
+     * Get CSRF token from meta tag
+     */
+    getCsrfToken() {
+        const metaTag = document.querySelector('meta[name="csrf-token"]');
+        return metaTag ? metaTag.getAttribute('content') : '';
+    }
+
+    /**
      * Calculate CWI based on pay rate
      */
     async calculateCWI(payRate, expectedWeeklyHours = null) {
@@ -199,6 +207,7 @@ class EconomyBalanceChecker {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCsrfToken()
                 },
                 body: JSON.stringify({
                     pay_rate: payRate,
@@ -229,6 +238,7 @@ class EconomyBalanceChecker {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCsrfToken()
                 },
                 body: JSON.stringify({
                     value: value,
@@ -262,6 +272,7 @@ class EconomyBalanceChecker {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRFToken': this.getCsrfToken()
                 },
                 body: JSON.stringify({
                     expected_weekly_hours: hours
