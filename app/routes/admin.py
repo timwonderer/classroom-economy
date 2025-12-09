@@ -3738,6 +3738,47 @@ def payroll_settings():
     return redirect(url_for('admin.payroll'))
 
 
+@admin_bp.route('/payroll/update-expected-hours', methods=['POST'])
+@admin_required
+def update_expected_weekly_hours():
+    """Update the expected weekly hours for CWI calculation."""
+    try:
+        admin_id = session.get("admin_id")
+        expected_weekly_hours = float(request.form.get('expected_weekly_hours', 5.0))
+
+        # Get or create the default payroll settings (block=NULL)
+        default_setting = PayrollSettings.query.filter_by(
+            teacher_id=admin_id,
+            block=None
+        ).first()
+
+        if default_setting:
+            default_setting.expected_weekly_hours = expected_weekly_hours
+        else:
+            # Create new default settings with expected hours
+            default_setting = PayrollSettings(
+                teacher_id=admin_id,
+                block=None,
+                pay_rate=0.25,  # Default $0.25/min = $15/hour
+                expected_weekly_hours=expected_weekly_hours,
+                payroll_frequency_days=14,
+                settings_mode='simple'
+            )
+            db.session.add(default_setting)
+
+        db.session.commit()
+        flash(f'Expected weekly hours updated to {expected_weekly_hours} hours/week', 'success')
+
+    except ValueError:
+        flash('Invalid expected weekly hours value', 'error')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating expected weekly hours: {e}")
+        flash(f'Error updating expected weekly hours: {str(e)}', 'error')
+
+    return redirect(url_for('admin.payroll'))
+
+
 # -------------------- PAYROLL REWARDS & FINES --------------------
 
 @admin_bp.route('/payroll/rewards/add', methods=['POST'])

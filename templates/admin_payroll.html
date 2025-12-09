@@ -118,6 +118,43 @@
       </div>
     </div>
 
+    <!-- Economy Balance Configuration -->
+    <div class="card shadow mb-4">
+      <div class="card-header bg-info text-white">
+        <h5 class="mb-0"><i class="bi bi-graph-up-arrow me-2"></i>Classroom Wage Index (CWI)</h5>
+      </div>
+      <div class="card-body">
+        <form method="POST" action="{{ url_for('admin.update_expected_weekly_hours') }}" id="expectedHoursForm">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+
+          <div class="row align-items-end mb-3">
+            <div class="col-md-4">
+              <label for="expectedWeeklyHoursOverview" class="form-label fw-bold">
+                Expected Weekly Hours:
+                <i class="bi bi-info-circle text-primary" data-bs-toggle="tooltip"
+                   title="How many hours per week do students typically attend class? Used for economy balance validation and CWI calculation."></i>
+              </label>
+              <div class="input-group">
+                <input type="number" class="form-control" id="expectedWeeklyHoursOverview"
+                       name="expected_weekly_hours" step="0.25" placeholder="5.0"
+                       value="{% if default_setting and default_setting.expected_weekly_hours %}{{ default_setting.expected_weekly_hours }}{% else %}5.0{% endif %}">
+                <span class="input-group-text">hours/week</span>
+              </div>
+              <small class="text-muted">Example: 75 min × 3 classes/week = 3.75 hours</small>
+            </div>
+            <div class="col-md-3">
+              <button type="submit" class="btn btn-primary">
+                <i class="bi bi-save me-1"></i>Update
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <!-- CWI Display -->
+        <div id="cwi-display-overview"></div>
+      </div>
+    </div>
+
     <!-- Recent Payroll Activity -->
     <div class="card shadow">
       <div class="card-header">
@@ -1700,6 +1737,97 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Calculate on page load
     updateCWI();
+});
+
+// ========== OVERVIEW TAB: CWI DISPLAY ==========
+document.addEventListener('DOMContentLoaded', function() {
+    const expectedHoursOverview = document.getElementById('expectedWeeklyHoursOverview');
+    const cwiDisplayOverview = document.getElementById('cwi-display-overview');
+    const cwiTemplate = document.getElementById('cwiInfoTemplate');
+
+    if (!expectedHoursOverview || !cwiDisplayOverview) return;
+
+    const cwiChecker = new EconomyBalanceChecker({ autoValidate: false });
+
+    async function updateCWIOverview() {
+        const expectedHours = parseFloat(expectedHoursOverview.value) || 5.0;
+
+        try {
+            const analysis = await cwiChecker.analyzeEconomy(expectedHours);
+
+            if (!analysis || !analysis.cwi) {
+                cwiDisplayOverview.innerHTML = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Please configure payroll settings first to see CWI calculation.</div>';
+                return;
+            }
+
+            // Render CWI info using the template
+            const clone = cwiTemplate.content.cloneNode(true);
+            const weeklyIncomeEl = clone.querySelector('[data-field="weekly-income"]');
+            const calcNoteEl = clone.querySelector('[data-field="calculation-note"]');
+            const rentEl = clone.querySelector('[data-field="rent"]');
+            const insuranceEl = clone.querySelector('[data-field="insurance"]');
+            const finesEl = clone.querySelector('[data-field="fines"]');
+            const storeEl = clone.querySelector('[data-field="store"]');
+
+            if (weeklyIncomeEl) {
+                weeklyIncomeEl.textContent = `$${analysis.cwi.cwi.toFixed(2)}/week`;
+            }
+
+            if (calcNoteEl) {
+                const breakdown = analysis.cwi.breakdown || {};
+                const payRateHour = breakdown.pay_rate_per_hour || 0;
+                const totalMinutes = breakdown.expected_weekly_minutes || (expectedHours * 60);
+                calcNoteEl.innerHTML = `
+                    <strong>Pay Rate:</strong> $${payRateHour.toFixed(2)}/hour ($${breakdown.pay_rate_per_minute?.toFixed(2) || '0.00'}/minute)<br>
+                    <strong>Expected Hours:</strong> ${expectedHours.toFixed(2)} hours/week (${totalMinutes.toFixed(0)} minutes)<br>
+                    <strong>Total Weekly Minutes:</strong> ${totalMinutes.toFixed(0)} minutes
+                `;
+            }
+
+            const recommendations = analysis.cwi.recommendations || {};
+
+            if (rentEl && recommendations.rent) {
+                rentEl.innerHTML = `<strong><i class="bi bi-house-door"></i> Rent:</strong> $${recommendations.rent.min?.toFixed(2)} - $${recommendations.rent.max?.toFixed(2)} <span class="badge bg-info">Ideal: $${recommendations.rent.recommended?.toFixed(2)}</span>`;
+            }
+
+            if (insuranceEl && recommendations.insurance_premium_weekly) {
+                insuranceEl.innerHTML = `<strong><i class="bi bi-shield-check"></i> Insurance (weekly):</strong> $${recommendations.insurance_premium_weekly.min?.toFixed(2)} - $${recommendations.insurance_premium_weekly.max?.toFixed(2)} <span class="badge bg-info">Ideal: $${recommendations.insurance_premium_weekly.recommended?.toFixed(2)}</span>`;
+            }
+
+            if (finesEl && recommendations.fine) {
+                finesEl.innerHTML = `<strong><i class="bi bi-exclamation-triangle"></i> Fines:</strong> $${recommendations.fine.min?.toFixed(2)} - $${recommendations.fine.max?.toFixed(2)} <span class="badge bg-info">Ideal: $${recommendations.fine.recommended?.toFixed(2)}</span>`;
+            }
+
+            if (storeEl && recommendations.store_tiers) {
+                const tiers = recommendations.store_tiers;
+                storeEl.innerHTML = `
+                    <strong><i class="bi bi-shop"></i> Store Items:</strong>
+                    <div class="ms-3">
+                        <div>BASIC: $${tiers.basic?.min?.toFixed(2)} - $${tiers.basic?.max?.toFixed(2)}</div>
+                        <div>STANDARD: $${tiers.standard?.min?.toFixed(2)} - $${tiers.standard?.max?.toFixed(2)}</div>
+                        <div>PREMIUM: $${tiers.premium?.min?.toFixed(2)} - $${tiers.premium?.max?.toFixed(2)}</div>
+                        <div>LUXURY: $${tiers.luxury?.min?.toFixed(2)} - $${tiers.luxury?.max?.toFixed(2)}</div>
+                    </div>
+                `;
+            }
+
+            cwiDisplayOverview.innerHTML = '';
+            cwiDisplayOverview.appendChild(clone);
+        } catch (error) {
+            console.error('Error calculating CWI:', error);
+            cwiDisplayOverview.innerHTML = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>Please configure payroll settings first to see CWI calculation.</div>';
+        }
+    }
+
+    // Update CWI when expected hours changes
+    let debounceTimer;
+    expectedHoursOverview.addEventListener('input', function() {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(updateCWIOverview, 400);
+    });
+
+    // Load CWI on page load
+    updateCWIOverview();
 });
 
 // Run Payroll
