@@ -5713,7 +5713,8 @@ def api_economy_analyze():
                 rent_settings=rent_settings,
                 insurance_policies=insurance_policies,
                 fines=fines,
-                store_items=store_items
+                store_items=store_items,
+                expected_weekly_hours=None
             )
 
         # Format response
