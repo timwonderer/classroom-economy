@@ -218,24 +218,37 @@ document.addEventListener('DOMContentLoaded', function() {
 
 The balance checker is currently integrated into:
 
-1. **Rent Settings** (`/admin/rent-settings`)
+1. **Payroll Page** (`/admin/payroll`)
+   - **Overview tab**: Displays CWI calculation card with real-time updates
+   - Configure expected weekly hours per class/block
+   - Shows pay rate breakdown and weekly income projection
+   - Displays all economy recommendations (rent, insurance, fines, store tiers)
+   - Block-scoped: Each class can have different expected hours
+   - **Apply to All Classes** option for bulk updates
+   - Real-time CWI recalculation as expected hours change
+
+2. **Rent Settings** (`/admin/rent-settings`)
    - Validates rent amount against CWI
    - Shows recommended rent range
    - Displays warnings if too high/low
+   - Block-scoped: Different rent for different classes
 
-2. **Insurance Policy Editor** (`/admin/insurance/edit/<id>`)
+3. **Insurance Policy Editor** (`/admin/insurance/edit/<id>`)
    - Validates premium amount against CWI
    - Adjusts for billing frequency (weekly, monthly, etc.)
    - Shows recommended premium ranges
+   - Global: Same premium across all blocks
 
-3. **Store Item Editor** (`/admin/store/edit/<id>`)
+4. **Store Item Editor** (`/admin/store/edit/<id>`)
    - Validates price against CWI
    - Shows pricing tier (BASIC, STANDARD, PREMIUM, LUXURY)
    - Warns if price is outside all tiers
+   - Global: Same price across all blocks
 
-4. **Fines** (via API - UI integration pending)
+5. **Fines** (via API - UI integration pending)
    - Validates fine amounts
    - Ensures fines are meaningful but not excessive
+   - Global: Same fine amounts across all blocks
 
 ## Budget Survival Test
 
@@ -317,6 +330,24 @@ To test the balance checker:
 - Check pay rate is stored as per-minute in database
 - Verify expected_weekly_hours parameter
 
+**Issue: CWI not updating after changing expected weekly hours** (FIXED in latest commit)
+- **Symptom**: Changing expected weekly hours on payroll page doesn't update CWI on other pages
+- **Root Cause**: API was defaulting to 5.0 hours instead of using value from database
+- **Fix**: API now reads `expected_weekly_hours` from `payroll_settings` when not provided in request
+- **Action**: Update to latest version and refresh pages
+
+**Issue: Wrong CWI for different blocks/classes** (FIXED in latest commit)
+- **Symptom**: All blocks show same CWI even with different pay rates
+- **Root Cause**: Block parameter wasn't being passed from frontend to backend API
+- **Fix**: JavaScript now passes current block to `analyzeEconomy()`, API filters by block
+- **Action**: Update to latest version and test with block selector
+
+**Issue: Rent settings showing wrong CWI** (FIXED in latest commit)
+- **Symptom**: Rent settings page shows incorrect CWI for selected block
+- **Root Cause**: Template wasn't passing `settings_block` to API call
+- **Fix**: Updated template to pass current block parameter
+- **Action**: Update to latest version
+
 ## Technical Notes
 
 - CWI is calculated weekly, regardless of payroll frequency
@@ -324,6 +355,42 @@ To test the balance checker:
 - All monetary comparisons use weekly equivalents
 - Insurance premiums are normalized to weekly for comparison
 - Rent is normalized to weekly based on frequency type
+
+### Block-Scoped CWI Calculations
+
+**IMPORTANT:** For specialty schools with different pay rates per class/block:
+
+- **Payroll Settings** are block-scoped: Each block can have different pay rates and expected weekly hours
+- **Rent Settings** are block-scoped: Each block can have different rent amounts
+- **Insurance Policies** are NOT block-scoped: Premiums are the same across all blocks (only visibility is controlled)
+- **Store Items** are NOT block-scoped: Prices are the same across all blocks (only visibility is controlled)
+- **Fines** are NOT block-scoped: Fine amounts are the same across all blocks
+
+When calculating CWI:
+- The API endpoints accept an optional `block` parameter
+- If provided, the endpoint uses the payroll settings for that specific block
+- If not provided, the endpoint uses the first active payroll setting found
+
+**Example Use Cases:**
+- AP Chemistry: $0.30/min pay rate, 5 hours/week → CWI = $90/week
+- Regular Chemistry: $0.25/min pay rate, 3 hours/week → CWI = $45/week
+- Honors Chemistry: $0.25/min pay rate, 4 hours/week → CWI = $60/week
+
+Each class maintains its own CWI calculation, allowing accurate economy recommendations for each class independently.
+
+**JavaScript Usage:**
+```javascript
+// Pass block parameter when calling analyzeEconomy
+const currentBlock = 'A';
+economyChecker.analyzeEconomy(expectedHours, currentBlock).then(analysis => {
+  // Analysis uses payroll settings for block A
+});
+```
+
+**Known Limitation:**
+- Insurance and Store Item pages show CWI based on first payroll setting if teacher has multiple blocks
+- This is by design since these features are not block-scoped in pricing
+- Teachers should ensure consistent pay rates if using shared pricing across blocks
 
 ## References
 
