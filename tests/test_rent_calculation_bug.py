@@ -64,7 +64,7 @@ def test_cwi_calculation_exact(admin_with_exact_payroll):
 
     # Expected: 225 minutes × $1.25/min = $281.25
     expected_cwi = 225 * 1.25
-    assert abs(cwi_calc.cwi - expected_cwi) < 0.01, \
+    assert cwi_calc.cwi == pytest.approx(expected_cwi, abs=0.01), \
         f"Expected CWI ${expected_cwi}, got ${cwi_calc.cwi}"
 
     print(f"\n✓ CWI calculation correct: ${cwi_calc.cwi:.2f}/week")
