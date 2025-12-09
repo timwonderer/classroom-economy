@@ -37,16 +37,22 @@ def admin_with_payroll(client):
     return admin, payroll_settings
 
 
-def test_validate_endpoint_uses_payroll_settings_hours(client, admin_with_payroll):
-    """Test that /api/economy/validate reads expected_weekly_hours from payroll_settings."""
-    admin, payroll_settings = admin_with_payroll
-
-    # Login as admin
+@pytest.fixture
+def logged_in_admin_client(client, admin_with_payroll):
+    """A client with a logged-in admin."""
+    admin, _ = admin_with_payroll
     with client.session_transaction() as sess:
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+    return client
+
+
+def test_validate_endpoint_uses_payroll_settings_hours(logged_in_admin_client, admin_with_payroll):
+    """Test that /api/economy/validate reads expected_weekly_hours from payroll_settings."""
+    admin, payroll_settings = admin_with_payroll
+    client = logged_in_admin_client
 
     # Test validation endpoint - should use expected_weekly_hours from payroll_settings (8.0)
     response = client.post(
@@ -79,16 +85,10 @@ def test_validate_endpoint_uses_payroll_settings_hours(client, admin_with_payrol
         f"Expected CWI {expected_cwi}, got {data['cwi']}"
 
 
-def test_validate_endpoint_not_hardcoded_5_hours(client, admin_with_payroll):
+def test_validate_endpoint_not_hardcoded_5_hours(logged_in_admin_client, admin_with_payroll):
     """Test that validation doesn't use hardcoded 5.0 hours."""
     admin, payroll_settings = admin_with_payroll
-
-    # Login as admin
-    with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
-        sess['is_system_admin'] = False
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+    client = logged_in_admin_client
 
     response = client.post(
         '/api/economy/validate/store_item',
@@ -103,16 +103,10 @@ def test_validate_endpoint_not_hardcoded_5_hours(client, admin_with_payroll):
         f"CWI should be 120.0 (8 hours), not {data['cwi']} (suggests hardcoded 5 hours)"
 
 
-def test_analyze_endpoint_uses_payroll_settings_hours(client, admin_with_payroll):
+def test_analyze_endpoint_uses_payroll_settings_hours(logged_in_admin_client, admin_with_payroll):
     """Test that /api/economy/analyze reads expected_weekly_hours from payroll_settings."""
     admin, payroll_settings = admin_with_payroll
-
-    # Login as admin
-    with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
-        sess['is_system_admin'] = False
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+    client = logged_in_admin_client
 
     # Test analyze endpoint - should use expected_weekly_hours from payroll_settings (8.0)
     response = client.post(
@@ -141,16 +135,10 @@ def test_analyze_endpoint_uses_payroll_settings_hours(client, admin_with_payroll
     assert abs(data['cwi'] - expected_cwi) < 0.01
 
 
-def test_analyze_endpoint_override_hours(client, admin_with_payroll):
+def test_analyze_endpoint_override_hours(logged_in_admin_client, admin_with_payroll):
     """Test that /api/economy/analyze accepts override when explicitly provided."""
     admin, payroll_settings = admin_with_payroll
-
-    # Login as admin
-    with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
-        sess['is_system_admin'] = False
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+    client = logged_in_admin_client
 
     # Test with explicit override to 10 hours
     response = client.post(
@@ -174,16 +162,10 @@ def test_analyze_endpoint_override_hours(client, admin_with_payroll):
     assert abs(data['cwi'] - expected_cwi) < 0.01
 
 
-def test_analyze_endpoint_null_override_uses_payroll(client, admin_with_payroll):
+def test_analyze_endpoint_null_override_uses_payroll(logged_in_admin_client, admin_with_payroll):
     """Test that null expected_weekly_hours falls back to payroll_settings."""
     admin, payroll_settings = admin_with_payroll
-
-    # Login as admin
-    with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
-        sess['is_system_admin'] = False
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+    client = logged_in_admin_client
 
     # Test with explicit null - should fall back to payroll_settings
     response = client.post(
@@ -264,3 +246,42 @@ def test_different_expected_hours_per_block(client):
     data_b = response_b.get_json()
     assert data_b['cwi_breakdown']['expected_weekly_hours'] == 10.0
     assert abs(data_b['cwi'] - (0.25 * 10.0 * 60)) < 0.01  # 150.0
+
+
+def test_validate_rent_with_monthly_frequency(logged_in_admin_client, admin_with_payroll):
+    """Test that monthly rent is correctly normalized to weekly for validation."""
+    admin, payroll_settings = admin_with_payroll
+    client = logged_in_admin_client
+
+    # Test with monthly rent of $440
+    # CWI = 0.25 * 8 * 60 = 120.0 per week
+    # Monthly rent $440 should be normalized to ~$101.15 per week ($440 / 4.348)
+    # Recommended weekly rent range: $240 - $300 (2.0x - 2.5x CWI)
+    response = client.post(
+        '/api/economy/validate/rent',
+        json={
+            'value': 440.0,
+            'frequency_type': 'monthly'
+        }
+    )
+
+    assert response.status_code == 200
+    data = response.get_json()
+
+    # Verify CWI is calculated correctly
+    expected_cwi = 0.25 * 8.0 * 60  # 120.0
+    assert abs(data['cwi'] - expected_cwi) < 0.01
+
+    # Verify recommendations are based on weekly CWI
+    recommendations = data['recommendations']
+    assert abs(recommendations['min'] - (expected_cwi * 2.0)) < 0.01  # 240.0
+    assert abs(recommendations['max'] - (expected_cwi * 2.5)) < 0.01  # 300.0
+    assert abs(recommendations['recommended'] - (expected_cwi * 2.25)) < 0.01  # 270.0
+
+    # Monthly rent of $440 is below the recommended range
+    # (weekly equivalent ~$101.15 is less than minimum $240)
+    assert data['status'] == 'warning'
+    assert len(data['warnings']) > 0
+    warning_msg = data['warnings'][0]['message'].lower()
+    # Warning should mention the weekly equivalent, not the monthly amount
+    assert 'week' in warning_msg

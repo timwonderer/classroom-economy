@@ -62,8 +62,26 @@ class EconomyBalanceChecker {
 
         const frequency = input.dataset.economyFrequency || 'weekly';
 
+        // For rent validation, collect additional frequency parameters from the form
+        let additionalParams = {};
+        if (feature === 'rent') {
+            const frequencyTypeInput = document.getElementById('frequency_type');
+            const customFrequencyValueInput = document.getElementById('custom_frequency_value');
+            const customFrequencyUnitInput = document.getElementById('custom_frequency_unit');
+
+            if (frequencyTypeInput) {
+                additionalParams.frequency_type = frequencyTypeInput.value;
+            }
+            if (customFrequencyValueInput) {
+                additionalParams.custom_frequency_value = parseFloat(customFrequencyValueInput.value) || null;
+            }
+            if (customFrequencyUnitInput) {
+                additionalParams.custom_frequency_unit = customFrequencyUnitInput.value;
+            }
+        }
+
         try {
-            const result = await this.validate(feature, value, frequency);
+            const result = await this.validate(feature, value, frequency, additionalParams);
             this.displayWarnings(result.warnings, result.recommendations);
 
             // Add visual feedback to input
@@ -232,19 +250,22 @@ class EconomyBalanceChecker {
     /**
      * Validate a specific value against CWI
      */
-    async validate(feature, value, frequency = 'weekly') {
+    async validate(feature, value, frequency = 'weekly', additionalParams = {}) {
         try {
+            const requestBody = {
+                value: value,
+                frequency: frequency,
+                ...additionalParams
+                // Note: expected_weekly_hours is read from payroll_settings by the backend
+            };
+
             const response = await fetch(`${this.apiBaseUrl}/validate/${feature}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'X-CSRFToken': this.getCsrfToken()
                 },
-                body: JSON.stringify({
-                    value: value,
-                    frequency: frequency
-                    // Note: expected_weekly_hours is read from payroll_settings by the backend
-                })
+                body: JSON.stringify(requestBody)
             });
 
             const data = await response.json();
