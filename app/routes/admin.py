@@ -5696,26 +5696,21 @@ def api_economy_analyze():
 
         # Perform analysis
         # Use expected_weekly_hours from payroll_settings unless explicitly overridden in request
-        if 'expected_weekly_hours' in data and data['expected_weekly_hours'] is not None:
-            expected_weekly_hours = float(data['expected_weekly_hours'])
-            analysis = checker.analyze_economy(
-                payroll_settings=payroll_settings,
-                rent_settings=rent_settings,
-                insurance_policies=insurance_policies,
-                fines=fines,
-                store_items=store_items,
-                expected_weekly_hours=expected_weekly_hours
-            )
+        expected_weekly_hours_override = data.get('expected_weekly_hours')
+
+        if expected_weekly_hours_override is not None:
+            expected_weekly_hours = float(expected_weekly_hours_override)
         else:
-            # Use value from payroll_settings
-            analysis = checker.analyze_economy(
-                payroll_settings=payroll_settings,
-                rent_settings=rent_settings,
-                insurance_policies=insurance_policies,
-                fines=fines,
-                store_items=store_items,
-                expected_weekly_hours=None
-            )
+            expected_weekly_hours = None  # Will read from payroll_settings
+
+        analysis = checker.analyze_economy(
+            payroll_settings=payroll_settings,
+            rent_settings=rent_settings,
+            insurance_policies=insurance_policies,
+            fines=fines,
+            store_items=store_items,
+            expected_weekly_hours=expected_weekly_hours
+        )
 
         # Format response
         warnings_by_level = {
