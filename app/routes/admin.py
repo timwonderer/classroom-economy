@@ -3531,6 +3531,16 @@ def payroll():
             'is_void': tx.is_void
         })
 
+    # CWI Configuration - Get selected block from query param
+    cwi_block = request.args.get('cwi_block', blocks[0] if blocks else None)
+    cwi_setting = None
+    if cwi_block:
+        # Get the payroll setting for this specific block
+        cwi_setting = PayrollSettings.query.filter_by(
+            teacher_id=admin_id,
+            block=cwi_block
+        ).first()
+
     return render_template(
         'admin_payroll.html',
         # Overview tab
@@ -3560,6 +3570,9 @@ def payroll():
         all_students=students,
         # History tab
         payroll_history=payroll_history,
+        # CWI Configuration
+        cwi_block=cwi_block,
+        cwi_setting=cwi_setting,
         # General
         blocks=blocks,
         class_labels_by_block=class_labels_by_block,
@@ -3736,6 +3749,78 @@ def payroll_settings():
         flash(f'Error saving payroll settings: {str(e)}', 'error')
 
     return redirect(url_for('admin.payroll'))
+
+
+@admin_bp.route('/payroll/update-expected-hours', methods=['POST'])
+@admin_required
+def update_expected_weekly_hours():
+    """Update the expected weekly hours for CWI calculation for a specific block or all blocks."""
+    try:
+        admin_id = session.get("admin_id")
+        expected_weekly_hours = float(request.form.get('expected_weekly_hours', 5.0))
+        cwi_block = request.form.get('cwi_block')
+        apply_to_all = request.form.get('apply_to_all', 'false').lower() == 'true'
+
+        # Validate expected_weekly_hours is within a reasonable range (0.25 to 80)
+        if not (0.25 <= expected_weekly_hours <= 80):
+            flash('Expected weekly hours must be between 0.25 and 80.', 'error')
+            return redirect(url_for('admin.payroll', cwi_block=cwi_block))
+
+        if apply_to_all:
+            # Update all existing payroll settings
+            settings_to_update = PayrollSettings.query.filter_by(teacher_id=admin_id).all()
+
+            if settings_to_update:
+                for setting in settings_to_update:
+                    setting.expected_weekly_hours = expected_weekly_hours
+                flash_message = f'Expected weekly hours updated to {expected_weekly_hours} hours/week for all classes.'
+            else:
+                # No settings exist - create a default one for the selected block
+                new_setting = PayrollSettings(
+                    teacher_id=admin_id,
+                    block=cwi_block,
+                    pay_rate=0.25,  # Default $0.25/min = $15/hour
+                    expected_weekly_hours=expected_weekly_hours,
+                    payroll_frequency_days=14,
+                    settings_mode='simple'
+                )
+                db.session.add(new_setting)
+                flash_message = f'Expected weekly hours set to {expected_weekly_hours} hours/week for all classes.'
+        else:
+            # Update only the selected block
+            block_setting = PayrollSettings.query.filter_by(
+                teacher_id=admin_id,
+                block=cwi_block
+            ).first()
+
+            if block_setting:
+                block_setting.expected_weekly_hours = expected_weekly_hours
+                flash_message = f'Expected weekly hours updated to {expected_weekly_hours} hours/week for {cwi_block}.'
+            else:
+                # Create new setting for this block
+                new_setting = PayrollSettings(
+                    teacher_id=admin_id,
+                    block=cwi_block,
+                    pay_rate=0.25,  # Default $0.25/min = $15/hour
+                    expected_weekly_hours=expected_weekly_hours,
+                    payroll_frequency_days=14,
+                    settings_mode='simple'
+                )
+                db.session.add(new_setting)
+                flash_message = f'Expected weekly hours set to {expected_weekly_hours} hours/week for {cwi_block}.'
+
+        db.session.commit()
+        flash(flash_message, 'success')
+
+    except ValueError:
+        flash('Invalid expected weekly hours value', 'error')
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error updating expected weekly hours: {e}")
+        flash(f'Error updating expected weekly hours: {str(e)}', 'error')
+
+    # Redirect back with cwi_block parameter to maintain the selected class
+    return redirect(url_for('admin.payroll', cwi_block=cwi_block))
 
 
 # -------------------- PAYROLL REWARDS & FINES --------------------

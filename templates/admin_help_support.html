@@ -104,6 +104,208 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Classroom Economy Guide -->
+            <div class="row g-4 mt-2">
+                <div class="col-12">
+                    <div class="card shadow-sm">
+                        <div class="card-header bg-success text-white">
+                            <h5 class="mb-0"><i class="bi bi-graph-up-arrow me-2"></i>Classroom Economy Monetary System — Teacher Guide</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="lead">This guide explains the logic behind how the Classroom Economy App handles money, prices, and financial decisions. It is designed to help you set fair, consistent numbers across your classes—even if each class has different wages or economic conditions.</p>
+
+                            <hr>
+
+                            <h6 class="fw-bold mt-4"><i class="bi bi-1-circle-fill me-2"></i>How the System Is Anchored</h6>
+                            <p>Every class has a different schedule, different behavior patterns, and different needs. Instead of using a fixed $1000/month model, the app estimates:</p>
+
+                            <div class="alert alert-info">
+                                <h6 class="fw-bold"><i class="bi bi-graph-up-arrow me-2"></i>Classroom Wage Index (CWI)</h6>
+                                <p class="mb-0"><strong>CWI = What a student earns in one week if they attend fully.</strong></p>
+                                <p class="mb-0 mt-2">This becomes the baseline for all pricing in your simulated economy.</p>
+                                <p class="mb-0 mt-2">Because everything is proportional to the CWI, you can adjust wages or create inflation without breaking the system.</p>
+                            </div>
+
+                            <hr>
+
+                            <h6 class="fw-bold mt-4"><i class="bi bi-2-circle-fill me-2"></i>How Prices Stay Fair and Understandable</h6>
+                            <p>The system follows several principles to keep the economy realistic but not overwhelming:</p>
+
+                            <h6 class="fw-bold mt-3">2.1 Reasonable Trade-Offs</h6>
+                            <p>Prices should push students to make choices:</p>
+                            <ul>
+                                <li>buy insurance vs. risk paying out-of-pocket</li>
+                                <li>save vs. spend</li>
+                                <li>invest vs. borrow</li>
+                            </ul>
+                            <p>But no single mistake should ruin them.</p>
+
+                            <h6 class="fw-bold mt-3">2.2 Proportional Pricing</h6>
+                            <p>Rent, store items, fines, and insurance all scale relative to weekly earnings. This ensures fairness even when different classes earn different amounts.</p>
+
+                            <h6 class="fw-bold mt-3">2.3 Predictable Cost Structure</h6>
+                            <p>Every major cost has a recommended ratio to the CWI (explained below). This keeps your economy internally consistent and easy to explain to students.</p>
+
+                            <hr>
+
+                            <h6 class="fw-bold mt-4"><i class="bi bi-3-circle-fill me-2"></i>Recommended Ratios for Pricing</h6>
+                            <p>These ratios work for nearly all classes and automatically adjust when you change wages.</p>
+
+                            <div class="table-responsive mt-3">
+                                <table class="table table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Category</th>
+                                            <th>Recommended Range</th>
+                                            <th>Purpose</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td><strong>Rent</strong></td>
+                                            <td>2.0–2.5 × CWI</td>
+                                            <td>Significant but manageable</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Utilities / Taxes</strong></td>
+                                            <td>0.2–0.3 × CWI</td>
+                                            <td>Small but recurring</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Insurance Premium</strong></td>
+                                            <td>5–12% of CWI</td>
+                                            <td>Worthwhile but not abusable</td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>Fines & Penalties</strong></td>
+                                            <td>5–15% of CWI</td>
+                                            <td>Push responsibility, not break budgets</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <h6 class="fw-bold mt-4">Store Item Tiers</h6>
+                            <p>Organized into tiers for clarity:</p>
+                            <div class="table-responsive">
+                                <table class="table table-bordered">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Item Tier</th>
+                                            <th>% of CWI</th>
+                                            <th>Typical Use</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr>
+                                            <td><span class="badge bg-secondary">Basic</span></td>
+                                            <td>2–5%</td>
+                                            <td>pencils, small conveniences</td>
+                                        </tr>
+                                        <tr>
+                                            <td><span class="badge bg-primary">Standard</span></td>
+                                            <td>5–10%</td>
+                                            <td>bathroom pass, late pass</td>
+                                        </tr>
+                                        <tr>
+                                            <td><span class="badge bg-warning text-dark">Premium</span></td>
+                                            <td>10–25%</td>
+                                            <td>big perks</td>
+                                        </tr>
+                                        <tr>
+                                            <td><span class="badge bg-danger">Luxury</span></td>
+                                            <td>25–50%</td>
+                                            <td>rare/auction items</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <hr>
+
+                            <h6 class="fw-bold mt-4"><i class="bi bi-4-circle-fill me-2"></i>Inflation and Dynamic Economy Options</h6>
+                            <p>You may choose to simulate economic events:</p>
+                            <ul>
+                                <li>inflation</li>
+                                <li>shortages</li>
+                                <li>wage freezes</li>
+                                <li>price spikes</li>
+                                <li>supply shocks</li>
+                            </ul>
+                            <div class="alert alert-warning">
+                                <strong>Guidelines:</strong>
+                                <ul class="mb-0">
+                                    <li>Raise prices before wages (teaches real-world tension)</li>
+                                    <li>Keep all categories rising proportionally</li>
+                                    <li>Avoid long-term extreme inflation</li>
+                                </ul>
+                            </div>
+
+                            <hr>
+
+                            <h6 class="fw-bold mt-4"><i class="bi bi-5-circle-fill me-2"></i>Student Experience Goals</h6>
+                            <p>A well-balanced economy ensures:</p>
+                            <ul>
+                                <li>A week of perfect attendance covers rent</li>
+                                <li>Students can save at least 10–20% after living costs</li>
+                                <li>High performers have opportunities to invest</li>
+                                <li>Risky decisions come with teachable consequences</li>
+                                <li>Loans and insurance feel meaningful but not predatory</li>
+                            </ul>
+
+                            <hr>
+
+                            <h6 class="fw-bold mt-4"><i class="bi bi-6-circle-fill me-2"></i>Customizing Your Class Economy</h6>
+                            <p>You can modify:</p>
+                            <ul>
+                                <li>wage rates</li>
+                                <li>rent multipliers</li>
+                                <li>store pricing tiers</li>
+                                <li>fines</li>
+                                <li>insurance premiums</li>
+                                <li>inflation behavior</li>
+                                <li>special events</li>
+                            </ul>
+                            <p class="text-muted">Because the system uses proportional pricing, it will remain fair even as you change settings.</p>
+
+                            <hr>
+
+                            <h6 class="fw-bold mt-4"><i class="bi bi-check2-circle me-2"></i>Quick Teacher Checklist</h6>
+                            <p>Before launching:</p>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="check1">
+                                <label class="form-check-label" for="check1">Confirm your weekly wage expectation (CWI)</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="check2">
+                                <label class="form-check-label" for="check2">Set rent to 2.0–2.5× CWI</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="check3">
+                                <label class="form-check-label" for="check3">Apply store item tiers</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="check4">
+                                <label class="form-check-label" for="check4">Set insurance to 5–12% of CWI premium</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="check5">
+                                <label class="form-check-label" for="check5">Confirm fines within 5–15% of CWI</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="check6">
+                                <label class="form-check-label" for="check6">Run a "one-week budget test": Can a student survive and still save something?</label>
+                            </div>
+
+                            <div class="alert alert-success mt-4">
+                                <i class="bi bi-lightbulb-fill me-2"></i>
+                                <strong>Tip:</strong> You can view your current CWI and recommended settings on the <a href="{{ url_for('admin.payroll') }}" class="alert-link">Payroll Management</a> page under the Overview tab.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Report Issue Tab -->
