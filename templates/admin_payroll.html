@@ -136,7 +136,7 @@
               </label>
               <div class="input-group">
                 <input type="number" class="form-control" id="expectedWeeklyHoursOverview"
-                       name="expected_weekly_hours" step="0.25" placeholder="5.0"
+                       name="expected_weekly_hours" step="0.25" min="0.25" max="80" placeholder="5.0"
                        value="{% if default_setting and default_setting.expected_weekly_hours %}{{ default_setting.expected_weekly_hours }}{% else %}5.0{% endif %}">
                 <span class="input-group-text">hours/week</span>
               </div>
