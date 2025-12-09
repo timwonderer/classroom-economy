@@ -633,6 +633,33 @@ document.addEventListener('DOMContentLoaded', function() {
     }).catch(err => {
       console.log('Payroll not configured yet, skipping CWI display');
     });
+
+    // Re-validate rent when frequency changes
+    const frequencyTypeInput = document.getElementById('frequency_type');
+    const customFrequencyValueInput = document.getElementById('custom_frequency_value');
+    const customFrequencyUnitInput = document.getElementById('custom_frequency_unit');
+    const rentAmountInput = document.getElementById('rent_amount');
+
+    if (frequencyTypeInput && rentAmountInput) {
+      frequencyTypeInput.addEventListener('change', function() {
+        // Trigger validation on rent amount
+        rentAmountInput.dispatchEvent(new Event('input'));
+      });
+    }
+
+    if (customFrequencyValueInput && rentAmountInput) {
+      customFrequencyValueInput.addEventListener('input', function() {
+        // Trigger validation on rent amount
+        rentAmountInput.dispatchEvent(new Event('input'));
+      });
+    }
+
+    if (customFrequencyUnitInput && rentAmountInput) {
+      customFrequencyUnitInput.addEventListener('change', function() {
+        // Trigger validation on rent amount
+        rentAmountInput.dispatchEvent(new Event('input'));
+      });
+    }
   }
 
   // -------------------- CLASS SELECTOR & APPLY TO ALL --------------------
