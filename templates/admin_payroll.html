@@ -1820,11 +1820,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Update CWI when expected hours changes
-    let debounceTimer;
-    expectedHoursOverview.addEventListener('input', function() {
-        clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(updateCWIOverview, 400);
-    });
+    expectedHoursOverview.addEventListener('input', debounce(updateCWIOverview, 400));
 
     // Load CWI on page load
     updateCWIOverview();
