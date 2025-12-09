@@ -700,7 +700,7 @@ class EconomyBalanceChecker:
         insurance_policies: List = None,
         fines: List = None,
         store_items: List = None,
-        expected_weekly_hours: float = 5.0,
+        expected_weekly_hours: float = None,
         average_store_spending: Optional[float] = None
     ) -> EconomyBalance:
         """

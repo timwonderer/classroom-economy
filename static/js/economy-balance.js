@@ -242,8 +242,8 @@ class EconomyBalanceChecker {
                 },
                 body: JSON.stringify({
                     value: value,
-                    frequency: frequency,
-                    expected_weekly_hours: this.expectedWeeklyHours
+                    frequency: frequency
+                    // Note: expected_weekly_hours is read from payroll_settings by the backend
                 })
             });
 
@@ -265,16 +265,18 @@ class EconomyBalanceChecker {
      * Get complete economy analysis
      */
     async analyzeEconomy(expectedWeeklyHours = null, block = null) {
-        const hours = expectedWeeklyHours || this.expectedWeeklyHours;
-
         try {
-            const requestBody = {
-                expected_weekly_hours: hours
-            };
+            const requestBody = {};
 
             // Include block if provided
             if (block) {
                 requestBody.block = block;
+            }
+
+            // Note: expected_weekly_hours is read from payroll_settings by the backend
+            // If expectedWeeklyHours is explicitly provided, include it for override
+            if (expectedWeeklyHours !== null) {
+                requestBody.expected_weekly_hours = expectedWeeklyHours;
             }
 
             const response = await fetch(`${this.apiBaseUrl}/analyze`, {
