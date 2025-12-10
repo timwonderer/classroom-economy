@@ -1128,6 +1128,15 @@
 
 <!-- JavaScript -->
 <script>
+// Utility: Debounce function (used across multiple DOMContentLoaded handlers)
+function debounce(fn, delay = 400) {
+    let timer;
+    return (...args) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn(...args), delay);
+    };
+}
+
 // Convert UTC timestamps to local time
 document.addEventListener("DOMContentLoaded", () => {
     // Auto-switch to Settings tab if no settings exist
@@ -1602,14 +1611,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const cwiTemplate = document.getElementById('cwiInfoTemplate');
 
     const cwiChecker = new EconomyBalanceChecker({ autoValidate: false, debounceDelay: 400 });
-
-    function debounce(fn, delay = 400) {
-        let timer;
-        return (...args) => {
-            clearTimeout(timer);
-            timer = setTimeout(() => fn(...args), delay);
-        };
-    }
 
     function getExpectedWeeklyHours() {
         return parseFloat(expectedHoursInput?.value) || 5.0;
