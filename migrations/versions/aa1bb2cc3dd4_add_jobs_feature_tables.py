@@ -41,14 +41,14 @@ def upgrade():
         sa.Column('teacher_id', sa.Integer(), nullable=False),
         sa.Column('job_title', sa.String(length=100), nullable=False),
         sa.Column('job_description', sa.Text(), nullable=True),
-        sa.Column('job_type', sa.String(length=20), nullable=False),
+        sa.Column('job_type', sa.Enum('employee', 'contract', name='job_type_enum', native_enum=False), nullable=False),
         sa.Column('salary_amount', sa.Float(), nullable=True),
-        sa.Column('payment_frequency', sa.String(length=20), nullable=True),
+        sa.Column('payment_frequency', sa.Enum('monthly', 'biweekly', name='payment_frequency_enum', native_enum=False), nullable=True),
         sa.Column('vacancies', sa.Integer(), nullable=True),
         sa.Column('requirements', sa.Text(), nullable=True),
         sa.Column('notice_period_days', sa.Integer(), nullable=False, server_default='0'),
         sa.Column('warning_cooldown_days', sa.Integer(), nullable=False, server_default='0'),
-        sa.Column('improper_quit_penalty_type', sa.String(length=20), nullable=False, server_default='none'),
+        sa.Column('improper_quit_penalty_type', sa.Enum('none', 'days_ban', 'job_specific_ban', name='improper_quit_penalty_type_enum', native_enum=False), nullable=False, server_default='none'),
         sa.Column('improper_quit_penalty_days', sa.Integer(), nullable=False, server_default='0'),
         sa.Column('bounty_amount', sa.Float(), nullable=True),
         sa.Column('application_questions', sa.JSON(), nullable=True),
@@ -81,7 +81,7 @@ def upgrade():
         sa.Column('job_id', sa.Integer(), nullable=False),
         sa.Column('student_id', sa.Integer(), nullable=False),
         sa.Column('answers', sa.JSON(), nullable=False),
-        sa.Column('status', sa.String(length=20), nullable=False, server_default='pending'),
+        sa.Column('status', sa.Enum('pending', 'accepted', 'rejected', name='job_application_status_enum', native_enum=False), nullable=False, server_default='pending'),
         sa.Column('applied_at', sa.DateTime(), nullable=True),
         sa.Column('reviewed_at', sa.DateTime(), nullable=True),
         sa.Column('teacher_notes', sa.Text(), nullable=True),
@@ -102,7 +102,7 @@ def upgrade():
         sa.Column('is_active', sa.Boolean(), nullable=False, server_default='1'),
         sa.Column('warnings_count', sa.Integer(), nullable=False, server_default='0'),
         sa.Column('last_warning_date', sa.DateTime(), nullable=True),
-        sa.Column('termination_type', sa.String(length=20), nullable=True),
+        sa.Column('termination_type', sa.Enum('fired', 'quit_with_notice', 'quit_without_notice', name='termination_type_enum', native_enum=False), nullable=True),
         sa.Column('termination_reason', sa.Text(), nullable=True),
         sa.Column('quit_notice_date', sa.DateTime(), nullable=True),
         sa.Column('quit_effective_date', sa.DateTime(), nullable=True),
@@ -135,7 +135,7 @@ def upgrade():
         sa.Column('claimed_at', sa.DateTime(), nullable=False),
         sa.Column('student_marked_complete_at', sa.DateTime(), nullable=True),
         sa.Column('teacher_reviewed_at', sa.DateTime(), nullable=True),
-        sa.Column('status', sa.String(length=20), nullable=False, server_default='claimed'),
+        sa.Column('status', sa.Enum('claimed', 'submitted', 'approved', 'rejected', name='contract_job_status_enum', native_enum=False), nullable=False, server_default='claimed'),
         sa.Column('student_notes', sa.Text(), nullable=True),
         sa.Column('teacher_notes', sa.Text(), nullable=True),
         sa.Column('payment_amount', sa.Float(), nullable=True),
@@ -154,7 +154,7 @@ def upgrade():
         sa.Column('student_id', sa.Integer(), nullable=False),
         sa.Column('teacher_id', sa.Integer(), nullable=False),
         sa.Column('join_code', sa.String(length=20), nullable=False),
-        sa.Column('ban_type', sa.String(length=20), nullable=False),
+        sa.Column('ban_type', sa.Enum('all_jobs', 'specific_job', name='job_application_ban_type_enum', native_enum=False), nullable=False),
         sa.Column('job_template_id', sa.Integer(), nullable=True),
         sa.Column('banned_at', sa.DateTime(), nullable=False),
         sa.Column('banned_until', sa.DateTime(), nullable=False),
@@ -165,8 +165,8 @@ def upgrade():
         sa.ForeignKeyConstraint(['job_template_id'], ['job_templates.id'], ondelete='CASCADE'),
         sa.PrimaryKeyConstraint('id')
     )
-    op.create_index('ix_job_bans_student', 'job_application_bans', ['student_id'])
-    op.create_index('ix_job_bans_active', 'job_application_bans', ['is_active'])
+    op.create_index(op.f('ix_job_bans_student'), 'job_application_bans', ['student_id'])
+    op.create_index(op.f('ix_job_bans_active'), 'job_application_bans', ['is_active'])
     op.create_index(op.f('ix_job_application_bans_join_code'), 'job_application_bans', ['join_code'])
 
     # Create jobs_settings table

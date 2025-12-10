@@ -18,7 +18,8 @@ from app import db
 from app.models import (
     Admin, Student, TeacherBlock, JobTemplate, Job, JobApplication,
     EmployeeJobAssignment, EmployeeJobWarning, ContractJobClaim,
-    JobApplicationBan, JobsSettings, Transaction, FeatureSettings
+    JobApplicationBan, JobsSettings, Transaction, FeatureSettings,
+    JobApplicationStatus, ContractJobStatus
 )
 from hash_utils import hash_username, get_random_salt
 
@@ -45,7 +46,9 @@ def student_user(client, admin_user):
         block="A",
         salt=salt,
         first_half_hash=hash_username("S2025", salt),
-        dob_sum=2025
+        dob_sum=2025,
+        username_hash=hash_username("teststudent", salt),
+        pin_hash="fake-hash"
     )
     db.session.add(student)
     db.session.commit()
@@ -177,13 +180,13 @@ class TestJobModels:
             answers=[
                 {"question": "Why do you want this job?", "answer": "I am responsible"}
             ],
-            status="pending"
+            status=JobApplicationStatus.PENDING
         )
         db.session.add(application)
         db.session.commit()
 
         assert application.id is not None
-        assert application.status == "pending"
+        assert application.status == JobApplicationStatus.PENDING
         assert len(application.answers) == 1
 
 
@@ -216,7 +219,7 @@ class TestEmployeeJobWorkflow:
             job_id=job.id,
             student_id=student_user.id,
             answers=[],
-            status="accepted"
+            status=JobApplicationStatus.ACCEPTED
         )
         db.session.add(application)
         db.session.commit()
@@ -344,12 +347,12 @@ class TestContractJobWorkflow:
         claim = ContractJobClaim(
             job_id=job.id,
             student_id=student_user.id,
-            status="claimed"
+            status=ContractJobStatus.CLAIMED
         )
         db.session.add(claim)
         db.session.commit()
 
-        assert claim.status == "claimed"
+        assert claim.status == ContractJobStatus.CLAIMED
         assert claim.claimed_at is not None
 
     def test_contract_completion_and_payment(self, client, admin_user, student_user, teacher_block):
@@ -375,14 +378,14 @@ class TestContractJobWorkflow:
         claim = ContractJobClaim(
             job_id=job.id,
             student_id=student_user.id,
-            status="submitted",
+            status=ContractJobStatus.SUBMITTED,
             student_notes="I finished organizing the library"
         )
         db.session.add(claim)
         db.session.commit()
 
         # Teacher approves and creates transaction
-        claim.status = "approved"
+        claim.status = ContractJobStatus.APPROVED
         claim.teacher_reviewed_at = datetime.now(timezone.utc)
 
         transaction = Transaction(
@@ -401,7 +404,7 @@ class TestContractJobWorkflow:
         claim.payment_amount = template.bounty_amount
         db.session.commit()
 
-        assert claim.status == "approved"
+        assert claim.status == ContractJobStatus.APPROVED
         assert claim.payment_amount == 25.0
         assert transaction.amount == 25.0
 

@@ -10,20 +10,49 @@ Handles teacher-side job management including:
 """
 
 from datetime import datetime, timedelta, timezone
-from flask import flash, request, session, jsonify, redirect, url_for
-from sqlalchemy import desc
+from flask import flash, request, session, redirect, url_for
+from sqlalchemy import desc, tuple_
 
 from app.extensions import db
 from app.models import (
-    JobTemplate, Job, JobApplication, EmployeeJobAssignment, EmployeeJobWarning,
-    ContractJobClaim, JobApplicationBan, JobsSettings, Student, Transaction, TeacherBlock
+    ContractJobClaim,
+    ContractJobStatus,
+    EmployeeJobAssignment,
+    EmployeeJobWarning,
+    Job,
+    JobApplication,
+    JobApplicationStatus,
+    JobTemplate,
+    JobType,
+    PaymentFrequency,
+    PenaltyType,
+    Student,
+    TeacherBlock,
+    TerminationType,
+    Transaction,
 )
-from app.auth import admin_required, get_student_for_admin
+from app.auth import admin_required
 from app.utils.helpers import render_template_with_fallback as render_template
 from forms import (
-    JobTemplateForm, JobApplicationReviewForm, EmployeeWarningForm,
-    ContractJobReviewForm, JobsSettingsForm
+    ContractJobReviewForm,
+    EmployeeWarningForm,
+    JobApplicationReviewForm,
+    JobTemplateForm,
 )
+
+
+def _extract_application_questions_from_form():
+    """Extract dynamic application questions from the request form."""
+    application_questions = []
+    question_count = int(request.form.get('question_count', 0))
+    for i in range(question_count):
+        question_text = request.form.get(f'question_{i}')
+        if question_text:
+            application_questions.append({
+                'question': question_text,
+                'required': True
+            })
+    return application_questions if application_questions else None
 
 
 def register_jobs_routes(admin_bp):
@@ -60,13 +89,13 @@ def register_jobs_routes(admin_bp):
         # Get pending applications count
         pending_apps_count = JobApplication.query.join(Job).filter(
             Job.teacher_id == admin_id,
-            JobApplication.status == 'pending'
+            JobApplication.status == JobApplicationStatus.PENDING
         ).count()
 
         # Get pending contract completions count
         pending_contracts_count = ContractJobClaim.query.join(Job).filter(
             Job.teacher_id == admin_id,
-            ContractJobClaim.status == 'submitted'
+            ContractJobClaim.status == ContractJobStatus.SUBMITTED
         ).count()
 
         return render_template('admin_jobs_dashboard.html',
@@ -89,36 +118,31 @@ def register_jobs_routes(admin_bp):
 
         if form.validate_on_submit():
             # Get application questions from form data (dynamically added via JavaScript)
-            application_questions = []
-            question_count = int(request.form.get('question_count', 0))
-            for i in range(question_count):
-                question_text = request.form.get(f'question_{i}')
-                if question_text:
-                    application_questions.append({
-                        'question': question_text,
-                        'required': True
-                    })
+            application_questions = _extract_application_questions_from_form()
 
             template = JobTemplate(
                 teacher_id=admin_id,
                 job_title=form.job_title.data,
                 job_description=form.job_description.data,
-                job_type=form.job_type.data,
+                job_type=JobType(form.job_type.data),
                 is_active=form.is_active.data
             )
 
             # Set type-specific fields
-            if form.job_type.data == 'employee':
+            if template.job_type == JobType.EMPLOYEE:
                 template.salary_amount = form.salary_amount.data
-                template.payment_frequency = form.payment_frequency.data
+                template.payment_frequency = (
+                    PaymentFrequency(form.payment_frequency.data)
+                    if form.payment_frequency.data else None
+                )
                 template.vacancies = form.vacancies.data
                 template.requirements = form.requirements.data
                 template.notice_period_days = form.notice_period_days.data or 0
                 template.warning_cooldown_days = form.warning_cooldown_days.data or 0
-                template.improper_quit_penalty_type = form.improper_quit_penalty_type.data
+                template.improper_quit_penalty_type = PenaltyType(form.improper_quit_penalty_type.data)
                 template.improper_quit_penalty_days = form.improper_quit_penalty_days.data or 0
-                template.application_questions = application_questions if application_questions else None
-            elif form.job_type.data == 'contract':
+                template.application_questions = application_questions
+            elif template.job_type == JobType.CONTRACT:
                 template.bounty_amount = form.bounty_amount.data
 
             try:
@@ -145,37 +169,39 @@ def register_jobs_routes(admin_bp):
 
         form = JobTemplateForm(obj=template)
 
+        if request.method == 'GET':
+            form.job_type.data = template.job_type.value
+            form.payment_frequency.data = (
+                template.payment_frequency.value if template.payment_frequency else ''
+            )
+            form.improper_quit_penalty_type.data = template.improper_quit_penalty_type.value
+
         if form.validate_on_submit():
             # Update application questions
-            application_questions = []
-            question_count = int(request.form.get('question_count', 0))
-            for i in range(question_count):
-                question_text = request.form.get(f'question_{i}')
-                if question_text:
-                    application_questions.append({
-                        'question': question_text,
-                        'required': True
-                    })
+            application_questions = _extract_application_questions_from_form()
 
             template.job_title = form.job_title.data
             template.job_description = form.job_description.data
-            template.job_type = form.job_type.data
+            template.job_type = JobType(form.job_type.data)
             template.is_active = form.is_active.data
 
             # Update type-specific fields
-            if form.job_type.data == 'employee':
+            if template.job_type == JobType.EMPLOYEE:
                 template.salary_amount = form.salary_amount.data
-                template.payment_frequency = form.payment_frequency.data
+                template.payment_frequency = (
+                    PaymentFrequency(form.payment_frequency.data)
+                    if form.payment_frequency.data else None
+                )
                 template.vacancies = form.vacancies.data
                 template.requirements = form.requirements.data
                 template.notice_period_days = form.notice_period_days.data or 0
                 template.warning_cooldown_days = form.warning_cooldown_days.data or 0
-                template.improper_quit_penalty_type = form.improper_quit_penalty_type.data
+                template.improper_quit_penalty_type = PenaltyType(form.improper_quit_penalty_type.data)
                 template.improper_quit_penalty_days = form.improper_quit_penalty_days.data or 0
-                template.application_questions = application_questions if application_questions else None
+                template.application_questions = application_questions
                 # Clear contract fields
                 template.bounty_amount = None
-            elif form.job_type.data == 'contract':
+            elif template.job_type == JobType.CONTRACT:
                 template.bounty_amount = form.bounty_amount.data
                 # Clear employee fields
                 template.salary_amount = None
@@ -241,18 +267,19 @@ def register_jobs_routes(admin_bp):
             TeacherBlock.block.in_(periods)
         ).all()
 
+        block_keys = [(block.block, block.join_code) for block in blocks]
+        existing_jobs = Job.query.filter_by(
+            template_id=template_id,
+            teacher_id=admin_id
+        ).filter(
+            tuple_(Job.block, Job.join_code).in_(block_keys)
+        ).all()
+        existing_job_blocks = {(job.block, job.join_code) for job in existing_jobs}
+
         # Create jobs for each period
         created_count = 0
         for block in blocks:
-            # Check if job already exists
-            existing = Job.query.filter_by(
-                template_id=template_id,
-                teacher_id=admin_id,
-                block=block.block,
-                join_code=block.join_code
-            ).first()
-
-            if not existing:
+            if (block.block, block.join_code) not in existing_job_blocks:
                 job = Job(
                     template_id=template_id,
                     teacher_id=admin_id,
@@ -280,11 +307,13 @@ def register_jobs_routes(admin_bp):
     def view_applications():
         """View all job applications."""
         admin_id = session.get('admin_id')
-        status_filter = request.args.get('status', 'pending')
+        status_filter = request.args.get('status', JobApplicationStatus.PENDING.value)
+        if status_filter not in {status.value for status in JobApplicationStatus}:
+            status_filter = JobApplicationStatus.PENDING.value
 
         applications = JobApplication.query.join(Job).join(Student).filter(
             Job.teacher_id == admin_id,
-            JobApplication.status == status_filter
+            JobApplication.status == JobApplicationStatus(status_filter)
         ).order_by(desc(JobApplication.applied_at)).all()
 
         return render_template('admin_jobs_applications.html',
@@ -306,12 +335,12 @@ def register_jobs_routes(admin_bp):
         form = JobApplicationReviewForm()
 
         if form.validate_on_submit():
-            application.status = form.status.data
+            application.status = JobApplicationStatus(form.status.data)
             application.teacher_notes = form.teacher_notes.data
             application.reviewed_at = datetime.now(timezone.utc)
 
             # If accepted, create employee assignment
-            if form.status.data == 'accepted':
+            if application.status == JobApplicationStatus.ACCEPTED:
                 # Check if vacancies still available
                 job = application.job
                 template = job.template
@@ -334,10 +363,11 @@ def register_jobs_routes(admin_bp):
                 db.session.add(assignment)
 
                 # Calculate next payment date based on frequency
-                if template.payment_frequency == 'monthly':
-                    next_payment = datetime.now(timezone.utc) + timedelta(days=30)
-                elif template.payment_frequency == 'biweekly':
-                    next_payment = datetime.now(timezone.utc) + timedelta(days=14)
+                if template.payment_frequency == PaymentFrequency.MONTHLY:
+                    from dateutil.relativedelta import relativedelta
+                    next_payment = datetime.now(timezone.utc) + relativedelta(months=1)
+                elif template.payment_frequency == PaymentFrequency.BIWEEKLY:
+                    next_payment = datetime.now(timezone.utc) + timedelta(weeks=2)
                 else:
                     next_payment = None
 
@@ -345,7 +375,7 @@ def register_jobs_routes(admin_bp):
 
             try:
                 db.session.commit()
-                flash(f'Application {form.status.data}.', 'success')
+                flash(f'Application {application.status.value}.', 'success')
                 return redirect(url_for('admin.view_applications'))
             except Exception as e:
                 db.session.rollback()
@@ -429,7 +459,7 @@ def register_jobs_routes(admin_bp):
         reason = request.form.get('reason', '')
         assignment.is_active = False
         assignment.end_date = datetime.now(timezone.utc)
-        assignment.termination_type = 'fired'
+        assignment.termination_type = TerminationType.FIRED
         assignment.termination_reason = reason
 
         try:
@@ -449,11 +479,13 @@ def register_jobs_routes(admin_bp):
     def view_contract_claims():
         """View all contract job claims."""
         admin_id = session.get('admin_id')
-        status_filter = request.args.get('status', 'submitted')
+        status_filter = request.args.get('status', ContractJobStatus.SUBMITTED.value)
+        if status_filter not in {status.value for status in ContractJobStatus}:
+            status_filter = ContractJobStatus.SUBMITTED.value
 
         claims = ContractJobClaim.query.join(Job).join(Student).filter(
             Job.teacher_id == admin_id,
-            ContractJobClaim.status == status_filter
+            ContractJobClaim.status == ContractJobStatus(status_filter)
         ).order_by(desc(ContractJobClaim.student_marked_complete_at)).all()
 
         return render_template('admin_jobs_contracts.html',
@@ -475,12 +507,12 @@ def register_jobs_routes(admin_bp):
         form = ContractJobReviewForm()
 
         if form.validate_on_submit():
-            claim.status = form.status.data
+            claim.status = ContractJobStatus(form.status.data)
             claim.teacher_notes = form.teacher_notes.data
             claim.teacher_reviewed_at = datetime.now(timezone.utc)
 
             # If approved, create payment transaction
-            if form.status.data == 'approved':
+            if claim.status == ContractJobStatus.APPROVED:
                 job = claim.job
                 template = job.template
 
@@ -502,7 +534,7 @@ def register_jobs_routes(admin_bp):
 
             try:
                 db.session.commit()
-                flash(f'Contract {form.status.data}.', 'success')
+                flash(f'Contract {claim.status.value}.', 'success')
                 return redirect(url_for('admin.view_contract_claims'))
             except Exception as e:
                 db.session.rollback()

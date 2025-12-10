@@ -1266,6 +1266,46 @@ class TeacherOnboarding(db.Model):
 
 # -------------------- JOBS MODELS --------------------
 
+
+class JobType(str, enum.Enum):
+    EMPLOYEE = 'employee'
+    CONTRACT = 'contract'
+
+
+class PaymentFrequency(str, enum.Enum):
+    MONTHLY = 'monthly'
+    BIWEEKLY = 'biweekly'
+
+
+class PenaltyType(str, enum.Enum):
+    NONE = 'none'
+    DAYS_BAN = 'days_ban'
+    JOB_SPECIFIC_BAN = 'job_specific_ban'
+
+
+class JobApplicationStatus(str, enum.Enum):
+    PENDING = 'pending'
+    ACCEPTED = 'accepted'
+    REJECTED = 'rejected'
+
+
+class TerminationType(str, enum.Enum):
+    FIRED = 'fired'
+    QUIT_WITH_NOTICE = 'quit_with_notice'
+    QUIT_WITHOUT_NOTICE = 'quit_without_notice'
+
+
+class ContractJobStatus(str, enum.Enum):
+    CLAIMED = 'claimed'
+    SUBMITTED = 'submitted'
+    APPROVED = 'approved'
+    REJECTED = 'rejected'
+
+
+class JobApplicationBanType(str, enum.Enum):
+    ALL_JOBS = 'all_jobs'
+    SPECIFIC_JOB = 'specific_job'
+
 class JobTemplate(db.Model):
     """
     Job Bank - Reusable job templates that teachers can assign to specific periods.
@@ -1281,18 +1321,22 @@ class JobTemplate(db.Model):
     # Job details
     job_title = db.Column(db.String(100), nullable=False)
     job_description = db.Column(db.Text, nullable=True)
-    job_type = db.Column(db.String(20), nullable=False)  # 'employee' or 'contract'
+    job_type = db.Column(db.Enum(JobType, native_enum=False, validate_strings=True), nullable=False)
 
     # Employee job settings
     salary_amount = db.Column(db.Float, nullable=True)  # Monthly/biweekly salary
-    payment_frequency = db.Column(db.String(20), nullable=True)  # 'monthly' or 'biweekly'
+    payment_frequency = db.Column(db.Enum(PaymentFrequency, native_enum=False, validate_strings=True), nullable=True)
     vacancies = db.Column(db.Integer, nullable=True)  # Number of positions available
     requirements = db.Column(db.Text, nullable=True)  # Text description of job requirements
 
     # Employee termination settings
     notice_period_days = db.Column(db.Integer, default=0, nullable=False)  # Days notice required for quitting
     warning_cooldown_days = db.Column(db.Integer, default=0, nullable=False)  # Days between warning and firing
-    improper_quit_penalty_type = db.Column(db.String(20), default='none', nullable=False)  # 'none', 'days_ban', 'job_specific_ban'
+    improper_quit_penalty_type = db.Column(
+        db.Enum(PenaltyType, native_enum=False, validate_strings=True),
+        default=PenaltyType.NONE,
+        nullable=False
+    )
     improper_quit_penalty_days = db.Column(db.Integer, default=0, nullable=False)  # Days banned from applying
 
     # Contract job settings
@@ -1325,7 +1369,7 @@ class Job(db.Model):
     template_id = db.Column(db.Integer, db.ForeignKey('job_templates.id', ondelete='CASCADE'), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
     block = db.Column(db.String(10), nullable=False)  # Period identifier
-    join_code = db.Column(db.String(20), nullable=False, index=True)  # Class isolation
+    join_code = db.Column(db.String(20), nullable=False)  # Class isolation
 
     # Status
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -1361,7 +1405,11 @@ class JobApplication(db.Model):
     answers = db.Column(db.JSON, nullable=False)
 
     # Review status
-    status = db.Column(db.String(20), default='pending', nullable=False)  # 'pending', 'accepted', 'rejected'
+    status = db.Column(
+        db.Enum(JobApplicationStatus, native_enum=False, validate_strings=True),
+        default=JobApplicationStatus.PENDING,
+        nullable=False
+    )
     applied_at = db.Column(db.DateTime, default=_utc_now)
     reviewed_at = db.Column(db.DateTime, nullable=True)
     teacher_notes = db.Column(db.Text, nullable=True)
@@ -1396,7 +1444,10 @@ class EmployeeJobAssignment(db.Model):
     # Termination tracking
     warnings_count = db.Column(db.Integer, default=0, nullable=False)
     last_warning_date = db.Column(db.DateTime, nullable=True)
-    termination_type = db.Column(db.String(20), nullable=True)  # 'fired', 'quit_with_notice', 'quit_without_notice'
+    termination_type = db.Column(
+        db.Enum(TerminationType, native_enum=False, validate_strings=True),
+        nullable=True
+    )
     termination_reason = db.Column(db.Text, nullable=True)
 
     # Quit notice tracking
@@ -1457,7 +1508,11 @@ class ContractJobClaim(db.Model):
     teacher_reviewed_at = db.Column(db.DateTime, nullable=True)
 
     # Status
-    status = db.Column(db.String(20), default='claimed', nullable=False)  # 'claimed', 'submitted', 'approved', 'rejected'
+    status = db.Column(
+        db.Enum(ContractJobStatus, native_enum=False, validate_strings=True),
+        default=ContractJobStatus.CLAIMED,
+        nullable=False
+    )
     student_notes = db.Column(db.Text, nullable=True)  # Student's completion notes
     teacher_notes = db.Column(db.Text, nullable=True)  # Teacher's review notes
 
@@ -1487,10 +1542,13 @@ class JobApplicationBan(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
     teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
-    join_code = db.Column(db.String(20), nullable=False, index=True)  # Class isolation
+    join_code = db.Column(db.String(20), nullable=False)  # Class isolation
 
     # Ban details
-    ban_type = db.Column(db.String(20), nullable=False)  # 'all_jobs' or 'specific_job'
+    ban_type = db.Column(
+        db.Enum(JobApplicationBanType, native_enum=False, validate_strings=True),
+        nullable=False
+    )
     job_template_id = db.Column(db.Integer, db.ForeignKey('job_templates.id', ondelete='CASCADE'), nullable=True)  # If specific job
 
     banned_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
@@ -1507,6 +1565,7 @@ class JobApplicationBan(db.Model):
     __table_args__ = (
         db.Index('ix_job_bans_student', 'student_id'),
         db.Index('ix_job_bans_active', 'is_active'),
+        db.Index('ix_job_application_bans_join_code', 'join_code'),
     )
 
     def __repr__(self):
@@ -1520,7 +1579,7 @@ class JobsSettings(db.Model):
     """
     __tablename__ = 'jobs_settings'
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
     block = db.Column(db.String(10), nullable=True)  # NULL = global default
 
     # Feature toggles

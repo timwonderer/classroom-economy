@@ -415,13 +415,6 @@ class JobTemplateForm(FlaskForm):
                 raise ValidationError('Ban duration must be greater than 0 when penalty is enabled.')
 
 
-class JobAssignmentForm(FlaskForm):
-    """Form for assigning job templates to specific periods/blocks."""
-    template_id = SelectField('Job Template', coerce=int, validators=[DataRequired()])
-    blocks = SelectMultipleField('Assign to Periods/Blocks', choices=[], validators=[DataRequired()])
-    submit = SubmitField('Assign Job to Periods')
-
-
 class JobApplicationReviewForm(FlaskForm):
     """Form for teachers to review and approve/reject job applications."""
     status = SelectField('Decision', choices=[
