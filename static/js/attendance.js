@@ -97,8 +97,16 @@ function performTap(period, action, pin, reason = null) {
         headers: { "Content-Type": "application/json", "X-CSRFToken": document.querySelector('meta[name="csrf-token"]').getAttribute('content') },
         body: JSON.stringify(payload)
     })
-    .then(r => r.json())
+    .then(r => {
+        // If session expired, redirect to login
+        if (r.status === 401) {
+            window.location.href = '/student/login?session_expired=1';
+            return null;
+        }
+        return r.json();
+    })
     .then(data => {
+        if (!data) return; // Session expired, already redirecting
         if (data.status === "ok") {
             updateBlockUI(period, data.active, data.duration, data.projected_pay, data.hall_pass);
             let message = `Tap ${action === "tap_in" ? "In" : "Out"} successful`;
