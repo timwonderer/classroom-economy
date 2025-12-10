@@ -1826,6 +1826,8 @@ def check_and_auto_tapout_if_limit_reached(student):
 @api_bp.route('/student-status', methods=['GET'])
 @login_required
 def student_status():
+    from app.routes.student import get_current_class_context
+
     student = get_logged_in_student()
 
     context = get_current_class_context()
