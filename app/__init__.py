@@ -294,11 +294,13 @@ def create_app():
 
                 # SET LOCAL only affects the current transaction
                 # This is automatically reset after each request
-                db.session.execute(
-                    text("SET LOCAL app.current_teacher_id = :teacher_id"),
-                    {"teacher_id": teacher_id}
-                )
-                app.logger.debug(f"RLS context set for teacher_id={teacher_id}")
+                # Only execute on PostgreSQL as SQLite doesn't support SET LOCAL
+                if db.engine.dialect.name == 'postgresql':
+                    db.session.execute(
+                        text("SET LOCAL app.current_teacher_id = :teacher_id"),
+                        {"teacher_id": teacher_id}
+                    )
+                    app.logger.debug(f"RLS context set for teacher_id={teacher_id}")
             except Exception as e:
                 # Log but don't fail the request - RLS will just filter to empty results
                 app.logger.error(f"Failed to set RLS tenant context: {str(e)}")
