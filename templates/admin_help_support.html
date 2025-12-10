@@ -1,5 +1,7 @@
 {% extends "layout_admin.html" %}
 
+{% set help_content = help_content|default({'how_to': [], 'troubleshooting': []}, true) %}
+
 {% block content %}
 <div class="container-fluid">
     <h2 class="mb-4"><i class="bi bi-life-preserver me-2"></i>Help & Support</h2>
@@ -27,78 +29,55 @@
         <!-- Knowledge Base Tab -->
         <div class="tab-pane fade show active" id="kb" role="tabpanel" aria-labelledby="kb-tab">
             <div class="row g-4">
-                <!-- Quick Start -->
+                <!-- How To -->
                 <div class="col-lg-6">
                     <div class="card shadow-sm h-100">
                         <div class="card-header bg-info text-white">
-                            <h5 class="mb-0"><i class="bi bi-rocket-takeoff-fill me-2"></i>Quick Start Guide</h5>
+                            <h5 class="mb-0"><i class="bi bi-book me-2"></i>How To Guides</h5>
                         </div>
                         <div class="card-body">
-                            <ol class="list-group list-group-numbered list-group-flush">
-                                <li class="list-group-item">
-                                    <strong>Add Students:</strong> Go to the <a href="{{ url_for('admin.students') }}">Students</a> page. Upload your roster CSV or add students manually. Share the generated Join Codes with your students.
-                                </li>
-                                <li class="list-group-item">
-                                    <strong>Set Up Payroll:</strong> Configure pay rates (e.g., $15/hr) in <a href="{{ url_for('admin.payroll') }}">Payroll Settings</a>. Run payroll periodically to pay students for attendance.
-                                </li>
-                                <li class="list-group-item">
-                                    <strong>Stock the Store:</strong> Add items in <a href="{{ url_for('admin.store_management') }}">Store Management</a>. Use "Delayed" items for physical rewards that require redemption.
-                                </li>
-                                <li class="list-group-item">
-                                    <strong>Enable Rent:</strong> In <a href="{{ url_for('admin.rent_settings') }}">Rent Settings</a>, enable rent to simulate real-world expenses.
-                                </li>
-                                <li class="list-group-item">
-                                    <strong>Create Insurance:</strong> Offer protection plans in the <a href="{{ url_for('admin.insurance_management') }}">Insurance</a> tab.
-                                </li>
-                            </ol>
+                            <div class="accordion" id="howToAccordion">
+                                {% for article in help_content.how_to|default([]) %}
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="heading{{ article.id }}">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ article.id }}" aria-expanded="false" aria-controls="collapse{{ article.id }}">
+                                            {{ article.title }}
+                                        </button>
+                                    </h2>
+                                    <div id="collapse{{ article.id }}" class="accordion-collapse collapse" aria-labelledby="heading{{ article.id }}" data-bs-parent="#howToAccordion">
+                                        <div class="accordion-body">
+                                            {{ article.content | safe }}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- FAQ / Self Help -->
+                <!-- Troubleshooting -->
                 <div class="col-lg-6">
                     <div class="card shadow-sm h-100">
                         <div class="card-header bg-secondary text-white">
-                            <h5 class="mb-0"><i class="bi bi-question-circle-fill me-2"></i>Frequently Asked Questions</h5>
+                            <h5 class="mb-0"><i class="bi bi-question-circle-fill me-2"></i>Troubleshooting</h5>
                         </div>
                         <div class="card-body">
-                            <div class="accordion" id="faqAccordion">
+                            <div class="accordion" id="troubleshootAccordion">
+                                {% for article in help_content.troubleshooting|default([]) %}
                                 <div class="accordion-item">
-                                    <h2 class="accordion-header" id="headingOne">
-                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne">
-                                            How do students log in?
+                                    <h2 class="accordion-header" id="heading{{ article.id }}">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ article.id }}" aria-expanded="false" aria-controls="collapse{{ article.id }}">
+                                            {{ article.title }}
                                         </button>
                                     </h2>
-                                    <div id="collapseOne" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#faqAccordion">
+                                    <div id="collapse{{ article.id }}" class="accordion-collapse collapse" aria-labelledby="heading{{ article.id }}" data-bs-parent="#troubleshootAccordion">
                                         <div class="accordion-body">
-                                            Students use the <strong>Join Code</strong> (found on the Students page) to claim their account. They will then set their own Username, PIN, and Passphrase.
+                                            {{ article.content | safe }}
                                         </div>
                                     </div>
                                 </div>
-                                <div class="accordion-item">
-                                    <h2 class="accordion-header" id="headingTwo">
-                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
-                                            How do I reset a student's PIN?
-                                        </button>
-                                    </h2>
-                                    <div id="collapseTwo" class="accordion-collapse collapse" aria-labelledby="headingTwo" data-bs-parent="#faqAccordion">
-                                        <div class="accordion-body">
-                                            Go to the Student Detail page and click "Edit Student". There is an option to "Reset Login", which will require the student to re-claim their account and set a new PIN.
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="accordion-item">
-                                    <h2 class="accordion-header" id="headingThree">
-                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree">
-                                            Can I undo a transaction?
-                                        </button>
-                                    </h2>
-                                    <div id="collapseThree" class="accordion-collapse collapse" aria-labelledby="headingThree" data-bs-parent="#faqAccordion">
-                                        <div class="accordion-body">
-                                            Yes. Go to <a href="{{ url_for('admin.banking') }}">Banking</a>, find the transaction, and click the "Void" button.
-                                        </div>
-                                    </div>
-                                </div>
+                                {% endfor %}
                             </div>
                         </div>
                     </div>

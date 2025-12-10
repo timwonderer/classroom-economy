@@ -1,7 +1,7 @@
 """
 Tests for Economy API endpoints.
 
-Tests the /admin/api/economy/* endpoints to ensure they correctly use
+Tests the /api/economy/* endpoints to ensure they correctly use
 expected_weekly_hours from payroll_settings rather than hardcoded values.
 """
 import pytest
@@ -50,13 +50,13 @@ def logged_in_admin_client(client, admin_with_payroll):
 
 
 def test_validate_endpoint_uses_payroll_settings_hours(logged_in_admin_client, admin_with_payroll):
-    """Test that /admin/api/economy/validate reads expected_weekly_hours from payroll_settings."""
+    """Test that /api/economy/validate reads expected_weekly_hours from payroll_settings."""
     admin, payroll_settings = admin_with_payroll
     client = logged_in_admin_client
 
     # Test validation endpoint - should use expected_weekly_hours from payroll_settings (8.0)
     response = client.post(
-        '/admin/api/economy/validate/rent',
+        '/api/economy/validate/rent',
         json={
             'value': 100.0,
             'frequency_type': 'weekly'
@@ -91,7 +91,7 @@ def test_validate_endpoint_not_hardcoded_5_hours(logged_in_admin_client, admin_w
     client = logged_in_admin_client
 
     response = client.post(
-        '/admin/api/economy/validate/store_item',
+        '/api/economy/validate/store_item',
         json={'value': 10.0}
     )
 
@@ -104,13 +104,13 @@ def test_validate_endpoint_not_hardcoded_5_hours(logged_in_admin_client, admin_w
 
 
 def test_analyze_endpoint_uses_payroll_settings_hours(logged_in_admin_client, admin_with_payroll):
-    """Test that /admin/api/economy/analyze reads expected_weekly_hours from payroll_settings."""
+    """Test that /api/economy/analyze reads expected_weekly_hours from payroll_settings."""
     admin, payroll_settings = admin_with_payroll
     client = logged_in_admin_client
 
     # Test analyze endpoint - should use expected_weekly_hours from payroll_settings (8.0)
     response = client.post(
-        '/admin/api/economy/analyze',
+        '/api/economy/analyze',
         json={
             'block': 'A'
             # Note: NOT sending expected_weekly_hours
@@ -136,13 +136,13 @@ def test_analyze_endpoint_uses_payroll_settings_hours(logged_in_admin_client, ad
 
 
 def test_analyze_endpoint_override_hours(logged_in_admin_client, admin_with_payroll):
-    """Test that /admin/api/economy/analyze accepts override when explicitly provided."""
+    """Test that /api/economy/analyze accepts override when explicitly provided."""
     admin, payroll_settings = admin_with_payroll
     client = logged_in_admin_client
 
     # Test with explicit override to 10 hours
     response = client.post(
-        '/admin/api/economy/analyze',
+        '/api/economy/analyze',
         json={
             'block': 'A',
             'expected_weekly_hours': 10.0  # Override value
@@ -169,7 +169,7 @@ def test_analyze_endpoint_null_override_uses_payroll(logged_in_admin_client, adm
 
     # Test with explicit null - should fall back to payroll_settings
     response = client.post(
-        '/admin/api/economy/analyze',
+        '/api/economy/analyze',
         json={
             'block': 'A',
             'expected_weekly_hours': None
@@ -229,7 +229,7 @@ def test_different_expected_hours_per_block(client):
 
     # Test Block A
     response_a = client.post(
-        '/admin/api/economy/analyze',
+        '/api/economy/analyze',
         json={'block': 'A'}
     )
     assert response_a.status_code == 200
@@ -239,7 +239,7 @@ def test_different_expected_hours_per_block(client):
 
     # Test Block B
     response_b = client.post(
-        '/admin/api/economy/analyze',
+        '/api/economy/analyze',
         json={'block': 'B'}
     )
     assert response_b.status_code == 200
@@ -259,7 +259,7 @@ def test_validate_rent_with_monthly_frequency(logged_in_admin_client, admin_with
     # Recommended MONTHLY rent range: $240 - $300 (2.0-2.5 × $120 weekly CWI)
     # Weekly equivalent: $240/4.348 = ~$55.20/week to $300/4.348 = ~$69.00/week
     response = client.post(
-        '/admin/api/economy/validate/rent',
+        '/api/economy/validate/rent',
         json={
             'value': 440.0,
             'frequency_type': 'monthly'
@@ -281,7 +281,7 @@ def test_validate_rent_with_monthly_frequency(logged_in_admin_client, admin_with
     assert abs(recommendations['recommended'] - (expected_cwi * 2.25)) < 0.01  # 270.0 per month
 
     # Monthly rent of $440 is ABOVE the recommended maximum of $300/month
-    assert data['is_valid'] is False
+    assert data['status'] == 'warning'
     assert len(data['warnings']) > 0
     warning_msg = data['warnings'][0]['message'].lower()
     # Warning should mention "per month" since that's the input frequency

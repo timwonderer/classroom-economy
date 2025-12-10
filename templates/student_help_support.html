@@ -29,78 +29,55 @@
         <!-- Knowledge Base Tab -->
         <div class="tab-pane fade show active" id="kb" role="tabpanel" aria-labelledby="kb-tab">
             <div class="row g-4">
-                <!-- Quick Start -->
+                <!-- How To -->
                 <div class="col-lg-6">
                     <div class="card shadow-sm h-100">
                         <div class="card-header bg-success text-white">
-                            <h5 class="mb-0"><i class="bi bi-rocket-takeoff-fill me-2"></i>Quick Start Guide</h5>
+                            <h5 class="mb-0"><i class="bi bi-rocket-takeoff-fill me-2"></i>How To Guides</h5>
                         </div>
                         <div class="card-body">
-                            <ol class="list-group list-group-numbered list-group-flush">
-                                <li class="list-group-item">
-                                    <strong>Claim Account:</strong> Use the Join Code from your teacher to claim your account.
-                                </li>
-                                <li class="list-group-item">
-                                    <strong>Earn Money:</strong> Attend class to earn a salary based on your attendance.
-                                </li>
-                                <li class="list-group-item">
-                                    <strong>Spend Money:</strong> Visit the <a href="{{ url_for('student.shop') }}">Store</a> to buy items or privileges.
-                                </li>
-                                <li class="list-group-item">
-                                    <strong>Pay Bills:</strong> Pay <a href="{{ url_for('student.rent') }}">Rent</a> on time to avoid late fees.
-                                </li>
-                                <li class="list-group-item">
-                                    <strong>Protect Yourself:</strong> Buy <a href="{{ url_for('student.student_insurance') }}">Insurance</a> to cover unexpected costs.
-                                </li>
-                            </ol>
+                            <div class="accordion" id="howToAccordion">
+                                {% for article in help_content.how_to %}
+                                <div class="accordion-item">
+                                    <h2 class="accordion-header" id="heading{{ article.id }}">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ article.id }}" aria-expanded="false" aria-controls="collapse{{ article.id }}">
+                                            {{ article.title }}
+                                        </button>
+                                    </h2>
+                                    <div id="collapse{{ article.id }}" class="accordion-collapse collapse" aria-labelledby="heading{{ article.id }}" data-bs-parent="#howToAccordion">
+                                        <div class="accordion-body">
+                                            {{ article.content | safe }}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- FAQ / Self Help -->
+                <!-- Troubleshooting -->
                 <div class="col-lg-6">
                     <div class="card shadow-sm h-100">
                         <div class="card-header bg-secondary text-white">
-                            <h5 class="mb-0"><i class="bi bi-question-circle-fill me-2"></i>Frequently Asked Questions</h5>
+                            <h5 class="mb-0"><i class="bi bi-question-circle-fill me-2"></i>Troubleshooting</h5>
                         </div>
                         <div class="card-body">
-                            <div class="accordion" id="faqAccordion">
+                            <div class="accordion" id="troubleshootAccordion">
+                                {% for article in help_content.troubleshooting %}
                                 <div class="accordion-item">
-                                    <h2 class="accordion-header" id="headingOne">
-                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOne" aria-expanded="false" aria-controls="collapseOne">
-                                            How do I earn money?
+                                    <h2 class="accordion-header" id="heading{{ article.id }}">
+                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ article.id }}" aria-expanded="false" aria-controls="collapse{{ article.id }}">
+                                            {{ article.title }}
                                         </button>
                                     </h2>
-                                    <div id="collapseOne" class="accordion-collapse collapse" aria-labelledby="headingOne" data-bs-parent="#faqAccordion">
+                                    <div id="collapse{{ article.id }}" class="accordion-collapse collapse" aria-labelledby="heading{{ article.id }}" data-bs-parent="#troubleshootAccordion">
                                         <div class="accordion-body">
-                                            You earn money automatically based on your attendance in class. Check your <a href="{{ url_for('student.payroll') }}">Payroll</a> page for details.
+                                            {{ article.content | safe }}
                                         </div>
                                     </div>
                                 </div>
-                                <div class="accordion-item">
-                                    <h2 class="accordion-header" id="headingTwo">
-                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTwo" aria-expanded="false" aria-controls="collapseTwo">
-                                            What if I forget my PIN?
-                                        </button>
-                                    </h2>
-                                    <div id="collapseTwo" class="accordion-collapse collapse" aria-labelledby="headingTwo" data-bs-parent="#faqAccordion">
-                                        <div class="accordion-body">
-                                            Ask your teacher to reset your login. You will need to re-claim your account and set a new PIN.
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="accordion-item">
-                                    <h2 class="accordion-header" id="headingThree">
-                                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseThree" aria-expanded="false" aria-controls="collapseThree">
-                                            Can I transfer money to a friend?
-                                        </button>
-                                    </h2>
-                                    <div id="collapseThree" class="accordion-collapse collapse" aria-labelledby="headingThree" data-bs-parent="#faqAccordion">
-                                        <div class="accordion-body">
-                                            No, you can only transfer money between your own Checking and Savings accounts on the <a href="{{ url_for('student.transfer') }}">Transfer</a> page.
-                                        </div>
-                                    </div>
-                                </div>
+                                {% endfor %}
                             </div>
                         </div>
                     </div>

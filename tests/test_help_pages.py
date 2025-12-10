@@ -19,6 +19,9 @@ def test_admin_help_page(client):
     assert resp.status_code == 200
     assert b"Knowledge Base" in resp.data
     assert b"Report an Issue" in resp.data
+    assert b"How To Guides" in resp.data
+    assert b"Troubleshooting" in resp.data
+    assert b"Running Payroll" in resp.data
 
 def test_student_help_page(client, test_student):
     # Login as student
@@ -35,3 +38,6 @@ def test_student_help_page(client, test_student):
     assert resp.status_code == 200
     assert b"Knowledge Base" in resp.data
     assert b"Report an Issue" in resp.data
+    assert b"How To Guides" in resp.data
+    assert b"Troubleshooting" in resp.data
+    assert b"Earning Money" in resp.data

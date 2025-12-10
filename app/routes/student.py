@@ -37,6 +37,7 @@ from app.utils.demo_sessions import cleanup_demo_student_data
 from app.utils.ip_handler import get_real_ip
 from app.utils.claim_credentials import compute_primary_claim_hash, match_claim_hash
 from app.utils.name_utils import hash_last_name_parts
+from app.utils.help_content import HELP_ARTICLES
 from hash_utils import hash_hmac, hash_username, hash_username_lookup
 from attendance import get_all_block_statuses
 
@@ -2664,4 +2665,5 @@ def help_support():
     return render_template('student_help_support.html',
                          current_page='help',
                          page_title='Help & Support',
-                         my_reports=my_reports)
+                         my_reports=my_reports,
+                         help_content=HELP_ARTICLES['student'])
