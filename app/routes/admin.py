@@ -35,13 +35,17 @@ from app.models import (
     StoreItemBlock, RentSettings, RentPayment, RentWaiver, InsurancePolicy, InsurancePolicyBlock,
     StudentInsurance, InsuranceClaim, HallPassLog, PayrollSettings, PayrollReward, PayrollFine,
     BankingSettings, TeacherBlock, DeletionRequest, DeletionRequestType, DeletionRequestStatus,
-    UserReport, FeatureSettings, TeacherOnboarding, StudentBlock
+    UserReport, FeatureSettings, TeacherOnboarding, StudentBlock,
+    JobTemplate, Job, JobApplication, EmployeeJobAssignment, EmployeeJobWarning,
+    ContractJobClaim, JobApplicationBan, JobsSettings
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
     AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, StoreItemForm,
     InsurancePolicyForm, AdminClaimProcessForm, PayrollSettingsForm,
-    PayrollRewardForm, PayrollFineForm, ManualPaymentForm, BankingSettingsForm
+    PayrollRewardForm, PayrollFineForm, ManualPaymentForm, BankingSettingsForm,
+    JobTemplateForm, JobApplicationReviewForm, EmployeeWarningForm,
+    ContractJobReviewForm, JobsSettingsForm
 )
 
 # Import utility functions
@@ -5844,3 +5848,8 @@ def api_economy_validate(feature):
     except Exception as e:
         current_app.logger.error(f"Error validating {feature}: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+# -------------------- JOBS FEATURE ROUTES --------------------
+# Import and register jobs routes from separate module
+from app.routes.admin_jobs import register_jobs_routes
+register_jobs_routes(admin_bp)

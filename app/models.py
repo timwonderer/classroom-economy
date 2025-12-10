@@ -1134,6 +1134,7 @@ class FeatureSettings(db.Model):
     rent_enabled = db.Column(db.Boolean, default=True, nullable=False)
     hall_pass_enabled = db.Column(db.Boolean, default=True, nullable=False)
     store_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    jobs_enabled = db.Column(db.Boolean, default=False, nullable=False)  # Default off for new feature
 
     # Bug report settings
     bug_reports_enabled = db.Column(db.Boolean, default=True, nullable=False)
@@ -1165,6 +1166,7 @@ class FeatureSettings(db.Model):
             'rent_enabled': self.rent_enabled,
             'hall_pass_enabled': self.hall_pass_enabled,
             'store_enabled': self.store_enabled,
+            'jobs_enabled': self.jobs_enabled,
             'bug_reports_enabled': self.bug_reports_enabled,
             'bug_rewards_enabled': self.bug_rewards_enabled,
         }
@@ -1179,6 +1181,7 @@ class FeatureSettings(db.Model):
             'rent_enabled': True,
             'hall_pass_enabled': True,
             'store_enabled': True,
+            'jobs_enabled': False,  # Default off for new feature
             'bug_reports_enabled': True,
             'bug_rewards_enabled': True,
         }
@@ -1259,3 +1262,350 @@ class TeacherOnboarding(db.Model):
     def needs_onboarding(self):
         """Check if teacher needs to complete onboarding."""
         return not self.is_completed and not self.is_skipped
+
+
+# -------------------- JOBS MODELS --------------------
+
+
+class JobType(str, enum.Enum):
+    EMPLOYEE = 'employee'
+    CONTRACT = 'contract'
+
+
+class PaymentFrequency(str, enum.Enum):
+    MONTHLY = 'monthly'
+    BIWEEKLY = 'biweekly'
+
+
+class PenaltyType(str, enum.Enum):
+    NONE = 'none'
+    DAYS_BAN = 'days_ban'
+    JOB_SPECIFIC_BAN = 'job_specific_ban'
+
+
+class JobApplicationStatus(str, enum.Enum):
+    PENDING = 'pending'
+    ACCEPTED = 'accepted'
+    REJECTED = 'rejected'
+
+
+class TerminationType(str, enum.Enum):
+    FIRED = 'fired'
+    QUIT_WITH_NOTICE = 'quit_with_notice'
+    QUIT_WITHOUT_NOTICE = 'quit_without_notice'
+
+
+class ContractJobStatus(str, enum.Enum):
+    CLAIMED = 'claimed'
+    SUBMITTED = 'submitted'
+    APPROVED = 'approved'
+    REJECTED = 'rejected'
+
+
+class JobApplicationBanType(str, enum.Enum):
+    ALL_JOBS = 'all_jobs'
+    SPECIFIC_JOB = 'specific_job'
+
+class JobTemplate(db.Model):
+    """
+    Job Bank - Reusable job templates that teachers can assign to specific periods.
+
+    Two types of jobs:
+    - Employee: Long-term positions with regular pay, application required
+    - Contract: One-off bounties, first-come-first-served
+    """
+    __tablename__ = 'job_templates'
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
+
+    # Job details
+    job_title = db.Column(db.String(100), nullable=False)
+    job_description = db.Column(db.Text, nullable=True)
+    job_type = db.Column(db.Enum(JobType, native_enum=False, validate_strings=True), nullable=False)
+
+    # Employee job settings
+    salary_amount = db.Column(db.Float, nullable=True)  # Monthly/biweekly salary
+    payment_frequency = db.Column(db.Enum(PaymentFrequency, native_enum=False, validate_strings=True), nullable=True)
+    vacancies = db.Column(db.Integer, nullable=True)  # Number of positions available
+    requirements = db.Column(db.Text, nullable=True)  # Text description of job requirements
+
+    # Employee termination settings
+    notice_period_days = db.Column(db.Integer, default=0, nullable=False)  # Days notice required for quitting
+    warning_cooldown_days = db.Column(db.Integer, default=0, nullable=False)  # Days between warning and firing
+    improper_quit_penalty_type = db.Column(
+        db.Enum(PenaltyType, native_enum=False, validate_strings=True),
+        default=PenaltyType.NONE,
+        nullable=False
+    )
+    improper_quit_penalty_days = db.Column(db.Integer, default=0, nullable=False)  # Days banned from applying
+
+    # Contract job settings
+    bounty_amount = db.Column(db.Float, nullable=True)  # One-time payment for contract jobs
+
+    # Application questions (JSON array of question prompts)
+    # Format: [{"question": "Why do you want this job?", "required": true}, ...]
+    application_questions = db.Column(db.JSON, nullable=True)
+
+    # Metadata
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=_utc_now)
+    updated_at = db.Column(db.DateTime, default=_utc_now, onupdate=_utc_now)
+
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('job_templates', lazy='dynamic', passive_deletes=True))
+    job_instances = db.relationship('Job', backref='template', lazy='dynamic', cascade='all, delete-orphan')
+
+    def __repr__(self):
+        return f'<JobTemplate {self.job_title} ({self.job_type})>'
+
+
+class Job(db.Model):
+    """
+    Instance of a job template assigned to a specific period/block.
+    Teachers create templates in the job bank, then assign them to classes.
+    """
+    __tablename__ = 'jobs'
+    id = db.Column(db.Integer, primary_key=True)
+    template_id = db.Column(db.Integer, db.ForeignKey('job_templates.id', ondelete='CASCADE'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
+    block = db.Column(db.String(10), nullable=False)  # Period identifier
+    join_code = db.Column(db.String(20), nullable=False)  # Class isolation
+
+    # Status
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=_utc_now)
+
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('jobs', lazy='dynamic', passive_deletes=True))
+    applications = db.relationship('JobApplication', backref='job', lazy='dynamic', cascade='all, delete-orphan')
+    assignments = db.relationship('EmployeeJobAssignment', backref='job', lazy='dynamic', cascade='all, delete-orphan')
+    contract_claims = db.relationship('ContractJobClaim', backref='job', lazy='dynamic', cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.Index('ix_jobs_teacher_block', 'teacher_id', 'block'),
+        db.Index('ix_jobs_join_code', 'join_code'),
+    )
+
+    def __repr__(self):
+        return f'<Job {self.id} template={self.template_id} block={self.block}>'
+
+
+class JobApplication(db.Model):
+    """
+    Student applications for employee jobs.
+    Includes answers to custom questions configured by teacher.
+    """
+    __tablename__ = 'job_applications'
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey('jobs.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+
+    # Application content (JSON array matching questions)
+    # Format: [{"question": "Why do you want this job?", "answer": "I am hardworking..."}, ...]
+    answers = db.Column(db.JSON, nullable=False)
+
+    # Review status
+    status = db.Column(
+        db.Enum(JobApplicationStatus, native_enum=False, validate_strings=True),
+        default=JobApplicationStatus.PENDING,
+        nullable=False
+    )
+    applied_at = db.Column(db.DateTime, default=_utc_now)
+    reviewed_at = db.Column(db.DateTime, nullable=True)
+    teacher_notes = db.Column(db.Text, nullable=True)
+
+    # Relationships
+    student = db.relationship('Student', backref=db.backref('job_applications', lazy='dynamic', passive_deletes=True))
+
+    __table_args__ = (
+        db.Index('ix_job_applications_student', 'student_id'),
+        db.Index('ix_job_applications_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f'<JobApplication student={self.student_id} job={self.job_id} status={self.status}>'
+
+
+class EmployeeJobAssignment(db.Model):
+    """
+    Active employee job assignments.
+    Tracks who is currently employed in which job.
+    """
+    __tablename__ = 'employee_job_assignments'
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey('jobs.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+
+    # Employment period
+    start_date = db.Column(db.DateTime, default=_utc_now, nullable=False)
+    end_date = db.Column(db.DateTime, nullable=True)  # NULL if ongoing
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Termination tracking
+    warnings_count = db.Column(db.Integer, default=0, nullable=False)
+    last_warning_date = db.Column(db.DateTime, nullable=True)
+    termination_type = db.Column(
+        db.Enum(TerminationType, native_enum=False, validate_strings=True),
+        nullable=True
+    )
+    termination_reason = db.Column(db.Text, nullable=True)
+
+    # Quit notice tracking
+    quit_notice_date = db.Column(db.DateTime, nullable=True)  # When student gave notice
+    quit_effective_date = db.Column(db.DateTime, nullable=True)  # When quit takes effect
+
+    # Last payment tracking
+    last_payment_date = db.Column(db.DateTime, nullable=True)
+    next_payment_due = db.Column(db.DateTime, nullable=True)
+
+    # Relationships
+    student = db.relationship('Student', backref=db.backref('employee_assignments', lazy='dynamic', passive_deletes=True))
+    warnings = db.relationship('EmployeeJobWarning', backref='assignment', lazy='dynamic', cascade='all, delete-orphan')
+
+    __table_args__ = (
+        db.Index('ix_employee_assignments_student', 'student_id'),
+        db.Index('ix_employee_assignments_active', 'is_active'),
+    )
+
+    def __repr__(self):
+        status = 'active' if self.is_active else 'ended'
+        return f'<EmployeeJobAssignment student={self.student_id} job={self.job_id} {status}>'
+
+
+class EmployeeJobWarning(db.Model):
+    """
+    Warning history for employee jobs.
+    Teachers can issue warnings before firing.
+    """
+    __tablename__ = 'employee_job_warnings'
+    id = db.Column(db.Integer, primary_key=True)
+    assignment_id = db.Column(db.Integer, db.ForeignKey('employee_job_assignments.id', ondelete='CASCADE'), nullable=False)
+
+    warning_text = db.Column(db.Text, nullable=False)
+    issued_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
+    issued_by_admin_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=True)
+
+    # Relationships
+    issued_by = db.relationship('Admin', backref='job_warnings_issued')
+
+    def __repr__(self):
+        return f'<EmployeeJobWarning assignment={self.assignment_id} issued={self.issued_at}>'
+
+
+class ContractJobClaim(db.Model):
+    """
+    Contract job claims and completion tracking.
+    Student claims job, completes it, teacher approves, payment released.
+    """
+    __tablename__ = 'contract_job_claims'
+    id = db.Column(db.Integer, primary_key=True)
+    job_id = db.Column(db.Integer, db.ForeignKey('jobs.id', ondelete='CASCADE'), nullable=False)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+
+    # Claim workflow
+    claimed_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
+    student_marked_complete_at = db.Column(db.DateTime, nullable=True)
+    teacher_reviewed_at = db.Column(db.DateTime, nullable=True)
+
+    # Status
+    status = db.Column(
+        db.Enum(ContractJobStatus, native_enum=False, validate_strings=True),
+        default=ContractJobStatus.CLAIMED,
+        nullable=False
+    )
+    student_notes = db.Column(db.Text, nullable=True)  # Student's completion notes
+    teacher_notes = db.Column(db.Text, nullable=True)  # Teacher's review notes
+
+    # Payment tracking
+    payment_amount = db.Column(db.Float, nullable=True)
+    transaction_id = db.Column(db.Integer, db.ForeignKey('transaction.id'), nullable=True)
+
+    # Relationships
+    student = db.relationship('Student', backref=db.backref('contract_claims', lazy='dynamic', passive_deletes=True))
+    transaction = db.relationship('Transaction', backref='contract_claim')
+
+    __table_args__ = (
+        db.Index('ix_contract_claims_student', 'student_id'),
+        db.Index('ix_contract_claims_status', 'status'),
+    )
+
+    def __repr__(self):
+        return f'<ContractJobClaim student={self.student_id} job={self.job_id} status={self.status}>'
+
+
+class JobApplicationBan(db.Model):
+    """
+    Penalties for students who quit employee jobs without proper notice.
+    Can ban from all jobs or specific job for a period of time.
+    """
+    __tablename__ = 'job_application_bans'
+    id = db.Column(db.Integer, primary_key=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
+    join_code = db.Column(db.String(20), nullable=False)  # Class isolation
+
+    # Ban details
+    ban_type = db.Column(
+        db.Enum(JobApplicationBanType, native_enum=False, validate_strings=True),
+        nullable=False
+    )
+    job_template_id = db.Column(db.Integer, db.ForeignKey('job_templates.id', ondelete='CASCADE'), nullable=True)  # If specific job
+
+    banned_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
+    banned_until = db.Column(db.DateTime, nullable=False)
+    reason = db.Column(db.Text, nullable=True)
+
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Relationships
+    student = db.relationship('Student', backref=db.backref('job_bans', lazy='dynamic', passive_deletes=True))
+    teacher = db.relationship('Admin', backref=db.backref('job_bans_issued', lazy='dynamic', passive_deletes=True))
+    job_template = db.relationship('JobTemplate', backref='bans')
+
+    __table_args__ = (
+        db.Index('ix_job_bans_student', 'student_id'),
+        db.Index('ix_job_bans_active', 'is_active'),
+        db.Index('ix_job_application_bans_join_code', 'join_code'),
+    )
+
+    def __repr__(self):
+        return f'<JobApplicationBan student={self.student_id} type={self.ban_type} until={self.banned_until}>'
+
+
+class JobsSettings(db.Model):
+    """
+    Per-teacher, per-block settings for the jobs feature.
+    Similar to FeatureSettings, RentSettings, etc.
+    """
+    __tablename__ = 'jobs_settings'
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
+    block = db.Column(db.String(10), nullable=True)  # NULL = global default
+
+    # Feature toggles
+    employee_jobs_enabled = db.Column(db.Boolean, default=True, nullable=False)
+    contract_jobs_enabled = db.Column(db.Boolean, default=True, nullable=False)
+
+    # Global settings
+    auto_post_new_jobs = db.Column(db.Boolean, default=True, nullable=False)  # New jobs visible immediately
+    require_application_approval = db.Column(db.Boolean, default=True, nullable=False)  # Teacher must approve applications
+
+    # Onboarding/setup wizard
+    setup_completed = db.Column(db.Boolean, default=False, nullable=False)
+    setup_completed_at = db.Column(db.DateTime, nullable=True)
+
+    # Metadata
+    created_at = db.Column(db.DateTime, default=_utc_now)
+    updated_at = db.Column(db.DateTime, default=_utc_now, onupdate=_utc_now)
+
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('jobs_settings', lazy='dynamic', passive_deletes=True))
+
+    __table_args__ = (
+        db.UniqueConstraint('teacher_id', 'block', name='uq_jobs_settings_teacher_block'),
+        db.Index('ix_jobs_settings_teacher_id', 'teacher_id'),
+    )
+
+    def __repr__(self):
+        block_str = self.block or 'Global'
+        return f'<JobsSettings teacher={self.teacher_id} block={block_str}>'

@@ -346,3 +346,129 @@ class StudentCompleteProfileForm(FlaskForm):
     dob_day = StringField('Day (1-31)', validators=[DataRequired(), Length(min=1, max=2)])
     dob_year = StringField('Year (4 digits)', validators=[DataRequired(), Length(min=4, max=4)])
     submit = SubmitField('Complete Profile')
+
+
+# -------------------- JOBS FORMS --------------------
+
+class JobTemplateForm(FlaskForm):
+    """Form for creating/editing job templates in the job bank."""
+    job_title = StringField('Job Title', validators=[DataRequired(), Length(max=100)])
+    job_description = TextAreaField('Job Description', validators=[Optional()])
+    job_type = SelectField('Job Type', choices=[
+        ('employee', 'Employee (Long-term, Application-based)'),
+        ('contract', 'Contract (One-off Bounty)')
+    ], validators=[DataRequired()])
+
+    # Employee job fields
+    salary_amount = FloatField('Salary Amount ($)', validators=[Optional()])
+    payment_frequency = SelectField('Payment Frequency', choices=[
+        ('', 'Select Frequency'),
+        ('monthly', 'Monthly'),
+        ('biweekly', 'Biweekly (Every 2 Weeks)')
+    ], validators=[Optional()])
+    vacancies = IntegerField('Number of Positions Available', validators=[Optional()])
+    requirements = TextAreaField('Job Requirements (optional)', validators=[Optional()])
+
+    # Employee termination settings
+    notice_period_days = IntegerField('Required Notice Period (days)', default=0, validators=[Optional()])
+    warning_cooldown_days = IntegerField('Cooldown Between Warning and Firing (days)', default=0, validators=[Optional()])
+    improper_quit_penalty_type = SelectField('Penalty for Improper Quit', choices=[
+        ('none', 'No Penalty'),
+        ('days_ban', 'Ban from All Jobs'),
+        ('job_specific_ban', 'Ban from This Job Only')
+    ], default='none', validators=[Optional()])
+    improper_quit_penalty_days = IntegerField('Ban Duration (days)', default=0, validators=[Optional()])
+
+    # Contract job fields
+    bounty_amount = FloatField('Bounty Amount ($)', validators=[Optional()])
+
+    # Application questions - will be dynamically added via JavaScript
+    # Stored as JSON in the backend
+
+    is_active = BooleanField('Job Template is Active', default=True)
+    submit = SubmitField('Save Job Template')
+
+    def validate_salary_amount(self, field):
+        """Validate salary is provided for employee jobs."""
+        if self.job_type.data == 'employee' and not field.data:
+            raise ValidationError('Salary amount is required for employee jobs.')
+
+    def validate_payment_frequency(self, field):
+        """Validate payment frequency is provided for employee jobs."""
+        if self.job_type.data == 'employee' and not field.data:
+            raise ValidationError('Payment frequency is required for employee jobs.')
+
+    def validate_vacancies(self, field):
+        """Validate vacancies is provided for employee jobs."""
+        if self.job_type.data == 'employee' and (not field.data or field.data <= 0):
+            raise ValidationError('Number of positions must be at least 1 for employee jobs.')
+
+    def validate_bounty_amount(self, field):
+        """Validate bounty is provided for contract jobs."""
+        if self.job_type.data == 'contract' and not field.data:
+            raise ValidationError('Bounty amount is required for contract jobs.')
+
+    def validate_improper_quit_penalty_days(self, field):
+        """Validate penalty days when penalty is enabled."""
+        if self.improper_quit_penalty_type.data in ['days_ban', 'job_specific_ban']:
+            if not field.data or field.data <= 0:
+                raise ValidationError('Ban duration must be greater than 0 when penalty is enabled.')
+
+
+class JobApplicationReviewForm(FlaskForm):
+    """Form for teachers to review and approve/reject job applications."""
+    status = SelectField('Decision', choices=[
+        ('pending', 'Pending'),
+        ('accepted', 'Accept'),
+        ('rejected', 'Reject')
+    ], validators=[DataRequired()])
+    teacher_notes = TextAreaField('Notes to Student (optional)', validators=[Optional()])
+    submit = SubmitField('Save Decision')
+
+
+class EmployeeWarningForm(FlaskForm):
+    """Form for issuing warnings to employee job holders."""
+    warning_text = TextAreaField('Warning Message', validators=[DataRequired(), Length(min=10, max=500)])
+    submit = SubmitField('Issue Warning')
+
+
+class ContractJobReviewForm(FlaskForm):
+    """Form for teachers to approve/reject contract job completions."""
+    status = SelectField('Decision', choices=[
+        ('submitted', 'Pending Review'),
+        ('approved', 'Approve & Pay'),
+        ('rejected', 'Reject')
+    ], validators=[DataRequired()])
+    teacher_notes = TextAreaField('Notes to Student (optional)', validators=[Optional()])
+    submit = SubmitField('Save Decision')
+
+
+class JobsSettingsForm(FlaskForm):
+    """Form for configuring jobs feature settings per teacher/block."""
+    employee_jobs_enabled = BooleanField('Enable Employee Jobs', default=True)
+    contract_jobs_enabled = BooleanField('Enable Contract Jobs', default=True)
+    auto_post_new_jobs = BooleanField('Automatically Post New Jobs', default=True)
+    require_application_approval = BooleanField('Require Teacher Approval for Applications', default=True)
+    submit = SubmitField('Save Settings')
+
+
+class StudentJobApplicationForm(FlaskForm):
+    """Form for students to apply for employee jobs. Questions are dynamic."""
+    # Dynamic fields will be added based on job template's application_questions
+    submit = SubmitField('Submit Application')
+
+
+class StudentContractJobClaimForm(FlaskForm):
+    """Form for students to mark contract jobs as complete."""
+    student_notes = TextAreaField('Completion Notes (describe what you did)', validators=[DataRequired(), Length(min=10, max=500)])
+    submit = SubmitField('Mark as Complete')
+
+
+class StudentQuitJobForm(FlaskForm):
+    """Form for students to quit employee jobs."""
+    quit_type = SelectField('How would you like to quit?', choices=[
+        ('with_notice', 'Give Required Notice'),
+        ('immediate', 'Quit Immediately (may incur penalty)')
+    ], validators=[DataRequired()])
+    reason = TextAreaField('Reason for Quitting (optional)', validators=[Optional(), Length(max=500)])
+    submit = SubmitField('Quit Job')
