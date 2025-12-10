@@ -115,11 +115,9 @@ def login_required(f):
                         session.pop('is_demo', None)
                         session.pop('demo_session_id', None)
                         session['view_as_student'] = False
-
                         # Return JSON for API requests
                         if request.path.startswith('/api/'):
                             return jsonify({"status": "error", "error": "Demo session expired"}), 401
-
                         flash("Demo session expired. Start a new demo to continue.")
                         return redirect(url_for('admin.dashboard'))
                     except Exception:
@@ -133,11 +131,9 @@ def login_required(f):
                         session.pop('is_demo', None)
                         session.pop('demo_session_id', None)
                         session['view_as_student'] = False
-
                         # Return JSON for API requests
                         if request.path.startswith('/api/'):
                             return jsonify({"status": "error", "error": "Demo session expired"}), 401
-
                         flash("Demo session expired. Start a new demo to continue.")
                         return redirect(url_for('admin.dashboard'))
 
