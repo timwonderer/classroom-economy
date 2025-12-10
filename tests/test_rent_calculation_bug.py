@@ -151,7 +151,7 @@ def test_api_endpoint_with_exact_values(client, admin_with_exact_payroll):
 
     # Call API with exact values
     response = client.post(
-        '/admin/api/economy/validate/rent',
+        '/api/economy/validate/rent',
         json={
             'value': 450.0,
             'frequency_type': 'monthly',
@@ -239,7 +239,7 @@ def test_multi_block_validation_uses_correct_cwi(client):
     # Test validation WITHOUT block parameter (the bug!)
     # This should use the first payroll settings found (might be Block B!)
     response_no_block = client.post(
-        '/admin/api/economy/validate/rent',
+        '/api/economy/validate/rent',
         json={
             'value': 450.0,
             'frequency_type': 'monthly'
@@ -252,7 +252,7 @@ def test_multi_block_validation_uses_correct_cwi(client):
 
     # Test validation WITH block parameter (the fix!)
     response_with_block = client.post(
-        '/admin/api/economy/validate/rent',
+        '/api/economy/validate/rent',
         json={
             'value': 450.0,
             'frequency_type': 'monthly',
