@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 
 import sqlalchemy as sa
-from flask import session, flash, redirect, url_for, request, current_app
+from flask import session, flash, redirect, url_for, request, current_app, jsonify
 
 
 # -------------------- SESSION CONFIGURATION --------------------
@@ -79,6 +79,9 @@ def login_required(f):
             # Admins must also have a student context when bypassing login_required
             if 'student_id' not in session:
                 session['view_as_student'] = False
+                # Return JSON for API requests
+                if request.path.startswith('/api/'):
+                    return jsonify({"status": "error", "error": "No student context"}), 401
                 flash("Select a student before viewing the student experience.")
                 return redirect(url_for('admin.dashboard'))
 
@@ -87,6 +90,9 @@ def login_required(f):
                 demo_session_id = session.get('demo_session_id')
                 if not demo_session_id:
                     session['view_as_student'] = False
+                    # Return JSON for API requests
+                    if request.path.startswith('/api/'):
+                        return jsonify({"status": "error", "error": "Demo session expired"}), 401
                     flash("Demo session expired. Start a new demo to continue.")
                     return redirect(url_for('admin.dashboard'))
 
@@ -109,7 +115,9 @@ def login_required(f):
                         session.pop('is_demo', None)
                         session.pop('demo_session_id', None)
                         session['view_as_student'] = False
-
+                        # Return JSON for API requests
+                        if request.path.startswith('/api/'):
+                            return jsonify({"status": "error", "error": "Demo session expired"}), 401
                         flash("Demo session expired. Start a new demo to continue.")
                         return redirect(url_for('admin.dashboard'))
                     except Exception:
@@ -123,6 +131,9 @@ def login_required(f):
                         session.pop('is_demo', None)
                         session.pop('demo_session_id', None)
                         session['view_as_student'] = False
+                        # Return JSON for API requests
+                        if request.path.startswith('/api/'):
+                            return jsonify({"status": "error", "error": "Demo session expired"}), 401
                         flash("Demo session expired. Start a new demo to continue.")
                         return redirect(url_for('admin.dashboard'))
 
@@ -132,6 +143,9 @@ def login_required(f):
 
         # Regular student authentication check
         if 'student_id' not in session:
+            # Return JSON for API requests
+            if request.path.startswith('/api/'):
+                return jsonify({"status": "error", "error": "User not logged in or session expired"}), 401
             encoded_next = urllib.parse.quote(request.path, safe="")
             return redirect(f"{url_for('student.login')}?next={encoded_next}")
 
@@ -142,6 +156,9 @@ def login_required(f):
             session.pop('student_id', None)
             session.pop('login_time', None)
             session.pop('last_activity', None)
+            # Return JSON for API requests
+            if request.path.startswith('/api/'):
+                return jsonify({"status": "error", "error": "Session is invalid. Please log in again."}), 401
             flash("Session is invalid. Please log in again.")
             return redirect(url_for('student.login'))
 
@@ -151,6 +168,9 @@ def login_required(f):
             session.pop('student_id', None)
             session.pop('login_time', None)
             session.pop('last_activity', None)
+            # Return JSON for API requests
+            if request.path.startswith('/api/'):
+                return jsonify({"status": "error", "error": "Session expired. Please log in again."}), 401
             flash("Session expired. Please log in again.")
             encoded_next = urllib.parse.quote(request.path, safe="")
             return redirect(f"{url_for('student.login')}?next={encoded_next}")
