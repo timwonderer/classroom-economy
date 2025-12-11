@@ -6,6 +6,7 @@
 {% block extra_head %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
 <script src="{{ url_for('static', filename='js/economy-balance.js') }}"></script>
+<script src="{{ url_for('static', filename='js/item-form-economy.js') }}"></script>
 <style>
     .EasyMDEContainer .CodeMirror {
         min-height: 120px;
@@ -159,6 +160,7 @@
                 </div>
                 <div class="card-body">
                   <!-- Economy Balance Check -->
+                  <div id="economy-data" data-expected-weekly-hours="{{ (payroll_settings.expected_weekly_hours if payroll_settings and payroll_settings.expected_weekly_hours is not none else 5.0) | float }}" class="visually-hidden"></div>
                   <div id="cwi-info" class="mb-3"></div>
 
                   <div class="row">
@@ -646,52 +648,6 @@
 <script>
   // Initialize markdown editors for description and redemption_prompt fields
   document.addEventListener('DOMContentLoaded', function() {
-    // Initialize Economy Balance Checker
-    if (typeof EconomyBalanceChecker !== 'undefined') {
-      const economyChecker = new EconomyBalanceChecker({
-        warningsContainer: '#economy-warnings',
-        expectedWeeklyHours: {{ (payroll_settings.expected_weekly_hours if payroll_settings and payroll_settings.expected_weekly_hours is not none else 5.0) | float }}
-      });
-
-      // Display CWI info if payroll is configured
-      economyChecker.analyzeEconomy().then(analysis => {
-        economyChecker.displayCWIInfo(analysis, '#cwi-info');
-
-        // Setup tier recommendation display
-        const tierSelect = document.querySelector('[data-tier-select]');
-        const tierRecommendation = document.getElementById('tier-recommendation');
-        const tierRangeText = document.getElementById('tier-range-text');
-
-        if (tierSelect && tierRecommendation && tierRangeText) {
-          const cwi = analysis.cwi;
-
-          const tierRanges = {
-            'basic': { min: cwi * 0.02, max: cwi * 0.05 },
-            'standard': { min: cwi * 0.05, max: cwi * 0.10 },
-            'premium': { min: cwi * 0.10, max: cwi * 0.25 },
-            'luxury': { min: cwi * 0.25, max: cwi * 0.50 }
-          };
-
-          function updateTierRecommendation() {
-            const selectedTier = tierSelect.value;
-            if (selectedTier && tierRanges[selectedTier]) {
-              const range = tierRanges[selectedTier];
-              tierRangeText.textContent = `$${range.min.toFixed(2)} - $${range.max.toFixed(2)}`;
-              tierRecommendation.style.display = 'block';
-            } else {
-              tierRecommendation.style.display = 'none';
-            }
-          }
-
-          tierSelect.addEventListener('change', updateTierRecommendation);
-          // Initialize on page load
-          updateTierRecommendation();
-        }
-      }).catch(err => {
-        console.log('Payroll not configured yet, skipping CWI display');
-      });
-    }
-
     const descriptionField = document.getElementById('description');
     const redemptionPromptField = document.getElementById('redemption_prompt');
 
