@@ -461,7 +461,7 @@ When ready to finalize multi-teacher model:
 ### Development Guides
 - **[Economy Balance Checker](docs/development/ECONOMY_BALANCE_CHECKER.md)** - CWI implementation guide
 - **[Migration Guide](docs/development/MIGRATION_GUIDE.md)** - Alembic best practices
-- **[Migration Best Practices](docs/MIGRATION_BEST_PRACTICES.md)** - Database migration guidelines
+- **[Migration Best Practices](docs/development/MIGRATION_BEST_PRACTICES.md)** - Database migration guidelines
 - **[Seeding Instructions](docs/development/SEEDING_INSTRUCTIONS.md)** - Test data setup
 - **[Deprecated Patterns](docs/development/DEPRECATED_CODE_PATTERNS.md)** - Code modernization tracking
 - **[System Admin Design](docs/development/SYSADMIN_INTERFACE_DESIGN.md)** - Admin interface patterns
