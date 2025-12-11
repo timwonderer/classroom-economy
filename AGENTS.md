@@ -122,7 +122,7 @@ The repository has experienced recurring "multiple heads" errors during deployme
 
 - Prefer scoped helpers over ad-hoc filters for tenant access.
 - Keep try/except blocks off import statements (per repo guidance).
-- Update documentation (`docs/development/MULTI_TENANCY_TODO.md`) when milestone status changes.
+- Update documentation (`DEVELOPMENT.md`) when milestone status changes.
 
 ## Checklist Before PR
 

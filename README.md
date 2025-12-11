@@ -12,7 +12,7 @@ An interactive banking and classroom management platform for teaching students a
 
 **License:** [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) - Free for educational and nonprofit use, not for commercial applications.
 
-**Project Status:** Active development in preparation for version 1.0 release. The platform is functional and used in classroom testing, but some features are still being refined. See [docs/development/TODO.md](docs/development/TODO.md) for current priorities.
+**Project Status:** Ready for version 1.0 release! All critical blockers resolved. The platform is feature-complete and actively used in classroom testing. See [DEVELOPMENT.md](DEVELOPMENT.md) for current priorities and roadmap.
 
 ---
 
@@ -143,7 +143,7 @@ An interactive banking and classroom management platform for teaching students a
 - **[Architecture Guide](docs/technical-reference/architecture.md)** — System design and patterns
 - **[Database Schema](docs/technical-reference/database_schema.md)** — Up-to-date database reference
 - **[API Reference](docs/technical-reference/api_reference.md)** — REST API documentation
-- **[Development TODO](docs/development/TODO.md)** — Current priorities and follow-ups
+- **[Development Priorities](DEVELOPMENT.md)** — Current priorities, roadmap, and tasks
 - **[Changelog](CHANGELOG.md)** — Version history and notable changes
 
 ### Deployment & Operations
@@ -238,11 +238,9 @@ python seed_dummy_students.py # Seed test data
 
 ## Roadmap
 
-Active priorities are tracked in [docs/development/TODO.md](docs/development/TODO.md). Current focus areas include:
+Active development priorities and the path to version 1.0 are tracked in [DEVELOPMENT.md](DEVELOPMENT.md).
 
-- Multi-teacher hardening (teacher ownership enforcement, tenancy audit, runbook)
-- Coverage for shared-student payroll and attendance flows
-- Operational safety for future migrations and maintenance windows
+**Version 1.0 Status:** All critical blockers (P0 and P1) have been resolved! The platform is ready for staging deployment and final validation before production release.
 
 ---
 
@@ -262,7 +260,7 @@ We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guid
 
 **Before contributing:**
 1. Review the [Architecture Guide](docs/technical-reference/architecture.md)
-2. Check [TODO.md](docs/development/TODO.md) for current priorities
+2. Check [DEVELOPMENT.md](DEVELOPMENT.md) for current priorities
 3. Ensure all tests pass
 4. Follow the existing code style
 
@@ -298,4 +296,4 @@ This project is licensed under the [PolyForm Noncommercial License 1.0.0](https:
 
 Built for educators and students to make learning about finance engaging and practical.
 
-**Last Updated:** 2025-12-04
+**Last Updated:** 2025-12-11

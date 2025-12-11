@@ -8,7 +8,31 @@ and this project follows semantic versioning principles.
 ## [Unreleased] - Version 0.9.0 (Pre-1.0 Candidate)
 
 ### Project Status
-The project is approaching version 1.0 release. Core features are complete and tested, but a **critical data isolation issue** (same-teacher multi-period data leak) must be resolved before 1.0. See [docs/security/CRITICAL_SAME_TEACHER_LEAK.md](docs/security/CRITICAL_SAME_TEACHER_LEAK.md) for details.
+The project is ready for version 1.0 release. All critical blockers have been resolved:
+- ✅ **P0 Critical Data Leak:** Fixed and deployed (2025-11-29) - See [docs/security/CRITICAL_SAME_TEACHER_LEAK.md](docs/security/CRITICAL_SAME_TEACHER_LEAK.md)
+- ✅ **P1 Deprecated Patterns:** All updated to Python 3.12+ and SQLAlchemy 2.0+ (2025-12-06)
+- 🔄 **Backfill:** Legacy transaction data being backfilled with interactive verification
+
+### Added (2025-12-11)
+- **DEVELOPMENT.md** — Unified development priorities document consolidating all TODO files and roadmap
+- **docs/technical-reference/ECONOMY_SPECIFICATION.md** — Financial system specification (moved from root)
+- **docs/development/ECONOMY_BALANCE_CHECKER.md** — CWI implementation guide (moved from root)
+
+### Changed (2025-12-11)
+- **Major documentation consolidation:**
+  - Merged `docs/development/TODO.md`, `docs/development/MULTI_TENANCY_TODO.md`, and `ROADMAP_TO_1.0.md` into single `DEVELOPMENT.md`
+  - Updated all references to point to new unified documentation structure
+  - Updated README.md to reflect v1.0 readiness (all critical blockers resolved)
+  - Moved implementation reports to `docs/archive/` for historical reference
+- **Security documentation updates:**
+  - Updated `CRITICAL_SAME_TEACHER_LEAK.md` status to RESOLVED (deployed with backfill in progress)
+  - Updated `docs/README.md` to remove "P0 BLOCKER" label
+
+### Removed (2025-12-11)
+- `docs/development/TODO.md` — Consolidated into DEVELOPMENT.md
+- `docs/development/MULTI_TENANCY_TODO.md` — Consolidated into DEVELOPMENT.md
+- `docs/development/TECHNICAL_DEBT_ISSUES.md` — Superseded by DEPRECATED_CODE_PATTERNS.md
+- `ROADMAP_TO_1.0.md` — Consolidated into DEVELOPMENT.md
 
 ### Added (2025-12-04)
 - **PROJECT_HISTORY.md** — Comprehensive document capturing project philosophy, evolution, and key milestones
