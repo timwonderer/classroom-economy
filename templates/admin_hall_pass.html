@@ -8,7 +8,7 @@
 <div class="container-fluid">
     <div class="d-flex justify-content-end align-items-center mb-4">
         <div>
-            <a href="/hall-pass/verification" target="_blank" class="btn btn-primary me-2">
+            <a href="/hall-pass/verification?teacher_id={{ session['admin_id'] }}" target="_blank" class="btn btn-primary me-2">
                 <span class="material-symbols-outlined">tv</span> Verification Display
             </a>
             <a href="/hall-pass/terminal?teacher_id={{ session['admin_id'] }}" target="_blank" class="btn btn-secondary me-2">
