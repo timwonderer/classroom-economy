@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <script src="{{ url_for('static', filename='js/timezone-utils.js') }}"></script>
     <style>
         .material-symbols-outlined {
             font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
@@ -230,13 +231,10 @@
     </div>
 
     <script>
-        function formatTime(isoString) {
-            const date = new Date(isoString);
-            return date.toLocaleTimeString(undefined, {
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true
-            });
+        // Get teacher_id from URL parameters if present
+        function getTeacherId() {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get('teacher_id');
         }
 
         function getTimeElapsed(isoString) {
@@ -285,10 +283,10 @@
                         </div>
                         <div class="info-item">
                             <div class="info-label">Left at</div>
-                            <div class="info-value">${formatTime(pass.left_time)}</div>
+                            <div class="info-value">${window.TimezoneUtils.formatTimestamp(pass.left_time)}</div>
                         </div>
                     </div>
-                    ${!isOut && pass.return_time ? `<div class="return-time">✓ Returned at ${formatTime(pass.return_time)}</div>` : ''}
+                    ${!isOut && pass.return_time ? `<div class="return-time">✓ Returned at ${window.TimezoneUtils.formatTimestamp(pass.return_time)}</div>` : ''}
                 </div>
             `;
             }).join('');
@@ -297,7 +295,12 @@
         }
 
         function fetchActivePasses() {
-            fetch('/api/hall-pass/verification/active')
+            const teacherId = getTeacherId();
+            const url = teacherId
+                ? `/api/hall-pass/verification/active?teacher_id=${teacherId}`
+                : '/api/hall-pass/verification/active';
+
+            fetch(url)
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {

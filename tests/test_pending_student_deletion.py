@@ -116,13 +116,30 @@ def test_delete_pending_student_wrong_teacher(client):
 
 def test_delete_pending_student_already_claimed(client):
     """Cannot delete a TeacherBlock that has already been claimed."""
+    from app.models import Student
+    from hash_utils import hash_username
+
     teacher, secret = _create_admin("teacher-pending3")
-    
+
+    # Create a student first to satisfy foreign key constraint
+    student_salt = get_random_salt()
+    student = Student(
+        first_name="Eve",
+        last_initial="E",
+        block="D",
+        salt=student_salt,
+        username_hash=hash_username("eve", student_salt),
+        pin_hash="fake-hash",
+        teacher_id=teacher.id
+    )
+    db.session.add(student)
+    db.session.flush()  # Get the student ID
+
     # Create a claimed TeacherBlock (simulate a student having claimed it)
     salt = get_random_salt()
     credential = "E2025"
     first_half_hash = hash_hmac(credential.encode(), salt)
-    
+
     claimed_tb = TeacherBlock(
         teacher_id=teacher.id,
         block="D",
@@ -134,7 +151,7 @@ def test_delete_pending_student_already_claimed(client):
         first_half_hash=first_half_hash,
         join_code=f"TEST{teacher.id}D",
         is_claimed=True,  # Claimed
-        student_id=999,  # Has a student_id
+        student_id=student.id,  # Use actual student ID
     )
     db.session.add(claimed_tb)
     db.session.commit()
@@ -233,16 +250,33 @@ def test_bulk_delete_pending_students_by_block(client):
 
 def test_bulk_delete_skips_claimed_students(client):
     """Bulk delete by IDs should skip any claimed TeacherBlocks."""
+    from app.models import Student
+    from hash_utils import hash_username
+
     teacher, secret = _create_admin("teacher-pending6")
-    
+
     # Create unclaimed pending student
     pending1 = _create_unclaimed_teacher_block("Mia", teacher, "H")
-    
+
+    # Create a student first to satisfy foreign key constraint
+    student_salt = get_random_salt()
+    student = Student(
+        first_name="Nate",
+        last_initial="N",
+        block="H",
+        salt=student_salt,
+        username_hash=hash_username("nate", student_salt),
+        pin_hash="fake-hash",
+        teacher_id=teacher.id
+    )
+    db.session.add(student)
+    db.session.flush()
+
     # Create a claimed TeacherBlock
     salt = get_random_salt()
     credential = "N2025"
     first_half_hash = hash_hmac(credential.encode(), salt)
-    
+
     claimed_tb = TeacherBlock(
         teacher_id=teacher.id,
         block="H",
@@ -254,7 +288,7 @@ def test_bulk_delete_skips_claimed_students(client):
         first_half_hash=first_half_hash,
         join_code=f"TEST{teacher.id}H",
         is_claimed=True,
-        student_id=998,
+        student_id=student.id,
     )
     db.session.add(claimed_tb)
     db.session.commit()
@@ -282,17 +316,34 @@ def test_bulk_delete_skips_claimed_students(client):
 
 def test_bulk_delete_by_block_only_deletes_unclaimed(client):
     """Bulk delete by block should only delete unclaimed TeacherBlocks."""
+    from app.models import Student
+    from hash_utils import hash_username
+
     teacher, secret = _create_admin("teacher-pending7")
-    
+
     # Create unclaimed pending students in block I
     pending1 = _create_unclaimed_teacher_block("Olivia", teacher, "I")
     pending2 = _create_unclaimed_teacher_block("Paul", teacher, "I")
-    
+
+    # Create a student first to satisfy foreign key constraint
+    student_salt = get_random_salt()
+    student = Student(
+        first_name="Quinn",
+        last_initial="Q",
+        block="I",
+        salt=student_salt,
+        username_hash=hash_username("quinn", student_salt),
+        pin_hash="fake-hash",
+        teacher_id=teacher.id
+    )
+    db.session.add(student)
+    db.session.flush()
+
     # Create a claimed TeacherBlock in same block
     salt = get_random_salt()
     credential = "Q2025"
     first_half_hash = hash_hmac(credential.encode(), salt)
-    
+
     claimed_tb = TeacherBlock(
         teacher_id=teacher.id,
         block="I",
@@ -304,7 +355,7 @@ def test_bulk_delete_by_block_only_deletes_unclaimed(client):
         first_half_hash=first_half_hash,
         join_code=f"TEST{teacher.id}I",
         is_claimed=True,
-        student_id=997,
+        student_id=student.id,
     )
     db.session.add(claimed_tb)
     db.session.commit()

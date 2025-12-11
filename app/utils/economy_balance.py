@@ -569,7 +569,7 @@ class EconomyBalanceChecker:
             })
         elif monthly_ratio > self.RENT_MAX_RATIO:
             warnings.append({
-                'level': 'critical',
+                'level': 'warning',
                 'message': f"Rent amount is too high. Students may struggle with other expenses. Set rent to at most ${recommendations['max']:.2f} {frequency_label}.",
             })
         else:

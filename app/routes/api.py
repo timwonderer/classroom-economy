@@ -610,13 +610,67 @@ def handle_hall_pass_action(pass_id, action):
 
 @api_bp.route('/hall-pass/verification/active', methods=['GET'])
 def get_active_hall_passes():
-    """Get last 10 students who used hall passes for verification display"""
-    # Get the last 10 students who have left class (both currently out and recently returned)
-    # Ordered by left_time descending (most recent first)
-    recent_passes = HallPassLog.query.filter(
+    """Get last 10 students who used hall passes for verification display
+
+    This endpoint supports teacher scoping via query parameter.
+    Usage: /api/hall-pass/verification/active?teacher_id=123
+    If no teacher_id is provided, shows all hall pass activity (backward compatible).
+    """
+
+    from app.models import Admin, Student, StudentTeacher
+    from sqlalchemy import or_
+
+    # Determine which teacher's data to show (optional)
+    teacher_id = request.args.get('teacher_id', type=int)
+
+    # Start with base query
+    query = HallPassLog.query.filter(
         HallPassLog.status.in_(['left', 'returned']),
         HallPassLog.left_time.isnot(None)
-    ).order_by(HallPassLog.left_time.desc()).limit(10).all()
+    )
+
+    # If teacher_id is provided, validate and scope the query
+    if teacher_id:
+        # Validate teacher exists
+        teacher = Admin.query.get(teacher_id)
+        if not teacher:
+            return jsonify({
+                "status": "error",
+                "message": "Invalid teacher_id"
+            }), 404
+
+        # If querying as admin, verify authorization (only their own data unless system admin)
+        if session.get('is_admin') and not session.get('is_system_admin'):
+            if session.get('admin_id') != teacher_id:
+                return jsonify({
+                    "status": "error",
+                    "message": "Unauthorized"
+                }), 403
+
+        # Build subquery for students belonging to this teacher
+        # Include both primary ownership (teacher_id) and shared access (student_teachers)
+        shared_student_ids = (
+            StudentTeacher.query.with_entities(StudentTeacher.student_id)
+            .filter(StudentTeacher.admin_id == teacher_id)
+            .subquery()
+        )
+
+        student_ids_subquery = (
+            Student.query.with_entities(Student.id)
+            .filter(
+                or_(
+                    Student.teacher_id == teacher_id,
+                    Student.id.in_(shared_student_ids)
+                )
+            )
+            .subquery()
+        )
+
+        # Add teacher scoping filter
+        query = query.filter(HallPassLog.student_id.in_(student_ids_subquery))
+
+    # Get the last 10 students who have left class
+    recent_passes = query.order_by(HallPassLog.left_time.desc()).limit(10).all()
 
     # Helper function to ensure times are marked as UTC
     def format_utc_time(dt):
