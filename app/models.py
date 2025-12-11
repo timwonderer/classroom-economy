@@ -540,6 +540,7 @@ class StoreItem(db.Model):
     name = db.Column(db.String(100), nullable=False)
     description = db.Column(db.Text, nullable=True)
     price = db.Column(db.Float, nullable=False)
+    tier = db.Column(db.String(20), nullable=True) # basic, standard, premium, luxury (teacher-only organizational label)
     item_type = db.Column(db.String(20), nullable=False, default='delayed') # immediate, delayed, collective
     inventory = db.Column(db.Integer, nullable=True) # null for unlimited
     limit_per_student = db.Column(db.Integer, nullable=True) # null for no limit

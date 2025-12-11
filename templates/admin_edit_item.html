@@ -49,6 +49,19 @@
                         </div>
                     </div>
 
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            {{ form.tier.label(class="form-label fw-bold") }}
+                            {{ form.tier(class="form-select", **{'data-tier-select': 'true'}) }}
+                            <small class="text-muted">Optional pricing category for organization</small>
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <div id="tier-recommendation" class="alert alert-info mt-2" style="display: none;">
+                                <small><strong>Recommended range:</strong> <span id="tier-range-text"></span></small>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Economy Balance Warnings -->
                     <div id="economy-warnings"></div>
                     <div class="mb-3">
@@ -218,6 +231,37 @@
       // Display CWI info if payroll is configured
       economyChecker.analyzeEconomy().then(analysis => {
         economyChecker.displayCWIInfo(analysis, '#cwi-info');
+
+        // Setup tier recommendation display
+        const tierSelect = document.querySelector('[data-tier-select]');
+        const tierRecommendation = document.getElementById('tier-recommendation');
+        const tierRangeText = document.getElementById('tier-range-text');
+
+        if (tierSelect && tierRecommendation && tierRangeText) {
+          const cwi = analysis.cwi;
+
+          const tierRanges = {
+            'basic': { min: cwi * 0.02, max: cwi * 0.05 },
+            'standard': { min: cwi * 0.05, max: cwi * 0.10 },
+            'premium': { min: cwi * 0.10, max: cwi * 0.25 },
+            'luxury': { min: cwi * 0.25, max: cwi * 0.50 }
+          };
+
+          function updateTierRecommendation() {
+            const selectedTier = tierSelect.value;
+            if (selectedTier && tierRanges[selectedTier]) {
+              const range = tierRanges[selectedTier];
+              tierRangeText.textContent = `$${range.min.toFixed(2)} - $${range.max.toFixed(2)}`;
+              tierRecommendation.style.display = 'block';
+            } else {
+              tierRecommendation.style.display = 'none';
+            }
+          }
+
+          tierSelect.addEventListener('change', updateTierRecommendation);
+          // Initialize on page load
+          updateTierRecommendation();
+        }
       }).catch(err => {
         console.log('Payroll not configured yet, skipping CWI display');
       });

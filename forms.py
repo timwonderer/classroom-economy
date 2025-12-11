@@ -11,6 +11,13 @@ class StoreItemForm(FlaskForm):
     name = StringField('Item Name', validators=[DataRequired()])
     description = TextAreaField('Description')
     price = FloatField('Price', validators=[DataRequired()])
+    tier = SelectField('Pricing Tier (optional)', choices=[
+        ('', 'No Tier'),
+        ('basic', 'Basic (2-5% of CWI)'),
+        ('standard', 'Standard (5-10% of CWI)'),
+        ('premium', 'Premium (10-25% of CWI)'),
+        ('luxury', 'Luxury (25-50% of CWI)')
+    ], validators=[Optional()])
     item_type = SelectField('Item Type', choices=[
         ('immediate', 'Immediate Use'),
         ('delayed', 'Delayed Use'),
