@@ -6,6 +6,7 @@ from app import Transaction, apply_savings_interest, db
 
 def test_apply_savings_interest_with_naive_datetimes(client, test_student):
     from unittest.mock import patch
+    from app import app
 
     past_date = datetime.now(timezone.utc) - timedelta(days=31)
     savings_tx = Transaction(
@@ -19,9 +20,15 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
     db.session.add(savings_tx)
     db.session.commit()
 
-    # Mock get_current_teacher_id to return None (uses default banking settings)
-    with patch('app.routes.student.get_current_teacher_id', return_value=None):
-        apply_savings_interest(test_student)
+    # Mock get_current_class_context to return minimal context (uses default banking settings)
+    mock_context = {
+        'teacher_id': None,
+        'join_code': 'TEST',
+        'student_teacher_id': None
+    }
+    with app.test_request_context():
+        with patch('app.routes.student.get_current_class_context', return_value=mock_context):
+            apply_savings_interest(test_student)
 
     interest_tx = (
         Transaction.query.filter_by(
@@ -38,6 +45,22 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
 
 
 def test_dashboard_renders_recent_deposit(client, test_student):
+    from app.models import Admin, StudentTeacher
+
+    # Create a teacher and link the student
+    teacher = Admin(username="testteacher", totp_secret="SECRET123")
+    db.session.add(teacher)
+    db.session.flush()
+
+    # Create join code for the student
+    join_code = "TEST123"
+    test_student.join_code = join_code
+
+    # Link student to teacher
+    st = StudentTeacher(student_id=test_student.id, admin_id=teacher.id)
+    db.session.add(st)
+    db.session.commit()
+
     recent_deposit_time = datetime.now(timezone.utc) - timedelta(hours=12)
     mature_savings_time = datetime.now(timezone.utc) - timedelta(days=31)
 
@@ -64,6 +87,7 @@ def test_dashboard_renders_recent_deposit(client, test_student):
     with client.session_transaction() as session:
         session['student_id'] = test_student.id
         session['login_time'] = datetime.now(timezone.utc).isoformat()
+        session['current_join_code'] = join_code
 
     response = client.get('/student/dashboard')
 

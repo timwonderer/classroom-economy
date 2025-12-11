@@ -2958,7 +2958,12 @@ def process_claim(claim_id):
     validation_errors = []
 
     # Check if coverage has started (past waiting period)
-    if not enrollment.coverage_start_date or enrollment.coverage_start_date > datetime.now(timezone.utc):
+    # Ensure timezone-aware comparison
+    coverage_start = enrollment.coverage_start_date
+    if coverage_start and coverage_start.tzinfo is None:
+        coverage_start = coverage_start.replace(tzinfo=timezone.utc)
+
+    if not coverage_start or coverage_start > datetime.now(timezone.utc):
         validation_errors.append("Coverage has not started yet (still in waiting period)")
 
     # Check if payment is current
@@ -2992,7 +2997,10 @@ def process_claim(claim_id):
             validation_errors.append("Another claim is already tied to this transaction")
 
     incident_reference = claim.transaction.timestamp if claim.policy.claim_type == 'transaction_monetary' and claim.transaction else claim.incident_date
-    days_since_incident = (datetime.now(timezone.utc) - incident_reference).days
+    # Ensure timezone-aware comparison
+    if incident_reference and incident_reference.tzinfo is None:
+        incident_reference = incident_reference.replace(tzinfo=timezone.utc)
+    days_since_incident = (datetime.now(timezone.utc) - incident_reference).days if incident_reference else 0
     if days_since_incident > claim.policy.claim_time_limit_days:
         validation_errors.append(f"Claim filed too late ({days_since_incident} days after incident, limit is {claim.policy.claim_time_limit_days} days)")
 
