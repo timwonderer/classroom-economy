@@ -422,8 +422,8 @@
             <h6 class="mb-0 text-primary"><i class="bi bi-lightbulb-fill me-2"></i>Quick Tips</h6>
           </div>
           <div class="card-body pt-0">
-            <ul class="small mb-0 ps-3" style="line-height: 1.8;">
-              <li><strong>Price with CWI in mind:</strong> Keep weekly premium costs under 30-40% of expected income to ensure affordability</li>
+            <ul class="small mb-0 ps-3" style="line-height: 1.8;" id="insurance-quick-tips">
+              <li><strong>Price with CWI in mind:</strong> <span class="tip-pricing">Keep premium costs under 30-40% of weekly expected income ($375) to ensure affordability</span></li>
               <li><strong>Waiting periods:</strong> 3-7 days prevents immediate claims after purchase while remaining student-friendly</li>
               <li><strong>Bundle discounts:</strong> 10-20% off encourages students to buy multiple policies together</li>
               <li><strong>Balance coverage:</strong> Set max payouts 2-4x higher than premiums to ensure claims feel worthwhile</li>
@@ -485,10 +485,67 @@ document.addEventListener('DOMContentLoaded', function() {
         premiumField.setAttribute('data-economy-frequency', this.value);
         // Trigger validation
         premiumField.dispatchEvent(new Event('input'));
+        // Update Quick Tips based on frequency
+        updateQuickTipsPricing(this.value, economyChecker.currentCWI);
       });
       // Set initial frequency
       premiumField.setAttribute('data-economy-frequency', frequencyField.value);
     }
+
+    // Function to update Quick Tips pricing based on frequency
+    function updateQuickTipsPricing(frequency, cwi) {
+      if (!cwi) return;
+
+      const tipPricingElement = document.querySelector('.tip-pricing');
+      if (!tipPricingElement) return;
+
+      // Calculate frequency-specific affordable range (5-12% of CWI for insurance)
+      const minWeekly = cwi * 0.05;
+      const maxWeekly = cwi * 0.12;
+
+      let multiplier = 1;
+      let frequencyLabel = 'weekly';
+
+      switch(frequency) {
+        case 'monthly':
+          multiplier = 4.345; // average weeks per month
+          frequencyLabel = 'monthly';
+          break;
+        case 'weekly':
+          multiplier = 1;
+          frequencyLabel = 'weekly';
+          break;
+        case 'biweekly':
+          multiplier = 2;
+          frequencyLabel = 'biweekly';
+          break;
+        case 'daily':
+          multiplier = 1/7;
+          frequencyLabel = 'daily';
+          break;
+        case 'semester':
+          multiplier = 18; // 18 weeks per semester
+          frequencyLabel = 'semester';
+          break;
+        case 'yearly':
+          multiplier = 52;
+          frequencyLabel = 'yearly';
+          break;
+      }
+
+      const minPrice = (minWeekly * multiplier).toFixed(2);
+      const maxPrice = (maxWeekly * multiplier).toFixed(2);
+      const cwiDisplay = cwi.toFixed(2);
+
+      tipPricingElement.textContent = `Keep ${frequencyLabel} premium costs in the $${minPrice}-$${maxPrice} range (5-12% of weekly expected income: $${cwiDisplay})`;
+    }
+
+    // Update Quick Tips with initial frequency and CWI
+    economyChecker.analyzeEconomy().then(analysis => {
+      updateQuickTipsPricing(frequencyField ? frequencyField.value : 'weekly', analysis.cwi);
+    }).catch(err => {
+      console.log('Could not update Quick Tips pricing');
+    });
   }
 
   // Handle mutually exclusive repurchase restrictions

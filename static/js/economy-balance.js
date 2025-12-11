@@ -178,8 +178,19 @@ class EconomyBalanceChecker {
             if (recommendations.min !== undefined && recommendations.max !== undefined) {
                 html += `<div class="recommendation-range">`;
                 html += `<strong>Recommended Range:</strong> $${recommendations.min} - $${recommendations.max}`;
+                if (recommendations.frequency) {
+                    html += ` <span class="text-muted">per ${recommendations.frequency}</span>`;
+                }
                 if (recommendations.recommended) {
-                    html += ` (Ideal: $${recommendations.recommended})`;
+                    html += `<br><strong>Ideal:</strong> $${recommendations.recommended}`;
+                    if (recommendations.frequency) {
+                        html += ` <span class="text-muted">per ${recommendations.frequency}</span>`;
+                    }
+                }
+                // Show weekly equivalent if frequency is not weekly
+                if (recommendations.frequency && recommendations.frequency !== 'weekly' &&
+                    recommendations.min_weekly !== undefined) {
+                    html += `<br><small class="text-muted">Weekly equivalent: $${recommendations.min_weekly} - $${recommendations.max_weekly}</small>`;
                 }
                 html += `</div>`;
             }

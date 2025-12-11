@@ -584,10 +584,40 @@ class EconomyBalanceChecker:
         weekly_value = self._normalize_to_weekly(premium, frequency)
         ratio = weekly_value / cwi if cwi > 0 else 0
 
+        # Calculate frequency-specific recommendations
+        min_weekly = cwi * self.INSURANCE_MIN_RATIO
+        max_weekly = cwi * self.INSURANCE_MAX_RATIO
+        recommended_weekly = cwi * self.INSURANCE_DEFAULT_RATIO
+
+        # Convert weekly recommendations to match the input frequency
+        def convert_from_weekly(weekly_value: float) -> float:
+            """Convert a weekly value to the insurance's charge frequency."""
+            if frequency == 'weekly':
+                return weekly_value
+            elif frequency == 'monthly':
+                return weekly_value * self.AVERAGE_WEEKS_PER_MONTH
+            elif frequency == 'biweekly':
+                return weekly_value * 2
+            elif frequency == 'daily':
+                return weekly_value / 7
+            elif frequency == 'semester':
+                # Assume 18 weeks per semester (standard academic semester)
+                return weekly_value * 18
+            elif frequency == 'yearly':
+                return weekly_value * 52
+            else:
+                # Default to weekly if unknown frequency
+                return weekly_value
+
         recommendations = {
-            'min_weekly': round(cwi * self.INSURANCE_MIN_RATIO, 2),
-            'max_weekly': round(cwi * self.INSURANCE_MAX_RATIO, 2),
-            'recommended_weekly': round(cwi * self.INSURANCE_DEFAULT_RATIO, 2),
+            # Provide both weekly (for backend calculations) and frequency-specific (for display)
+            'min_weekly': round(min_weekly, 2),
+            'max_weekly': round(max_weekly, 2),
+            'recommended_weekly': round(recommended_weekly, 2),
+            'min': round(convert_from_weekly(min_weekly), 2),
+            'max': round(convert_from_weekly(max_weekly), 2),
+            'recommended': round(convert_from_weekly(recommended_weekly), 2),
+            'frequency': frequency,
         }
 
         warnings: List[Dict[str, str]] = []
