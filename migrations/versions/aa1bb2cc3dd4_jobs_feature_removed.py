@@ -20,8 +20,8 @@ to be managed by Alembic without errors. The tables created by the original
 migration will remain in the database but will not be used by the application.
 
 """
-from alembic import op
-import sqlalchemy as sa
+
+
 
 
 # revision identifiers, used by Alembic.
@@ -32,14 +32,18 @@ depends_on = None
 
 
 def upgrade():
-    # This migration was removed. If you're upgrading from merge_heads_001,
-    # the jobs feature tables were never created in your database.
-    # If you're already at this revision, your database has the jobs tables
-    # but they are no longer used by the application.
+    # This function runs when upgrading from merge_heads_001 to aa1bb2cc3dd4.
+    # Since the jobs feature has been removed, this does nothing.
+    # Databases already at aa1bb2cc3dd4 won't run this function -
+    # Alembic will simply recognize the revision exists.
     pass
 
 
 def downgrade():
     # Downgrade is not supported for this stub migration.
-    # The original migration that created the jobs tables has been removed.
-    pass
+    # WARNING: If your database previously had the jobs feature migration applied,
+    # the job-related tables (e.g., job_templates, jobs, job_applications, etc.) will remain
+    # in the database after downgrade. This stub does NOT remove those tables.
+    # For databases that never had the jobs tables, downgrade is a no-op.
+    # If you wish to remove the job tables, you must do so manually.
+    raise NotImplementedError("Downgrade from this stub is not supported as the original migration is removed.")
