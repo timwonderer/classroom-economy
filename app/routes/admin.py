@@ -1197,24 +1197,44 @@ def set_hall_passes(student_id):
 def edit_student():
     """Edit student basic information."""
     student_id = request.form.get('student_id', type=int)
-    student = _get_student_or_404(student_id)
     current_admin_id = session.get('admin_id')
 
-    # Check if this is a legacy student (has teacher_id but no StudentTeacher record)
-    # If so, create the StudentTeacher association to upgrade them to the new system
-    if student.teacher_id == current_admin_id:
-        existing_st = StudentTeacher.query.filter_by(
-            student_id=student.id,
-            admin_id=current_admin_id
-        ).first()
-        
-        if not existing_st:
-            # Create StudentTeacher association for this legacy student
-            db.session.add(StudentTeacher(
+    # Try to get student from scoped query first
+    student = get_student_for_admin(student_id)
+
+    # If not found in scoped query, check if it's a legacy student (has teacher_id but no StudentTeacher record)
+    if not student:
+        student = Student.query.get(student_id)
+        if student and student.teacher_id == current_admin_id:
+            # This is a legacy student - create StudentTeacher association to upgrade them
+            existing_st = StudentTeacher.query.filter_by(
                 student_id=student.id,
                 admin_id=current_admin_id
-            ))
-            db.session.flush()  # Ensure it's saved before we continue
+            ).first()
+
+            if not existing_st:
+                db.session.add(StudentTeacher(
+                    student_id=student.id,
+                    admin_id=current_admin_id
+                ))
+                db.session.flush()
+        else:
+            # Not accessible by this admin
+            abort(404)
+    else:
+        # Student found in scoped query, but check if we need to create StudentTeacher for legacy data
+        if student.teacher_id == current_admin_id:
+            existing_st = StudentTeacher.query.filter_by(
+                student_id=student.id,
+                admin_id=current_admin_id
+            ).first()
+
+            if not existing_st:
+                db.session.add(StudentTeacher(
+                    student_id=student.id,
+                    admin_id=current_admin_id
+                ))
+                db.session.flush()
 
     # Get form data
     new_first_name = request.form.get('first_name', '').strip()
