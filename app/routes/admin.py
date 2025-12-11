@@ -3380,8 +3380,11 @@ def payroll():
     has_settings = PayrollSettings.query.filter_by(teacher_id=admin_id).first() is not None
     show_setup_banner = not has_settings
 
-    # Get payroll settings for this teacher
-    block_settings = PayrollSettings.query.filter_by(teacher_id=admin_id, is_active=True).all()
+    # Get payroll settings for this teacher, filtered to only include blocks with current students
+    if blocks:
+        block_settings = PayrollSettings.query.filter_by(teacher_id=admin_id, is_active=True).filter(PayrollSettings.block.in_(blocks)).all()
+    else:
+        block_settings = []
 
     # Get first block's settings for form pre-population (no global settings)
     default_setting = block_settings[0] if block_settings else None
