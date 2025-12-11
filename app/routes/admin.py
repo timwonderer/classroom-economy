@@ -1197,24 +1197,44 @@ def set_hall_passes(student_id):
 def edit_student():
     """Edit student basic information."""
     student_id = request.form.get('student_id', type=int)
-    student = _get_student_or_404(student_id)
     current_admin_id = session.get('admin_id')
 
-    # Check if this is a legacy student (has teacher_id but no StudentTeacher record)
-    # If so, create the StudentTeacher association to upgrade them to the new system
-    if student.teacher_id == current_admin_id:
-        existing_st = StudentTeacher.query.filter_by(
-            student_id=student.id,
-            admin_id=current_admin_id
-        ).first()
-        
-        if not existing_st:
-            # Create StudentTeacher association for this legacy student
-            db.session.add(StudentTeacher(
+    # Try to get student from scoped query first
+    student = get_student_for_admin(student_id)
+
+    # If not found in scoped query, check if it's a legacy student (has teacher_id but no StudentTeacher record)
+    if not student:
+        student = Student.query.get(student_id)
+        if student and student.teacher_id == current_admin_id:
+            # This is a legacy student - create StudentTeacher association to upgrade them
+            existing_st = StudentTeacher.query.filter_by(
                 student_id=student.id,
                 admin_id=current_admin_id
-            ))
-            db.session.flush()  # Ensure it's saved before we continue
+            ).first()
+
+            if not existing_st:
+                db.session.add(StudentTeacher(
+                    student_id=student.id,
+                    admin_id=current_admin_id
+                ))
+                db.session.flush()
+        else:
+            # Not accessible by this admin
+            abort(404)
+    else:
+        # Student found in scoped query, but check if we need to create StudentTeacher for legacy data
+        if student.teacher_id == current_admin_id:
+            existing_st = StudentTeacher.query.filter_by(
+                student_id=student.id,
+                admin_id=current_admin_id
+            ).first()
+
+            if not existing_st:
+                db.session.add(StudentTeacher(
+                    student_id=student.id,
+                    admin_id=current_admin_id
+                ))
+                db.session.flush()
 
     # Get form data
     new_first_name = request.form.get('first_name', '').strip()
@@ -2958,7 +2978,12 @@ def process_claim(claim_id):
     validation_errors = []
 
     # Check if coverage has started (past waiting period)
-    if not enrollment.coverage_start_date or enrollment.coverage_start_date > datetime.now(timezone.utc):
+    # Ensure timezone-aware comparison
+    coverage_start = enrollment.coverage_start_date
+    if coverage_start and coverage_start.tzinfo is None:
+        coverage_start = coverage_start.replace(tzinfo=timezone.utc)
+
+    if not coverage_start or coverage_start > datetime.now(timezone.utc):
         validation_errors.append("Coverage has not started yet (still in waiting period)")
 
     # Check if payment is current
@@ -2992,7 +3017,10 @@ def process_claim(claim_id):
             validation_errors.append("Another claim is already tied to this transaction")
 
     incident_reference = claim.transaction.timestamp if claim.policy.claim_type == 'transaction_monetary' and claim.transaction else claim.incident_date
-    days_since_incident = (datetime.now(timezone.utc) - incident_reference).days
+    # Ensure timezone-aware comparison
+    if incident_reference and incident_reference.tzinfo is None:
+        incident_reference = incident_reference.replace(tzinfo=timezone.utc)
+    days_since_incident = (datetime.now(timezone.utc) - incident_reference).days if incident_reference else 0
     if days_since_incident > claim.policy.claim_time_limit_days:
         validation_errors.append(f"Claim filed too late ({days_since_incident} days after incident, limit is {claim.policy.claim_time_limit_days} days)")
 
@@ -5831,9 +5859,17 @@ def api_economy_validate(feature):
             **validation_kwargs,
         )
 
+        # Determine status based on warnings
+        if warnings:
+            # Check if there are critical warnings
+            critical_warnings = [w for w in warnings if w.get('level') == 'critical']
+            status = 'error' if critical_warnings else 'warning'
+        else:
+            status = 'success'
+
         return jsonify({
-            'status': 'success',
-            'is_valid': len([w for w in warnings if w['level'] == 'critical']) == 0,
+            'status': status,
+            'is_valid': len([w for w in warnings if w.get('level') == 'critical']) == 0,
             'warnings': warnings,
             'recommendations': recommendations,
             'cwi': cwi,

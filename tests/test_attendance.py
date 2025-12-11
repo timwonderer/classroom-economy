@@ -23,9 +23,14 @@ def test_get_last_payroll_time(client):
     # Test with no payroll transactions
     assert get_last_payroll_time() is None
 
+    # Create a student first to satisfy foreign key constraint
+    student = Student(first_name="Test", last_initial="S", block="A", salt=b'salt', has_completed_setup=True)
+    db.session.add(student)
+    db.session.commit()
+
     # Test with a payroll transaction
     now = datetime.now(timezone.utc)
-    tx = Transaction(student_id=1, amount=10, type="payroll", timestamp=now)
+    tx = Transaction(student_id=student.id, amount=10, type="payroll", timestamp=now)
     db.session.add(tx)
     db.session.commit()
     assert get_last_payroll_time() == now
