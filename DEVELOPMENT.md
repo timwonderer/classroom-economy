@@ -138,9 +138,31 @@ All deprecated Python and SQLAlchemy patterns have been updated:
 - Currency localization
 - Regional educational standard alignment
 
-### Advanced Feature Research (v1.5+)
+### Planned Features (Future Releases)
 
-#### Custom Condition Builder
+#### 1. In-App Communication & Announcements (v1.5+)
+**Status:** Documented, not yet implemented
+**Documentation:** `docs/development/SYSADMIN_INTERFACE_DESIGN.md` (Section 6)
+
+**Features:**
+- **System-wide announcements** - Broadcast messages to all users
+- **Maintenance notifications** - Automated alerts for scheduled maintenance
+- **Emergency alerts** - Critical system messages with priority display
+- **Message to all teachers** - Admin communication tool
+- **Message to all students** - Class-wide or system-wide student messaging
+
+**Route:** `/sysadmin/announcements` (System Admin)
+
+**Use Cases:**
+- Notify all users of upcoming maintenance
+- Emergency closure announcements
+- System-wide policy updates
+- Teacher communication for multi-school deployments
+
+**Estimated Effort:** 4-6 weeks
+**Priority:** Medium (useful for multi-school deployments)
+
+#### 2. Custom Condition Builder (v1.5+)
 **Status:** Research completed, deferred to future release
 
 **Description:** Drag-and-drop visual rule builder for custom conditional logic in rent, insurance, store, payroll, and banking features.
