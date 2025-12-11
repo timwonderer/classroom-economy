@@ -13,6 +13,14 @@ def parse_server_state(html):
     return json.loads(script.string)
 
 def test_dynamic_blocks_and_tap_flow(client):
+    from app.models import Admin, StudentTeacher
+    import pyotp
+
+    # Create a teacher and link the student
+    teacher = Admin(username="tapflow-teacher", totp_secret=pyotp.random_base32())
+    db.session.add(teacher)
+    db.session.flush()
+
     # 1. Create a two-block student
     salt = get_random_salt()
     username = "t1"
@@ -22,9 +30,16 @@ def test_dynamic_blocks_and_tap_flow(client):
         block="A,C",
         salt=salt,
         username_hash=hash_username(username, salt),
-        pin_hash=generate_password_hash("0000")
+        pin_hash=generate_password_hash("0000"),
+        teacher_id=teacher.id
     )
-    db.session.add(stu); db.session.commit()
+    db.session.add(stu)
+    db.session.flush()
+
+    # Link student to teacher via StudentTeacher
+    st = StudentTeacher(student_id=stu.id, admin_id=teacher.id)
+    db.session.add(st)
+    db.session.commit()
 
     # 2. Log in
     resp = login(client, username, "0000")
@@ -76,6 +91,14 @@ def test_invalid_period_and_action(client):
     assert 'error' in resp.json
 
 def test_server_state_json(client):
+    from app.models import Admin, StudentTeacher
+    import pyotp
+
+    # Create a teacher and link the student
+    teacher = Admin(username="serverstate-teacher", totp_secret=pyotp.random_base32())
+    db.session.add(teacher)
+    db.session.flush()
+
     # Ensure serverState JSON matches interactions
     # Create and log in student
     salt = get_random_salt()
@@ -86,9 +109,17 @@ def test_server_state_json(client):
         block="A",
         salt=salt,
         username_hash=hash_username(username, salt),
-        pin_hash=generate_password_hash("0000")
+        pin_hash=generate_password_hash("0000"),
+        teacher_id=teacher.id
     )
-    db.session.add(stu); db.session.commit()
+    db.session.add(stu)
+    db.session.flush()
+
+    # Link student to teacher via StudentTeacher
+    st = StudentTeacher(student_id=stu.id, admin_id=teacher.id)
+    db.session.add(st)
+    db.session.commit()
+
     login(client, username, "0000")
 
     # Tap in to block A
