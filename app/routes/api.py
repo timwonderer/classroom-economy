@@ -16,7 +16,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.security import check_password_hash
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models import (
     Student, StoreItem, StudentItem, Transaction, TapEvent,
     HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
@@ -1214,6 +1214,7 @@ def attendance_history():
 # -------------------- ATTENDANCE API --------------------
 
 @api_bp.route('/tap', methods=['POST'])
+@limiter.limit("100 per minute")
 def handle_tap():
     data = request.get_json()
     safe_data = {k: ('***' if k == 'pin' else v) for k, v in data.items()}

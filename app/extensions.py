@@ -55,7 +55,7 @@ else:
 
 limiter = Limiter(
     key_func=get_real_ip_for_limiter,
-    default_limits=["200 per day", "50 per hour"],
+    default_limits=["500 per day", "200 per hour"],
     storage_uri=storage_uri,
     strategy="fixed-window"
 )
