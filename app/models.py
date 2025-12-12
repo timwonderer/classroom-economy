@@ -954,6 +954,11 @@ class RecoveryRequest(db.Model):
     expires_at = db.Column(db.DateTime, nullable=False)  # Auto-expire after X days
     completed_at = db.Column(db.DateTime, nullable=True)
 
+    # Partial progress - allows teacher to save progress and resume later
+    partial_codes = db.Column(db.JSON, nullable=True)  # Array of entered codes (not yet validated)
+    resume_pin_hash = db.Column(db.String(64), nullable=True)  # Hashed PIN to resume progress
+    resume_new_username = db.Column(db.String(100), nullable=True)  # Temporary storage for new username
+
     # Relationships
     admin = db.relationship('Admin', backref=db.backref('recovery_requests', lazy='dynamic'))
     verification_codes = db.relationship('StudentRecoveryCode', backref='recovery_request', lazy='dynamic', cascade='all, delete-orphan')

@@ -1149,7 +1149,20 @@ def reset_credentials():
 
         return render_template("admin_reset_credentials.html", form=form, show_qr=True, qr_b64=img_b64, totp_secret=totp_secret, new_username=new_username)
 
-    return render_template("admin_reset_credentials.html", form=form, show_qr=False)
+    # Check if resuming from saved progress
+    resume_mode = session.get('resume_mode', False)
+    saved_codes = recovery_request.partial_codes if resume_mode else []
+    saved_username = recovery_request.resume_new_username if resume_mode else ''
+
+    # Clear resume mode flag
+    if resume_mode:
+        session.pop('resume_mode', None)
+
+    return render_template("admin_reset_credentials.html",
+                         form=form,
+                         show_qr=False,
+                         saved_codes=saved_codes,
+                         saved_username=saved_username)
 
 
 def _invalidate_all_recovery_codes(student_codes):
@@ -1219,6 +1232,97 @@ def confirm_reset():
     current_app.logger.info(f"🎉 Admin recovery: account reset successful for {new_username}")
     flash("Your account has been successfully reset! Please log in with your new username and TOTP.", "success")
     return redirect(url_for('admin.login'))
+
+
+@admin_bp.route('/save-recovery-progress', methods=['POST'])
+@limiter.limit("10 per hour")
+def save_recovery_progress():
+    """
+    Save partial recovery progress and generate a resume PIN.
+    Allows teachers to enter codes gradually without needing all students at once.
+    """
+    recovery_request_id = session.get('recovery_request_id')
+    if not recovery_request_id:
+        flash("No active recovery request found.", "error")
+        return redirect(url_for('admin.recover'))
+
+    recovery_request = RecoveryRequest.query.get(recovery_request_id)
+    if not recovery_request or recovery_request.status != 'pending':
+        flash("Invalid or expired recovery request.", "error")
+        return redirect(url_for('admin.recover'))
+
+    # Get entered codes and new username
+    entered_codes = request.form.getlist('recovery_code')
+    entered_codes = [c.strip() for c in entered_codes if c.strip()]
+    new_username = request.form.get('new_username', '').strip()
+
+    if not entered_codes:
+        flash("Please enter at least one recovery code before saving progress.", "error")
+        return redirect(url_for('admin.reset_credentials'))
+
+    # Generate a 6-digit resume PIN
+    import random
+    resume_pin = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+
+    # Hash the PIN
+    from hash_utils import hash_hmac
+    resume_pin_hash = hash_hmac(resume_pin.encode(), b'')
+
+    # Save partial progress
+    recovery_request.partial_codes = entered_codes
+    recovery_request.resume_pin_hash = resume_pin_hash
+    recovery_request.resume_new_username = new_username
+    db.session.commit()
+
+    current_app.logger.info(f"💾 Admin recovery: saved partial progress for request {recovery_request.id}")
+
+    # Show the PIN to the teacher
+    return render_template("admin_recovery_saved.html",
+                         resume_pin=resume_pin,
+                         codes_saved=len(entered_codes),
+                         recovery_request=recovery_request)
+
+
+@admin_bp.route('/resume-credentials', methods=['GET', 'POST'])
+@limiter.limit("10 per hour")
+def resume_credentials():
+    """
+    Resume recovery process with a previously saved PIN.
+    """
+    if request.method == 'GET':
+        # Show PIN entry form
+        return render_template("admin_resume_credentials.html")
+
+    # POST: Verify PIN and load saved progress
+    resume_pin = request.form.get('resume_pin', '').strip()
+
+    if not resume_pin or len(resume_pin) != 6 or not resume_pin.isdigit():
+        flash("Please enter a valid 6-digit resume PIN.", "error")
+        return render_template("admin_resume_credentials.html")
+
+    # Find recovery request with matching PIN
+    from hash_utils import hash_hmac
+    resume_pin_hash = hash_hmac(resume_pin.encode(), b'')
+
+    recovery_request = RecoveryRequest.query.filter_by(
+        resume_pin_hash=resume_pin_hash,
+        status='pending'
+    ).filter(
+        RecoveryRequest.expires_at > datetime.now(timezone.utc)
+    ).first()
+
+    if not recovery_request:
+        current_app.logger.warning(f"🛑 Admin recovery: invalid resume PIN attempt")
+        flash("Invalid or expired resume PIN. Please check your PIN or start a new recovery.", "error")
+        return render_template("admin_resume_credentials.html")
+
+    # Set session and redirect to reset credentials with saved progress
+    session['recovery_request_id'] = recovery_request.id
+    session['resume_mode'] = True
+
+    current_app.logger.info(f"🔄 Admin recovery: resumed progress for request {recovery_request.id}")
+    flash(f"Progress resumed! You have {len(recovery_request.partial_codes or [])} code(s) already saved.", "info")
+    return redirect(url_for('admin.reset_credentials'))
 
 
 @admin_bp.route('/settings', methods=['GET', 'POST'])
