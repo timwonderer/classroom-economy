@@ -44,13 +44,15 @@ def table_exists(table_name):
 
 
 def upgrade():
+    status_enum = sa.Enum('pending', 'verified', 'expired', 'cancelled', name='recovery_request_status_enum')
+
     # Create recovery_requests table
     if not table_exists('recovery_requests'):
         op.create_table('recovery_requests',
             sa.Column('id', sa.Integer(), nullable=False),
             sa.Column('admin_id', sa.Integer(), nullable=False),
             sa.Column('dob_sum', sa.Integer(), nullable=False),
-            sa.Column('status', sa.String(length=20), nullable=False, server_default='pending'),
+            sa.Column('status', status_enum, nullable=False, server_default='pending'),
             sa.Column('created_at', sa.DateTime(), nullable=False),
             sa.Column('expires_at', sa.DateTime(), nullable=False),
             sa.Column('completed_at', sa.DateTime(), nullable=True),
@@ -78,6 +80,8 @@ def upgrade():
 
 
 def downgrade():
+    status_enum = sa.Enum('pending', 'verified', 'expired', 'cancelled', name='recovery_request_status_enum')
+
     if table_exists('student_recovery_codes'):
         op.drop_index(op.f('ix_student_recovery_codes_student_id'), table_name='student_recovery_codes')
         op.drop_index(op.f('ix_student_recovery_codes_recovery_request_id'), table_name='student_recovery_codes')
@@ -86,3 +90,5 @@ def downgrade():
     if table_exists('recovery_requests'):
         op.drop_index(op.f('ix_recovery_requests_admin_id'), table_name='recovery_requests')
         op.drop_table('recovery_requests')
+
+    status_enum.drop(op.get_bind(), checkfirst=True)

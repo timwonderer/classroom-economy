@@ -116,9 +116,8 @@ def test_teacher_recovery_full_flow(client, app):
     assert b'3 / 3 Verified' in response.data or b'All Students Verified' in response.data
 
     # Step 5: Teacher resets credentials with codes
-    recovery_codes_str = ', '.join(generated_codes)
     response = client.post('/admin/reset-credentials', data={
-        'recovery_codes': recovery_codes_str,
+        'recovery_code': generated_codes,
         'new_username': 'newteacher1'
     }, follow_redirects=False)
 
@@ -288,25 +287,25 @@ def test_recovery_codes_must_match_exactly(client, app):
 
     # Try with only one code (should fail)
     response = client.post('/admin/reset-credentials', data={
-        'recovery_codes': '123456',  # Missing code2!
+        'recovery_code': ['123456'],  # Missing code2!
         'new_username': 'newteacher4'
     }, follow_redirects=True)
 
     assert response.status_code == 200
-    assert b'do not match' in response.data.lower() or b'check the codes' in response.data.lower()
+    assert b'wrong number of codes entered' in response.data.lower()
 
     # Try with wrong code (should fail)
     response = client.post('/admin/reset-credentials', data={
-        'recovery_codes': '123456, 999999',  # Wrong second code!
+        'recovery_code': ['123456', '999999'],  # Wrong second code!
         'new_username': 'newteacher4'
     }, follow_redirects=True)
 
     assert response.status_code == 200
-    assert b'do not match' in response.data.lower() or b'check the codes' in response.data.lower()
+    assert b'do not match' in response.data.lower() or b'invalidated' in response.data.lower()
 
     # Try with correct codes (should succeed)
     response = client.post('/admin/reset-credentials', data={
-        'recovery_codes': '123456, 789012',
+        'recovery_code': ['123456', '789012'],
         'new_username': 'newteacher4'
     }, follow_redirects=False)
 

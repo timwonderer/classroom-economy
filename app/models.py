@@ -949,7 +949,11 @@ class RecoveryRequest(db.Model):
     dob_sum = db.Column(db.Integer, nullable=False)
 
     # Status tracking
-    status = db.Column(db.String(20), nullable=False, default='pending')  # pending, verified, expired, cancelled
+    status = db.Column(
+        db.Enum('pending', 'verified', 'expired', 'cancelled', name='recovery_request_status_enum'),
+        nullable=False,
+        default='pending'
+    )  # pending, verified, expired, cancelled
     created_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
     expires_at = db.Column(db.DateTime, nullable=False)  # Auto-expire after X days
     completed_at = db.Column(db.DateTime, nullable=True)

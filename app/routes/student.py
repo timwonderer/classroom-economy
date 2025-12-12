@@ -7,6 +7,7 @@ financial transactions, shopping, insurance, and rent payment.
 
 import json
 import random
+import secrets
 import re
 from calendar import monthrange
 from datetime import datetime, timedelta, timezone
@@ -2730,12 +2731,10 @@ def verify_recovery(code_id):
                                  recovery_code=recovery_code,
                                  student=student)
 
-        # Generate 6-digit recovery code
-        import random
-        code = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+        # Generate 6-digit recovery code using cryptographically secure randomness
+        code = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
 
         # Hash and store the code
-        from hash_utils import hash_hmac
         recovery_code.code_hash = hash_hmac(code.encode(), b'')
         recovery_code.verified_at = datetime.now(timezone.utc)
         db.session.commit()

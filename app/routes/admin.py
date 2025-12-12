@@ -43,7 +43,6 @@ from forms import (
     InsurancePolicyForm, AdminClaimProcessForm, PayrollSettingsForm,
     PayrollRewardForm, PayrollFineForm, ManualPaymentForm, BankingSettingsForm
 )
-
 # Import utility functions
 from app.utils.helpers import is_safe_url, format_utc_iso, generate_anonymous_code, render_template_with_fallback as render_template
 from app.utils.join_code import generate_join_code
@@ -938,7 +937,6 @@ def recover():
             return render_template("admin_recover.html", form=form)
 
         # Find students by username
-        from hash_utils import hash_hmac
         students_by_username = {}
         for username in student_usernames:
             student = Student.query.filter_by(username_hash=hash_hmac(username.encode(), b'')).first()
@@ -1104,7 +1102,6 @@ def reset_credentials():
             return redirect(url_for('admin.recovery_status'))
 
         # Verify entered codes match (in any order)
-        from hash_utils import hash_hmac
         entered_hashes = set()
         for code in entered_codes:
             # Validate format
@@ -1224,8 +1221,6 @@ def confirm_reset():
     db.session.commit()
 
     # Clear recovery session
-    session.pop('recovery_verified', None)
-    session.pop('recovery_teacher_id', None)
     session.pop('reset_totp_secret', None)
     session.pop('reset_new_username', None)
 
@@ -1260,12 +1255,10 @@ def save_recovery_progress():
         flash("Please enter at least one recovery code before saving progress.", "error")
         return redirect(url_for('admin.reset_credentials'))
 
-    # Generate a 6-digit resume PIN
-    import random
-    resume_pin = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+    # Generate a 6-digit resume PIN using cryptographically secure randomness
+    resume_pin = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
 
     # Hash the PIN
-    from hash_utils import hash_hmac
     resume_pin_hash = hash_hmac(resume_pin.encode(), b'')
 
     # Save partial progress
@@ -1301,7 +1294,6 @@ def resume_credentials():
         return render_template("admin_resume_credentials.html")
 
     # Find recovery request with matching PIN
-    from hash_utils import hash_hmac
     resume_pin_hash = hash_hmac(resume_pin.encode(), b'')
 
     recovery_request = RecoveryRequest.query.filter_by(
