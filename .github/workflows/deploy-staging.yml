@@ -1,14 +1,14 @@
-name: Deploy to DO on push to main
+name: Deploy to Staging on push to staging
 
 on:
   push:
     branches:
-      - main
+      - staging
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production
+    environment: staging
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
@@ -18,7 +18,7 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.DO_DEPLOY_KEY }}
 
-    - name: Deploy to DO Production Server
+    - name: Deploy to Staging Server
       run: |
         MAINT_MODE="${{ vars.MAINTENANCE_MODE || 'false' }}"
         MAINT_MESSAGE="${{ vars.MAINTENANCE_MESSAGE || 'We are performing scheduled maintenance.' }}"
@@ -26,9 +26,9 @@ jobs:
         MAINT_CONTACT="${{ vars.MAINTENANCE_CONTACT || '' }}"
         TURNSTILE_SITE="${{ secrets.TURNSTILE_SITE_KEY || '' }}"
         TURNSTILE_SECRET="${{ secrets.TURNSTILE_SECRET_KEY || '' }}"
-        DEPLOY_BRANCH="main"
+        DEPLOY_BRANCH="staging"
 
         SSH_ENV_VARS="DEPLOY_BRANCH=$(printf %q "$DEPLOY_BRANCH") MAINT_MODE=$(printf %q "$MAINT_MODE") MAINT_MESSAGE=$(printf %q "$MAINT_MESSAGE") MAINT_END=$(printf %q "$MAINT_END") MAINT_CONTACT=$(printf %q "$MAINT_CONTACT") TURNSTILE_SITE=$(printf %q "$TURNSTILE_SITE") TURNSTILE_SECRET=$(printf %q "$TURNSTILE_SECRET")"
 
-        # Connect to the production server and deploy
-        ssh -o StrictHostKeyChecking=no root@${{ secrets.PRODUCTION_SERVER_IP }} "export ${SSH_ENV_VARS}; bash -s" < scripts/deploy-app.sh
+        # Connect to the staging server and deploy
+        ssh -o StrictHostKeyChecking=no root@${{ secrets.STAGING_SERVER_IP }} "export ${SSH_ENV_VARS}; bash -s" < scripts/deploy-app.sh
