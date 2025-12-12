@@ -2325,7 +2325,7 @@ def rent_pay(period):
 # -------------------- AUTHENTICATION --------------------
 
 @student_bp.route('/login', methods=['GET', 'POST'])
-@limiter.limit("15 per minute")
+@limiter.limit("60 per minute")
 def login():
     """Student login with username and PIN."""
     form = StudentLoginForm()

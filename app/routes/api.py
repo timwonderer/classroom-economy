@@ -16,7 +16,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.security import check_password_hash
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models import (
     Student, StoreItem, StudentItem, Transaction, TapEvent,
     HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
@@ -1268,6 +1268,7 @@ def attendance_history():
 # -------------------- ATTENDANCE API --------------------
 
 @api_bp.route('/tap', methods=['POST'])
+@limiter.limit("100 per minute")
 def handle_tap():
     data = request.get_json()
     safe_data = {k: ('***' if k == 'pin' else v) for k, v in data.items()}
@@ -1854,6 +1855,18 @@ def check_and_auto_tapout_if_limit_reached(student):
                         f"Auto-tapping out student {student.id} from {period_upper} - daily limit of {hours_limit} hours reached (total: {today_attendance/3600:.2f}h)"
                     )
 
+                    # Prioritize join_code from the active event we are closing
+                    join_code = latest_event.join_code
+                    if not join_code:
+                        # Fallback for legacy events without a join_code
+                        join_code = get_join_code_for_student_period(student.id, period_upper)
+
+                    if not join_code:
+                        current_app.logger.warning(
+                            f"Unable to resolve join_code for student {student.id} in period {period_upper} for auto-tap-out. The active TapEvent ID is {latest_event.id}."
+                        )
+                        continue
+
                     # Calculate when they SHOULD have been tapped out (at exactly the limit)
                     # If they've been active for 90 minutes and limit is 75, tap them out 15 minutes ago
                     overage_seconds = today_attendance - daily_limit
@@ -1865,7 +1878,8 @@ def check_and_auto_tapout_if_limit_reached(student):
                         period=period_upper,
                         status="inactive",
                         timestamp=tapout_timestamp,
-                        reason=f"Daily limit ({hours_limit:.1f}h) reached"
+                        reason=f"Daily limit ({hours_limit:.1f}h) reached",
+                        join_code=join_code
                     )
                     db.session.add(tap_out_event)
 

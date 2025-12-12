@@ -135,3 +135,56 @@ def test_server_state_json(client):
     state2 = parse_server_state(dash_html2)
     assert state2['A']['active'] is False
     assert state2['A']['done'] is True
+
+def test_auto_tapout_skips_when_join_code_missing(client, caplog):
+    """
+    Test that auto-tap-out gracefully skips students with legacy TapEvents
+    that have no join_code, and logs an appropriate warning.
+    """
+    from app import TapEvent
+    from app.routes.api import check_and_auto_tapout_if_limit_reached
+    from datetime import datetime, timezone
+    import logging
+
+    # 1. Create a student with a period
+    salt = get_random_salt()
+    username = "legacy_test"
+    stu = Student(
+        first_name="Legacy",
+        last_initial="T",
+        block="A",
+        salt=salt,
+        username_hash=hash_username(username, salt),
+        pin_hash=generate_password_hash("0000")
+    )
+    db.session.add(stu)
+    db.session.commit()
+
+    # 2. Create a legacy TapEvent without join_code (simulating old data)
+    legacy_event = TapEvent(
+        student_id=stu.id,
+        period="A",
+        status="active",
+        timestamp=datetime.now(timezone.utc),
+        join_code=None  # Explicitly no join_code
+    )
+    db.session.add(legacy_event)
+    db.session.commit()
+
+    # 3. Count TapEvents before auto-tap-out
+    events_before = TapEvent.query.filter_by(student_id=stu.id, period="A").count()
+
+    # 4. Call auto-tap-out function with logging enabled
+    with caplog.at_level(logging.WARNING):
+        check_and_auto_tapout_if_limit_reached(stu)
+
+    # 5. Count TapEvents after - should be same (no new tap-out event created)
+    events_after = TapEvent.query.filter_by(student_id=stu.id, period="A").count()
+    assert events_before == events_after, "Auto-tap-out should skip when join_code cannot be resolved"
+
+    # 6. Verify warning was logged with TapEvent ID
+    assert any(
+        "Unable to resolve join_code" in record.message and
+        f"TapEvent ID is {legacy_event.id}" in record.message
+        for record in caplog.records
+    ), "Expected warning about missing join_code was not logged"
