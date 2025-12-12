@@ -7,6 +7,7 @@ financial transactions, shopping, insurance, and rent payment.
 
 import json
 import random
+import secrets
 import re
 from calendar import monthrange
 from datetime import datetime, timedelta, timezone
@@ -999,6 +1000,18 @@ def dashboard():
     # --- Get feature settings for this student ---
     feature_settings = get_feature_settings_for_student()
 
+    # --- Check for pending recovery request ---
+    from app.models import StudentRecoveryCode, RecoveryRequest
+    pending_recovery_code = StudentRecoveryCode.query.join(
+        RecoveryRequest
+    ).filter(
+        StudentRecoveryCode.student_id == student.id,
+        StudentRecoveryCode.dismissed == False,
+        StudentRecoveryCode.code_hash == None,  # Not yet verified
+        RecoveryRequest.status == 'pending',
+        RecoveryRequest.expires_at > datetime.now(timezone.utc)
+    ).first()
+
     return render_template(
         'student_dashboard.html',
         student=student,
@@ -1024,6 +1037,7 @@ def dashboard():
         checking_balance=checking_balance,
         savings_balance=savings_balance,
         teacher_id=teacher_id,
+        pending_recovery_code=pending_recovery_code,
     )
 
 
@@ -2667,3 +2681,97 @@ def help_support():
                          page_title='Help & Support',
                          my_reports=my_reports,
                          help_content=HELP_ARTICLES['student'])
+
+
+# ================== TEACHER ACCOUNT RECOVERY ==================
+
+@student_bp.route('/verify-recovery/<int:code_id>', methods=['GET', 'POST'])
+@login_required
+def verify_recovery(code_id):
+    """
+    Student verification page for teacher account recovery.
+    Student authenticates with passphrase, then gets a 6-digit code to give to teacher.
+    """
+    student = get_logged_in_student()
+
+    # Get the recovery code request
+    from app.models import StudentRecoveryCode, RecoveryRequest
+    recovery_code = StudentRecoveryCode.query.get_or_404(code_id)
+
+    # Verify this is for the logged-in student
+    if recovery_code.student_id != student.id:
+        flash("Invalid recovery request.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    # Check if already verified
+    if recovery_code.code_hash:
+        flash("You have already verified this recovery request.", "info")
+        return redirect(url_for('student.dashboard'))
+
+    # Check if expired
+    if recovery_code.recovery_request.expires_at < datetime.now(timezone.utc):
+        flash("This recovery request has expired.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    if request.method == 'POST':
+        passphrase = request.form.get('passphrase', '').strip()
+
+        if not passphrase:
+            flash("Please enter your passphrase.", "error")
+            return render_template('student_verify_recovery.html',
+                                 recovery_code=recovery_code,
+                                 student=student)
+
+        # Verify passphrase
+        import bcrypt
+        if not student.passphrase_hash or not bcrypt.checkpw(passphrase.encode('utf-8'), student.passphrase_hash.encode('utf-8')):
+            current_app.logger.warning(f"🛑 Recovery verification failed: incorrect passphrase for student {student.id}")
+            flash("Incorrect passphrase. Please try again.", "error")
+            return render_template('student_verify_recovery.html',
+                                 recovery_code=recovery_code,
+                                 student=student)
+
+        # Generate 6-digit recovery code using cryptographically secure randomness
+        code = ''.join([str(secrets.randbelow(10)) for _ in range(6)])
+
+        # Hash and store the code
+        recovery_code.code_hash = hash_hmac(code.encode(), b'')
+        recovery_code.verified_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        current_app.logger.info(f"🔐 Student {student.id} verified recovery request {recovery_code.recovery_request_id}")
+
+        return render_template('student_verify_recovery.html',
+                             recovery_code=recovery_code,
+                             student=student,
+                             generated_code=code,
+                             verified=True)
+
+    return render_template('student_verify_recovery.html',
+                         recovery_code=recovery_code,
+                         student=student)
+
+
+@student_bp.route('/dismiss-recovery/<int:code_id>', methods=['POST'])
+@login_required
+def dismiss_recovery(code_id):
+    """
+    Dismiss the recovery notification banner.
+    """
+    student = get_logged_in_student()
+
+    # Get the recovery code request
+    from app.models import StudentRecoveryCode
+    recovery_code = StudentRecoveryCode.query.get_or_404(code_id)
+
+    # Verify this is for the logged-in student
+    if recovery_code.student_id != student.id:
+        flash("Invalid recovery request.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    # Mark as dismissed
+    recovery_code.dismissed = True
+    db.session.commit()
+
+    flash("Recovery notification dismissed. You can still verify later from your notifications.", "info")
+    return redirect(url_for('student.dashboard'))

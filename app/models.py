@@ -928,6 +928,8 @@ class Admin(db.Model):
     display_name = db.Column(db.String(100), nullable=True)  # Teacher's display name (defaults to username if not set)
     # TOTP-only: store secret, remove password_hash
     totp_secret = db.Column(db.String(32), nullable=False)
+    # Account recovery: DOB sum (similar to student system)
+    dob_sum = db.Column(db.Integer, nullable=True)  # Sum of MM + DD + YYYY for account recovery
     created_at = db.Column(db.DateTime, default=_utc_now, nullable=True)  # Nullable for existing records
     last_login = db.Column(db.DateTime, nullable=True)
     has_assigned_students = db.Column(db.Boolean, default=False, nullable=False)  # One-time setup flag
@@ -935,6 +937,55 @@ class Admin(db.Model):
     def get_display_name(self):
         """Return display_name if set, otherwise fall back to username"""
         return self.display_name if self.display_name else self.username
+
+
+# ---- Account Recovery Models ----
+class RecoveryRequest(db.Model):
+    """Teacher account recovery request - requires student verification"""
+    __tablename__ = 'recovery_requests'
+
+    id = db.Column(db.Integer, primary_key=True)
+    admin_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False, index=True)
+    dob_sum = db.Column(db.Integer, nullable=False)
+
+    # Status tracking
+    status = db.Column(
+        db.Enum('pending', 'verified', 'expired', 'cancelled', name='recovery_request_status_enum'),
+        nullable=False,
+        default='pending'
+    )  # pending, verified, expired, cancelled
+    created_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)  # Auto-expire after X days
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+    # Partial progress - allows teacher to save progress and resume later
+    partial_codes = db.Column(db.JSON, nullable=True)  # Array of entered codes (not yet validated)
+    resume_pin_hash = db.Column(db.String(64), nullable=True)  # Hashed PIN to resume progress
+    resume_new_username = db.Column(db.String(100), nullable=True)  # Temporary storage for new username
+
+    # Relationships
+    admin = db.relationship('Admin', backref=db.backref('recovery_requests', lazy='dynamic'))
+    verification_codes = db.relationship('StudentRecoveryCode', backref='recovery_request', lazy='dynamic', cascade='all, delete-orphan')
+
+
+class StudentRecoveryCode(db.Model):
+    """Student verification code for teacher account recovery"""
+    __tablename__ = 'student_recovery_codes'
+
+    id = db.Column(db.Integer, primary_key=True)
+    recovery_request_id = db.Column(db.Integer, db.ForeignKey('recovery_requests.id'), nullable=False, index=True)
+    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+
+    # Verification code (6-digit, hashed)
+    code_hash = db.Column(db.String(64), nullable=True)  # NULL until student verifies
+    verified_at = db.Column(db.DateTime, nullable=True)
+
+    # Notification tracking
+    notified_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
+    dismissed = db.Column(db.Boolean, default=False, nullable=False)  # Student dismissed notification
+
+    # Relationships
+    student = db.relationship('Student', backref=db.backref('recovery_codes', lazy='dynamic'))
 
 
 # ---- Payroll Settings Model ----

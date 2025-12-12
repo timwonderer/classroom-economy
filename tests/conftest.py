@@ -27,7 +27,9 @@ from app import app, db, Student
 
 
 @pytest.fixture
-def client():
+def app():
+    """Provide the Flask app instance for tests."""
+    from app import app
     app.config.update(
         TESTING=True,
         WTF_CSRF_ENABLED=False,
@@ -35,6 +37,11 @@ def client():
         ENV="testing",
         SESSION_COOKIE_SECURE=False,
     )
+    yield app
+
+
+@pytest.fixture
+def client(app):
     ctx = app.app_context()
     ctx.push()
     db.create_all()

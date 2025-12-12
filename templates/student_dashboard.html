@@ -28,6 +28,27 @@
     <span class="material-symbols-outlined">schedule</span> Session expires in <span id="countdown">10:00</span>
 </div>
 
+<!-- Teacher Recovery Notification -->
+{% if pending_recovery_code %}
+<div class="alert alert-info alert-dismissible fade show" role="alert" style="margin-bottom: 1.5rem;">
+    <h5 class="alert-heading"><span class="material-symbols-outlined" style="vertical-align: middle;">security</span> Account Recovery Request</h5>
+    <p>Your teacher is trying to recover their account and needs your help to verify their identity.</p>
+    <p class="mb-2"><strong>This request will expire on {{ pending_recovery_code.recovery_request.expires_at.strftime('%B %d, %Y at %I:%M %p') }}.</strong></p>
+    <hr>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('student.verify_recovery', code_id=pending_recovery_code.id) }}" class="btn btn-primary btn-sm">
+            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px;">verified_user</span>
+            Help Verify Identity
+        </a>
+        <form method="POST" action="{{ url_for('student.dismiss_recovery', code_id=pending_recovery_code.id) }}" style="display: inline;">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn btn-outline-secondary btn-sm">Dismiss for now</button>
+        </form>
+    </div>
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+{% endif %}
+
 <!-- Quick Action Hub: Tap In/Out + Queue Status -->
 <div class="row mb-3">
     <!-- Tap In/Out Card -->

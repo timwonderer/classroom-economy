@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Token Hub - Progress Saved</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            min-height: 100vh;
+            background: #fffaf5;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .status-card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0, 0 0, 0.1);
+            padding: 2rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .status-header {
+            color: #c15f00;
+            font-weight: 700;
+            font-size: 1.75rem;
+            margin-bottom: 1rem;
+        }
+
+        .resume-pin-display {
+            background: #f8f9fa;
+            border: 3px solid #28a745;
+            border-radius: 10px;
+            padding: 2rem;
+            text-align: center;
+            margin: 1.5rem 0;
+        }
+
+        .resume-pin {
+            font-size: 3rem;
+            font-weight: 700;
+            letter-spacing: 0.3em;
+            color: #28a745;
+            font-family: 'Courier New', monospace;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #fccc63 0%, #f19a23 100%);
+            border: none;
+            padding: 0.85rem 2rem;
+            font-weight: 700;
+            transition: all 0.3s ease;
+            border-radius: 12px;
+            box-shadow: 0 8px 24px rgba(243, 168, 54, 0.35);
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #e99f11 0%, #cc7a00 100%);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="status-card">
+            <h1 class="status-header">✓ Progress Saved!</h1>
+
+            <div class="alert alert-success">
+                <h5 class="alert-heading">Your recovery codes have been saved</h5>
+                <p class="mb-0">You've saved {{ codes_saved }} recovery code(s). You can come back anytime before {{ recovery_request.expires_at.strftime('%B %d, %Y at %I:%M %p') }} to continue.</p>
+            </div>
+
+            <div class="resume-pin-display">
+                <div class="mb-2"><strong>Your Resume PIN:</strong></div>
+                <div class="resume-pin">{{ resume_pin }}</div>
+            </div>
+
+            <div class="alert alert-warning">
+                <strong>⚠️ Important:</strong>
+                <ul class="mb-0 mt-2">
+                    <li>Write down this PIN immediately - it will NOT be shown again</li>
+                    <li>You'll need this PIN to resume your recovery later</li>
+                    <li>This PIN expires on {{ recovery_request.expires_at.strftime('%B %d, %Y at %I:%M %p') }}</li>
+                </ul>
+            </div>
+
+            <div class="alert alert-info">
+                <h6><strong>What happens next?</strong></h6>
+                <ol class="mb-0">
+                    <li>Collect the remaining recovery codes from your students</li>
+                    <li>Go to the teacher login page and click "Resume Recovery"</li>
+                    <li>Enter your PIN to continue where you left off</li>
+                    <li>Complete your account reset</li>
+                </ol>
+            </div>
+
+            <div class="mt-4">
+                <a href="{{ url_for('admin.login') }}" class="btn btn-primary w-100">
+                    Back to Login
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

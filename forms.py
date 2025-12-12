@@ -86,12 +86,23 @@ class StoreItemForm(FlaskForm):
 class AdminSignupForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
     invite_code = StringField('Invite Code', validators=[DataRequired()])
+    dob_sum = StringField('Date of Birth Sum (MM+DD+YYYY)', validators=[DataRequired()])
 
 class AdminTOTPConfirmForm(FlaskForm):
     totp_code = StringField('TOTP Code', validators=[DataRequired()])
     username = HiddenField(validators=[DataRequired()])
-
+    dob_sum = HiddenField(validators=[DataRequired()])
     invite_code = HiddenField(validators=[DataRequired()])
+
+class AdminRecoveryForm(FlaskForm):
+    student_usernames = StringField('Student Usernames (comma-separated, one from each class)', validators=[DataRequired()])
+    dob_sum = StringField('Date of Birth Sum (MM+DD+YYYY)', validators=[DataRequired()])
+    submit = SubmitField('Verify Identity')
+
+class AdminResetCredentialsForm(FlaskForm):
+    # recovery_code fields are handled dynamically in the template
+    new_username = StringField('New Username', validators=[DataRequired()])
+    submit = SubmitField('Reset Account')
 
 class SystemAdminLoginForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
