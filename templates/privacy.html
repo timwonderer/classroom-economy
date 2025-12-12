@@ -6,53 +6,161 @@
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
     body {
-      background-color: #02301b;
-      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #2c5f7d 0%, #1a3a4f 100%);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       padding: 2rem;
+      min-height: 100vh;
     }
     .container {
       background-color: white;
-      padding: 2rem;
+      padding: 3rem;
       border-radius: 10px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-      max-width: 800px;
+      max-width: 80%%
       margin: auto;
     }
+    h1 {
+      color: #1a3a4f;
+      font-weight: 700;
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+    }
+    .last-updated {
+      color: #6c757d;
+      font-size: 0.95rem;
+      margin-bottom: 2rem;
+    }
     h2 {
-      margin-bottom: 1.5rem;
+      color: #1a3a4f;
+      font-weight: 600;
+      font-size: 1.5rem;
+      margin-top: 2rem;
+      margin-bottom: ;
+      border-bottom: 2px solid #e9ecef;
+      padding-bottom: 0.5rem;
     }
-    h4 {
+    h3 {
+      font-weight: 600;
+      font-size: 1.2rem;
       margin-top: 1.5rem;
+      margin-bottom: 1rem;
     }
-    h5 {
+    .teacher-section {
+      background-color: #fff3e0;
+      border-left: 4px solid #ff6f00;
+      padding: 1.5rem;
+      margin: 1.5rem 0;
+      border-radius: 5px;
+    }
+    .teacher-section h3 {
+      color: #ff6f00;
+      margin-top: 0;
+    }
+    .student-section {
+      background-color: #e3f2fd;
+      border-left: 4px solid #1976d2;
+      padding: 1.5rem;
+      margin: 1.5rem 0;
+      border-radius: 5px;
+    }
+    .student-section h3 {
+      color: #1976d2;
+      margin-top: 0;
+    }
+    .student-section .additional-info {
       margin-top: 1rem;
+      padding-top: 1rem;
+      border-top: 1px solid #bbdefb;
     }
     ul {
       margin-bottom: 1rem;
+      padding-left: 1.5rem;
+    }
+    li {
+      margin-bottom: 0.75rem;
+      line-height: 1.6;
+    }
+    li strong {
+      color: #1a3a4f;
+    }
+    p {
+      line-height: 1.6;
+      color: #333;
+      margin-bottom: 1rem;
+    }
+    .info-box {
+      background-color: #f8f9fa;
+      padding: 1rem;
+      border-radius: 5px;
+      margin: 1rem 0;
+      border-left: 3px solid #6c757d;
+    }
+    .btn-secondary {
+      background-color: #6c757d;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      font-weight: 500;
+      transition: background-color 0.2s;
+    }
+    .btn-secondary:hover {
+      background-color: #5a6268;
     }
   </style>
 </head>
 <body>
   <div class="container">
-    <h2 class="mb-4">Privacy & Data Handling Policy</h2>
-    <h4>Data We Collect</h4>
+    <h1>Classroom Token Hub Data Handling and Privacy Policy</h1>
+    <p class="last-updated">Last Updated: December 12, 2025</p>
 
-    <h5>Personal Identifiers</h5>
+    <h2>Purpose</h2>
+    <p>This document explains the type of data you will provide in order to use this application, ways we handle and process the data you have provided, and steps we have taken to protect your data and privacy. The information contained in this document represents the most up-to-date version of this application and supercedes all previous versions unless otherwise noted.</p>
+
+    <p>If you are a student, your teacher has chosen this application on behalf of your class to facilitate classroom activities. If you and/or your families have any questions or concerns, please talk to your teacher.</p>
+
+    <h2>What you must provide to use this application</h2>
+
+    <div class="teacher-section">
+      <h3>If you are a teacher user</h3>
+      <ul>
+        <li><strong>Date of Birth</strong>: Used for identity verification in account recovery.</li>
+        <li><strong>Personalized Display Name</strong>: For friendly identification in the user interface.</li>
+        <li><strong>Class Block</strong>: To group students by class period and apply block-specific configurations.</li>
+        <li><strong>Class Identifier</strong>: Friendly name for the class you are managing.</li>
+      </ul>
+    </div>
+
+    <div class="student-section">
+      <h3>If you are a student user</h3>
+      <p>Your teacher has provided these information on your behalf to create your account:</p>
+      <ul>
+        <li><strong>Date of Birth</strong>: Used for identity verification in account recovery.</li>
+        <li><strong>First Name</strong>: For account claim and friendly greetings</li>
+        <li><strong>Last Name</strong>: For account claim and recovery</li>
+        <li><strong>Class Block</strong>: To place you in the correct class</li>
+        <li><strong>Class Identifier</strong>: A easy to understand name for your class</li>
+      </ul>
+
+      <div class="additional-info">
+        <p><strong>In addition, you will need to provide</strong></p>
+        <ul>
+          <li><strong>Theme Word</strong>: A unique word that you associate with yourself; used to generate your login username.</li>
+          <li><strong>PIN</strong>: A four- to six-digit code for logging into your account.</li>
+          <li><strong>Passphrase</strong>: A secret phrase used for multi-factor authentication and high-stakes actions.</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2>How We Use Your Data</h2>
     <ul>
-      <li><strong>First Name &amp; Last Initial</strong>: For friendly identification in the user interface.</li>
-      <li><strong>Class Block</strong>: To group students by class period and apply block-specific configurations.</li>
+      <li>Support the simulation of real-world banking, employment, and budgeting to teach financial literacy.</li>
+      <li>Track attendance, transactions, and account balances to power classroom activities.</li>
+      <li>Generate reports to help teachers monitor student progress and improve educational outcomes.</li>
+      <li>Authenticate users and protect accounts from unauthorized access.</li>
     </ul>
 
-    <h5>Authentication &amp; Setup Data</h5>
-    <ul>
-      <li><strong>DOB Sum (hashed)</strong>: Month + Day + Year sum, hashed at upload; used for identity verification.</li>
-      <li><strong>Username (hashed)</strong>: Derived from challenge word, DOB sum, and initials; one-way hashed and used as the student login handle.</li>
-      <li><strong>PIN (hashed)</strong>: Four- to six-digit code for login, stored only as a secure hash.</li>
-      <li><strong>Passphrase (hashed)</strong>: Secret phrase for multi-factor authentication and high-stakes actions, stored only as a secure hash.</li>
-    </ul>
-
-    <h5>Educational Activity Data</h5>
-    <p class="mb-2 text-muted"><em>These records are not personal identifiers—they exist solely to power the in-class simulation and will never be used for external profiling.</em></p>
+    <h2>Educational Activity Data</h2>
+      <p class="small">These data are generated, collected, and stored to facilitate the functioning of the classroom economy simulation and contains no personally identifiable information.</p>
+    
     <ul>
       <li><strong>Attendance Records</strong>: Tap-in/out timestamps and calculated active/inactive minutes; necessary to compute base pay and track participation.</li>
       <li><strong>Account Balances</strong>: Checking and savings balances, updated dynamically from transaction history.</li>
@@ -60,54 +168,48 @@
       <li><strong>Monthly Billing Settings</strong>: Configured recurring charges (rent, taxes, insurance) for each student; used to automate billing processes.</li>
     </ul>
 
-    <h4>How We Use Data</h4>
-    <ul>
-      <li>Support the simulation of real-world banking, employment, and budgeting to teach financial literacy.</li>
-      <li>Analyze usage patterns and generate reports to improve educational outcomes and app functionality.</li>
-      <li>Communicate important updates and notifications to students and educators.</li>
-    </ul>
+    <h2>Data Minimization & Retention</h2>
+    <p>We collect only the data necessary to support classroom activities and educational objectives. All personally identifiable information (PII) is either hashed or stored minimalistically. Data is retained only for as long as required by educational standards and district policies, then securely deleted.</p>
 
-    <h4>Data Minimization & Retention</h4>
-    <p>We collect only the data necessary to support classroom activities and educational objectives. All PII is either hashed or stored minimalistically. Data is retained only for as long as required by educational standards and district policies, then securely deleted.</p>
-
-    <h4>Security Measures</h4>
+    <h2>Security Measures</h2>
     <ul>
       <li><strong>Encryption at Rest</strong>: All sensitive data is encrypted at rest to protect it from unauthorized access.</li>
       <li><strong>State-of-the-Art Hashing</strong>: We use industry-leading algorithms to protect your credentials. Passwords and PINs are hashed using <strong>Argon2</strong>, a key derivation function that is highly resistant to brute-force and rainbow table attacks. Other sensitive identifiers are hashed using <strong>HMAC-SHA256</strong> with a per-record salt and a global pepper, ensuring that each hash is unique and secure.</li>
       <li><strong>Encrypted Transit</strong>: All data transmitted between your device and our servers is protected using HTTPS/TLS, preventing eavesdropping or tampering.</li>
       <li><strong>Secure Session Management</strong>: The application enforces idle timeouts and avoids persistent cookies to minimize the risk of unauthorized access from unattended devices.</li>
-      <li><strong>Irreversible Hashes</strong>: All hashing is one-way, meaning that original values cannot be recovered from the stored hashes by anyone, including administrators.</li>
+      <li><strong>Irreversible Hashes</strong>: All hashing is one-way, meaning that original values cannot be recovered from the stored hashes by anyone, including administrators. Any lost username, PIN, passphrases, and TOTP are not recoverable.</li>
+      <li><strong>Limited System Administrator Scope</strong>: System Administrators do not have access to any information about students except teacher username, class section labels, and total number of students enrolled. </li>
     </ul>
 
-    <h4>Error Logging & Monitoring</h4>
+    <h2>Error Logging & Monitoring</h2>
     <p>To maintain system reliability and quickly resolve technical issues, our application automatically logs errors and technical failures. This logging helps us identify and fix problems to ensure a smooth experience for all users.</p>
-    <h5>What We Log</h5>
+
+    <h3>What We Log</h3>
     <ul>
       <li><strong>Error Type</strong>: The classification of the error (e.g., 404 Not Found, 500 Internal Server Error).</li>
       <li><strong>Timestamp</strong>: When the error occurred.</li>
       <li><strong>Request Details</strong>: The URL path and HTTP method that triggered the error.</li>
       <li><strong>Technical Context</strong>: IP address, user agent (browser information), stack trace, and the last 50 lines of application logs.</li>
     </ul>
-    <h5>Access & Retention</h5>
+
+    <h3>Access & Retention</h3>
     <ul>
       <li>Error logs are accessible only to system administrators for debugging and system improvement purposes.</li>
       <li>Error logs do not contain student PII such as names, balances, or transaction details—only technical diagnostic information.</li>
       <li>Logs are retained for a reasonable period to support troubleshooting and are periodically purged in accordance with data retention policies.</li>
     </ul>
 
-    <h4>Student Rights & Access</h4>
+    <h2>Student Rights & Access</h2>
     <p>Students have the right to view their own data. If any information is incorrect, please contact your teacher to have it corrected. Account access and credential resets must be handled by an administrator.</p>
 
-    <h4>Data Breach Notification</h4>
+    <h2>Data Breach Notification</h2>
     <p>In the event of a data breach, we will notify affected users and authorities within 72 hours and provide guidance on mitigation steps.</p>
 
-    <h4>Compliance</h4>
-    <p>This application adheres to FERPA, COPPA, and relevant data privacy policies.</p>
+    <h2>Compliance</h2>
+    <p>This application adheres to FERPA (Family Educational Rights and Privacy Act), COPPA (Children's Online Privacy Protection Act), and relevant data privacy policies.</p>
 
-    <h4>Contact Information</h4>
-    <p>For questions or concerns, contact:<br>
-       Timothy Chang: <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a><br>
-
+    <h2>Contact Information</h2>
+    <p>For questions or concerns, you may use the help and support page to open a support ticket.</a>
     </p>
 
     <a href="{{ url_for('student.login') }}" class="btn btn-secondary mt-4">← Back to Login</a>
