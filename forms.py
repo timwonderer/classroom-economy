@@ -100,7 +100,7 @@ class AdminRecoveryForm(FlaskForm):
     submit = SubmitField('Verify Identity')
 
 class AdminResetCredentialsForm(FlaskForm):
-    recovery_codes = StringField('Recovery Codes (comma-separated)', validators=[DataRequired()])
+    # recovery_code fields are handled dynamically in the template
     new_username = StringField('New Username', validators=[DataRequired()])
     submit = SubmitField('Reset Account')
 

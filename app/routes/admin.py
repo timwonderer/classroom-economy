@@ -910,10 +910,12 @@ def signup():
 
 
 @admin_bp.route('/recover', methods=['GET', 'POST'])
+@limiter.limit("5 per hour")
 def recover():
     """
     Teacher account recovery - Step 1: Create recovery request.
     Students must verify with passphrase to generate recovery codes.
+    Rate limited to prevent brute force attacks on DOB sum.
     """
     form = AdminRecoveryForm()
     if form.validate_on_submit():
@@ -1031,8 +1033,11 @@ def recovery_status():
         session.pop('recovery_request_id', None)
         return redirect(url_for('admin.recover'))
 
-    # Check if expired
-    if recovery_request.expires_at < datetime.now(timezone.utc):
+    # Check if expired (handle timezone-naive datetimes from SQLite)
+    expires_at = recovery_request.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    if expires_at < datetime.now(timezone.utc):
         recovery_request.status = 'expired'
         db.session.commit()
         flash("Your recovery request has expired. Please start a new recovery.", "error")
@@ -1056,9 +1061,12 @@ def recovery_status():
 
 
 @admin_bp.route('/reset-credentials', methods=['GET', 'POST'])
+@limiter.limit("10 per hour")
 def reset_credentials():
     """
     Reset teacher username and TOTP after verifying student recovery codes.
+    Security: On ANY failed attempt, ALL codes are invalidated and must be regenerated.
+    Rate limited to prevent brute force attempts on recovery codes.
     """
     recovery_request_id = session.get('recovery_request_id')
     if not recovery_request_id:
@@ -1071,12 +1079,11 @@ def reset_credentials():
         return redirect(url_for('admin.recover'))
 
     form = AdminResetCredentialsForm()
-    if form.validate_on_submit():
-        recovery_codes_str = form.recovery_codes.data.strip()
+    if request.method == 'POST' and form.validate_on_submit():
+        # Get recovery codes from dynamic fields
+        entered_codes = request.form.getlist('recovery_code')
+        entered_codes = [c.strip() for c in entered_codes if c.strip()]
         new_username = form.new_username.data.strip()
-
-        # Parse recovery codes
-        entered_codes = [c.strip() for c in recovery_codes_str.split(',') if c.strip()]
 
         # Get all student recovery codes for this request
         student_codes = StudentRecoveryCode.query.filter_by(
@@ -1088,10 +1095,24 @@ def reset_credentials():
             flash("Not all students have verified yet. Please wait for all students to generate their recovery codes.", "error")
             return redirect(url_for('admin.recovery_status'))
 
+        # Verify count matches
+        if len(entered_codes) != len(student_codes):
+            current_app.logger.warning(f"🛑 Admin recovery: code count mismatch for request {recovery_request.id} - expected {len(student_codes)}, got {len(entered_codes)}")
+            # Invalidate ALL codes
+            _invalidate_all_recovery_codes(student_codes)
+            flash(f"Wrong number of codes entered. All codes have been invalidated. Your students must generate new codes.", "error")
+            return redirect(url_for('admin.recovery_status'))
+
         # Verify entered codes match (in any order)
         from hash_utils import hash_hmac
         entered_hashes = set()
         for code in entered_codes:
+            # Validate format
+            if not code.isdigit() or len(code) != 6:
+                current_app.logger.warning(f"🛑 Admin recovery: invalid code format for request {recovery_request.id}")
+                _invalidate_all_recovery_codes(student_codes)
+                flash("Invalid code format detected. All codes have been invalidated. Your students must generate new codes.", "error")
+                return redirect(url_for('admin.recovery_status'))
             # Hash the entered code (no salt for recovery codes - they're already random)
             code_hash = hash_hmac(code.encode(), b'')
             entered_hashes.add(code_hash)
@@ -1100,8 +1121,10 @@ def reset_credentials():
 
         if entered_hashes != stored_hashes:
             current_app.logger.warning(f"🛑 Admin recovery: code mismatch for request {recovery_request.id}")
-            flash("Recovery codes do not match. Please check the codes and try again.", "error")
-            return render_template("admin_reset_credentials.html", form=form, show_qr=False)
+            # Invalidate ALL codes on failed attempt
+            _invalidate_all_recovery_codes(student_codes)
+            flash("Recovery codes do not match. All codes have been invalidated. Your students must generate new codes.", "error")
+            return redirect(url_for('admin.recovery_status'))
 
         # Check username uniqueness
         existing_admin = Admin.query.filter_by(username=new_username).first()
@@ -1129,10 +1152,24 @@ def reset_credentials():
     return render_template("admin_reset_credentials.html", form=form, show_qr=False)
 
 
+def _invalidate_all_recovery_codes(student_codes):
+    """
+    Invalidate all recovery codes forcing students to regenerate new ones.
+    This prevents attackers from testing codes individually.
+    """
+    for sc in student_codes:
+        sc.code_hash = None
+        sc.verified_at = None
+    db.session.commit()
+    current_app.logger.info(f"🔄 Invalidated {len(student_codes)} recovery codes - students must regenerate")
+
+
 @admin_bp.route('/confirm-reset', methods=['POST'])
+@limiter.limit("10 per hour")
 def confirm_reset():
     """
     Confirm TOTP code and complete the account reset.
+    Rate limited to prevent brute force attacks on TOTP codes.
     """
     recovery_request_id = session.get('recovery_request_id')
     if not recovery_request_id:

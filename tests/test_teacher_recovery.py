@@ -489,3 +489,168 @@ def test_recovery_without_dob_sum_configured(client, app):
 
     assert response.status_code == 200
     assert b'not configured for recovery' in response.data.lower() or b'unable to verify' in response.data.lower()
+
+
+def test_code_invalidation_on_wrong_code(client, app):
+    """Test that ALL codes are invalidated when ANY wrong code is entered."""
+    secret = pyotp.random_base32()
+    teacher = Admin(username="teacher9", totp_secret=secret, dob_sum=2029)
+    db.session.add(teacher)
+    db.session.flush()
+
+    # Create 2 students
+    from hash_utils import get_random_salt
+    salt1 = get_random_salt()
+    salt2 = get_random_salt()
+    student1 = Student(
+        username_hash=hash_hmac(b"student9a", b''),
+        first_name="Test",
+        last_initial="A",
+        block="A",
+        salt=salt1,
+        teacher_id=teacher.id,
+        has_completed_setup=True
+    )
+    student2 = Student(
+        username_hash=hash_hmac(b"student9b", b''),
+        first_name="Test",
+        last_initial="B",
+        block="A",
+        salt=salt2,
+        teacher_id=teacher.id,
+        has_completed_setup=True
+    )
+    db.session.add(student1)
+    db.session.add(student2)
+    db.session.commit()
+
+    # Initiate recovery
+    response = client.post('/admin/recover', data={
+        'student_usernames': 'student9a,student9b',
+        'dob_sum': '2029'
+    }, follow_redirects=True)
+    assert response.status_code == 200
+
+    # Get recovery request
+    recovery_request = RecoveryRequest.query.filter_by(admin_id=teacher.id).first()
+    assert recovery_request is not None
+
+    # Students verify and generate codes
+    student1_code = StudentRecoveryCode.query.filter_by(
+        recovery_request_id=recovery_request.id,
+        student_id=student1.id
+    ).first()
+    student2_code = StudentRecoveryCode.query.filter_by(
+        recovery_request_id=recovery_request.id,
+        student_id=student2.id
+    ).first()
+
+    # Manually set codes (simulate student verification)
+    code1 = "123456"
+    code2 = "654321"
+    student1_code.code_hash = hash_hmac(code1.encode(), b'')
+    student1_code.verified_at = datetime.now(timezone.utc)
+    student2_code.code_hash = hash_hmac(code2.encode(), b'')
+    student2_code.verified_at = datetime.now(timezone.utc)
+    db.session.commit()
+
+    # Try to reset with one wrong code (code1 is correct, but code2 is wrong)
+    with client.session_transaction() as sess:
+        sess['recovery_request_id'] = recovery_request.id
+
+    response = client.post('/admin/reset-credentials', data={
+        'recovery_code': [code1, '999999'],  # Second code is WRONG
+        'new_username': 'newteacher9'
+    }, follow_redirects=True)
+
+    # Should redirect to recovery status and invalidate all codes
+    assert response.status_code == 200
+    assert b'invalidated' in response.data.lower()
+
+    # Verify ALL codes are invalidated (expire session to see DB changes)
+    db.session.expire_all()
+    student1_code = StudentRecoveryCode.query.filter_by(
+        recovery_request_id=recovery_request.id,
+        student_id=student1.id
+    ).first()
+    student2_code = StudentRecoveryCode.query.filter_by(
+        recovery_request_id=recovery_request.id,
+        student_id=student2.id
+    ).first()
+    assert student1_code.code_hash is None
+    assert student1_code.verified_at is None
+    assert student2_code.code_hash is None
+    assert student2_code.verified_at is None
+
+
+def test_code_invalidation_on_wrong_count(client, app):
+    """Test that ALL codes are invalidated when wrong number of codes is entered."""
+    secret = pyotp.random_base32()
+    teacher = Admin(username="teacher10", totp_secret=secret, dob_sum=2030)
+    db.session.add(teacher)
+    db.session.flush()
+
+    # Create 3 students
+    from hash_utils import get_random_salt
+    students = []
+    for i in range(3):
+        salt = get_random_salt()
+        student = Student(
+            username_hash=hash_hmac(f"student10{chr(97+i)}".encode(), b''),
+            first_name="Test",
+            last_initial=chr(65+i),
+            block="A",
+            salt=salt,
+            teacher_id=teacher.id,
+            has_completed_setup=True
+        )
+        db.session.add(student)
+        students.append(student)
+    db.session.commit()
+
+    # Initiate recovery
+    response = client.post('/admin/recover', data={
+        'student_usernames': 'student10a,student10b,student10c',
+        'dob_sum': '2030'
+    }, follow_redirects=True)
+    assert response.status_code == 200
+
+    # Get recovery request
+    recovery_request = RecoveryRequest.query.filter_by(admin_id=teacher.id).first()
+    assert recovery_request is not None
+
+    # Students verify and generate codes
+    codes_list = []
+    for student in students:
+        student_code = StudentRecoveryCode.query.filter_by(
+            recovery_request_id=recovery_request.id,
+            student_id=student.id
+        ).first()
+        code = f"{100000 + student.id}"[:6]  # Generate unique 6-digit code
+        student_code.code_hash = hash_hmac(code.encode(), b'')
+        student_code.verified_at = datetime.now(timezone.utc)
+        codes_list.append((student_code, code))
+    db.session.commit()
+
+    # Try to reset with ONLY 2 codes (should need 3)
+    with client.session_transaction() as sess:
+        sess['recovery_request_id'] = recovery_request.id
+
+    response = client.post('/admin/reset-credentials', data={
+        'recovery_code': [codes_list[0][1], codes_list[1][1]],  # Only 2 codes, need 3
+        'new_username': 'newteacher10'
+    }, follow_redirects=True)
+
+    # Should redirect to recovery status and invalidate all codes
+    assert response.status_code == 200
+    assert b'wrong number' in response.data.lower() or b'invalidated' in response.data.lower()
+
+    # Verify ALL codes are invalidated (expire session to see DB changes)
+    db.session.expire_all()
+    for student_code, _ in codes_list:
+        refreshed_code = StudentRecoveryCode.query.filter_by(
+            recovery_request_id=recovery_request.id,
+            student_id=student_code.student_id
+        ).first()
+        assert refreshed_code.code_hash is None
+        assert refreshed_code.verified_at is None
