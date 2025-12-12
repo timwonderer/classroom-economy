@@ -1,3 +1,9 @@
+import os
+import sys
+
+# Add the app directory to the path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from app import create_app, db
 from app.models import Student
 from hash_utils import hash_username_lookup

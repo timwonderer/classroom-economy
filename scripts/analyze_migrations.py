@@ -212,7 +212,13 @@ def analyze_migrations(migrations_dir: Path) -> Tuple[Dict, List[str]]:
     return revision_map, issues
 
 def main():
-    migrations_dir = Path('/home/user/classroom-economy/migrations/versions')
+    # Determine the project root directory (assuming script is in scripts/)
+    project_root = Path(__file__).resolve().parent.parent
+    migrations_dir = project_root / 'migrations' / 'versions'
+
+    if not migrations_dir.exists():
+        print(f"❌ Migrations directory not found: {migrations_dir}")
+        return 1
 
     print("=" * 70)
     print("🔍 MIGRATION ANALYSIS")

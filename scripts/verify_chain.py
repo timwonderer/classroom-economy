@@ -172,5 +172,12 @@ def verify_migration_chain(migrations_dir: Path):
     return 0
 
 if __name__ == '__main__':
-    migrations_dir = Path('/home/user/classroom-economy/migrations/versions')
+    # Determine the project root directory (assuming script is in scripts/)
+    project_root = Path(__file__).resolve().parent.parent
+    migrations_dir = project_root / 'migrations' / 'versions'
+
+    if not migrations_dir.exists():
+        print(f"❌ Migrations directory not found: {migrations_dir}")
+        exit(1)
+
     exit(verify_migration_chain(migrations_dir))

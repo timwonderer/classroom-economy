@@ -45,7 +45,7 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
 
 
 def test_dashboard_renders_recent_deposit(client, test_student):
-    from app.models import Admin, StudentTeacher
+    from app.models import Admin, StudentTeacher, TeacherBlock
 
     # Create a teacher and link the student
     teacher = Admin(username="testteacher", totp_secret="SECRET123")
@@ -59,6 +59,23 @@ def test_dashboard_renders_recent_deposit(client, test_student):
     # Link student to teacher
     st = StudentTeacher(student_id=test_student.id, admin_id=teacher.id)
     db.session.add(st)
+
+    # Create TeacherBlock (required for dashboard context)
+    tb = TeacherBlock(
+        teacher_id=teacher.id,
+        block="A",
+        first_name=test_student.first_name,
+        last_initial=test_student.last_initial,
+        last_name_hash_by_part=[],
+        dob_sum=0,
+        salt=b'salt',
+        first_half_hash="mock",
+        join_code=join_code,
+        student_id=test_student.id,
+        is_claimed=True
+    )
+    db.session.add(tb)
+
     db.session.commit()
 
     recent_deposit_time = datetime.now(timezone.utc) - timedelta(hours=12)

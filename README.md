@@ -2,7 +2,7 @@
 
 An interactive banking and classroom management platform for teaching students about money while tracking classroom participation.
 
-**Version:** 0.9.0 (Pre-Release) - Approaching 1.0!
+**Version:** 1.0.0
 
 ---
 
@@ -12,7 +12,7 @@ An interactive banking and classroom management platform for teaching students a
 
 **License:** [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) - Free for educational and nonprofit use, not for commercial applications.
 
-**Project Status:** Ready for version 1.0 release! All critical blockers resolved. The platform is feature-complete and actively used in classroom testing. See [DEVELOPMENT.md](DEVELOPMENT.md) for current priorities and roadmap.
+**Project Status:** Version 1.0.0 Released! The platform is feature-complete and actively used in classroom testing. See [DEVELOPMENT.md](DEVELOPMENT.md) for current priorities and roadmap.
 
 ---
 
@@ -296,4 +296,4 @@ This project is licensed under the [PolyForm Noncommercial License 1.0.0](https:
 
 Built for educators and students to make learning about finance engaging and practical.
 
-**Last Updated:** 2025-12-11
+**Last Updated:** 2025-12-12

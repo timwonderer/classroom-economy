@@ -12,6 +12,27 @@ def parse_server_state(html):
     script = soup.find(id='serverState')
     return json.loads(script.string)
 
+def create_claimed_seat(teacher_id, student_id, block, join_code, salt=None):
+    from app.models import TeacherBlock
+    if salt is None:
+        salt = get_random_salt()
+
+    tb = TeacherBlock(
+        teacher_id=teacher_id,
+        block=block,
+        first_name="Test",
+        last_initial="S",
+        last_name_hash_by_part=[],
+        dob_sum=0,
+        salt=salt,
+        first_half_hash="mock",
+        join_code=join_code,
+        student_id=student_id,
+        is_claimed=True
+    )
+    db.session.add(tb)
+    return tb
+
 def test_dynamic_blocks_and_tap_flow(client):
     from app.models import Admin, StudentTeacher
     import pyotp
@@ -39,16 +60,22 @@ def test_dynamic_blocks_and_tap_flow(client):
     # Link student to teacher via StudentTeacher
     st = StudentTeacher(student_id=stu.id, admin_id=teacher.id)
     db.session.add(st)
+
+    # Create TeacherBlocks for the student (required for join_code context)
+    create_claimed_seat(teacher.id, stu.id, "A", "JOIN-A", salt)
+    create_claimed_seat(teacher.id, stu.id, "C", "JOIN-C", salt)
+
     db.session.commit()
 
     # 2. Log in
     resp = login(client, username, "0000")
     assert resp.status_code == 302
 
-    # 3. Dashboard must include both “Block A” and “Block C”
+    # 3. Dashboard must include the current block (Block A by default)
+    # Note: New multi-tenancy model only shows ONE class at a time.
     dash_html = client.get('/student/dashboard').data.decode()
     assert "Block A" in dash_html
-    assert "Block C" in dash_html
+    # assert "Block C" in dash_html  <-- Removed: Dashboard only shows current class
 
     # 4. Tap in to A
     j = client.post('/api/tap', json={'period': 'A', 'action': 'tap_in', 'pin': '0000'})
@@ -67,6 +94,14 @@ def test_dynamic_blocks_and_tap_flow(client):
     assert '"A":{"active":false,"done":true' in dash_html2
 
 def test_invalid_period_and_action(client):
+    from app.models import Admin
+    import pyotp
+
+    # Create dummy teacher
+    teacher = Admin(username="t2_teacher", totp_secret=pyotp.random_base32())
+    db.session.add(teacher)
+    db.session.flush()
+
     # Set up student and log in
     salt = get_random_salt()
     username = "t2"
@@ -76,9 +111,15 @@ def test_invalid_period_and_action(client):
         block="A",
         salt=salt,
         username_hash=hash_username(username, salt),
-        pin_hash=generate_password_hash("0000")
+        pin_hash=generate_password_hash("0000"),
+        teacher_id=teacher.id
     )
-    db.session.add(stu); db.session.commit()
+    db.session.add(stu)
+
+    # Create TeacherBlock
+    create_claimed_seat(teacher.id, stu.id, "A", "JOIN-T2", salt)
+
+    db.session.commit()
     login(client, username, "0000")
     # Invalid period
     resp = client.post('/api/tap', json={'period': 'Z', 'action': 'tap_in', 'pin': '0000'})
@@ -118,6 +159,10 @@ def test_server_state_json(client):
     # Link student to teacher via StudentTeacher
     st = StudentTeacher(student_id=stu.id, admin_id=teacher.id)
     db.session.add(st)
+
+    # Create TeacherBlock
+    create_claimed_seat(teacher.id, stu.id, "A", "JOIN-A", salt)
+
     db.session.commit()
 
     login(client, username, "0000")
@@ -142,9 +187,24 @@ def test_auto_tapout_skips_when_join_code_missing(client, caplog):
     that have no join_code, and logs an appropriate warning.
     """
     from app import TapEvent
+    from app.models import Admin, PayrollSettings
     from app.routes.api import check_and_auto_tapout_if_limit_reached
-    from datetime import datetime, timezone
+    from datetime import datetime, timezone, timedelta
     import logging
+    import pyotp
+
+    # Create teacher and payroll settings with low limit
+    teacher = Admin(username="legacy_teacher", totp_secret=pyotp.random_base32())
+    db.session.add(teacher)
+    db.session.flush()
+
+    ps = PayrollSettings(
+        teacher_id=teacher.id,
+        block="A",
+        daily_limit_hours=0.001, # very small limit to trigger immediate tapout
+        settings_mode='simple'
+    )
+    db.session.add(ps)
 
     # 1. Create a student with a period
     salt = get_random_salt()
@@ -155,17 +215,19 @@ def test_auto_tapout_skips_when_join_code_missing(client, caplog):
         block="A",
         salt=salt,
         username_hash=hash_username(username, salt),
-        pin_hash=generate_password_hash("0000")
+        pin_hash=generate_password_hash("0000"),
+        teacher_id=teacher.id
     )
     db.session.add(stu)
     db.session.commit()
 
     # 2. Create a legacy TapEvent without join_code (simulating old data)
+    # Backdate it to ensure it exceeds the limit
     legacy_event = TapEvent(
         student_id=stu.id,
         period="A",
         status="active",
-        timestamp=datetime.now(timezone.utc),
+        timestamp=datetime.now(timezone.utc) - timedelta(hours=1),
         join_code=None  # Explicitly no join_code
     )
     db.session.add(legacy_event)
