@@ -17,7 +17,7 @@
       padding: 3rem;
       border-radius: 10px;
       box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-      max-width: 900px;
+      max-width: 80%;
       margin: auto;
     }
     h1 {
@@ -113,7 +113,7 @@
 </head>
 <body>
   <div class="container">
-    <h1>Classroom Token Hub Terms of Service</h1>
+    <h1>Classroom Token Hub <span style="font-weight:300;">Terms of Service</span></h1>
     <p class="last-updated">Last Updated: December 12, 2025</p>
 
     <div class="summary-box">
@@ -130,11 +130,13 @@
     <p>Classroom Token Hub is an educational web application designed to help students learn about financial literacy through a simulated classroom economy. Teachers can use it to manage virtual currency, track student participation, and create engaging lessons about money management.</p>
 
     <h2>3. Your Account Responsibilities</h2>
-    <p>To use the app, you'll need to create an account with a username, PIN, and passphrase. Here's what you need to know:</p>
+    <p>We worked hard to design this app so it can give you the best experience while protecting your privacy. Anyone working behind the scene to maintain this app do not have access to any information about you.</p>
+      <p>To use the app, you'll need to create an account with a username, PIN, and passphrase. These three pieces of information are what's keeping your account safe from anyone who is not supposed to use your account. </p>
+        <p>You can protect yourself by:</p>
     <ul>
-      <li><strong>Keep your credentials private</strong> – Don't share your username, PIN, or passphrase with anyone except your teacher if you need help.</li>
-      <li><strong>You're responsible for your account</strong> – Any activity on your account is your responsibility, so keep your login information secure.</li>
-      <li><strong>Report security issues immediately</strong> – If someone else accesses your account or you notice suspicious activity, let your teacher know right away.</li>
+      <li><strong>Keep your credentials private</strong>: Don't share your username, PIN, or passphrase with anyone.</li>
+      <li><strong>You're responsible for your account</strong>: Any activity on your account is your responsibility, so keep your login information secure.</li>
+      <li><strong>Report security issues immediately</strong>: If someone else accesses your account or you notice suspicious activity, let your teacher know right away.</li>
     </ul>
 
     <h2>4. How to Use the App Responsibly</h2>
@@ -144,21 +146,34 @@
       <li>Pretend to be someone else or lie about who you are</li>
       <li>Try to hack, disrupt, or interfere with the app or other users' accounts</li>
       <li>Attempt to access parts of the system you're not supposed to see</li>
-    </ul>
-    <p>Basically, be respectful and use the app as it was intended – for learning!</p>
+    </ul> 
+    <p>Even though the people working on this app can't see your personal information, they can still block your account from accessing the app if they believe your actions are harmful for everyone else.</p>
 
     <h2>5. Ownership and How You Can Use It</h2>
-    <p>Timothy Chang created and owns Classroom Token Hub. The app, its code, and all its features are protected by copyright and trademark laws in the United States and other countries.</p>
+    <p><strong>Timothy Chang</strong> created and owns Classroom Token Hub. The app, its code, and all its features are protected by copyright and trademark laws in the United States and other countries.</p>
 
     <div class="highlight-box">
-      <p><strong>Open Source License</strong></p>
-      <p>The good news: This app is open source! It's licensed under the <strong>PolyForm Noncommercial License 1.0.0</strong>, which means:</p>
+      <p>This app and its codebase is licensed under the <strong>PolyForm Noncommercial License 1.0.0</strong></p>
+      <p><strong>What you can do:</strong></p>
+      
       <ul style="margin-bottom: 0.5rem;">
         <li>You can use it free for educational purposes</li>
         <li>You can look at the source code and learn from it</li>
-        <li>You can modify it for your own classroom (but not to sell it)</li>
+        <li>You can modify it for your own classroom</li>
       </ul>
-      <p><strong>What you can't do:</strong> You cannot use this app or its code for commercial purposes (making money from it).</p>
+      <p><strong>What you can't do:</strong>
+        <ul>
+        <li>You cannot use this app or its code for commercial purposes directly or use any part of it in a package or product meant for commercial use.</li>
+        <li>You cannot change the license or try to re-license the app or its code under a different license.</li>
+        <li>You cannot use this app or any part of its code for purposes that may financially benefit you or others.</li>
+        </ul>
+
+      <p><strong>In addition, if you are a school district or educational service agency:</strong>
+        <ul>
+          <li>You may not use this app or any part of its code to provide services to other schools or districts for a fee.</li>
+          <li>You may not incorporate this app or any part of its code into a larger system or platform that is sold or licensed to other schools or districts.</li>
+        <li>You may not misrepresent the app as your own work or claim ownership of it.</li>
+        </ul>
       <p>Full license: <a href="https://polyformproject.org/licenses/noncommercial/1.0.0/" target="_blank">polyformproject.org/licenses/noncommercial/1.0.0</a></p>
       <p>Source code: <a href="https://github.com/timwonderer/classroom-economy" target="_blank">github.com/timwonderer/classroom-economy</a></p>
     </div>
@@ -197,7 +212,7 @@
     <p>We may need to update these terms from time to time. If we make significant changes, we'll notify users at least 30 days before the new terms take effect. By continuing to use the app after changes are made, you're agreeing to the updated terms.</p>
 
     <h2>11. Questions or Concerns?</h2>
-    <p>If you have questions about these Terms of Service, please contact Timothy Chang at <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a>.</p>
+    <p>If you have questions about these Terms of Service, please file an in-app supprt ticket.</p>
 
     <a href="{{ url_for('student.login') }}" class="btn btn-secondary mt-4">← Back to Login</a>
   </div>
