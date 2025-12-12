@@ -928,6 +928,8 @@ class Admin(db.Model):
     display_name = db.Column(db.String(100), nullable=True)  # Teacher's display name (defaults to username if not set)
     # TOTP-only: store secret, remove password_hash
     totp_secret = db.Column(db.String(32), nullable=False)
+    # Account recovery: DOB sum (similar to student system)
+    dob_sum = db.Column(db.Integer, nullable=True)  # Sum of MM + DD + YYYY for account recovery
     created_at = db.Column(db.DateTime, default=_utc_now, nullable=True)  # Nullable for existing records
     last_login = db.Column(db.DateTime, nullable=True)
     has_assigned_students = db.Column(db.Boolean, default=False, nullable=False)  # One-time setup flag

@@ -39,7 +39,7 @@ from app.models import (
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
-    AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, StoreItemForm,
+    AdminLoginForm, AdminSignupForm, AdminTOTPConfirmForm, AdminRecoveryForm, AdminResetCredentialsForm, StoreItemForm,
     InsurancePolicyForm, AdminClaimProcessForm, PayrollSettingsForm,
     PayrollRewardForm, PayrollFineForm, ManualPaymentForm, BankingSettingsForm
 )
@@ -783,7 +783,21 @@ def signup():
     if form.validate_on_submit():
         username = form.username.data.strip()
         invite_code = form.invite_code.data.strip()
+        dob_sum_str = form.dob_sum.data.strip()
         totp_code = request.form.get("totp_code", "").strip()
+
+        # Validate and parse DOB sum
+        try:
+            dob_sum = int(dob_sum_str)
+            if dob_sum <= 0:
+                raise ValueError("DOB sum must be positive")
+        except ValueError:
+            current_app.logger.warning(f"🛑 Admin signup failed: invalid DOB sum")
+            msg = "Invalid date of birth sum. Please enter a valid number."
+            if is_json:
+                return jsonify(status="error", message=msg), 400
+            flash(msg, "error")
+            return redirect(url_for('admin.signup'))
         # Step 1: Validate invite code
         code_row = db.session.execute(
             text("SELECT * FROM admin_invite_codes WHERE code = :code"),
@@ -823,8 +837,10 @@ def signup():
             totp_secret = pyotp.random_base32()
             session["admin_totp_secret"] = totp_secret
             session["admin_totp_username"] = username
+            session["admin_dob_sum"] = dob_sum
         else:
             totp_secret = session["admin_totp_secret"]
+            dob_sum = session.get("admin_dob_sum", dob_sum)
         totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
         # Step 4: If no TOTP code submitted yet, show QR
         if not totp_code:
@@ -841,6 +857,7 @@ def signup():
                 form=form,
                 username=username,
                 invite_code=invite_code,
+                dob_sum=dob_sum,
                 qr_b64=img_b64,
                 totp_secret=totp_secret
             )
@@ -864,13 +881,14 @@ def signup():
                 form=form,
                 username=username,
                 invite_code=invite_code,
+                dob_sum=dob_sum,
                 qr_b64=img_b64,
                 totp_secret=totp_secret
             )
         # Step 6: Create admin account and mark invite as used
         # Log the TOTP secret being saved for debug
         current_app.logger.info(f"🎯 Admin signup: TOTP secret being saved for {username}")
-        new_admin = Admin(username=username, totp_secret=totp_secret)
+        new_admin = Admin(username=username, totp_secret=totp_secret, dob_sum=dob_sum)
         db.session.add(new_admin)
         db.session.execute(
             text("UPDATE admin_invite_codes SET used = TRUE WHERE code = :code"),
@@ -880,6 +898,7 @@ def signup():
         # Clear session
         session.pop("admin_totp_secret", None)
         session.pop("admin_totp_username", None)
+        session.pop("admin_dob_sum", None)
         current_app.logger.info(f"🎉 Admin signup: {username} created successfully via invite")
         msg = "Admin account created successfully! Please log in using your authenticator app."
         if is_json:
@@ -888,6 +907,198 @@ def signup():
         return redirect(url_for("admin.login"))
     # GET or invalid POST: render signup form with form instance (for CSRF)
     return render_template("admin_signup.html", form=form)
+
+
+@admin_bp.route('/recover', methods=['GET', 'POST'])
+def recover():
+    """
+    Teacher account recovery using student usernames + DOB sum.
+    Teacher must provide one student username from each class they teach.
+    """
+    form = AdminRecoveryForm()
+    if form.validate_on_submit():
+        student_usernames_str = form.student_usernames.data.strip()
+        dob_sum_str = form.dob_sum.data.strip()
+
+        # Parse DOB sum
+        try:
+            dob_sum = int(dob_sum_str)
+            if dob_sum <= 0:
+                raise ValueError("DOB sum must be positive")
+        except ValueError:
+            flash("Invalid date of birth sum. Please enter a valid number.", "error")
+            return render_template("admin_recover.html", form=form)
+
+        # Parse student usernames
+        student_usernames = [u.strip() for u in student_usernames_str.split(',') if u.strip()]
+        if not student_usernames:
+            flash("Please provide at least one student username.", "error")
+            return render_template("admin_recover.html", form=form)
+
+        # Find students by username
+        from hash_utils import hash_hmac
+        students_by_username = {}
+        for username in student_usernames:
+            student = Student.query.filter_by(username_hash=hash_hmac(username.encode(), b'')).first()
+            if not student:
+                # Try looking up by exact username (for legacy or testing)
+                student = Student.query.filter_by(username=username).first()
+            if student:
+                students_by_username[username] = student
+
+        if not students_by_username:
+            flash("No matching students found. Please check the usernames.", "error")
+            return render_template("admin_recover.html", form=form)
+
+        # Find TeacherBlocks for these students and group by teacher
+        teacher_classes = {}  # teacher_id -> {join_code -> student_id}
+        for username, student in students_by_username.items():
+            # Find all TeacherBlocks for this student
+            teacher_blocks = TeacherBlock.query.filter_by(student_id=student.id, is_claimed=True).all()
+            for tb in teacher_blocks:
+                # Get the teacher_id from the join_code by finding the teacher who created it
+                # TeacherBlocks don't have teacher_id, so we need to find the teacher via student's teacher_id
+                if student.teacher_id:
+                    if student.teacher_id not in teacher_classes:
+                        teacher_classes[student.teacher_id] = {}
+                    if tb.join_code not in teacher_classes[student.teacher_id]:
+                        teacher_classes[student.teacher_id][tb.join_code] = []
+                    teacher_classes[student.teacher_id][tb.join_code].append(student.id)
+
+        # Find the teacher who has exactly one student per class matching the provided usernames
+        matching_teacher = None
+        for teacher_id, classes in teacher_classes.items():
+            # Verify that we have one student from each class the teacher teaches
+            teacher = Admin.query.get(teacher_id)
+            if not teacher or not teacher.dob_sum:
+                continue
+
+            # Get all classes this teacher teaches
+            all_teacher_classes = db.session.query(TeacherBlock.join_code).filter(
+                TeacherBlock.join_code.in_(
+                    db.session.query(Student.join_code).filter(Student.teacher_id == teacher_id).distinct()
+                )
+            ).distinct().all()
+            all_teacher_join_codes = {c[0] for c in all_teacher_classes}
+
+            # Check if the provided students cover all classes
+            provided_join_codes = set(classes.keys())
+            if provided_join_codes == all_teacher_join_codes and teacher.dob_sum == dob_sum:
+                # Verify each class has exactly one student
+                valid = True
+                for join_code, student_ids in classes.items():
+                    if len(student_ids) != 1:
+                        valid = False
+                        break
+                if valid:
+                    matching_teacher = teacher
+                    break
+
+        if not matching_teacher:
+            current_app.logger.warning(f"🛑 Admin recovery failed: no matching teacher found")
+            flash("Unable to verify your identity. Please ensure you provided one student username from EACH class you teach, and the correct DOB sum.", "error")
+            return render_template("admin_recover.html", form=form)
+
+        # Store teacher ID in session for password reset
+        session['recovery_teacher_id'] = matching_teacher.id
+        session['recovery_verified'] = True
+        current_app.logger.info(f"🔐 Admin recovery: identity verified for teacher {matching_teacher.id}")
+
+        return redirect(url_for('admin.reset_credentials'))
+
+    return render_template("admin_recover.html", form=form)
+
+
+@admin_bp.route('/reset-credentials', methods=['GET', 'POST'])
+def reset_credentials():
+    """
+    Reset teacher username and TOTP after successful recovery verification.
+    """
+    # Verify that recovery was successful
+    if not session.get('recovery_verified') or not session.get('recovery_teacher_id'):
+        flash("Please complete the account recovery verification first.", "error")
+        return redirect(url_for('admin.recover'))
+
+    teacher_id = session.get('recovery_teacher_id')
+    teacher = Admin.query.get(teacher_id)
+    if not teacher:
+        flash("Invalid recovery session.", "error")
+        session.pop('recovery_verified', None)
+        session.pop('recovery_teacher_id', None)
+        return redirect(url_for('admin.recover'))
+
+    form = AdminResetCredentialsForm()
+    if form.validate_on_submit():
+        new_username = form.new_username.data.strip()
+
+        # Check username uniqueness
+        if Admin.query.filter_by(username=new_username).first():
+            flash("Username already exists. Please choose a different username.", "error")
+            return render_template("admin_reset_credentials.html", form=form, show_qr=False)
+
+        # Generate new TOTP secret
+        totp_secret = pyotp.random_base32()
+        totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=new_username, issuer_name="Classroom Economy Admin")
+
+        # Generate QR code
+        img = qrcode.make(totp_uri)
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        buf.seek(0)
+        img_b64 = base64.b64encode(buf.read()).decode('utf-8')
+
+        # Store in session for TOTP verification
+        session['reset_totp_secret'] = totp_secret
+        session['reset_new_username'] = new_username
+
+        return render_template("admin_reset_credentials.html", form=form, show_qr=True, qr_b64=img_b64, totp_secret=totp_secret, new_username=new_username)
+
+    return render_template("admin_reset_credentials.html", form=form, show_qr=False)
+
+
+@admin_bp.route('/confirm-reset', methods=['POST'])
+def confirm_reset():
+    """
+    Confirm TOTP code and complete the account reset.
+    """
+    if not session.get('recovery_verified') or not session.get('recovery_teacher_id'):
+        flash("Invalid recovery session.", "error")
+        return redirect(url_for('admin.recover'))
+
+    teacher_id = session.get('recovery_teacher_id')
+    teacher = Admin.query.get(teacher_id)
+    if not teacher:
+        flash("Invalid recovery session.", "error")
+        return redirect(url_for('admin.recover'))
+
+    totp_code = request.form.get('totp_code', '').strip()
+    totp_secret = session.get('reset_totp_secret')
+    new_username = session.get('reset_new_username')
+
+    if not totp_code or not totp_secret or not new_username:
+        flash("Invalid reset session.", "error")
+        return redirect(url_for('admin.reset_credentials'))
+
+    # Verify TOTP code
+    totp = pyotp.TOTP(totp_secret)
+    if not totp.verify(totp_code):
+        flash("Invalid TOTP code. Please try again.", "error")
+        return redirect(url_for('admin.reset_credentials'))
+
+    # Update teacher account
+    teacher.username = new_username
+    teacher.totp_secret = totp_secret
+    db.session.commit()
+
+    # Clear recovery session
+    session.pop('recovery_verified', None)
+    session.pop('recovery_teacher_id', None)
+    session.pop('reset_totp_secret', None)
+    session.pop('reset_new_username', None)
+
+    current_app.logger.info(f"🎉 Admin recovery: account reset successful for {new_username}")
+    flash("Your account has been successfully reset! Please log in with your new username and TOTP.", "success")
+    return redirect(url_for('admin.login'))
 
 
 @admin_bp.route('/settings', methods=['GET', 'POST'])
