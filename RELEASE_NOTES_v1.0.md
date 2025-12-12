@@ -47,7 +47,7 @@ Classroom Token Hub enables teachers to create simulated classroom economies whe
 
 **Security & Authentication**
 - TOTP (Time-based One-Time Password) two-factor authentication for all admin accounts
-- **Teacher Account Recovery** — Student-verified recovery system using student usernames and DOB verification
+- **Teacher Account Recovery** — Student-verified recovery system where teachers verify their identity using their date-of-birth sum and student usernames.
   - Multi-student verification requirement for enhanced security
   - Unique 6-digit recovery codes per student
   - 5-day expiration on recovery requests
@@ -90,7 +90,7 @@ Classroom Token Hub enables teachers to create simulated classroom economies whe
 
 **Teacher Self-Recovery (Added 2025-12-12)**
 - Implemented student-verified account recovery system for teachers who lose access to 2FA
-- Teachers initiate recovery by providing student usernames and DOB verification
+- Teachers initiate recovery by providing their date-of-birth sum and a list of their student usernames.
 - Students authenticate with their passphrase and generate unique 6-digit recovery codes
 - Teacher must collect all codes from all verified students to proceed
 - Live recovery status tracking with auto-refresh
