@@ -260,21 +260,12 @@ def test_system_admin_flag_not_set_accidentally(client):
             f"With is_system_admin=True, should see all 200 students, but saw {len(students)}"
 
 
-@pytest.mark.skip(reason="This test doesn't work with SQLite CASCADE behavior. In production with PostgreSQL, students may not be deleted when teacher is deleted.")
 def test_orphaned_students_from_deleted_teacher(client):
     """
     CRITICAL BUG TEST: Test that students from a deleted teacher are not visible to a new teacher with the same ID.
     
-    This test is skipped because SQLite deletes students when the teacher is deleted (CASCADE),
-    but in production PostgreSQL, students might remain orphaned.
-    
-    Scenario:
-    1. Teacher A (id=1) creates 200 students
-    2. Teacher A's account is deleted (but students remain with teacher_id=1)
-    3. Teacher B signs up and gets id=1 (ID reuse)
-    4. Teacher B can now see all 200 students from Teacher A!
-    
-    With our fix, this scenario is now safe because we only use StudentTeacher associations.
+    This test verifies that even if students remain "orphaned" (pointing to a deleted teacher ID),
+    a new teacher who reuses that ID cannot see them unless they are explicitly linked via StudentTeacher.
     """
     # Simulate the historical scenario
     
@@ -284,9 +275,8 @@ def test_orphaned_students_from_deleted_teacher(client):
     db.session.flush()
     teacher1_id = teacher1.id
     
-    # Create 200 students for teacher1
-    student_ids = []
-    for i in range(200):
+    # Create 5 students for teacher1
+    for i in range(5):
         salt = get_random_salt()
         student = Student(
             first_name=f"OldStudent_{i}",
@@ -299,7 +289,6 @@ def test_orphaned_students_from_deleted_teacher(client):
         )
         db.session.add(student)
         db.session.flush()
-        student_ids.append(student.id)
         
         # Create StudentTeacher association
         db.session.add(StudentTeacher(
@@ -309,26 +298,19 @@ def test_orphaned_students_from_deleted_teacher(client):
     
     db.session.commit()
     
-    # Step 2: Delete teacher1 but leave students (simulating a cascading delete issue or manual deletion)
+    # Step 2: Delete teacher1
     # First, delete StudentTeacher records (these have CASCADE delete)
     StudentTeacher.query.filter_by(admin_id=teacher1_id).delete()
     # Then delete the teacher
     db.session.delete(teacher1)
     db.session.commit()
     
-    # Verify students still exist but are "orphaned"
-    orphaned_students = Student.query.filter_by(teacher_id=teacher1_id).all()
-    assert len(orphaned_students) == 200, "Students should still exist after teacher deletion"
-    
-    # Step 3: Create a NEW teacher that gets the SAME ID (this can happen after ID reuse)
-    # Note: In SQLite with AUTOINCREMENT, IDs don't reuse, but in PostgreSQL they can
-    # For this test, we'll manually set the ID
+    # Step 3: Create a NEW teacher that gets the SAME ID
     teacher2 = Admin(username="teacher2", totp_secret="SECRET2")
     db.session.add(teacher2)
     db.session.flush()
     
     # Manually set teacher2's ID to the same as teacher1 (simulating ID reuse)
-    # This requires raw SQL since SQLAlchemy won't let us set the ID directly
     teacher2_original_id = teacher2.id
     connection = db.session.connection()
     connection.execute(
@@ -340,8 +322,27 @@ def test_orphaned_students_from_deleted_teacher(client):
     # Verify teacher2 now has the same ID as teacher1 had
     teacher2_reloaded = Admin.query.filter_by(username="teacher2").first()
     assert teacher2_reloaded.id == teacher1_id, "Teacher2 should have same ID as deleted teacher1"
+
+    # Check if students were cascaded (SQLite behavior) or if they persist.
+    # If they are missing, we recreate them to simulate the "orphaned" state where teacher_id matches but no link exists.
+    orphaned_students = Student.query.filter_by(teacher_id=teacher1_id).all()
+    if len(orphaned_students) == 0:
+        # SQLite cascaded them, so we recreate them
+        for i in range(5):
+            salt = get_random_salt()
+            student = Student(
+                first_name=f"OldStudent_{i}",
+                last_initial="O",
+                block="O",
+                salt=salt,
+                first_half_hash=f"hash_old_orphaned_{i}",
+                dob_sum=4000 + i,
+                teacher_id=teacher1_id, # Point to the reused ID
+            )
+            db.session.add(student)
+        db.session.commit()
     
-    # Step 4: Check if teacher2 can see the orphaned students (THE BUG)
+    # Step 4: Check if teacher2 can see the orphaned students
     with client.application.test_request_context():
         from flask import session
         session['is_admin'] = True
@@ -349,11 +350,9 @@ def test_orphaned_students_from_deleted_teacher(client):
         
         students = get_admin_student_query().all()
         
-        # BUG: Teacher2 WILL see all 200 orphaned students because they have teacher_id=1
-        # and the query filters by Student.teacher_id == admin.id
-        assert len(students) == 200, \
-            f"THIS IS THE BUG! New teacher with reused ID can see {len(students)} orphaned students " \
-            f"from the deleted teacher. Expected 200."
+        # FIX: Teacher2 should NOT see orphaned students because we now use StudentTeacher
+        assert len(students) == 0, \
+            f"Security Fix: New teacher with reused ID should see 0 orphaned students, but saw {len(students)}."
 
 
 def test_students_with_mismatched_teacher_id_not_visible(client):
