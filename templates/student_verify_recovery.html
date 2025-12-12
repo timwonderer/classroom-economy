@@ -1,0 +1,110 @@
+{% extends "layout_student.html" %}
+{% set page_title = "Verify Teacher Recovery" %}
+{% set current_page = "verify-recovery" %}
+{% block title %}Verify Teacher Recovery{% endblock %}
+{% block page_icon %}verified_user{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        {% if verified %}
+        <!-- Success: Code Generated -->
+        <div class="card">
+            <div class="card-header bg-success text-white">
+                <span class="material-symbols-outlined" style="vertical-align: middle;">check_circle</span>
+                Verification Successful
+            </div>
+            <div class="card-body text-center p-4">
+                <div class="alert alert-success mb-4">
+                    <h4 class="alert-heading">
+                        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 48px;">lock</span>
+                    </h4>
+                    <p class="mb-0">You have successfully verified your teacher's account recovery request.</p>
+                </div>
+
+                <h3 class="mb-3">Your Recovery Code:</h3>
+                <div class="p-4 mb-4" style="background: #f8f9fa; border: 3px solid #28a745; border-radius: 10px;">
+                    <h1 class="display-3 font-weight-bold text-success mb-0" style="letter-spacing: 0.3em;">
+                        {{ generated_code }}
+                    </h1>
+                </div>
+
+                <div class="alert alert-warning">
+                    <span class="material-symbols-outlined" style="vertical-align: middle;">warning</span>
+                    <strong>Important:</strong> Give this code to your teacher in person. They will need it to recover their account.
+                    <br><strong>This code will only be shown once!</strong> Make sure to write it down or remember it.
+                </div>
+
+                <a href="{{ url_for('student.dashboard') }}" class="btn btn-primary mt-3">
+                    <span class="material-symbols-outlined" style="vertical-align: middle;">home</span>
+                    Return to Dashboard
+                </a>
+            </div>
+        </div>
+        {% else %}
+        <!-- Request Passphrase Verification -->
+        <div class="card">
+            <div class="card-header">
+                <span class="material-symbols-outlined" style="vertical-align: middle;">verified_user</span>
+                Verify Teacher Account Recovery
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info mb-4">
+                    <h5 class="alert-heading">
+                        <span class="material-symbols-outlined" style="vertical-align: middle;">info</span>
+                        Why are we asking for this?
+                    </h5>
+                    <p>Your teacher is trying to recover their account and needs help verifying their identity.</p>
+                    <p class="mb-0">To protect everyone's account security, we need you to confirm this is really you by entering your passphrase.</p>
+                </div>
+
+                <div class="mb-3 p-3" style="background: #fff4e2; border-left: 4px solid #ffc107; border-radius: 4px;">
+                    <h6><span class="material-symbols-outlined" style="vertical-align: middle;">schedule</span> This request expires on:</h6>
+                    <p class="mb-0"><strong>{{ recovery_code.recovery_request.expires_at.strftime('%B %d, %Y at %I:%M %p') }}</strong></p>
+                </div>
+
+                <form method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <div class="mb-4">
+                        <label for="passphrase" class="form-label">
+                            <span class="material-symbols-outlined" style="vertical-align: middle;">password</span>
+                            Enter Your Passphrase
+                        </label>
+                        <input type="password"
+                               class="form-control form-control-lg"
+                               id="passphrase"
+                               name="passphrase"
+                               required
+                               autocomplete="off"
+                               placeholder="Enter your secret passphrase">
+                        <small class="form-text text-muted">This is the passphrase you use to log in to your account.</small>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <span class="material-symbols-outlined" style="vertical-align: middle;">verified_user</span>
+                            Verify and Generate Code
+                        </button>
+                        <a href="{{ url_for('student.dashboard') }}" class="btn btn-outline-secondary">
+                            <span class="material-symbols-outlined" style="vertical-align: middle;">arrow_back</span>
+                            Cancel and Return to Dashboard
+                        </a>
+                    </div>
+                </form>
+
+                <div class="alert alert-secondary mt-4">
+                    <h6><span class="material-symbols-outlined" style="vertical-align: middle;">help</span> What happens next?</h6>
+                    <ol class="mb-0 ps-3">
+                        <li>You enter your passphrase to confirm it's really you</li>
+                        <li>We generate a unique 6-digit code for you</li>
+                        <li>You give this code to your teacher (in person)</li>
+                        <li>Your teacher uses the code to recover their account</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
