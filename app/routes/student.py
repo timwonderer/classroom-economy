@@ -1076,13 +1076,14 @@ def payroll():
     }
 
     # Get all tap events grouped by block (scoped to the current class when available)
+    # Limit to 20 most recent events to improve performance (template only displays 20)
     tap_query = TapEvent.query.filter_by(
         student_id=student.id,
         period=current_block,
         join_code=join_code
     )
 
-    all_tap_events = tap_query.order_by(TapEvent.timestamp.desc()).all()
+    all_tap_events = tap_query.order_by(TapEvent.timestamp.desc()).limit(20).all()
     tap_events_by_block = {}
     for event in all_tap_events:
         # Normalize to the action labels used by the template
