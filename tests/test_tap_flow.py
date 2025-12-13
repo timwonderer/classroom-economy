@@ -74,7 +74,7 @@ def test_dynamic_blocks_and_tap_flow(client):
     # 3. Dashboard must include the current block (Block A by default)
     # Note: New multi-tenancy model only shows ONE class at a time.
     dash_html = client.get('/student/dashboard').data.decode()
-    assert "Block A" in dash_html
+    assert "Period A" in dash_html
     # assert "Block C" in dash_html  <-- Removed: Dashboard only shows current class
 
     # 4. Tap in to A

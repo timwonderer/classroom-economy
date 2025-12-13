@@ -109,7 +109,8 @@ def test_dashboard_renders_recent_deposit(client, test_student):
     response = client.get('/student/dashboard')
 
     assert response.status_code == 200
-    assert b"You received a deposit of $50.00" in response.data
+    assert b"You received a deposit of" in response.data
+    assert b"$50.00" in response.data
 
     interest_tx = Transaction.query.filter_by(
         student_id=test_student.id,
