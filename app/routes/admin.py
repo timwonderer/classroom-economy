@@ -3665,6 +3665,157 @@ def hall_pass():
 
 # -------------------- PAYROLL --------------------
 
+@admin_bp.route('/economy-health')
+@admin_required
+def economy_health():
+    """Show a holistic view of the current economy configuration and CWI health."""
+    admin_id = session.get("admin_id")
+
+    blocks = _get_teacher_blocks()
+    selected_block = request.args.get('block') or (blocks[0] if blocks else None)
+
+    payroll_query = PayrollSettings.query.filter_by(teacher_id=admin_id, is_active=True)
+    payroll_settings = None
+    if selected_block:
+        payroll_settings = payroll_query.filter_by(block=selected_block).first()
+    if not payroll_settings:
+        payroll_settings = payroll_query.filter_by(block=None).first()
+
+    has_payroll_settings = payroll_query.count() > 0
+
+    rent_settings = None
+    if selected_block:
+        rent_settings = RentSettings.query.filter_by(
+            teacher_id=admin_id,
+            block=selected_block,
+            is_enabled=True
+        ).first()
+    if not rent_settings:
+        rent_settings = RentSettings.query.filter_by(
+            teacher_id=admin_id,
+            block=None,
+            is_enabled=True
+        ).first()
+
+    insurance_policies_query = InsurancePolicy.query.filter_by(teacher_id=admin_id, is_active=True)
+    if selected_block:
+        insurance_policies = [
+            policy for policy in insurance_policies_query.all()
+            if not policy.blocks_list or selected_block.upper() in [b.upper() for b in policy.blocks_list]
+        ]
+    else:
+        insurance_policies = insurance_policies_query.all()
+
+    fines = PayrollFine.query.filter_by(teacher_id=admin_id, is_active=True).all()
+    store_items = StoreItem.query.filter_by(teacher_id=admin_id, is_active=True).all()
+
+    banking_settings = None
+    if selected_block:
+        banking_settings = BankingSettings.query.filter_by(
+            teacher_id=admin_id,
+            block=selected_block,
+            is_active=True
+        ).first()
+    if not banking_settings:
+        banking_settings = BankingSettings.query.filter_by(
+            teacher_id=admin_id,
+            block=None,
+            is_active=True
+        ).first()
+
+    def summarize_banking(settings):
+        if not settings:
+            return {
+                'level': 'warning',
+                'title': 'Banking not configured',
+                'message': 'Savings interest is off. Enable interest to reward saving and balance rent.',
+                'apy': None,
+            }
+
+        apy = float(settings.savings_apy or 0)
+        payout = settings.interest_schedule_type or 'monthly'
+
+        if apy <= 0:
+            level = 'warning'
+            message = 'Interest is disabled. Set a small APY so students can grow savings over time.'
+        elif apy >= 25:
+            level = 'warning'
+            message = 'High APY may cause runaway balances. Consider lowering the rate to keep savings meaningful.'
+        else:
+            level = 'success'
+            message = f'Savings APY is set to {apy:.2f}% with {payout} payouts.'
+
+        return {
+            'level': level,
+            'title': 'Banking & Interest',
+            'message': message,
+            'apy': apy,
+            'payout': payout,
+        }
+
+    analysis = None
+    warnings_by_level = {'critical': [], 'warning': [], 'info': []}
+    warnings_by_feature = {}
+    recommendations = {}
+    cwi_calc = None
+    expected_hours = payroll_settings.expected_weekly_hours if payroll_settings and payroll_settings.expected_weekly_hours is not None else 5.0
+    pay_rate_per_minute = payroll_settings.pay_rate if payroll_settings else None
+
+    if payroll_settings:
+        checker = EconomyBalanceChecker(admin_id, selected_block)
+        analysis = checker.analyze_economy(
+            payroll_settings=payroll_settings,
+            rent_settings=rent_settings,
+            insurance_policies=insurance_policies,
+            fines=fines,
+            store_items=store_items,
+            expected_weekly_hours=expected_hours
+        )
+        cwi_calc = analysis.cwi
+        pay_rate_per_minute = cwi_calc.pay_rate_per_minute
+        recommendations = analysis.recommendations
+
+        for warning in analysis.warnings:
+            warnings_by_level[warning.level.value].append(warning)
+            warnings_by_feature.setdefault(warning.feature, []).append(warning)
+
+    feature_links = {
+        'rent': url_for('admin.rent_settings', settings_block=selected_block),
+        'insurance': url_for('admin.insurance_management', settings_block=selected_block),
+        'fine': url_for('admin.payroll', cwi_block=selected_block),
+        'store': url_for('admin.store_management'),
+        'budget survival test': url_for('admin.payroll', cwi_block=selected_block),
+    }
+
+    return render_template(
+        'admin_economy_health.html',
+        current_page='economy_health',
+        blocks=blocks,
+        selected_block=selected_block,
+        payroll_settings=payroll_settings,
+        has_payroll_settings=has_payroll_settings,
+        cwi_calc=cwi_calc,
+        expected_hours=expected_hours,
+        pay_rate_per_minute=pay_rate_per_minute,
+        rent_settings=rent_settings,
+        insurance_count=len(insurance_policies),
+        store_item_count=len(store_items),
+        fine_count=len(fines),
+        banking_settings=banking_settings,
+        banking_summary=summarize_banking(banking_settings),
+        analysis=analysis,
+        warnings_by_level=warnings_by_level,
+        warnings_by_feature=warnings_by_feature,
+        recommendations=recommendations,
+        feature_links=feature_links,
+        payroll_link=url_for('admin.payroll', cwi_block=selected_block),
+        banking_link=url_for('admin.banking'),
+        rent_link=url_for('admin.rent_settings', settings_block=selected_block),
+        insurance_link=url_for('admin.insurance_management', settings_block=selected_block),
+        store_link=url_for('admin.store_management'),
+    )
+
+
 @admin_bp.route('/payroll-history')
 @admin_required
 def payroll_history():
@@ -4279,6 +4430,10 @@ def update_expected_weekly_hours():
         flash(f'Error updating expected weekly hours: {str(e)}', 'error')
 
     # Redirect back with cwi_block parameter to maintain the selected class
+    next_url = request.form.get('next')
+    if next_url and is_safe_url(next_url):
+        return redirect(next_url)
+
     return redirect(url_for('admin.payroll', cwi_block=cwi_block))
 
 

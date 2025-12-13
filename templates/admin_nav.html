@@ -30,6 +30,9 @@
           </a>
         </li>
         <li class="nav-item">
+          <a class="nav-link {% if current_page == 'economy_health' %}active{% endif %}" href="{{ url_for('admin.economy_health') }}">Economy Health</a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link {% if current_page == 'help' %}active{% endif %}" href="{{ url_for('admin.help_support') }}">Help & Support</a>
         </li>
         <li class="nav-item">

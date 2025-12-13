@@ -271,13 +271,13 @@
 
             <!-- Pay Rate Info -->
             <div class="col-md-6 mb-4">
-                <div class="card">
+                        <div class="card">
                     <div class="card-header">
                         <span class="material-symbols-outlined">attach_money</span> Pay Rate Information
                     </div>
                     <div class="card-body">
                         <div class="alert alert-info">
-                            <span class="material-symbols-outlined">info</span> <strong>Current Pay Rate:</strong> $0.25 per minute
+                            <span class="material-symbols-outlined">info</span> <strong>Current Pay Rate:</strong> ${{ "%.2f"|format(pay_rate_per_minute) }} per minute
                         </div>
                         <h6 class="mb-3">Time Value Calculator:</h6>
                         <div class="table-responsive">
@@ -289,30 +289,12 @@
                                     </tr>
                                 </thead>
                                 <tbody>
+                                    {% for label, value in pay_rate_table %}
                                     <tr>
-                                        <td>1 minute</td>
-                                        <td class="text-success">$0.25</td>
+                                        <td>{{ label }}</td>
+                                        <td class="text-success">${{ "%.2f"|format(value) }}</td>
                                     </tr>
-                                    <tr>
-                                        <td>10 minutes</td>
-                                        <td class="text-success">$2.50</td>
-                                    </tr>
-                                    <tr>
-                                        <td>30 minutes</td>
-                                        <td class="text-success">$7.50</td>
-                                    </tr>
-                                    <tr>
-                                        <td>1 hour</td>
-                                        <td class="text-success">$15.00</td>
-                                    </tr>
-                                    <tr>
-                                        <td>2 hours</td>
-                                        <td class="text-success">$30.00</td>
-                                    </tr>
-                                    <tr>
-                                        <td>4 hours</td>
-                                        <td class="text-success">$60.00</td>
-                                    </tr>
+                                    {% endfor %}
                                 </tbody>
                             </table>
                         </div>

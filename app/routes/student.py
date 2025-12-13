@@ -41,6 +41,7 @@ from app.utils.name_utils import hash_last_name_parts
 from app.utils.help_content import HELP_ARTICLES
 from hash_utils import hash_hmac, hash_username, hash_username_lookup
 from attendance import get_all_block_statuses
+from payroll import get_pay_rate_for_block
 
 # Create blueprint
 student_bp = Blueprint('student', __name__, url_prefix='/student')
@@ -1065,6 +1066,10 @@ def payroll():
     period_states = {current_block: period_states.get(current_block, {})}
     student_blocks = [current_block]
 
+    # Determine the pay rate for the current block (per minute)
+    pay_rate_per_second = get_pay_rate_for_block(current_block)
+    pay_rate_per_minute = round(pay_rate_per_second * 60, 2)
+
     unpaid_seconds_per_block = {
         blk: state.get("duration", 0)
         for blk, state in period_states.items()
@@ -1101,6 +1106,15 @@ def payroll():
         period_states=period_states,
         all_tap_events=all_tap_events,
         tap_events_by_block=tap_events_by_block,
+        pay_rate_per_minute=pay_rate_per_minute,
+        pay_rate_table=[
+            ("1 minute", pay_rate_per_minute),
+            ("10 minutes", round(pay_rate_per_minute * 10, 2)),
+            ("30 minutes", round(pay_rate_per_minute * 30, 2)),
+            ("1 hour", round(pay_rate_per_minute * 60, 2)),
+            ("2 hours", round(pay_rate_per_minute * 120, 2)),
+            ("4 hours", round(pay_rate_per_minute * 240, 2)),
+        ],
         now=datetime.now(timezone.utc)
     )
 

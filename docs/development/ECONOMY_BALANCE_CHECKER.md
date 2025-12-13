@@ -50,7 +50,16 @@ Store Items:
   LUXURY:   0.25-0.50x CWI
 ```
 
-### 2. API Endpoints (`app/routes/admin.py`)
+### 2. Admin Economy Health Page (`/admin/economy-health`)
+
+Teachers can review their current CWI and economy balance from one place. The page:
+
+- Shows the active CWI, pay rate, and expected weekly hours (with an inline form to update hours per week for the selected block or all blocks).
+- Summarizes rent, insurance, fines, store setup, and banking interest with quick links to their settings pages.
+- Surfaces critical/warning/info notices from the `EconomyBalanceChecker` so teachers can tune ratios before students feel pain.
+- Lists recommended ranges for rent, insurance premiums, fines, and store tiers based on the calculated CWI.
+
+### 3. API Endpoints (`app/routes/admin.py`)
 
 Three RESTful endpoints for real-time validation:
 
@@ -151,7 +160,7 @@ Validate a specific feature value.
 }
 ```
 
-### 3. Client-Side Module (`static/js/economy-balance.js`)
+### 4. Client-Side Module (`static/js/economy-balance.js`)
 
 JavaScript class for real-time validation in forms.
 

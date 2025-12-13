@@ -1,0 +1,241 @@
+{% extends "layout_admin.html" %}
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="d-flex flex-wrap justify-content-between align-items-start mb-3 gap-3">
+    <div>
+      <h2 class="mb-1">Economy Health</h2>
+      <p class="text-muted mb-0">Review your current CWI and see how payroll, rent, banking, insurance, and the store fit together.</p>
+    </div>
+    <form method="get" class="d-flex flex-wrap gap-2 align-items-center">
+      <label class="form-label mb-0 me-2">Class/Block</label>
+      <select name="block" class="form-select" onchange="this.form.submit()">
+        {% if not blocks %}
+          <option value="">No classes yet</option>
+        {% else %}
+          {% for blk in blocks %}
+            <option value="{{ blk }}" {% if selected_block == blk %}selected{% endif %}>{{ blk }}</option>
+          {% endfor %}
+        {% endif %}
+      </select>
+      {% if selected_block %}
+      <a class="btn btn-outline-secondary" href="{{ url_for('admin.economy_health') }}">Clear</a>
+      {% endif %}
+    </form>
+  </div>
+
+  {% if not payroll_settings %}
+  <div class="alert alert-warning d-flex align-items-start gap-2">
+    <span class="material-symbols-outlined">warning</span>
+    <div>
+      <strong>Set up payroll to calculate CWI.</strong>
+      <div class="small">We need a pay rate and expected hours per week to compute the Classroom Wage Index. Head to <a href="{{ payroll_link }}" class="alert-link">Payroll Management</a> to configure it.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+              <h5 class="mb-1"><i class="bi bi-graph-up-arrow me-2"></i>Classroom Wage Index</h5>
+              <p class="text-muted mb-0">Based on payroll rate and expected hours per week</p>
+            </div>
+            {% if cwi_calc %}
+            <span class="badge bg-success-subtle text-success">Active</span>
+            {% else %}
+            <span class="badge bg-warning text-dark">Needs setup</span>
+            {% endif %}
+          </div>
+
+          {% if cwi_calc %}
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="p-3 bg-light rounded h-100">
+                <div class="text-muted small">Weekly CWI</div>
+                <div class="h3 mb-0">${{ "%.2f"|format(cwi_calc.cwi) }}</div>
+                <div class="small text-muted">Perfect-attendance earnings per week</div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="p-3 bg-light rounded h-100">
+                <div class="text-muted small">Pay Rate</div>
+                <div class="h4 mb-0">${{ "%.2f"|format(pay_rate_per_minute or 0) }} / min</div>
+                <div class="small text-muted">${{ "%.2f"|format((pay_rate_per_minute or 0) * 60) }} per hour</div>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="p-3 bg-light rounded h-100">
+                <div class="text-muted small">Expected Hours/Week</div>
+                <form method="post" action="{{ url_for('admin.update_expected_weekly_hours') }}">
+                  <input type="hidden" name="cwi_block" value="{{ selected_block }}">
+                  <input type="hidden" name="next" value="{{ url_for('admin.economy_health', block=selected_block) }}">
+                  <div class="input-group">
+                    <input type="number" step="0.25" min="0.25" max="80" name="expected_weekly_hours" class="form-control" value="{{ expected_hours }}">
+                    <button class="btn btn-primary" type="submit">Update</button>
+                  </div>
+                  <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" name="apply_to_all" value="true" id="applyAllHours">
+                    <label class="form-check-label" for="applyAllHours">Apply to all classes</label>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
+          <div class="mt-3">
+            <div class="small text-muted">Calculation notes:</div>
+            <ul class="small mb-0">
+              {% for note in cwi_calc.notes %}
+              <li>{{ note }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+          {% else %}
+          <p class="mb-0">Configure payroll first to see your CWI.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <div class="col-lg-6">
+      <div class="card shadow-sm h-100">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+              <h5 class="mb-1"><i class="bi bi-heart-pulse me-2"></i>Balance Snapshot</h5>
+              <p class="text-muted mb-0">How well rent, insurance, fines, and store align to your CWI</p>
+            </div>
+            {% if analysis and analysis.is_balanced %}
+            <span class="badge bg-success">Balanced</span>
+            {% elif analysis %}
+            <span class="badge bg-warning text-dark">Needs attention</span>
+            {% else %}
+            <span class="badge bg-secondary">Awaiting payroll setup</span>
+            {% endif %}
+          </div>
+
+          <div class="row text-center">
+            <div class="col-4">
+              <div class="p-3 border rounded">
+                <div class="text-muted small">Critical</div>
+                <div class="h4 mb-0 text-danger">{{ warnings_by_level['critical']|length }}</div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="p-3 border rounded">
+                <div class="text-muted small">Warnings</div>
+                <div class="h4 mb-0 text-warning">{{ warnings_by_level['warning']|length }}</div>
+              </div>
+            </div>
+            <div class="col-4">
+              <div class="p-3 border rounded">
+                <div class="text-muted small">Info</div>
+                <div class="h4 mb-0 text-success">{{ warnings_by_level['info']|length }}</div>
+              </div>
+            </div>
+          </div>
+
+          {% if analysis %}
+          <div class="mt-3 small">
+            <div class="d-flex align-items-center mb-2"><span class="badge bg-light text-dark me-2">Rent</span> {{ warnings_by_feature.get('Rent', [])|length }} note(s) • <a href="{{ rent_link }}">Adjust rent</a></div>
+            <div class="d-flex align-items-center mb-2"><span class="badge bg-light text-dark me-2">Insurance</span> {{ insurance_count }} policy/policies • <a href="{{ insurance_link }}">Review premiums</a></div>
+            <div class="d-flex align-items-center mb-2"><span class="badge bg-light text-dark me-2">Banking</span> {{ banking_summary.message }} <a href="{{ banking_link }}" class="ms-1">Open banking</a></div>
+            <div class="d-flex align-items-center"><span class="badge bg-light text-dark me-2">Store</span> {{ store_item_count }} item(s) listed • <a href="{{ store_link }}">Edit store prices</a></div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-lg-6">
+      <div class="card h-100 shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <div><i class="bi bi-piggy-bank me-2"></i>Banking & Interest</div>
+          {% if banking_summary.level == 'success' %}
+            <span class="badge bg-success">Healthy</span>
+          {% else %}
+            <span class="badge bg-warning text-dark">Action needed</span>
+          {% endif %}
+        </div>
+        <div class="card-body">
+          <p class="mb-2">{{ banking_summary.message }}</p>
+          {% if banking_summary.apy is not none %}
+          <p class="mb-1 small text-muted">APY: {{ "%.2f"|format(banking_summary.apy) }}% • Payout schedule: {{ banking_summary.payout|title }}</p>
+          {% endif %}
+          <a href="{{ banking_link }}" class="btn btn-outline-primary btn-sm">Go to banking settings</a>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6">
+      <div class="card h-100 shadow-sm">
+        <div class="card-header"><i class="bi bi-lightbulb me-2"></i>Quick recommendations</div>
+        <div class="card-body">
+          {% if recommendations %}
+          <ul class="mb-2">
+            <li>Rent: ${{ recommendations.rent.min }} - ${{ recommendations.rent.max }} per week (ideal ${{ recommendations.rent.recommended }})</li>
+            <li>Insurance (weekly): ${{ recommendations.insurance_premium_weekly.min }} - ${{ recommendations.insurance_premium_weekly.max }}</li>
+            <li>Fines: ${{ recommendations.fine.min }} - ${{ recommendations.fine.max }} per incident</li>
+            <li>Store pricing tiers scale with CWI. Basic items between ${{ recommendations.store_tiers.basic.min }} and ${{ recommendations.store_tiers.basic.max }}.</li>
+            <li>Students should be able to save at least ${{ recommendations.min_weekly_savings }} weekly.</li>
+          </ul>
+          <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-outline-primary btn-sm" href="{{ payroll_link }}">Review payroll</a>
+            <a class="btn btn-outline-primary btn-sm" href="{{ rent_link }}">Tune rent</a>
+            <a class="btn btn-outline-primary btn-sm" href="{{ insurance_link }}">Adjust insurance</a>
+            <a class="btn btn-outline-primary btn-sm" href="{{ store_link }}">Update store</a>
+          </div>
+          {% else %}
+          <p class="mb-0">Configure payroll to unlock tailored recommendations.</p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div><i class="bi bi-clipboard2-pulse me-2"></i>Detailed warnings</div>
+      <small class="text-muted">Sorted by severity</small>
+    </div>
+    <div class="card-body">
+      {% if analysis %}
+        {% if warnings_by_level['critical'] or warnings_by_level['warning'] or warnings_by_level['info'] %}
+          {% set severity_map = {'critical': 'danger', 'warning': 'warning', 'info': 'info'} %}
+          {% for level in ['critical','warning','info'] %}
+            {% set bucket = warnings_by_level[level] %}
+            {% if bucket %}
+              <div class="alert alert-{{ severity_map[level] }}">
+                <strong class="text-capitalize">{{ level }}</strong>
+                <ul class="mb-0 mt-2">
+                  {% for warning in bucket %}
+                    {% set feature_lower = warning.feature.lower() %}
+                    {% set link = None %}
+                    {% for prefix, destination in feature_links.items() %}
+                      {% if feature_lower.startswith(prefix) %}
+                        {% set link = destination %}
+                      {% endif %}
+                    {% endfor %}
+                    <li>
+                      {{ warning.message }}
+                      {% if link %}
+                        <a href="{{ link }}" class="ms-2">Open settings</a>
+                      {% endif %}
+                    </li>
+                  {% endfor %}
+                </ul>
+              </div>
+            {% endif %}
+          {% endfor %}
+        {% else %}
+          <p class="mb-0">No warnings detected. Your economy is balanced against the current CWI.</p>
+        {% endif %}
+      {% else %}
+        <p class="mb-0">Configure payroll first to run the economy health check.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
