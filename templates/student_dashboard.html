@@ -17,28 +17,6 @@
 </div>
 {% endif %}
 
-{% if pending_recovery_code %}
-<div class="alert alert-info d-flex align-items-start mb-4 border-0 shadow-sm" role="alert">
-    <span class="material-symbols-outlined me-3 fs-4 flex-shrink-0">security</span>
-    <div class="flex-grow-1">
-        <h6 class="fw-bold mb-1">Account Recovery Request</h6>
-        <p class="mb-2">Your teacher is trying to recover their account and needs your help to verify their identity.</p>
-        <p class="mb-3 fw-semibold">This request will expire on {{ pending_recovery_code.recovery_request.expires_at.strftime('%B %d, %Y at %I:%M %p') }}.</p>
-        <div class="d-flex gap-2 flex-wrap">
-            <a href="{{ url_for('student.verify_recovery', code_id=pending_recovery_code.id) }}" class="btn btn-primary btn-sm">
-                <span class="material-symbols-outlined align-bottom me-1" style="font-size: 18px;">verified_user</span>
-                Help Verify Identity
-            </a>
-            <form method="POST" action="{{ url_for('student.dismiss_recovery', code_id=pending_recovery_code.id) }}" class="m-0">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                <button type="submit" class="btn btn-outline-secondary btn-sm">Dismiss for now</button>
-            </form>
-        </div>
-    </div>
-    <button type="button" class="btn-close ms-3" data-bs-dismiss="alert" aria-label="Close"></button>
-</div>
-{% endif %}
-
 <!-- Attendance Card -->
 {% if student_blocks %}
 <div class="card border-0 shadow-sm mb-4">

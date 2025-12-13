@@ -140,12 +140,13 @@
                                 <tr>
                                     <td class="ps-4">
                                         <div class="d-flex align-items-center">
+                                            {% set student = student_lookup.get(tx.student_id) %}
                                             <div class="avatar-circle bg-light text-primary me-2 small fw-bold">
-                                                {{ student_lookup[tx.student_id].first_name[0] if student_lookup[tx.student_id] else '?' }}
+                                                {{ student.first_name[0] if student else '?' }}
                                             </div>
                                             <div>
                                                 <div class="fw-medium text-dark">
-                                                    {{ student_lookup[tx.student_id].full_name if student_lookup[tx.student_id] else 'Unknown' }}
+                                                    {{ student.full_name if student else 'Unknown' }}
                                                 </div>
                                                 <div class="small text-secondary local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}">
                                                     {{ tx.timestamp.strftime('%H:%M') }}
