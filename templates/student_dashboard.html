@@ -21,9 +21,23 @@
 {% if student_blocks %}
 <div class="card border-0 shadow-sm mb-4">
     <div class="card-body p-4">
-        <div class="d-flex align-items-center mb-3">
-            <span class="material-symbols-outlined text-primary me-2">schedule</span>
-            <h5 class="fw-bold mb-0">Attendance</h5>
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="d-flex align-items-center">
+                <span class="material-symbols-outlined text-primary me-2">schedule</span>
+                <h5 class="fw-bold mb-0">Attendance</h5>
+            </div>
+            <div class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill px-3">
+                {{ student.hall_passes }} Passes Left
+            </div>
+        </div>
+
+        <!-- Queue Status (Hidden by default, populated by JS) -->
+        <div id="queueStatus" class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center justify-content-between" style="display: none !important;">
+            <div class="d-flex align-items-center">
+                <span class="material-symbols-outlined fs-5 me-2">people</span>
+                <span>Restroom Queue: <strong id="queueCount">0</strong> waiting</span>
+            </div>
+            <span class="badge bg-info text-white" id="queueLimitBadge"></span>
         </div>
 
         {% for period in student_blocks %}
@@ -185,5 +199,8 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script>
+    const TEACHER_ID = {{ teacher_id }};
+</script>
 <script src="{{ url_for('static', filename='js/attendance.js') }}"></script>
 {% endblock %}
