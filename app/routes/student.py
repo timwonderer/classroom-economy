@@ -1013,6 +1013,61 @@ def dashboard():
         RecoveryRequest.expires_at > datetime.now(timezone.utc)
     ).first()
 
+    # --- Calculate weekly/monthly analytics ---
+    from app.models import TapEvent
+    now_utc = datetime.now(timezone.utc)
+    week_start = now_utc - timedelta(days=now_utc.weekday())  # Monday of current week
+    month_start = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    # Days tapped in this week
+    tap_events_this_week = TapEvent.query.filter(
+        TapEvent.student_id == student.id,
+        TapEvent.join_code == join_code,
+        TapEvent.timestamp >= week_start,
+        TapEvent.is_deleted == False
+    ).all()
+
+    # Calculate unique days and total minutes
+    unique_days_tapped = len(set(event.timestamp.date() for event in tap_events_this_week if event.status == 'active'))
+
+    # Calculate total minutes this week
+    total_minutes_this_week = 0
+    active_sessions = {}  # Track active tap-in per period
+
+    for event in sorted(tap_events_this_week, key=lambda e: e.timestamp):
+        period = event.period
+        if event.status == 'active':
+            active_sessions[period] = event.timestamp
+        elif event.status == 'inactive' and period in active_sessions:
+            duration = (event.timestamp - active_sessions[period]).total_seconds() / 60
+            total_minutes_this_week += duration
+            del active_sessions[period]
+
+    # Add ongoing sessions (still active)
+    for start_time in active_sessions.values():
+        duration = (now_utc - start_time).total_seconds() / 60
+        total_minutes_this_week += duration
+
+    # Earnings this week/month
+    earnings_this_week = sum(
+        tx.amount for tx in transactions
+        if tx.amount > 0 and tx.timestamp >= week_start and not tx.is_void
+    )
+    earnings_this_month = sum(
+        tx.amount for tx in transactions
+        if tx.amount > 0 and tx.timestamp >= month_start and not tx.is_void
+    )
+
+    # Spending this week/month
+    spending_this_week = abs(sum(
+        tx.amount for tx in transactions
+        if tx.amount < 0 and tx.timestamp >= week_start and not tx.is_void
+    ))
+    spending_this_month = abs(sum(
+        tx.amount for tx in transactions
+        if tx.amount < 0 and tx.timestamp >= month_start and not tx.is_void
+    ))
+
     return render_template(
         'student_dashboard.html',
         student=student,
@@ -1039,6 +1094,13 @@ def dashboard():
         savings_balance=savings_balance,
         teacher_id=teacher_id,
         pending_recovery_code=pending_recovery_code,
+        # Weekly/monthly analytics
+        unique_days_tapped=unique_days_tapped,
+        total_minutes_this_week=int(total_minutes_this_week),
+        earnings_this_week=round(earnings_this_week, 2),
+        earnings_this_month=round(earnings_this_month, 2),
+        spending_this_week=round(spending_this_week, 2),
+        spending_this_month=round(spending_this_month, 2),
     )
 
 
@@ -1258,6 +1320,32 @@ def transfer():
         principal = sum(tx.amount for tx in savings_transactions if tx.type != 'Interest' and 'Interest' not in (tx.description or ''))
         forecast_interest = principal * (annual_rate / 12)
 
+    # Calculate 12-month savings projection for graph
+    projection_months = []
+    projection_balances = []
+    current_balance = savings_balance
+
+    for month in range(13):  # 0 to 12 months
+        projection_months.append(month)
+        projection_balances.append(round(current_balance, 2))
+
+        if month < 12:  # Don't calculate interest for the last point
+            if calculation_type == 'compound':
+                if compound_frequency == 'daily':
+                    periods = 30
+                    rate = annual_rate / 365
+                    interest = current_balance * ((1 + rate) ** periods - 1)
+                elif compound_frequency == 'weekly':
+                    periods = 4.33
+                    rate = annual_rate / 52
+                    interest = current_balance * ((1 + rate) ** periods - 1)
+                else:  # monthly
+                    interest = current_balance * (annual_rate / 12)
+                current_balance += interest
+            else:  # simple interest
+                interest = savings_balance * (annual_rate / 12)  # Simple interest on original principal
+                current_balance += interest
+
     return render_template('student_transfer.html',
                          student=student,
                          transactions=transactions,
@@ -1268,7 +1356,9 @@ def transfer():
                          forecast_interest=forecast_interest,
                          settings=settings,
                          calculation_type=calculation_type,
-                         compound_frequency=compound_frequency)
+                         compound_frequency=compound_frequency,
+                         projection_months=projection_months,
+                         projection_balances=projection_balances)
 
 
 def apply_savings_interest(student, annual_rate=0.045):

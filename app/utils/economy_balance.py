@@ -372,7 +372,7 @@ class EconomyBalanceChecker:
                     warnings.append(BalanceWarning(
                         feature=f"Fine: {fine.name}",
                         level=level,
-                        message=f"Fine amount (${fine_amount:.2f}) may be too small to be meaningful.",
+                        message=f"Fine amount (${abs(fine_amount):.2f}) is too small to be meaningful. Recommended range: ${recommended_min:.2f} - ${recommended_max:.2f}",
                         current_value=fine_amount,
                         recommended_min=recommended_min,
                         recommended_max=recommended_max,
@@ -384,7 +384,7 @@ class EconomyBalanceChecker:
                 warnings.append(BalanceWarning(
                     feature=f"Fine: {fine.name}",
                     level=level,
-                    message=f"Fine amount (${fine_amount:.2f}) is too harsh. May cause student insolvency.",
+                    message=f"Fine amount (${abs(fine_amount):.2f}) is too harsh and may cause student insolvency. Recommended range: ${recommended_min:.2f} - ${recommended_max:.2f}",
                     current_value=fine_amount,
                     recommended_min=recommended_min,
                     recommended_max=recommended_max,
@@ -424,6 +424,10 @@ class EconomyBalanceChecker:
             if not item.is_active:
                 continue
 
+            # Skip long-term goal items from CWI balance checks
+            if getattr(item, 'is_long_term_goal', False):
+                continue
+
             price = float(item.price)
             price_ratio = price / cwi if cwi > 0 else 0
 
@@ -450,20 +454,22 @@ class EconomyBalanceChecker:
             else:
                 # Price is outside all tiers
                 if price_ratio > self.STORE_TIERS[PricingTier.LUXURY][1]:
+                    max_recommended = cwi * self.STORE_TIERS[PricingTier.LUXURY][1]
                     warnings.append(BalanceWarning(
                         feature=f"Store Item: {item.name}",
                         level=WarningLevel.CRITICAL,
-                        message=f"Price (${price:.2f}) exceeds LUXURY tier max. Students may never afford this.",
+                        message=f"Price (${price:.2f}) exceeds LUXURY tier max (${max_recommended:.2f}). Students may never afford this. Consider marking as 'Long Term Goal Item' if this is intentional.",
                         current_value=price,
                         recommended_min=cwi * self.STORE_TIERS[PricingTier.BASIC][0],
                         recommended_max=cwi * self.STORE_TIERS[PricingTier.LUXURY][1],
                         cwi_ratio=price_ratio
                     ))
                 elif price_ratio < self.STORE_TIERS[PricingTier.BASIC][0]:
+                    min_recommended = cwi * self.STORE_TIERS[PricingTier.BASIC][0]
                     warnings.append(BalanceWarning(
                         feature=f"Store Item: {item.name}",
                         level=WarningLevel.WARNING,
-                        message=f"Price (${price:.2f}) is below BASIC tier. May not be meaningful reward.",
+                        message=f"Price (${price:.2f}) is below BASIC tier min (${min_recommended:.2f}). May not be a meaningful reward.",
                         current_value=price,
                         recommended_min=cwi * self.STORE_TIERS[PricingTier.BASIC][0],
                         recommended_max=cwi * self.STORE_TIERS[PricingTier.LUXURY][1],

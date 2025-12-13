@@ -147,7 +147,56 @@ setInterval(() => {
       }
     })
     .catch(err => console.error("Status polling error:", err));
+
+  updateQueueStatus();
 }, 10000);
+
+// Initial queue check
+document.addEventListener("DOMContentLoaded", () => {
+    setTimeout(updateQueueStatus, 1000);
+});
+
+function updateQueueStatus() {
+    if (typeof TEACHER_ID === 'undefined') return;
+
+    fetch(`/api/hall-pass/queue?teacher_id=${TEACHER_ID}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.status === 'success' && data.queue_enabled) {
+                const queueEl = document.getElementById('queueStatus');
+                const countEl = document.getElementById('queueCount');
+                const limitEl = document.getElementById('queueLimitBadge');
+
+                if (queueEl && countEl) {
+                    queueEl.style.setProperty('display', 'flex', 'important');
+
+                    // Total occupied spots (queue + out)
+                    const totalOccupied = data.total || 0;
+                    // Waiting in queue (approved but not left)
+                    const waitingCount = (data.queue || []).length;
+
+                    countEl.textContent = waitingCount;
+
+                    if (limitEl) {
+                        limitEl.textContent = `Limit: ${data.queue_limit}`;
+                        if (totalOccupied >= data.queue_limit) {
+                            limitEl.className = 'badge bg-danger text-white';
+                            queueEl.classList.remove('alert-info');
+                            queueEl.classList.add('alert-warning');
+                        } else {
+                            limitEl.className = 'badge bg-info text-white';
+                            queueEl.classList.remove('alert-warning');
+                            queueEl.classList.add('alert-info');
+                        }
+                    }
+                }
+            } else {
+                const queueEl = document.getElementById('queueStatus');
+                if (queueEl) queueEl.style.setProperty('display', 'none', 'important');
+            }
+        })
+        .catch(e => console.error("Queue poll error:", e));
+}
 
 function updateBlockUI(period, isActive, duration, projectedPay, hallPass = null) {
   const row = document.querySelector(`[data-block-row="${period}"]`);

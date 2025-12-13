@@ -97,6 +97,23 @@
             </div>
         </div>
 
+        <!-- Savings Projection Graph -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <span class="material-symbols-outlined">trending_up</span> Savings Balance Projection (12 Months)
+            </div>
+            <div class="card-body">
+                <canvas id="savingsProjectionChart" height="80"></canvas>
+                <div class="mt-3 text-center">
+                    <small class="text-muted">
+                        Projection based on current balance of <strong>${{ "%.2f"|format(savings_balance) }}</strong> with
+                        {{ "%.2f"|format((settings.savings_apy if settings else 4.5)) }}% annual {{ calculation_type }} interest
+                        {% if calculation_type == 'compound' %}(compounded {{ compound_frequency }}){% endif %}
+                    </small>
+                </div>
+            </div>
+        </div>
+
         <!-- Quick Actions -->
         <div class="card">
             <div class="card-header">
@@ -363,6 +380,7 @@
 {% endblock %}
 
 {% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
     document.getElementById("transferDetailsForm").addEventListener("submit", function (e) {
         e.preventDefault();
@@ -390,5 +408,60 @@
             document.getElementById('passphrase').focus();
         });
     });
+
+    // Savings Projection Chart
+    const ctx = document.getElementById('savingsProjectionChart');
+    if (ctx) {
+        const projectionMonths = {{ projection_months|tojson }};
+        const projectionBalances = {{ projection_balances|tojson }};
+
+        new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: projectionMonths.map(m => m === 0 ? 'Now' : `Month ${m}`),
+                datasets: [{
+                    label: 'Projected Savings Balance',
+                    data: projectionBalances,
+                    borderColor: 'rgb(25, 135, 84)',
+                    backgroundColor: 'rgba(25, 135, 84, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointHoverRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: true,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return 'Balance: $' + context.parsed.y.toFixed(2);
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            callback: function(value) {
+                                return '$' + value.toFixed(0);
+                            }
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+    }
 </script>
 {% endblock %}

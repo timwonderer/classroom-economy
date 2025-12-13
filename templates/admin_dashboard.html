@@ -1,430 +1,425 @@
 {% extends "layout_admin.html" %}
-{% set page_title = "Dashboard" %}
-{% block title %}Teacher Dashboard{% endblock %}
-{% block page_icon %}dashboard{% endblock %}
+
+{% block page_title %}Dashboard{% endblock %}
+
 {% block content %}
+<div class="row g-4 mb-4">
+    <!-- Key Metrics -->
+    <div class="col-12 col-md-6 col-lg-3">
+        <div class="card h-100 border-0 shadow-sm bg-primary text-white">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="icon-circle bg-white bg-opacity-25 text-white me-3">
+                        <span class="material-symbols-outlined">group</span>
+                    </div>
+                    <span class="text-white text-opacity-75 fw-medium">Students</span>
+                </div>
+                <h2 class="display-6 fw-bold mb-0">{{ total_students }}</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-lg-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="icon-circle bg-success bg-opacity-10 text-success me-3">
+                        <span class="material-symbols-outlined">savings</span>
+                    </div>
+                    <span class="text-secondary fw-medium">Total Economy</span>
+                </div>
+                <h2 class="display-6 fw-bold mb-0 text-dark">${{ "{:,.0f}".format(total_balance) }}</h2>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-lg-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="icon-circle bg-warning bg-opacity-10 text-warning me-3">
+                        <span class="material-symbols-outlined">pending_actions</span>
+                    </div>
+                    <span class="text-secondary fw-medium">Pending Tasks</span>
+                </div>
+                <h2 class="display-6 fw-bold mb-0 text-dark">{{ total_pending_actions }}</h2>
+                {% if total_pending_actions > 0 %}
+                <div class="mt-2 small text-secondary">
+                    {% if pending_redemptions_count > 0 %}
+                    <span class="badge bg-warning text-dark me-1">{{ pending_redemptions_count }} orders</span>
+                    {% endif %}
+                    {% if pending_insurance_claims_count > 0 %}
+                    <span class="badge bg-danger text-white me-1">{{ pending_insurance_claims_count }} claims</span>
+                    {% endif %}
+                    {% if pending_hall_passes_count > 0 %}
+                    <span class="badge bg-info text-white me-1">{{ pending_hall_passes_count }} passes</span>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-lg-3">
+        <div class="card h-100 border-0 shadow-sm">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center mb-3">
+                    <div class="icon-circle bg-info bg-opacity-10 text-info me-3">
+                        <span class="material-symbols-outlined">calendar_clock</span>
+                    </div>
+                    <span class="text-secondary fw-medium">Next Payroll</span>
+                </div>
+                <h5 class="fw-bold mb-1 text-dark local-timestamp" data-format="MMM D" data-timestamp="{{ next_payroll_date.isoformat() }}">
+                    {{ next_payroll_date.strftime('%b %d') }}
+                </h5>
+                <div class="text-secondary small">Est: ${{ "{:,.0f}".format(total_payroll_estimate) }}</div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Quick Actions -->
-<div class="row mb-3">
-  <div class="col-12">
-    <div class="alert alert-info d-flex justify-content-between align-items-center">
-      <div>
-        <strong><span class="material-symbols-outlined" style="vertical-align: middle;">info</span> Auto Tap-Out:</strong>
-        Daily limits are automatically enforced when students check their dashboard or when you load this page.
-      </div>
-      <button class="btn btn-sm btn-primary" onclick="enforceDailyLimits()">
-        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px;">update</span> Enforce Now
-      </button>
+<div class="mb-4">
+    <h5 class="text-secondary fw-bold mb-3 small text-uppercase">Quick Actions</h5>
+    <div class="row g-3">
+        <div class="col-6 col-md-3">
+            <a href="{{ url_for('admin.attendance_log') }}" class="btn btn-white w-100 p-3 h-100 shadow-sm border-0 d-flex flex-column align-items-center gap-2">
+                <span class="material-symbols-outlined fs-3 text-primary">fact_check</span>
+                <span class="fw-medium">Attendance</span>
+            </a>
+        </div>
+        <div class="col-6 col-md-3">
+            <a href="{{ url_for('admin.payroll') }}" class="btn btn-white w-100 p-3 h-100 shadow-sm border-0 d-flex flex-column align-items-center gap-2">
+                <span class="material-symbols-outlined fs-3 text-success">payments</span>
+                <span class="fw-medium">Run Payroll</span>
+            </a>
+        </div>
+        <div class="col-6 col-md-3">
+            <a href="{{ url_for('admin.store_management') }}" class="btn btn-white w-100 p-3 h-100 shadow-sm border-0 d-flex flex-column align-items-center gap-2">
+                <span class="material-symbols-outlined fs-3 text-warning">storefront</span>
+                <span class="fw-medium">Store</span>
+            </a>
+        </div>
+        <div class="col-6 col-md-3">
+            <a href="{{ url_for('admin.students') }}" class="btn btn-white w-100 p-3 h-100 shadow-sm border-0 d-flex flex-column align-items-center gap-2">
+                <span class="material-symbols-outlined fs-3 text-info">group_add</span>
+                <span class="fw-medium">Manage Students</span>
+            </a>
+        </div>
+        <!-- Enforce Limits (Admin Only Action) -->
+        <div class="col-6 col-md-3">
+            <button id="enforceLimitsBtn" class="btn btn-white w-100 p-3 h-100 shadow-sm border-0 d-flex flex-column align-items-center gap-2">
+                <span class="material-symbols-outlined fs-3 text-danger">timer_off</span>
+                <span class="fw-medium">Enforce Limits</span>
+            </button>
+        </div>
+        <div class="col-6 col-md-3">
+            <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-white w-100 p-3 h-100 shadow-sm border-0 d-flex flex-column align-items-center gap-2">
+                <span class="material-symbols-outlined fs-3 text-success">shield</span>
+                <span class="fw-medium">Insurance</span>
+            </a>
+        </div>
+        <div class="col-6 col-md-3">
+            <a href="{{ url_for('admin.hall_pass') }}" class="btn btn-white w-100 p-3 h-100 shadow-sm border-0 d-flex flex-column align-items-center gap-2">
+                <span class="material-symbols-outlined fs-3 text-info">door_open</span>
+                <span class="fw-medium">Hall Passes</span>
+            </a>
+        </div>
     </div>
-  </div>
 </div>
 
-<!-- Quick Stats Row -->
-<div class="row mb-4">
-  <!-- Total Students Card -->
-  <div class="col-lg-3 col-md-6 mb-3">
-    <div class="card shadow-sm h-100">
-      <div class="card-body text-center">
-        <div class="mb-2">
-          <i class="bi bi-people-fill text-primary" style="font-size: 2rem;"></i>
-        </div>
-        <h3 class="mb-0">{{ total_students }}</h3>
-        <small class="text-muted">Total Students</small>
-        <div class="mt-2">
-          <a href="{{ url_for('admin.students') }}" class="btn btn-sm btn-outline-primary">View All</a>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Pending Actions Card -->
-  <div class="col-lg-3 col-md-6 mb-3">
-    <div class="card shadow-sm h-100">
-      <div class="card-body text-center">
-        <div class="mb-2">
-          <i class="bi bi-bell-fill text-warning" style="font-size: 2rem;"></i>
-        </div>
-        <h3 class="mb-0">{{ total_pending_actions }}</h3>
-        <small class="text-muted">Pending Actions</small>
-        <div class="mt-2">
-          {% if total_pending_actions > 0 %}
-            <span class="badge bg-warning text-dark">Action Required</span>
-          {% else %}
-            <span class="badge bg-success">All Clear</span>
-          {% endif %}
-        </div>
-        <div class="mt-2" style="font-size: 0.75rem;">
-          <div class="text-muted">
-            {% if pending_redemptions_count > 0 %}<span class="badge bg-secondary">{{ pending_redemptions_count }} Redemptions</span> {% endif %}
-            {% if pending_hall_passes_count > 0 %}<span class="badge bg-secondary">{{ pending_hall_passes_count }} Passes</span> {% endif %}
-            {% if pending_insurance_claims_count > 0 %}<span class="badge bg-secondary">{{ pending_insurance_claims_count }} Claims</span>{% endif %}
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Today's Activity Card -->
-  <div class="col-lg-3 col-md-6 mb-3">
-    <div class="card shadow-sm h-100">
-      <div class="card-body text-center">
-        <div class="mb-2">
-          <i class="bi bi-activity text-info" style="font-size: 2rem;"></i>
-        </div>
-        <h3 class="mb-0">{{ total_transactions_today }}</h3>
-        <small class="text-muted">Transactions Today</small>
-        <div class="mt-2">
-          <a href="{{ url_for('admin.transactions') }}" class="btn btn-sm btn-outline-info">View All</a>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Total Balance Card -->
-  <div class="col-lg-3 col-md-6 mb-3">
-    <div class="card shadow-sm h-100">
-      <div class="card-body text-center">
-        <div class="mb-2">
-          <i class="bi bi-currency-dollar text-success" style="font-size: 2rem;"></i>
-        </div>
-        <h3 class="mb-0">${{ "%.2f"|format(avg_balance) }}</h3>
-        <small class="text-muted">Avg Student Balance</small>
-        <div class="mt-2 text-muted" style="font-size: 0.85rem;">
-          Total: ${{ "%.2f"|format(total_balance) }}
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Second Row: Payroll & Redemptions -->
-<div class="row mb-4">
-  <!-- Payroll Summary Card -->
-  <div class="col-lg-6 mb-3">
-    <div class="card shadow h-100">
-      <div class="card-header bg-primary text-white">
-        <h5 class="mb-0"><i class="bi bi-cash-stack me-2"></i>Next Payroll</h5>
-      </div>
-      <div class="card-body">
-        <div class="row mb-3">
-          <div class="col-6">
-            <p class="text-muted mb-1">Scheduled Date</p>
-            <h5>
-              {% if next_payroll_date %}
-                <span class="local-timestamp" data-timestamp="{{ next_payroll_date.strftime('%Y-%m-%dT%H:%M:%SZ') }}"></span>
-              {% else %}
-                Not scheduled
-              {% endif %}
+<!-- Pending Actions Section -->
+{% if total_pending_actions > 0 %}
+<div class="mb-4">
+    <div class="card border-0 shadow-sm">
+        <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0">
+            <h5 class="fw-bold mb-0">
+                <span class="material-symbols-outlined align-middle me-2">notifications_active</span>
+                Pending Actions ({{ total_pending_actions }})
             </h5>
-          </div>
-          <div class="col-6">
-            <p class="text-muted mb-1">Estimated Payout</p>
-            <h5 class="text-success">${{ "%.2f"|format(total_payroll_estimate|default(0)) }}</h5>
-          </div>
         </div>
-        <div class="d-grid gap-2">
-          <button id="runPayrollBtn" class="btn btn-primary">
-            <i class="bi bi-play-circle me-1"></i>Run Payroll Now
-          </button>
-          <a href="{{ url_for('admin.payroll') }}" class="btn btn-outline-primary">
-            <i class="bi bi-gear me-1"></i>Manage Payroll Settings
-          </a>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- Pending Actions Card -->
-  <div class="col-lg-6 mb-3">
-    <div class="card shadow h-100">
-      <div class="card-header bg-warning">
-        <h5 class="mb-0"><i class="bi bi-bell me-2"></i>Pending Actions ({{ total_pending_actions }})</h5>
-      </div>
-      <div class="card-body">
-        {% if total_pending_actions > 0 %}
-          <!-- Nav Tabs for Pending Actions -->
-          <ul class="nav nav-pills nav-fill mb-3" id="pendingActionsTabs" role="tablist">
-            {% if pending_redemptions_count > 0 %}
-            <li class="nav-item" role="presentation">
-              <button class="nav-link active" id="redemptions-tab" data-bs-toggle="tab" data-bs-target="#redemptions" type="button" role="tab">
-                <i class="bi bi-gift me-1"></i>Redemptions <span class="badge bg-danger ms-1">{{ pending_redemptions_count }}</span>
-              </button>
-            </li>
-            {% endif %}
-            {% if pending_hall_passes_count > 0 %}
-            <li class="nav-item" role="presentation">
-              <button class="nav-link {% if pending_redemptions_count == 0 %}active{% endif %}" id="hall-passes-tab" data-bs-toggle="tab" data-bs-target="#hall-passes" type="button" role="tab">
-                <i class="bi bi-door-open me-1"></i>Hall Passes <span class="badge bg-danger ms-1">{{ pending_hall_passes_count }}</span>
-              </button>
-            </li>
-            {% endif %}
-            {% if pending_insurance_claims_count > 0 %}
-            <li class="nav-item" role="presentation">
-              <button class="nav-link {% if pending_redemptions_count == 0 and pending_hall_passes_count == 0 %}active{% endif %}" id="claims-tab" data-bs-toggle="tab" data-bs-target="#claims" type="button" role="tab">
-                <i class="bi bi-shield-check me-1"></i>Claims <span class="badge bg-danger ms-1">{{ pending_insurance_claims_count }}</span>
-              </button>
-            </li>
-            {% endif %}
-          </ul>
-
-          <div class="tab-content" id="pendingActionsTabContent">
-            <!-- Redemptions Tab -->
-            {% if pending_redemptions_count > 0 %}
-            <div class="tab-pane fade show active" id="redemptions" role="tabpanel">
-              <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
-                {% for req in recent_redemptions %}
-                <div class="list-group-item px-0 d-flex justify-content-between align-items-center">
-                  <div>
-                    <strong>{{ student_lookup.get(req.student_id).full_name if student_lookup.get(req.student_id) else 'Unknown' }}</strong>
-                    <br>
-                    <small class="text-muted">{{ req.store_item.name }}</small>
-                    {% if req.redemption_details %}
-                      <br><div class="small text-muted">{{ req.redemption_details | markdown }}</div>
-                    {% endif %}
-                  </div>
-                  <button class="btn btn-sm btn-success approve-redemption-btn" data-student-item-id="{{ req.id }}">
-                    <i class="bi bi-check-circle me-1"></i>Approve
-                  </button>
-                </div>
-                {% endfor %}
-              </div>
-              {% if pending_redemptions_count > 5 %}
-                <div class="mt-2 text-center">
-                  <small class="text-muted">Showing 5 of {{ pending_redemptions_count }} pending redemptions</small>
-                </div>
-              {% endif %}
-            </div>
-            {% endif %}
-
-            <!-- Hall Passes Tab -->
-            {% if pending_hall_passes_count > 0 %}
-            <div class="tab-pane fade {% if pending_redemptions_count == 0 %}show active{% endif %}" id="hall-passes" role="tabpanel">
-              <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
-                {% for pass in recent_hall_passes %}
-                <div class="list-group-item px-0 d-flex justify-content-between align-items-center">
-                  <div>
-                    <strong>{{ student_lookup.get(pass.student_id).full_name if student_lookup.get(pass.student_id) else 'Unknown' }}</strong>
-                    <br>
-                    <small class="text-muted"><i class="bi bi-signpost me-1"></i>{{ pass.reason }}</small>
-                    <br>
-                    <small class="text-muted">
-                      <span class="local-timestamp" data-timestamp="{{ pass.request_time.isoformat() }}Z"></span>
-                    </small>
-                  </div>
-                  <div>
-                    <a href="{{ url_for('admin.hall_pass') }}" class="btn btn-sm btn-primary">
-                      <i class="bi bi-box-arrow-up-right"></i> View
-                    </a>
-                  </div>
-                </div>
-                {% endfor %}
-              </div>
-              {% if pending_hall_passes_count > 5 %}
-                <div class="mt-2 text-center">
-                  <small class="text-muted">Showing 5 of {{ pending_hall_passes_count }} pending hall passes</small>
-                </div>
-              {% endif %}
-            </div>
-            {% endif %}
-
-            <!-- Insurance Claims Tab -->
-            {% if pending_insurance_claims_count > 0 %}
-            <div class="tab-pane fade {% if pending_redemptions_count == 0 and pending_hall_passes_count == 0 %}show active{% endif %}" id="claims" role="tabpanel">
-              <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
-                {% for claim in recent_insurance_claims %}
-                <div class="list-group-item px-0 d-flex justify-content-between align-items-center">
-                  <div>
-                    <strong>{{ student_lookup.get(claim.student_id).full_name if student_lookup.get(claim.student_id) else 'Unknown' }}</strong>
-                    <br>
-                    <small class="text-muted">{{ claim.description[:50] }}{% if claim.description|length > 50 %}...{% endif %}</small>
-                    {% if claim.claim_amount %}
-                      <br><small class="text-success">${{ "%.2f"|format(claim.claim_amount) }}</small>
-                    {% endif %}
-                    <br>
-                    <small class="text-muted">
-                      <span class="local-timestamp" data-timestamp="{{ claim.filed_date.isoformat() }}Z"></span>
-                    </small>
-                  </div>
-                  <div>
-                    <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-sm btn-primary">
-                      <i class="bi bi-box-arrow-up-right"></i> View
-                    </a>
-                  </div>
-                </div>
-                {% endfor %}
-              </div>
-              {% if pending_insurance_claims_count > 5 %}
-                <div class="mt-2 text-center">
-                  <small class="text-muted">Showing 5 of {{ pending_insurance_claims_count }} pending claims</small>
-                </div>
-              {% endif %}
-            </div>
-            {% endif %}
-          </div>
-        {% else %}
-          <div class="text-center text-muted py-4">
-            <i class="bi bi-check-circle" style="font-size: 2rem;"></i>
-            <p class="mb-0 mt-2">No pending actions</p>
-          </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Third Row: Recent Activity -->
-<div class="row mb-4">
-  <!-- Recent Transactions Card -->
-  <div class="col-lg-6 mb-3">
-    <div class="card shadow h-100">
-      <div class="card-header bg-info text-white">
-        <div class="d-flex justify-content-between align-items-center">
-          <h5 class="mb-0"><i class="bi bi-receipt me-2"></i>Recent Transactions</h5>
-          <a href="{{ url_for('admin.transactions') }}" class="btn btn-sm btn-light">View All</a>
-        </div>
-      </div>
-      <div class="card-body">
-        {% if recent_transactions %}
-          <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
-            {% for tx in recent_transactions %}
-            <div class="list-group-item px-0">
-              <div class="d-flex justify-content-between align-items-start">
-                <div class="flex-grow-1">
-                  <strong>{{ student_lookup.get(tx.student_id).full_name if student_lookup.get(tx.student_id) else "Unknown" }}</strong>
-                  <span class="badge bg-secondary ms-1">{{ tx.type }}</span>
-                  <br>
-                  <small class="text-muted">{{ tx.description }}</small>
-                  <br>
-                  <small class="text-muted">
-                    {% if tx.timestamp %}
-                      <span class="local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}Z"></span>
-                    {% else %}
-                      —
-                    {% endif %}
-                  </small>
-                </div>
-                <div class="text-end ms-2">
-                  <strong class="{% if tx.amount > 0 %}text-success{% else %}text-danger{% endif %}">
-                    {% if tx.amount is not none %}
-                      {% if tx.amount > 0 %}+{% endif %}${{ "%.2f"|format(tx.amount) }}
-                    {% else %}
-                      —
-                    {% endif %}
-                  </strong>
-                  <br>
-                  <form method="POST" action="{{ url_for('admin.void_transaction', transaction_id=tx.id) }}" class="d-inline">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <button type="submit" class="btn btn-sm btn-outline-danger mt-1" onclick="return confirm('Are you sure you want to void this transaction?')">
-                      <i class="bi bi-x-circle"></i> Void
+        <div class="card-body p-4">
+            <!-- Nav Pills for Pending Actions -->
+            <ul class="nav nav-pills nav-fill mb-3" id="pendingActionsTabs" role="tablist">
+                {% if pending_redemptions_count > 0 %}
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="redemptions-tab" data-bs-toggle="tab" data-bs-target="#redemptions" type="button" role="tab">
+                        <i class="bi bi-gift me-1"></i>Redemptions <span class="badge bg-danger ms-1">{{ pending_redemptions_count }}</span>
                     </button>
-                  </form>
-                </div>
-              </div>
-            </div>
-            {% endfor %}
-          </div>
-        {% else %}
-          <div class="text-center text-muted py-4">
-            <i class="bi bi-inbox" style="font-size: 2rem;"></i>
-            <p class="mb-0 mt-2">No recent transactions</p>
-          </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
+                </li>
+                {% endif %}
+                {% if pending_hall_passes_count > 0 %}
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link {% if pending_redemptions_count == 0 %}active{% endif %}" id="hall-passes-tab" data-bs-toggle="tab" data-bs-target="#hall-passes" type="button" role="tab">
+                        <i class="bi bi-door-open me-1"></i>Hall Passes <span class="badge bg-danger ms-1">{{ pending_hall_passes_count }}</span>
+                    </button>
+                </li>
+                {% endif %}
+                {% if pending_insurance_claims_count > 0 %}
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link {% if pending_redemptions_count == 0 and pending_hall_passes_count == 0 %}active{% endif %}" id="claims-tab" data-bs-toggle="tab" data-bs-target="#claims" type="button" role="tab">
+                        <i class="bi bi-shield-check me-1"></i>Claims <span class="badge bg-danger ms-1">{{ pending_insurance_claims_count }}</span>
+                    </button>
+                </li>
+                {% endif %}
+            </ul>
 
-  <!-- Recent Attendance Card -->
-  <div class="col-lg-6 mb-3">
-    <div class="card shadow h-100">
-      <div class="card-header bg-success text-white">
-        <div class="d-flex justify-content-between align-items-center">
-          <h5 class="mb-0"><i class="bi bi-calendar-check me-2"></i>Recent Attendance</h5>
-          <a href="{{ url_for('admin.attendance_log') }}" class="btn btn-sm btn-light">View All</a>
-        </div>
-      </div>
-      <div class="card-body">
-        {% if recent_logs %}
-          <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
-            {% for log in recent_logs %}
-            <div class="list-group-item px-0">
-              <div class="d-flex justify-content-between align-items-start">
-                <div>
-                  <strong>{{ log.student_name }}</strong>
-                  <span class="badge bg-primary ms-1">{{ log.period|upper }}</span>
-                  {% if log.status %}
-                    <span class="badge bg-{% if log.status == 'present' %}success{% elif log.status == 'tardy' %}warning{% else %}secondary{% endif %} ms-1">
-                      {{ log.status|capitalize }}
-                    </span>
-                  {% endif %}
-                  <br>
-                  {% if log.reason %}
-                    <small class="text-muted">{{ log.reason }}</small>
-                    <br>
-                  {% endif %}
-                  <small class="text-muted">
-                    {% if log.timestamp %}
-                      <span class="local-timestamp" data-timestamp="{{ log.timestamp.isoformat() }}Z"></span>
-                    {% else %}
-                      —
+            <div class="tab-content" id="pendingActionsTabContent">
+                <!-- Redemptions Tab -->
+                {% if pending_redemptions_count > 0 %}
+                <div class="tab-pane fade show active" id="redemptions" role="tabpanel">
+                    <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
+                        {% for req in recent_redemptions %}
+                        <div class="list-group-item px-0 d-flex justify-content-between align-items-center border-0 py-3">
+                            <div>
+                                <strong>{{ student_lookup.get(req.student_id).full_name if student_lookup.get(req.student_id) else 'Unknown' }}</strong>
+                                <br>
+                                <small class="text-muted">{{ req.store_item.name }}</small>
+                                {% if req.redemption_details %}
+                                    <br><div class="small text-muted">{{ req.redemption_details | markdown }}</div>
+                                {% endif %}
+                            </div>
+                            <button class="btn btn-sm btn-success approve-redemption-btn" data-student-item-id="{{ req.id }}">
+                                <i class="bi bi-check-circle me-1"></i>Approve
+                            </button>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% if pending_redemptions_count > 5 %}
+                        <div class="mt-2 text-center">
+                            <small class="text-muted">Showing 5 of {{ pending_redemptions_count }} pending redemptions</small>
+                        </div>
                     {% endif %}
-                  </small>
                 </div>
-              </div>
+                {% endif %}
+
+                <!-- Hall Passes Tab -->
+                {% if pending_hall_passes_count > 0 %}
+                <div class="tab-pane fade {% if pending_redemptions_count == 0 %}show active{% endif %}" id="hall-passes" role="tabpanel">
+                    <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
+                        {% for pass in recent_hall_passes %}
+                        <div class="list-group-item px-0 d-flex justify-content-between align-items-center border-0 py-3">
+                            <div>
+                                <strong>{{ student_lookup.get(pass.student_id).full_name if student_lookup.get(pass.student_id) else 'Unknown' }}</strong>
+                                <br>
+                                <small class="text-muted"><i class="bi bi-signpost me-1"></i>{{ pass.reason }}</small>
+                                <br>
+                                <small class="text-muted">
+                                    <span class="local-timestamp" data-timestamp="{{ pass.request_time.isoformat() }}Z"></span>
+                                </small>
+                            </div>
+                            <div>
+                                <a href="{{ url_for('admin.hall_pass') }}" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-box-arrow-up-right"></i> View
+                                </a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% if pending_hall_passes_count > 5 %}
+                        <div class="mt-2 text-center">
+                            <small class="text-muted">Showing 5 of {{ pending_hall_passes_count }} pending hall passes</small>
+                        </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+
+                <!-- Insurance Claims Tab -->
+                {% if pending_insurance_claims_count > 0 %}
+                <div class="tab-pane fade {% if pending_redemptions_count == 0 and pending_hall_passes_count == 0 %}show active{% endif %}" id="claims" role="tabpanel">
+                    <div class="list-group list-group-flush" style="max-height: 300px; overflow-y: auto;">
+                        {% for claim in recent_insurance_claims %}
+                        <div class="list-group-item px-0 d-flex justify-content-between align-items-center border-0 py-3">
+                            <div>
+                                <strong>{{ student_lookup.get(claim.student_id).full_name if student_lookup.get(claim.student_id) else 'Unknown' }}</strong>
+                                <br>
+                                <small class="text-muted">{{ claim.description[:50] }}{% if claim.description|length > 50 %}...{% endif %}</small>
+                                {% if claim.claim_amount %}
+                                    <br><small class="text-success">${{ "%.2f"|format(claim.claim_amount) }}</small>
+                                {% endif %}
+                                <br>
+                                <small class="text-muted">
+                                    <span class="local-timestamp" data-timestamp="{{ claim.filed_date.isoformat() }}Z"></span>
+                                </small>
+                            </div>
+                            <div>
+                                <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-sm btn-primary">
+                                    <i class="bi bi-box-arrow-up-right"></i> View
+                                </a>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% if pending_insurance_claims_count > 5 %}
+                        <div class="mt-2 text-center">
+                            <small class="text-muted">Showing 5 of {{ pending_insurance_claims_count }} pending claims</small>
+                        </div>
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
-            {% endfor %}
-          </div>
-        {% else %}
-          <div class="text-center text-muted py-4">
-            <i class="bi bi-clock-history" style="font-size: 2rem;"></i>
-            <p class="mb-0 mt-2">No recent attendance records</p>
-          </div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-</div>
-
-<!-- Quick Links Section -->
-<div class="row mb-4">
-  <div class="col-12">
-    <div class="card shadow-sm">
-      <div class="card-header bg-secondary text-white">
-        <h5 class="mb-0"><i class="bi bi-link-45deg me-2"></i>Quick Links</h5>
-      </div>
-      <div class="card-body">
-        <div class="row text-center">
-          <div class="col-md-3 col-6 mb-2">
-            <a href="{{ url_for('admin.students') }}" class="btn btn-outline-primary w-100">
-              <i class="bi bi-people d-block mb-1" style="font-size: 1.5rem;"></i>
-              Students
-            </a>
-          </div>
-          <div class="col-md-3 col-6 mb-2">
-            <a href="{{ url_for('admin.store_management') }}" class="btn btn-outline-primary w-100">
-              <i class="bi bi-shop d-block mb-1" style="font-size: 1.5rem;"></i>
-              Store
-            </a>
-          </div>
-          <div class="col-md-3 col-6 mb-2">
-            <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-outline-primary w-100">
-              <i class="bi bi-shield-check d-block mb-1" style="font-size: 1.5rem;"></i>
-              Insurance
-            </a>
-          </div>
-          <div class="col-md-3 col-6 mb-2">
-            <a href="{{ url_for('admin.hall_pass') }}" class="btn btn-outline-primary w-100">
-              <i class="bi bi-door-open d-block mb-1" style="font-size: 1.5rem;"></i>
-              Hall Passes
-            </a>
-          </div>
         </div>
-      </div>
     </div>
-  </div>
 </div>
+{% endif %}
 
+<div class="row g-4">
+    <!-- Recent Activity -->
+    <div class="col-12 col-xl-8">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0 d-flex justify-content-between align-items-center">
+                <h5 class="fw-bold mb-0">Recent Activity</h5>
+                <a href="{{ url_for('admin.transactions') }}" class="btn btn-sm btn-link text-decoration-none">View All</a>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_transactions %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-clean mb-0 align-middle">
+                            <thead class="text-secondary small">
+                                <tr>
+                                    <th class="ps-4 fw-medium border-0">Student</th>
+                                    <th class="fw-medium border-0">Action</th>
+                                    <th class="fw-medium border-0 text-end pe-4">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for tx in recent_transactions %}
+                                <tr>
+                                    <td class="ps-4">
+                                        <div class="d-flex align-items-center">
+                                            {% set student = student_lookup.get(tx.student_id) %}
+                                            <div class="avatar-circle bg-light text-primary me-2 small fw-bold">
+                                                {{ student.first_name[0] if student else '?' }}
+                                            </div>
+                                            <div>
+                                                <div class="fw-medium text-dark">
+                                                    {{ student.full_name if student else 'Unknown' }}
+                                                </div>
+                                                <div class="small text-secondary local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}">
+                                                    {{ tx.timestamp.strftime('%H:%M') }}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="d-block text-dark">{{ tx.description }}</span>
+                                    </td>
+                                    <td class="text-end pe-4">
+                                        <span class="fw-bold {{ 'text-success' if tx.amount > 0 else 'text-danger' }}">
+                                            {{ "+" if tx.amount > 0 else "" }}{{ "{:.2f}".format(tx.amount) }}
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-5">
+                        <img src="{{ url_for('static', filename='images/empty-state.svg') }}" alt="No activity" width="120" class="opacity-50 mb-3">
+                        <p class="text-secondary">No recent activity found.</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Live Attendance -->
+    <div class="col-12 col-xl-4">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0">
+                <h5 class="fw-bold mb-0">Attendance Log</h5>
+            </div>
+            <div class="card-body p-0">
+                {% if recent_logs %}
+                    <div class="list-group list-group-flush">
+                        {% for log in recent_logs %}
+                        <div class="list-group-item px-4 py-3 border-0 d-flex align-items-center">
+                            <div class="me-3">
+                                {% if log.status == 'active' %}
+                                <span class="badge bg-success-subtle text-success rounded-pill p-2"><span class="material-symbols-outlined fs-6 align-bottom">login</span></span>
+                                {% else %}
+                                <span class="badge bg-secondary-subtle text-secondary rounded-pill p-2"><span class="material-symbols-outlined fs-6 align-bottom">logout</span></span>
+                                {% endif %}
+                            </div>
+                            <div class="flex-grow-1">
+                                <div class="d-flex justify-content-between">
+                                    <span class="fw-medium text-dark">{{ log.student_name }}</span>
+                                    <span class="small text-secondary local-timestamp" data-timestamp="{{ log.timestamp.isoformat() }}">
+                                        {{ log.timestamp.strftime('%H:%M') }}
+                                    </span>
+                                </div>
+                                <div class="small text-secondary">
+                                    {{ log.status|title }} • Period {{ log.period }}
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <div class="text-center py-5 text-muted">
+                        <small>No attendance logs today.</small>
+                    </div>
+                {% endif %}
+                <div class="p-3 text-center border-top">
+                    <a href="{{ url_for('admin.attendance_log') }}" class="btn btn-sm btn-light w-100">View All</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
 <script>
-document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById('enforceLimitsBtn').addEventListener('click', async function() {
+        const btn = this;
+        const originalContent = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Checking...';
+
+        try {
+            const response = await fetch("{{ url_for('admin.enforce_daily_limits') }}", {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': "{{ csrf_token() }}"
+                }
+            });
+            const data = await response.json();
+
+            // Create toast container if not exists (layout should have it but just in case)
+            let toastContainer = document.getElementById('flashToastContainer');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'flashToastContainer';
+                toastContainer.className = 'position-fixed bottom-0 end-0 p-3';
+                toastContainer.style.zIndex = '1050';
+                document.body.appendChild(toastContainer);
+            }
+
+            const toastEl = document.createElement('div');
+            toastEl.className = 'toast align-items-center text-bg-' + (data.status === 'success' ? 'success' : 'danger') + ' border-0 mb-2';
+            toastEl.setAttribute('role', 'alert');
+            toastEl.setAttribute('aria-live', 'assertive');
+            toastEl.setAttribute('aria-atomic', 'true');
+            toastEl.innerHTML = `
+                <div class="d-flex">
+                    <div class="toast-body">${data.message}</div>
+                    <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                </div>`;
+            toastContainer.appendChild(toastEl);
+            new bootstrap.Toast(toastEl).show();
+
+        } catch (error) {
+            console.error('Error:', error);
+            alert('Failed to enforce limits.');
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalContent;
+        }
+    });
+
     // Handle redemption approval
     document.querySelectorAll(".approve-redemption-btn").forEach(button => {
         button.addEventListener("click", () => {
@@ -453,43 +448,27 @@ document.addEventListener("DOMContentLoaded", () => {
                     setTimeout(() => {
                         listItem.remove();
 
-                        // Update counts in header
-                        const countBadge = document.querySelector('.card-header.bg-warning h5');
-                        if (countBadge) {
-                            const currentCount = parseInt(countBadge.textContent.match(/\d+/)[0]);
-                            const newCount = currentCount - 1;
-                            countBadge.innerHTML = `<i class="bi bi-bell me-2"></i>Pending Actions (${newCount})`;
+                        // Update the pending actions stat card
+                        const pendingCard = document.querySelector('.icon-circle.bg-warning');
+                        if (pendingCard) {
+                            const statElement = pendingCard.closest('.card-body').querySelector('h2');
+                            if (statElement) {
+                                const currentCount = parseInt(statElement.textContent);
+                                statElement.textContent = currentCount - 1;
+                            }
                         }
 
                         // Update the redemptions tab badge
                         const redemptionsTabBadge = document.querySelector('#redemptions-tab .badge');
                         if (redemptionsTabBadge) {
                             const currentRedCount = parseInt(redemptionsTabBadge.textContent);
-                            const newRedCount = currentRedCount - 1;
-                            redemptionsTabBadge.textContent = newRedCount;
-                        }
+                            redemptionsTabBadge.textContent = currentRedCount - 1;
 
-                        // Update the pending actions stat card
-                        const pendingStatCards = document.querySelectorAll('.bi-bell-fill');
-                        pendingStatCards.forEach(icon => {
-                            const card = icon.closest('.card-body');
-                            if (card) {
-                                const h3 = card.querySelector('h3');
-                                if (h3) {
-                                    const currentStatCount = parseInt(h3.textContent);
-                                    const newStatCount = currentStatCount - 1;
-                                    h3.textContent = newStatCount;
-
-                                    if (newStatCount === 0) {
-                                        const badge = card.querySelector('.badge');
-                                        if (badge) {
-                                            badge.className = 'badge bg-success';
-                                            badge.textContent = 'All Clear';
-                                        }
-                                    }
-                                }
+                            if (currentRedCount - 1 === 0) {
+                                // Hide tab if no more redemptions
+                                document.querySelector('#redemptions-tab').closest('li').remove();
                             }
-                        });
+                        }
 
                         // Show empty state if no more items in this tab
                         const redemptionsTab = document.querySelector('#redemptions .list-group');
@@ -501,6 +480,27 @@ document.addEventListener("DOMContentLoaded", () => {
                                 </div>
                             `;
                         }
+
+                        // Show success toast
+                        const toastContainer = document.getElementById('flashToastContainer') || (() => {
+                            const container = document.createElement('div');
+                            container.id = 'flashToastContainer';
+                            container.className = 'position-fixed bottom-0 end-0 p-3';
+                            container.style.zIndex = '1050';
+                            document.body.appendChild(container);
+                            return container;
+                        })();
+
+                        const toastEl = document.createElement('div');
+                        toastEl.className = 'toast align-items-center text-bg-success border-0';
+                        toastEl.setAttribute('role', 'alert');
+                        toastEl.innerHTML = `
+                            <div class="d-flex">
+                                <div class="toast-body">Redemption approved successfully!</div>
+                                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+                            </div>`;
+                        toastContainer.appendChild(toastEl);
+                        new bootstrap.Toast(toastEl).show();
                     }, 300);
                 } else {
                     alert('Approval failed: ' + data.message);
@@ -516,69 +516,5 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         });
     });
-
-    // Handle "Run Payroll Now" button
-    const runPayrollBtn = document.getElementById('runPayrollBtn');
-    if (runPayrollBtn) {
-        runPayrollBtn.addEventListener('click', () => {
-            if (confirm('Are you sure you want to run payroll now?')) {
-                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.action = '{{ url_for("admin.run_payroll") }}';
-
-                const csrfInput = document.createElement('input');
-                csrfInput.type = 'hidden';
-                csrfInput.name = 'csrf_token';
-                csrfInput.value = csrfToken;
-                form.appendChild(csrfInput);
-
-                document.body.appendChild(form);
-                form.submit();
-            }
-        });
-    }
-
-    // Timestamp conversion handled by timezone-utils.js
-});
-
-function enforceDailyLimits() {
-  const btn = event.target.closest('button');
-  const originalText = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Checking...';
-
-  fetch('/admin/enforce-daily-limits', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-    }
-  })
-  .then(response => response.json())
-  .then(data => {
-    if (data.status === 'success') {
-      let message = data.message;
-      if (data.tapped_out && data.tapped_out.length > 0) {
-        message += '\n\nAuto-tapped out:\n' + data.tapped_out.join('\n');
-      }
-      if (data.errors && data.errors.length > 0) {
-        message += '\n\nErrors:\n' + data.errors.join('\n');
-      }
-      alert(message);
-    } else {
-      alert('Error: ' + (data.message || 'Failed to enforce limits'));
-    }
-  })
-  .catch(error => {
-    console.error('Error:', error);
-    alert('Network error occurred while enforcing limits.');
-  })
-  .finally(() => {
-    btn.disabled = false;
-    btn.innerHTML = originalText;
-  });
-}
 </script>
-
 {% endblock %}
