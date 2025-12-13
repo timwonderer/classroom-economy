@@ -2636,9 +2636,8 @@ def hard_delete_store_item(item_id):
     from app.models import StudentItem
     purchase_count = (
         StudentItem.query
-        .join(Student, StudentItem.student_id == Student.id)
-        .filter(Student.id.in_(_student_scope_subquery()))
-        .filter_by(store_item_id=item_id)
+        .filter(StudentItem.student_id.in_(_student_scope_subquery()))
+        .filter(StudentItem.store_item_id == item_id)
         .count()
     )
 
