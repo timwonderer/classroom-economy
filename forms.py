@@ -29,6 +29,7 @@ class StoreItemForm(FlaskForm):
     auto_delist_date = DateField('Auto-Delist Date (optional)', format='%Y-%m-%d', validators=[Optional()])
     auto_expiry_days = IntegerField('Item Expiry in Days (optional, for delayed-use items)', validators=[Optional()])
     is_active = BooleanField('Item is Active', default=True)
+    is_long_term_goal = BooleanField('Long-Term Goal Item (exclude from CWI balance checks)', default=False)
     blocks = SelectMultipleField('Visible to Periods/Blocks (leave empty for all)', choices=[], validators=[Optional()])
 
     # Bundle settings

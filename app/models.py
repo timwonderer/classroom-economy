@@ -547,6 +547,7 @@ class StoreItem(db.Model):
     auto_delist_date = db.Column(db.DateTime, nullable=True)
     auto_expiry_days = db.Column(db.Integer, nullable=True) # days student has to use the item
     is_active = db.Column(db.Boolean, default=True, nullable=False)
+    is_long_term_goal = db.Column(db.Boolean, default=False, nullable=False) # if true, exclude from CWI balance checks
 
     # Bundle settings
     is_bundle = db.Column(db.Boolean, default=False, nullable=False)

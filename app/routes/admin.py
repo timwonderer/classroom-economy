@@ -2547,6 +2547,7 @@ def store_management():
             auto_delist_date=form.auto_delist_date.data,
             auto_expiry_days=form.auto_expiry_days.data,
             is_active=form.is_active.data,
+            is_long_term_goal=form.is_long_term_goal.data,
             # Bundle settings
             is_bundle=form.is_bundle.data,
             bundle_quantity=form.bundle_quantity.data if form.is_bundle.data else None,
