@@ -1,7 +1,7 @@
 """Add is_long_term_goal column to store_items
 
 Revision ID: a7b8c9d0e1f2
-Revises: beb004b
+Revises: 5c52eef86029
 Create Date: 2025-12-13 12:00:00.000000
 
 """
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision = 'a7b8c9d0e1f2'
-down_revision = 'beb004b'
+down_revision = '5c52eef86029'
 branch_labels = None
 depends_on = None
 
