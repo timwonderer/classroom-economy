@@ -1,7 +1,7 @@
 """Add teacher_id to payroll_rewards and payroll_fines tables
 
-Revision ID: a1b2c3d4e5f6
-Revises: z2a3b4c5d6e7
+Revision ID: 5c52eef86029
+Revises: b484581f2fc9, z2a3b4c5d6e7
 Create Date: 2025-12-13 16:52:00.000000
 
 """
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'a1b2c3d4e5f6'
-down_revision = 'z2a3b4c5d6e7'
+revision = '5c52eef86029'
+down_revision = ('b484581f2fc9', 'z2a3b4c5d6e7')
 branch_labels = None
 depends_on = None
 
