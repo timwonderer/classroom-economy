@@ -3697,14 +3697,11 @@ def economy_health():
             is_enabled=True
         ).first()
 
-    insurance_policies_query = InsurancePolicy.query.options(
-        selectinload(InsurancePolicy.visible_blocks)
-    ).filter_by(teacher_id=admin_id, is_active=True)
+    insurance_policies_query = InsurancePolicy.query.filter_by(teacher_id=admin_id, is_active=True)
     if selected_block:
-        selected_block_upper = selected_block.upper()
         insurance_policies = [
             policy for policy in insurance_policies_query.all()
-            if not policy.blocks_list or selected_block_upper in {b.upper() for b in policy.blocks_list}
+            if not policy.blocks_list or selected_block.upper() in [b.upper() for b in policy.blocks_list]
         ]
     else:
         insurance_policies = insurance_policies_query.all()

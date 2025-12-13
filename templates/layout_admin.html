@@ -507,10 +507,12 @@
                         <path d="M2 4 L6 8 L10 4" stroke="currentColor" fill="none" stroke-width="2"/>
                     </svg>
                 </button>
-                <div class="collapse {% if current_page in ['payroll'] %}show{% endif %}" id="payrollGroup">
+                <div class="collapse {% if current_page in ['payroll', 'economy_health'] %}show{% endif %}" id="payrollGroup">
                     <div class="d-grid gap-1 mt-1 ms-3">
                         <a href="{{ url_for('admin.payroll') }}"
                            class="btn btn-sm text-start {% if current_page == 'payroll' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">payments</span> Process Payroll</a>
+                        <a href="{{ url_for('admin.economy_health') }}"
+                           class="btn btn-sm text-start {% if current_page == 'economy_health' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}"><span class="material-symbols-outlined">monitor_heart</span> Economy Health</a>
                         <a href="#"
                            class="btn btn-sm text-start btn-outline-secondary disabled"><span class="material-symbols-outlined">work</span> Jobs (Soon)</a>
                     </div>
