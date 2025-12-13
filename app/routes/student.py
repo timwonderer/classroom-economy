@@ -1974,13 +1974,62 @@ def _calculate_rent_deadlines(settings, reference_date=None):
             due_day = min(first_due.day, last_day_of_month)
             due_date = datetime(target_year, target_month, due_day)
         else:
-            # For non-monthly frequencies, fall back to current logic
-            # TODO: Implement weekly, daily, and custom frequencies properly
-            current_year = reference_date.year
-            current_month = reference_date.month
-            last_day_of_month = monthrange(current_year, current_month)[1]
-            due_day = min(settings.due_day_of_month, last_day_of_month)
-            due_date = datetime(current_year, current_month, due_day)
+            # Calculate due date based on frequency
+            freq_delta = None
+            if settings.frequency_type == 'daily':
+                freq_delta = timedelta(days=1)
+            elif settings.frequency_type == 'weekly':
+                freq_delta = timedelta(weeks=1)
+            elif settings.frequency_type == 'custom':
+                if settings.custom_frequency_unit == 'days':
+                    freq_delta = timedelta(days=settings.custom_frequency_value)
+                elif settings.custom_frequency_unit == 'weeks':
+                    freq_delta = timedelta(weeks=settings.custom_frequency_value)
+                elif settings.custom_frequency_unit == 'months':
+                    # Custom monthly logic (Every X months)
+                    # Calculate how many months have passed since first due date
+                    months_diff = (reference_date.year - first_due.year) * 12 + (reference_date.month - first_due.month)
+
+                    # Calculate the number of full periods passed
+                    # We use integer division to find the start of the current cycle
+                    periods = months_diff // settings.custom_frequency_value
+                    total_months_add = periods * settings.custom_frequency_value
+
+                    target_year = first_due.year + (first_due.month + total_months_add - 1) // 12
+                    target_month = (first_due.month + total_months_add - 1) % 12 + 1
+
+                    last_day_of_month = monthrange(target_year, target_month)[1]
+                    due_day = min(first_due.day, last_day_of_month)
+                    due_date = datetime(target_year, target_month, due_day)
+                    # Preserve timezone if first_due had one
+                    if first_due.tzinfo:
+                        due_date = due_date.replace(tzinfo=first_due.tzinfo)
+
+            if freq_delta:
+                # Calculate periods passed for fixed time deltas
+                time_diff = reference_date - first_due
+                periods = time_diff // freq_delta
+                due_date = first_due + (periods * freq_delta)
+
+            if not freq_delta and settings.frequency_type != 'custom':
+                # Fallback for unknown frequency types
+                use_fallback = True
+            elif settings.frequency_type == 'custom' and settings.custom_frequency_unit not in ['days', 'weeks', 'months']:
+                 # Fallback for unknown custom units
+                use_fallback = True
+            else:
+                use_fallback = False
+
+            if use_fallback:
+                current_year = reference_date.year
+                current_month = reference_date.month
+                last_day_of_month = monthrange(current_year, current_month)[1]
+                due_day = min(settings.due_day_of_month, last_day_of_month)
+                due_date = datetime(current_year, current_month, due_day)
+                # Preserve timezone if first_due had one
+                if first_due.tzinfo:
+                    due_date = due_date.replace(tzinfo=first_due.tzinfo)
+
     else:
         # No first_rent_due_date set, use traditional monthly logic
         current_year = reference_date.year
