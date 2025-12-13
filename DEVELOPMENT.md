@@ -96,11 +96,16 @@ All deprecated Python and SQLAlchemy patterns have been updated, ensuring full c
 
 ## Future Roadmap (Post-1.0)
 
-### Version 1.1 - Analytics & Insights
-- Dashboard visualizations for student progress
-- Class economy health metrics
-- Teacher analytics for payroll and store performance
-- Enhanced reporting and export capabilities
+### Version 1.1 - Analytics & Insights ✅ **RELEASED 2024-12-13**
+- ✅ Dashboard visualizations for student progress (weekly stats card with attendance, earnings, spending)
+- ✅ Savings projection graph with interactive 12-month forecast
+- ✅ Class economy health metrics (enhanced warnings with specific recommendations)
+- ✅ Long-term goal items feature for flexible store pricing
+- ✅ Complete UI redesign with modern, accessible interface
+- 🔄 Teacher analytics for payroll and store performance (partial - economy health page provides CWI analysis)
+- ⏳ Enhanced reporting and export capabilities (planned for future release)
+
+**See:** [RELEASE_NOTES_v1.1.0.md](RELEASE_NOTES_v1.1.0.md) for complete details
 
 ### Version 1.2 - Mobile Experience
 - Progressive Web App (PWA) capabilities
@@ -492,14 +497,19 @@ Version 1.0 has been successfully released with the following criteria met:
 
 ---
 
-**Next Immediate Actions (v1.1):**
+**Next Immediate Actions (v1.2):**
 
-1. Complete multi-teacher hardening (remove `students.teacher_id` dependency)
-2. Add shared-student test coverage for payroll and attendance
-3. Document operational runbooks for future schema changes
-4. Begin work on "Admin Experience Polish"
+1. Begin mobile experience improvements (PWA capabilities)
+2. Complete multi-teacher hardening (remove `students.teacher_id` dependency)
+3. Add shared-student test coverage for payroll and attendance
+4. Explore offline support for attendance tracking
+5. Continue "Admin Experience Polish" initiatives
+
+**Recent Releases:**
+- **v1.1.0** (2024-12-13) - Analytics dashboard, savings projections, UI redesign
+- **v1.0.0** (2024-11-29) - Initial stable release
 
 ---
 
-**Last Updated:** 2025-12-11
+**Last Updated:** 2024-12-13
 **Maintained by:** Project maintainers and contributors

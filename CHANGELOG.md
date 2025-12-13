@@ -5,6 +5,43 @@ All notable changes to the Classroom Token Hub project will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows semantic versioning principles.
 
+## [1.1.0] - 2024-12-13
+
+### Added
+- **Student Analytics Dashboard** - Weekly statistics showing days tapped in, minutes attended, earnings, and spending
+- **Savings Projection Graph** - Interactive 12-month visualization of savings growth on bank page using Chart.js
+- **Long-Term Goal Items** - Option to mark store items that should be exempt from CWI balance checks (for expensive class rewards)
+- **Enhanced Economy Health Warnings** - Specific recommended ranges and actionable guidance for all economy settings
+- **Weekly Analytics Calculations** - Backend logic to calculate unique days tapped, total minutes, and transaction summaries
+- **Savings Projection Algorithm** - Respects simple/compound interest and compounding frequency settings
+
+### Changed
+- **Complete UI Redesign** - Modern interface with softer colors, improved navigation, and better layout
+- **Color Scheme** - Reduced brightness and contrast for better eye comfort (primary: #1a4d47, secondary: #d4a574)
+- **Student Dashboard Layout** - Added sticky left sidebar navigation for quick access to all features
+- **Economy Health Messages** - Improved warnings with absolute values and specific dollar recommendations
+- **Tab Navigation** - Fixed CSS scoping to restore visibility across 15+ multi-tab pages
+
+### Fixed
+- **Critical: Restored Pending Actions section** on admin dashboard (store approvals, hall passes, insurance claims were missing)
+- **Critical: Fixed invisible tabs** on Student Management, Store Management, and other multi-tab pages
+- **Fixed missing navigation links** on login screens (account setup, recovery, privacy/terms)
+- **Fixed CSS scoping issue** where `.nav-link` styles were applied globally instead of scoped to sidebar
+- **Added missing Bootstrap Icons CSS** imports to admin and student layouts
+- **Added missing utility classes** (`.btn-white`, `.icon-circle`) for redesigned UI
+
+### Technical
+- Database migration `a7b8c9d0e1f2` adds `is_long_term_goal` column to `store_items` table
+- Updated `economy_balance.py` to skip long-term goal items in CWI validation
+- Added Chart.js (v4.4.0) for savings projection visualization
+- Improved query performance for weekly analytics calculations
+- Updated forms.py with `is_long_term_goal` BooleanField
+
+## [1.0.0] - 2024-11-29
+
+### Milestone
+First stable release of Classroom Token Hub! All critical security issues resolved and production-ready.
+
 ## [Unreleased] - Version 0.9.0 (Pre-1.0 Candidate)
 
 ### Project Status
