@@ -30,15 +30,19 @@
     <!-- Sidebar -->
     <aside class="sidebar d-flex flex-column">
         <div class="sidebar-brand">
-            <img src="{{ static_url('images/admin-logo.svg') }}" alt="Admin Portal Logo" height="42">
-            <div>
-                <div>Token Hub</div>
-                <small>Admin Portal</small>
+            
+                <div>
+                <div> <span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200">local_atm</span>Classroom</div>
+                <div><span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200">store</span>Token</div>
+                <div> <span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200"> finance_mode</span>Hub</div>
+                <hr>
+                 {% if current_admin %}
+                <div class="text-white-55  mb-0" style="font-size: 20px;">{{ current_admin.get_display_name() }}</div>
+                {% endif %}
+                <div class="mt-0" style="font-size: 12px; font-weight:300">Teacher</div>
             </div>
         </div>
-        {% if current_admin %}
-        <div class="text-white-50 small mb-3">Signed in as {{ current_admin.get_display_name() }}</div>
-        {% endif %}
+       
 
         <nav class="nav flex-column">
             <a href="{{ url_for('admin.dashboard') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'dashboard' %}active{% endif %}">
@@ -57,11 +61,11 @@
             </a>
 
             <div class="nav-group-label">Economy</div>
-            <a href="{{ url_for('admin.payroll') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page in ['payroll', 'economy_health'] %}active{% endif %}">
+            <a href="{{ url_for('admin.payroll') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'payroll' %}active{% endif %}">
                 <span class="material-symbols-outlined">payments</span> Payroll
             </a>
             <a href="{{ url_for('admin.economy_health') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'economy_health' %}active{% endif %}">
-                <span class="material-symbols-outlined">monitor_heart</span> Economy Health (CWI)
+                <span class="material-symbols-outlined">monitor_heart</span> CWI Balancing
             </a>
             <a href="{{ url_for('admin.store_management') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'store' %}active{% endif %}">
                 <span class="material-symbols-outlined">storefront</span> Store
