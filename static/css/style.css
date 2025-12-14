@@ -134,6 +134,22 @@ a:hover {
     color: var(--primary);
 }
 
+/* Ensure readable header text on dark backgrounds */
+.card-header.bg-primary,
+.card-header.bg-success,
+.card-header.bg-info,
+.card-header.bg-danger,
+.card-header.bg-dark,
+.card-header.bg-secondary,
+.card-header.bg-warning {
+    color: #ffffff;
+}
+
+.card-header.bg-light,
+.card-header.bg-white {
+    color: var(--primary);
+}
+
 .card-body {
     padding: 1.25rem;
 }
