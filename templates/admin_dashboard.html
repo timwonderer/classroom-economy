@@ -3,6 +3,17 @@
 {% block page_title %}Teacher Dashboard{% endblock %}
 
 {% block content %}
+{% if show_recovery_setup %}
+<div class="alert alert-warning border-0 shadow-sm mb-4 d-flex align-items-center" role="alert">
+    <span class="material-symbols-outlined me-3 fs-3">warning</span>
+    <div>
+        <h5 class="alert-heading fw-bold mb-1">Action Required: Setup Account Recovery</h5>
+        <p class="mb-0">Your account recovery details are missing or outdated. Please update your Date of Birth Sum to enable student-assisted recovery.</p>
+    </div>
+    <a href="{{ url_for('admin.setup_recovery') }}" class="btn btn-warning text-dark fw-medium ms-auto text-nowrap">Setup Now</a>
+</div>
+{% endif %}
+
 <div class="row g-4 mb-4">
     <!-- Key Metrics -->
     <div class="col-12 col-md-6 col-lg-3">
