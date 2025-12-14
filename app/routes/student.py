@@ -2655,6 +2655,10 @@ def demo_login(session_id):
         session['is_demo'] = True
         session['demo_session_id'] = session_id
         session['view_as_student'] = True
+        # Ensure class context is set for dashboard queries
+        demo_seat = student.roster_seats[0] if student.roster_seats else None
+        if demo_seat:
+            session['current_join_code'] = demo_seat.join_code
 
         current_app.logger.info(
             f"Admin {demo_session.admin_id} accessed demo session {session_id} "
