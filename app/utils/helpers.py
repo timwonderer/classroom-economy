@@ -11,7 +11,7 @@ from datetime import timezone
 from urllib.parse import urlparse, urljoin
 import hashlib
 import hmac
-from flask import request, current_app, session, render_template
+from flask import request, current_app, session, render_template, url_for
 from jinja2 import TemplateNotFound
 from markupsafe import Markup
 import markdown
@@ -24,6 +24,13 @@ def render_template_with_fallback(template_name, **context):
     """
     Renders a template, falling back to a mobile version if the user is on a mobile device.
     """
+    # Ensure static_url helper is always available even if Jinja globals/context processors are missing
+    static_helper = current_app.jinja_env.globals.get('static_url')
+    if not static_helper:
+        current_app.logger.warning("static_url missing from Jinja globals; using url_for fallback")
+        static_helper = lambda filename: url_for('static', filename=filename)  # noqa: E731
+    context.setdefault('static_url', static_helper)
+
     if session.get('force_desktop'):
         return render_template(template_name, **context)
 
