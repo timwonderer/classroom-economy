@@ -353,6 +353,11 @@ def create_app():
     # might not run (e.g., background tasks rendering templates).
     app.jinja_env.globals['static_url'] = build_static_url
 
+    @app.context_processor
+    def inject_static_url():
+        """Ensure static_url helper is always available in templates."""
+        return {'static_url': build_static_url}
+
     # -------------------- CONTEXT PROCESSORS --------------------
     @app.context_processor
     def inject_global_settings():
