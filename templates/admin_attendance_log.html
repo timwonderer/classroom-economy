@@ -259,7 +259,7 @@ function initTapToggles() {
                     toast.style.zIndex = '9999';
                     toast.innerHTML = `
                         <span class="material-symbols-outlined me-2" style="vertical-align: middle;">check_circle</span>
-                        ${isEnabled ? `Tap in/out enabled for Block ${block}` : `Tap in/out disabled for Block ${block}`}
+                        ${isEnabled ? `Tap in/out enabled for Block ${escapeHtml(block)}` : `Tap in/out disabled for Block ${escapeHtml(block)}`}
                         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                     `;
                     document.body.appendChild(toast);
