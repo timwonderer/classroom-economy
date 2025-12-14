@@ -17,53 +17,67 @@
 
     {% block extra_head %}{% endblock %}
 </head>
-<body class="d-flex flex-column min-vh-100">
-
-    <!-- Top Navbar -->
-    <nav class="navbar-custom fixed-top">
-        <div class="container d-flex justify-content-between align-items-center">
-            <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('student.dashboard') }}">
-                <img src="{{ static_url('images/student-logo.svg') }}" height="28" alt="Logo">
-                <span>Token Hub</span>
+<body class="student-shell">
+    <aside class="student-sidebar">
+        <a class="student-brand" href="{{ url_for('student.dashboard') }}">
+            
+            <div>
+                <div> <span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200">local_atm</span>Classroom</div>
+                <div><span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200">store</span>Token</div>
+                <div> <span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200"> finance_mode</span>Hub</div></div>
             </a>
-
-            <div class="d-flex align-items-center gap-3">
-                {% if student %}
-                <a href="{{ url_for('student.add_class') }}" class="btn btn-sm btn-light text-secondary rounded-pill px-3 d-none d-sm-inline-block me-2">
-                    <span class="material-symbols-outlined fs-6 align-bottom me-1">add</span> Add Class
-                </a>
-                <span class="d-none d-sm-block text-secondary small fw-medium">
-                    {{ student.first_name }} {{ student.last_name }}
-                </span>
-                {% endif %}
-
-                {% if student or session.get('student_id') %}
-                <a href="{{ url_for('student.help_support') }}" class="btn btn-sm btn-light text-secondary rounded-circle me-2" title="Help & Support">
-                    <span class="material-symbols-outlined fs-5 align-middle">help</span>
-                </a>
-                <a href="{{ url_for('student.logout') }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
-                    Sign Out
-                </a>
-                {% endif %}
-            </div>
+        <hr>
+         {% if student %}
+        <div class="student-identity" style="font-size: 16px;"> Hello,
+            {{ student.first_name }} {{ student.last_name }} !
         </div>
-    </nav>
-    <div style="height: 60px;"></div>
+        {% endif %}
+        <nav class="student-nav">
+            <a href="{{ url_for('student.dashboard') }}" class="{% if request.endpoint == 'student.dashboard' %}active{% endif %}">
+                <span class="material-symbols-outlined">home</span> Home
+            </a>
+            <a href="{{ url_for('student.transfer') }}" class="{% if request.endpoint == 'student.transfer' %}active{% endif %}">
+                <span class="material-symbols-outlined">account_balance_wallet</span> Accounts
+            </a>
+            <a href="{{ url_for('student.shop') }}" class="{% if request.endpoint == 'student.shop' %}active{% endif %}">
+                <span class="material-symbols-outlined">storefront</span> Store
+            </a>
+            <a href="{{ url_for('student.payroll') }}" class="{% if request.endpoint == 'student.payroll' %}active{% endif %}">
+                <span class="material-symbols-outlined">credit_score</span> Work &amp; Pay
+            </a>
+            <a href="{{ url_for('student.rent') }}" class="{% if request.endpoint == 'student.rent' %}active{% endif %}">
+                <span class="material-symbols-outlined">receipt_long</span> Bills
+            </a>
+            <a href="{{ url_for('student.student_insurance') }}" class="{% if request.endpoint in ['student.student_insurance','student_insurance_market','student_insurance_marketplace'] %}active{% endif %}">
+                <span class="material-symbols-outlined">shield</span> Insurance
+            </a>
+            <a href="{{ url_for('student.help_support') }}" class="{% if request.endpoint == 'student.help_support' %}active{% endif %}">
+                <span class="material-symbols-outlined">help</span> Help
+            </a>
+            <a href="{{ url_for('student.add_class') }}" class="{% if request.endpoint == 'student.add_class' %}active{% endif %}">
+                <span class="material-symbols-outlined">group_add</span> Add Class
+            </a>
+            <a href="{{ url_for('student.logout') }}">
+                <span class="material-symbols-outlined">logout</span> Sign Out
+            </a>
+        </nav>
+    </aside>
 
-    <!-- Main Content -->
-    <main class="container py-4 flex-grow-1" style="max-width: 800px;">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show shadow-sm border-0 mb-4" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
-                {% endfor %}
-            {% endif %}
-        {% endwith %}
+    <main class="student-main">
+        <div class="student-content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show shadow-sm border-0 mb-4" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
 
-        {% block content %}{% endblock %}
+            {% block content %}{% endblock %}
+        </div>
     </main>
 
     <!-- Scripts -->

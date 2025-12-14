@@ -10,11 +10,13 @@ from app.models import (
     RentPayment,
     RentWaiver,
     Student,
+    StudentBlock,
     StudentInsurance,
     StudentItem,
     StudentTeacher,
     TapEvent,
     Transaction,
+    TeacherBlock,
 )
 
 
@@ -56,9 +58,10 @@ def cleanup_demo_student_data(demo_session: DemoStudent, delete_session_record: 
 
     # Remove student associations
     StudentTeacher.query.filter_by(student_id=student_id).delete()
+    StudentBlock.query.filter_by(student_id=student_id).delete()
+    TeacherBlock.query.filter_by(student_id=student_id).delete()
 
     if delete_session_record:
         db.session.delete(demo_session)
 
     Student.query.filter_by(id=student_id).delete()
-

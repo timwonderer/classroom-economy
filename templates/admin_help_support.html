@@ -1,11 +1,12 @@
 {% extends "layout_admin.html" %}
-
+{% set page_title = "Help and Support" %}
+{% set current_page = "help" %}
+{% block title %}Help and Support{% endblock %}
 {% set help_content = help_content|default({'how_to': [], 'troubleshooting': []}, true) %}
 
 {% block content %}
 <div class="container-fluid">
-    <h2 class="mb-4"><i class="bi bi-life-preserver me-2"></i>Help & Support</h2>
-
+    
     <!-- Tabs -->
     <ul class="nav nav-tabs mb-4" id="helpTabs" role="tablist">
         <li class="nav-item" role="presentation">

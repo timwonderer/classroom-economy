@@ -20,10 +20,12 @@ from app.extensions import db, limiter
 from app.models import (
     Student, StoreItem, StudentItem, Transaction, TapEvent,
     HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
-    StudentTeacher, TeacherBlock
+    StudentTeacher, TeacherBlock, StudentBlock
 )
 from app.auth import login_required, admin_required, get_logged_in_student, get_current_admin, SESSION_TIMEOUT_MINUTES
 from app.routes.student import get_current_teacher_id
+from app.utils.join_code import generate_join_code
+from app.utils.name_utils import hash_last_name_parts
 
 # Import external modules
 from attendance import (
@@ -1992,6 +1994,7 @@ def create_demo_student():
         insurance_plan = data.get('insurance_plan', 'none')
         period = data.get('period', 'A')
         rent_enabled = bool(data.get('rent_enabled', True))
+        join_code = generate_join_code()
 
         # Generate a unique session ID for this demo
         demo_session_id = secrets.token_urlsafe(32)
@@ -2017,11 +2020,37 @@ def create_demo_student():
         db.session.add(demo_student)
         db.session.flush()  # Get the student ID
 
+        # Link demo student to admin for scoped queries
+        demo_link = StudentTeacher(student_id=demo_student.id, admin_id=admin_id)
+        db.session.add(demo_link)
+
+        # Create a claimed seat for this demo student so student routes have class context
+        demo_seat = TeacherBlock(
+            teacher_id=admin_id,
+            block=period,
+            class_label=f"Demo {period}",
+            first_name='Demo',
+            last_initial='S',
+            last_name_hash_by_part=hash_last_name_parts('S', demo_student.salt),
+            dob_sum=0,
+            salt=demo_student.salt,
+            first_half_hash=secrets.token_hex(32),
+            join_code=join_code,
+            student_id=demo_student.id,
+            is_claimed=True,
+            claimed_at=datetime.now(timezone.utc)
+        )
+        db.session.add(demo_seat)
+
+        # Ensure tap settings exist for the demo block
+        db.session.add(StudentBlock(student_id=demo_student.id, period=period, tap_enabled=True))
+
         # Create initial balance transactions
         if checking_balance > 0:
             checking_tx = Transaction(
                 student_id=demo_student.id,
                 teacher_id=admin_id,
+                join_code=join_code,
                 amount=checking_balance,
                 account_type='checking',
                 type='admin_adjustment',
@@ -2033,6 +2062,7 @@ def create_demo_student():
             savings_tx = Transaction(
                 student_id=demo_student.id,
                 teacher_id=admin_id,
+                join_code=join_code,
                 amount=savings_balance,
                 account_type='savings',
                 type='admin_adjustment',

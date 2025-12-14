@@ -1019,6 +1019,13 @@ def dashboard():
     week_start = now_utc - timedelta(days=now_utc.weekday())  # Monday of current week
     month_start = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
+    def _as_utc(ts):
+        if not ts:
+            return None
+        if ts.tzinfo is None:
+            return ts.replace(tzinfo=timezone.utc)
+        return ts.astimezone(timezone.utc)
+
     # Days tapped in this week
     tap_events_this_week = TapEvent.query.filter(
         TapEvent.student_id == student.id,
@@ -1028,7 +1035,7 @@ def dashboard():
     ).all()
 
     # Calculate unique days and total minutes
-    unique_days_tapped = len(set(event.timestamp.date() for event in tap_events_this_week if event.status == 'active'))
+    unique_days_tapped = len(set(_as_utc(event.timestamp).date() for event in tap_events_this_week if event.status == 'active'))
 
     # Calculate total minutes this week
     total_minutes_this_week = 0
@@ -1036,10 +1043,11 @@ def dashboard():
 
     for event in sorted(tap_events_this_week, key=lambda e: e.timestamp):
         period = event.period
+        event_ts = _as_utc(event.timestamp)
         if event.status == 'active':
-            active_sessions[period] = event.timestamp
+            active_sessions[period] = event_ts
         elif event.status == 'inactive' and period in active_sessions:
-            duration = (event.timestamp - active_sessions[period]).total_seconds() / 60
+            duration = (event_ts - active_sessions[period]).total_seconds() / 60
             total_minutes_this_week += duration
             del active_sessions[period]
 
@@ -2621,7 +2629,24 @@ def demo_login(session_id):
 
         # Check if session has expired
         now = datetime.now(timezone.utc)
-        if now > demo_session.expires_at:
+        expires_at = demo_session.expires_at
+        if not isinstance(expires_at, datetime):
+            # If missing or invalid, refresh expiry to 10 minutes from now to avoid false immediate expiry
+            expires_at = now + timedelta(minutes=10)
+            demo_session.expires_at = expires_at
+            db.session.commit()
+        elif expires_at.tzinfo is None:
+            # Treat naive timestamps as being in the admin's timezone (or fallback to UTC), then normalize to UTC
+            tz_name = session.get('timezone') or 'UTC'
+            try:
+                local_tz = pytz.timezone(tz_name)
+                expires_at = local_tz.localize(expires_at).astimezone(timezone.utc)
+            except Exception:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            demo_session.expires_at = expires_at
+            db.session.commit()
+
+        if expires_at and now > expires_at:
             # Mark as inactive and cleanup
             cleanup_demo_student_data(demo_session)
             db.session.commit()
@@ -2655,6 +2680,10 @@ def demo_login(session_id):
         session['is_demo'] = True
         session['demo_session_id'] = session_id
         session['view_as_student'] = True
+        # Ensure class context is set for dashboard queries
+        demo_seat = student.roster_seats[0] if student.roster_seats else None
+        if demo_seat:
+            session['current_join_code'] = demo_seat.join_code
 
         current_app.logger.info(
             f"Admin {demo_session.admin_id} accessed demo session {session_id} "

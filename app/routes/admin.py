@@ -475,6 +475,7 @@ def dashboard():
 
     # Get all students for calculations
     students = _scoped_students().order_by(Student.first_name).all()
+    students = [s for s in students if not getattr(s, "demo_sessions", None)]
     student_lookup = {s.id: s for s in students}
 
     # Quick Stats
@@ -536,9 +537,11 @@ def dashboard():
     )
 
     # Recent transactions (limited to 5 for display)
+    demo_ids_subq = db.session.query(DemoStudent.student_id).subquery()
     recent_transactions = (
         Transaction.query
         .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter(~Transaction.student_id.in_(demo_ids_subq))
         .filter_by(is_void=False)
         .order_by(Transaction.timestamp.desc())
         .limit(5)
@@ -547,6 +550,7 @@ def dashboard():
     total_transactions_today = (
         Transaction.query
         .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter(~Transaction.student_id.in_(demo_ids_subq))
         .filter(
             Transaction.timestamp >= datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0),
             Transaction.is_void == False,
@@ -3673,7 +3677,10 @@ def economy_health():
     admin_id = session.get("admin_id")
 
     blocks = _get_teacher_blocks()
-    selected_block = request.args.get('block') or (blocks[0] if blocks else None)
+    scope = request.args.get('scope', 'all')
+    selected_block = None
+    if scope == 'class':
+        selected_block = request.args.get('block') or (blocks[0] if blocks else None)
 
     payroll_query = PayrollSettings.query.filter_by(teacher_id=admin_id, is_active=True)
     payroll_settings = None
@@ -3793,6 +3800,7 @@ def economy_health():
         current_page='economy_health',
         blocks=blocks,
         selected_block=selected_block,
+        scope=scope,
         payroll_settings=payroll_settings,
         has_payroll_settings=has_payroll_settings,
         cwi_calc=cwi_calc,
