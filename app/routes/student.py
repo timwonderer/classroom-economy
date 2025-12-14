@@ -1019,6 +1019,13 @@ def dashboard():
     week_start = now_utc - timedelta(days=now_utc.weekday())  # Monday of current week
     month_start = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
+    def _as_utc(ts):
+        if not ts:
+            return None
+        if ts.tzinfo is None:
+            return ts.replace(tzinfo=timezone.utc)
+        return ts.astimezone(timezone.utc)
+
     # Days tapped in this week
     tap_events_this_week = TapEvent.query.filter(
         TapEvent.student_id == student.id,
@@ -1028,7 +1035,7 @@ def dashboard():
     ).all()
 
     # Calculate unique days and total minutes
-    unique_days_tapped = len(set(event.timestamp.date() for event in tap_events_this_week if event.status == 'active'))
+    unique_days_tapped = len(set(_as_utc(event.timestamp).date() for event in tap_events_this_week if event.status == 'active'))
 
     # Calculate total minutes this week
     total_minutes_this_week = 0
@@ -1036,10 +1043,11 @@ def dashboard():
 
     for event in sorted(tap_events_this_week, key=lambda e: e.timestamp):
         period = event.period
+        event_ts = _as_utc(event.timestamp)
         if event.status == 'active':
-            active_sessions[period] = event.timestamp
+            active_sessions[period] = event_ts
         elif event.status == 'inactive' and period in active_sessions:
-            duration = (event.timestamp - active_sessions[period]).total_seconds() / 60
+            duration = (event_ts - active_sessions[period]).total_seconds() / 60
             total_minutes_this_week += duration
             del active_sessions[period]
 

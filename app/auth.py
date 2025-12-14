@@ -299,10 +299,11 @@ def get_admin_student_query(include_unassigned=True):
     Args:
         include_unassigned (bool): [DEPRECATED] No longer used. Kept for backward compatibility.
     """
-    from app.models import Student, StudentTeacher  # Imported lazily to avoid circular import
+    from app.models import Student, StudentTeacher, DemoStudent  # Imported lazily to avoid circular import
 
     if session.get("is_system_admin"):
-        return Student.query
+        demo_ids_subq = DemoStudent.query.with_entities(DemoStudent.student_id).subquery()
+        return Student.query.filter(~Student.id.in_(demo_ids_subq))
 
     admin = get_current_admin()
     if not admin:
@@ -319,7 +320,11 @@ def get_admin_student_query(include_unassigned=True):
     # SECURITY FIX: Only use StudentTeacher associations, NOT the deprecated teacher_id column
     # The old code used: sa.or_(Student.teacher_id == admin.id, Student.id.in_(shared_student_ids))
     # This caused multi-tenancy leaks when teacher_id had stale data
-    return Student.query.filter(Student.id.in_(shared_student_ids))
+    demo_ids_subq = DemoStudent.query.with_entities(DemoStudent.student_id).subquery()
+    return Student.query.filter(
+        Student.id.in_(shared_student_ids),
+        ~Student.id.in_(demo_ids_subq)
+    )
 
 
 def get_student_for_admin(student_id, include_unassigned=True):

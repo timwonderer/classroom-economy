@@ -474,6 +474,7 @@ def dashboard():
 
     # Get all students for calculations
     students = _scoped_students().order_by(Student.first_name).all()
+    students = [s for s in students if not getattr(s, "demo_sessions", None)]
     student_lookup = {s.id: s for s in students}
 
     # Quick Stats
@@ -535,9 +536,11 @@ def dashboard():
     )
 
     # Recent transactions (limited to 5 for display)
+    demo_ids_subq = db.session.query(DemoStudent.student_id).subquery()
     recent_transactions = (
         Transaction.query
         .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter(~Transaction.student_id.in_(demo_ids_subq))
         .filter_by(is_void=False)
         .order_by(Transaction.timestamp.desc())
         .limit(5)
@@ -546,6 +549,7 @@ def dashboard():
     total_transactions_today = (
         Transaction.query
         .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter(~Transaction.student_id.in_(demo_ids_subq))
         .filter(
             Transaction.timestamp >= datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0),
             Transaction.is_void == False,
