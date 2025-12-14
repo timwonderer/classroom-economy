@@ -2621,7 +2621,15 @@ def demo_login(session_id):
 
         # Check if session has expired
         now = datetime.now(timezone.utc)
-        if now > demo_session.expires_at:
+        expires_at = demo_session.expires_at
+        if isinstance(expires_at, datetime):
+            if expires_at.tzinfo is None:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+        else:
+            # Fallback: treat non-datetime or missing values as expired
+            expires_at = datetime.min.replace(tzinfo=timezone.utc)
+
+        if now > expires_at:
             # Mark as inactive and cleanup
             cleanup_demo_student_data(demo_session)
             db.session.commit()
