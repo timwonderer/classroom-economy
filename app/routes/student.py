@@ -32,7 +32,16 @@ from forms import (
 )
 
 # Import utility functions
-from app.utils.helpers import is_safe_url, generate_anonymous_code, render_template_with_fallback as render_template
+from app.utils.helpers import generate_anonymous_code, render_template_with_fallback as render_template
+
+def _is_safe_url(target):
+    """Return True if the URL is a relative path without scheme or netloc (prevents open redirects)."""
+    from urllib.parse import urlparse
+    # Remove backslashes (which browsers may tolerate as slashes)
+    target = target.replace('\\', '')
+    parsed = urlparse(target)
+    # Check that both netloc and scheme are empty (relative URL/path only)
+    return not parsed.netloc and not parsed.scheme
 from app.utils.constants import THEME_PROMPTS
 from app.utils.turnstile import verify_turnstile_token
 from app.utils.demo_sessions import cleanup_demo_student_data
