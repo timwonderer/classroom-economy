@@ -25,7 +25,7 @@
 <ul class="nav nav-tabs mb-4" id="studentTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" id="roster-tab" data-bs-toggle="tab" data-bs-target="#roster" type="button" role="tab">
-      <span class="material-symbols-outlined me-1" style="vertical-align: middle;">groups</span>Student Roster
+      <span class="material-symbols-outlined me-1" style="vertical-align: middle;">groups</span>Class Roster
     </button>
   </li>
   <li class="nav-item" role="presentation">
@@ -35,7 +35,7 @@
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" id="individual-upload-tab" data-bs-toggle="tab" data-bs-target="#individual-upload" type="button" role="tab">
-      <span class="material-symbols-outlined me-1" style="vertical-align: middle;">person_add</span>Add Individual
+      <span class="material-symbols-outlined me-1" style="vertical-align: middle;">person_add</span>Individual Upload
     </button>
   </li>
 </ul>
@@ -45,7 +45,7 @@
   <div class="tab-pane fade show active" id="roster" role="tabpanel">
     <div class="card shadow">
           <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-          <h5 class="mb-0"><span class="material-symbols-outlined me-2" style="vertical-align: middle;">groups</span>Student Roster by Class</h5>
+          <h5 class="mb-0" style="font-size:20pt "><span class="material-symbols-outlined me-2" style="vertical-align: middle; font-size:36px">groups</span>Class Roster</h5>
           <div>
             <a href="{{ url_for('admin.export_students') }}" class="btn btn-light btn-sm me-2">
               <span class="material-symbols-outlined me-1" style="vertical-align: middle;">download</span> Export All
@@ -96,7 +96,7 @@
             <div class="card border-success mb-3">
               <div class="card-header bg-success bg-opacity-10">
                 <div class="d-flex justify-content-between align-items-center">
-                  <h6 class="mb-0 text-success">
+                  <h6 class="mb-0 text-success" style="font-size:18pt">
                     <span class="material-symbols-outlined me-2" style="vertical-align: middle;">key</span>
                     Join Code for {{ class_label(block) }}
                   </h6>
@@ -164,9 +164,9 @@
             {% if block != "Unassigned" and total_unclaimed > 0 %}
             <div class="card border-warning mb-3">
               <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
-                <h6 class="mb-0 text-dark">
+                <h6 class="mb-0 text-dark" style="font-size:18pt">
                   <span class="material-symbols-outlined me-2" style="vertical-align: middle;">pending</span>
-                  Unclaimed Seats ({{ total_unclaimed }})
+                  Pending Students ({{ total_unclaimed }})
                 </h6>
                 {% if unclaimed_seats|length > 0 or unclaimed_students|length > 0 %}
                 <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteAllPendingInBlock('{{ block }}', {{ unclaimed_seats|length }}, {{ unclaimed_students|length }})">
@@ -247,9 +247,9 @@
             {% if claimed_students %}
               <div class="card border-success mb-3">
                 <div class="card-header bg-success bg-opacity-10">
-                  <h6 class="mb-0 text-success">
+                  <h6 class="mb-0 text-success" style="font-size:18pt">
                     <span class="material-symbols-outlined me-2" style="vertical-align: middle;">check_circle</span>
-                    Claimed Students ({{ claimed_students|length }})
+                    Active Students ({{ claimed_students|length }})
                   </h6>
                 </div>
                 <div class="card-body">
@@ -319,7 +319,7 @@
                       <td>${{ "%.2f"|format(student.savings_balance) }}</td>
                       <td class="text-success">${{ "%.2f"|format(student.total_earnings) }}</td>
                       <td>
-                        <span class="badge bg-primary">{{ student.hall_passes }}</span>
+                        <span class="badge bg-primary text-white">{{ student.hall_passes }}</span>
                       </td>
                       <td>
                         {% if student.has_completed_setup %}
