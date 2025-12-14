@@ -255,13 +255,28 @@ function initTapToggles() {
             .then(data => {
                 if (data.status === 'ok') {
                     const toast = document.createElement('div');
-                    toast.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+                    toast.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3 d-flex align-items-center';
                     toast.style.zIndex = '9999';
-                    toast.innerHTML = `
-                        <span class="material-symbols-outlined me-2" style="vertical-align: middle;">check_circle</span>
-                        ${isEnabled ? `Tap in/out enabled for Block ${escapeHtml(block)}` : `Tap in/out disabled for Block ${escapeHtml(block)}`}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-                    `;
+
+                    const icon = document.createElement('span');
+                    icon.className = 'material-symbols-outlined me-2';
+                    icon.style.verticalAlign = 'middle';
+                    icon.textContent = 'check_circle';
+
+                    const messageText = document.createElement('span');
+                    messageText.textContent = isEnabled
+                        ? `Tap in/out enabled for Block ${block}`
+                        : `Tap in/out disabled for Block ${block}`;
+
+                    const closeBtn = document.createElement('button');
+                    closeBtn.type = 'button';
+                    closeBtn.className = 'btn-close';
+                    closeBtn.setAttribute('data-bs-dismiss', 'alert');
+
+                    toast.appendChild(icon);
+                    toast.appendChild(messageText);
+                    toast.appendChild(closeBtn);
+
                     document.body.appendChild(toast);
                     setTimeout(() => toast.remove(), 3000);
                 } else {

@@ -43,9 +43,9 @@
 <div class="tab-content" id="studentTabContent">
   <!-- ROSTER TAB -->
   <div class="tab-pane fade show active" id="roster" role="tabpanel">
-    <div class="card shadow">
-          <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-          <h5 class="mb-0" style="font-size:20pt "><span class="material-symbols-outlined me-2" style="vertical-align: middle; font-size:36px">groups</span>Class Roster</h5>
+      <div class="card shadow">
+            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+            <h5 class="mb-0 fs-3"><span class="material-symbols-outlined me-2 align-middle fs-1">groups</span>Class Roster</h5>
           <div>
             <a href="{{ url_for('admin.export_students') }}" class="btn btn-light btn-sm me-2">
               <span class="material-symbols-outlined me-1" style="vertical-align: middle;">download</span> Export All
@@ -94,12 +94,12 @@
             <!-- Join Code Section -->
             {% if block != "Unassigned" and join_codes_by_block.get(block|upper) %}
             <div class="card border-success mb-3">
-              <div class="card-header bg-success bg-opacity-10">
-                <div class="d-flex justify-content-between align-items-center">
-                  <h6 class="mb-0 text-success" style="font-size:18pt">
-                    <span class="material-symbols-outlined me-2" style="vertical-align: middle;">key</span>
-                    Join Code for {{ class_label(block) }}
-                  </h6>
+                <div class="card-header bg-success bg-opacity-10">
+                  <div class="d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 text-success fs-4">
+                      <span class="material-symbols-outlined me-2 align-middle">key</span>
+                      Join Code for {{ class_label(block) }}
+                    </h6>
                   {% set block_students_list = students_by_block[block] if block in students_by_block else [] %}
                   {% set unclaimed_students_in_block = block_students_list|rejectattr('username_hash')|list|length %}
                   {% set unclaimed_seats_in_block = unclaimed_seats_by_block.get(block|upper, 0) %}
@@ -122,12 +122,12 @@
                     <div class="d-flex align-items-center gap-2">
                       <div class="input-group">
                         <label for="join-code-{{ block }}" class="visually-hidden">Join code for {{ class_label(block) }}</label>
-                        <input type="text"
-                               class="form-control form-control-lg font-monospace text-center fw-bold"
-                               id="join-code-{{ block }}"
-                               value="{{ join_codes_by_block[block|upper] }}"
-                               readonly
-                               style="font-size: 1.5rem; letter-spacing: 0.2em; background-color: #fff;">
+                          <input type="text"
+                                 class="form-control form-control-lg font-monospace text-center fw-bold fs-3"
+                                 id="join-code-{{ block }}"
+                                 value="{{ join_codes_by_block[block|upper] }}"
+                                 readonly
+                                 style="letter-spacing: 0.2em; background-color: #fff;">
                         <button class="btn btn-outline-success btn-lg join-code-copy-btn"
                                 type="button"
                                 data-block="{{ block }}"
@@ -139,7 +139,7 @@
                   </div>
                   <div class="col-md-4">
                     <div class="alert alert-info mb-0 small">
-                      <span class="material-symbols-outlined me-1" style="vertical-align: middle; font-size: 18px;">info</span>
+                        <span class="material-symbols-outlined me-1 align-middle fs-6">info</span>
                       <strong>Student Instructions:</strong>
                       <ol class="mb-0 mt-1 ps-3">
                         <li>Go to student sign-in page</li>
@@ -163,17 +163,17 @@
             {% set total_unclaimed = unclaimed_seats|length + unclaimed_students|length %}
             {% if block != "Unassigned" and total_unclaimed > 0 %}
             <div class="card border-warning mb-3">
-              <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
-                <h6 class="mb-0 text-dark" style="font-size:18pt">
-                  <span class="material-symbols-outlined me-2" style="vertical-align: middle;">pending</span>
-                  Pending Students ({{ total_unclaimed }})
-                </h6>
-                {% if unclaimed_seats|length > 0 or unclaimed_students|length > 0 %}
-                <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteAllPendingInBlock('{{ block }}', {{ unclaimed_seats|length }}, {{ unclaimed_students|length }})">
-                  <span class="material-symbols-outlined me-1" style="vertical-align: middle; font-size: 16px;">delete_sweep</span>
-                  Delete All Unclaimed
-                </button>
-                {% endif %}
+                <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
+                  <h6 class="mb-0 text-dark fs-4">
+                    <span class="material-symbols-outlined me-2 align-middle">pending</span>
+                    Pending Students ({{ total_unclaimed }})
+                  </h6>
+                  {% if unclaimed_seats|length > 0 or unclaimed_students|length > 0 %}
+                  <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteAllPendingInBlock('{{ block }}', {{ unclaimed_seats|length }}, {{ unclaimed_students|length }})">
+                    <span class="material-symbols-outlined me-1 align-middle fs-6">delete_sweep</span>
+                    Delete All Unclaimed
+                  </button>
+                  {% endif %}
               </div>
               <div class="card-body">
                 <p class="text-muted mb-3">These students are in your roster but haven't set up their username yet. Share the join code above with them.</p>
@@ -201,7 +201,7 @@
                         </td>
                         <td>
                           <button type="button" class="btn btn-sm btn-outline-danger" onclick="deletePendingStudent({{ seat.id }}, '{{ seat.first_name }} {{ seat.last_initial }}.')">
-                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">delete</span>
+                            <span class="material-symbols-outlined align-middle fs-6">delete</span>
                           </button>
                         </td>
                       </tr>
@@ -221,14 +221,14 @@
                         </td>
                         <td>
                           <a href="{{ url_for('admin.student_detail', student_id=student.id) }}" class="btn btn-sm btn-outline-primary">
-                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">visibility</span>
+                            <span class="material-symbols-outlined align-middle fs-6">visibility</span>
                           </a>
                           <button type="button" class="btn btn-sm btn-outline-danger"
                                   data-bs-toggle="modal"
                                   data-bs-target="#deleteStudentModal"
                                   data-student-id="{{ student.id }}"
                                   data-student-name="{{ student.full_name }}">
-                            <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 16px;">delete</span>
+                            <span class="material-symbols-outlined align-middle fs-6">delete</span>
                           </button>
                         </td>
                       </tr>
@@ -247,8 +247,8 @@
             {% if claimed_students %}
               <div class="card border-success mb-3">
                 <div class="card-header bg-success bg-opacity-10">
-                  <h6 class="mb-0 text-success" style="font-size:18pt">
-                    <span class="material-symbols-outlined me-2" style="vertical-align: middle;">check_circle</span>
+                  <h6 class="mb-0 text-success fs-4">
+                    <span class="material-symbols-outlined me-2 align-middle">check_circle</span>
                     Active Students ({{ claimed_students|length }})
                   </h6>
                 </div>
@@ -260,11 +260,11 @@
                     <strong><span class="selected-count">0</span> students selected</strong>
                   </div>
                   <div>
-                    <button type="button" class="btn btn-info btn-sm me-2" onclick="tapOutSelected('{{ block }}')">
-                      <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px;">logout</span> Tap Out Selected
-                    </button>
-                    <button type="button" class="btn btn-secondary btn-sm me-2" onclick="tapOutAllBlock('{{ block }}')">
-                      <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px;">logout</span> Tap Out Entire Class
+                      <button type="button" class="btn btn-info btn-sm me-2" onclick="tapOutSelected('{{ block }}')">
+                        <span class="material-symbols-outlined align-middle fs-5">logout</span> Tap Out Selected
+                      </button>
+                      <button type="button" class="btn btn-secondary btn-sm me-2" onclick="tapOutAllBlock('{{ block }}')">
+                        <span class="material-symbols-outlined align-middle fs-5">logout</span> Tap Out Entire Class
                     </button>
                     <button type="button" class="btn btn-danger btn-sm" onclick="bulkDeleteStudents('{{ block }}')">
                       <span class="material-symbols-outlined" style="vertical-align: middle;">delete</span> Delete Selected
@@ -376,9 +376,9 @@
         <div class="row">
           <div class="col-lg-6 mb-4">
             <div class="card border-primary h-100">
-              <div class="card-header bg-primary bg-opacity-10">
-                <h6 class="mb-0 text-primary-white"><span class="material-symbols-outlined me-2" style="vertical-align: middle;">info</span>Instructions</h6>
-              </div>
+                <div class="card-header bg-primary bg-opacity-10">
+                  <h6 class="mb-0 text-primary"><span class="material-symbols-outlined me-2 align-middle">info</span>Instructions</h6>
+                </div>
               <div class="card-body">
                 <ol class="mb-3">
                   <li class="mb-2">Download the CSV template using the button below</li>

@@ -475,7 +475,6 @@ def dashboard():
 
     # Get all students for calculations
     students = _scoped_students().order_by(Student.first_name).all()
-    students = [s for s in students if not getattr(s, "demo_sessions", None)]
     student_lookup = {s.id: s for s in students}
 
     # Quick Stats
@@ -3689,6 +3688,14 @@ def economy_health():
 
     if not payroll_settings:
         payroll_settings = payroll_query.filter_by(block=None).first()
+
+    # Fallback to first class-specific payroll when no global settings exist
+    if not payroll_settings:
+        first_class_setting = payroll_query.filter(PayrollSettings.block.isnot(None)).order_by(PayrollSettings.block.asc()).first()
+        if first_class_setting:
+            payroll_settings = first_class_setting
+            selected_block = first_class_setting.block
+            scope = 'class'
 
     # Fallback to the first available class when only class-specific payroll is configured
     if not payroll_settings and not selected_block:

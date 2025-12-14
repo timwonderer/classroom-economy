@@ -712,20 +712,12 @@ def add_class():
         Prioritize an explicit `next` value, fall back to referrer, then dashboard.
         """
         next_url = request.form.get('next') or request.args.get('next')
-        # Only allow safe relative redirects (no scheme or netloc), strip backslashes.
-        if next_url:
-            candidate = next_url.replace('\\', '')
-            parsed = urlparse(candidate)
-            if not parsed.scheme and not parsed.netloc and candidate.startswith('/'):
-                return candidate
+        if next_url and is_safe_url(next_url):
+            return next_url
 
         ref_url = request.referrer
-        if ref_url:
-            candidate = ref_url.replace('\\', '')
-            parsed = urlparse(candidate)
-            # Accept only relative URLs within this domain
-            if not parsed.scheme and not parsed.netloc and candidate.startswith('/'):
-                return candidate
+        if ref_url and is_safe_url(ref_url):
+            return ref_url
 
         return url_for(default_endpoint)
 
@@ -2308,9 +2300,9 @@ def rent():
     savings_balance = student.get_savings_balance(teacher_id=teacher_id, join_code=join_code)
 
     # Get payment history for the current class only
-    payment_history = RentPayment.query.filter_by(
-        student_id=student.id,
-        join_code=join_code
+    payment_history = RentPayment.query.filter(
+        RentPayment.student_id == student.id,
+        or_(RentPayment.join_code == join_code, RentPayment.join_code.is_(None)),
     ).order_by(
         RentPayment.payment_date.desc()
     ).limit(24).all()  # Increased to show more history with multiple periods
@@ -2382,12 +2374,12 @@ def rent_pay(period):
     savings_balance = student.get_savings_balance(teacher_id=teacher_id, join_code=join_code)
 
     # Get all existing payments for this period this month
-    all_payments = RentPayment.query.filter_by(
-        student_id=student.id,
-        period=period,
-        join_code=join_code,
-        period_month=current_month,
-        period_year=current_year
+    all_payments = RentPayment.query.filter(
+        RentPayment.student_id == student.id,
+        RentPayment.period == period,
+        RentPayment.period_month == current_month,
+        RentPayment.period_year == current_year,
+        or_(RentPayment.join_code == join_code, RentPayment.join_code.is_(None)),
     ).all()
 
     # Filter out payments where the corresponding transaction was voided
@@ -2397,7 +2389,7 @@ def rent_pay(period):
         txn = Transaction.query.filter(
             Transaction.student_id == student.id,
             Transaction.type == 'Rent Payment',
-            Transaction.join_code == join_code,
+            or_(Transaction.join_code == join_code, Transaction.join_code.is_(None)),
             Transaction.timestamp >= payment.payment_date - timedelta(seconds=5),
             Transaction.timestamp <= payment.payment_date + timedelta(seconds=5),
             Transaction.amount == -payment.amount_paid
