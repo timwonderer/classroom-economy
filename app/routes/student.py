@@ -2628,11 +2628,17 @@ def demo_login(session_id):
             demo_session.expires_at = expires_at
             db.session.commit()
         elif expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
+            # Treat naive timestamps as being in the admin's timezone (or fallback to UTC), then normalize to UTC
+            tz_name = session.get('timezone') or 'UTC'
+            try:
+                local_tz = pytz.timezone(tz_name)
+                expires_at = local_tz.localize(expires_at).astimezone(timezone.utc)
+            except Exception:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
             demo_session.expires_at = expires_at
             db.session.commit()
 
-        if now > expires_at:
+        if expires_at and now > expires_at:
             # Mark as inactive and cleanup
             cleanup_demo_student_data(demo_session)
             db.session.commit()

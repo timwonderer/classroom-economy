@@ -100,7 +100,22 @@ def login_required(f):
                 demo_session = DemoStudent.query.filter_by(session_id=demo_session_id).first()
                 now = datetime.now(timezone.utc)
 
-                if not demo_session or not demo_session.is_active or now > demo_session.expires_at:
+                expires_at = None
+                if demo_session and isinstance(demo_session.expires_at, datetime):
+                    if demo_session.expires_at.tzinfo is None:
+                        # Treat naive timestamps as UTC to avoid shifting into earlier local time
+                        expires_at = demo_session.expires_at.replace(tzinfo=timezone.utc)
+                    else:
+                        expires_at = demo_session.expires_at
+                else:
+                    # If missing/invalid, refresh expiry window to prevent false expirations mid-redirect
+                    expires_at = now + timedelta(minutes=10)
+                    if demo_session:
+                        demo_session.expires_at = expires_at
+                        from app.extensions import db
+                        db.session.commit()
+
+                if not demo_session or not demo_session.is_active or (expires_at and now > expires_at):
                     try:
                         if demo_session:
                             from app.extensions import db  # Imported lazily to avoid circular import
