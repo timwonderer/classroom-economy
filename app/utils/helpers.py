@@ -27,11 +27,12 @@ def render_template_with_fallback(template_name, **context):
     Renders a template, falling back to a mobile version if the user is on a mobile device.
     """
     # Ensure static_url helper is always available even if Jinja globals/context processors are missing
-    static_helper = current_app.jinja_env.globals.get('static_url')
-    if not static_helper:
+    static_url_func = current_app.jinja_env.globals.get('static_url')
+
+    if not static_url_func:
         current_app.logger.warning("static_url missing from Jinja globals; using fallback with cache-busting")
 
-        def static_helper(filename: str):
+        def _fallback_static_url(filename: str):
             if not filename:
                 return url_for('static', filename=filename)
 
@@ -42,7 +43,10 @@ def render_template_with_fallback(template_name, **context):
             except (OSError, TypeError) as exc:
                 current_app.logger.debug(f"Could not add cache buster for {filename}: {exc}")
                 return url_for('static', filename=filename)
-    context.setdefault('static_url', static_helper)
+
+        static_url_func = _fallback_static_url
+
+    context.setdefault('static_url', static_url_func)
 
     if session.get('force_desktop'):
         return render_template(template_name, **context)
