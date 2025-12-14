@@ -45,7 +45,7 @@
         .branding-side {
             flex: 1;
 
-            background: linear-gradient(135deg, #ffc965 0%, #f6a43b 50%, #e07b00 100%);
+            background: linear-gradient(135deg, var(--primary) 0%, #00796B 50%, #004D40 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -91,14 +91,14 @@
         .login-container h1 {
             margin-bottom: 0.5rem;
             font-weight: 700;
-            color: #c15f00;
+            color: var(--primary);
             text-align: center;
             font-size: 2rem;
         }
 
         .login-container .subtitle {
             text-align: center;
-            color: #7a5130;
+            color: #2c4a47;
             margin-bottom: 0.5rem;
             font-size: 0.95rem;
         }
@@ -107,35 +107,35 @@
 
 
         .btn-primary {
-            background: linear-gradient(135deg, #fccc63 0%, #f19a23 100%);
+            background: linear-gradient(135deg, var(--primary) 0%, #00796B 100%);
             border: none;
             padding: 0.85rem;
             font-weight: 700;
             transition: all 0.3s ease;
             border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(243, 168, 54, 0.35);
+            box-shadow: 0 8px 24px rgba(0, 105, 92, 0.35);
             width:200px;
         }
 
         .btn-primary:hover {
-            background: linear-gradient(135deg, #e99f11 0%, #cc7a00 100%);
+            background: linear-gradient(135deg, #00796B 0%, #004D40 100%);
         }
 
         .first-time-link {
             text-align: center;
             margin-top: 2rem;
             padding-top: 1rem;
-            border-top: 1px solid #fda324ff;
+            border-top: 1px solid var(--primary);
         }
 
         .first-time-link a {
-            color: #e07b00;
+            color: var(--primary);
             text-decoration: none;
             font-weight: 500;
         }
 
         .first-time-link a:hover {
-            color: #b35d00;
+            color: #004D40;
             text-decoration: underline;
         }
 
@@ -155,8 +155,8 @@
         }
 
         .form-control:focus {
-            border-color: #f6a43b;
-            box-shadow: 0 0 0 0.2rem rgba(246, 164, 59, 0.25);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 0.2rem rgba(0, 105, 92, 0.25);
         }
 
         .form-group {
