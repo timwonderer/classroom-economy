@@ -13,6 +13,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, redirect, url_for, flash, request, session, jsonify, current_app
+from urllib.parse import urlparse
 from sqlalchemy import or_, func, select, and_
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -711,11 +712,20 @@ def add_class():
         Prioritize an explicit `next` value, fall back to referrer, then dashboard.
         """
         next_url = request.form.get('next') or request.args.get('next')
-        if next_url and is_safe_url(next_url):
-            return next_url
+        # Only allow safe relative redirects (no scheme or netloc), strip backslashes.
+        if next_url:
+            candidate = next_url.replace('\\', '')
+            parsed = urlparse(candidate)
+            if not parsed.scheme and not parsed.netloc and candidate.startswith('/'):
+                return candidate
 
-        if request.referrer and is_safe_url(request.referrer):
-            return request.referrer
+        ref_url = request.referrer
+        if ref_url:
+            candidate = ref_url.replace('\\', '')
+            parsed = urlparse(candidate)
+            # Accept only relative URLs within this domain
+            if not parsed.scheme and not parsed.netloc and candidate.startswith('/'):
+                return candidate
 
         return url_for(default_endpoint)
 
