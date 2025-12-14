@@ -17,8 +17,26 @@
     --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08);
 }
 
+/* Student Theme - Dark Slate Blue */
+body.student-shell,
+body.student-theme {
+    --primary: #2F4F7F;
+    --primary-hover: #3F5F8F;
+    --secondary: #E89B6D;
+    --secondary-hover: #D88B5D;
+    --background: #F4F6F9;
+    --surface: #FFFFFF;
+    --text-primary: #2c2c2c;
+    --text-secondary: #6c757d;
+    --border-color: #DDE2E8;
+    --success: #4A8B6C;
+    --info: #5B8DBE;
+    --warning: #E8A756;
+    --danger: #D97070;
+}
+
 body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', sans-serif;
     background-color: var(--background);
     color: var(--text-primary);
     line-height: 1.5;
@@ -46,6 +64,7 @@ a:hover {
 .text-secondary { color: var(--secondary) !important; }
 .bg-primary { background-color: var(--primary) !important; }
 .bg-secondary { background-color: var(--secondary) !important; }
+.bg-background { background-color: var(--background) !important; }
 .bg-surface { background-color: var(--surface) !important; }
 
 .icon-circle {
@@ -131,6 +150,166 @@ a:hover {
     padding: 1.25rem;
     font-weight: 600;
     color: var(--primary);
+}
+
+/* Ensure readable header text on dark backgrounds */
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) {
+    color: #ffffff;
+}
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h1,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h2,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h3,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h4,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h5,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h6,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) .card-title,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) .fw-bold {
+    color: #ffffff;
+}
+
+/* Student Layout */
+:root {
+    --student-sidebar-width: 260px;
+    --student-sidebar-bg: #1a4d47;
+    --student-sidebar-accent: #d4a574;
+}
+
+.student-shell {
+    background: var(--background);
+    min-height: 100vh;
+    display: flex;
+}
+
+.student-sidebar {
+    width: var(--student-sidebar-width);
+    background: var(--student-sidebar-bg);
+    color: #ffffff;
+    padding: 1.5rem 1.25rem;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    overflow-y: auto;
+    box-shadow: var(--shadow-lg);
+}
+
+.student-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 1.1rem;
+    text-decoration: none;
+}
+
+.student-identity {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.85);
+    margin-bottom: 1.25rem;
+}
+
+.class-switcher .form-select {
+    background-color: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.25);
+    color: #fff;
+}
+
+.class-switcher .form-select option {
+    color: #000;
+}
+
+.class-switch-meta {
+    line-height: 1.2;
+}
+
+.class-switcher .alert {
+    background: rgba(255, 193, 7, 0.15);
+    border: 1px solid rgba(255, 193, 7, 0.4);
+    color: #fff;
+}
+
+.student-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.student-nav a {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: var(--radius-sm);
+    color: rgba(255, 255, 255, 0.9);
+    text-decoration: none;
+    transition: background 0.2s ease, transform 0.1s ease;
+    font-weight: 600;
+}
+
+.student-nav a .material-symbols-outlined {
+    font-size: 20px;
+}
+
+.student-nav a:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateX(2px);
+}
+
+.student-nav a.active {
+    background: var(--student-sidebar-accent);
+    color: var(--student-sidebar-bg);
+    font-weight: 700;
+}
+
+.student-nav a.active .material-symbols-outlined {
+    color: var(--student-sidebar-bg);
+}
+
+.student-main {
+    margin-left: var(--student-sidebar-width);
+    padding: 2rem 1.5rem;
+    width: 100%;
+}
+
+.student-topbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.student-content {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.bills-tabs .nav-link {
+    color: var(--primary);
+    font-weight: 600;
+}
+
+.bills-tabs .nav-link.active {
+    background-color: var(--primary);
+    color: #fff;
+}
+
+@media (max-width: 991.98px) {
+    .student-sidebar {
+        position: fixed;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        z-index: 1050;
+    }
+    .student-sidebar.show {
+        transform: translateX(0);
+    }
+    .student-main {
+        margin-left: 0;
+        padding: 1.5rem 1rem;
+    }
 }
 
 .card-body {
@@ -320,4 +499,177 @@ a:hover {
     font-size: 0.75em;
     font-weight: 600;
     border-radius: 4px;
+}
+
+/* Admin Layout */
+.maintenance-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1050;
+    background: #1f2937;
+    color: #ffffff;
+    font-size: 0.8rem;
+    padding: 0.4rem 0.75rem;
+    text-align: center;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+    letter-spacing: 0.5px;
+    font-weight: 600;
+}
+
+body.maintenance-active .sidebar {
+    top: 36px;
+}
+
+body.maintenance-active .main-content {
+    padding-top: calc(2rem + 36px);
+}
+
+.sidebar .nav-link .material-symbols-outlined {
+    font-size: 20px;
+}
+
+.page-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+}
+
+.page-header h1 {
+    margin: 0;
+    font-weight: 700;
+}
+
+.page-header .eyebrow {
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    color: var(--text-secondary);
+    margin-bottom: 0.25rem;
+    font-weight: 600;
+}
+
+.page-header .meta {
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.page-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* Info grid blocks (Hall passes and shared summaries) */
+.info-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 0.75rem;
+}
+
+.info-item {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 0.75rem;
+}
+
+.info-label {
+    font-weight: 700;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+}
+
+.info-value {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+/* Hall Pass Verification */
+.hall-pass-page {
+    min-height: 100vh;
+    background: var(--background);
+    padding: 2rem 1rem;
+}
+
+.hall-pass-header h1 {
+    font-weight: 700;
+}
+
+.hall-pass-subtitle {
+    color: var(--text-secondary);
+}
+
+.hall-pass-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 1rem;
+}
+
+.hall-pass-card {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-md);
+    padding: 1.25rem;
+    position: relative;
+}
+
+.hall-pass-card.out {
+    border-color: var(--secondary);
+    box-shadow: var(--shadow-lg);
+}
+
+.hall-pass-card.returned {
+    opacity: 0.85;
+}
+
+.status-chip {
+    padding: 0.4rem 0.85rem;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    letter-spacing: 0.05em;
+}
+
+.status-chip.out {
+    background: rgba(16, 185, 129, 0.15);
+    color: #0f5132;
+    border: 1px solid rgba(16, 185, 129, 0.25);
+}
+
+.status-chip.returned {
+    background: rgba(108, 117, 125, 0.15);
+    color: #41464b;
+    border: 1px solid rgba(108, 117, 125, 0.25);
+}
+
+.time-badge {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    padding: 0.4rem 0.9rem;
+    border-radius: 999px;
+    font-weight: 700;
+    color: var(--secondary);
+    background: rgba(212, 165, 116, 0.15);
+    border: 1px solid rgba(212, 165, 116, 0.35);
+}
+
+.refresh-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+@media (min-width: 768px) {
+    .hall-pass-page {
+        padding: 3rem 2rem;
+    }
 }

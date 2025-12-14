@@ -23,6 +23,7 @@ from flask import (
     Blueprint, redirect, url_for, flash, request, session,
     jsonify, Response, send_file, current_app, abort
 )
+from urllib.parse import urlparse
 from sqlalchemy import desc, text, or_, func
 from sqlalchemy.exc import SQLAlchemyError
 import sqlalchemy as sa
@@ -35,7 +36,8 @@ from app.models import (
     StoreItemBlock, RentSettings, RentPayment, RentWaiver, InsurancePolicy, InsurancePolicyBlock,
     StudentInsurance, InsuranceClaim, HallPassLog, PayrollSettings, PayrollReward, PayrollFine,
     BankingSettings, TeacherBlock, DeletionRequest, DeletionRequestType, DeletionRequestStatus,
-    UserReport, FeatureSettings, TeacherOnboarding, StudentBlock, RecoveryRequest, StudentRecoveryCode
+    UserReport, FeatureSettings, TeacherOnboarding, StudentBlock, RecoveryRequest, StudentRecoveryCode,
+    DemoStudent
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
@@ -535,9 +537,11 @@ def dashboard():
     )
 
     # Recent transactions (limited to 5 for display)
+    demo_ids_subq = db.session.query(DemoStudent.student_id).subquery()
     recent_transactions = (
         Transaction.query
         .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter(~Transaction.student_id.in_(demo_ids_subq))
         .filter_by(is_void=False)
         .order_by(Transaction.timestamp.desc())
         .limit(5)
@@ -546,6 +550,7 @@ def dashboard():
     total_transactions_today = (
         Transaction.query
         .filter(Transaction.student_id.in_(student_ids_subq))
+        .filter(~Transaction.student_id.in_(demo_ids_subq))
         .filter(
             Transaction.timestamp >= datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0),
             Transaction.is_void == False,
@@ -3603,11 +3608,27 @@ def void_transaction(transaction_id):
         if is_json:
             return jsonify(status="error", message="Failed to void transaction"), 500
         flash("Error voiding transaction.", "error")
-        return redirect(request.referrer or url_for('admin.dashboard'))
+        # Safe redirect: validate referrer to prevent open redirects
+        ref = request.referrer or ""
+        potential_url = ref.replace('\\', '')
+        parsed = urlparse(potential_url)
+        if not parsed.scheme and not parsed.netloc:
+            return_url = potential_url
+        else:
+            return_url = url_for('admin.dashboard')
+        return redirect(return_url)
     if is_json:
         return jsonify(status="success", message="Transaction voided.")
     flash("✅ Transaction voided.", "success")
-    return redirect(request.referrer or url_for('admin.dashboard'))
+    # Safe redirect: validate referrer to prevent open redirects
+    ref = request.referrer or ""
+    potential_url = ref.replace('\\', '')
+    parsed = urlparse(potential_url)
+    if not parsed.scheme and not parsed.netloc:
+        return_url = potential_url
+    else:
+        return_url = url_for('admin.dashboard')
+    return redirect(return_url)
 
 
 # -------------------- HALL PASS MANAGEMENT --------------------
@@ -3672,14 +3693,32 @@ def economy_health():
     admin_id = session.get("admin_id")
 
     blocks = _get_teacher_blocks()
-    selected_block = request.args.get('block') or (blocks[0] if blocks else None)
+    scope = request.args.get('scope', 'all')
+    selected_block = None
+    if scope == 'class':
+        selected_block = request.args.get('block') or (blocks[0] if blocks else None)
 
     payroll_query = PayrollSettings.query.filter_by(teacher_id=admin_id, is_active=True)
     payroll_settings = None
     if selected_block:
         payroll_settings = payroll_query.filter_by(block=selected_block).first()
+
     if not payroll_settings:
         payroll_settings = payroll_query.filter_by(block=None).first()
+
+    # Fallback to first class-specific payroll when no global settings exist
+    if not payroll_settings:
+        first_class_setting = payroll_query.filter(PayrollSettings.block.isnot(None)).order_by(PayrollSettings.block.asc()).first()
+        if first_class_setting:
+            payroll_settings = first_class_setting
+            selected_block = first_class_setting.block
+            scope = 'class'
+
+    # Fallback to the first available class when only class-specific payroll is configured
+    if not payroll_settings and not selected_block:
+        selected_block = request.args.get('block') or (blocks[0] if blocks else None)
+        if selected_block:
+            payroll_settings = payroll_query.filter_by(block=selected_block).first()
 
     has_payroll_settings = payroll_query.count() > 0
 
@@ -3792,6 +3831,7 @@ def economy_health():
         current_page='economy_health',
         blocks=blocks,
         selected_block=selected_block,
+        scope=scope,
         payroll_settings=payroll_settings,
         has_payroll_settings=has_payroll_settings,
         cwi_calc=cwi_calc,

@@ -1,26 +1,14 @@
 {% extends "layout_admin.html" %}
+{% block page_title %}Economy Health{% endblock %}
+{% block page_icon %}monitor_heart{% endblock %}
 {% block content %}
 <div class="container-fluid py-3">
-  <div class="d-flex flex-wrap justify-content-between align-items-start mb-3 gap-3">
-    <div>
-      <h2 class="mb-1">Economy Health</h2>
-      <p class="text-muted mb-0">Review your current CWI and see how payroll, rent, banking, insurance, and the store fit together.</p>
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-3">
+    <p class="text-muted mb-0">Review your current CWI and see how payroll, rent, banking, insurance, and the store fit together.</p>
+    <div class="btn-group" role="group" aria-label="CWI scope">
+      <a class="btn {% if scope != 'class' %}btn-primary text-white{% else %}btn-white{% endif %}" href="{{ url_for('admin.economy_health', scope='all') }}">All classes</a>
+      <a class="btn {% if scope == 'class' %}btn-primary text-white{% else %}btn-white{% endif %}" href="{{ url_for('admin.economy_health', scope='class', block=selected_block or (blocks[0] if blocks else None)) }}">Individual class</a>
     </div>
-    <form method="get" class="d-flex flex-wrap gap-2 align-items-center">
-      <label class="form-label mb-0 me-2">Class/Block</label>
-      <select name="block" class="form-select" onchange="this.form.submit()">
-        {% if not blocks %}
-          <option value="">No classes yet</option>
-        {% else %}
-          {% for blk in blocks %}
-            <option value="{{ blk }}" {% if selected_block == blk %}selected{% endif %}>{{ blk }}</option>
-          {% endfor %}
-        {% endif %}
-      </select>
-      {% if selected_block %}
-      <a class="btn btn-outline-secondary" href="{{ url_for('admin.economy_health') }}">Clear</a>
-      {% endif %}
-    </form>
   </div>
 
   {% if not payroll_settings %}
@@ -70,7 +58,7 @@
                 <div class="text-muted small">Expected Hours/Week</div>
                 <form method="post" action="{{ url_for('admin.update_expected_weekly_hours') }}">
                   <input type="hidden" name="cwi_block" value="{{ selected_block }}">
-                  <input type="hidden" name="next" value="{{ url_for('admin.economy_health', block=selected_block) }}">
+                  <input type="hidden" name="next" value="{{ url_for('admin.economy_health', block=selected_block, scope=scope) }}">
                   <div class="input-group">
                     <input type="number" step="0.25" min="0.25" max="80" name="expected_weekly_hours" class="form-control" value="{{ expected_hours }}">
                     <button class="btn btn-primary" type="submit">Update</button>
@@ -82,6 +70,29 @@
                 </form>
               </div>
             </div>
+            {% if scope == 'class' %}
+            <div class="col-md-4">
+              <div class="p-3 bg-light rounded h-100">
+                <div class="text-muted small">Class/Block</div>
+                <form method="get">
+                  <input type="hidden" name="scope" value="class">
+                  <select name="block" class="form-select mb-2" onchange="this.form.submit()">
+                    {% if not blocks %}
+                      <option value="">No classes yet</option>
+                    {% else %}
+                      {% for blk in blocks %}
+                        <option value="{{ blk }}" {% if selected_block == blk %}selected{% endif %}>{{ blk }}</option>
+                      {% endfor %}
+                    {% endif %}
+                  </select>
+                  <div class="d-flex gap-2">
+                    <button class="btn btn-primary flex-grow-1" type="submit">Apply</button>
+                    <a class="btn btn-outline-secondary" href="{{ url_for('admin.economy_health', scope='class') }}">Clear</a>
+                  </div>
+                </form>
+              </div>
+            </div>
+            {% endif %}
           </div>
           <div class="mt-3">
             <div class="small text-muted">Calculation notes:</div>

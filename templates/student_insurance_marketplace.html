@@ -9,6 +9,26 @@
 
 {% block content %}
 
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <ul class="nav nav-pills bills-tabs mb-0">
+        <li class="nav-item">
+            <a class="nav-link d-flex align-items-center gap-1" href="{{ url_for('student.rent') }}">
+                <span class="material-symbols-outlined">receipt_long</span> Rent
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link active d-flex align-items-center gap-1" href="{{ url_for('student.student_insurance') }}">
+                <span class="material-symbols-outlined">shield</span> Insurance
+            </a>
+        </li>
+    </ul>
+    {% if current_class_context %}
+    <div class="text-muted small">
+        Viewing {{ current_class_context.teacher_name }} • {{ current_class_context.block_display }}
+    </div>
+    {% endif %}
+</div>
+
 <!-- Tabs Navigation -->
 <ul class="nav nav-tabs mb-4" id="insuranceTabs" role="tablist">
     <li class="nav-item" role="presentation">

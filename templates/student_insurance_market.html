@@ -1,12 +1,11 @@
 {% extends "layout_student.html" %}
 
+{% set page_title = "Insurance Plans" %}
 {% block title %}Insurance Plans{% endblock %}
+{% block page_icon %}shield{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>🛡️ Insurance Plans</h1>
-    <p class="subtitle">Protect yourself with comprehensive coverage</p>
-</div>
+<p class="text-muted mb-4">Protect yourself with comprehensive coverage.</p>
 
 {% if cooldown_message %}
   <div class="alert alert-warning">{{ cooldown_message }}</div>

@@ -13,6 +13,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, redirect, url_for, flash, request, session, jsonify, current_app
+from urllib.parse import urlparse
 from sqlalchemy import or_, func, select, and_
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -31,7 +32,16 @@ from forms import (
 )
 
 # Import utility functions
-from app.utils.helpers import is_safe_url, generate_anonymous_code, render_template_with_fallback as render_template
+from app.utils.helpers import generate_anonymous_code, render_template_with_fallback as render_template
+
+def _is_safe_url(target):
+    """Return True if the URL is a relative path without scheme or netloc (prevents open redirects)."""
+    from urllib.parse import urlparse
+    # Remove backslashes (which browsers may tolerate as slashes)
+    target = target.replace('\\', '')
+    parsed = urlparse(target)
+    # Check that both netloc and scheme are empty (relative URL/path only)
+    return not parsed.netloc and not parsed.scheme
 from app.utils.constants import THEME_PROMPTS
 from app.utils.turnstile import verify_turnstile_token
 from app.utils.demo_sessions import cleanup_demo_student_data
@@ -704,6 +714,43 @@ def add_class():
     student = get_logged_in_student()
     form = StudentAddClassForm()
 
+    def _is_safe_url(target):
+        """
+        Returns True if the target is a local URL (preventing open redirect).
+        """
+        from urllib.parse import urlparse
+        if not target:
+            return False
+        target = target.replace("\\", "")
+        parsed = urlparse(target)
+        # Only allow relative URLs with no scheme and no netloc, nor starting with double slashes
+        if parsed.scheme or parsed.netloc:
+            return False
+        if target.startswith('//'):  # Prevent protocol-relative URLs
+            return False
+        return True
+
+    def _get_return_target(default_endpoint='student.dashboard'):
+        """
+        Return the safest place to redirect back to after add-class attempts.
+
+        Prioritize an explicit `next` value, fall back to referrer, then dashboard.
+
+        Security: All redirect targets are validated with _is_safe_url() to ensure
+        they are same-origin URLs, preventing open redirect vulnerabilities.
+        """
+        next_url = request.form.get('next') or request.args.get('next')
+        if next_url and _is_safe_url(next_url):
+            return next_url
+
+        # Validate referrer to prevent open redirects (same-origin check)
+        ref_url = request.referrer
+        if ref_url and _is_safe_url(ref_url):
+            return ref_url
+
+        # Safe fallback: always use internal route
+        return url_for(default_endpoint)
+
     if form.validate_on_submit():
         join_code = format_join_code(form.join_code.data)
         first_initial = form.first_initial.data.strip().upper()
@@ -713,23 +760,23 @@ def add_class():
         # Validate DOB sum is numeric
         if not dob_sum_str.isdigit():
             flash("DOB sum must be a number.", "danger")
-            return redirect(url_for('student.add_class'))
+            return redirect(_get_return_target())
 
         dob_sum = int(dob_sum_str)
 
         # Verify the credentials match the logged-in student
         if first_initial != student.first_name[:1].upper():
             flash("The first initial doesn't match your account. Please check and try again.", "danger")
-            return redirect(url_for('student.add_class'))
+            return redirect(_get_return_target())
 
         if dob_sum != student.dob_sum:
             flash("The DOB sum doesn't match your account. Please check and try again.", "danger")
-            return redirect(url_for('student.add_class'))
+            return redirect(_get_return_target())
 
         # Verify last name matches using the same fuzzy matching logic
         if not verify_last_name_parts(last_name, student.last_name_hash_by_part, student.salt):
             flash("The last name doesn't match your account. Please check and try again.", "danger")
-            return redirect(url_for('student.add_class'))
+            return redirect(_get_return_target())
 
         # Find all unclaimed seats with this join code
         unclaimed_seats = TeacherBlock.query.filter_by(
@@ -739,7 +786,7 @@ def add_class():
 
         if not unclaimed_seats:
             flash("Invalid join code or all seats already claimed. Check with your teacher.", "danger")
-            return redirect(url_for('student.add_class'))
+            return redirect(_get_return_target())
 
         # Try to find a matching seat for this student
         matched_seat = None
@@ -770,7 +817,7 @@ def add_class():
 
         if not matched_seat:
             flash("No matching seat found for your account. Please verify your join code and credentials.", "danger")
-            return redirect(url_for('student.add_class'))
+            return redirect(_get_return_target())
 
         # Check if student is already linked to this teacher
         existing_link = StudentTeacher.query.filter_by(
@@ -780,7 +827,7 @@ def add_class():
 
         if existing_link:
             flash("You are already enrolled in this teacher's class.", "warning")
-            return redirect(url_for('student.dashboard'))
+            return redirect(_get_return_target())
 
         # Normalize claim hash to canonical pattern
         canonical_claim_hash = compute_primary_claim_hash(first_initial, dob_sum, matched_seat.salt)
@@ -811,12 +858,12 @@ def add_class():
         try:
             db.session.commit()
             flash(f"Successfully added to Block {new_block}! You can now access this class from your dashboard.", "success")
-            return redirect(url_for('student.dashboard'))
+            return redirect(_get_return_target())
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error adding class for student {student.id}: {str(e)}")
             flash("An error occurred while adding the class. Please try again or contact your teacher.", "danger")
-            return redirect(url_for('student.add_class'))
+            return redirect(_get_return_target())
 
     return render_template('student_add_class.html', form=form)
 
@@ -1019,6 +1066,13 @@ def dashboard():
     week_start = now_utc - timedelta(days=now_utc.weekday())  # Monday of current week
     month_start = now_utc.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
+    def _as_utc(ts):
+        if not ts:
+            return None
+        if ts.tzinfo is None:
+            return ts.replace(tzinfo=timezone.utc)
+        return ts.astimezone(timezone.utc)
+
     # Days tapped in this week
     tap_events_this_week = TapEvent.query.filter(
         TapEvent.student_id == student.id,
@@ -1028,7 +1082,7 @@ def dashboard():
     ).all()
 
     # Calculate unique days and total minutes
-    unique_days_tapped = len(set(event.timestamp.date() for event in tap_events_this_week if event.status == 'active'))
+    unique_days_tapped = len(set(_as_utc(event.timestamp).date() for event in tap_events_this_week if event.status == 'active'))
 
     # Calculate total minutes this week
     total_minutes_this_week = 0
@@ -1036,10 +1090,11 @@ def dashboard():
 
     for event in sorted(tap_events_this_week, key=lambda e: e.timestamp):
         period = event.period
+        event_ts = _as_utc(event.timestamp)
         if event.status == 'active':
-            active_sessions[period] = event.timestamp
+            active_sessions[period] = event_ts
         elif event.status == 'inactive' and period in active_sessions:
-            duration = (event.timestamp - active_sessions[period]).total_seconds() / 60
+            duration = (event_ts - active_sessions[period]).total_seconds() / 60
             total_minutes_this_week += duration
             del active_sessions[period]
 
@@ -1991,7 +2046,7 @@ def shop():
 
 # -------------------- RENT --------------------
 
-def _charge_overdraft_fee_if_needed(student, banking_settings):
+def _charge_overdraft_fee_if_needed(student, banking_settings, teacher_id=None, join_code=None):
     """
     Check if student's checking balance is negative and charge overdraft fee if enabled.
     Returns (fee_charged, fee_amount) tuple.
@@ -1999,8 +2054,10 @@ def _charge_overdraft_fee_if_needed(student, banking_settings):
     if not banking_settings or not banking_settings.overdraft_fee_enabled:
         return False, 0.0
 
+    current_balance = student.get_checking_balance(teacher_id=teacher_id, join_code=join_code)
+
     # Only charge if balance is negative
-    if student.checking_balance >= 0:
+    if current_balance >= 0:
         return False, 0.0
 
     fee_amount = 0.0
@@ -2012,11 +2069,17 @@ def _charge_overdraft_fee_if_needed(student, banking_settings):
         now = datetime.now(timezone.utc)
         month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
-        overdraft_fee_count = Transaction.query.filter(
+        fee_filters = [
             Transaction.student_id == student.id,
             Transaction.type == 'overdraft_fee',
             Transaction.timestamp >= month_start
-        ).count()
+        ]
+        if join_code:
+            fee_filters.append(Transaction.join_code == join_code)
+        elif teacher_id:
+            fee_filters.append(Transaction.teacher_id == teacher_id)
+
+        overdraft_fee_count = Transaction.query.filter(*fee_filters).count()
 
         # Determine which tier to use (1st, 2nd, 3rd, or cap)
         if overdraft_fee_count == 0:
@@ -2028,10 +2091,18 @@ def _charge_overdraft_fee_if_needed(student, banking_settings):
 
         # Check if cap is exceeded
         if banking_settings.overdraft_fee_progressive_cap:
-            total_fees_this_month = db.session.query(func.sum(Transaction.amount)).filter(
+            total_filters = [
                 Transaction.student_id == student.id,
                 Transaction.type == 'overdraft_fee',
                 Transaction.timestamp >= month_start
+            ]
+            if join_code:
+                total_filters.append(Transaction.join_code == join_code)
+            elif teacher_id:
+                total_filters.append(Transaction.teacher_id == teacher_id)
+
+            total_fees_this_month = db.session.query(func.sum(Transaction.amount)).filter(
+                *total_filters
             ).scalar() or 0.0
 
             # total_fees_this_month is negative, so we negate it
@@ -2043,10 +2114,12 @@ def _charge_overdraft_fee_if_needed(student, banking_settings):
         # Charge the fee
         overdraft_fee_tx = Transaction(
             student_id=student.id,
+            teacher_id=teacher_id,
+            join_code=join_code,
             amount=-fee_amount,
             account_type='checking',
             type='overdraft_fee',
-            description=f'Overdraft fee (balance: ${student.checking_balance:.2f})'
+            description=f'Overdraft fee (balance: ${current_balance:.2f})'
         )
         db.session.add(overdraft_fee_tx)
         db.session.flush()  # Update the balance calculation
@@ -2156,15 +2229,26 @@ def rent():
         return redirect(url_for('student.dashboard'))
 
     student = get_logged_in_student()
-    teacher_id = get_current_teacher_id()
+    context = get_current_class_context()
+    if not context:
+        flash("No class selected. Please choose a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    teacher_id = context.get('teacher_id')
+    join_code = context.get('join_code')
+    current_block = (context.get('block') or '').strip().upper()
     settings = RentSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
 
     if not settings or not settings.is_enabled:
         flash("Rent system is currently disabled.", "info")
         return redirect(url_for('student.dashboard'))
 
-    # Get student's periods
-    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+    if not current_block:
+        flash("No class period found for this class.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    # Get student's periods (scoped to the current class only)
+    student_blocks = [current_block]
 
     # Calculate rent status for each period
     now = datetime.now()
@@ -2193,61 +2277,63 @@ def rent():
     current_year = now.year
 
     period_status = {}
-    for period in student_blocks:
-        # Get all payments for this period this month (supports incremental payments)
-        all_payments_for_period = RentPayment.query.filter_by(
-            student_id=student.id,
-            period=period,
-            period_month=current_month,
-            period_year=current_year
-        ).all()
 
-        # Filter out payments where the corresponding transaction was voided
-        payments = []
-        for payment in all_payments_for_period:
-            # Find the transaction for this payment
-            txn = Transaction.query.filter(
-                Transaction.student_id == student.id,
-                Transaction.type == 'Rent Payment',
-                Transaction.timestamp >= payment.payment_date - timedelta(seconds=5),
-                Transaction.timestamp <= payment.payment_date + timedelta(seconds=5),
-                Transaction.amount == -payment.amount_paid
-            ).first()
+    # Get all payments for the current period this month (supports incremental payments)
+    all_payments_for_period = RentPayment.query.filter(
+        RentPayment.student_id == student.id,
+        RentPayment.period == current_block,
+        RentPayment.period_month == current_month,
+        RentPayment.period_year == current_year,
+        or_(RentPayment.join_code == join_code, RentPayment.join_code.is_(None)),
+    ).all()
 
-            # Only include if transaction exists and is not voided
-            if txn and not txn.is_void:
-                payments.append(payment)
+    # Filter out payments where the corresponding transaction was voided
+    payments = []
+    for payment in all_payments_for_period:
+        txn = Transaction.query.filter(
+            Transaction.student_id == student.id,
+            Transaction.type == 'Rent Payment',
+            or_(Transaction.join_code == join_code, Transaction.join_code.is_(None)),
+            Transaction.timestamp >= payment.payment_date - timedelta(seconds=5),
+            Transaction.timestamp <= payment.payment_date + timedelta(seconds=5),
+            Transaction.amount == -payment.amount_paid
+        ).first()
 
-        # Calculate total paid (sum of all non-voided payments)
-        total_paid = sum(p.amount_paid for p in payments) if payments else 0.0
+        if txn and not txn.is_void:
+            payments.append(payment)
 
-        # Calculate late fee if applicable (only if rent is active)
-        late_fee = 0.0
-        if rent_is_active and now > grace_end_date:
-            late_fee = settings.late_fee
+    total_paid = sum(p.amount_paid for p in payments) if payments else 0.0
 
-        # Total amount due (rent + late fee if applicable)
-        total_due = settings.rent_amount + late_fee if rent_is_active else 0.0
+    late_fee = 0.0
+    if rent_is_active and now > grace_end_date:
+        late_fee = settings.late_fee
 
-        # Check if fully paid
-        is_paid = total_paid >= total_due if rent_is_active else False
-        is_late = now > grace_end_date and not is_paid if rent_is_active else False
-        remaining_amount = max(0, total_due - total_paid) if rent_is_active else 0.0
+    total_due = settings.rent_amount + late_fee if rent_is_active else 0.0
+    is_paid = total_paid >= total_due if rent_is_active else False
+    is_late = now > grace_end_date and not is_paid if rent_is_active else False
+    remaining_amount = max(0, total_due - total_paid) if rent_is_active else 0.0
 
-        period_status[period] = {
-            'is_paid': is_paid,
-            'is_late': is_late,
-            'payments': payments,
-            'total_paid': total_paid,
-            'total_due': total_due,
-            'remaining_amount': remaining_amount,
-            'late_fee': late_fee,
-            'rent_is_active': rent_is_active,
-            'is_preview_period': is_preview_period
-        }
+    period_status[current_block] = {
+        'is_paid': is_paid,
+        'is_late': is_late,
+        'payments': payments,
+        'total_paid': total_paid,
+        'total_due': total_due,
+        'remaining_amount': remaining_amount,
+        'late_fee': late_fee,
+        'rent_is_active': rent_is_active,
+        'is_preview_period': is_preview_period
+    }
 
-    # Get payment history (all periods)
-    payment_history = RentPayment.query.filter_by(student_id=student.id).order_by(
+    # Get scoped balances for this class only
+    checking_balance = student.get_checking_balance(teacher_id=teacher_id, join_code=join_code)
+    savings_balance = student.get_savings_balance(teacher_id=teacher_id, join_code=join_code)
+
+    # Get payment history for the current class only
+    payment_history = RentPayment.query.filter(
+        RentPayment.student_id == student.id,
+        or_(RentPayment.join_code == join_code, RentPayment.join_code.is_(None)),
+    ).order_by(
         RentPayment.payment_date.desc()
     ).limit(24).all()  # Increased to show more history with multiple periods
 
@@ -2256,6 +2342,10 @@ def rent():
                           settings=settings,
                           student_blocks=student_blocks,
                           period_status=period_status,
+                          current_block=current_block,
+                          join_code=join_code,
+                          checking_balance=checking_balance,
+                          savings_balance=savings_balance,
                           due_date=due_date,
                           grace_end_date=grace_end_date,
                           preview_start_date=preview_start_date,
@@ -2267,7 +2357,14 @@ def rent():
 def rent_pay(period):
     """Process rent payment for a specific period."""
     student = get_logged_in_student()
-    teacher_id = get_current_teacher_id()
+    context = get_current_class_context()
+    if not context:
+        flash("No class selected. Please choose a class to continue.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    teacher_id = context.get('teacher_id')
+    join_code = context.get('join_code')
+    current_block = (context.get('block') or '').upper()
     settings = RentSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
 
     if not settings or not settings.is_enabled:
@@ -2278,10 +2375,10 @@ def rent_pay(period):
         flash("Rent is not enabled for your account.", "error")
         return redirect(url_for('student.dashboard'))
 
-    # Validate period
-    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+    # Validate period for the current class context only
     period = period.upper()
-    if period not in student_blocks:
+    student_blocks = [current_block]
+    if period != current_block:
         flash("Invalid period.", "error")
         return redirect(url_for('student.rent'))
 
@@ -2303,12 +2400,16 @@ def rent_pay(period):
     current_month = now.month
     current_year = now.year
 
+    checking_balance = student.get_checking_balance(teacher_id=teacher_id, join_code=join_code)
+    savings_balance = student.get_savings_balance(teacher_id=teacher_id, join_code=join_code)
+
     # Get all existing payments for this period this month
-    all_payments = RentPayment.query.filter_by(
-        student_id=student.id,
-        period=period,
-        period_month=current_month,
-        period_year=current_year
+    all_payments = RentPayment.query.filter(
+        RentPayment.student_id == student.id,
+        RentPayment.period == period,
+        RentPayment.period_month == current_month,
+        RentPayment.period_year == current_year,
+        or_(RentPayment.join_code == join_code, RentPayment.join_code.is_(None)),
     ).all()
 
     # Filter out payments where the corresponding transaction was voided
@@ -2318,6 +2419,7 @@ def rent_pay(period):
         txn = Transaction.query.filter(
             Transaction.student_id == student.id,
             Transaction.type == 'Rent Payment',
+            or_(Transaction.join_code == join_code, Transaction.join_code.is_(None)),
             Transaction.timestamp >= payment.payment_date - timedelta(seconds=5),
             Transaction.timestamp <= payment.payment_date + timedelta(seconds=5),
             Transaction.amount == -payment.amount_paid
@@ -2374,15 +2476,15 @@ def rent_pay(period):
     banking_settings = BankingSettings.query.filter_by(teacher_id=teacher_id).first() if teacher_id else None
 
     # Check if student has enough funds for this payment
-    if student.checking_balance < payment_amount:
+    if checking_balance < payment_amount:
         # Check if overdraft protection is enabled (savings can cover the difference)
         if banking_settings and banking_settings.overdraft_protection_enabled:
-            shortfall = payment_amount - student.checking_balance
-            if student.savings_balance >= shortfall:
+            shortfall = payment_amount - checking_balance
+            if savings_balance >= shortfall:
                 # Allow transaction - overdraft protection will transfer from savings
                 pass
             else:
-                flash(f"Insufficient funds in both checking and savings. You need ${payment_amount:.2f} but have ${student.checking_balance + student.savings_balance:.2f}.", "error")
+                flash(f"Insufficient funds in both checking and savings. You need ${payment_amount:.2f} but have ${checking_balance + savings_balance:.2f}.", "error")
                 return redirect(url_for('student.rent'))
         # Check if overdraft fees are enabled (allows negative balance)
         elif banking_settings and banking_settings.overdraft_fee_enabled:
@@ -2390,7 +2492,7 @@ def rent_pay(period):
             pass
         else:
             # No overdraft options - reject transaction
-            flash(f"Insufficient funds. You need ${payment_amount:.2f} but only have ${student.checking_balance:.2f}.", "error")
+            flash(f"Insufficient funds. You need ${payment_amount:.2f} but only have ${checking_balance:.2f}.", "error")
             return redirect(url_for('student.rent'))
 
     # FIX: Process payment with teacher_id
@@ -2402,9 +2504,7 @@ def rent_pay(period):
     elif late_fee > 0:
         payment_description += f' (includes ${late_fee:.2f} late fee)'
 
-    # CRITICAL FIX v2: Add join_code to rent payment transaction
-    context = get_current_class_context()
-    join_code = context['join_code'] if context else None
+    projected_balance = checking_balance - payment_amount
 
     transaction = Transaction(
         student_id=student.id,
@@ -2415,6 +2515,7 @@ def rent_pay(period):
         type='Rent Payment',
         description=payment_description
     )
+    student.transactions.append(transaction)
     db.session.add(transaction)
 
     # Calculate late fee portion for this payment (proportional if partial payment)
@@ -2430,6 +2531,7 @@ def rent_pay(period):
     payment = RentPayment(
         student_id=student.id,
         period=period,
+        join_code=join_code,
         amount_paid=payment_amount,
         period_month=current_month,
         period_year=current_year,
@@ -2442,9 +2544,9 @@ def rent_pay(period):
 
     # Handle overdraft protection and fees
     # Check if overdraft protection should transfer funds from savings
-    if banking_settings and banking_settings.overdraft_protection_enabled and student.checking_balance < 0:
-        shortfall = abs(student.checking_balance)
-        if student.savings_balance >= shortfall:
+    if banking_settings and banking_settings.overdraft_protection_enabled and projected_balance < 0:
+        shortfall = abs(projected_balance)
+        if savings_balance >= shortfall:
             # CRITICAL FIX v2: Transfer from savings to checking with join_code
             transfer_tx_withdraw = Transaction(
                 student_id=student.id,
@@ -2469,7 +2571,7 @@ def rent_pay(period):
             db.session.flush()  # Flush to update balances
 
     # Check if overdraft fee should be charged (after overdraft protection)
-    fee_charged, fee_amount = _charge_overdraft_fee_if_needed(student, banking_settings)
+    fee_charged, fee_amount = _charge_overdraft_fee_if_needed(student, banking_settings, teacher_id=teacher_id, join_code=join_code)
 
     # Commit all transactions together
     db.session.commit()
@@ -2621,7 +2723,24 @@ def demo_login(session_id):
 
         # Check if session has expired
         now = datetime.now(timezone.utc)
-        if now > demo_session.expires_at:
+        expires_at = demo_session.expires_at
+        if not isinstance(expires_at, datetime):
+            # If missing or invalid, refresh expiry to 10 minutes from now to avoid false immediate expiry
+            expires_at = now + timedelta(minutes=10)
+            demo_session.expires_at = expires_at
+            db.session.commit()
+        elif expires_at.tzinfo is None:
+            # Treat naive timestamps as being in the admin's timezone (or fallback to UTC), then normalize to UTC
+            tz_name = session.get('timezone') or 'UTC'
+            try:
+                local_tz = pytz.timezone(tz_name)
+                expires_at = local_tz.localize(expires_at).astimezone(timezone.utc)
+            except Exception:
+                expires_at = expires_at.replace(tzinfo=timezone.utc)
+            demo_session.expires_at = expires_at
+            db.session.commit()
+
+        if expires_at and now > expires_at:
             # Mark as inactive and cleanup
             cleanup_demo_student_data(demo_session)
             db.session.commit()
@@ -2655,6 +2774,10 @@ def demo_login(session_id):
         session['is_demo'] = True
         session['demo_session_id'] = session_id
         session['view_as_student'] = True
+        # Ensure class context is set for dashboard queries
+        demo_seat = student.roster_seats[0] if student.roster_seats else None
+        if demo_seat:
+            session['current_join_code'] = demo_seat.join_code
 
         current_app.logger.info(
             f"Admin {demo_session.admin_id} accessed demo session {session_id} "

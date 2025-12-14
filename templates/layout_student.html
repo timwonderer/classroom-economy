@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ page_title }} - Classroom Token Hub</title>
+    {% block page_icon %}school{% endblock %}
+    {% set resolved_page_title = page_title or self.title() or "Student Portal" %}
+    <title>{{ resolved_page_title }} - Classroom Token Hub</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <!-- Fonts -->
@@ -17,58 +19,244 @@
 
     {% block extra_head %}{% endblock %}
 </head>
-<body class="d-flex flex-column min-vh-100">
-
-    <!-- Top Navbar -->
-    <nav class="navbar-custom fixed-top">
-        <div class="container d-flex justify-content-between align-items-center">
-            <a class="navbar-brand d-flex align-items-center gap-2" href="{{ url_for('student.dashboard') }}">
-                <img src="{{ static_url('images/student-logo.svg') }}" height="28" alt="Logo">
-                <span>Token Hub</span>
+<body class="student-shell">
+    <aside class="student-sidebar">
+        <a class="student-brand" href="{{ url_for('student.dashboard') }}">
+            
+            <div>
+                <div> <span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200">local_atm</span>Classroom</div>
+                <div><span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200">store</span>Token</div>
+                <div> <span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200"> finance_mode</span>Hub</div></div>
             </a>
-
-            <div class="d-flex align-items-center gap-3">
-                {% if student %}
-                <a href="{{ url_for('student.add_class') }}" class="btn btn-sm btn-light text-secondary rounded-pill px-3 d-none d-sm-inline-block me-2">
-                    <span class="material-symbols-outlined fs-6 align-bottom me-1">add</span> Add Class
-                </a>
-                <span class="d-none d-sm-block text-secondary small fw-medium">
-                    {{ student.first_name }} {{ student.last_name }}
-                </span>
-                {% endif %}
-
-                {% if student or session.get('student_id') %}
-                <a href="{{ url_for('student.help_support') }}" class="btn btn-sm btn-light text-secondary rounded-circle me-2" title="Help & Support">
-                    <span class="material-symbols-outlined fs-5 align-middle">help</span>
-                </a>
-                <a href="{{ url_for('student.logout') }}" class="btn btn-sm btn-outline-primary rounded-pill px-3">
-                    Sign Out
-                </a>
-                {% endif %}
+        <hr>
+         {% if student %}
+        <div class="student-identity" style="font-size: 24px;"> 
+            {{ student.first_name }}
+            <div class="mt-0" style="font-size:10pt; color:white">
+                Student
             </div>
         </div>
-    </nav>
-    <div style="height: 60px;"></div>
-
-    <!-- Main Content -->
-    <main class="container py-4 flex-grow-1" style="max-width: 800px;">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show shadow-sm border-0 mb-4" role="alert">
-                        {{ message }}
-                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                    </div>
+        {% endif %}
+        {% if available_classes %}
+        <div class="class-switcher mb-3">
+            <div class="d-flex align-items-center justify-content-between mb-1">
+                <label for="class-switcher-select" class="small mb-0 text-white-50 text-uppercase">Class Context</label>
+                <span class="badge bg-light text-dark">{{ available_classes|length }} class{{ 'es' if available_classes|length != 1 else '' }}</span>
+            </div>
+            <select id="class-switcher-select" class="form-select form-select-sm">
+                {% for class_option in available_classes %}
+                <option value="{{ class_option.join_code }}" {% if class_option.is_current %}selected{% endif %}>
+                    {{ class_option.teacher_name }} — {{ class_option.block_display }}
+                </option>
                 {% endfor %}
-            {% endif %}
-        {% endwith %}
+            </select>
+            <div class="class-switch-meta text-white-50 mt-1 small">
+                {% if current_class_context %}
+                Viewing {{ current_class_context.teacher_name }} · {{ current_class_context.block_display }}
+                {% endif %}
+            </div>
+            <div id="class-switch-error" class="alert alert-warning small py-2 px-3 mt-2 d-none">
+                <span class="material-symbols-outlined align-middle me-1" style="font-size: 18px;">error</span>
+                <span class="class-switch-error-text"></span>
+            </div>
+        </div>
+        {% endif %}
+        
+        <nav class="student-nav">
+            <a href="{{ url_for('student.dashboard') }}" class="{% if request.endpoint == 'student.dashboard' %}active{% endif %}">
+                <span class="material-symbols-outlined">home</span> Home
+            </a>
+            <a href="{{ url_for('student.transfer') }}" class="{% if request.endpoint == 'student.transfer' %}active{% endif %}">
+                <span class="material-symbols-outlined">account_balance_wallet</span> Accounts
+            </a>
+            <a href="{{ url_for('student.shop') }}" class="{% if request.endpoint == 'student.shop' %}active{% endif %}">
+                <span class="material-symbols-outlined">storefront</span> Store
+            </a>
+            <a href="{{ url_for('student.payroll') }}" class="{% if request.endpoint == 'student.payroll' %}active{% endif %}">
+                <span class="material-symbols-outlined">credit_score</span> Work &amp; Pay
+            </a>
+            <a href="{{ url_for('student.rent') }}" class="{% if request.endpoint in ['student.rent', 'student.student_insurance'] %}active{% endif %}">
+                <span class="material-symbols-outlined">receipt_long</span> Bills
+            </a>
+            <a href="{{ url_for('student.help_support') }}" class="{% if request.endpoint == 'student.help_support' %}active{% endif %}">
+                <span class="material-symbols-outlined">help</span> Help
+            </a>
+            <a href="{{ url_for('student.logout') }}">
+                <span class="material-symbols-outlined">logout</span> Sign Out
+            </a>
+        </nav>
+    </aside>
 
-        {% block content %}{% endblock %}
+    <main class="student-main">
+        <div class="student-content">
+            {% set resolved_page_icon = (self.page_icon() | trim) or 'school' %}
+            <div class="page-header">
+                <div>
+                    <div class="eyebrow">Classroom Token Hub</div>
+                    <h1 class="d-flex align-items-center gap-2 mb-1">
+                        <span class="material-symbols-outlined">{{ resolved_page_icon }}</span>
+                        {{ resolved_page_title }}
+                    </h1>
+                    <div class="meta" id="student-current-time"></div>
+                    {% if current_class_context %}
+                    <div class="meta text-muted">
+                        {{ current_class_context.teacher_name }} • {{ current_class_context.block_display }}
+                        <span class="badge bg-light text-dark ms-2">Join Code: {{ current_class_context.join_code }}</span>
+                    </div>
+                    {% endif %}
+                </div>
+                <div class="page-header-actions">
+                    <button class="btn btn-primary d-none d-md-inline-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addClassModal">
+                        <span class="material-symbols-outlined">group_add</span> Add Class
+                    </button>
+                    <button class="btn btn-primary btn-icon d-inline-flex d-md-none align-items-center justify-content-center" data-bs-toggle="modal" data-bs-target="#addClassModal" title="Add Class">
+                        <span class="material-symbols-outlined">group_add</span>
+                    </button>
+                    <a href="{{ url_for('student.help_support') }}" class="btn btn-white d-none d-md-inline-flex align-items-center gap-2">
+                        <span class="material-symbols-outlined">help</span> Help
+                    </a>
+                </div>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show shadow-sm border-0 mb-4" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            {% block content %}{% endblock %}
+        </div>
     </main>
+
+    <!-- Add Class Modal -->
+    <div class="modal fade" id="addClassModal" tabindex="-1" aria-labelledby="addClassModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title d-flex align-items-center gap-2" id="addClassModalLabel">
+                        <span class="material-symbols-outlined">group_add</span>
+                        Add a New Class
+                    </h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST" action="{{ url_for('student.add_class') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <input type="hidden" name="next" value="{{ request.path }}">
+                    <div class="modal-body">
+                        <div class="alert alert-info d-flex align-items-start gap-2">
+                            <span class="material-symbols-outlined">info</span>
+                            <div>
+                                <strong>Join another class:</strong> Enter the join code your teacher provided. We'll verify your details to keep your account secure.
+                            </div>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="join_code" class="form-label">Join Code</label>
+                                <input type="text" class="form-control form-control-lg" id="join_code" name="join_code" placeholder="Example: ABC123" autocomplete="off" required>
+                                <small class="text-muted">Use the join code from your teacher for this class/period.</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="dob_sum" class="form-label">Birthday Sum</label>
+                                <input type="text" class="form-control" id="dob_sum" name="dob_sum" placeholder="Example: 2028" autocomplete="off" required>
+                                <small class="text-muted">Add your birth month + day + year (e.g., 3 + 15 + 2010 = 2028).</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="first_initial" class="form-label">First Initial</label>
+                                <input type="text" class="form-control" id="first_initial" name="first_initial" placeholder="Example: J" maxlength="1" autocomplete="off" required>
+                                <small class="text-muted">Must match your account.</small>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="last_name" class="form-label">Last Name</label>
+                                <input type="text" class="form-control" id="last_name" name="last_name" placeholder="Example: Smith" autocomplete="off" required>
+                                <small class="text-muted">Must match your account.</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary">
+                            <span class="material-symbols-outlined align-middle me-1">add_circle</span>
+                            Add Class
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
 
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ static_url('js/timezone-utils.js') }}"></script>
+    <script>
+        function updateStudentTime() {
+            const timeElement = document.getElementById('student-current-time');
+            if (!timeElement) return;
+            const now = new Date();
+            const optionsDate = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
+            const optionsTime = { hour: 'numeric', minute: 'numeric', hour12: true };
+            timeElement.textContent = now.toLocaleDateString(undefined, optionsDate) + ' ' +
+                                      now.toLocaleTimeString(undefined, optionsTime);
+        }
+        setInterval(updateStudentTime, 1000);
+        updateStudentTime();
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const classSwitcher = document.getElementById('class-switcher-select');
+            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+            const errorBox = document.getElementById('class-switch-error');
+            const errorText = document.querySelector('.class-switch-error-text');
+
+            if (classSwitcher) {
+                classSwitcher.addEventListener('change', function() {
+                    const joinCode = this.value;
+                    if (!joinCode || !csrfToken) return;
+
+                    fetch(`/student/switch-class/${joinCode}`, {
+                        method: 'POST',
+                        headers: {
+                            'X-CSRFToken': csrfToken,
+                            'Content-Type': 'application/json'
+                        }
+                    }).then(async (response) => {
+                        const payload = await response.json().catch(() => ({}));
+                        if (response.ok) {
+                            window.location.reload();
+                        } else {
+                            const message = payload.message || 'Unable to switch classes right now.';
+                            if (errorBox && errorText) {
+                                errorText.textContent = message;
+                                errorBox.classList.remove('d-none');
+                            } else {
+                                alert(message);
+                            }
+                        }
+                    }).catch(() => {
+                        if (errorBox && errorText) {
+                            errorText.textContent = 'Network error while switching classes.';
+                            errorBox.classList.remove('d-none');
+                        } else {
+                            alert('Network error while switching classes.');
+                        }
+                    });
+                });
+            }
+
+            const addClassModal = document.getElementById('addClassModal');
+            if (addClassModal) {
+                addClassModal.addEventListener('shown.bs.modal', function () {
+                    const joinCodeInput = document.getElementById('join_code');
+                    if (joinCodeInput) {
+                        joinCodeInput.focus();
+                    }
+                });
+            }
+        });
+    </script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

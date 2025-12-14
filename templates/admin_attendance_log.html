@@ -55,113 +55,152 @@
     </div>
 </div>
 
-<!-- Main Content Card -->
-<div class="card shadow">
-    <div class="card-header bg-white py-3">
-        <div class="d-flex justify-content-between align-items-center">
-            <h5 class="mb-0 fw-bold">
-                <span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">history</span>
-                Attendance History
-            </h5>
-        </div>
-    </div>
-
-    <!-- Filters -->
-    <div class="card-body border-bottom bg-light">
-        <div class="row g-3">
-            <div class="col-md-2">
-                <label class="form-label small fw-bold">Period</label>
-                <select class="form-select form-select-sm" id="filterPeriod">
-                    <option value="">All Periods</option>
-                    {% for period in periods %}
-                    <option value="{{ period }}">{{ period }}</option>
-                    {% endfor %}
-                </select>
+<div class="row g-3">
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h6 class="mb-0 fw-bold d-flex align-items-center gap-2">
+                    <span class="material-symbols-outlined">toggle_on</span>
+                    Tap In/Out Controls
+                </h6>
             </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold">Class</label>
-                <select class="form-select form-select-sm" id="filterBlock">
-                    <option value="">All Classes</option>
-                    {% for block in blocks %}
-                    <option value="{{ block }}">{{ class_labels_by_block.get(block, block) }}</option>
-                    {% endfor %}
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold">Status</label>
-                <select class="form-select form-select-sm" id="filterStatus">
-                    <option value="">All</option>
-                    <option value="active">Tap In (Active)</option>
-                    <option value="inactive">Tap Out (Inactive)</option>
-                </select>
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold">Start Date</label>
-                <input type="date" class="form-control form-control-sm" id="filterStartDate">
-            </div>
-            <div class="col-md-2">
-                <label class="form-label small fw-bold">End Date</label>
-                <input type="date" class="form-control form-control-sm" id="filterEndDate">
-            </div>
-            <div class="col-md-2 d-flex align-items-end gap-2">
-                <button class="btn btn-sm btn-primary flex-fill" onclick="loadAttendanceHistory()">
-                    <span class="material-symbols-outlined" style="font-size: 1rem; vertical-align: text-bottom;">filter_alt</span>
-                    Apply
-                </button>
-                <button class="btn btn-sm btn-outline-secondary" onclick="resetFilters()" title="Reset filters">
-                    <span class="material-symbols-outlined" style="font-size: 1rem;">refresh</span>
-                </button>
+            <div class="card-body">
+                {% if blocks %}
+                    <p class="text-muted small mb-3">Disable tap in/out per class to pause attendance for that block.</p>
+                    <div class="list-group list-group-flush">
+                        {% for block in blocks %}
+                        <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+                            <div>
+                                <div class="fw-semibold">{{ class_labels_by_block.get(block, block) }}</div>
+                                <div class="text-muted small">Block {{ block }}</div>
+                            </div>
+                            <div class="form-check form-switch m-0">
+                                <input
+                                    class="form-check-input block-tap-toggle"
+                                    type="checkbox"
+                                    id="blockTapToggle{{ loop.index }}"
+                                    data-block="{{ block|upper }}"
+                                    checked>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                {% else %}
+                    <p class="text-muted mb-0">No classes available yet.</p>
+                {% endif %}
             </div>
         </div>
     </div>
 
-    <!-- Table -->
-    <div class="card-body p-0">
-        <div id="loadingIndicator" class="text-center py-5 d-none">
-            <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden">Loading...</span>
-            </div>
-            <p class="text-muted mt-2">Loading attendance records...</p>
-        </div>
-
-        <div id="attendanceTableContainer">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0" id="attendanceTable">
-                    <thead style="background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%); color: white; position: sticky; top: 0; z-index: 10;">
-                        <tr>
-                            <th class="ps-4">Student</th>
-                            <th>Class</th>
-                            <th>Period</th>
-                            <th>Timestamp</th>
-                            <th>Status</th>
-                            <th>Reason</th>
-                        </tr>
-                    </thead>
-                    <tbody id="attendanceTableBody">
-                        <!-- Data will be populated by JavaScript -->
-                    </tbody>
-                </table>
+    <div class="col-lg-8">
+        <div class="card shadow h-100">
+            <div class="card-header bg-white py-3">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0 fw-bold">
+                        <span class="material-symbols-outlined me-2" style="vertical-align: text-bottom;">history</span>
+                        Attendance History
+                    </h5>
+                </div>
             </div>
 
-            <div id="emptyState" class="text-center py-5 text-muted d-none">
-                <span class="material-symbols-outlined d-block mb-2" style="font-size: 3rem; opacity: 0.3;">search_off</span>
-                <p class="mb-0">No attendance records found</p>
-                <small>Try adjusting your filters</small>
+            <!-- Filters -->
+            <div class="card-body border-bottom bg-light">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Period</label>
+                        <select class="form-select form-select-sm" id="filterPeriod">
+                            <option value="">All Periods</option>
+                            {% for period in periods %}
+                            <option value="{{ period }}">{{ period }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-3">
+                        <label class="form-label small fw-bold">Class</label>
+                        <select class="form-select form-select-sm" id="filterBlock">
+                            <option value="">All Classes</option>
+                            {% for block in blocks %}
+                            <option value="{{ block }}">{{ class_labels_by_block.get(block, block) }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold">Status</label>
+                        <select class="form-select form-select-sm" id="filterStatus">
+                            <option value="">All</option>
+                            <option value="active">Tap In (Active)</option>
+                            <option value="inactive">Tap Out (Inactive)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold">Start Date</label>
+                        <input type="date" class="form-control form-control-sm" id="filterStartDate">
+                    </div>
+                    <div class="col-md-2">
+                        <label class="form-label small fw-bold">End Date</label>
+                        <input type="date" class="form-control form-control-sm" id="filterEndDate">
+                    </div>
+                    <div class="col-12 d-flex align-items-center gap-2">
+                        <button class="btn btn-sm btn-primary" onclick="loadAttendanceHistory()">
+                            <span class="material-symbols-outlined" style="font-size: 1rem; vertical-align: text-bottom;">filter_alt</span>
+                            Apply
+                        </button>
+                        <button class="btn btn-sm btn-outline-secondary" onclick="resetFilters()" title="Reset filters">
+                            <span class="material-symbols-outlined" style="font-size: 1rem;">refresh</span>
+                        </button>
+                    </div>
+                </div>
             </div>
-        </div>
-    </div>
 
-    <!-- Pagination -->
-    <div class="card-footer bg-white border-top">
-        <div class="d-flex justify-content-between align-items-center">
-            <div class="text-muted small" id="paginationInfo">
-                Showing 0 - 0 of 0 records
+            <!-- Table -->
+            <div class="card-body p-0">
+                <div id="loadingIndicator" class="text-center py-5 d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="text-muted mt-2">Loading attendance records...</p>
+                </div>
+
+                <div id="attendanceTableContainer">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0" id="attendanceTable">
+                            <thead style="background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%); color: white; position: sticky; top: 0; z-index: 10;">
+                                <tr>
+                                    <th class="ps-4">Student</th>
+                                    <th>Class</th>
+                                    <th>Period</th>
+                                    <th>Timestamp</th>
+                                    <th>Status</th>
+                                    <th>Reason</th>
+                                </tr>
+                            </thead>
+                            <tbody id="attendanceTableBody">
+                                <!-- Data will be populated by JavaScript -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div id="emptyState" class="text-center py-5 text-muted d-none">
+                        <span class="material-symbols-outlined d-block mb-2" style="font-size: 3rem; opacity: 0.3;">search_off</span>
+                        <p class="mb-0">No attendance records found</p>
+                        <small>Try adjusting your filters</small>
+                    </div>
+                </div>
             </div>
-            <nav aria-label="Attendance pagination">
-                <ul class="pagination pagination-sm mb-0" id="paginationControls">
-                    <!-- Pagination buttons will be populated by JavaScript -->
-                </ul>
-            </nav>
+
+            <!-- Pagination -->
+            <div class="card-footer bg-white border-top">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div class="text-muted small" id="paginationInfo">
+                        Showing 0 - 0 of 0 records
+                    </div>
+                    <nav aria-label="Attendance pagination">
+                        <ul class="pagination pagination-sm mb-0" id="paginationControls">
+                            <!-- Pagination buttons will be populated by JavaScript -->
+                        </ul>
+                    </nav>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -185,6 +224,74 @@ function escapeHtml(text) {
 
 // Use centralized timezone utility for timestamp formatting
 const formatTimestamp = window.TimezoneUtils.formatTimestamp;
+
+function initTapToggles() {
+    document.querySelectorAll('.block-tap-toggle').forEach(function(toggle) {
+        const block = toggle.getAttribute('data-block');
+
+        fetch(`/api/admin/block-tap-settings?block=${block}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.tap_enabled !== undefined) {
+                    toggle.checked = data.tap_enabled;
+                }
+            })
+            .catch(error => console.error('Error loading tap settings:', error));
+
+        toggle.addEventListener('change', function() {
+            const isEnabled = this.checked;
+            fetch('/api/admin/block-tap-settings', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('meta[name=\"csrf-token\"]')?.getAttribute('content')
+                },
+                body: JSON.stringify({
+                    block: block,
+                    tap_enabled: isEnabled
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'ok') {
+                    const toast = document.createElement('div');
+                    toast.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+                    toast.style.zIndex = '9999';
+
+                    // Create elements safely to prevent XSS
+                    const icon = document.createElement('span');
+                    icon.className = 'material-symbols-outlined me-2';
+                    icon.style.verticalAlign = 'middle';
+                    icon.textContent = 'check_circle';
+
+                    const message = document.createTextNode(
+                        isEnabled ? `Tap in/out enabled for Block ${block}` : `Tap in/out disabled for Block ${block}`
+                    );
+
+                    const closeBtn = document.createElement('button');
+                    closeBtn.type = 'button';
+                    closeBtn.className = 'btn-close';
+                    closeBtn.setAttribute('data-bs-dismiss', 'alert');
+
+                    toast.appendChild(icon);
+                    toast.appendChild(message);
+                    toast.appendChild(closeBtn);
+
+                    document.body.appendChild(toast);
+                    setTimeout(() => toast.remove(), 3000);
+                } else {
+                    alert('Error updating tap settings: ' + (data.message || 'Unknown error'));
+                    toggle.checked = !isEnabled;
+                }
+            })
+            .catch(error => {
+                console.error('Error updating tap settings:', error);
+                alert('Network error occurred while updating tap settings.');
+                toggle.checked = !isEnabled;
+            });
+        });
+    });
+}
 
 // Get status badge HTML (status is validated server-side but we escape for defense in depth)
 function getStatusBadge(status) {
@@ -378,6 +485,7 @@ function resetFilters() {
 
 // Load data on page load
 document.addEventListener('DOMContentLoaded', () => {
+    initTapToggles();
     loadAttendanceHistory(1);
 });
 </script>
