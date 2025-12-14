@@ -3672,7 +3672,10 @@ def economy_health():
     admin_id = session.get("admin_id")
 
     blocks = _get_teacher_blocks()
-    selected_block = request.args.get('block') or (blocks[0] if blocks else None)
+    scope = request.args.get('scope', 'all')
+    selected_block = None
+    if scope == 'class':
+        selected_block = request.args.get('block') or (blocks[0] if blocks else None)
 
     payroll_query = PayrollSettings.query.filter_by(teacher_id=admin_id, is_active=True)
     payroll_settings = None
@@ -3792,6 +3795,7 @@ def economy_health():
         current_page='economy_health',
         blocks=blocks,
         selected_block=selected_block,
+        scope=scope,
         payroll_settings=payroll_settings,
         has_payroll_settings=has_payroll_settings,
         cwi_calc=cwi_calc,
