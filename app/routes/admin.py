@@ -23,6 +23,7 @@ from flask import (
     Blueprint, redirect, url_for, flash, request, session,
     jsonify, Response, send_file, current_app, abort
 )
+from urllib.parse import urlparse
 from sqlalchemy import desc, text, or_, func
 from sqlalchemy.exc import SQLAlchemyError
 import sqlalchemy as sa
@@ -3608,13 +3609,25 @@ def void_transaction(transaction_id):
             return jsonify(status="error", message="Failed to void transaction"), 500
         flash("Error voiding transaction.", "error")
         # Safe redirect: validate referrer to prevent open redirects
-        return_url = request.referrer if (request.referrer and is_safe_url(request.referrer)) else url_for('admin.dashboard')
+        ref = request.referrer or ""
+        potential_url = ref.replace('\\', '')
+        parsed = urlparse(potential_url)
+        if not parsed.scheme and not parsed.netloc:
+            return_url = potential_url
+        else:
+            return_url = url_for('admin.dashboard')
         return redirect(return_url)
     if is_json:
         return jsonify(status="success", message="Transaction voided.")
     flash("✅ Transaction voided.", "success")
     # Safe redirect: validate referrer to prevent open redirects
-    return_url = request.referrer if (request.referrer and is_safe_url(request.referrer)) else url_for('admin.dashboard')
+    ref = request.referrer or ""
+    potential_url = ref.replace('\\', '')
+    parsed = urlparse(potential_url)
+    if not parsed.scheme and not parsed.netloc:
+        return_url = potential_url
+    else:
+        return_url = url_for('admin.dashboard')
     return redirect(return_url)
 
 
