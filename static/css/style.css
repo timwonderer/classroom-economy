@@ -18,7 +18,7 @@
 }
 
 body {
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Inter', sans-serif;
     background-color: var(--background);
     color: var(--text-primary);
     line-height: 1.5;
@@ -147,6 +147,121 @@ a:hover {
 .card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) .card-title,
 .card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) .fw-bold {
     color: #ffffff;
+}
+
+/* Student Layout */
+:root {
+    --student-sidebar-width: 260px;
+    --student-sidebar-bg: #1a4d47;
+    --student-sidebar-accent: #d4a574;
+}
+
+.student-shell {
+    background: var(--background);
+    min-height: 100vh;
+    display: flex;
+}
+
+.student-sidebar {
+    width: var(--student-sidebar-width);
+    background: var(--student-sidebar-bg);
+    color: #ffffff;
+    padding: 1.5rem 1.25rem;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    overflow-y: auto;
+    box-shadow: var(--shadow-lg);
+}
+
+.student-brand {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+    color: #ffffff;
+    font-weight: 700;
+    font-size: 1.1rem;
+    text-decoration: none;
+}
+
+.student-identity {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.85);
+    margin-bottom: 1.25rem;
+}
+
+.student-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.student-nav a {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    padding: 0.65rem 0.75rem;
+    border-radius: var(--radius-sm);
+    color: rgba(255, 255, 255, 0.9);
+    text-decoration: none;
+    transition: background 0.2s ease, transform 0.1s ease;
+    font-weight: 600;
+}
+
+.student-nav a .material-symbols-outlined {
+    font-size: 20px;
+}
+
+.student-nav a:hover {
+    background: rgba(255, 255, 255, 0.08);
+    transform: translateX(2px);
+}
+
+.student-nav a.active {
+    background: var(--student-sidebar-accent);
+    color: var(--student-sidebar-bg);
+    font-weight: 700;
+}
+
+.student-nav a.active .material-symbols-outlined {
+    color: var(--student-sidebar-bg);
+}
+
+.student-main {
+    margin-left: var(--student-sidebar-width);
+    padding: 2rem 1.5rem;
+    width: 100%;
+}
+
+.student-topbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.student-content {
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+@media (max-width: 991.98px) {
+    .student-sidebar {
+        position: fixed;
+        transform: translateX(-100%);
+        transition: transform 0.3s ease;
+        z-index: 1050;
+    }
+    .student-sidebar.show {
+        transform: translateX(0);
+    }
+    .student-main {
+        margin-left: 0;
+        padding: 1.5rem 1rem;
+    }
 }
 
 .card-body {
