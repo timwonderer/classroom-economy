@@ -3,7 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{ page_title }} - Classroom Token Hub</title>
+    {% block page_icon %}school{% endblock %}
+    {% set resolved_page_title = page_title or self.title() or "Student Portal" %}
+    <title>{{ resolved_page_title }} - Classroom Token Hub</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
 
     <!-- Fonts -->
@@ -65,6 +67,23 @@
 
     <main class="student-main">
         <div class="student-content">
+            {% set resolved_page_icon = (self.page_icon() | trim) or 'school' %}
+            <div class="page-header">
+                <div>
+                    <div class="eyebrow">Student Portal</div>
+                    <h1 class="d-flex align-items-center gap-2 mb-1">
+                        <span class="material-symbols-outlined">{{ resolved_page_icon }}</span>
+                        {{ resolved_page_title }}
+                    </h1>
+                    <div class="meta" id="student-current-time"></div>
+                </div>
+                <div class="page-header-actions">
+                    <a href="{{ url_for('student.help_support') }}" class="btn btn-white d-none d-md-inline-flex align-items-center gap-2">
+                        <span class="material-symbols-outlined">help</span> Help
+                    </a>
+                </div>
+            </div>
+
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
                     {% for category, message in messages %}
@@ -83,6 +102,19 @@
     <!-- Scripts -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ static_url('js/timezone-utils.js') }}"></script>
+    <script>
+        function updateStudentTime() {
+            const timeElement = document.getElementById('student-current-time');
+            if (!timeElement) return;
+            const now = new Date();
+            const optionsDate = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
+            const optionsTime = { hour: 'numeric', minute: 'numeric', hour12: true };
+            timeElement.textContent = now.toLocaleDateString(undefined, optionsDate) + ' ' +
+                                      now.toLocaleTimeString(undefined, optionsTime);
+        }
+        setInterval(updateStudentTime, 1000);
+        updateStudentTime();
+    </script>
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

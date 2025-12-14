@@ -1,6 +1,8 @@
 {% extends "layout_student.html" %}
 
+{% set page_title = "File Insurance Claim" %}
 {% block title %}File Insurance Claim{% endblock %}
+{% block page_icon %}description{% endblock %}
 
 {% block extra_styles %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.css">
@@ -18,10 +20,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>File Insurance Claim</h1>
-    <p class="subtitle">Submit a claim for {{ policy.title }}</p>
-</div>
+<p class="text-muted mb-4">Submit a claim for {{ policy.title }}.</p>
 
 <div class="row">
     <div class="col-md-8">

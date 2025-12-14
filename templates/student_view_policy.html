@@ -1,12 +1,11 @@
 {% extends "layout_student.html" %}
 
-{% block title %}My Policy Details{% endblock %}
+{% set page_title = enrollment.policy.title %}
+{% block title %}{{ enrollment.policy.title }}{% endblock %}
+{% block page_icon %}policy{% endblock %}
 
 {% block content %}
-<div class="page-header">
-    <h1>{{ enrollment.policy.title }}</h1>
-    <p class="subtitle">Policy Details and History</p>
-</div>
+<p class="text-muted mb-4">Policy details and history.</p>
 
 <div class="row">
     <div class="col-md-8">

@@ -1,5 +1,8 @@
 {% extends "layout_student.html" %}
-
+{% set page_title = "Dashboard" %}
+{% set current_page = "dashboard" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_icon %}dashboard{% endblock %}
 {% block content %}
 <!-- Toast Container for Notifications -->
 <div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1050;"></div>
