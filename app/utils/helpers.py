@@ -11,6 +11,8 @@ from datetime import timezone
 from urllib.parse import urlparse, urljoin
 import hashlib
 import hmac
+import os
+
 from flask import request, current_app, session, render_template, url_for
 from jinja2 import TemplateNotFound
 from markupsafe import Markup
@@ -27,9 +29,19 @@ def render_template_with_fallback(template_name, **context):
     # Ensure static_url helper is always available even if Jinja globals/context processors are missing
     static_helper = current_app.jinja_env.globals.get('static_url')
     if not static_helper:
-        current_app.logger.warning("static_url missing from Jinja globals; using url_for fallback")
-        def static_helper(filename):
-            return url_for('static', filename=filename)
+        current_app.logger.warning("static_url missing from Jinja globals; using fallback with cache-busting")
+
+        def static_helper(filename: str):
+            if not filename:
+                return url_for('static', filename=filename)
+
+            file_path = os.path.join(current_app.static_folder, filename)
+            try:
+                version = int(os.stat(file_path).st_mtime)
+                return url_for('static', filename=filename, v=version)
+            except (OSError, TypeError) as exc:
+                current_app.logger.debug(f"Could not add cache buster for {filename}: {exc}")
+                return url_for('static', filename=filename)
     context.setdefault('static_url', static_helper)
 
     if session.get('force_desktop'):
