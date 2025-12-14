@@ -17,6 +17,24 @@
     --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08);
 }
 
+/* Student Theme - Dark Slate Blue */
+body.student-shell,
+body.student-theme {
+    --primary: #2F4F7F;
+    --primary-hover: #3F5F8F;
+    --secondary: #E89B6D;
+    --secondary-hover: #D88B5D;
+    --background: #F4F6F9;
+    --surface: #FFFFFF;
+    --text-primary: #2c2c2c;
+    --text-secondary: #6c757d;
+    --border-color: #DDE2E8;
+    --success: #4A8B6C;
+    --info: #5B8DBE;
+    --warning: #E8A756;
+    --danger: #D97070;
+}
+
 body {
     font-family: 'Inter', sans-serif;
     background-color: var(--background);
