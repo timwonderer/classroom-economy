@@ -2986,7 +2986,12 @@ def verify_recovery(code_id):
         return redirect(url_for('student.dashboard'))
 
     # Check if expired
-    if recovery_code.recovery_request.expires_at < datetime.now(timezone.utc):
+    # Handle timezone naive/aware comparison for SQLite/Test
+    expires_at = recovery_code.recovery_request.expires_at
+    if expires_at and expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at < datetime.now(timezone.utc):
         flash("This recovery request has expired.", "error")
         return redirect(url_for('student.dashboard'))
 

@@ -1,0 +1,37 @@
+{% extends "layout_admin.html" %}
+
+{% block page_title %}Setup Account Recovery{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-12 col-md-8 col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0">
+                <h5 class="fw-bold mb-0">Setup Account Recovery</h5>
+            </div>
+            <div class="card-body p-4">
+                <p class="text-secondary mb-4">
+                    To use the student-assisted recovery feature (if you lose your TOTP/Authenticator), you need to provide a Date of Birth Sum.
+                    This is the sum of your birth month + day + year (e.g. 03 + 15 + 1980 = 1998).
+                    This number is hashed and stored securely.
+                </p>
+
+                <form method="POST" action="{{ url_for('admin.setup_recovery') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+                    <div class="mb-4">
+                        <label for="dob_sum" class="form-label fw-medium">Date of Birth Sum</label>
+                        <input type="number" class="form-control form-control-lg" id="dob_sum" name="dob_sum" placeholder="e.g. 2028" required autofocus>
+                        <div class="form-text">Calculate: Month (1-12) + Day (1-31) + Year (4 digits)</div>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">Save & Enable Recovery</button>
+                        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-secondary">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

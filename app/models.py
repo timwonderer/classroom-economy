@@ -929,8 +929,9 @@ class Admin(db.Model):
     display_name = db.Column(db.String(100), nullable=True)  # Teacher's display name (defaults to username if not set)
     # TOTP-only: store secret, remove password_hash
     totp_secret = db.Column(db.String(32), nullable=False)
-    # Account recovery: DOB sum (similar to student system)
-    dob_sum = db.Column(db.Integer, nullable=True)  # Sum of MM + DD + YYYY for account recovery
+    # Account recovery: Hashed DOB sum (similar to student system)
+    dob_sum_hash = db.Column(db.String(64), nullable=True)  # Hashed Sum of MM + DD + YYYY
+    salt = db.Column(db.LargeBinary(16), nullable=True)  # Salt for DOB sum hash
     created_at = db.Column(db.DateTime, default=_utc_now, nullable=True)  # Nullable for existing records
     last_login = db.Column(db.DateTime, nullable=True)
     has_assigned_students = db.Column(db.Boolean, default=False, nullable=False)  # One-time setup flag
@@ -947,7 +948,7 @@ class RecoveryRequest(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     admin_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False, index=True)
-    dob_sum = db.Column(db.Integer, nullable=False)
+    dob_sum_hash = db.Column(db.String(64), nullable=True)  # Hashed input for verification trail
 
     # Status tracking
     status = db.Column(

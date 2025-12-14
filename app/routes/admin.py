@@ -597,8 +597,13 @@ def dashboard():
             days_until_friday = 7
         next_payroll_date = now_utc + timedelta(days=days_until_friday)
 
+    # Check for missing recovery setup (legacy accounts)
+    current_admin = Admin.query.get(session['admin_id'])
+    show_recovery_setup = current_admin and current_admin.dob_sum_hash is None
+
     return render_template(
         'admin_dashboard.html',
+        show_recovery_setup=show_recovery_setup,
         # Quick stats
         total_students=total_students,
         total_balance=total_balance,
@@ -892,7 +897,13 @@ def signup():
         # Step 6: Create admin account and mark invite as used
         # Log the TOTP secret being saved for debug
         current_app.logger.info(f"🎯 Admin signup: TOTP secret being saved for {username}")
-        new_admin = Admin(username=username, totp_secret=totp_secret, dob_sum=dob_sum)
+
+        # Hash DOB sum
+        salt = get_random_salt()
+        dob_sum_str = str(dob_sum).encode()
+        dob_sum_hash = hash_hmac(dob_sum_str, salt)
+
+        new_admin = Admin(username=username, totp_secret=totp_secret, dob_sum_hash=dob_sum_hash, salt=salt)
         db.session.add(new_admin)
         db.session.execute(
             text("UPDATE admin_invite_codes SET used = TRUE WHERE code = :code"),
@@ -944,7 +955,9 @@ def recover():
         # Find students by username
         students_by_username = {}
         for username in student_usernames:
-            student = Student.query.filter_by(username_hash=hash_hmac(username.encode(), b'')).first()
+            # FIX: Use username_lookup_hash for reliable lookup
+            lookup_hash = hash_username_lookup(username)
+            student = Student.query.filter_by(username_lookup_hash=lookup_hash).first()
             if not student:
                 # Try looking up by exact username (for legacy or testing)
                 student = Student.query.filter_by(username=username).first()
@@ -968,14 +981,51 @@ def recover():
         teacher_id = teacher_ids.pop()
         teacher = Admin.query.get(teacher_id)
 
-        if not teacher or not teacher.dob_sum:
+        if not teacher or not teacher.dob_sum_hash:
             flash("Teacher account not configured for recovery.", "error")
             return render_template("admin_recover.html", form=form)
 
-        if teacher.dob_sum != dob_sum:
+        # Verify DOB sum hash
+        dob_sum_str = str(dob_sum).encode()
+        expected_hash = hash_hmac(dob_sum_str, teacher.salt)
+
+        if teacher.dob_sum_hash != expected_hash:
             current_app.logger.warning(f"🛑 Admin recovery failed: DOB sum mismatch for teacher {teacher_id}")
             flash("Unable to verify your identity. Please check your DOB sum.", "error")
             return render_template("admin_recover.html", form=form)
+
+        # Enforce 'One from each period' policy
+        # Get all active blocks for this teacher
+        from app.models import TeacherBlock
+        teacher_blocks_query = (
+            Student.query
+            .join(StudentTeacher, Student.id == StudentTeacher.student_id)
+            .filter(StudentTeacher.admin_id == teacher_id)
+            .with_entities(Student.block)
+            .distinct()
+        )
+
+        teacher_blocks = set()
+        for (blocks_str,) in teacher_blocks_query.all():
+            if blocks_str:
+                teacher_blocks.update([b.strip().upper() for b in blocks_str.split(',') if b.strip()])
+
+        # Determine blocks covered by selected students
+        selected_blocks = set()
+        for s in students_by_username.values():
+            if s.block:
+                selected_blocks.update([b.strip().upper() for b in s.block.split(',') if b.strip()])
+
+        # Verify coverage
+        missing_blocks = teacher_blocks - selected_blocks
+        if missing_blocks:
+            flash(f"You must select at least one student from each of your active periods. Missing: {', '.join(sorted(missing_blocks))}", "error")
+            return render_template("admin_recover.html", form=form)
+
+        # Verify student count matches or exceeds block count
+        if len(students_by_username) < len(teacher_blocks):
+             flash(f"Please select at least {len(teacher_blocks)} students (one from each period).", "error")
+             return render_template("admin_recover.html", form=form)
 
         # Check for existing active recovery request
         existing_request = RecoveryRequest.query.filter_by(
@@ -994,7 +1044,7 @@ def recover():
         expires_at = datetime.now(timezone.utc) + timedelta(days=5)
         recovery_request = RecoveryRequest(
             admin_id=teacher.id,
-            dob_sum=dob_sum,
+            dob_sum_hash=teacher.dob_sum_hash,
             status='pending',
             expires_at=expires_at
         )
@@ -1320,6 +1370,37 @@ def resume_credentials():
     current_app.logger.info(f"🔄 Admin recovery: resumed progress for request {recovery_request.id}")
     flash(f"Progress resumed! You have {len(recovery_request.partial_codes or [])} code(s) already saved.", "info")
     return redirect(url_for('admin.reset_credentials'))
+
+
+@admin_bp.route('/setup-recovery', methods=['GET', 'POST'])
+@admin_required
+def setup_recovery():
+    """Prompt legacy teachers to set up account recovery (DOB sum)."""
+    admin = Admin.query.get(session['admin_id'])
+
+    if request.method == 'POST':
+        dob_sum_str = request.form.get('dob_sum', '').strip()
+
+        try:
+            dob_sum = int(dob_sum_str)
+            if dob_sum <= 0:
+                raise ValueError("Positive number required")
+
+            # Hash and save
+            salt = get_random_salt()
+            dob_sum_hash = hash_hmac(str(dob_sum).encode(), salt)
+
+            admin.dob_sum_hash = dob_sum_hash
+            admin.salt = salt
+            db.session.commit()
+
+            flash("Recovery setup complete! You can now use the student-assisted recovery feature if needed.", "success")
+            return redirect(url_for('admin.dashboard'))
+
+        except ValueError:
+            flash("Invalid Date of Birth Sum. Please enter a number (e.g. 2028).", "error")
+
+    return render_template('admin_setup_recovery.html')
 
 
 @admin_bp.route('/settings', methods=['GET', 'POST'])
