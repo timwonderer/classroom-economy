@@ -102,7 +102,7 @@ def create_app():
         SECRET_KEY=os.environ["SECRET_KEY"],
         SQLALCHEMY_DATABASE_URI=os.environ["DATABASE_URL"],
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
-        SESSION_COOKIE_SECURE=True,
+        SESSION_COOKIE_SECURE=os.environ["FLASK_ENV"] == "production",  # Only require HTTPS in production
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
         TEMPLATES_AUTO_RELOAD=True,
