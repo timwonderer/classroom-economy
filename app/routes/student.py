@@ -2247,12 +2247,12 @@ def rent():
     period_status = {}
 
     # Get all payments for the current period this month (supports incremental payments)
-    all_payments_for_period = RentPayment.query.filter_by(
-        student_id=student.id,
-        join_code=join_code,
-        period=current_block,
-        period_month=current_month,
-        period_year=current_year
+    all_payments_for_period = RentPayment.query.filter(
+        RentPayment.student_id == student.id,
+        RentPayment.period == current_block,
+        RentPayment.period_month == current_month,
+        RentPayment.period_year == current_year,
+        or_(RentPayment.join_code == join_code, RentPayment.join_code.is_(None)),
     ).all()
 
     # Filter out payments where the corresponding transaction was voided
@@ -2261,7 +2261,7 @@ def rent():
         txn = Transaction.query.filter(
             Transaction.student_id == student.id,
             Transaction.type == 'Rent Payment',
-            Transaction.join_code == join_code,
+            or_(Transaction.join_code == join_code, Transaction.join_code.is_(None)),
             Transaction.timestamp >= payment.payment_date - timedelta(seconds=5),
             Transaction.timestamp <= payment.payment_date + timedelta(seconds=5),
             Transaction.amount == -payment.amount_paid

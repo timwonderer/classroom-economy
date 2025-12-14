@@ -3686,8 +3686,15 @@ def economy_health():
     payroll_settings = None
     if selected_block:
         payroll_settings = payroll_query.filter_by(block=selected_block).first()
+
     if not payroll_settings:
         payroll_settings = payroll_query.filter_by(block=None).first()
+
+    # Fallback to the first available class when only class-specific payroll is configured
+    if not payroll_settings and not selected_block:
+        selected_block = request.args.get('block') or (blocks[0] if blocks else None)
+        if selected_block:
+            payroll_settings = payroll_query.filter_by(block=selected_block).first()
 
     has_payroll_settings = payroll_query.count() > 0
 
