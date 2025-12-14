@@ -2622,12 +2622,15 @@ def demo_login(session_id):
         # Check if session has expired
         now = datetime.now(timezone.utc)
         expires_at = demo_session.expires_at
-        if isinstance(expires_at, datetime):
-            if expires_at.tzinfo is None:
-                expires_at = expires_at.replace(tzinfo=timezone.utc)
-        else:
-            # Fallback: treat non-datetime or missing values as expired
-            expires_at = datetime.min.replace(tzinfo=timezone.utc)
+        if not isinstance(expires_at, datetime):
+            # If missing or invalid, refresh expiry to 10 minutes from now to avoid false immediate expiry
+            expires_at = now + timedelta(minutes=10)
+            demo_session.expires_at = expires_at
+            db.session.commit()
+        elif expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+            demo_session.expires_at = expires_at
+            db.session.commit()
 
         if now > expires_at:
             # Mark as inactive and cleanup
