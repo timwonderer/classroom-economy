@@ -710,15 +710,20 @@ def add_class():
         Return the safest place to redirect back to after add-class attempts.
 
         Prioritize an explicit `next` value, fall back to referrer, then dashboard.
+
+        Security: All redirect targets are validated with is_safe_url() to ensure
+        they are same-origin URLs, preventing open redirect vulnerabilities.
         """
         next_url = request.form.get('next') or request.args.get('next')
         if next_url and is_safe_url(next_url):
             return next_url
 
+        # Validate referrer to prevent open redirects (same-origin check)
         ref_url = request.referrer
         if ref_url and is_safe_url(ref_url):
             return ref_url
 
+        # Safe fallback: always use internal route
         return url_for(default_endpoint)
 
     if form.validate_on_submit():

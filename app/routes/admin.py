@@ -3607,11 +3607,15 @@ def void_transaction(transaction_id):
         if is_json:
             return jsonify(status="error", message="Failed to void transaction"), 500
         flash("Error voiding transaction.", "error")
-        return redirect(request.referrer or url_for('admin.dashboard'))
+        # Safe redirect: validate referrer to prevent open redirects
+        return_url = request.referrer if (request.referrer and is_safe_url(request.referrer)) else url_for('admin.dashboard')
+        return redirect(return_url)
     if is_json:
         return jsonify(status="success", message="Transaction voided.")
     flash("✅ Transaction voided.", "success")
-    return redirect(request.referrer or url_for('admin.dashboard'))
+    # Safe redirect: validate referrer to prevent open redirects
+    return_url = request.referrer if (request.referrer and is_safe_url(request.referrer)) else url_for('admin.dashboard')
+    return redirect(return_url)
 
 
 # -------------------- HALL PASS MANAGEMENT --------------------
