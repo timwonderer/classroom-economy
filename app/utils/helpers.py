@@ -28,7 +28,8 @@ def render_template_with_fallback(template_name, **context):
     static_helper = current_app.jinja_env.globals.get('static_url')
     if not static_helper:
         current_app.logger.warning("static_url missing from Jinja globals; using url_for fallback")
-        static_helper = lambda filename: url_for('static', filename=filename)  # noqa: E731
+        def static_helper(filename):
+            return url_for('static', filename=filename)
     context.setdefault('static_url', static_helper)
 
     if session.get('force_desktop'):
