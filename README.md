@@ -2,7 +2,7 @@
 
 An interactive banking and classroom management platform for teaching students about money while tracking classroom participation.
 
-**Version:** 1.1.0
+**Version:** 1.1.1
 
 ---
 
@@ -12,7 +12,7 @@ An interactive banking and classroom management platform for teaching students a
 
 **License:** [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) - Free for educational and nonprofit use, not for commercial applications.
 
-**Project Status:** Version 1.1.0 Released! New in this version: student analytics dashboard, savings projection graphs, and complete UI redesign. See [RELEASE_NOTES_v1.1.0.md](RELEASE_NOTES_v1.1.0.md) for details.
+**Project Status:** Version 1.1.1 Released! Latest patch delivers authentication, theming, redirect, and static asset fixes. See [RELEASE_NOTES_v1.1.1.md](RELEASE_NOTES_v1.1.1.md) for the bug-fix summary (v1.1.0 introduced the dashboard, projection graphs, and UI redesign).
 
 ---
 

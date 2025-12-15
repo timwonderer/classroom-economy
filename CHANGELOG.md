@@ -5,6 +5,15 @@ All notable changes to the Classroom Token Hub project will be documented in thi
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows semantic versioning principles.
 
+
+## [1.1.1] - 2025-12-15
+
+### Fixed
+- Secured teacher recovery verification by hashing date-of-birth sums and migrating existing records to the new salted hash format (#637)
+- Hardened student login redirects and UTC-normalized dashboard earnings/spending calculations to prevent redirect abuse and negative totals (#638)
+- Applied the green theme to standalone admin/auth pages and corrected admin heading hierarchy to resolve styling regressions (#635, #639)
+- Added cache-busting static asset helper defaults and fallback coverage to stop `static_url` undefined errors across templates (#628-633)
+
 ## [1.1.0] - 2024-12-13
 
 ### Added
