@@ -37,6 +37,8 @@ from app.utils.helpers import generate_anonymous_code, render_template_with_fall
 def _is_safe_url(target):
     """Return True if the URL is a relative path without scheme or netloc (prevents open redirects)."""
     from urllib.parse import urlparse
+    if not target:
+        return False
     # Remove backslashes (which browsers may tolerate as slashes)
     target = target.replace('\\', '')
     parsed = urlparse(target)
@@ -1103,24 +1105,28 @@ def dashboard():
         duration = (now_utc - start_time).total_seconds() / 60
         total_minutes_this_week += duration
 
+    def _occurred_after(ts, start):
+        ts_utc = _as_utc(ts)
+        return ts_utc is not None and ts_utc >= start
+
     # Earnings this week/month
     earnings_this_week = sum(
         tx.amount for tx in transactions
-        if tx.amount > 0 and tx.timestamp >= week_start and not tx.is_void
+        if tx.amount > 0 and _occurred_after(tx.timestamp, week_start) and not tx.is_void
     )
     earnings_this_month = sum(
         tx.amount for tx in transactions
-        if tx.amount > 0 and tx.timestamp >= month_start and not tx.is_void
+        if tx.amount > 0 and _occurred_after(tx.timestamp, month_start) and not tx.is_void
     )
 
     # Spending this week/month
     spending_this_week = abs(sum(
         tx.amount for tx in transactions
-        if tx.amount < 0 and tx.timestamp >= week_start and not tx.is_void
+        if tx.amount < 0 and _occurred_after(tx.timestamp, week_start) and not tx.is_void
     ))
     spending_this_month = abs(sum(
         tx.amount for tx in transactions
-        if tx.amount < 0 and tx.timestamp >= month_start and not tx.is_void
+        if tx.amount < 0 and _occurred_after(tx.timestamp, month_start) and not tx.is_void
     ))
 
     return render_template(
@@ -2690,7 +2696,7 @@ def login():
             return jsonify(status="success", message="Login successful")
 
         next_url = request.args.get('next')
-        if not is_safe_url(next_url):
+        if not _is_safe_url(next_url):
             return redirect(url_for('student.dashboard'))
         return redirect(next_url or url_for('student.dashboard'))
 

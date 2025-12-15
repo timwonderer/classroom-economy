@@ -97,6 +97,10 @@ All deprecated Python and SQLAlchemy patterns have been updated, ensuring full c
 - [ ] Performance profiling for large rosters (pagination partial; continue optimization)
 - [ ] Optional email notifications for teacher/system-admin events
 
+## Known Issues (P2 and below)
+
+- SQLAlchemy `Query.get` usage still surfaces `LegacyAPIWarning` during tests. Refactor to `Session.get`/scoped helper calls once compatibility with existing tenancy helpers is revalidated.
+
 ---
 
 ## Future Roadmap (Post-1.0)
