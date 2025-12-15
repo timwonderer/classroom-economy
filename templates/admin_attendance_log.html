@@ -375,7 +375,7 @@ function renderAttendanceTable(records) {
                     <span class="fw-medium">${escapeHtml(record.student_name)}</span>
                 </div>
             </td>
-            <td><span class="badge bg-primary bg-opacity-10 text-primary">${escapeHtml(record.student_class_label) || '—'}</span></td>
+            <td><span class="badge bg-primary bg-opacity-10 text-white">${escapeHtml(record.student_class_label) || '—'}</span></td>
             <td><span class="badge bg-info bg-opacity-10 text-info">${escapeHtml(record.period)}</span></td>
             <td><span class="text-muted small">${formatTimestamp(record.timestamp)}</span></td>
             <td>${getStatusBadge(record.status)}</td>
