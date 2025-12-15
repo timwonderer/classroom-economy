@@ -3264,9 +3264,9 @@ def edit_insurance_policy(policy_id):
             policy.tier_category_id = next_tier_category_id
         else:
             policy.tier_category_id = None
-        policy.tier_name = form.tier_name.data if form.tier_name.data else None
-        policy.tier_color = form.tier_color.data if form.tier_color.data else None
-        policy.tier_level = form.tier_level.data if form.tier_level.data else None
+        policy.tier_name = form.tier_name.data or None
+        policy.tier_color = form.tier_color.data or None
+        policy.tier_level = form.tier_level.data or None
         policy.is_active = form.is_active.data
 
         db.session.commit()
