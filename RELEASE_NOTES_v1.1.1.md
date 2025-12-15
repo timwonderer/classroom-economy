@@ -17,7 +17,7 @@ Version 1.1.1 is a stability-focused patch that addresses regressions discovered
 - Restored admin dashboard/help headings to the correct hierarchy and spacing based on design feedback (#639).
 
 ### Static Assets & Templates
-- Added cache-busting `static_url` helper defaults and test coverage to prevent stale assets and undefined `static_url` errors across templates, including student login and admin layouts (#628-633).
+- Added cache-busting `static_url` helper defaults and fallback coverage to prevent stale assets and undefined `static_url` errors across templates, including student login and admin layouts (#628-633).
 
 ---
 
