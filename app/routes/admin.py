@@ -3053,7 +3053,10 @@ def insurance_management():
                     'color': policy.tier_color or 'primary',
                     'policies': []
                 }
-            tier_groups_map[category_id]['policies'].append(policy.title)
+            tier_groups_map[category_id]['policies'].append({
+                'title': policy.title,
+                'level': policy.tier_level
+            })
 
     tier_groups = sorted(tier_groups_map.values(), key=lambda g: g['id'])
     tier_namespace_seed = _get_tier_namespace_seed(current_teacher_id)
@@ -3097,6 +3100,7 @@ def insurance_management():
             tier_category_id=tier_category_id,
             tier_name=form.tier_name.data if form.tier_name.data else None,
             tier_color=form.tier_color.data if form.tier_color.data else None,
+            tier_level=form.tier_level.data if form.tier_level.data else None,
             settings_mode=request.form.get('settings_mode', 'advanced'),
             is_active=form.is_active.data
         )
@@ -3220,7 +3224,10 @@ def edit_insurance_policy(policy_id):
                     'color': teacher_policy.tier_color or 'primary',
                     'policies': []
                 }
-            tier_groups_map[category_id]['policies'].append(teacher_policy.title)
+            tier_groups_map[category_id]['policies'].append({
+                'title': teacher_policy.title,
+                'level': teacher_policy.tier_level
+            })
 
     tier_groups = sorted(tier_groups_map.values(), key=lambda g: g['id'])
     tier_namespace_seed = _get_tier_namespace_seed(policy.teacher_id)
@@ -3259,6 +3266,7 @@ def edit_insurance_policy(policy_id):
             policy.tier_category_id = None
         policy.tier_name = form.tier_name.data if form.tier_name.data else None
         policy.tier_color = form.tier_color.data if form.tier_color.data else None
+        policy.tier_level = form.tier_level.data if form.tier_level.data else None
         policy.is_active = form.is_active.data
 
         db.session.commit()

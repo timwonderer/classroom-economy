@@ -167,6 +167,12 @@
     <div class="tab-pane fade" id="available-plans" role="tabpanel">
         {% if available_policies or tier_groups %}
 
+        {% set tier_level_styles = {
+            'basic': {'label': 'Basic', 'color': 'secondary'},
+            'mid': {'label': 'Mid-tier', 'color': 'info'},
+            'premium': {'label': 'Premium', 'color': 'warning'}
+        } %}
+
         <!-- Tier Groups (if any) -->
         {% for tier_id, tier_data in tier_groups.items() %}
         <div class="card mb-4 border-{{ tier_data.color }} border-2">
@@ -211,6 +217,7 @@
                             'your_friend_has_it': {'color': 'info', 'text': 'The One Your Friend Has', 'icon': 'groups'}
                         } %}
                         {% set badge = badge_config.get(policy.marketing_badge, {'color': 'secondary', 'text': None, 'icon': None}) %}
+                        {% set level_style = tier_level_styles.get(policy.tier_level) %}
 
                         <div class="accordion-item {% if not can_buy and not is_enrolled %}opacity-50{% endif %}">
                             <h2 class="accordion-header" id="heading-{{ policy.id }}">
@@ -227,7 +234,11 @@
                                                     <span class="material-symbols-outlined text-success" style="font-size: 1.5rem;">check_circle</span>
                                                 {% endif %}
                                                 <div>
-                                                    <h5 class="mb-0">{{ policy.title }}</h5>
+                                                    <h5 class="mb-0">{{ policy.title }}
+                                                      {% if level_style %}
+                                                        <span class="badge rounded-pill text-bg-{{ level_style.color }} ms-2">{{ level_style.label }}</span>
+                                                      {% endif %}
+                                                    </h5>
                                                     {% if badge.text %}
                                                     <small class="badge bg-{{ badge.color }} {% if badge.color in ['warning', 'info'] %}text-dark{% else %}text-white{% endif %} mt-1">
                                                         {% if badge.icon %}<span class="material-symbols-outlined" style="font-size: 0.9rem;">{{ badge.icon }}</span>{% endif %}
@@ -334,10 +345,16 @@
         {% if available_policies %}
         <div class="row">
             {% for policy in available_policies %}
+            {% set level_style = tier_level_styles.get(policy.tier_level) %}
             <div class="col-md-6 col-lg-4 mb-4">
                 <div class="card h-100">
                     <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">{{ policy.title }}</h5>
+                        <h5 class="mb-0 d-flex align-items-center justify-content-between">
+                            <span>{{ policy.title }}</span>
+                            {% if level_style %}
+                            <span class="badge rounded-pill text-bg-{{ level_style.color }}">{{ level_style.label }}</span>
+                            {% endif %}
+                        </h5>
                     </div>
                     <div class="card-body">
                         <h3 class="text-primary mb-3">

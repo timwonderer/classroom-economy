@@ -751,6 +751,7 @@ class InsurancePolicy(db.Model):
     tier_category_id = db.Column(db.Integer, nullable=True)  # Groups policies that are mutually exclusive
     tier_name = db.Column(db.String(100), nullable=True)  # Display name for the tier (e.g., "Paycheck Protection")
     tier_color = db.Column(db.String(20), nullable=True)  # Color theme for the tier (e.g., "primary", "success", "warning")
+    tier_level = db.Column(db.String(20), nullable=True)  # Basic, mid-tier, premium placement within a group
 
     # Settings mode: simple or advanced
     settings_mode = db.Column(db.String(20), nullable=True, default='advanced')  # simple or advanced
