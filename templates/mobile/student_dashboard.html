@@ -3,54 +3,170 @@
 {% set current_page = "dashboard" %}
 
 {% block content %}
-<div class="container-fluid">
+<!-- Toast Container for Notifications -->
+<div id="toast-container" class="toast-container position-fixed top-0 end-0 p-3" style="z-index: 1050;"></div>
+
+<!-- Server State for JS -->
+<div id="serverState" style="display:none;">{{ period_states_json|safe }}</div>
+
+<div class="container-fluid p-0">
     <!-- Balance Summary -->
-    <div class="card mb-3">
-        <div class="card-header">
-            <h5 class="card-title mb-0">Your Balances</h5>
+    <div class="card mb-3 shadow-sm">
+        <div class="card-header bg-transparent border-0 pb-0">
+            <h5 class="card-title mb-0 fw-bold text-primary">Your Balances</h5>
         </div>
-        <div class="card-body">
-            <div class="d-flex justify-content-around text-center">
-                <div>
-                    <small class="text-muted d-block">Checking</small>
-                    <h4 class="mb-0">${{ "%.2f"|format(student.checking_balance) }}</h4>
+        <div class="card-body pt-2">
+            <div class="d-flex justify-content-between text-center gap-2">
+                <div class="bg-light rounded p-3 flex-fill">
+                    <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.7rem;">Checking</small>
+                    <h4 class="mb-0 fw-bold">${{ "%.2f"|format(student.checking_balance) }}</h4>
                 </div>
-                <div>
-                    <small class="text-muted d-block">Savings</small>
-                    <h4 class="mb-0">${{ "%.2f"|format(student.savings_balance) }}</h4>
+                <div class="bg-light rounded p-3 flex-fill">
+                    <small class="text-muted d-block text-uppercase fw-bold" style="font-size: 0.7rem;">Savings</small>
+                    <h4 class="mb-0 fw-bold text-success">${{ "%.2f"|format(student.savings_balance) }}</h4>
                 </div>
-                <div>
-                    <small class="text-muted d-block">Total</small>
-                    <h4 class="mb-0">${{ "%.2f"|format(student.checking_balance + student.savings_balance) }}</h4>
-                </div>
+            </div>
+            <div class="mt-3 text-center">
+                 <small class="text-muted">Total: <span class="fw-bold">${{ "%.2f"|format(student.checking_balance + student.savings_balance) }}</span></small>
             </div>
         </div>
     </div>
 
+    <!-- Attendance Card -->
+    {% if student_blocks %}
+    <div class="card mb-3 shadow-sm border-primary" style="border-width: 0 0 0 4px;">
+        <div class="card-header bg-transparent border-0 pb-0 d-flex justify-content-between align-items-center">
+            <h5 class="card-title mb-0 fw-bold text-primary">Attendance</h5>
+            <span class="badge bg-primary-subtle text-primary border border-primary-subtle rounded-pill">{{ student.hall_passes }} Passes</span>
+        </div>
+        <div class="card-body">
+            <!-- Queue Status (Hidden by default, populated by JS) -->
+            <div id="queueStatus" class="alert alert-info py-2 px-3 mb-3 d-flex align-items-center justify-content-between" style="display: none !important;">
+                <div class="d-flex align-items-center">
+                    <span class="material-symbols-outlined fs-5 me-2">people</span>
+                    <span style="font-size: 0.9rem;">Wait: <strong id="queueCount">0</strong></span>
+                </div>
+                <span class="badge bg-info text-white" id="queueLimitBadge"></span>
+            </div>
+
+            {% for period in student_blocks %}
+            <div class="block-row mb-4 last-mb-0" data-block-row="{{ period }}">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="small text-muted text-uppercase fw-bold">Period {{ period }}</div>
+                    <span class="block-status badge bg-secondary">Inactive</span>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-3 bg-light rounded p-3">
+                    <span class="text-muted small">Time Today</span>
+                    <span class="block-duration fw-bold fs-5 font-monospace">0h 0m 0s</span>
+                </div>
+
+                <!-- Hall Pass Info Display (Inline) -->
+                <div id="hallPassInfo-{{ period }}" style="display:none;" class="mb-3"></div>
+
+                <div class="d-grid gap-2">
+                    <button id="tapIn-{{ period }}" class="btn btn-success btn-lg py-3 fw-bold shadow-sm" data-period="{{ period }}" data-action="tap_in" aria-label="Tap In to Period {{ period }}">
+                        <div class="d-flex align-items-center justify-content-center gap-2">
+                            <span class="material-symbols-outlined">login</span>
+                            <span>TAP IN</span>
+                        </div>
+                    </button>
+                    <button id="tapOut-{{ period }}" class="btn btn-danger btn-lg py-3 fw-bold shadow-sm" data-period="{{ period }}" data-action="tap_out" disabled aria-label="Tap Out or Request Pass for Period {{ period }}">
+                        <div class="d-flex align-items-center justify-content-center gap-2">
+                            <span class="material-symbols-outlined">logout</span>
+                            <span>TAP OUT / PASS</span>
+                        </div>
+                    </button>
+                </div>
+                <!-- Hidden pay cell for JS compatibility -->
+                <span class="block-pay" data-period="{{ period }}" style="display:none;">0.00</span>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Recent Transactions -->
-    <div class="card">
-        <div class="card-header">
-            <h5 class="card-title mb-0">Recent Transactions</h5>
+    <div class="card shadow-sm">
+        <div class="card-header bg-transparent border-0">
+            <h5 class="card-title mb-0 fw-bold text-primary">Recent Activity</h5>
         </div>
         <div class="list-group list-group-flush">
             {% if recent_transactions %}
                 {% for tx in recent_transactions %}
-                <div class="list-group-item">
-                    <div class="d-flex w-100 justify-content-between">
-                        <h6 class="mb-1">{{ tx.description }}</h6>
-                        <span class="fw-bold {% if tx.amount > 0 %}text-success{% else %}text-danger{% endif %}">
+                <div class="list-group-item px-3 py-3">
+                    <div class="d-flex w-100 justify-content-between align-items-center">
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="rounded-circle p-2 d-flex align-items-center justify-content-center flex-shrink-0"
+                                 style="width: 40px; height: 40px; background-color: {{ 'rgba(25, 135, 84, 0.1)' if tx.amount > 0 else 'rgba(220, 53, 69, 0.1)' }};">
+                                <span class="material-symbols-outlined fs-5 {{ 'text-success' if tx.amount > 0 else 'text-danger' }}">
+                                    {{ 'arrow_downward' if tx.amount > 0 else 'arrow_upward' }}
+                                </span>
+                            </div>
+                            <div>
+                                <h6 class="mb-0 fw-semibold" style="font-size: 0.95rem;">{{ tx.description }}</h6>
+                                <small class="text-muted local-timestamp" data-timestamp="{{ tx.timestamp.isoformat() }}">
+                                    {{ tx.timestamp.strftime('%b %d') }}
+                                </small>
+                            </div>
+                        </div>
+                        <span class="fw-bold fs-6 {% if tx.amount > 0 %}text-success{% else %}text-danger{% endif %}">
                             {% if tx.amount > 0 %}+{% endif %}${{ "%.2f"|format(tx.amount) }}
                         </span>
                     </div>
-                    <small class="text-muted">{{ tx.timestamp.strftime('%b %d, %Y') }}</small>
                 </div>
                 {% endfor %}
             {% else %}
-                <div class="list-group-item text-center text-muted">
+                <div class="list-group-item text-center text-muted py-4">
+                    <span class="material-symbols-outlined fs-1 opacity-25 d-block mb-2">receipt_long</span>
                     No recent transactions.
                 </div>
             {% endif %}
         </div>
     </div>
 </div>
+
+<!-- Hall Pass Modal -->
+<div class="modal fade" id="hallPassModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold">Request Pass / Tap Out</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body pt-2">
+                <form id="hallPassForm">
+                    <input type="hidden" id="hallPassPeriod">
+                    <div class="mb-4">
+                        <label class="form-label small fw-bold text-uppercase text-secondary" for="hallPassReason">Reason</label>
+                        <select class="form-select form-select-lg" id="hallPassReason" aria-label="Select reason">
+                            <option value="" selected disabled>Select a reason...</option>
+                            <option value="Bathroom">Bathroom</option>
+                            <option value="Water">Water</option>
+                            <option value="Nurse">Nurse</option>
+                            <option value="Office">Office</option>
+                            <option value="Other">Other</option>
+                            <option value="Done for the day">Done for the Day</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold text-uppercase text-secondary" for="hallPassPin">Enter PIN</label>
+                        <input type="password" class="form-control form-control-lg text-center" id="hallPassPin" inputmode="numeric" pattern="[0-9]*" placeholder="••••" style="letter-spacing: 0.5em;" aria-label="Enter PIN">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-light w-100 mb-2" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary w-100" id="confirmHallPassBtn">Confirm</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const TEACHER_ID = {{ teacher_id }};
+</script>
+<script src="{{ static_url('js/attendance.js') }}"></script>
 {% endblock %}
