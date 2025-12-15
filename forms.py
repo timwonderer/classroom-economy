@@ -221,6 +221,12 @@ class InsurancePolicyForm(FlaskForm):
         ('secondary', 'Gray (Secondary)'),
         ('dark', 'Dark')
     ], validators=[Optional()])
+    tier_level = SelectField('Tier Level within Group', choices=[
+        ('', 'Select level (optional)'),
+        ('basic', 'Basic'),
+        ('mid', 'Mid-tier'),
+        ('premium', 'Premium')
+    ], validators=[Optional()])
 
     # Settings mode
     settings_mode = SelectField('Settings Mode', choices=[
