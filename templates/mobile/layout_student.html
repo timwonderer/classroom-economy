@@ -14,10 +14,8 @@
         :root {
             /* Student Theme - Dark Slate Blue */
             --brand-primary: #2F4F7F;
-            --brand-primary-rgb: 47, 79, 127;
             --brand-secondary: #E89B6D;
             --brand-cyan: #5B8DBE; /* Mapped to info color */
-            --brand-cyan-rgb: 91, 141, 190;
             --student-light-blue: #5B8DBE;
             --gray-100: #F4F6F9;
             --gray-800: #2c2c2c;
@@ -90,22 +88,6 @@
             border: none;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
-        .bg-primary {
-            background-color: var(--brand-primary) !important;
-            color: var(--white) !important;
-        }
-        .bg-primary-subtle {
-            background-color: rgba(var(--brand-primary-rgb), 0.08) !important;
-            color: var(--brand-primary) !important;
-        }
-        .bg-info {
-            background-color: var(--brand-cyan) !important;
-            color: var(--white) !important;
-        }
-        .bg-info-subtle {
-            background-color: rgba(var(--brand-cyan-rgb), 0.1) !important;
-            color: var(--brand-cyan) !important;
-        }
         .btn-primary {
             background-color: var(--brand-primary);
             border-color: var(--brand-primary);
@@ -113,14 +95,6 @@
         .btn-primary:hover {
             background-color: #3F5F8F; /* Lighter shade */
             border-color: #3F5F8F;
-        }
-        .btn-outline-primary {
-            color: var(--brand-primary);
-            border-color: var(--brand-primary);
-        }
-        .btn-outline-primary:hover {
-            background-color: var(--brand-primary);
-            color: var(--white);
         }
         .text-primary {
             color: var(--brand-primary) !important;
@@ -130,24 +104,6 @@
         }
         .text-danger {
             color: var(--danger) !important;
-        }
-        .badge.bg-primary {
-            background-color: var(--brand-primary) !important;
-            color: var(--white) !important;
-        }
-        .badge.bg-primary-subtle {
-            background-color: rgba(var(--brand-primary-rgb), 0.08) !important;
-            color: var(--brand-primary) !important;
-            border: 1px solid rgba(var(--brand-primary-rgb), 0.16);
-        }
-        .badge.bg-info {
-            background-color: var(--brand-cyan) !important;
-            color: var(--white) !important;
-        }
-        .badge.bg-info-subtle {
-            background-color: rgba(var(--brand-cyan-rgb), 0.1) !important;
-            color: var(--brand-cyan) !important;
-            border: 1px solid rgba(var(--brand-cyan-rgb), 0.2);
         }
     </style>
     {% block extra_styles %}{% endblock %}

@@ -6,7 +6,7 @@ Create Date: 2025-12-15 00:00:00.000000
 
 """
 
-revision = 'a4b4c5d6e7f9'
+revision = "a4b4c5d6e7f9"
 down_revision = '2f3g4h5i6j7k'
 branch_labels = None
 depends_on = None

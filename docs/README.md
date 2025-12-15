@@ -25,7 +25,6 @@ Welcome to the Classroom Token Hub documentation! This index points you to the m
 - **[API Reference](technical-reference/api_reference.md)** — REST endpoints and authentication expectations.
 - **[Economy Specification](technical-reference/ECONOMY_SPECIFICATION.md)** — Financial system ratios, CWI calculations, and balancing rules.
 - **[Timezone Handling](technical-reference/TIMEZONE_HANDLING.md)** — UTC storage and timezone conversion patterns.
-- **[Mobile Layout Guidelines](technical-reference/mobile_layouts.md)** — Mobile theming, routing parity, and card-first UX tips.
 
 ### 🎯 Development
 - **[Development Priorities](../DEVELOPMENT.md)** — Current priorities, roadmap, version 1.0 status, and active tasks.

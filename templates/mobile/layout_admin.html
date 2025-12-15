@@ -12,7 +12,6 @@
     <style>
         :root {
             --brand-primary: #1a4d47;
-            --brand-primary-rgb: 26, 77, 71;
             --brand-blue: #2a5d57; /* using primary hover as secondary gradient color */
             --gray-100: #f5f5f3;
             --gray-800: #2c2c2c;
@@ -78,14 +77,6 @@
             border: none;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
         }
-        .bg-primary {
-            background-color: var(--brand-primary) !important;
-            color: var(--white) !important;
-        }
-        .bg-primary-subtle {
-            background-color: rgba(var(--brand-primary-rgb), 0.08) !important;
-            color: var(--brand-primary) !important;
-        }
         .btn-primary {
             background-color: var(--brand-primary);
             border-color: var(--brand-primary);
@@ -94,25 +85,8 @@
             background-color: var(--brand-blue);
             border-color: var(--brand-blue);
         }
-        .btn-outline-primary {
-            color: var(--brand-primary);
-            border-color: var(--brand-primary);
-        }
-        .btn-outline-primary:hover {
-            background-color: var(--brand-primary);
-            color: var(--white);
-        }
         .text-primary {
             color: var(--brand-primary) !important;
-        }
-        .badge.bg-primary {
-            background-color: var(--brand-primary) !important;
-            color: var(--white) !important;
-        }
-        .badge.bg-primary-subtle {
-            background-color: rgba(var(--brand-primary-rgb), 0.08) !important;
-            color: var(--brand-primary) !important;
-            border: 1px solid rgba(var(--brand-primary-rgb), 0.16);
         }
     </style>
     {% block extra_styles %}{% endblock %}

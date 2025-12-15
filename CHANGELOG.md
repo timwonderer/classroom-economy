@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows semantic versioning principles.
 
 
+## [1.2.0] - 2025-12-24
+
+### Added
+- **Mobile Experience** - Dedicated mobile templates for student portal with responsive navigation and improved touch targets.
+- **PWA Support** - Added mobile web app capability meta tags.
+- **Accessibility** - Added ARIA labels to mobile navigation and interactive elements.
+
+### Changed
+- **Mobile Dashboard** - Simplified single-column layout with attendance card and tap in/out buttons.
+- **Mobile Store** - Improved item list layout with larger purchase buttons.
+- **Theme Consistency** - Aligned mobile templates with main application theme colors.
+
 ## [1.1.1] - 2025-12-15
 
 ### Fixed
