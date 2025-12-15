@@ -1444,11 +1444,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Settings Form Validation
     const payrollSettingsForm = document.getElementById('payrollSettingsForm');
-    if (payrollSettingsForm) {
-        payrollSettingsForm.addEventListener('submit', function(e) {
-            const validationErrors = [];
-            const errorList = document.getElementById('validationErrorList');
-            const errorDiv = document.getElementById('validationErrors');
+      if (payrollSettingsForm) {
+          payrollSettingsForm.addEventListener('submit', function(e) {
+              const validationErrors = [];
+              const errorList = document.getElementById('validationErrorList');
+              const errorDiv = document.getElementById('validationErrors');
 
             // Clear previous errors
             errorList.innerHTML = '';
@@ -1487,17 +1487,14 @@ document.addEventListener("DOMContentLoaded", () => {
                     errorList.appendChild(li);
                 });
                 errorDiv.style.display = 'block';
-                errorDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            }
-        });
-    }
+                  errorDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              }
+          });
+      }
+  });
 
-        });
-    }
-});
-
-// Run Payroll
-document.getElementById('runPayrollBtn')?.addEventListener('click', async function() {
+  // Run Payroll
+  document.getElementById('runPayrollBtn')?.addEventListener('click', async function() {
   const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
   try {
     const resp = await fetch('{{ url_for("admin.run_payroll") }}', {
