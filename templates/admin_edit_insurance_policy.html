@@ -640,13 +640,23 @@ document.addEventListener('DOMContentLoaded', function() {
     clearTierFields();
   }
 
+  // Escapes &, <, >, ", and ' for HTML usage
+  function escapeHtml(str) {
+    return String(str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+  }
+
   function updateTierSummary() {
     if (!tierSummaryEdit) return;
     const levelLabel = (tierLevelInput && tierLevelInput.value)
       ? ` · ${tierLevelInput.options[tierLevelInput.selectedIndex].text}`
       : '';
     const groupLabel = tierNameInput && tierNameInput.value ? tierNameInput.value : 'Untitled Group';
-    tierSummaryEdit.innerHTML = `<strong>Grouped:</strong> ${groupLabel} · select one only${levelLabel}`;
+    tierSummaryEdit.innerHTML = `<strong>Grouped:</strong> ${escapeHtml(groupLabel)} · select one only${levelLabel}`;
     tierSummaryEdit.classList.remove('d-none');
   }
 
