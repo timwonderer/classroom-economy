@@ -166,7 +166,7 @@
                 <div class="card-header bg-warning bg-opacity-10 d-flex justify-content-between align-items-center">
                   <h6 class="mb-0 text-dark fs-4">
                     <span class="material-symbols-outlined me-2 align-middle">pending</span>
-                    Pending Students ({{ total_unclaimed }})
+                    Unclaimed Seats ({{ total_unclaimed }})
                   </h6>
                   {% if unclaimed_seats|length > 0 or unclaimed_students|length > 0 %}
                   <button type="button" class="btn btn-sm btn-outline-danger" onclick="deleteAllPendingInBlock('{{ block }}', {{ unclaimed_seats|length }}, {{ unclaimed_students|length }})">

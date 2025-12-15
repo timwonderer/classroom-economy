@@ -23,21 +23,20 @@ os.environ.setdefault("PEPPER_KEY", "tKiXIAgaPqsOOhR1PqvdEQo4BelrN5SP3cpWxVYrsHk
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 import pytest
-from app import app, db, Student
+from app import app as flask_app, db, Student
 
 
 @pytest.fixture
 def app():
     """Provide the Flask app instance for tests."""
-    from app import app
-    app.config.update(
+    flask_app.config.update(
         TESTING=True,
         WTF_CSRF_ENABLED=False,
         SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
         ENV="testing",
         SESSION_COOKIE_SECURE=False,
     )
-    yield app
+    yield flask_app
 
 
 @pytest.fixture
@@ -45,7 +44,7 @@ def client(app):
     ctx = app.app_context()
     ctx.push()
     db.create_all()
-    client = app.test_client()
+    client = flask_app.test_client()
     yield client
     db.drop_all()
     ctx.pop()
@@ -75,21 +74,21 @@ def client_with_fk():
     Use this fixture for tests that need to verify CASCADE behavior.
     """
     
-    app.config.update(
+    flask_app.config.update(
         TESTING=True,
         WTF_CSRF_ENABLED=False,
         SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
         ENV="testing",
         SESSION_COOKIE_SECURE=False,
     )
-    ctx = app.app_context()
+    ctx = flask_app.app_context()
     ctx.push()
     
     db.create_all()
     
     # Foreign key constraints are enabled by the event listener.
     
-    client = app.test_client()
+    client = flask_app.test_client()
     yield client
     
     db.drop_all()
