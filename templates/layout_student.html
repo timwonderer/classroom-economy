@@ -40,19 +40,19 @@
         {% if available_classes %}
         <div class="class-switcher mb-3">
             <div class="d-flex align-items-center justify-content-between mb-1">
-                <label for="class-switcher-select" class="small mb-0 text-white-50 text-uppercase">Class Context</label>
+                <label for="class-switcher-select" class="small mb-0 text-white-50 text-uppercase">Switch Classes</label>
                 <span class="badge bg-light text-dark">{{ available_classes|length }} class{{ 'es' if available_classes|length != 1 else '' }}</span>
             </div>
             <select id="class-switcher-select" class="form-select form-select-sm">
                 {% for class_option in available_classes %}
                 <option value="{{ class_option.join_code }}" {% if class_option.is_current %}selected{% endif %}>
-                    {{ class_option.teacher_name }} — {{ class_option.block_display }}
+                    {{ class_option.teacher_name }} : {{ class_option.block_display }}
                 </option>
                 {% endfor %}
             </select>
             <div class="class-switch-meta text-white-50 mt-1 small">
                 {% if current_class_context %}
-                Viewing {{ current_class_context.teacher_name }} · {{ current_class_context.block_display }}
+                Current: {{ current_class_context.teacher_name }} · {{ current_class_context.block_display }}
                 {% endif %}
             </div>
             <div id="class-switch-error" class="alert alert-warning small py-2 px-3 mt-2 d-none">

@@ -7,14 +7,23 @@
     <div class="col-12 col-md-8 col-lg-6">
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-transparent border-0 pt-4 px-4 pb-0">
-                <h5 class="fw-bold mb-0">Setup Account Recovery</h5>
+                <h5 class="fw-bold mb-0 text-primary">Setup Account Recovery</h5>
             </div>
             <div class="card-body p-4">
-                <p class="text-secondary mb-4">
-                    To use the student-assisted recovery feature (if you lose your TOTP/Authenticator), you need to provide a Date of Birth Sum.
-                    This is the sum of your birth month + day + year (e.g. 03 + 15 + 1980 = 1998).
-                    This number is hashed and stored securely.
-                </p>
+                <p class="text-secondary-dark ">
+                    Classroom Token Hub uses a unique account recovery method for teacher users. Instead of collecting sensitive personal inforamtion such as email addresses or phone number, we utilizes a student-assisted recovery process. </p>
+                    <p class="text-secondary-dark">
+                    Account recover would require two pieces of unique information:</p>
+               
+                    <ul>
+                        <li>The sum of your date of birth <span class="text-danger">(something you know)</span></li>
+                        <li>Your student usernames from the classes you teach <span class="text-danger">(something you have)</span> </li>
+                    </ul>
+                
+                    <p class="text-secondary-dark ">
+                    Because your account was created before this new feature, you would need to provide the sum of your date of birth to enable this recovery option.</p>
+                     <p class="text-success fw-medium">
+                    Your date of birth sum will be processed and stored securely. The processed value cannot be reversed to recover the original value.</p>
 
                 <form method="POST" action="{{ url_for('admin.setup_recovery') }}">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
