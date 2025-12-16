@@ -18,6 +18,7 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body class="d-flex bg-background {% if maintenance_bypass_active %}maintenance-active{% endif %}">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
     {% if maintenance_bypass_active %}
     <div class="maintenance-banner">
         <span class="material-symbols-outlined align-text-bottom me-1" style="font-size: 18px;">visibility</span>
@@ -105,7 +106,7 @@
     </aside>
 
     <!-- Main Content -->
-    <main class="main-content flex-grow-1">
+    <main id="main-content" class="main-content flex-grow-1">
         <div class="page-header">
             <div>
                 <div class="eyebrow">Classroom Token Hub</div>
