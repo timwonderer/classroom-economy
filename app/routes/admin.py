@@ -4105,10 +4105,10 @@ def run_payroll():
         current_app.logger.error(f"❌ Payroll {error_type} error: {e}", exc_info=True)
 
         if is_json:
-            message = "Database error during payroll. Check logs." if is_db_error else "An unexpected error occurred during payroll."
+            message = "Database error during payroll. Check logs." if is_db_error else "Unexpected error during payroll."
             return jsonify(status="error", message=message), 500
-        
-        flash_message = "Database error during payroll. Check logs." if is_db_error else "An unexpected error occurred during payroll."
+
+        flash_message = "Database error during payroll. Check logs." if is_db_error else "Unexpected error during payroll."
         flash(flash_message, "admin_error")
         return redirect(url_for('admin.dashboard'))
 
