@@ -22,12 +22,14 @@
 ├── DEVELOPMENT.md            # Roadmap and planned features
 ├── README.md                 # Project overview and quick start
 ├── PROJECT_HISTORY.md        # Project evolution and philosophy
-├── RELEASE_NOTES_v1.0.md     # Version-specific release notes
 ├── CLAUDE.md                 # Guide for AI assistants (this guide's parent)
+├── CONTRIBUTING.md           # Contribution guidelines
 ├── .claude/                  # Claude-specific rules and settings
+│   ├── AGENTS.md             # AI agent workflow guidelines
 │   └── rules/                # Detailed rule files
 ├── docs/
 │   ├── README.md             # Documentation index
+│   ├── DEPLOYMENT.md         # Deployment guide
 │   ├── user-guides/          # For end users
 │   │   ├── teacher_manual.md
 │   │   └── student_guide.md
@@ -36,16 +38,32 @@
 │   │   ├── database_schema.md
 │   │   └── ECONOMY_SPECIFICATION.md
 │   ├── operations/           # For deployment and maintenance
-│   │   ├── DEPLOYMENT.md
-│   │   └── MULTI_TENANCY_FIX_DEPLOYMENT.md
+│   │   ├── README.md
+│   │   ├── CLEANUP_DUPLICATES.md
+│   │   ├── DEMO_SESSIONS.md
+│   │   ├── DIGITALOCEAN_CLOUDFLARE_SETUP.md
+│   │   ├── MULTI_TENANCY_FIX_DEPLOYMENT.md
+│   │   ├── PII_AUDIT.md
+│   │   ├── SECURITY_AUDIT_2025.md
+│   │   ├── SECURITY_IMPROVEMENTS_IMPLEMENTATION.md
+│   │   └── UPTIMEROBOT_SETUP.md
 │   ├── security/             # Security audits and reports
 │   │   ├── CRITICAL_SAME_TEACHER_LEAK.md
 │   │   └── MULTI_TENANCY_AUDIT.md
 │   ├── development/          # Development guides
 │   │   ├── DEPRECATED_CODE_PATTERNS.md
+│   │   ├── MIGRATION_BEST_PRACTICES.md
+│   │   ├── TEMPLATE_REDESIGN_RECOMMENDATIONS.md
 │   │   ├── TESTING_SUMMARY.md
 │   │   └── SEEDING_INSTRUCTIONS.md
 │   └── archive/              # Historical documents
+│       ├── releases/         # Old release notes
+│       │   ├── RELEASE_NOTES_v1.0.md
+│       │   ├── RELEASE_NOTES_v1.1.0.md
+│       │   ├── RELEASE_NOTES_v1.1.1.md
+│       │   └── RELEASE_NOTES_v1.2.0.md
+│       ├── RECOVERY_EVALUATION.md
+│       ├── migration_check_report.md
 │       ├── pr-reports/
 │       └── FIXES_SUMMARY.md
 ```
