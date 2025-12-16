@@ -181,10 +181,10 @@
                   <table class="table table-sm table-striped">
                     <thead class="table-light">
                       <tr>
-                        <th>Name</th>
-                        <th>Added</th>
-                        <th>Status</th>
-                        <th>Actions</th>
+                        <th scope="col">Name</th>
+                        <th scope="col">Added</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Actions</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -200,8 +200,8 @@
                           <span class="badge bg-warning text-dark">Waiting for Claim</span>
                         </td>
                         <td>
-                          <button type="button" class="btn btn-sm btn-outline-danger" onclick="deletePendingStudent({{ seat.id }}, '{{ seat.first_name }} {{ seat.last_initial }}.')">
-                            <span class="material-symbols-outlined align-middle fs-6">delete</span>
+                          <button type="button" class="btn btn-sm btn-outline-danger" onclick="deletePendingStudent({{ seat.id }}, '{{ seat.first_name }} {{ seat.last_initial }}.')" aria-label="Delete pending student {{ seat.first_name }}">
+                            <span class="material-symbols-outlined align-middle fs-6" aria-hidden="true">delete</span>
                           </button>
                         </td>
                       </tr>
@@ -220,15 +220,16 @@
                           <span class="badge bg-warning text-dark">Needs Username</span>
                         </td>
                         <td>
-                          <a href="{{ url_for('admin.student_detail', student_id=student.id) }}" class="btn btn-sm btn-outline-primary">
-                            <span class="material-symbols-outlined align-middle fs-6">visibility</span>
+                          <a href="{{ url_for('admin.student_detail', student_id=student.id) }}" class="btn btn-sm btn-outline-primary" aria-label="View student details">
+                            <span class="material-symbols-outlined align-middle fs-6" aria-hidden="true">visibility</span>
                           </a>
                           <button type="button" class="btn btn-sm btn-outline-danger"
                                   data-bs-toggle="modal"
                                   data-bs-target="#deleteStudentModal"
                                   data-student-id="{{ student.id }}"
-                                  data-student-name="{{ student.full_name }}">
-                            <span class="material-symbols-outlined align-middle fs-6">delete</span>
+                                  data-student-name="{{ student.full_name }}"
+                                  aria-label="Delete student {{ student.full_name }}">
+                            <span class="material-symbols-outlined align-middle fs-6" aria-hidden="true">delete</span>
                           </button>
                         </td>
                       </tr>
@@ -286,24 +287,24 @@
                 <table class="table table-hover table-striped" id="students-table-{{ block }}">
                   <thead class="table-dark">
                     <tr>
-                      <th style="width: 40px;">
-                        <input type="checkbox" class="form-check-input select-all-checkbox" onchange="toggleSelectAll('{{ block }}', this)">
+                      <th style="width: 40px;" scope="col">
+                        <input type="checkbox" class="form-check-input select-all-checkbox" onchange="toggleSelectAll('{{ block }}', this)" aria-label="Select all students">
                       </th>
-                      <th>Name</th>
-                      <th>Username</th>
-                      <th>Checking</th>
-                      <th>Savings</th>
-                      <th>Total Earnings</th>
-                      <th>Hall Passes</th>
-                      <th>Setup Status</th>
-                      <th>Actions</th>
+                      <th scope="col">Name</th>
+                      <th scope="col">Username</th>
+                      <th scope="col">Checking</th>
+                      <th scope="col">Savings</th>
+                      <th scope="col">Total Earnings</th>
+                      <th scope="col">Hall Passes</th>
+                      <th scope="col">Setup Status</th>
+                      <th scope="col">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {% for student in claimed_students %}
                     <tr class="student-row" data-student-id="{{ student.id }}">
                       <td>
-                        <input type="checkbox" class="form-check-input student-checkbox" value="{{ student.id }}" onchange="updateBulkToolbar('{{ block }}')">
+                        <input type="checkbox" class="form-check-input student-checkbox" value="{{ student.id }}" onchange="updateBulkToolbar('{{ block }}')" aria-label="Select {{ student.full_name }}">
                       </td>
                       <td>
                         <a href="{{ url_for('admin.student_detail', student_id=student.id) }}" class="fw-bold text-decoration-none">
