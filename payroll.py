@@ -94,10 +94,10 @@ def calculate_payroll(students, last_payroll_time):
         # Keep original block names for settings lookup, but uppercase for TapEvent queries
         student_blocks = [b.strip() for b in (student.block or "").split(',') if b.strip()]
         student_last_payroll_time = get_last_payroll_time(student_id=student.id)
-        if last_payroll_time and student_last_payroll_time:
-            payroll_anchor = max(last_payroll_time, student_last_payroll_time)
-        else:
-            payroll_anchor = student_last_payroll_time or last_payroll_time
+        possible_anchors = [
+            t for t in [last_payroll_time, student_last_payroll_time] if t
+        ]
+        payroll_anchor = max(possible_anchors) if possible_anchors else None
         for block_original in student_blocks:
             block_upper = block_original.upper()
 
