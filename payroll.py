@@ -2,26 +2,46 @@ from app.extensions import db
 from app.models import TapEvent, Student, Transaction, PayrollSettings
 from datetime import datetime, timezone
 from attendance import calculate_unpaid_attendance_seconds, get_last_payroll_time
+from flask import session
 
 
-def get_pay_rate_for_block(block):
+def get_pay_rate_for_block(block, teacher_id=None):
     """
     Get the pay rate for a specific block from settings, falling back to global/default.
 
+    CRITICAL: Scopes query by teacher_id to prevent multi-tenancy leaks.
+
     Args:
         block (str): The block/period identifier.
+        teacher_id (int, optional): The teacher's ID. If not provided, uses session.
 
     Returns:
         float: The pay rate per second.
     """
+    # Get teacher_id from session if not provided
+    if teacher_id is None:
+        teacher_id = session.get('admin_id')
+
+    # Can't lookup settings without a teacher_id - return default
+    if teacher_id is None:
+        return 0.25 / 60  # $0.25 per minute
+
     # Try block-specific settings first
     if block:
-        setting = PayrollSettings.query.filter_by(block=block, is_active=True).first()
+        setting = PayrollSettings.query.filter_by(
+            teacher_id=teacher_id,
+            block=block,
+            is_active=True
+        ).first()
         if setting and setting.pay_rate:
             return setting.pay_rate / 60.0  # Convert per-minute to per-second
 
-    # Fall back to global settings
-    global_setting = PayrollSettings.query.filter_by(block=None, is_active=True).first()
+    # Fall back to global settings for this teacher
+    global_setting = PayrollSettings.query.filter_by(
+        teacher_id=teacher_id,
+        block=None,
+        is_active=True
+    ).first()
     if global_setting and global_setting.pay_rate:
         return global_setting.pay_rate / 60.0
 
@@ -29,19 +49,34 @@ def get_pay_rate_for_block(block):
     return 0.25 / 60  # $0.25 per minute
 
 
-def get_daily_limit_seconds(block):
+def get_daily_limit_seconds(block, teacher_id=None):
     """
     Get the daily time limit in seconds for a specific block from settings.
 
+    CRITICAL: Scopes query by teacher_id to prevent multi-tenancy leaks.
+
     Args:
         block (str): The block/period identifier.
+        teacher_id (int, optional): The teacher's ID. If not provided, uses session.
 
     Returns:
         int or None: The daily limit in seconds, or None if no limit is set.
     """
+    # Get teacher_id from session if not provided
+    if teacher_id is None:
+        teacher_id = session.get('admin_id')
+
+    # Can't lookup settings without a teacher_id - return no limit
+    if teacher_id is None:
+        return None
+
     # Try block-specific settings first
     if block:
-        setting = PayrollSettings.query.filter_by(block=block, is_active=True).first()
+        setting = PayrollSettings.query.filter_by(
+            teacher_id=teacher_id,
+            block=block,
+            is_active=True
+        ).first()
         if setting:
             # Simple mode: daily_limit_hours
             if setting.settings_mode == 'simple' and setting.daily_limit_hours:
@@ -57,8 +92,12 @@ def get_daily_limit_seconds(block):
                 multiplier = unit_to_seconds.get(setting.max_time_per_day_unit, 3600)
                 return int(setting.max_time_per_day * multiplier)
 
-    # Fall back to global settings
-    global_setting = PayrollSettings.query.filter_by(block=None, is_active=True).first()
+    # Fall back to global settings for this teacher
+    global_setting = PayrollSettings.query.filter_by(
+        teacher_id=teacher_id,
+        block=None,
+        is_active=True
+    ).first()
     if global_setting:
         if global_setting.settings_mode == 'simple' and global_setting.daily_limit_hours:
             return int(global_setting.daily_limit_hours * 3600)
@@ -76,18 +115,25 @@ def get_daily_limit_seconds(block):
     return None
 
 
-def calculate_payroll(students, last_payroll_time):
+def calculate_payroll(students, last_payroll_time, teacher_id=None):
     """
     Calculates payroll for a given list of students since the last payroll run.
     Now uses PayrollSettings from database for configurable pay rates.
 
+    CRITICAL: Scopes payroll settings by teacher_id to prevent multi-tenancy leaks.
+
     Args:
         students (list): A list of Student objects.
         last_payroll_time (datetime): The timestamp of the last payroll run.
+        teacher_id (int, optional): The teacher's ID. If not provided, uses session.
 
     Returns:
         dict: A dictionary mapping student IDs to their calculated payroll amount.
     """
+    # Get teacher_id from session if not provided
+    if teacher_id is None:
+        teacher_id = session.get('admin_id')
+
     summary = {}
 
     for student in students:
@@ -102,7 +148,8 @@ def calculate_payroll(students, last_payroll_time):
             block_upper = block_original.upper()
 
             # Get pay rate using original block name (matches PayrollSettings.block)
-            rate_per_second = get_pay_rate_for_block(block_original)
+            # Pass teacher_id to ensure correct settings are used
+            rate_per_second = get_pay_rate_for_block(block_original, teacher_id=teacher_id)
 
             total_seconds = calculate_unpaid_attendance_seconds(
                 student.id,
