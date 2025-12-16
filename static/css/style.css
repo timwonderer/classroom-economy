@@ -7,6 +7,7 @@
     --surface: #fafaf8;
     --text-primary: #2c2c2c;
     --text-secondary: #6c757d;
+    --text-secondary-contrast: #b38650;
     --border-color: #e5e5e3;
     --sidebar-width: 260px;
     --radius-sm: 8px;
@@ -28,6 +29,7 @@ body.student-theme {
     --surface: #FFFFFF;
     --text-primary: #2c2c2c;
     --text-secondary: #6c757d;
+    --text-secondary-contrast: #b38650;
     --border-color: #DDE2E8;
     --success: #4A8B6C;
     --info: #5B8DBE;
@@ -63,7 +65,7 @@ a:hover {
 .text-primary { color: var(--primary) !important; }
 /* Override text-secondary to use a darker shade for better contrast on light backgrounds */
 /* Using a darkened version of gold/orange for text */
-.text-secondary { color: #b38650 !important; }
+.text-secondary { color: var(--text-secondary-contrast) !important; }
 .bg-primary { background-color: var(--primary) !important; }
 .bg-secondary { background-color: var(--secondary) !important; }
 .bg-background { background-color: var(--background) !important; }
