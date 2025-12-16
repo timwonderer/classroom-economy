@@ -7,7 +7,7 @@ This directory contains historical release notes for Classroom Token Hub.
 - **[v1.2.0](RELEASE_NOTES_v1.2.0.md)** - Mobile experience and PWA support
 - **[v1.1.1](RELEASE_NOTES_v1.1.1.md)** - Bug fixes for authentication, theming, and redirects
 - **[v1.1.0](RELEASE_NOTES_v1.1.0.md)** - Dashboard analytics, projection graphs, and UI redesign
-- **[v1.0](RELEASE_NOTES_v1.0.md)** - Initial stable release
+- **[v1.0.0](RELEASE_NOTES_v1.0.md)** - Initial stable release
 
 ## Current Releases
 
