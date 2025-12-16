@@ -615,13 +615,6 @@ def dashboard():
         )
         show_insurance_tier_prompt = legacy_policy_exists
 
-        # Automatically clear the prompt once no legacy policies remain
-        if not legacy_policy_exists:
-            onboarding_record.steps_completed["needs_insurance_tier_upgrade"] = False
-            from sqlalchemy.orm.attributes import flag_modified
-            flag_modified(onboarding_record, "steps_completed")
-            db.session.commit()
-
     return render_template(
         'admin_dashboard.html',
         show_recovery_setup=show_recovery_setup,

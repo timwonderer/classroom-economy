@@ -35,7 +35,7 @@ def get_teachers_with_legacy_policies() -> List[int]:
         .distinct()
         .all()
     )
-    return [teacher_id for teacher_id, *_ in teachers if teacher_id is not None]
+    return [teacher_id for (teacher_id,) in teachers]
 
 
 def ensure_onboarding_record(teacher_id: int) -> TeacherOnboarding:
