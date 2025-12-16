@@ -16,7 +16,7 @@ and this project follows semantic versioning principles.
   - Moved `AGENTS.md` to `.claude/` directory for AI agent guidelines
   - Archived `RECOVERY_EVALUATION.md` and `migration_check_report.md` to `docs/archive/`
   - Updated all documentation cross-references to reflect new locations
-  - Updated `.claude/rules/documentation.md` with current documentation structure
+  - Updated `.claude/rules/documentation.md` with current documentation structure, including accurate `docs/operations/` map
 
 
 ## [1.2.0] - 2025-12-24

@@ -39,8 +39,14 @@
 │   │   └── ECONOMY_SPECIFICATION.md
 │   ├── operations/           # For deployment and maintenance
 │   │   ├── README.md
+│   │   ├── CLEANUP_DUPLICATES.md
+│   │   ├── DEMO_SESSIONS.md
 │   │   ├── DIGITALOCEAN_CLOUDFLARE_SETUP.md
-│   │   └── MULTI_TENANCY_FIX_DEPLOYMENT.md
+│   │   ├── MULTI_TENANCY_FIX_DEPLOYMENT.md
+│   │   ├── PII_AUDIT.md
+│   │   ├── SECURITY_AUDIT_2025.md
+│   │   ├── SECURITY_IMPROVEMENTS_IMPLEMENTATION.md
+│   │   └── UPTIMEROBOT_SETUP.md
 │   ├── security/             # Security audits and reports
 │   │   ├── CRITICAL_SAME_TEACHER_LEAK.md
 │   │   └── MULTI_TENANCY_AUDIT.md
