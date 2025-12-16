@@ -61,7 +61,7 @@ This document outlines templates that have been redesigned or could benefit from
 ---
 
 ### 3. Rent Management Page (`admin_rent_settings.html`)
-**Priority:** Low-Medium
+**Priority:** Medium
 **Current Status:** Tab-based, generally acceptable
 
 **Current Structure:**
