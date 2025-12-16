@@ -40,43 +40,33 @@ This document outlines templates that have been redesigned or could benefit from
 ## Recommended for Redesign
 
 ### 2. Store Item Edit Page (`admin_edit_item.html`)
-**Priority:** Medium
-**Current Status:** Acceptable but could be improved
+**Status:** ✅ Redesigned (2025-12-16)
 
-**Current Structure:**
-- Vertical stacked cards (good baseline)
-- All sections always visible
-- 5 cards total: Basic Info, Inventory & Limits, Bundle Settings, Bulk Discount Settings, Advanced Settings
+**Previous Issues:**
+- Long vertical scroll due to multiple stacked cards
+- All settings visible even when not in use
 
-**Recommended Changes:**
-- Keep Basic Information and Inventory & Limits visible
-- Convert to accordion:
-  - Bundle Settings (with badge when enabled)
-  - Bulk Discount Settings (with badge when enabled)
+**Redesign Approach:**
+- Kept "Basic Information" and "Inventory & Limits" visible
+- Moved optional settings to Accordion:
+  - Bundle Settings (with "Active" badge)
+  - Bulk Discount Settings (with "Active" badge)
   - Advanced Settings
-- Would reduce page height by ~40% and improve focus
-
-**Estimated Impact:** Medium - would improve UX but not critical
+- Improved focus and reduced visual clutter
 
 ---
 
 ### 3. Rent Management Page (`admin_rent_settings.html`)
-**Priority:** Medium
-**Current Status:** Tab-based, generally acceptable
+**Status:** ✅ Redesigned (2025-12-16)
 
-**Current Structure:**
-- Tab interface with Overview, Settings, and Waivers tabs
-- Settings tab has many fields but manageable
-
-**Recommended Changes:**
-- Within Settings tab, group related settings into collapsible sections:
-  - Basic Rent Settings
-  - Payment Options
-  - Late Fees & Penalties
-  - Eviction Settings
-- Would make settings tab less overwhelming
-
-**Estimated Impact:** Low - current structure works, but grouping would help
+**Redesign Approach:**
+- Grouped settings into collapsible Accordion sections:
+  - Rent Amount & Frequency (default open)
+  - Due Date Settings
+  - Grace Period & Late Penalties
+  - Student Payment Options
+- Kept main "Enable Rent System" toggle outside for visibility
+- Improved organization of complex settings
 
 ---
 
