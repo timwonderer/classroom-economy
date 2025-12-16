@@ -170,8 +170,8 @@ a:hover {
 /* Student Layout */
 :root {
     --student-sidebar-width: 260px;
-    --student-sidebar-bg: #1a4d47;
-    --student-sidebar-accent: #d4a574;
+    --student-sidebar-bg: #2F4F7F;
+    --student-sidebar-accent: #FFD700;
 }
 
 .student-shell {
