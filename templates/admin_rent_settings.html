@@ -302,6 +302,7 @@
                 <h2 class="accordion-header" id="headingAmount">
                     <button class="accordion-button" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAmount" aria-expanded="true" aria-controls="collapseAmount">
                         <i class="bi bi-currency-dollar me-2"></i><strong>Rent Amount & Frequency</strong>
+                        <span class="badge bg-info ms-2 d-none" id="customFrequencyBadge">Custom</span>
                     </button>
                 </h2>
                 <div id="collapseAmount" class="accordion-collapse collapse show" aria-labelledby="headingAmount" data-bs-parent="#rentSettingsAccordion">
@@ -367,6 +368,7 @@
                 <h2 class="accordion-header" id="headingDueDate">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseDueDate" aria-expanded="false" aria-controls="collapseDueDate">
                         <i class="bi bi-calendar-event me-2"></i><strong>Due Date Settings</strong>
+                        <span class="badge bg-success ms-2 d-none" id="dueDateBadge">Active</span>
                     </button>
                 </h2>
                 <div id="collapseDueDate" class="accordion-collapse collapse" aria-labelledby="headingDueDate" data-bs-parent="#rentSettingsAccordion">
@@ -393,10 +395,11 @@
             </div>
 
             <!-- Grace Period & Late Penalties -->
-             <div class="accordion-item">
+            <div class="accordion-item">
                 <h2 class="accordion-header" id="headingPenalties">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapsePenalties" aria-expanded="false" aria-controls="collapsePenalties">
                         <i class="bi bi-exclamation-triangle me-2"></i><strong>Grace Period & Late Penalties</strong>
+                        <span class="badge bg-warning text-dark ms-2 d-none" id="penaltiesBadge">Active</span>
                     </button>
                 </h2>
                 <div id="collapsePenalties" class="accordion-collapse collapse" aria-labelledby="headingPenalties" data-bs-parent="#rentSettingsAccordion">
@@ -443,10 +446,11 @@
             </div>
 
             <!-- Student Payment Options -->
-             <div class="accordion-item">
+            <div class="accordion-item">
                 <h2 class="accordion-header" id="headingOptions">
                     <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseOptions" aria-expanded="false" aria-controls="collapseOptions">
                         <i class="bi bi-person-check me-2"></i><strong>Student Payment Options</strong>
+                        <span class="badge bg-primary ms-2 d-none" id="paymentOptionsBadge">Active</span>
                     </button>
                 </h2>
                 <div id="collapseOptions" class="accordion-collapse collapse" aria-labelledby="headingOptions" data-bs-parent="#rentSettingsAccordion">
@@ -639,6 +643,64 @@ document.addEventListener('DOMContentLoaded', function() {
   toggleCustomFrequency();
   toggleRecurringPenalty();
   toggleBillPreview();
+
+  function toggleBadge(badgeId, isActive) {
+    const badge = document.getElementById(badgeId);
+    if (!badge) return;
+    badge.classList.toggle('d-none', !isActive);
+  }
+
+  function updateAccordionsBadges() {
+    const frequencyType = document.getElementById('frequency_type');
+    toggleBadge('customFrequencyBadge', frequencyType && frequencyType.value === 'custom');
+
+    const firstRentDueDate = document.getElementById('first_rent_due_date');
+    toggleBadge('dueDateBadge', Boolean(firstRentDueDate && firstRentDueDate.value));
+
+    const gracePeriod = document.getElementById('grace_period_days');
+    const latePenaltyAmount = document.getElementById('late_penalty_amount');
+    const penaltyType = document.getElementById('late_penalty_type');
+    const recurringDays = document.getElementById('late_penalty_frequency_days');
+
+    const penaltyActive = (gracePeriod && Number(gracePeriod.value || 0) > 0) ||
+      (latePenaltyAmount && Number(latePenaltyAmount.value || 0) > 0) ||
+      (penaltyType && penaltyType.value === 'recurring' && recurringDays && Number(recurringDays.value || 0) > 0);
+    toggleBadge('penaltiesBadge', penaltyActive);
+
+    const billPreviewEnabled = document.getElementById('bill_preview_enabled');
+    const allowIncrementalPayment = document.getElementById('allow_incremental_payment');
+    const preventPurchaseWhenLate = document.getElementById('prevent_purchase_when_late');
+
+    const paymentOptionsActive = (billPreviewEnabled && billPreviewEnabled.checked) ||
+      (allowIncrementalPayment && allowIncrementalPayment.checked) ||
+      (preventPurchaseWhenLate && preventPurchaseWhenLate.checked);
+    toggleBadge('paymentOptionsBadge', paymentOptionsActive);
+  }
+
+  const badgeFields = [
+    'frequency_type',
+    'custom_frequency_value',
+    'custom_frequency_unit',
+    'first_rent_due_date',
+    'due_day_of_month',
+    'grace_period_days',
+    'late_penalty_amount',
+    'late_penalty_type',
+    'late_penalty_frequency_days',
+    'bill_preview_enabled',
+    'bill_preview_days',
+    'allow_incremental_payment',
+    'prevent_purchase_when_late'
+  ];
+
+  badgeFields.forEach(id => {
+    const field = document.getElementById(id);
+    if (!field) return;
+    const eventType = field.type === 'checkbox' || field.tagName === 'SELECT' ? 'change' : 'input';
+    field.addEventListener(eventType, updateAccordionsBadges);
+  });
+
+  updateAccordionsBadges();
 
   // Initialize Economy Balance Checker
   if (typeof EconomyBalanceChecker !== 'undefined') {
