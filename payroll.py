@@ -1,7 +1,7 @@
 from app.extensions import db
 from app.models import TapEvent, Student, Transaction, PayrollSettings
 from datetime import datetime, timezone
-from attendance import calculate_unpaid_attendance_seconds
+from attendance import calculate_unpaid_attendance_seconds, get_last_payroll_time
 
 
 def get_pay_rate_for_block(block):
@@ -93,6 +93,11 @@ def calculate_payroll(students, last_payroll_time):
     for student in students:
         # Keep original block names for settings lookup, but uppercase for TapEvent queries
         student_blocks = [b.strip() for b in (student.block or "").split(',') if b.strip()]
+        student_last_payroll_time = get_last_payroll_time(student_id=student.id)
+        possible_anchors = [
+            t for t in [last_payroll_time, student_last_payroll_time] if t
+        ]
+        payroll_anchor = max(possible_anchors) if possible_anchors else None
         for block_original in student_blocks:
             block_upper = block_original.upper()
 
@@ -102,7 +107,7 @@ def calculate_payroll(students, last_payroll_time):
             total_seconds = calculate_unpaid_attendance_seconds(
                 student.id,
                 block_upper,
-                last_payroll_time,
+                payroll_anchor,
             )
 
             if total_seconds > 0:
