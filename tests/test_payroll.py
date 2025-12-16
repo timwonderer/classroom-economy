@@ -54,3 +54,12 @@ def test_calculate_payroll(client):
     students2 = [student2]
     payroll_summary2 = calculate_payroll(students2, last_payroll_time)
     assert student2.id not in payroll_summary2
+
+    # Manual payments after the last payroll should clear projected pay for that student
+    manual_time = now - timedelta(minutes=5)
+    manual_tx = Transaction(student_id=student.id, amount=3, type="manual_payment", timestamp=manual_time)
+    db.session.add(manual_tx)
+    db.session.commit()
+
+    post_manual_summary = calculate_payroll(students, last_payroll_time)
+    assert post_manual_summary == {}
