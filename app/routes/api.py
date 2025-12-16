@@ -1441,7 +1441,7 @@ def handle_tap():
             # Since the student is just requesting, they are still 'active'.
             # We need to return the current state to the UI.
             is_active = True
-            last_payroll_time = get_last_payroll_time()
+            last_payroll_time = get_last_payroll_time(student_id=student.id)
             duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time, join_code=join_code)
             rate_per_second = get_pay_rate_for_block(block_lookup.get(period, period))
             projected_pay = duration * rate_per_second
@@ -1503,7 +1503,7 @@ def handle_tap():
         )
         if latest_event and latest_event.status == status:
             current_app.logger.info(f"Duplicate {action} ignored for student {student.id} in period {period}")
-            last_payroll_time = get_last_payroll_time()
+            last_payroll_time = get_last_payroll_time(student_id=student.id)
             duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time, join_code=join_code)
             return jsonify({
                 "status": "ok",
@@ -1601,7 +1601,7 @@ def handle_tap():
         .first()
     )
     is_active = latest_event.status == "active" if latest_event else False
-    last_payroll_time = get_last_payroll_time()
+    last_payroll_time = get_last_payroll_time(student_id=student.id)
     duration = calculate_unpaid_attendance_seconds(student.id, period, last_payroll_time, join_code=join_code)
 
     rate_per_second = get_pay_rate_for_block(block_lookup.get(period, period))
