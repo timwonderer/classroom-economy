@@ -1833,7 +1833,7 @@ def check_and_auto_tapout_if_limit_reached(student):
 
         if latest_event and latest_event.status == "active":
             # Get daily limit for this period (use original case for settings lookup)
-            daily_limit = get_daily_limit_seconds(block_original, teacher_id=student.teacher_id)
+            daily_limit = get_daily_limit_seconds(block_original)
 
             if daily_limit:
                 # Calculate today's completed attendance using proper Pacific day boundaries
