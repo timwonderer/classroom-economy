@@ -8,12 +8,15 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
-### Added
-- **TEMPLATE_REDESIGN_RECOMMENDATIONS.md** - Documentation of UI redesign patterns and guidelines
-  - Best practices for when to use accordion/collapsible patterns vs traditional layouts
-  - Analysis of other admin templates that could benefit from similar improvements
-  - Implementation checklist for future template redesigns
-  - Color scheme guidelines for consistent visual hierarchy
+### Changed
+- **Documentation Reorganization** - Improved documentation structure for better maintainability
+  - Moved historical release notes (v1.0, v1.1.0, v1.1.1, v1.2.0) to `docs/archive/releases/`
+  - Moved `TEMPLATE_REDESIGN_RECOMMENDATIONS.md` to `docs/development/`
+  - Moved `MIGRATION_BEST_PRACTICES.md` to `docs/development/`
+  - Moved `AGENTS.md` to `.claude/` directory for AI agent guidelines
+  - Archived `RECOVERY_EVALUATION.md` and `migration_check_report.md` to `docs/archive/`
+  - Updated all documentation cross-references to reflect new locations
+  - Updated `.claude/rules/documentation.md` with current documentation structure
 
 
 ## [1.2.0] - 2025-12-24
