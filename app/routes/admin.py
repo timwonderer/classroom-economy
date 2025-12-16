@@ -4113,8 +4113,8 @@ def run_payroll():
         db.session.rollback()
         current_app.logger.error(f"❌ Payroll unexpected error: {e}", exc_info=True)
         if is_json:
-            return jsonify(status="error", message=f"Unexpected error during payroll: {str(e)}"), 500
-        flash(f"Unexpected error during payroll: {str(e)}", "admin_error")
+            return jsonify(status="error", message="Unexpected error during payroll. Check logs."), 500
+        flash("Unexpected error during payroll. Check logs.", "admin_error")
         return redirect(url_for('admin.dashboard'))
 
 
