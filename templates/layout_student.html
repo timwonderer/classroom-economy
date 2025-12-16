@@ -20,6 +20,7 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body class="student-shell">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
     <aside class="student-sidebar">
         <a class="student-brand" href="{{ url_for('student.dashboard') }}">
             
@@ -87,7 +88,7 @@
         </nav>
     </aside>
 
-    <main class="student-main">
+    <main id="main-content" class="student-main">
         <div class="student-content">
             {% set resolved_page_icon = (self.page_icon() | trim) or 'school' %}
             <div class="page-header">
@@ -107,13 +108,13 @@
                 </div>
                 <div class="page-header-actions">
                     <button class="btn btn-primary d-none d-md-inline-flex align-items-center gap-2" data-bs-toggle="modal" data-bs-target="#addClassModal">
-                        <span class="material-symbols-outlined">group_add</span> Add Class
+                        <span class="material-symbols-outlined" aria-hidden="true">group_add</span> Add Class
                     </button>
-                    <button class="btn btn-primary btn-icon d-inline-flex d-md-none align-items-center justify-content-center" data-bs-toggle="modal" data-bs-target="#addClassModal" title="Add Class">
-                        <span class="material-symbols-outlined">group_add</span>
+                    <button class="btn btn-primary btn-icon d-inline-flex d-md-none align-items-center justify-content-center" data-bs-toggle="modal" data-bs-target="#addClassModal" title="Add Class" aria-label="Add Class">
+                        <span class="material-symbols-outlined" aria-hidden="true">group_add</span>
                     </button>
                     <a href="{{ url_for('student.help_support') }}" class="btn btn-white d-none d-md-inline-flex align-items-center gap-2">
-                        <span class="material-symbols-outlined">help</span> Help
+                        <span class="material-symbols-outlined" aria-hidden="true">help</span> Help
                     </a>
                 </div>
             </div>
