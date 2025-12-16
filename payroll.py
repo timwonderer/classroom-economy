@@ -1,10 +1,29 @@
+from functools import wraps
+
 from app.extensions import db
 from app.models import TapEvent, Student, Transaction, PayrollSettings
 from datetime import datetime, timezone
 from attendance import calculate_unpaid_attendance_seconds, get_last_payroll_time
-from flask import session
+from flask import has_request_context, session
 
 
+DEFAULT_PAY_RATE_PER_MINUTE = 0.25
+DEFAULT_PAY_RATE_PER_SECOND = DEFAULT_PAY_RATE_PER_MINUTE / 60.0
+
+
+def with_teacher_id_fallback(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        teacher_id = kwargs.get("teacher_id")
+        if teacher_id is None and has_request_context():
+            teacher_id = session.get("admin_id")
+            kwargs["teacher_id"] = teacher_id
+        return func(*args, **kwargs)
+
+    return wrapper
+
+
+@with_teacher_id_fallback
 def get_pay_rate_for_block(block, teacher_id=None):
     """
     Get the pay rate for a specific block from settings, falling back to global/default.
@@ -18,13 +37,9 @@ def get_pay_rate_for_block(block, teacher_id=None):
     Returns:
         float: The pay rate per second.
     """
-    # Get teacher_id from session if not provided
-    if teacher_id is None:
-        teacher_id = session.get('admin_id')
-
     # Can't lookup settings without a teacher_id - return default
     if teacher_id is None:
-        return 0.25 / 60  # $0.25 per minute
+        return DEFAULT_PAY_RATE_PER_SECOND
 
     # Try block-specific settings first
     if block:
@@ -46,9 +61,10 @@ def get_pay_rate_for_block(block, teacher_id=None):
         return global_setting.pay_rate / 60.0
 
     # Ultimate fallback to hardcoded default
-    return 0.25 / 60  # $0.25 per minute
+    return DEFAULT_PAY_RATE_PER_SECOND
 
 
+@with_teacher_id_fallback
 def get_daily_limit_seconds(block, teacher_id=None):
     """
     Get the daily time limit in seconds for a specific block from settings.
@@ -62,10 +78,6 @@ def get_daily_limit_seconds(block, teacher_id=None):
     Returns:
         int or None: The daily limit in seconds, or None if no limit is set.
     """
-    # Get teacher_id from session if not provided
-    if teacher_id is None:
-        teacher_id = session.get('admin_id')
-
     # Can't lookup settings without a teacher_id - return no limit
     if teacher_id is None:
         return None
@@ -115,6 +127,7 @@ def get_daily_limit_seconds(block, teacher_id=None):
     return None
 
 
+@with_teacher_id_fallback
 def calculate_payroll(students, last_payroll_time, teacher_id=None):
     """
     Calculates payroll for a given list of students since the last payroll run.
@@ -130,10 +143,6 @@ def calculate_payroll(students, last_payroll_time, teacher_id=None):
     Returns:
         dict: A dictionary mapping student IDs to their calculated payroll amount.
     """
-    # Get teacher_id from session if not provided
-    if teacher_id is None:
-        teacher_id = session.get('admin_id')
-
     summary = {}
 
     for student in students:
