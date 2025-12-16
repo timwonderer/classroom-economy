@@ -4098,23 +4098,18 @@ def run_payroll():
 
         db.session.commit()
         current_app.logger.info(f"✅ Payroll complete. Paid {len(summary)} students.")
-        if is_json:
-            return jsonify(status="success", message=f"Payroll complete. Paid {len(summary)} students.")
-        flash(f"✅ Payroll complete. Paid {len(summary)} students.", "admin_success")
-        return redirect(url_for('admin.dashboard'))
-    except SQLAlchemyError as e:
+    except (SQLAlchemyError, Exception) as e:
         db.session.rollback()
-        current_app.logger.error(f"❌ Payroll database error: {e}", exc_info=True)
+        is_db_error = isinstance(e, SQLAlchemyError)
+        error_type = "database" if is_db_error else "unexpected"
+        current_app.logger.error(f"❌ Payroll {error_type} error: {e}", exc_info=True)
+
         if is_json:
-            return jsonify(status="error", message="Database error during payroll. Check logs."), 500
-        flash("Database error during payroll. Check logs.", "admin_error")
-        return redirect(url_for('admin.dashboard'))
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"❌ Payroll unexpected error: {e}", exc_info=True)
-        if is_json:
-            return jsonify(status="error", message="Unexpected error during payroll. Check logs."), 500
-        flash("Unexpected error during payroll. Check logs.", "admin_error")
+            message = "Database error during payroll. Check logs." if is_db_error else f"Unexpected error during payroll: {str(e)}"
+            return jsonify(status="error", message=message), 500
+        
+        flash_message = "Database error during payroll. Check logs." if is_db_error else f"Unexpected error during payroll: {str(e)}"
+        flash(flash_message, "admin_error")
         return redirect(url_for('admin.dashboard'))
 
 
