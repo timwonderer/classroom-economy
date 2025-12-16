@@ -601,6 +601,20 @@ def dashboard():
     current_admin = Admin.query.get(session['admin_id'])
     show_recovery_setup = current_admin and current_admin.dob_sum_hash is None
 
+    # Prompt legacy teachers to upgrade insurance policies to the new tiered design
+    show_insurance_tier_prompt = False
+    onboarding_record = TeacherOnboarding.query.filter_by(teacher_id=session['admin_id']).first()
+    if onboarding_record and onboarding_record.steps_completed and onboarding_record.steps_completed.get("needs_insurance_tier_upgrade"):
+        legacy_policy_exists = (
+            db.session.query(InsurancePolicy.id)
+            .filter(InsurancePolicy.teacher_id == session['admin_id'])
+            .filter(InsurancePolicy.tier_category_id.is_(None))
+            .filter(InsurancePolicy.tier_level.is_(None))
+            .first()
+            is not None
+        )
+        show_insurance_tier_prompt = legacy_policy_exists
+
     return render_template(
         'admin_dashboard.html',
         show_recovery_setup=show_recovery_setup,
@@ -624,6 +638,7 @@ def dashboard():
         recent_logs=recent_logs,
         # Lookup table
         student_lookup=student_lookup,
+        show_insurance_tier_prompt=show_insurance_tier_prompt,
         current_page="dashboard"
     )
 

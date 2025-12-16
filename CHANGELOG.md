@@ -32,6 +32,7 @@ and this project follows semantic versioning principles.
 - Applied the green theme to standalone admin/auth pages and corrected admin heading hierarchy to resolve styling regressions (#635, #639)
 - Added cache-busting static asset helper defaults and fallback coverage to stop `static_url` undefined errors across templates (#628-633)
 - Stopped insurance management and edit screens from crashing when legacy forms lack the tier grouping field (#640)
+- Added one-time prompt for legacy insurance policies and supporting script to encourage migration to tiered plans (#641)
 
 ## [1.1.0] - 2024-12-13
 

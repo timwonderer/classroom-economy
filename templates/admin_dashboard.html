@@ -13,6 +13,19 @@
     <a href="{{ url_for('admin.setup_recovery') }}" class="btn btn-warning text-dark fw-medium ms-auto text-nowrap">Setup Now</a>
 </div>
 {% endif %}
+{% if show_insurance_tier_prompt %}
+<div class="alert alert-info border-0 shadow-sm mb-4 d-flex align-items-center" role="alert">
+    <span class="material-symbols-outlined me-3 fs-3">shield</span>
+    <div class="me-3">
+        <h5 class="alert-heading fw-bold mb-1">Update insurance to the new tiered design</h5>
+        <p class="mb-0">Your existing policies use the legacy setup. Group them into tiers so students see the modern plan layout.</p>
+    </div>
+    <div class="ms-auto d-flex align-items-center gap-2 flex-wrap">
+        <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-info fw-medium text-white">Review policies</a>
+        <span class="text-muted small">One-time prompt for legacy policies</span>
+    </div>
+</div>
+{% endif %}
 
 <h1 class="visually-hidden">Admin Panel</h1>
 
