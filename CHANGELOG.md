@@ -8,15 +8,6 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
-### Changed
-- **Insurance Policy Edit Page** - Redesigned with collapsible accordion sections to eliminate overflow issues and reduce visual clutter
-  - Moved from crowded 2x2 grid layout to clean vertical stacking with progressive disclosure
-  - Kept frequently-edited sections (Basic Information, Pricing & Payment) always visible
-  - Organized advanced features into Bootstrap accordion: Coverage & Claims (default open), Repurchase Restrictions, Bundle Discounts, and Grouped Insurance
-  - Added visual badges to accordion headers indicating when sections have active settings
-  - Significantly improved mobile responsiveness and eliminated horizontal scrolling
-- Simplified admin feature settings into single-column, collapsible cards to reduce page crowding.
-
 ### Added
 - **TEMPLATE_REDESIGN_RECOMMENDATIONS.md** - Documentation of UI redesign patterns and guidelines
   - Best practices for when to use accordion/collapsible patterns vs traditional layouts
@@ -36,6 +27,13 @@ and this project follows semantic versioning principles.
 - **Mobile Dashboard** - Simplified single-column layout with attendance card and tap in/out buttons.
 - **Mobile Store** - Improved item list layout with larger purchase buttons.
 - **Theme Consistency** - Aligned mobile templates with main application theme colors.
+- **Insurance Policy Edit Page** - Redesigned with collapsible accordion sections to eliminate overflow issues and reduce visual clutter
+  - Moved from crowded 2x2 grid layout to clean vertical stacking with progressive disclosure
+  - Kept frequently-edited sections (Basic Information, Pricing & Payment) always visible
+  - Organized advanced features into Bootstrap accordion: Coverage & Claims (default open), Repurchase Restrictions, Bundle Discounts, and Grouped Insurance
+  - Added visual badges to accordion headers indicating when sections have active settings
+  - Significantly improved mobile responsiveness and eliminated horizontal scrolling
+- Simplified admin feature settings into single-column, collapsible cards to reduce page crowding.
 
 ## [1.1.1] - 2025-12-15
 
