@@ -4098,6 +4098,13 @@ def run_payroll():
 
         db.session.commit()
         current_app.logger.info(f"✅ Payroll complete. Paid {len(summary)} students.")
+
+        # Return JSON success response
+        if is_json:
+            return jsonify(status="success", message=f"Payroll complete. Paid {len(summary)} students."), 200
+
+        flash(f"Payroll complete. Paid {len(summary)} students.", "admin_success")
+        return redirect(url_for('admin.payroll'))
     except (SQLAlchemyError, Exception) as e:
         db.session.rollback()
         is_db_error = isinstance(e, SQLAlchemyError)
