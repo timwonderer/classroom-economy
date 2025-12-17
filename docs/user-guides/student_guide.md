@@ -10,7 +10,7 @@ Welcome to the Classroom Token Hub! This guide will help you get started with yo
   - [Step 3: Set Your PIN and Passphrase](#step-3-set-your-pin-and-passphrase)
 - [Logging In](#logging-in)
 - [Your Dashboard](#your-dashboard)
-  - [Tapping In and Out](#tapping-in-and-out)
+  - [Starting and Stopping Work](#starting-and-stopping-work)
   - [Checking Your Balances](#checking-your-balances)
   - [Viewing Transactions](#viewing-transactions)
 - [Features](#features)
@@ -46,7 +46,7 @@ Next, you will be given a prompt to help you create a unique username. Follow th
 
 Finally, you will create a **PIN** and a **passphrase**.
 
--   **PIN:** A short number you will use to log in and for quick actions like tapping in and out.
+-   **PIN:** A short number you will use to log in and for quick actions like starting work and taking breaks.
 -   **Passphrase:** A longer, more secure password that you will use for important actions like buying items from the store.
 
 **Important:** Memorize your PIN and passphrase. Do not share them with anyone!
@@ -61,7 +61,7 @@ The dashboard is your main page where you can see all your account information.
 
 ### Tapping In and Out
 
-At the beginning of each class period, use the tap-in button on your dashboard to start tracking your time. When you are finished for the day, tap out. Your earnings are calculated based on the time you are tapped in.
+At the beginning of each class period, use the "Start Work" button on your dashboard to start tracking your time. When you are finished for the day or taking a break, click "Break / Done". Your earnings are calculated based on the time you are working.
 
 ### Checking Your Balances
 

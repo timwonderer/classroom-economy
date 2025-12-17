@@ -65,16 +65,16 @@
                 <div id="hallPassInfo-{{ period }}" style="display:none;" class="mb-3"></div>
 
                 <div class="d-grid gap-2">
-                    <button id="tapIn-{{ period }}" class="btn btn-success btn-lg py-3 fw-bold shadow-sm" data-period="{{ period }}" data-action="tap_in" aria-label="Tap In to Period {{ period }}">
+                    <button id="tapIn-{{ period }}" class="btn btn-success btn-lg py-3 fw-bold shadow-sm" data-period="{{ period }}" data-action="tap_in" aria-label="Start Work for Period {{ period }}">
                         <div class="d-flex align-items-center justify-content-center gap-2">
                             <span class="material-symbols-outlined">login</span>
-                            <span>TAP IN</span>
+                            <span>START WORK</span>
                         </div>
                     </button>
-                    <button id="tapOut-{{ period }}" class="btn btn-danger btn-lg py-3 fw-bold shadow-sm" data-period="{{ period }}" data-action="tap_out" disabled aria-label="Tap Out or Request Pass for Period {{ period }}">
+                    <button id="tapOut-{{ period }}" class="btn btn-danger btn-lg py-3 fw-bold shadow-sm" data-period="{{ period }}" data-action="tap_out" disabled aria-label="Break or Done for Period {{ period }}">
                         <div class="d-flex align-items-center justify-content-center gap-2">
                             <span class="material-symbols-outlined">logout</span>
-                            <span>TAP OUT / PASS</span>
+                            <span>BREAK / DONE</span>
                         </div>
                     </button>
                 </div>
@@ -131,7 +131,7 @@
     <div class="modal-dialog modal-dialog-centered modal-sm">
         <div class="modal-content border-0 shadow">
             <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title fw-bold">Request Pass / Tap Out</h5>
+                <h5 class="modal-title fw-bold">Request Pass / End Work</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body pt-2">

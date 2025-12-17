@@ -1298,9 +1298,20 @@ def handle_tap():
 
     current_app.logger.info(f"TAP DEBUG: student_id={getattr(student, 'id', None)}, valid_periods={valid_periods}, period={period}, action={action}")
 
-    if period not in valid_periods or action not in ["tap_in", "tap_out"]:
+    # Support both old and new action names
+    action_map = {
+        "tap_in": "start_work",
+        "tap_out": "stop_work",
+        "start_work": "start_work",
+        "stop_work": "stop_work"
+    }
+
+    if period not in valid_periods or action not in action_map:
         current_app.logger.warning(f"TAP ERROR: Invalid period or action: period={period}, valid_periods={valid_periods}, action={action}")
         return jsonify({"error": "Invalid period or action"}), 400
+
+    # Normalize action to new terminology
+    normalized_action = action_map[action]
 
     join_code = get_join_code_for_student_period(student.id, period)
     if not join_code:
@@ -1337,10 +1348,10 @@ def handle_tap():
 
     # Check if tap is disabled for this period
     if not student_block.tap_enabled:
-        return jsonify({"error": "Tap in/out is currently disabled for this period."}), 403
+        return jsonify({"error": "Start Work / Break is currently disabled for this period."}), 403
 
     # --- Check "done for the day" lock ---
-    if action == "tap_in":
+    if normalized_action == "start_work":
         # Use Pacific timezone for "done for the day" check
         pacific = pytz.timezone('America/Los_Angeles')
         now_pacific = now.astimezone(pacific)
@@ -1351,11 +1362,11 @@ def handle_tap():
             student_block.done_for_day_date = None
             db.session.commit()
         if student_block.done_for_day_date == today_pacific:
-            return jsonify({"error": "You are done for the day. You cannot tap in again until tomorrow."}), 403
+            return jsonify({"error": "You are done for the day. You cannot Start Work again until tomorrow."}), 403
 
 
-    # --- Hall Pass Logic for Tap Out ---
-    if action == 'tap_out':
+    # --- Hall Pass Logic for Stop Work ---
+    if normalized_action == 'stop_work':
         reason = data.get("reason")
         if not reason:
             return jsonify({"error": "A reason is required for a hall pass."}), 400
@@ -1460,13 +1471,13 @@ def handle_tap():
                 }
             })
 
-    # --- Standard Tap In/Out Logic ---
+    # --- Standard Start/Stop Work Logic ---
     try:
-        status = "active" if action == "tap_in" else "inactive"
-        reason = data.get("reason") if action == "tap_out" else None
+        status = "active" if normalized_action == "start_work" else "inactive"
+        reason = data.get("reason") if normalized_action == "stop_work" else None
 
         # Auto-tap-out from other periods when tapping into a new period
-        if action == "tap_in":
+        if normalized_action == "start_work":
             # Find all other periods where student is currently active
             for other_period in valid_periods:
                 if other_period == period:
@@ -1511,8 +1522,8 @@ def handle_tap():
                 "duration": duration
             })
 
-        # Check daily limit when tapping IN
-        if action == "tap_in":
+        # Check daily limit when Starting Work
+        if normalized_action == "start_work":
             from payroll import get_daily_limit_seconds
             from attendance import calculate_period_attendance_utc_range
 
@@ -1543,8 +1554,8 @@ def handle_tap():
                         "error": f"Daily limit of {hours_limit:.1f} hours reached for this period. Please try again tomorrow."
                     }), 400
 
-        # When tapping in, automatically return any active hall pass
-        if action == "tap_in":
+        # When Starting Work, automatically return any active hall pass
+        if normalized_action == "start_work":
             active_hall_pass = HallPassLog.query.filter_by(
                 student_id=student.id,
                 period=period,
@@ -1567,7 +1578,7 @@ def handle_tap():
         )
         db.session.add(event)
 
-        # Update "done for the day" status when tapping out with reason "done"
+        # Update "done for the day" status when Stopping Work with reason "done"
         pacific = pytz.timezone('America/Los_Angeles')
         now_pacific = now.astimezone(pacific)
         today_pacific = now_pacific.date()
@@ -1575,8 +1586,8 @@ def handle_tap():
         if student_block.done_for_day_date and student_block.done_for_day_date != today_pacific:
             student_block.done_for_day_date = None
             current_app.logger.info(f"Cleared done_for_day_date for student {student.id} in period {period} (new day)")
-        # Set or clear done_for_day_date based on tap out reason
-        if action == "tap_out":
+        # Set or clear done_for_day_date based on stop work reason
+        if normalized_action == "stop_work":
             if reason and reason.lower() in ['done', 'done for the day']:
                 student_block.done_for_day_date = today_pacific
                 current_app.logger.info(f"Student {student.id} marked as done for the day in period {period}")
@@ -1832,8 +1843,17 @@ def check_and_auto_tapout_if_limit_reached(student):
         )
 
         if latest_event and latest_event.status == "active":
+            # Get teacher_id for this block (needed for settings lookup)
+            teacher_id = None
+            # Try to find seat for this block
+            seat = TeacherBlock.query.filter_by(student_id=student.id, block=block_original, is_claimed=True).first()
+            if seat:
+                teacher_id = seat.teacher_id
+            elif student.teacher_id:
+                teacher_id = student.teacher_id
+
             # Get daily limit for this period (use original case for settings lookup)
-            daily_limit = get_daily_limit_seconds(block_original)
+            daily_limit = get_daily_limit_seconds(block_original, teacher_id=teacher_id)
 
             if daily_limit:
                 # Calculate today's completed attendance using proper Pacific day boundaries
@@ -1865,7 +1885,7 @@ def check_and_auto_tapout_if_limit_reached(student):
 
                     if not join_code:
                         current_app.logger.warning(
-                            f"Unable to resolve join_code for student {student.id} in period {period_upper} for auto-tap-out. The active TapEvent ID is {latest_event.id}."
+                            f"Unable to resolve join_code for student {student.id} in period {period_upper} for auto-tap-out. TapEvent ID is {latest_event.id}."
                         )
                         continue
 

@@ -49,13 +49,13 @@ document.addEventListener("DOMContentLoaded", () => {
             const action = button.dataset.action;
 
             if (action === 'tap_out') {
-                // Show the modal for tap out
+                // Show the modal for tap out (Break / Done)
                 document.getElementById('hallPassPeriod').value = period;
                 document.getElementById('hallPassForm').reset(); // Clear previous entries
                 hallPassModal.show();
             } else {
-                // Keep the simple PIN prompt for tap in
-                const pin = prompt("Enter your PIN to confirm:");
+                // Keep the simple PIN prompt for tap in (Start Work)
+                const pin = prompt("Enter your PIN to Start Work:");
                 if (!pin) return;
                 performTap(period, action, pin);
             }
@@ -67,7 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const period = document.getElementById('hallPassPeriod').value;
         const reason = document.getElementById('hallPassReason').value;
         const pin = document.getElementById('hallPassPin').value;
-        const action = 'tap_out';
+        const action = 'tap_out'; // This maps to stop_work in backend logic
 
         if (!reason) {
             createToast("Please select a reason.", true);
@@ -87,7 +87,12 @@ function performTap(period, action, pin, reason = null) {
     const tapButton = document.querySelector(`.tap-btn[data-period='${period}'][data-action='${action}']`);
     if (tapButton) tapButton.disabled = true;
 
-    const payload = { period, action, pin };
+    // Map old action names to new API values
+    let apiAction = action;
+    if (action === 'tap_in') apiAction = 'start_work';
+    if (action === 'tap_out') apiAction = 'stop_work';
+
+    const payload = { period, action: apiAction, pin };
     if (reason) {
         payload.reason = reason;
     }
@@ -109,8 +114,8 @@ function performTap(period, action, pin, reason = null) {
         if (!data) return; // Session expired, already redirecting
         if (data.status === "ok") {
             updateBlockUI(period, data.active, data.duration, data.projected_pay, data.hall_pass);
-            let message = `Tap ${action === "tap_in" ? "In" : "Out"} successful`;
-            if (action === 'tap_out') {
+            let message = `${action === "tap_in" ? "Start Work" : "Break / Done"} successful`;
+            if (action === 'tap_out' && reason && reason.toLowerCase() !== 'done for the day' && reason.toLowerCase() !== 'done') {
               message = "Hall pass request submitted!";
             }
             createToast(message);
