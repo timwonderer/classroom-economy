@@ -3,7 +3,7 @@ from functools import wraps
 from app.extensions import db
 from app.models import TapEvent, Student, Transaction, PayrollSettings
 from datetime import datetime, timezone
-from attendance import calculate_unpaid_attendance_seconds, get_last_payroll_time
+from attendance import calculate_unpaid_attendance_seconds, get_last_payroll_time, _as_utc
 from flask import has_request_context, session
 
 
@@ -149,8 +149,10 @@ def calculate_payroll(students, last_payroll_time, teacher_id=None):
         # Keep original block names for settings lookup, but uppercase for TapEvent queries
         student_blocks = [b.strip() for b in (student.block or "").split(',') if b.strip()]
         student_last_payroll_time = get_last_payroll_time(student_id=student.id)
+        # Ensure both datetimes are timezone-aware before comparison
+        normalized_last_payroll_time = _as_utc(last_payroll_time)
         possible_anchors = [
-            t for t in [last_payroll_time, student_last_payroll_time] if t
+            t for t in [normalized_last_payroll_time, student_last_payroll_time] if t
         ]
         payroll_anchor = max(possible_anchors) if possible_anchors else None
         for block_original in student_blocks:
