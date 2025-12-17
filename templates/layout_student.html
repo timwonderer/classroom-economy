@@ -25,9 +25,9 @@
         <a class="student-brand" href="{{ url_for('student.dashboard') }}">
             
             <div>
-                <div> <span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200">local_atm</span>Classroom</div>
-                <div><span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200">store</span>Token</div>
-                <div> <span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200"> finance_mode</span>Hub</div></div>
+                <div > <span class="material-symbols-outlined student-home-icon-bill" style="font-size: 30px; vertical-align: middle; font-weight:200">local_atm</span>Classroom</div>
+                <div ><span class="material-symbols-outlined student-home-icon-store" style="font-size: 30px; vertical-align: middle; font-weight:200">store</span>Token</div>
+                <div > <span class="material-symbols-outlined student-home-icon-stock" style="font-size: 30px; vertical-align: middle; font-weight:200"> finance_mode</span>Hub</div></div>
             </a>
         <hr>
          {% if student %}
@@ -41,21 +41,17 @@
         {% if available_classes %}
         <div class="class-switcher mb-3">
             <div class="d-flex align-items-center justify-content-between mb-1">
-                <label for="class-switcher-select" class="small mb-0 text-white-50 text-uppercase">Switch Classes</label>
-                <span class="badge bg-light text-dark">{{ available_classes|length }} class{{ 'es' if available_classes|length != 1 else '' }}</span>
+                <label for="class-switcher-select" class="small mb-0 text-white text-uppercase">current class</label>
+                
             </div>
             <select id="class-switcher-select" class="form-select form-select-sm">
                 {% for class_option in available_classes %}
                 <option value="{{ class_option.join_code }}" {% if class_option.is_current %}selected{% endif %}>
-                    {{ class_option.teacher_name }} : {{ class_option.block_display }}
+                    {{ class_option.block_display }} with {{ class_option.teacher_name }}
                 </option>
                 {% endfor %}
             </select>
-            <div class="class-switch-meta text-white-50 mt-1 small">
-                {% if current_class_context %}
-                Current: {{ current_class_context.teacher_name }} · {{ current_class_context.block_display }}
-                {% endif %}
-            </div>
+            
             <div id="class-switch-error" class="alert alert-warning small py-2 px-3 mt-2 d-none">
                 <span class="material-symbols-outlined align-middle me-1" style="font-size: 18px;">error</span>
                 <span class="class-switch-error-text"></span>
@@ -65,7 +61,7 @@
         
         <nav class="student-nav">
             <a href="{{ url_for('student.dashboard') }}" class="{% if request.endpoint == 'student.dashboard' %}active{% endif %}">
-                <span class="material-symbols-outlined">home</span> Home
+                <span class="material-symbols-outlined">home</span> Dashboard
             </a>
             <a href="{{ url_for('student.transfer') }}" class="{% if request.endpoint == 'student.transfer' %}active{% endif %}">
                 <span class="material-symbols-outlined">account_balance_wallet</span> Accounts
@@ -80,7 +76,7 @@
                 <span class="material-symbols-outlined">receipt_long</span> Bills
             </a>
             <a href="{{ url_for('student.help_support') }}" class="{% if request.endpoint == 'student.help_support' %}active{% endif %}">
-                <span class="material-symbols-outlined">help</span> Help
+                <span class="material-symbols-outlined">help</span> Help and Support
             </a>
             <a href="{{ url_for('student.logout') }}">
                 <span class="material-symbols-outlined">logout</span> Sign Out

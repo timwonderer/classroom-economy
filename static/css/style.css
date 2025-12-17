@@ -22,7 +22,10 @@
 body.student-shell,
 body.student-theme {
     --primary: #2F4F7F;
-    --primary-hover: #3F5F8F;
+    --primary-hover: #202b3b;
+    --primary-hover-home-icon-bill: #ffd900;
+    --primary-hover-home-icon-store: #00ffbf;
+    --primary-hover-home-icon-stock: #ff6c7d;
     --secondary: #E89B6D;
     --secondary-hover: #D88B5D;
     --background: #F4F6F9;
@@ -174,8 +177,8 @@ a:hover {
 /* Student Layout */
 :root {
     --student-sidebar-width: 260px;
-    --student-sidebar-bg: #1a4d47;
-    --student-sidebar-accent: #d4a574;
+    --student-sidebar-bg: #2F4F7F;
+    --student-sidebar-accent: #c9dfff;
 }
 
 .student-shell {
@@ -206,6 +209,11 @@ a:hover {
     font-weight: 700;
     font-size: 1.1rem;
     text-decoration: none;
+}
+
+.student-brand:hover {
+    text-decoration: none;
+    color: #ffffff;
 }
 
 .student-identity {
@@ -299,6 +307,25 @@ a:hover {
     background-color: var(--primary);
     color: #fff;
 }
+
+.student-brand .student-home-icon-bill,
+.student-brand .student-home-icon-store,
+.student-brand .student-home-icon-stock {
+    color: #ffffff;
+    transition: color 0.2s ease;
+}
+
+.student-brand:hover .student-home-icon-bill {
+    color: var(--primary-hover-home-icon-bill);
+}
+.student-brand:hover .student-home-icon-store {
+    color: var(--primary-hover-home-icon-store);
+}
+.student-brand:hover .student-home-icon-stock {
+    color: var(--primary-hover-home-icon-stock);
+}
+
+/* Responsive */
 
 @media (max-width: 991.98px) {
     .student-sidebar {
@@ -412,7 +439,7 @@ a:hover {
 
 /* Student Dashboard Specifics */
 .balance-card {
-    background: linear-gradient(135deg, var(--primary), #004d46);
+    background: linear-gradient(135deg, var(--primary), var(--primary-hover));
     color: white;
     border-radius: var(--radius-lg);
     padding: 2rem;
