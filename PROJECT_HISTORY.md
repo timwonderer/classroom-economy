@@ -232,7 +232,7 @@ Solution: Developed cleanup scripts with dry-run capabilities, comprehensive log
 
 ### AI-Assisted Development
 
-The project embraces AI assistance as a development tool. The `AGENTS.md` file provides guidelines for AI agents (like Claude, GitHub Copilot, etc.) to contribute effectively while maintaining code quality and security standards.
+The project embraces AI assistance as a development tool. The `.claude/AGENTS.md` file provides guidelines for AI agents (like Claude, GitHub Copilot, etc.) to contribute effectively while maintaining code quality and security standards.
 
 ### Open Source But Noncommercial
 

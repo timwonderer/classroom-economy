@@ -584,7 +584,7 @@ def dashboard():
 
     # --- Payroll Info ---
     last_payroll_time = get_last_payroll_time()
-    payroll_summary = calculate_payroll(students, last_payroll_time)
+    payroll_summary = calculate_payroll(students, last_payroll_time, teacher_id=current_admin_id)
     total_payroll_estimate = sum(payroll_summary.values())
 
     # Calculate next payroll date (keep in UTC for template conversion)
@@ -4045,7 +4045,7 @@ def run_payroll():
     Run payroll by computing earned seconds from TapEvent append-only log.
     For each student, for each block, match active/inactive pairs since last payroll,
     sum total seconds, and post Transaction(s) of type 'payroll'.
-    
+
     CRITICAL: Creates one transaction per student with join_code for proper scoping.
     If student has multiple blocks with this teacher, uses first block's join_code.
     """
@@ -4053,13 +4053,26 @@ def run_payroll():
     try:
         # Get current admin's teacher_id for proper transaction scoping
         current_admin_id = session.get('admin_id')
-        
-        last_payroll_tx = Transaction.query.filter_by(type="payroll").order_by(Transaction.timestamp.desc()).first()
+
+        if not current_admin_id:
+            error_msg = "No admin_id in session"
+            current_app.logger.error(f"❌ Payroll error: {error_msg}")
+            if is_json:
+                return jsonify(status="error", message=error_msg), 401
+            flash(error_msg, "admin_error")
+            return redirect(url_for('admin.dashboard'))
+
+        # Get last payroll for this teacher (scoped by teacher_id)
+        last_payroll_tx = Transaction.query.filter_by(
+            type="payroll",
+            teacher_id=current_admin_id
+        ).order_by(Transaction.timestamp.desc()).first()
         last_payroll_time = last_payroll_tx.timestamp if last_payroll_tx else None
         current_app.logger.info(f"🧮 RUN PAYROLL: Last payroll at {last_payroll_time}")
 
         students = _scoped_students().all()
-        summary = calculate_payroll(students, last_payroll_time)
+        # Pass teacher_id to ensure correct payroll settings are used
+        summary = calculate_payroll(students, last_payroll_time, teacher_id=current_admin_id)
 
         for student_id, amount in summary.items():
             # Find the join_code for this student with this teacher
@@ -4069,9 +4082,9 @@ def run_payroll():
                 student_id=student_id,
                 is_claimed=True
             ).first()
-            
+
             join_code = teacher_block.join_code if teacher_block else None
-            
+
             tx = Transaction(
                 student_id=student_id,
                 teacher_id=current_admin_id,
@@ -4085,16 +4098,18 @@ def run_payroll():
 
         db.session.commit()
         current_app.logger.info(f"✅ Payroll complete. Paid {len(summary)} students.")
-        if is_json:
-            return jsonify(status="success", message=f"Payroll complete. Paid {len(summary)} students.")
-        flash(f"✅ Payroll complete. Paid {len(summary)} students.", "admin_success")
-    except SQLAlchemyError as e:
+    except (SQLAlchemyError, Exception) as e:
         db.session.rollback()
-        current_app.logger.error(f"❌ Payroll error: {e}", exc_info=True)
+        is_db_error = isinstance(e, SQLAlchemyError)
+        error_type = "database" if is_db_error else "unexpected"
+        current_app.logger.error(f"❌ Payroll {error_type} error: {e}", exc_info=True)
+
         if is_json:
-            return jsonify(status="error", message="Payroll error occurred. Check logs."), 500
-        flash("Payroll error occurred. Check logs.", "admin_error")
-    if not is_json:
+            message = "Database error during payroll. Check logs." if is_db_error else "Unexpected error during payroll."
+            return jsonify(status="error", message=message), 500
+
+        flash_message = "Database error during payroll. Check logs." if is_db_error else "Unexpected error during payroll."
+        flash(flash_message, "admin_error")
         return redirect(url_for('admin.dashboard'))
 
 
@@ -4184,7 +4199,7 @@ def payroll():
     )
 
     # Calculate payroll estimates
-    payroll_summary = calculate_payroll(students, last_payroll_time)
+    payroll_summary = calculate_payroll(students, last_payroll_time, teacher_id=admin_id)
     total_payroll_estimate = sum(payroll_summary.values())
 
     # Build class_labels_by_block dictionary
