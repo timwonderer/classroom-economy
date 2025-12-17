@@ -1,0 +1,15 @@
+{
+  "name": "Classroom Token Hub",
+  "short_name": "Token Hub",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f5f5f3",
+  "theme_color": "#1a4d47",
+  "icons": [
+    {
+      "src": "/static/images/brand-logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
