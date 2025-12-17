@@ -99,6 +99,14 @@ Finds insurance policies with NULL teacher_id that won't show up in any teacher'
 python scripts/check_orphaned_insurance.py
 ```
 
+#### `prompt_insurance_tier_upgrade.py`
+Flags teachers who still have legacy insurance policies so they see a one-time dashboard prompt to migrate to the new tiered design.
+
+**Usage:**
+```bash
+python scripts/prompt_insurance_tier_upgrade.py
+```
+
 #### `debug_student_state.py`
 Diagnostic script to inspect student and TeacherBlock state in the database.
 

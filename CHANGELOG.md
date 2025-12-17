@@ -6,6 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows semantic versioning principles.
 
 
+## [Unreleased]
+
+### Changed
+- **Documentation Reorganization** - Improved documentation structure for better maintainability
+  - Moved historical release notes (v1.0, v1.1.0, v1.1.1, v1.2.0) to `docs/archive/releases/`
+  - Moved `TEMPLATE_REDESIGN_RECOMMENDATIONS.md` to `docs/development/`
+  - Moved `MIGRATION_BEST_PRACTICES.md` to `docs/development/`
+  - Moved `AGENTS.md` to `.claude/` directory for AI agent guidelines
+  - Archived `RECOVERY_EVALUATION.md` and `migration_check_report.md` to `docs/archive/`
+  - Updated all documentation cross-references to reflect new locations
+  - Updated `.claude/rules/documentation.md` with current documentation structure, including accurate `docs/operations/` map
+
+
 ## [1.2.0] - 2025-12-24
 
 ### Added
@@ -17,6 +30,13 @@ and this project follows semantic versioning principles.
 - **Mobile Dashboard** - Simplified single-column layout with attendance card and tap in/out buttons.
 - **Mobile Store** - Improved item list layout with larger purchase buttons.
 - **Theme Consistency** - Aligned mobile templates with main application theme colors.
+- **Insurance Policy Edit Page** - Redesigned with collapsible accordion sections to eliminate overflow issues and reduce visual clutter
+  - Moved from crowded 2x2 grid layout to clean vertical stacking with progressive disclosure
+  - Kept frequently-edited sections (Basic Information, Pricing & Payment) always visible
+  - Organized advanced features into Bootstrap accordion: Coverage & Claims (default open), Repurchase Restrictions, Bundle Discounts, and Grouped Insurance
+  - Added visual badges to accordion headers indicating when sections have active settings
+  - Significantly improved mobile responsiveness and eliminated horizontal scrolling
+- Simplified admin feature settings into single-column, collapsible cards to reduce page crowding.
 
 ## [1.1.1] - 2025-12-15
 
@@ -26,6 +46,7 @@ and this project follows semantic versioning principles.
 - Applied the green theme to standalone admin/auth pages and corrected admin heading hierarchy to resolve styling regressions (#635, #639)
 - Added cache-busting static asset helper defaults and fallback coverage to stop `static_url` undefined errors across templates (#628-633)
 - Stopped insurance management and edit screens from crashing when legacy forms lack the tier grouping field (#640)
+- Added one-time prompt for legacy insurance policies and supporting script to encourage migration to tiered plans (#641)
 
 ## [1.1.0] - 2024-12-13
 

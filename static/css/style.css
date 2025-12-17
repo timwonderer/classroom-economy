@@ -7,6 +7,7 @@
     --surface: #fafaf8;
     --text-primary: #2c2c2c;
     --text-secondary: #6c757d;
+    --text-secondary-contrast: #b38650;
     --border-color: #e5e5e3;
     --sidebar-width: 260px;
     --radius-sm: 8px;
@@ -28,6 +29,7 @@ body.student-theme {
     --surface: #FFFFFF;
     --text-primary: #2c2c2c;
     --text-secondary: #6c757d;
+    --text-secondary-contrast: #b38650;
     --border-color: #DDE2E8;
     --success: #4A8B6C;
     --info: #5B8DBE;
@@ -61,7 +63,9 @@ a:hover {
 
 /* Utilities */
 .text-primary { color: var(--primary) !important; }
-.text-secondary { color: var(--secondary) !important; }
+/* Override text-secondary to use a darker shade for better contrast on light backgrounds */
+/* Using a darkened version of gold/orange for text */
+.text-secondary { color: var(--text-secondary-contrast) !important; }
 .bg-primary { background-color: var(--primary) !important; }
 .bg-secondary { background-color: var(--secondary) !important; }
 .bg-background { background-color: var(--background) !important; }
@@ -324,8 +328,9 @@ a:hover {
 }
 
 .form-control:focus, .form-select:focus {
-    border-color: var(--secondary);
-    box-shadow: 0 0 0 3px rgba(246, 195, 68, 0.15);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(26, 77, 71, 0.25);
+    outline: none;
 }
 
 /* Admin Sidebar */
@@ -666,6 +671,26 @@ body.maintenance-active .main-content {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
+}
+
+/* Accessibility: Skip Link */
+.skip-link {
+    position: absolute;
+    top: -9999px;
+    left: 1rem;
+    background: var(--primary);
+    color: white !important;
+    padding: 1rem;
+    z-index: 9999;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    text-decoration: none;
+    font-weight: 600;
+    transition: top 0.2s ease;
+}
+
+.skip-link:focus {
+    top: 0;
+    outline: 3px solid var(--secondary);
 }
 
 @media (min-width: 768px) {

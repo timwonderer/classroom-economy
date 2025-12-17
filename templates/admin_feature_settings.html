@@ -13,7 +13,23 @@
     }
     .feature-card.disabled {
         border-left-color: #ef4444;
-        opacity: 0.8;
+        opacity: 0.9;
+    }
+    .feature-card .card-body {
+        display: flex;
+        gap: 1rem;
+        align-items: flex-start;
+        justify-content: space-between;
+    }
+    .feature-card .feature-info {
+        display: grid;
+        gap: 0.35rem;
+        flex: 1;
+    }
+    .feature-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
     }
     .period-badge {
         font-size: 0.875rem;
@@ -41,6 +57,12 @@
     }
     .settings-summary .badge {
         font-size: 0.75rem;
+    }
+    @media (max-width: 768px) {
+        .feature-card .card-body {
+            flex-direction: column;
+            align-items: flex-start;
+        }
     }
 </style>
 {% endblock %}
@@ -76,42 +98,47 @@
                 </h5>
             </div>
             <div class="card-body">
-                <p class="text-muted mb-4">
-                    Toggle features on or off for your entire classroom economy. Changes here apply to all periods unless overridden in Per-Period Settings.
-                </p>
+                <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+                    <p class="text-muted mb-0">
+                        Toggle features for the entire classroom economy. Changes here apply to all periods unless overridden.
+                    </p>
+                    <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#globalFeatureList" aria-expanded="true" aria-controls="globalFeatureList" id="toggleGlobalCards" data-show-text="Show feature cards" data-hide-text="Hide feature cards">
+                        Hide feature cards
+                    </button>
+                </div>
 
                 <form method="POST" action="{{ url_for('admin.feature_settings') }}" id="globalSettingsForm">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <input type="hidden" name="apply_to" value="all">
 
-                    <div class="row g-4">
-                        {% for feature_id, feature_name, feature_icon, feature_desc in features_list %}
-                        <div class="col-md-6 col-lg-4">
-                            <div class="card h-100 feature-card {% if global_settings[feature_id] %}enabled{% else %}disabled{% endif %}">
+                    <div class="collapse show" id="globalFeatureList">
+                        <div class="feature-stack">
+                            {% for feature_id, feature_name, feature_icon, feature_desc in features_list %}
+                            <div class="card feature-card {% if global_settings[feature_id] %}enabled{% else %}disabled{% endif %}">
                                 <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-start mb-3">
-                                        <div>
-                                            <span class="material-symbols-outlined text-primary" style="font-size: 2rem;">{{ feature_icon }}</span>
-                                        </div>
-                                        <div class="form-check form-switch feature-toggle">
-                                            <input class="form-check-input" type="checkbox" role="switch"
-                                                   id="{{ feature_id }}" name="{{ feature_id }}"
-                                                   {% if global_settings[feature_id] %}checked{% endif %}
-                                                   onchange="updateFeatureCard(this)">
+                                    <div class="d-flex align-items-center gap-3">
+                                        <span class="material-symbols-outlined text-primary" style="font-size: 2rem;">{{ feature_icon }}</span>
+                                        <div class="feature-info">
+                                            <h5 class="card-title mb-0">{{ feature_name }}</h5>
+                                            <p class="card-text text-muted small mb-0">{{ feature_desc }}</p>
                                         </div>
                                     </div>
-                                    <h5 class="card-title">{{ feature_name }}</h5>
-                                    <p class="card-text text-muted small">{{ feature_desc }}</p>
+                                    <div class="form-check form-switch feature-toggle ms-0">
+                                        <input class="form-check-input" type="checkbox" role="switch"
+                                               id="{{ feature_id }}" name="{{ feature_id }}" aria-label="{{ feature_name }}"
+                                               {% if global_settings[feature_id] %}checked{% endif %}
+                                               onchange="updateFeatureCard(this)">
+                                    </div>
                                 </div>
                             </div>
+                            {% endfor %}
                         </div>
-                        {% endfor %}
                     </div>
 
-                    <div class="mt-4 d-flex justify-content-between align-items-center">
+                    <div class="mt-4 d-flex justify-content-between align-items-center flex-wrap gap-2">
                         <div class="form-text">
                             <span class="material-symbols-outlined text-warning" style="vertical-align: middle;">info</span>
-                            Changes will apply to all periods. Use "Per-Period Settings" for granular control.
+                            Use Per-Period Settings for exceptions.
                         </div>
                         <button type="submit" class="btn btn-primary">
                             <span class="material-symbols-outlined me-1" style="vertical-align: middle;">save</span>
@@ -159,22 +186,21 @@
                         Settings for Period: <span id="selectedPeriodName" class="text-primary"></span>
                     </h6>
 
-                    <div class="row g-3" id="periodFeatureToggles">
+                    <div class="feature-stack" id="periodFeatureToggles">
                         {% for feature_id, feature_name, feature_icon, feature_desc in features_list %}
-                        <div class="col-md-6 col-lg-4">
-                            <div class="card h-100">
-                                <div class="card-body py-3">
-                                    <div class="d-flex justify-content-between align-items-center">
-                                        <div class="d-flex align-items-center gap-2">
-                                            <span class="material-symbols-outlined text-primary">{{ feature_icon }}</span>
-                                            <span>{{ feature_name }}</span>
-                                        </div>
-                                        <div class="form-check form-switch">
-                                            <input class="form-check-input period-feature-toggle" type="checkbox"
-                                                   id="period_{{ feature_id }}" data-feature="{{ feature_id.replace('_enabled', '') }}"
-                                                   onchange="updatePeriodFeature(this)">
-                                        </div>
+                        <div class="card h-100">
+                            <div class="card-body py-3 d-flex align-items-center justify-content-between gap-3">
+                                <div class="d-flex align-items-center gap-3">
+                                    <span class="material-symbols-outlined text-primary">{{ feature_icon }}</span>
+                                    <div class="feature-info mb-0">
+                                        <span class="fw-semibold">{{ feature_name }}</span>
+                                        <small class="text-muted">{{ feature_desc }}</small>
                                     </div>
+                                </div>
+                                <div class="form-check form-switch mb-0">
+                                    <input class="form-check-input period-feature-toggle" type="checkbox"
+                                           id="period_{{ feature_id }}" data-feature="{{ feature_id.replace('_enabled', '') }}" aria-label="{{ feature_name }}"
+                                           onchange="updatePeriodFeature(this)">
                                 </div>
                             </div>
                         </div>
@@ -198,51 +224,59 @@
 
         <!-- Period Settings Summary -->
         {% if periods %}
-        <div class="card shadow">
-            <div class="card-header bg-secondary text-white">
-                <h5 class="mb-0">
-                    <span class="material-symbols-outlined me-2" style="vertical-align: middle;">summarize</span>
-                    Settings Summary
-                </h5>
-            </div>
-            <div class="card-body">
-                <div class="table-responsive">
-                    <table class="table table-hover">
-                        <thead>
-                            <tr>
-                                <th>Period</th>
-                                <th>Enabled Features</th>
-                                <th>Disabled Features</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for period in periods %}
-                            <tr>
-                                <td><strong>Period {{ period }}</strong></td>
-                                <td>
-                                    <div class="settings-summary">
-                                        {% set settings = period_settings.get(period, {}) %}
-                                        {% for feature_id, feature_name, _, _ in features_list %}
-                                            {% if settings.get(feature_id, True) %}
-                                            <span class="badge bg-success">{{ feature_name }}</span>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </div>
-                                </td>
-                                <td>
-                                    <div class="settings-summary">
-                                        {% set settings = period_settings.get(period, {}) %}
-                                        {% for feature_id, feature_name, _, _ in features_list %}
-                                            {% if not settings.get(feature_id, True) %}
-                                            <span class="badge bg-danger">{{ feature_name }}</span>
-                                            {% endif %}
-                                        {% endfor %}
-                                    </div>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
+        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
+            <h6 class="mb-0 text-muted">At-a-glance view of which features are on for each period.</h6>
+            <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#periodSummary" aria-expanded="true" aria-controls="periodSummary" id="toggleSummaryCards" data-show-text="Show summary" data-hide-text="Hide summary">
+                Hide summary
+            </button>
+        </div>
+        <div class="collapse show" id="periodSummary">
+            <div class="card shadow">
+                <div class="card-header bg-secondary text-white">
+                    <h5 class="mb-0">
+                        <span class="material-symbols-outlined me-2" style="vertical-align: middle;">summarize</span>
+                        Settings Summary
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Period</th>
+                                    <th>Enabled Features</th>
+                                    <th>Disabled Features</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for period in periods %}
+                                <tr>
+                                    <td><strong>Period {{ period }}</strong></td>
+                                    <td>
+                                        <div class="settings-summary">
+                                            {% set settings = period_settings.get(period, {}) %}
+                                            {% for feature_id, feature_name, _, _ in features_list %}
+                                                {% if settings.get(feature_id, True) %}
+                                                <span class="badge bg-success">{{ feature_name }}</span>
+                                                {% endif %}
+                                            {% endfor %}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="settings-summary">
+                                            {% set settings = period_settings.get(period, {}) %}
+                                            {% for feature_id, feature_name, _, _ in features_list %}
+                                                {% if not settings.get(feature_id, True) %}
+                                                <span class="badge bg-danger">{{ feature_name }}</span>
+                                                {% endif %}
+                                            {% endfor %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -382,6 +416,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+
+    wireCollapseLabel('toggleGlobalCards', 'globalFeatureList');
+    wireCollapseLabel('toggleSummaryCards', 'periodSummary');
 });
 
 function updatePeriodFeature(toggle) {
@@ -476,6 +513,27 @@ function copySettings() {
         console.error('Error:', error);
         alert('Failed to copy settings.');
     });
+}
+
+function wireCollapseLabel(buttonId, collapseId) {
+    const button = document.getElementById(buttonId);
+    const collapseElement = document.getElementById(collapseId);
+    if (!button || !collapseElement || typeof bootstrap === 'undefined') {
+        return;
+    }
+
+    const showText = button.dataset.showText || 'Show';
+    const hideText = button.dataset.hideText || 'Hide';
+
+    const refreshLabel = () => {
+        const isOpen = button.getAttribute('aria-expanded') === 'true';
+        button.textContent = isOpen ? hideText : showText;
+    };
+
+    collapseElement.addEventListener('shown.bs.collapse', refreshLabel);
+    collapseElement.addEventListener('hidden.bs.collapse', refreshLabel);
+
+    refreshLabel();
 }
 </script>
 {% endblock %}

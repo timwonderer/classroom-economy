@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 import pytest
-from app.models import Admin, Student, TeacherBlock, RentSettings, TeacherOnboarding
+from app.models import Admin, Student, TeacherBlock, RentSettings, TeacherOnboarding, InsurancePolicy
 from app.extensions import db
 from hash_utils import get_random_salt, hash_username
 import os
@@ -28,6 +28,41 @@ def test_admin_dashboard_rendering(client):
     response = client.get('/admin/')
     assert response.status_code == 200
     assert b'Admin Panel' in response.data
+
+
+def test_insurance_upgrade_prompt_for_legacy_policies(client):
+    """Dashboard shows insurance tier prompt when legacy policies are flagged."""
+    admin = Admin(username="legacy_insurance_admin", totp_secret="secret")
+    db.session.add(admin)
+    db.session.commit()
+
+    onboarding = TeacherOnboarding(
+        teacher_id=admin.id,
+        is_completed=True,
+        completed_at=datetime.now(timezone.utc),
+        steps_completed={"needs_insurance_tier_upgrade": True},
+    )
+    db.session.add(onboarding)
+
+    policy = InsurancePolicy(
+        policy_code="LEGACY001",
+        teacher_id=admin.id,
+        title="Legacy Plan",
+        description="Old structure",
+        premium=5.0,
+    )
+    db.session.add(policy)
+    db.session.commit()
+
+    with client.session_transaction() as sess:
+        sess['admin_id'] = admin.id
+        sess['is_admin'] = True
+        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+
+    response = client.get('/admin/')
+
+    assert response.status_code == 200
+    assert b"Update insurance to the new tiered design" in response.data
 
 def test_student_dashboard_rendering(client):
     """Student dashboard should render successfully with new layout."""

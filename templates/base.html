@@ -17,14 +17,17 @@
     {% block extra_head %}{% endblock %}
 </head>
 <body class="d-flex flex-column min-vh-100 justify-content-center align-items-center bg-light">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
 
     <div class="container" style="max-width: 600px;">
         <div class="card shadow-lg border-0 rounded-4 overflow-hidden">
+            <main id="main-content">
             {% block content_full %}
             <div class="card-body p-4 p-md-5">
                 {% block content %}{% endblock %}
             </div>
             {% endblock %}
+            </main>
         </div>
 
         <div class="text-center mt-4">
