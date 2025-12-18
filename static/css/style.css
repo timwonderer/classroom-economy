@@ -725,3 +725,45 @@ body.maintenance-active .main-content {
         padding: 3rem 2rem;
     }
 }
+
+/* PWA Mobile Viewport Fix - prevents horizontal scroll when desktop template is served on mobile */
+@media (max-width: 767.98px) {
+    html, body {
+        width: 100%;
+        max-width: 100%;
+        overflow-x: hidden;
+    }
+
+    /* Hide desktop sidebar on mobile to prevent horizontal overflow */
+    .sidebar,
+    .student-sidebar {
+        display: none !important;
+    }
+
+    /* Reset main content to fill screen without sidebar margin */
+    .main-content,
+    .student-main {
+        margin-left: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        padding: 1rem !important;
+    }
+
+    /* Ensure page header doesn't overflow */
+    .page-header {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .page-header-actions {
+        width: 100%;
+        justify-content: flex-start;
+        margin-top: 0.5rem;
+    }
+
+    /* Ensure tables scroll horizontally within their container */
+    .table-responsive {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+}

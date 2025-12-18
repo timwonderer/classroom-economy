@@ -21,6 +21,16 @@ and this project follows semantic versioning principles.
 ### Fixed
 - **Payroll Button JSON Error** - Fixed "Run Payroll Now" button returning HTML instead of JSON, which caused "Unexpected token '<!DOCTYPE'" error. The `run_payroll()` endpoint now properly returns JSON response for AJAX requests.
 - **Mobile PWA Navigation** - Restored Material Symbols icons and tightened bottom navigation layout to remove horizontal scrolling on small screens.
+- **Desktop PWA Icon Rendering** - Fixed Material Symbols icons not displaying properly when desktop templates are served on mobile devices (PWA mode or "View Full Site")
+  - Root cause: Previous PWA fixes only targeted mobile templates; desktop templates lacked `&display=swap` parameter and PWA support
+  - Added `&display=swap` to Material Symbols font URL in desktop templates (`layout_admin.html`, `layout_student.html`) to prevent font blocking
+  - Added PWA meta tags (theme-color, apple-mobile-web-app-capable, manifest link) to desktop templates
+  - Added font preconnect hints for faster Google Fonts loading
+  - Added service worker registration to desktop templates
+- **Desktop PWA Horizontal Scroll** - Fixed horizontal scrolling issue when viewing desktop templates on mobile devices
+  - Added responsive CSS media queries to hide sidebar and reset content layout on narrow viewports
+  - Added overflow-x protection to prevent horizontal scroll on mobile
+- **Service Worker Cache** - Bumped cache version to v3 to ensure updated styles and templates are loaded
 
 ### Changed
 - **Insurance Policy Edit Page** - Redesigned with collapsible accordion sections to eliminate overflow issues and reduce visual clutter
