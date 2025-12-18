@@ -766,4 +766,51 @@ body.maintenance-active .main-content {
         overflow-x: auto;
         -webkit-overflow-scrolling: touch;
     }
+
+    /* Add padding at bottom for mobile nav */
+    body {
+        padding-bottom: 70px;
+    }
+}
+
+/* Mobile Bottom Navigation for desktop templates on mobile screens */
+.mobile-bottom-nav {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: #ffffff;
+    display: flex;
+    justify-content: space-around;
+    padding: 0.5rem 0;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+    z-index: 1000;
+    border-top: 1px solid #e5e5e3;
+}
+
+.mobile-bottom-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    color: #6c757d;
+    font-size: 0.7rem;
+    padding: 0.25rem 0.5rem;
+    flex: 1;
+    text-align: center;
+}
+
+.mobile-bottom-nav a i {
+    font-size: 1.25rem;
+    margin-bottom: 0.15rem;
+}
+
+.mobile-bottom-nav a.active {
+    color: var(--primary, #1a4d47);
+    font-weight: 600;
+}
+
+.mobile-bottom-nav a:hover {
+    color: var(--primary, #1a4d47);
 }

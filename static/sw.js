@@ -1,4 +1,4 @@
-const CACHE_NAME = 'classroom-token-hub-v3';
+const CACHE_NAME = 'classroom-token-hub-v4';
 const STATIC_ASSETS = [
   '/static/manifest.json',
   '/static/images/brand-logo.svg',
