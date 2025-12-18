@@ -83,8 +83,8 @@ After generating icons:
 
 ## Current Status
 
-- ⏳ **icon-192.png**: Not yet generated
-- ⏳ **icon-512.png**: Not yet generated
+- ✅ **icon-192.png**: Generated and available in `static/images/`
+- ✅ **icon-512.png**: Generated and available in `static/images/`
 - ✅ **brand-logo.svg**: Available and ready for conversion
 
 ## References
