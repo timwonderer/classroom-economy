@@ -8,6 +8,16 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
+### Added
+- **Progressive Web App (PWA) Support** - Full PWA implementation for improved mobile experience
+  - Web app manifest with app metadata and icon configuration
+  - Service worker with intelligent caching strategies (cache-first for static assets, network-first for CDN resources)
+  - Offline fallback page with user-friendly offline experience
+  - PWA installation capability on mobile devices (Add to Home Screen)
+  - Multi-tenancy-safe caching that excludes authenticated routes
+  - Automatic cache cleanup and version management
+- **PWA Documentation** - Added `docs/PWA_ICON_REQUIREMENTS.md` with instructions for generating required icon assets
+
 ### Fixed
 - **Payroll Button JSON Error** - Fixed "Run Payroll Now" button returning HTML instead of JSON, which caused "Unexpected token '<!DOCTYPE'" error. The `run_payroll()` endpoint now properly returns JSON response for AJAX requests.
 
