@@ -20,6 +20,7 @@ and this project follows semantic versioning principles.
 
 ### Fixed
 - **Payroll Button JSON Error** - Fixed "Run Payroll Now" button returning HTML instead of JSON, which caused "Unexpected token '<!DOCTYPE'" error. The `run_payroll()` endpoint now properly returns JSON response for AJAX requests.
+- **Mobile PWA Navigation** - Restored Material Symbols icons and tightened bottom navigation layout to remove horizontal scrolling on small screens.
 
 ### Changed
 - **Insurance Policy Edit Page** - Redesigned with collapsible accordion sections to eliminate overflow issues and reduce visual clutter
