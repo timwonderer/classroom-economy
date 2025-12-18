@@ -8,6 +8,11 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
+### Changed
+- Preparing for next release
+
+## [1.2.0] - 2025-12-18
+
 ### Added
 - **Progressive Web App (PWA) Support** - Full PWA implementation for improved mobile experience
   - Web app manifest with app metadata and icon configuration
@@ -16,54 +21,60 @@ and this project follows semantic versioning principles.
   - PWA installation capability on mobile devices (Add to Home Screen)
   - Multi-tenancy-safe caching that excludes authenticated routes
   - Automatic cache cleanup and version management
-- **PWA Documentation** - Added `docs/PWA_ICON_REQUIREMENTS.md` with instructions for generating required icon assets
-
-### Fixed
-- **Payroll Button JSON Error** - Fixed "Run Payroll Now" button returning HTML instead of JSON, which caused "Unexpected token '<!DOCTYPE'" error. The `run_payroll()` endpoint now properly returns JSON response for AJAX requests.
-- **Mobile PWA Navigation** - Restored Material Symbols icons and tightened bottom navigation layout to remove horizontal scrolling on small screens.
-- **PWA Icon Rendering Root Cause** - Fixed Material Symbols icons not rendering in PWA mode
-  - Root cause: Service Worker was intercepting Google Fonts requests and applying `networkFirst` strategy, which interfered with browser's native font loading mechanism
-  - Solution: Removed font interception entirely - Service Worker now bypasses Google Fonts requests (`fonts.googleapis.com`, `fonts.gstatic.com`), letting the browser handle them natively
-  - Icons worked correctly before PWA implementation because fonts weren't being intercepted
-  - Bumped service worker cache to v5 to force update
-- **Desktop PWA Icon Rendering** - Added PWA support to desktop templates for mobile viewing
-  - Added font preload and fallback CSS for Material Symbols
-  - Added PWA meta tags (theme-color, apple-mobile-web-app-capable, manifest link)
-  - Added mobile bottom navigation to admin template for when sidebar is hidden
-- **Desktop PWA Horizontal Scroll** - Fixed horizontal scrolling issue when viewing desktop templates on mobile devices
-  - Added responsive CSS media queries to hide sidebar and reset content layout on narrow viewports
-  - Added overflow-x protection to prevent horizontal scroll on mobile
-
-### Changed
-- **Insurance Policy Edit Page** - Redesigned with collapsible accordion sections to eliminate overflow issues and reduce visual clutter
-  - Moved from crowded 2x2 grid layout to clean vertical stacking with progressive disclosure
-  - Kept frequently-edited sections (Basic Information, Pricing & Payment) always visible
-  - Organized advanced features into Bootstrap accordion: Coverage & Claims (default open), Repurchase Restrictions, Bundle Discounts, and Grouped Insurance
-  - Added visual badges to accordion headers indicating when sections have active settings
-  - Significantly improved mobile responsiveness and eliminated horizontal scrolling
-- **Admin Store Item Edit Page** - Redesigned with collapsible accordion sections for Bundle, Bulk Discount, and Advanced settings to reduce scrolling. Added "Active" badges to headers.
-- **Admin Rent Settings Page** - Redesigned to use collapsible accordion sections for better organization.
-- Simplified admin feature settings into single-column, collapsible cards to reduce page crowding.
-
-### Added
-- **TEMPLATE_REDESIGN_RECOMMENDATIONS.md** - Documentation of UI redesign patterns and guidelines
-  - Best practices for when to use accordion/collapsible patterns vs traditional layouts
-  - Analysis of other admin templates that could benefit from similar improvements
-  - Implementation checklist for future template redesigns
+- **Mobile Experience Enhancements** - Dedicated mobile templates for student portal with responsive navigation and improved touch targets
+- **Accessibility Improvements** - WCAG 2.1 AA compliance enhancements
+  - Added ARIA labels to mobile navigation and interactive elements
+  - Improved keyboard navigation support
+  - Enhanced screen reader compatibility
+  - Better color contrast ratios
+- **UI Documentation** - Added `docs/PWA_ICON_REQUIREMENTS.md` and `TEMPLATE_REDESIGN_RECOMMENDATIONS.md`
+  - PWA icon asset generation instructions
+  - UI redesign patterns and guidelines
+  - Best practices for accordion/collapsible patterns
   - Color scheme guidelines for consistent visual hierarchy
 
-
-## [1.2.0] - 2025-12-24
-
-### Added
-- **Mobile Experience** - Dedicated mobile templates for student portal with responsive navigation and improved touch targets.
-- **PWA Support** - Added mobile web app capability meta tags.
-- **Accessibility** - Added ARIA labels to mobile navigation and interactive elements.
-
 ### Changed
-- **Mobile Dashboard** - Simplified single-column layout with attendance card and tap in/out buttons.
-- **Mobile Store** - Improved item list layout with larger purchase buttons.
-- **Theme Consistency** - Aligned mobile templates with main application theme colors.
+- **Attendance Terminology** - Renamed "Tap In/Out" to "Start Work/Break Done" for clarity
+  - Updated user-facing text throughout student portal
+  - Updated frontend API actions and documentation
+  - Maintained backward compatibility in database actions
+- **Admin UI Redesigns** - Modernized admin templates with collapsible accordion sections
+  - **Insurance Policy Edit Page** - Eliminated overflow issues with progressive disclosure layout
+  - **Store Item Edit Page** - Reduced scrolling with accordion sections for Bundle, Bulk Discount, and Advanced settings
+  - **Rent Settings Page** - Better organization with collapsible sections
+  - **Feature Settings** - Simplified to single-column, collapsible cards
+  - Added visual "Active" badges to accordion headers indicating when sections have configured settings
+- **Mobile Dashboard** - Simplified single-column layout with attendance card and tap buttons
+- **Mobile Store** - Improved item list layout with larger purchase buttons
+- **Theme Consistency** - Aligned mobile templates with main application theme colors
+
+### Fixed
+- **Critical: Multi-Tenancy Payroll Bug** - Fixed payroll calculations leaking data across class periods (#664)
+  - Ensured all payroll queries properly scoped by join_code
+  - Added multi-tenancy tests for payroll system
+- **Payroll JSON Error** - Fixed "Run Payroll Now" button returning HTML instead of JSON (#668)
+  - Resolved "Unexpected token '<!DOCTYPE'" error
+  - Properly returns JSON response for AJAX requests
+- **Timezone Handling** - Fixed timezone comparison error in payroll calculation (#666)
+  - Corrected UTC normalization for payroll scheduling
+  - Fixed edge cases with daylight saving time transitions
+- **PWA Icon Rendering** - Fixed Material Symbols icons not loading in PWA mode (#672, #676)
+  - Root cause: Service Worker intercepting Google Fonts with incorrect caching strategy
+  - Solution: Service Worker now bypasses Google Fonts, letting browser handle natively
+  - Added font preload and fallback CSS for Material Symbols
+- **Mobile PWA Navigation** - Restored icons and removed horizontal scrolling (#674)
+  - Tightened bottom navigation layout for small screens
+  - Added overflow-x protection and responsive media queries
+- **Desktop PWA Rendering** - Added PWA support to desktop templates for mobile viewing (#675)
+  - Added PWA meta tags (theme-color, apple-mobile-web-app-capable)
+  - Added mobile bottom navigation when sidebar is hidden
+- **Auto Tap-Out Regression** - Fixed test failures due to missing teacher_id context in auto tap-out logic (#670)
+
+### Technical
+- Service worker cache bumped to v5 to force updates
+- Added comprehensive multi-tenancy tests for payroll
+- Improved mobile responsiveness across all admin templates
+- Enhanced documentation organization and clarity
 
 ## [1.1.1] - 2025-12-15
 
@@ -270,4 +281,4 @@ When adding entries:
 - Keep entries concise but informative
 - Update the date when moving Unreleased to a version
 
-**Last Updated:** 2025-12-04
+**Last Updated:** 2025-12-18

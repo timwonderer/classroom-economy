@@ -2,7 +2,7 @@
 
 An interactive banking and classroom management platform for teaching students about money while tracking classroom participation.
 
-**Version:** 1.1.1
+**Version:** 1.2.0
 
 ---
 
@@ -12,7 +12,7 @@ An interactive banking and classroom management platform for teaching students a
 
 **License:** [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) - Free for educational and nonprofit use, not for commercial applications.
 
-**Project Status:** Version 1.1.1 Released! Latest patch delivers authentication, theming, redirect, and static asset fixes. See [RELEASE_NOTES_v1.1.1.md](docs/archive/releases/RELEASE_NOTES_v1.1.1.md) for the bug-fix summary (v1.1.0 introduced the dashboard, projection graphs, and UI redesign).
+**Project Status:** Version 1.2.0 Released! This major release introduces Progressive Web App (PWA) support, mobile-first experience, WCAG 2.1 AA accessibility compliance, and modernized UI with accordion layouts. Install as a mobile app for faster, offline-capable access! See [RELEASE_NOTES_v1.2.0.md](docs/archive/releases/RELEASE_NOTES_v1.2.0.md) for full details.
 
 ---
 
@@ -25,7 +25,7 @@ An interactive banking and classroom management platform for teaching students a
 - **Student Portal** — View balances, redeem store items, track attendance, and manage hall passes
 - **Join-Code Rosters** — Upload rosters and let students self-claim seats securely
 - **Shared Students** — Link multiple teachers to the same student via `student_teachers`
-- **Attendance Tracking** — Tap in/out system with automatic time logging
+- **Attendance Tracking** — Start Work/Break Done system with automatic time logging
 - **Automated Payroll** — Configurable pay rates, schedules, and rewards/fines
 - **Transaction Logging** — Complete audit trail of all financial activities scoped by teacher
 - **Classroom Store** — Virtual/physical items with bundles, expirations, and redemption tracking
@@ -33,6 +33,24 @@ An interactive banking and classroom management platform for teaching students a
 - **Insurance System** — Policies, enrollments, and claims managed in-app
 - **Rent & Fees** — Optional recurring rent with waivers and late-fee configuration
 - **TOTP Authentication** — Secure admin access with two-factor authentication
+
+### Mobile & PWA Features ✨
+
+- **Progressive Web App** — Install as mobile app on iOS and Android devices
+- **Offline Support** — Intelligent caching with offline fallback page
+- **Mobile-Optimized UI** — Dedicated mobile templates with responsive navigation
+- **Touch-Friendly** — Larger buttons and improved touch targets throughout
+- **Fast Performance** — Aggressive caching for quick load times
+- **Home Screen Installation** — Add to home screen for app-like experience
+
+### Accessibility Features ♿
+
+- **WCAG 2.1 AA Compliant** — Meets international accessibility standards
+- **Screen Reader Support** — Optimized for NVDA, JAWS, and VoiceOver
+- **Keyboard Navigation** — Full keyboard accessibility throughout
+- **ARIA Labels** — Comprehensive labeling for assistive technologies
+- **High Contrast** — Improved color contrast ratios for better readability
+- **Responsive Design** — Works seamlessly across all device sizes
 
 ### Security Features
 
@@ -297,4 +315,4 @@ This project is licensed under the [PolyForm Noncommercial License 1.0.0](https:
 
 Built for educators and students to make learning about finance engaging and practical.
 
-**Last Updated:** 2025-12-12
+**Last Updated:** 2025-12-18
