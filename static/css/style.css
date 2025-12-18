@@ -14,7 +14,7 @@
     --radius-lg: 16px;
     --shadow-sm: 0 1px 3px rgba(0,0,0,0.04);
     --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.08);
-    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08);
+    --shadow-lg: 5px 10px 5px -5px rgba(0,0,0,0.20);
 }
 
 /* Student Theme - Dark Slate Blue */
@@ -26,6 +26,7 @@ body.student-theme {
     --secondary-hover: #D88B5D;
     --background: #F4F6F9;
     --surface: #FFFFFF;
+    --inactive: #F2F2F2;
     --text-primary: #2c2c2c;
     --text-secondary: #6c757d;
     --border-color: #DDE2E8;
@@ -572,9 +573,10 @@ body.maintenance-active .main-content {
 
 .info-item {
     background: var(--surface);
-    border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
+    border: 3px solid var(--border-color);
     padding: 0.75rem;
+    
 }
 
 .info-label {
@@ -602,27 +604,53 @@ body.maintenance-active .main-content {
     font-weight: 700;
 }
 
+.hall-pass-header-actions {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.teacher-display-name {
+    display: none;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
 .hall-pass-subtitle {
     color: var(--text-secondary);
 }
 
 .hall-pass-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    grid-template-columns: 1fr;
     gap: 1rem;
+}
+
+.hall-pass-info-grid {
+    grid-template-columns: 1fr;
 }
 
 .hall-pass-card {
     background: var(--surface);
-    border: 1px solid var(--border-color);
+    border: 2px solid var(--primary);
     border-radius: var(--radius-md);
     box-shadow: var(--shadow-md);
     padding: 1.25rem;
     position: relative;
 }
 
+.hall-pass-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+}
+
 .hall-pass-card.out {
-    border-color: var(--secondary);
+    border-color: var(--success);
     box-shadow: var(--shadow-lg);
 }
 
@@ -638,6 +666,13 @@ body.maintenance-active .main-content {
     letter-spacing: 0.05em;
 }
 
+.status-chip .material-symbols-outlined,
+.time-badge .material-symbols-outlined {
+    font-size: 1rem;
+    margin-right: 0.35rem;
+    vertical-align: -0.12rem;
+}
+
 .status-chip.out {
     background: rgba(16, 185, 129, 0.15);
     color: #0f5132;
@@ -651,9 +686,6 @@ body.maintenance-active .main-content {
 }
 
 .time-badge {
-    position: absolute;
-    top: 1rem;
-    right: 1rem;
     padding: 0.4rem 0.9rem;
     border-radius: 999px;
     font-weight: 700;
