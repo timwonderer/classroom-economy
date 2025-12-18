@@ -1,4 +1,4 @@
-const CACHE_NAME = 'classroom-token-hub-v1';
+const CACHE_NAME = 'classroom-token-hub-v2';
 const STATIC_ASSETS = [
   '/static/manifest.json',
   '/static/images/brand-logo.svg',
@@ -11,8 +11,7 @@ const STATIC_ASSETS = [
 // CDN resources - use network-first strategy
 const CDN_RESOURCES = [
   'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css',
-  'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js',
-  'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap'
+  'https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js'
 ];
 
 // Install event - cache static assets
@@ -67,8 +66,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle CDN resources - network-first strategy
-  if (CDN_RESOURCES.some((cdn) => event.request.url.startsWith(cdn))) {
+  // Handle CDN resources and Google Fonts - network-first strategy
+  if (CDN_RESOURCES.some((cdn) => event.request.url.startsWith(cdn)) ||
+      url.hostname === 'fonts.googleapis.com' ||
+      url.hostname === 'fonts.gstatic.com') {
     event.respondWith(networkFirst(event));
     return;
   }
