@@ -631,6 +631,8 @@ def get_active_hall_passes():
         HallPassLog.left_time.isnot(None)
     )
 
+    teacher_display_name = None
+
     # If teacher_id is provided, validate and scope the query
     if teacher_id:
         # Validate teacher exists
@@ -648,6 +650,8 @@ def get_active_hall_passes():
                     "status": "error",
                     "message": "Unauthorized"
                 }), 403
+
+        teacher_display_name = teacher.get_display_name()
 
         # Build subquery for students belonging to this teacher
         # Include both primary ownership (teacher_id) and shared access (student_teachers)
@@ -696,10 +700,15 @@ def get_active_hall_passes():
             "status": log_entry.status
         })
 
-    return jsonify({
+    response_payload = {
         "status": "success",
         "passes": passes_data
-    })
+    }
+
+    if teacher_display_name:
+        response_payload["teacher_display_name"] = teacher_display_name
+
+    return jsonify(response_payload)
 
 
 @api_bp.route('/hall-pass/lookup/<string:pass_number>', methods=['GET'])
