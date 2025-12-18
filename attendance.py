@@ -33,10 +33,25 @@ def get_join_code_for_student_period(student_id, period, teacher_id=None):
 
     return seat.join_code if seat else None
 
-def get_last_payroll_time():
-    """Fetches the timestamp of the most recent global payroll transaction."""
+def get_last_payroll_time(student_id=None):
+    """
+    Fetch the timestamp of the most recent payroll anchor.
+
+    If a student_id is provided, include manual payments so ad-hoc payrolls
+    reset that student's projected pay without impacting other students.
+    When no student_id is provided, only consider global payroll runs.
+    """
     from app.models import Transaction  # Local import to avoid circular dependency
-    last_payroll_tx = Transaction.query.filter_by(type="payroll").order_by(Transaction.timestamp.desc()).first()
+
+    if student_id:
+        query = Transaction.query.filter(
+            Transaction.student_id == student_id,
+            Transaction.type.in_(["payroll", "manual_payment"])
+        )
+    else:
+        query = Transaction.query.filter_by(type="payroll")
+
+    last_payroll_tx = query.order_by(Transaction.timestamp.desc()).first()
     return _as_utc(last_payroll_tx.timestamp) if last_payroll_tx else None
 
 def _as_utc(dt):
@@ -221,7 +236,7 @@ def get_session_status(student_id, period):
     ).filter(func.lower(TapEvent.reason) == 'done').first() is not None
 
     # Calculate unpaid duration
-    last_payroll_time = get_last_payroll_time()
+    last_payroll_time = get_last_payroll_time(student_id=student_id)
     duration = calculate_unpaid_attendance_seconds(student_id, period, last_payroll_time)
 
     return is_active, done, duration
@@ -249,7 +264,7 @@ def get_all_block_statuses(student, join_code=None):
         student_blocks = [b.strip() for b in student.block.split(',') if b.strip()]
     period_states = {}
 
-    last_payroll_time = get_last_payroll_time()
+    last_payroll_time = get_last_payroll_time(student_id=student.id)
 
     for block_original in student_blocks:
         blk = block_original.upper()

@@ -30,7 +30,7 @@
     <div class="tab-pane fade show active" id="attendance" role="tabpanel">
         <div class="card mb-4">
             <div class="card-header">
-                <span class="material-symbols-outlined">schedule</span> Attendance Overview
+                <span class="material-symbols-outlined" style="vertical-align: middle;">schedule</span> Attendance Overview
             </div>
             <div class="card-body">
                 {% if student_blocks %}
@@ -81,7 +81,7 @@
                                     <td>
                                         {% set is_tap_in = event.status == 'active' %}
                                         <span class="badge {% if is_tap_in %}bg-success{% else %}bg-danger{% endif %}">
-                                            {{ 'Tap In' if is_tap_in else 'Tap Out' }}
+                                            {{ 'Start Work' if is_tap_in else 'Break / Done' }}
                                         </span>
                                     </td>
                                     <td>
@@ -203,20 +203,20 @@
                 <div class="row mb-3">
                     <div class="col-md-4">
                         <div class="text-center p-3 bg-light rounded">
-                            <h6 class="text-muted mb-1">Total Tap Events</h6>
+                            <h6 class="text-muted mb-1">Total Events</h6>
                             <h3 class="mb-0">{{ all_tap_events|length }}</h3>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="text-center p-3 bg-light rounded">
-                            <h6 class="text-muted mb-1">Tap Ins</h6>
-                            <h3 class="mb-0 text-success">{{ all_tap_events|selectattr('action', 'equalto', 'tap_in')|list|length }}</h3>
+                            <h6 class="text-muted mb-1">Start Work</h6>
+                            <h3 class="mb-0 text-success">{{ all_tap_events|selectattr('action', 'equalto', 'start_work')|list|length }}</h3>
                         </div>
                     </div>
                     <div class="col-md-4">
                         <div class="text-center p-3 bg-light rounded">
-                            <h6 class="text-muted mb-1">Tap Outs</h6>
-                            <h3 class="mb-0 text-danger">{{ all_tap_events|selectattr('action', 'equalto', 'tap_out')|list|length }}</h3>
+                            <h6 class="text-muted mb-1">Break / Done</h6>
+                            <h3 class="mb-0 text-danger">{{ all_tap_events|selectattr('action', 'equalto', 'stop_work')|list|length }}</h3>
                         </div>
                     </div>
                 </div>
@@ -299,7 +299,7 @@
                             </table>
                         </div>
                         <div class="alert alert-warning mt-3">
-                            <span class="material-symbols-outlined">schedule</span> <strong>Remember:</strong> Time is tracked when you tap in and tap out. Make sure to tap in when you start working!
+                            <span class="material-symbols-outlined">schedule</span> <strong>Remember:</strong> Time is tracked when you Start Work and Break / Done. Make sure to Start Work when you begin working!
                         </div>
                     </div>
                 </div>

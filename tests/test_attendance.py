@@ -35,6 +35,15 @@ def test_get_last_payroll_time(client):
     db.session.commit()
     assert get_last_payroll_time() == now
 
+    # Manual payments should only change the per-student anchor
+    manual_time = now + timedelta(hours=1)
+    manual_tx = Transaction(student_id=student.id, amount=5, type="manual_payment", timestamp=manual_time)
+    db.session.add(manual_tx)
+    db.session.commit()
+
+    assert get_last_payroll_time() == now
+    assert get_last_payroll_time(student_id=student.id) == manual_time
+
 def test_calculate_unpaid_attendance_seconds(client):
     student = Student(first_name="Test", last_initial="S", block="A", salt=b'salt', has_completed_setup=True)
     db.session.add(student)

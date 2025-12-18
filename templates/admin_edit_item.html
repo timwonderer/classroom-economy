@@ -117,81 +117,100 @@
                 </div>
             </div>
 
-            <!-- Bundle Settings -->
-            <div class="card mb-3">
-                <div class="card-header bg-light">
-                    <h6 class="mb-0"><i class="bi bi-box-seam me-2"></i>Bundle Settings</h6>
-                </div>
-                <div class="card-body">
-                    <div class="form-check mb-3">
-                        {{ form.is_bundle(class="form-check-input", id="isBundleCheck") }}
-                        {{ form.is_bundle.label(class="form-check-label fw-bold") }}
-                        <small class="d-block text-muted">Bundled items give students multiple uses that can be redeemed separately</small>
-                    </div>
-                    <div id="bundleOptions" style="display: {% if item.is_bundle %}block{% else %}none{% endif %};">
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                {{ form.bundle_quantity.label(class="form-label fw-bold") }}
-                                {{ form.bundle_quantity(class="form-control", placeholder="e.g., 5") }}
-                                <small class="text-muted">How many items in this bundle?</small>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <!-- Accordion for Bundle, Discount, and Advanced Settings -->
+            <div class="accordion mb-3" id="itemSettingsAccordion">
 
-            <!-- Bulk Discount Settings -->
-            <div class="card mb-3">
-                <div class="card-header bg-light">
-                    <h6 class="mb-0"><i class="bi bi-percent me-2"></i>Bulk Discount Settings</h6>
-                </div>
-                <div class="card-body">
-                    <div class="form-check mb-3">
-                        {{ form.bulk_discount_enabled(class="form-check-input", id="bulkDiscountCheck") }}
-                        {{ form.bulk_discount_enabled.label(class="form-check-label fw-bold") }}
-                        <small class="d-block text-muted">Offer a discount when students buy multiple quantities</small>
-                    </div>
-                    <div id="bulkDiscountOptions" style="display: {% if item.bulk_discount_enabled %}block{% else %}none{% endif %};">
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                {{ form.bulk_discount_quantity.label(class="form-label fw-bold") }}
-                                {{ form.bulk_discount_quantity(class="form-control", placeholder="e.g., 3") }}
-                                <small class="text-muted">Minimum quantity to qualify for discount</small>
+                <!-- Bundle Settings -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingBundle">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBundle" aria-expanded="false" aria-controls="collapseBundle">
+                            <i class="bi bi-box-seam me-2"></i><strong>Bundle Settings</strong>
+                            <span class="badge bg-success ms-2 bundle-badge" style="display:none;">Active</span>
+                        </button>
+                    </h2>
+                    <div id="collapseBundle" class="accordion-collapse collapse" aria-labelledby="headingBundle" data-bs-parent="#itemSettingsAccordion">
+                        <div class="accordion-body">
+                            <div class="form-check mb-3">
+                                {{ form.is_bundle(class="form-check-input", id="isBundleCheck") }}
+                                {{ form.is_bundle.label(class="form-check-label fw-bold") }}
+                                <small class="d-block text-muted">Bundled items give students multiple uses that can be redeemed separately</small>
                             </div>
-                            <div class="col-md-6 mb-3">
-                                {{ form.bulk_discount_percentage.label(class="form-label fw-bold") }}
-                                {{ form.bulk_discount_percentage(class="form-control", placeholder="e.g., 10") }}
-                                <small class="text-muted">Discount percentage (e.g., 10 for 10% off)</small>
+                            <div id="bundleOptions" style="display: {% if item.is_bundle %}block{% else %}none{% endif %};">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        {{ form.bundle_quantity.label(class="form-label fw-bold") }}
+                                        {{ form.bundle_quantity(class="form-control", placeholder="e.g., 5") }}
+                                        <small class="text-muted">How many items in this bundle?</small>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
 
-            <!-- Advanced Settings -->
-            <div class="card mb-3">
-                <div class="card-header bg-light">
-                    <h6 class="mb-0">Advanced Settings</h6>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            {{ form.auto_delist_date.label(class="form-label fw-bold") }}
-                            {{ form.auto_delist_date(class="form-control") }}
-                            <small class="text-muted">Item will be automatically hidden on this date</small>
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            {{ form.auto_expiry_days.label(class="form-label fw-bold") }}
-                            {{ form.auto_expiry_days(class="form-control") }}
-                            <small class="text-muted">Days before item expires (for delayed-use items)</small>
+                <!-- Bulk Discount Settings -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingBulkDiscount">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseBulkDiscount" aria-expanded="false" aria-controls="collapseBulkDiscount">
+                            <i class="bi bi-percent me-2"></i><strong>Bulk Discount Settings</strong>
+                            <span class="badge bg-success ms-2 bulk-discount-badge" style="display:none;">Active</span>
+                        </button>
+                    </h2>
+                    <div id="collapseBulkDiscount" class="accordion-collapse collapse" aria-labelledby="headingBulkDiscount" data-bs-parent="#itemSettingsAccordion">
+                        <div class="accordion-body">
+                            <div class="form-check mb-3">
+                                {{ form.bulk_discount_enabled(class="form-check-input", id="bulkDiscountCheck") }}
+                                {{ form.bulk_discount_enabled.label(class="form-check-label fw-bold") }}
+                                <small class="d-block text-muted">Offer a discount when students buy multiple quantities</small>
+                            </div>
+                            <div id="bulkDiscountOptions" style="display: {% if item.bulk_discount_enabled %}block{% else %}none{% endif %};">
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        {{ form.bulk_discount_quantity.label(class="form-label fw-bold") }}
+                                        {{ form.bulk_discount_quantity(class="form-control", placeholder="e.g., 3") }}
+                                        <small class="text-muted">Minimum quantity to qualify for discount</small>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        {{ form.bulk_discount_percentage.label(class="form-label fw-bold") }}
+                                        {{ form.bulk_discount_percentage(class="form-control", placeholder="e.g., 10") }}
+                                        <small class="text-muted">Discount percentage (e.g., 10 for 10% off)</small>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="mb-3">
-                        {{ form.redemption_prompt.label(class="form-label fw-bold") }}
-                        {{ form.redemption_prompt(class="form-control", rows=3, placeholder="e.g., Please describe when and where you'd like to use this item.") }}
-                        <small class="text-muted">Optional prompt shown to students when redeeming delayed-use items. This helps you gather specific information when students request to use their item.</small>
+                </div>
+
+                <!-- Advanced Settings -->
+                <div class="accordion-item">
+                    <h2 class="accordion-header" id="headingAdvanced">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseAdvanced" aria-expanded="false" aria-controls="collapseAdvanced">
+                            <i class="bi bi-gear me-2"></i><strong>Advanced Settings</strong>
+                        </button>
+                    </h2>
+                    <div id="collapseAdvanced" class="accordion-collapse collapse" aria-labelledby="headingAdvanced" data-bs-parent="#itemSettingsAccordion">
+                        <div class="accordion-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    {{ form.auto_delist_date.label(class="form-label fw-bold") }}
+                                    {{ form.auto_delist_date(class="form-control") }}
+                                    <small class="text-muted">Item will be automatically hidden on this date</small>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    {{ form.auto_expiry_days.label(class="form-label fw-bold") }}
+                                    {{ form.auto_expiry_days(class="form-control") }}
+                                    <small class="text-muted">Days before item expires (for delayed-use items)</small>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                {{ form.redemption_prompt.label(class="form-label fw-bold") }}
+                                {{ form.redemption_prompt(class="form-control", rows=3, placeholder="e.g., Please describe when and where you'd like to use this item.") }}
+                                <small class="text-muted">Optional prompt shown to students when redeeming delayed-use items. This helps you gather specific information when students request to use their item.</small>
+                            </div>
+                        </div>
                     </div>
                 </div>
+
             </div>
 
             <div class="d-flex justify-content-between">
@@ -204,30 +223,52 @@
     </div>
 </div>
 
-<script>
-  // Toggle bundle options
-  const isBundleCheck = document.getElementById('isBundleCheck');
-  const bundleOptions = document.getElementById('bundleOptions');
-  if (isBundleCheck) {
-    isBundleCheck.addEventListener('change', function() {
-      bundleOptions.style.display = this.checked ? 'block' : 'none';
-    });
-  }
-
-  // Toggle bulk discount options
-  const bulkDiscountCheck = document.getElementById('bulkDiscountCheck');
-  const bulkDiscountOptions = document.getElementById('bulkDiscountOptions');
-  if (bulkDiscountCheck) {
-    bulkDiscountCheck.addEventListener('change', function() {
-      bulkDiscountOptions.style.display = this.checked ? 'block' : 'none';
-    });
-  }
-</script>
-
 <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>
 <script>
-// Initialize markdown editors for description and redemption_prompt fields
 document.addEventListener('DOMContentLoaded', function() {
+    // Toggle bundle options and badge
+    const isBundleCheck = document.getElementById('isBundleCheck');
+    const bundleOptions = document.getElementById('bundleOptions');
+    const bundleBadge = document.querySelector('.bundle-badge');
+
+    function updateBundleVisibility() {
+        if (isBundleCheck.checked) {
+            bundleOptions.style.display = 'block';
+            if (bundleBadge) bundleBadge.style.display = 'inline-block';
+        } else {
+            bundleOptions.style.display = 'none';
+            if (bundleBadge) bundleBadge.style.display = 'none';
+        }
+    }
+
+    if (isBundleCheck) {
+        isBundleCheck.addEventListener('change', updateBundleVisibility);
+        // Initialize
+        updateBundleVisibility();
+    }
+
+    // Toggle bulk discount options and badge
+    const bulkDiscountCheck = document.getElementById('bulkDiscountCheck');
+    const bulkDiscountOptions = document.getElementById('bulkDiscountOptions');
+    const bulkDiscountBadge = document.querySelector('.bulk-discount-badge');
+
+    function updateBulkDiscountVisibility() {
+        if (bulkDiscountCheck.checked) {
+            bulkDiscountOptions.style.display = 'block';
+            if (bulkDiscountBadge) bulkDiscountBadge.style.display = 'inline-block';
+        } else {
+            bulkDiscountOptions.style.display = 'none';
+            if (bulkDiscountBadge) bulkDiscountBadge.style.display = 'none';
+        }
+    }
+
+    if (bulkDiscountCheck) {
+        bulkDiscountCheck.addEventListener('change', updateBulkDiscountVisibility);
+        // Initialize
+        updateBulkDiscountVisibility();
+    }
+
+    // Initialize markdown editors for description and redemption_prompt fields
     const descriptionField = document.getElementById('description');
     const redemptionPromptField = document.getElementById('redemption_prompt');
 
@@ -252,7 +293,7 @@ document.addEventListener('DOMContentLoaded', function() {
         placeholder: "Enter redemption prompt (Markdown supported)...",
       });
     }
-  });
+});
 </script>
 
 {% endblock %}

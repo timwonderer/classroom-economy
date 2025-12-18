@@ -57,6 +57,7 @@
               <div class="p-3 bg-light rounded h-100">
                 <div class="text-muted small">Expected Hours/Week</div>
                 <form method="post" action="{{ url_for('admin.update_expected_weekly_hours') }}">
+                  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                   <input type="hidden" name="cwi_block" value="{{ selected_block }}">
                   <input type="hidden" name="next" value="{{ url_for('admin.economy_health', block=selected_block, scope=scope) }}">
                   <div class="input-group">

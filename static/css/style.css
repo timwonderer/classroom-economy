@@ -7,6 +7,7 @@
     --surface: #fafaf8;
     --text-primary: #2c2c2c;
     --text-secondary: #6c757d;
+    --text-secondary-contrast: #b38650;
     --border-color: #e5e5e3;
     --sidebar-width: 260px;
     --radius-sm: 8px;
@@ -21,7 +22,10 @@
 body.student-shell,
 body.student-theme {
     --primary: #2F4F7F;
-    --primary-hover: #3F5F8F;
+    --primary-hover: #202b3b;
+    --primary-hover-home-icon-bill: #ffd900;
+    --primary-hover-home-icon-store: #00ffbf;
+    --primary-hover-home-icon-stock: #ff6c7d;
     --secondary: #E89B6D;
     --secondary-hover: #D88B5D;
     --background: #F4F6F9;
@@ -29,6 +33,7 @@ body.student-theme {
     --inactive: #F2F2F2;
     --text-primary: #2c2c2c;
     --text-secondary: #6c757d;
+    --text-secondary-contrast: #b38650;
     --border-color: #DDE2E8;
     --success: #4A8B6C;
     --info: #5B8DBE;
@@ -62,7 +67,9 @@ a:hover {
 
 /* Utilities */
 .text-primary { color: var(--primary) !important; }
-.text-secondary { color: var(--secondary) !important; }
+/* Override text-secondary to use a darker shade for better contrast on light backgrounds */
+/* Using a darkened version of gold/orange for text */
+.text-secondary { color: var(--text-secondary-contrast) !important; }
 .bg-primary { background-color: var(--primary) !important; }
 .bg-secondary { background-color: var(--secondary) !important; }
 .bg-background { background-color: var(--background) !important; }
@@ -171,8 +178,8 @@ a:hover {
 /* Student Layout */
 :root {
     --student-sidebar-width: 260px;
-    --student-sidebar-bg: #1a4d47;
-    --student-sidebar-accent: #d4a574;
+    --student-sidebar-bg: #2F4F7F;
+    --student-sidebar-accent: #c9dfff;
 }
 
 .student-shell {
@@ -203,6 +210,11 @@ a:hover {
     font-weight: 700;
     font-size: 1.1rem;
     text-decoration: none;
+}
+
+.student-brand:hover {
+    text-decoration: none;
+    color: #ffffff;
 }
 
 .student-identity {
@@ -297,6 +309,25 @@ a:hover {
     color: #fff;
 }
 
+.student-brand .student-home-icon-bill,
+.student-brand .student-home-icon-store,
+.student-brand .student-home-icon-stock {
+    color: #ffffff;
+    transition: color 0.2s ease;
+}
+
+.student-brand:hover .student-home-icon-bill {
+    color: var(--primary-hover-home-icon-bill);
+}
+.student-brand:hover .student-home-icon-store {
+    color: var(--primary-hover-home-icon-store);
+}
+.student-brand:hover .student-home-icon-stock {
+    color: var(--primary-hover-home-icon-stock);
+}
+
+/* Responsive */
+
 @media (max-width: 991.98px) {
     .student-sidebar {
         position: fixed;
@@ -325,8 +356,9 @@ a:hover {
 }
 
 .form-control:focus, .form-select:focus {
-    border-color: var(--secondary);
-    box-shadow: 0 0 0 3px rgba(246, 195, 68, 0.15);
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(26, 77, 71, 0.25);
+    outline: none;
 }
 
 /* Admin Sidebar */
@@ -408,7 +440,7 @@ a:hover {
 
 /* Student Dashboard Specifics */
 .balance-card {
-    background: linear-gradient(135deg, var(--primary), #004d46);
+    background: linear-gradient(135deg, var(--primary), var(--primary-hover));
     color: white;
     border-radius: var(--radius-lg);
     padding: 2rem;
@@ -698,6 +730,26 @@ body.maintenance-active .main-content {
     display: inline-flex;
     align-items: center;
     gap: 0.4rem;
+}
+
+/* Accessibility: Skip Link */
+.skip-link {
+    position: absolute;
+    top: -9999px;
+    left: 1rem;
+    background: var(--primary);
+    color: white !important;
+    padding: 1rem;
+    z-index: 9999;
+    border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+    text-decoration: none;
+    font-weight: 600;
+    transition: top 0.2s ease;
+}
+
+.skip-link:focus {
+    top: 0;
+    outline: 3px solid var(--secondary);
 }
 
 @media (min-width: 768px) {

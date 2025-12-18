@@ -26,7 +26,7 @@
                         <div class="d-flex align-items-center">
                             <span class="material-symbols-outlined me-2 text-success">login</span>
                             <div>
-                                <div class="small text-muted">Tap Ins</div>
+                                <div class="small text-muted">Start Work</div>
                                 <div class="fw-bold text-success" id="tapInCount">0</div>
                             </div>
                         </div>
@@ -35,7 +35,7 @@
                         <div class="d-flex align-items-center">
                             <span class="material-symbols-outlined me-2 text-danger">logout</span>
                             <div>
-                                <div class="small text-muted">Tap Outs</div>
+                                <div class="small text-muted">Break / Done</div>
                                 <div class="fw-bold text-danger" id="tapOutCount">0</div>
                             </div>
                         </div>
@@ -61,12 +61,12 @@
             <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h6 class="mb-0 fw-bold d-flex align-items-center gap-2">
                     <span class="material-symbols-outlined">toggle_on</span>
-                    Tap In/Out Controls
+                    Attendance Controls
                 </h6>
             </div>
             <div class="card-body">
                 {% if blocks %}
-                    <p class="text-muted small mb-3">Disable tap in/out per class to pause attendance for that block.</p>
+                    <p class="text-muted small mb-3">Disable Start Work / Break / Done per class to pause attendance for that block.</p>
                     <div class="list-group list-group-flush">
                         {% for block in blocks %}
                         <div class="list-group-item d-flex justify-content-between align-items-center px-0">
@@ -128,8 +128,8 @@
                         <label class="form-label small fw-bold">Status</label>
                         <select class="form-select form-select-sm" id="filterStatus">
                             <option value="">All</option>
-                            <option value="active">Tap In (Active)</option>
-                            <option value="inactive">Tap Out (Inactive)</option>
+                            <option value="active">Start Work (Active)</option>
+                            <option value="inactive">Break / Done (Inactive)</option>
                         </select>
                     </div>
                     <div class="col-md-2">
@@ -297,9 +297,9 @@ function initTapToggles() {
 function getStatusBadge(status) {
     const escapedStatus = escapeHtml(status);
     if (status === 'active') {
-        return '<span class="badge bg-success"><span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: text-bottom;">login</span> Tap In</span>';
+        return '<span class="badge bg-success"><span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: text-bottom;">login</span> Start Work</span>';
     } else if (status === 'inactive') {
-        return '<span class="badge bg-danger"><span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: text-bottom;">logout</span> Tap Out</span>';
+        return '<span class="badge bg-danger"><span class="material-symbols-outlined" style="font-size: 0.875rem; vertical-align: text-bottom;">logout</span> Break / Done</span>';
     }
     return '<span class="badge bg-secondary">' + escapedStatus + '</span>';
 }

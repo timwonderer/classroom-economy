@@ -136,7 +136,7 @@ HELP_ARTICLES = {
                 "content": """
                     <p>If a student didn't get paid:</p>
                     <ul>
-                        <li><strong>Check Attendance:</strong> Payroll relies on "Tap In" records. If a student forgot to tap in, they earned $0.</li>
+                        <li><strong>Check Attendance:</strong> Payroll relies on "Start Work" records. If a student forgot to start working, they earned $0.</li>
                         <li><strong>Check Settings:</strong> Ensure your "Pay Rate" is greater than $0.</li>
                         <li><strong>Manual Adjustment:</strong> You can use the "Manual Payment" tool in the Payroll tab to fix any errors.</li>
                     </ul>
@@ -232,7 +232,7 @@ HELP_ARTICLES = {
                     <p>Payroll works by checking if you were in class.</p>
                     <ul>
                         <li>Did you <strong>Tap In</strong> when you arrived?</li>
-                        <li>Check your attendance log. If you forgot to tap in, tell your teacher nicely!</li>
+                        <li>Check your attendance log. If you forgot to Start Work, tell your teacher nicely!</li>
                     </ul>
                 """
             }
