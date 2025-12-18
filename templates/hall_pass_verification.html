@@ -14,17 +14,22 @@
 </head>
 <body class="hall-pass-page">
     <div class="container">
-        <div class="text-center hall-pass-header mb-4">
-            <div class="hall-pass-subtitle text-uppercase small fw-semibold">Classroom Token Hub</div>
-            <h1 class="d-flex justify-content-center align-items-center gap-2 mb-1">
-                <span class="material-symbols-outlined">badge</span>
-                Hall Pass History
-            </h1>
-            <p class="hall-pass-subtitle mb-3">This page shows the last 10 students who have used a hall pass.</p>
-            <button class="btn btn-primary refresh-chip" onclick="fetchActivePasses()">
-                <span class="material-symbols-outlined">refresh</span>
-                Refresh
-            </button>
+        <div class="hall-pass-header mb-4">
+            <div class="hall-pass-header-actions">
+                <span id="teacherDisplayName" class="teacher-display-name"></span>
+                <button class="btn btn-primary refresh-chip" onclick="fetchActivePasses()">
+                    <span class="material-symbols-outlined">refresh</span>
+                    Refresh
+                </button>
+            </div>
+            <div class="text-center">
+                <div class="hall-pass-subtitle text-uppercase small fw-semibold">Classroom Token Hub</div>
+                <h1 class="d-flex justify-content-center align-items-center gap-2 mb-1">
+                    <span class="material-symbols-outlined">badge</span>
+                    Hall Pass History
+                </h1>
+                <p class="hall-pass-subtitle mb-3">This page shows the last 10 students who have used a hall pass.</p>
+            </div>
         </div>
 
         <div id="noPassesMessage" class="alert alert-light text-center text-muted" style="display: none;">
@@ -54,6 +59,7 @@
         function renderPasses(passes) {
             const passesList = document.getElementById('passesList');
             const noPassesMessage = document.getElementById('noPassesMessage');
+            const teacherDisplayName = document.getElementById('teacherDisplayName');
 
             if (!passes || passes.length === 0) {
                 passesList.innerHTML = '';
@@ -67,26 +73,21 @@
                 const isOut = pass.status === 'left';
                 const statusClass = isOut ? 'out' : 'returned';
                 const statusText = isOut ? 'Out Now' : 'Returned';
+                const statusIcon = isOut ? 'output' : 'input';
 
                 return `
                 <div class="hall-pass-card ${statusClass}">
-                    ${isOut
-                        ? `<span class="time-badge">${getTimeElapsed(pass.left_time)}</span>`
-                        : `<span class="status-chip returned">${statusText}</span>`
-                    }
-                    <div class="d-flex justify-content-between align-items-start mb-2">
-                        <div class="d-flex align-items-center gap-3">
-                            <div class="icon-circle bg-primary bg-opacity-10 text-primary">
-                                <span class="material-symbols-outlined">person</span>
-                            </div>
-                            <div>
-                                <div class="h5 fw-bold mb-0">${pass.student_name}</div>
-                                <div class="text-muted small">Period ${pass.period}</div>
-                            </div>
+                    <div class="hall-pass-card-header">
+                        <div>
+                            <div class="h5 fw-bold mb-0">${pass.student_name}</div>
+                            <div class="text-muted small">Period ${pass.period}</div>
                         </div>
-                        ${isOut ? `<span class="status-chip out">${statusText}</span>` : ''}
+                        ${isOut
+                            ? `<span class="time-badge"><span class="material-symbols-outlined" style='vertical-align: middle; font-size:20px'>${statusIcon}</span>${getTimeElapsed(pass.left_time)}</span>`
+                            : `<span class="status-chip returned"><span class="material-symbols-outlined" style='vertical-align: middle; font-size:20px'>${statusIcon}</span>${statusText}</span>`
+                        }
                     </div>
-                    <div class="info-grid mb-2">
+                    <div class="info-grid hall-pass-info-grid mb-2">
                         <div class="info-item">
                             <div class="info-label">Destination</div>
                             <div class="info-value">${pass.destination || '—'}</div>
@@ -118,6 +119,13 @@
                 .then(response => response.json())
                 .then(data => {
                     if (data.status === 'success') {
+                        if (data.teacher_display_name) {
+                            teacherDisplayName.textContent = data.teacher_display_name;
+                            teacherDisplayName.style.display = 'inline-flex';
+                        } else {
+                            teacherDisplayName.textContent = '';
+                            teacherDisplayName.style.display = 'none';
+                        }
                         renderPasses(data.passes);
                     }
                 })
