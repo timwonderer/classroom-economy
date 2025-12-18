@@ -1833,7 +1833,15 @@ def check_and_auto_tapout_if_limit_reached(student):
 
         if latest_event and latest_event.status == "active":
             # Get daily limit for this period (use original case for settings lookup)
-            daily_limit = get_daily_limit_seconds(block_original)
+            # CRITICAL: Pass teacher_id from student record to ensure correct settings are used
+            # This fixes a bug where background tasks (no session context) would fail to resolve settings
+            teacher_id = None
+            if student.teachers.count() > 0:
+                teacher_id = student.teachers.first().id
+            else:
+                teacher_id = student.teacher_id
+
+            daily_limit = get_daily_limit_seconds(block_original, teacher_id=teacher_id)
 
             if daily_limit:
                 # Calculate today's completed attendance using proper Pacific day boundaries
