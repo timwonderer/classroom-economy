@@ -4,7 +4,10 @@ Tests for Progressive Web App (PWA) functionality:
 2. Service worker delivery
 3. Manifest accessibility
 """
+import json
+
 import pytest
+from flask import current_app
 
 
 def test_offline_page_accessible(client):
@@ -77,8 +80,6 @@ def test_manifest_structure(client):
     """Test that the manifest contains required PWA fields."""
     response = client.get('/static/manifest.json')
     assert response.status_code == 200
-
-    import json
     manifest = json.loads(response.data)
 
     # Check required fields
@@ -103,8 +104,6 @@ def test_manifest_icon_properties(client):
     """Test that manifest icons have required properties."""
     response = client.get('/static/manifest.json')
     assert response.status_code == 200
-
-    import json
     manifest = json.loads(response.data)
 
     # Check that at least one PNG icon exists
@@ -125,8 +124,6 @@ def test_pwa_meta_tags_in_mobile_layout(client):
     # A more comprehensive test would check the actual rendered HTML
 
     # Test that key PWA routes are registered
-    from flask import current_app
-
     with current_app.test_request_context():
         # Check that the routes exist in the app
         routes = [rule.rule for rule in current_app.url_map.iter_rules()]
