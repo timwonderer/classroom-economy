@@ -21,16 +21,18 @@ and this project follows semantic versioning principles.
 ### Fixed
 - **Payroll Button JSON Error** - Fixed "Run Payroll Now" button returning HTML instead of JSON, which caused "Unexpected token '<!DOCTYPE'" error. The `run_payroll()` endpoint now properly returns JSON response for AJAX requests.
 - **Mobile PWA Navigation** - Restored Material Symbols icons and tightened bottom navigation layout to remove horizontal scrolling on small screens.
-- **Desktop PWA Icon Rendering** - Fixed Material Symbols icons not displaying properly when desktop templates are served on mobile devices (PWA mode or "View Full Site")
-  - Root cause: Previous PWA fixes only targeted mobile templates; desktop templates lacked `&display=swap` parameter and PWA support
-  - Added `&display=swap` to Material Symbols font URL in desktop templates (`layout_admin.html`, `layout_student.html`) to prevent font blocking
-  - Added PWA meta tags (theme-color, apple-mobile-web-app-capable, manifest link) to desktop templates
-  - Added font preconnect hints for faster Google Fonts loading
-  - Added service worker registration to desktop templates
+- **PWA Icon Rendering Root Cause** - Fixed Material Symbols icons not rendering in PWA mode
+  - Root cause: Service Worker was intercepting Google Fonts requests and applying `networkFirst` strategy, which interfered with browser's native font loading mechanism
+  - Solution: Removed font interception entirely - Service Worker now bypasses Google Fonts requests (`fonts.googleapis.com`, `fonts.gstatic.com`), letting the browser handle them natively
+  - Icons worked correctly before PWA implementation because fonts weren't being intercepted
+  - Bumped service worker cache to v5 to force update
+- **Desktop PWA Icon Rendering** - Added PWA support to desktop templates for mobile viewing
+  - Added font preload and fallback CSS for Material Symbols
+  - Added PWA meta tags (theme-color, apple-mobile-web-app-capable, manifest link)
+  - Added mobile bottom navigation to admin template for when sidebar is hidden
 - **Desktop PWA Horizontal Scroll** - Fixed horizontal scrolling issue when viewing desktop templates on mobile devices
   - Added responsive CSS media queries to hide sidebar and reset content layout on narrow viewports
   - Added overflow-x protection to prevent horizontal scroll on mobile
-- **Service Worker Cache** - Bumped cache version to v3 to ensure updated styles and templates are loaded
 
 ### Changed
 - **Insurance Policy Edit Page** - Redesigned with collapsible accordion sections to eliminate overflow issues and reduce visual clutter

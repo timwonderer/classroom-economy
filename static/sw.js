@@ -1,4 +1,4 @@
-const CACHE_NAME = 'classroom-token-hub-v4';
+const CACHE_NAME = 'classroom-token-hub-v5';
 const STATIC_ASSETS = [
   '/static/manifest.json',
   '/static/images/brand-logo.svg',
@@ -67,10 +67,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Handle CDN resources and Google Fonts - network-first strategy
-  if (CDN_RESOURCES.some((cdn) => event.request.url.startsWith(cdn)) ||
-      url.hostname === 'fonts.googleapis.com' ||
+  // Let browser handle Google Fonts natively - DO NOT intercept
+  // Service Worker interception was breaking font loading in PWA mode
+  if (url.hostname === 'fonts.googleapis.com' ||
       url.hostname === 'fonts.gstatic.com') {
+    return; // Don't intercept - browser handles fonts correctly on its own
+  }
+
+  // Handle CDN resources - network-first strategy
+  if (CDN_RESOURCES.some((cdn) => event.request.url.startsWith(cdn))) {
     event.respondWith(networkFirst(event));
     return;
   }
