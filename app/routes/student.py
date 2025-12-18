@@ -1203,7 +1203,7 @@ def payroll():
     tap_events_by_block = {}
     for event in all_tap_events:
         # Normalize to the action labels used by the template
-        event.action = 'tap_in' if event.status == 'active' else 'tap_out'
+        event.action = 'start_work' if event.status == 'active' else 'stop_work'
         if event.period not in tap_events_by_block:
             tap_events_by_block[event.period] = []
         tap_events_by_block[event.period].append(event)
