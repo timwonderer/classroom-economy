@@ -30,7 +30,7 @@
 #### 🎯 Key Accomplishments
 - ✅ **Progressive Web App (PWA) Support** - Full installable mobile app experience
 - ✅ **Mobile-First UI** - Dedicated mobile templates with responsive navigation
-- ✅ **WCAG 2.1 AA Compliance** - Complete accessibility overhaul
+- ✅ **Accessibility Improvements** - Comprehensive enhancements following WCAG 2.1 AA guidelines
 - ✅ **UI Modernization** - Accordion-based admin templates for better organization
 - ✅ **Critical Payroll Fix** - Resolved multi-tenancy data leak in payroll system
 - ✅ **Improved Terminology** - "Start Work/Break Done" replaces "Tap In/Out"
@@ -97,7 +97,7 @@ See [RELEASE_NOTES_v1.2.0.md](docs/archive/releases/RELEASE_NOTES_v1.2.0.md) for
 - [x] Larger touch targets for tap in/out (completed v1.2.0)
 - [x] Larger touch targets for store interactions (completed v1.2.0)
 - [x] ARIA labels for key buttons and forms (completed v1.2.0)
-- [x] WCAG 2.1 AA compliance (completed v1.2.0)
+- [x] Accessibility improvements following WCAG 2.1 AA guidelines (completed v1.2.0)
 - [x] PWA support with offline capabilities (completed v1.2.0)
 - [x] Mobile-optimized templates (completed v1.2.0)
 

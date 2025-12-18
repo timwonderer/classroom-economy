@@ -22,7 +22,7 @@ and this project follows semantic versioning principles.
   - Multi-tenancy-safe caching that excludes authenticated routes
   - Automatic cache cleanup and version management
 - **Mobile Experience Enhancements** - Dedicated mobile templates for student portal with responsive navigation and improved touch targets
-- **Accessibility Improvements** - WCAG 2.1 AA compliance enhancements
+- **Accessibility Improvements** - Enhancements following WCAG 2.1 AA guidelines
   - Added ARIA labels to mobile navigation and interactive elements
   - Improved keyboard navigation support
   - Enhanced screen reader compatibility

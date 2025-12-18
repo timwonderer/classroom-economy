@@ -14,8 +14,8 @@ Classroom Token Hub can now be installed as a mobile app on iOS and Android devi
 ### Mobile-First Experience
 Completely redesigned mobile interface with responsive navigation, improved touch targets, and optimized layouts for small screens.
 
-### Accessibility Compliance
-Achieved WCAG 2.1 AA compliance with comprehensive accessibility improvements including ARIA labels, keyboard navigation, and screen reader support.
+### Accessibility Improvements
+Comprehensive accessibility enhancements following WCAG 2.1 AA guidelines, including ARIA labels, keyboard navigation, and screen reader support.
 
 ### Modern UI Refinements
 Admin templates redesigned with collapsible accordion sections for better organization and reduced visual clutter.
@@ -78,7 +78,7 @@ The application now functions as a Progressive Web App with the following capabi
 - Better image handling on small screens
 - Improved scrolling behavior
 
-### Accessibility Improvements (WCAG 2.1 AA)
+### Accessibility Improvements (Following WCAG 2.1 AA Guidelines)
 
 **ARIA Support**
 - Comprehensive ARIA labels on interactive elements
@@ -87,19 +87,19 @@ The application now functions as a Progressive Web App with the following capabi
 - ARIA landmarks for page regions
 
 **Keyboard Navigation**
-- Full keyboard accessibility throughout application
+- Enhanced keyboard accessibility throughout application
 - Logical tab order on all pages
 - Skip-to-content links
 - Focus indicators on interactive elements
 
 **Visual Accessibility**
-- Improved color contrast ratios meeting AA standards
+- Improved color contrast ratios following AA guidelines
 - Larger touch targets (minimum 44x44px)
 - Clear focus states
 - Better visual hierarchy
 
 **Screen Reader Compatibility**
-- Optimized for NVDA, JAWS, and VoiceOver
+- Enhanced compatibility with NVDA, JAWS, and VoiceOver
 - Meaningful alt text for images
 - Descriptive link text
 - Form label associations
@@ -357,7 +357,7 @@ The service worker will automatically update for users on their next visit. No m
 
 - **50%+ improvement** in mobile page load times (via caching)
 - **100% responsive** across all screen sizes
-- **WCAG 2.1 AA compliant** for accessibility
+- **Enhanced accessibility** following WCAG 2.1 AA guidelines
 - **Installable** on all major mobile platforms
 
 ### Code Quality

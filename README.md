@@ -12,7 +12,7 @@ An interactive banking and classroom management platform for teaching students a
 
 **License:** [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) - Free for educational and nonprofit use, not for commercial applications.
 
-**Project Status:** Version 1.2.0 Released! This major release introduces Progressive Web App (PWA) support, mobile-first experience, WCAG 2.1 AA accessibility compliance, and modernized UI with accordion layouts. Install as a mobile app for faster, offline-capable access! See [RELEASE_NOTES_v1.2.0.md](docs/archive/releases/RELEASE_NOTES_v1.2.0.md) for full details.
+**Project Status:** Version 1.2.0 Released! This major release introduces Progressive Web App (PWA) support, mobile-first experience, accessibility improvements following WCAG 2.1 AA guidelines, and modernized UI with accordion layouts. Install as a mobile app for faster, offline-capable access! See [RELEASE_NOTES_v1.2.0.md](docs/archive/releases/RELEASE_NOTES_v1.2.0.md) for full details.
 
 ---
 
@@ -45,7 +45,7 @@ An interactive banking and classroom management platform for teaching students a
 
 ### Accessibility Features ♿
 
-- **WCAG 2.1 AA Compliant** — Meets international accessibility standards
+- **Enhanced Accessibility** — Improvements following WCAG 2.1 AA guidelines
 - **Screen Reader Support** — Optimized for NVDA, JAWS, and VoiceOver
 - **Keyboard Navigation** — Full keyboard accessibility throughout
 - **ARIA Labels** — Comprehensive labeling for assistive technologies
