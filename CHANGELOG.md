@@ -8,8 +8,26 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
+### Added
+- **Comprehensive Legacy Account Migration Script** - Complete migration tool for transitioning all legacy accounts to new multi-tenancy system
+  - Migrates students with `teacher_id` to claim-based enrollment system
+  - Creates missing `StudentTeacher` associations and `TeacherBlock` entries
+  - Backfills `join_code` for all TeacherBlock entries
+  - Backfills `join_code` for transactions, tap events, and related tables
+  - Includes dry-run mode for safe preview before applying changes
+  - Provides comprehensive verification and error reporting
+  - Located at: `scripts/comprehensive_legacy_migration.py`
+- **Legacy Account Migration Documentation** - Complete guide for migration process
+  - Historical context and migration strategy
+  - Step-by-step deployment instructions
+  - Troubleshooting common issues
+  - Post-migration verification procedures
+  - Roadmap for deprecating `teacher_id` column
+  - Located at: `docs/operations/LEGACY_ACCOUNT_MIGRATION.md`
+
 ### Changed
-- Preparing for next release
+- Preparing for final deprecation of `teacher_id`-based linkage system
+- All legacy data now ready for migration to `join_code`-based multi-tenancy
 
 ## [1.2.0] - 2025-12-18
 
