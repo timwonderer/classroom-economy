@@ -22,7 +22,6 @@
             width: 100%;
             max-width: 900px;
             background: var(--surface);
-            
             box-shadow: var(--shadow-lg);
             overflow: hidden;
             display: flex;
@@ -37,7 +36,7 @@
         }
         .login-right {
             flex: 1;
-            background: linear-gradient(135deg, var(--primary), #004d46);
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -63,16 +62,26 @@
             position: relative;
             z-index: 1;
         }
-        .info-card {
-            background: #fff7ec;
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
-            padding: 1.25rem;
-            box-shadow: var(--shadow-sm);
+        .btn-primary {
+            background: var(--primary);
+            border: none;
+            color: white;
+            transition: all 0.3s ease;
         }
-        .form-note {
-            font-size: 0.9rem;
-            color: var(--text-secondary-contrast);
+        .btn-primary:hover {
+            background: var(--secondary);
+            color: #2c2c2c;
+            transform: translateY(-2px);
+        }
+        .btn-outline-primary:hover {
+            background: var(--secondary);
+            border-color: var(--secondary);
+            color: #2c2c2c;
+        }
+        .btn-outline-secondary:hover {
+            background: var(--secondary);
+            border-color: var(--secondary);
+            color: #2c2c2c;
         }
         @media (max-width: 768px) {
             .login-container {
