@@ -163,9 +163,11 @@
             "Keep track of your transaction history to understand your spending habits."
         ];
 
+        const MINIMUM_DISPLAY_TIME = 2500; // Minimum 2.5 seconds to read the tip
         let currentTipIndex = 0;
         let tipRotationInterval;
         let loadingModal;
+        let formSubmitted = false;
 
         // Initialize modal
         document.addEventListener('DOMContentLoaded', function() {
@@ -175,8 +177,24 @@
             // Intercept form submission
             const loginForm = document.querySelector('form');
             loginForm.addEventListener('submit', function(e) {
+                // Prevent duplicate submissions
+                if (formSubmitted) {
+                    e.preventDefault();
+                    return;
+                }
+
+                // Prevent default submission
+                e.preventDefault();
+                formSubmitted = true;
+
                 // Show loading modal with tips
+                const startTime = Date.now();
                 showLoadingModal();
+
+                // Wait for minimum display time, then submit
+                setTimeout(function() {
+                    loginForm.submit();
+                }, MINIMUM_DISPLAY_TIME);
             });
         });
 
