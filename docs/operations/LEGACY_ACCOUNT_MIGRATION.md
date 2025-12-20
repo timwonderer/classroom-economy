@@ -149,6 +149,9 @@ WHERE t.join_code IS NULL
 **Limitations:**
 - Transactions without matching `TeacherBlock` remain NULL (orphaned data)
 - Legacy test data may remain with NULL `join_code`
+- Because `transaction` lacks a `period` column, students enrolled in multiple classes may have
+  their transactions associated with an arbitrary claimed class; review balances for multi-class
+  students after the backfill.
 
 #### Phase 4: Tap Event Join Code Backfill
 
@@ -185,20 +188,40 @@ WHERE te.join_code IS NULL
 - `rent_payments` - Rent payment records
 
 **Strategy:**
-- Match records to `StudentBlock` by `student_id`
-- Use the `join_code` from `StudentBlock`
+- Match records to `StudentBlock` by `student_id`, and also by `period` when the target table
+  includes a `period` column
+- Use the `join_code` from `StudentBlock` (first matching record when period is absent)
 - Bulk SQL update for performance
 
-**SQL Pattern:**
+**SQL Pattern (dynamic by table shape):**
 ```sql
+-- When the table has a period column
 UPDATE {table_name} AS t
-SET join_code = sb.join_code
-FROM student_blocks AS sb
-WHERE t.join_code IS NULL
-  AND t.student_id = sb.student_id
-  AND sb.join_code IS NOT NULL
-  AND sb.join_code != '';
+SET join_code = (
+    SELECT sb.join_code FROM student_blocks AS sb
+    WHERE t.student_id = sb.student_id
+      AND UPPER(t.period) = UPPER(sb.period)
+      AND sb.join_code IS NOT NULL AND sb.join_code != ''
+    LIMIT 1
+)
+WHERE t.join_code IS NULL;
+
+-- When the table does NOT have a period column (ambiguous for multi-class students)
+UPDATE {table_name} AS t
+SET join_code = (
+    SELECT sb.join_code FROM student_blocks AS sb
+    WHERE t.student_id = sb.student_id
+      AND sb.join_code IS NOT NULL AND sb.join_code != ''
+    LIMIT 1
+)
+WHERE t.join_code IS NULL;
 ```
+
+**Limitations:**
+- Tables without a `period` column (e.g., `student_items`, `student_insurance`) are inherently
+  ambiguous for students in multiple classes; the first available `join_code` is used.
+- For tables with a `period` column (e.g., `hall_pass_logs`, `rent_payments`), period matching is
+  required to avoid cross-class contamination—verify period values are normalized before running.
 
 ### Safety Features
 

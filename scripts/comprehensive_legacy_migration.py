@@ -168,20 +168,14 @@ def migrate_legacy_students(stats, dry_run=False):
     # Create StudentTeacher associations
     print("Creating StudentTeacher associations...")
     for student in legacy_students:
-        existing_st = StudentTeacher.query.filter_by(
+        st = StudentTeacher(
             student_id=student.id,
-            admin_id=student.teacher_id
-        ).first()
-
-        if not existing_st:
-            st = StudentTeacher(
-                student_id=student.id,
-                admin_id=student.teacher_id,
-                created_at=datetime.now(timezone.utc)
-            )
-            db.session.add(st)
-            stats.student_teacher_created += 1
-            print(f"  ✓ Created StudentTeacher for {student.full_name}")
+            admin_id=student.teacher_id,
+            created_at=datetime.now(timezone.utc)
+        )
+        db.session.add(st)
+        stats.student_teacher_created += 1
+        print(f"  ✓ Created StudentTeacher for {student.full_name}")
 
     # Group students by (teacher_id, block) for TeacherBlock creation
     print("\nGrouping students by teacher and block...")
@@ -320,27 +314,53 @@ def backfill_teacher_block_join_codes(stats, dry_run=False):
             print(f"  - Teacher {teacher_id}, Block {block}: {len(seats)} seats")
         return
 
+    # Preload existing join codes for these teacher-block combinations
+    teacher_ids = list(set(tid for tid, _ in groups.keys()))
+    existing_codes_by_group = {}
+    if teacher_ids:
+        existing_with_codes = TeacherBlock.query.filter(
+            TeacherBlock.teacher_id.in_(teacher_ids),
+            TeacherBlock.join_code.isnot(None),
+            TeacherBlock.join_code != ''
+        ).with_entities(TeacherBlock.teacher_id, TeacherBlock.block, TeacherBlock.join_code).all()
+
+        for tid, block_value, join_code in existing_with_codes:
+            key = (tid, block_value.strip().upper() if block_value else '')
+            if key not in existing_codes_by_group:
+                existing_codes_by_group[key] = join_code
+
+    # Preload all join codes for uniqueness checks
+    existing_join_code_set = set(
+        row[0] for row in TeacherBlock.query.filter(
+            TeacherBlock.join_code.isnot(None),
+            TeacherBlock.join_code != ''
+        ).with_entities(TeacherBlock.join_code).all()
+    )
+
     # Generate and assign join codes
     for (teacher_id, block), seats in groups.items():
         # Check if this teacher-block already has seats with join codes
-        existing_seat_with_code = TeacherBlock.query.filter_by(
-            teacher_id=teacher_id
-        ).filter(
-            TeacherBlock.block.ilike(block) if block else TeacherBlock.block.is_(None),
-            TeacherBlock.join_code.isnot(None),
-            TeacherBlock.join_code != ''
-        ).first()
-
-        if existing_seat_with_code:
-            join_code = existing_seat_with_code.join_code
+        if (teacher_id, block) in existing_codes_by_group:
+            join_code = existing_codes_by_group[(teacher_id, block)]
             print(f"  → Reusing join code {join_code} for teacher {teacher_id}, block {block}")
             stats.join_codes_reused += 1
         else:
             # Generate new unique join code
-            while True:
-                join_code = generate_join_code()
-                if not TeacherBlock.query.filter_by(join_code=join_code).first():
+            max_attempts = MAX_JOIN_CODE_RETRIES * 10
+            join_code = None
+            for _ in range(max_attempts):
+                candidate = generate_join_code()
+                if candidate not in existing_join_code_set:
+                    join_code = candidate
+                    existing_join_code_set.add(candidate)
                     break
+
+            if not join_code:
+                error_msg = f"Failed to generate unique join code for teacher {teacher_id}, block {block}"
+                print(f"  ✗ {error_msg}")
+                stats.errors.append(error_msg)
+                continue
+
             print(f"  → Generated join code {join_code} for teacher {teacher_id}, block {block}")
             stats.join_codes_generated += 1
 
@@ -380,6 +400,14 @@ def backfill_transaction_join_codes(stats, dry_run=False):
     if dry_run:
         print("🔍 DRY RUN: Would backfill transaction join codes using TeacherBlock mapping")
         return
+
+    warning = (
+        "Transaction join_code backfill matches only on student_id; "
+        "students with multiple claimed classes may have transactions assigned "
+        "to an arbitrary join_code because the transaction table lacks period context."
+    )
+    print(f"⚠️  {warning}")
+    stats.warnings.append(warning)
 
     # Use SQL for efficient bulk update
     # Match transactions to TeacherBlocks by student_id and period (case-insensitive)
@@ -515,16 +543,26 @@ def backfill_related_tables(stats, dry_run=False):
 
             print(f"  Found {null_count} records without join codes")
 
+            table_columns = [c['name'] for c in inspector.get_columns(table_name)]
+            period_match_clause = ""
+            if 'period' in table_columns:
+                period_match_clause = "AND UPPER(t.period) = UPPER(sb.period)"
+            else:
+                stats.warnings.append(
+                    f"Backfill for {table_name} is ambiguous for students in multiple classes; using first available join_code."
+                )
+
             # Backfill using StudentBlock relationship
             # Strategy: Match by student_id and period (if period column exists)
             update_query = text(f"""
                 UPDATE {table_name} AS t
-                SET join_code = sb.join_code
-                FROM student_blocks AS sb
+                SET join_code = (
+                    SELECT sb.join_code FROM student_blocks AS sb
+                    WHERE t.student_id = sb.student_id {period_match_clause}
+                    AND sb.join_code IS NOT NULL AND sb.join_code != ''
+                    LIMIT 1
+                )
                 WHERE t.join_code IS NULL
-                  AND t.student_id = sb.student_id
-                  AND sb.join_code IS NOT NULL
-                  AND sb.join_code != ''
             """)
 
             result = db.session.execute(update_query)
