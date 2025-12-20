@@ -20,7 +20,7 @@
         body {
             font-family: 'Inter', sans-serif;
             height: 100vh;
-            background: #fffaf5;
+            background: var(--background);
         }
 
        .login-wrapper {
@@ -36,16 +36,15 @@
             display:flex;
             align-items: center;
             justify-content: center;
-            background: #ffffff;
-
+            background: var(--surface);
+            padding: 3rem;
             height: 100vh;
-
         }
 
         .branding-side {
             flex: 1;
 
-            background: linear-gradient(135deg, #4a9eff 0%, #00afdf 50%, #00d4ff 100%);
+            background: linear-gradient(135deg, var(--primary) 0%, #5B8DBE 50%, var(--secondary) 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -81,32 +80,31 @@
 
         .login-container {
             width: 100%;
-
-            margin:auto;
-            max-width: 520px;
+            margin: auto;
+            max-width: 480px;
         }
 
         .login-container h1 {
             margin-bottom: 0.5rem;
             font-weight: 700;
-            color: #274174;
+            color: var(--primary);
             text-align: center;
             font-size: 2rem;
         }
 
         .login-container .subtitle {
             text-align: center;
-            color: #4a6fa5;
+            color: var(--text-secondary);
             margin-bottom: 0.5rem;
             font-size: 0.95rem;
         }
 
         .info-box {
-            border: 2px solid #4a9eff;
+            border: 2px solid var(--primary);
             padding: 1rem;
             border-radius: 8px;
             margin-bottom: 1.5rem;
-            background-color: #f0f7ff;
+            background-color: var(--background);
         }
 
         .info-box p {
@@ -115,17 +113,17 @@
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, #00d4ff 0%, #00afdf 100%);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
             border: none;
             padding: 0.85rem;
             font-weight: 700;
             transition: all 0.3s ease;
             border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(74, 158, 255, 0.35);
+            box-shadow: 0 8px 24px rgba(47, 79, 127, 0.35);
         }
 
         .btn-primary:hover {
-            background: linear-gradient(135deg, #00afdf 0%, #035397 100%);
+            background: linear-gradient(135deg, var(--primary-hover) 0%, #202b3b 100%);
             transform: translateY(-2px);
         }
 
@@ -133,17 +131,17 @@
             text-align: center;
             margin-top: 2rem;
             padding-top: 1rem;
-            border-top: 1px solid #1283f5ff;
+            border-top: 1px solid var(--border-color);
         }
 
         .first-time-link a {
-            color: #00afdf;
+            color: var(--primary);
             text-decoration: none;
             font-weight: 500;
         }
 
         .first-time-link a:hover {
-            color: #035397;
+            color: var(--primary-hover);
             text-decoration: underline;
         }
 
@@ -163,8 +161,8 @@
         }
 
         .form-control:focus {
-            border-color: #4a9eff;
-            box-shadow: 0 0 0 0.2rem rgba(74, 158, 255, 0.25);
+            border-color: var(--primary);
+            box-shadow: 0 0 0 0.2rem rgba(47, 79, 127, 0.25);
         }
 
         .form-group {
