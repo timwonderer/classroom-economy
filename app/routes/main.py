@@ -124,6 +124,18 @@ def terms():
     return render_template('tos.html')
 
 
+@main_bp.route('/offline')
+def offline():
+    """Render the offline fallback page."""
+    return render_template('offline.html')
+
+
+@main_bp.route('/sw.js')
+def service_worker():
+    """Serve the service worker file from the root scope."""
+    return current_app.send_static_file('sw.js')
+
+
 # -------------------- HALL PASS TERMINALS (NO AUTH REQUIRED) --------------------
 
 @main_bp.route('/hall-pass/terminal')

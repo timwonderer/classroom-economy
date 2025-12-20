@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project follows semantic versioning principles.
 
 
+## [Unreleased]
+
+### Added
+- **Progressive Web App (PWA) Support** - Full PWA implementation for improved mobile experience
+  - Web app manifest with app metadata and icon configuration
+  - Service worker with intelligent caching strategies (cache-first for static assets, network-first for CDN resources)
+  - Offline fallback page with user-friendly offline experience
+  - PWA installation capability on mobile devices (Add to Home Screen)
+  - Multi-tenancy-safe caching that excludes authenticated routes
+  - Automatic cache cleanup and version management
+- **PWA Documentation** - Added `docs/PWA_ICON_REQUIREMENTS.md` with instructions for generating required icon assets
+
+### Fixed
+- **Payroll Button JSON Error** - Fixed "Run Payroll Now" button returning HTML instead of JSON, which caused "Unexpected token '<!DOCTYPE'" error. The `run_payroll()` endpoint now properly returns JSON response for AJAX requests.
+
+### Changed
+- **Insurance Policy Edit Page** - Redesigned with collapsible accordion sections to eliminate overflow issues and reduce visual clutter
+  - Moved from crowded 2x2 grid layout to clean vertical stacking with progressive disclosure
+  - Kept frequently-edited sections (Basic Information, Pricing & Payment) always visible
+  - Organized advanced features into Bootstrap accordion: Coverage & Claims (default open), Repurchase Restrictions, Bundle Discounts, and Grouped Insurance
+  - Added visual badges to accordion headers indicating when sections have active settings
+  - Significantly improved mobile responsiveness and eliminated horizontal scrolling
+- **Admin Store Item Edit Page** - Redesigned with collapsible accordion sections for Bundle, Bulk Discount, and Advanced settings to reduce scrolling. Added "Active" badges to headers.
+- **Admin Rent Settings Page** - Redesigned to use collapsible accordion sections for better organization.
+- Simplified admin feature settings into single-column, collapsible cards to reduce page crowding.
+
+### Added
+- **TEMPLATE_REDESIGN_RECOMMENDATIONS.md** - Documentation of UI redesign patterns and guidelines
+  - Best practices for when to use accordion/collapsible patterns vs traditional layouts
+  - Analysis of other admin templates that could benefit from similar improvements
+  - Implementation checklist for future template redesigns
+  - Color scheme guidelines for consistent visual hierarchy
+
+
 ## [1.2.0] - 2025-12-24
 
 ### Added
@@ -26,6 +60,7 @@ and this project follows semantic versioning principles.
 - Applied the green theme to standalone admin/auth pages and corrected admin heading hierarchy to resolve styling regressions (#635, #639)
 - Added cache-busting static asset helper defaults and fallback coverage to stop `static_url` undefined errors across templates (#628-633)
 - Stopped insurance management and edit screens from crashing when legacy forms lack the tier grouping field (#640)
+- Added one-time prompt for legacy insurance policies and supporting script to encourage migration to tiered plans (#641)
 
 ## [1.1.0] - 2024-12-13
 

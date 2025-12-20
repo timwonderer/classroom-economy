@@ -249,4 +249,4 @@ def test_auto_tapout_skips_when_join_code_missing(client, caplog):
         "Unable to resolve join_code" in record.message and
         f"TapEvent ID is {legacy_event.id}" in record.message
         for record in caplog.records
-    ), "Expected warning about missing join_code was not logged"
+    ), f"Expected warning about missing join_code was not logged. Records: {[r.message for r in caplog.records]}"

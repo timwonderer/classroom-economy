@@ -114,7 +114,7 @@ All deprecated Python and SQLAlchemy patterns have been updated, ensuring full c
 - 🔄 Teacher analytics for payroll and store performance (partial - economy health page provides CWI analysis)
 - ⏳ Enhanced reporting and export capabilities (planned for future release)
 
-**See:** [RELEASE_NOTES_v1.1.0.md](RELEASE_NOTES_v1.1.0.md) for complete details
+**See:** [RELEASE_NOTES_v1.1.0.md](docs/archive/releases/RELEASE_NOTES_v1.1.0.md) for complete details
 
 ### Version 1.2 - Mobile Experience
 - Progressive Web App (PWA) capabilities

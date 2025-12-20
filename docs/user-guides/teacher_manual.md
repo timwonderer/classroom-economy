@@ -37,7 +37,7 @@ The admin dashboard is your central hub for managing the classroom. It provides 
 
 - **Students:** A list of all students in your class.
 - **Recent Transactions:** The latest financial activity.
-- **Attendance Log:** The most recent student tap-in and tap-out events.
+- **Attendance Log:** The most recent student "Start Work" and "Break / Done" events.
 - **Pending Redemptions:** Requests from students to use items they've purchased from the store.
 
 ## Student Management
@@ -120,4 +120,4 @@ The "Insurance" page allows you to create and manage insurance policies that stu
 
 ### Viewing the Attendance Log
 
-The "Attendance Log" page provides a complete, un-editable history of all student tap-in and tap-out events. This log is used to calculate payroll.
+The "Attendance Log" page provides a complete, un-editable history of all student attendance events (Start Work / Break / Done). This log is used to calculate payroll.
