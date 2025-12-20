@@ -49,7 +49,8 @@
       showLoadingModal();
 
       setTimeout(function() {
-        loginForm.submit();
+        // Use prototype to avoid conflict with form field named "submit"
+        HTMLFormElement.prototype.submit.call(loginForm);
       }, settings.minimumDisplayTime);
     });
 
