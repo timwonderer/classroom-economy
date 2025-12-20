@@ -16,4 +16,9 @@ THEME_PROMPTS = [
     {"slug": "science", "prompt": "Write in a science word you like."},
     {"slug": "hobby", "prompt": "Write in your favorite hobby or sport."},
     {"slug": "happy", "prompt": "Write in something that makes you happy."},
+    {"slug": "music", "prompt": "Write in a music word (instrument, song, or artist)."},
+    {"slug": "weather", "prompt": "Write in a weather word (sunny, breezy, storm)."},
+    {"slug": "myth", "prompt": "Write in a myth or legend word (hero, dragon, quest)."},
+    {"slug": "ocean", "prompt": "Write in something from the ocean."},
+    {"slug": "invention", "prompt": "Write in an invention or tech word you like."},
 ]
