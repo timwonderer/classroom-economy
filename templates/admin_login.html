@@ -21,7 +21,6 @@
             width: 100%;
             max-width: 900px;
             background: var(--surface);
-            border-radius: 24px;
             box-shadow: var(--shadow-lg);
             overflow: hidden;
             display: flex;
@@ -61,6 +60,27 @@
             margin-bottom: 2rem;
             position: relative;
             z-index: 1;
+        }
+        .btn-primary {
+            background: var(--primary);
+            border: none;
+            color: white;
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            background: var(--secondary);
+            color: #2c2c2c;
+            transform: translateY(-2px);
+        }
+        .btn-outline-primary:hover {
+            background: var(--secondary);
+            border-color: var(--secondary);
+            color: #2c2c2c;
+        }
+        .btn-outline-secondary:hover {
+            background: var(--secondary);
+            border-color: var(--secondary);
+            color: #2c2c2c;
         }
         @media (max-width: 768px) {
             .login-container {

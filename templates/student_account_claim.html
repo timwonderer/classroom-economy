@@ -102,7 +102,6 @@
         .info-box {
             border: 2px solid var(--primary);
             padding: 1rem;
-            border-radius: 8px;
             margin-bottom: 1.5rem;
             background-color: var(--background);
         }
@@ -113,17 +112,17 @@
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+            background: var(--primary);
             border: none;
             padding: 0.85rem;
             font-weight: 700;
             transition: all 0.3s ease;
-            border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(47, 79, 127, 0.35);
+            color: white;
         }
 
         .btn-primary:hover {
-            background: linear-gradient(135deg, var(--primary-hover) 0%, #202b3b 100%);
+            background: var(--secondary);
+            color: #2c2c2c;
             transform: translateY(-2px);
         }
 
