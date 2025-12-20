@@ -21,7 +21,6 @@
             width: 100%;
             max-width: 900px;
             background: var(--surface);
-            border-radius: 24px;
             box-shadow: var(--shadow-lg);
             overflow: hidden;
             display: flex;
@@ -62,6 +61,29 @@
             position: relative;
             z-index: 1;
         }
+        .btn-primary {
+            background: var(--primary);
+            border: none;
+            color: white;
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            background: var(--secondary);
+            color: #2c2c2c;
+        }
+        .btn-outline-primary:hover {
+            background: var(--secondary);
+            border-color: var(--secondary);
+            color: #2c2c2c;
+        }
+        .btn-outline-secondary:hover {
+            background: var(--secondary);
+            border-color: var(--secondary);
+            color: #2c2c2c;
+        }
+        .subtitle {
+            color: var(--secondary) !important;
+        }
         @media (max-width: 768px) {
             .login-container {
                 flex-direction: column;
@@ -82,7 +104,7 @@
         <div class="login-left">
             <div class="mb-4">
                 <h1 class="h3 fw-bold mb-2">Teacher Login</h1>
-                <p class="text-secondary">Welcome back! Please enter your details.</p>
+                <p class="subtitle">Welcome back! Please enter your details.</p>
             </div>
 
             {% with messages = get_flashed_messages() %}
