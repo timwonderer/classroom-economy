@@ -79,6 +79,20 @@ LEGACY_PLACEHOLDER_LAST_INITIAL = "P"  # "P" for Placeholder
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 
 
+def relaxed_limit(default_rule):
+    """
+    Return a rate limit string that is relaxed in development/testing to ease manual QA.
+    """
+    def _resolve():
+        from flask import current_app
+        if current_app:
+            cfg = current_app.config
+            if cfg.get("DEBUG") or cfg.get("TESTING") or os.environ.get("DISABLE_RATE_LIMITS"):
+                return "1000 per minute"
+        return default_rule
+    return _resolve
+
+
 # -------------------- DASHBOARD & QUICK ACTIONS --------------------
 
 
@@ -763,7 +777,7 @@ def backfill_transactions():
 # -------------------- AUTHENTICATION --------------------
 
 @admin_bp.route('/login', methods=['GET', 'POST'])
-@limiter.limit("10 per minute")
+@limiter.limit(relaxed_limit("10 per minute"))
 def login():
     """Admin login with TOTP authentication."""
     session.pop("is_admin", None)
@@ -940,7 +954,7 @@ def signup():
 
 
 @admin_bp.route('/recover', methods=['GET', 'POST'])
-@limiter.limit("5 per hour")
+@limiter.limit(relaxed_limit("20 per hour"))
 def recover():
     """
     Teacher account recovery - Step 1: Create recovery request.
@@ -1129,7 +1143,8 @@ def recovery_status():
 
 
 @admin_bp.route('/reset-credentials', methods=['GET', 'POST'])
-@limiter.limit("10 per hour")
+def reset_credentials():
+@limiter.limit(relaxed_limit("30 per hour"))
 def reset_credentials():
     """
     Reset teacher username and TOTP after verifying student recovery codes.
@@ -1245,7 +1260,7 @@ def _invalidate_all_recovery_codes(student_codes):
 
 
 @admin_bp.route('/confirm-reset', methods=['POST'])
-@limiter.limit("10 per hour")
+@limiter.limit(relaxed_limit("30 per hour"))
 def confirm_reset():
     """
     Confirm TOTP code and complete the account reset.
@@ -1300,7 +1315,7 @@ def confirm_reset():
 
 
 @admin_bp.route('/save-recovery-progress', methods=['POST'])
-@limiter.limit("10 per hour")
+@limiter.limit(relaxed_limit("30 per hour"))
 def save_recovery_progress():
     """
     Save partial recovery progress and generate a resume PIN.
@@ -1347,7 +1362,7 @@ def save_recovery_progress():
 
 
 @admin_bp.route('/resume-credentials', methods=['GET', 'POST'])
-@limiter.limit("10 per hour")
+@limiter.limit(relaxed_limit("30 per hour"))
 def resume_credentials():
     """
     Resume recovery process with a previously saved PIN.
