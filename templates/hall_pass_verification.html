@@ -83,8 +83,8 @@
                             <div class="text-muted small">Period ${pass.period}</div>
                         </div>
                         ${isOut
-                            ? `<span class="time-badge"><span class="material-symbols-outlined" style='vertical-align: middle; font-size:20px'>${statusIcon}</span>${getTimeElapsed(pass.left_time)}</span>`
-                            : `<span class="status-chip returned"><span class="material-symbols-outlined" style='vertical-align: middle; font-size:20px'>${statusIcon}</span>${statusText}</span>`
+                            ? `<span class="time-badge"><span class="material-symbols-outlined">${statusIcon}</span>${getTimeElapsed(pass.left_time)}</span>`
+                            : `<span class="status-chip returned"><span class="material-symbols-outlined">${statusIcon}</span>${statusText}</span>`
                         }
                     </div>
                     <div class="info-grid hall-pass-info-grid mb-2">
