@@ -1,124 +1,151 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Classroom Token Hub - Progress Saved</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <link href="{{ static_url('css/style.css') }}" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
-            font-family: 'Inter', sans-serif;
+            background-color: var(--background);
+            display: flex;
+            align-items: center;
+            justify-content: center;
             min-height: 100vh;
-            background: #fffaf5;
-            padding: 2rem;
         }
-
-        .container {
-            max-width: 700px;
-            margin: 0 auto;
+        .auth-container {
+            width: 100%;
+            max-width: 900px;
+            background: var(--surface);
+            border-radius: 24px;
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+            display: flex;
+            min-height: 600px;
         }
-
-        .status-card {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 2px 8px rgba(0, 0 0, 0.1);
-            padding: 2rem;
-            margin-bottom: 1.5rem;
+        .auth-left {
+            flex: 1;
+            padding: 3rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
         }
-
-        .status-header {
-            color: #c15f00;
-            font-weight: 700;
-            font-size: 1.75rem;
+        .auth-right {
+            flex: 1;
+            background: linear-gradient(135deg, var(--primary), #004d46);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            padding: 3rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .auth-right::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        }
+        .logo-img {
+            width: 360px;
+            height: 360px;
             margin-bottom: 1rem;
+            position: relative;
+            z-index: 1;
         }
-
         .resume-pin-display {
             background: #f8f9fa;
-            border: 3px solid #28a745;
-            border-radius: 10px;
-            padding: 2rem;
+            border: 2px solid #28a745;
+            border-radius: 14px;
+            padding: 1.75rem;
             text-align: center;
             margin: 1.5rem 0;
+            box-shadow: var(--shadow-sm);
         }
-
         .resume-pin {
-            font-size: 3rem;
+            font-size: 2.5rem;
             font-weight: 700;
-            letter-spacing: 0.3em;
+            letter-spacing: 0.28em;
             color: #28a745;
             font-family: 'Courier New', monospace;
         }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #fccc63 0%, #f19a23 100%);
-            border: none;
-            padding: 0.85rem 2rem;
-            font-weight: 700;
-            transition: all 0.3s ease;
-            border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(243, 168, 54, 0.35);
+        .info-list li + li {
+            margin-top: 0.35rem;
         }
-
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #e99f11 0%, #cc7a00 100%);
+        @media (max-width: 768px) {
+            .auth-container {
+                flex-direction: column;
+                margin: 1rem;
+                min-height: auto;
+            }
+            .auth-right {
+                display: none;
+            }
+            .auth-left {
+                padding: 2rem;
+            }
         }
     </style>
 </head>
-
 <body>
-    <div class="container">
-        <div class="status-card">
-            <h1 class="status-header">✓ Progress Saved!</h1>
+    <div class="auth-container">
+        <div class="auth-left">
+            <div class="mb-4">
+                <div class="d-inline-flex align-items-center gap-2 text-success fw-semibold mb-2">
+                    <span class="material-symbols-outlined">check_circle</span>
+                    Progress saved
+                </div>
+                <h1 class="h3 fw-bold mb-2">Your recovery codes are safe</h1>
+                <p class="text-secondary mb-0">You can return before {{ recovery_request.expires_at.strftime('%B %d, %Y at %I:%M %p') }} to finish resetting your account.</p>
+            </div>
 
-            <div class="alert alert-success">
-                <h5 class="alert-heading">Your recovery codes have been saved</h5>
-                <p class="mb-0">You've saved {{ codes_saved }} recovery code(s). You can come back anytime before {{ recovery_request.expires_at.strftime('%B %d, %Y at %I:%M %p') }} to continue.</p>
+            <div class="alert alert-success border-0 shadow-sm">
+                <h5 class="alert-heading mb-1">Saved {{ codes_saved }} recovery code(s)</h5>
+                <p class="mb-0">Share this PIN with no one. You'll need it to resume.</p>
             </div>
 
             <div class="resume-pin-display">
-                <div class="mb-2"><strong>Your Resume PIN:</strong></div>
+                <div class="mb-2 text-uppercase small fw-semibold text-secondary">Your resume PIN</div>
                 <div class="resume-pin">{{ resume_pin }}</div>
             </div>
 
-            <div class="alert alert-warning">
-                <strong>⚠️ Important:</strong>
-                <ul class="mb-0 mt-2">
-                    <li>Write down this PIN immediately - it will NOT be shown again</li>
-                    <li>You'll need this PIN to resume your recovery later</li>
-                    <li>This PIN expires on {{ recovery_request.expires_at.strftime('%B %d, %Y at %I:%M %p') }}</li>
+            <div class="alert alert-warning border-0 shadow-sm">
+                <strong>Important:</strong>
+                <ul class="mb-0 mt-2 info-list">
+                    <li>Write down this PIN now — it will not be shown again.</li>
+                    <li>Use it to resume your recovery later.</li>
+                    <li>This PIN expires on {{ recovery_request.expires_at.strftime('%B %d, %Y at %I:%M %p') }}.</li>
                 </ul>
             </div>
 
-            <div class="alert alert-info">
-                <h6><strong>What happens next?</strong></h6>
-                <ol class="mb-0">
-                    <li>Collect the remaining recovery codes from your students</li>
-                    <li>Go to the teacher login page and click "Resume Recovery"</li>
-                    <li>Enter your PIN to continue where you left off</li>
-                    <li>Complete your account reset</li>
+            <div class="alert alert-info border-0 shadow-sm">
+                <h6 class="fw-semibold mb-2">What happens next?</h6>
+                <ol class="mb-0 small text-muted ps-3">
+                    <li>Collect the remaining recovery codes from your students.</li>
+                    <li>Return to the teacher login page and click "Resume Recovery".</li>
+                    <li>Enter your PIN to continue where you left off.</li>
+                    <li>Complete your account reset.</li>
                 </ol>
             </div>
 
-            <div class="mt-4">
-                <a href="{{ url_for('admin.login') }}" class="btn btn-primary w-100">
-                    Back to Login
+            <div class="mt-3">
+                <a href="{{ url_for('admin.login') }}" class="btn btn-primary w-100 btn-lg">
+                    Back to login
                 </a>
             </div>
         </div>
+        <div class="auth-right">
+            <img src="{{ static_url('images/3_CLASSROOM TOKEN HUB TEACHER 512.png') }}" alt="Admin Logo" class="logo-img">
+        </div>
     </div>
-
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

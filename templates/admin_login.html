@@ -56,8 +56,8 @@
             background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
         }
         .logo-img {
-            width: 120px;
-            height: 120px;
+            width: 400px;
+            height: 400px;
             margin-bottom: 2rem;
             position: relative;
             z-index: 1;
@@ -81,8 +81,8 @@
     <div class="login-container">
         <div class="login-left">
             <div class="mb-4">
-                <h1 class="h3 fw-bold mb-2">Teacher Login</h1>
-                <p class="text-secondary">Welcome back! Please enter your details.</p>
+                <h1 class="h3 fw-bold mb-2" style="color:#1a4d47">Welcome back, Teachers!</h1>
+                <p class="text-secondary">Please sign in to continue.</p>
             </div>
 
             {% with messages = get_flashed_messages() %}
@@ -132,9 +132,7 @@
             </form>
         </div>
         <div class="login-right">
-            <img src="{{ static_url('images/admin-logo.svg') }}" alt="Logo" class="logo-img">
-            <h2 class="h3 fw-bold mb-3">Classroom Token Hub</h2>
-            <p class="text-center opacity-75 px-4">Manage your classroom economy with ease. Track attendance, payroll, and more.</p>
+            <img src="{{ static_url('images/3_CLASSROOM TOKEN HUB TEACHER 512.png') }}" alt="Logo" class="logo-img">
         </div>
     </div>
 </body>
