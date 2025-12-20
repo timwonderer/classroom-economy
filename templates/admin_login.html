@@ -132,11 +132,11 @@
             <form method="POST" id="loginForm">
                 {{ form.hidden_tag() }}
                 <div class="mb-3">
-                    <label class="form-label small fw-bold text-secondary text-uppercase">Username</label>
+                    <label class="form-label">Username</label>
                     {{ form.username(class="form-control form-control-lg", placeholder="Enter your username") }}
                 </div>
                 <div class="mb-4">
-                    <label class="form-label small fw-bold text-secondary text-uppercase">Authenticator Code</label>
+                    <label class="form-label">Authenticator Code</label>
                     {{ form.totp_code(class="form-control form-control-lg", inputmode="numeric", pattern="[0-9]*", maxlength="6", placeholder="Enter 6-digit code") }}
                 </div>
 
