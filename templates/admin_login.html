@@ -4,12 +4,11 @@
     <meta charset="UTF-8">
     <title>Teacher Login - Classroom Token Hub</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
     <link href="{{ static_url('css/style.css') }}" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body {
             background-color: var(--background);
@@ -94,7 +93,7 @@
                 {% endif %}
             {% endwith %}
 
-            <form method="POST">
+            <form method="POST" id="loginForm">
                 {{ form.hidden_tag() }}
                 <div class="mb-3">
                     <label class="form-label small fw-bold text-secondary text-uppercase">Username</label>
@@ -156,9 +155,10 @@
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ static_url('js/loading_modal.js') }}"></script>
     <script>
-        // Collection of helpful tips for teachers
-        const tips = [
+        const teacherTips = [
             "Students don't have to stay logged in after starting work. They'll continue to earn minutes even when away from the page.",
             "Use the bulk transaction feature to quickly award or deduct tokens from multiple students.",
             "Set up automated payroll to save time on manual attendance tracking.",
@@ -171,61 +171,14 @@
             "Export your class data regularly for backup and analysis purposes."
         ];
 
-        const MINIMUM_DISPLAY_TIME = 2500; // Minimum 2.5 seconds to read the tip
-        let currentTipIndex = 0;
-        let tipRotationInterval;
-        let loadingModal;
-        let formSubmitted = false;
-
-        // Initialize modal
         document.addEventListener('DOMContentLoaded', function() {
-            const modalElement = document.getElementById('loadingTipsModal');
-            loadingModal = new bootstrap.Modal(modalElement);
-
-            // Intercept form submission
-            const loginForm = document.querySelector('form');
-            loginForm.addEventListener('submit', function(e) {
-                // Prevent duplicate submissions
-                if (formSubmitted) {
-                    e.preventDefault();
-                    return;
-                }
-
-                // Prevent default submission
-                e.preventDefault();
-                formSubmitted = true;
-
-                // Show loading modal with tips
-                const startTime = Date.now();
-                showLoadingModal();
-
-                // Wait for minimum display time, then submit
-                setTimeout(function() {
-                    loginForm.submit();
-                }, MINIMUM_DISPLAY_TIME);
+            initLoadingModal(teacherTips, {
+                formId: 'loginForm',
+                modalId: 'loadingTipsModal',
+                tipTextId: 'tipText',
+                minimumDisplayTime: 2500,
+                rotationInterval: 4000
             });
-        });
-
-        function showLoadingModal() {
-            // Show first tip
-            currentTipIndex = Math.floor(Math.random() * tips.length);
-            document.getElementById('tipText').textContent = tips[currentTipIndex];
-
-            // Show modal
-            loadingModal.show();
-
-            // Rotate tips every 4 seconds
-            tipRotationInterval = setInterval(function() {
-                currentTipIndex = (currentTipIndex + 1) % tips.length;
-                document.getElementById('tipText').textContent = tips[currentTipIndex];
-            }, 4000);
-        }
-
-        // Clean up interval if page unloads
-        window.addEventListener('beforeunload', function() {
-            if (tipRotationInterval) {
-                clearInterval(tipRotationInterval);
-            }
         });
     </script>
 </body>
