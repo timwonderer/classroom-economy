@@ -178,18 +178,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ static_url('js/loading_modal.js') }}"></script>
     <script>
-        const teacherTips = [
-            "Students don't have to stay logged in after starting work. They'll continue to earn minutes even when away from the page.",
-            "Use the bulk transaction feature to quickly award or deduct tokens from multiple students.",
-            "Set up automated payroll to save time on manual attendance tracking.",
-            "The analytics dashboard shows spending trends to help you understand student behavior.",
-            "Create custom store items to incentivize specific behaviors or achievements.",
-            "Use insurance policies to teach students about risk management and financial protection.",
-            "Rent settings can simulate monthly expenses to teach budgeting skills.",
-            "Check the transaction log regularly to monitor unusual spending patterns.",
-            "Bonus tokens are a great way to reward exceptional effort or good citizenship.",
-            "Export your class data regularly for backup and analysis purposes."
-        ];
+        const teacherTips = {{ teacher_tips|tojson|safe }};
 
         document.addEventListener('DOMContentLoaded', function() {
             initLoadingModal(teacherTips, {

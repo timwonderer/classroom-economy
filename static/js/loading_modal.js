@@ -44,12 +44,17 @@
       }
 
       e.preventDefault();
-      formSubmitted = true;
 
+      if (typeof loginForm.reportValidity === 'function' && !loginForm.reportValidity()) {
+        return;
+      }
+
+      formSubmitted = true;
       showLoadingModal();
 
       setTimeout(function() {
-        loginForm.submit();
+        // Use prototype to avoid conflict with form field named "submit"
+        HTMLFormElement.prototype.submit.call(loginForm);
       }, settings.minimumDisplayTime);
     });
 
