@@ -44,8 +44,12 @@
       }
 
       e.preventDefault();
-      formSubmitted = true;
 
+      if (typeof loginForm.reportValidity === 'function' && !loginForm.reportValidity()) {
+        return;
+      }
+
+      formSubmitted = true;
       showLoadingModal();
 
       setTimeout(function() {
