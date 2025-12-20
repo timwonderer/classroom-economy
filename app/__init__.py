@@ -482,6 +482,46 @@ def create_app():
             app.logger.warning(f"Could not load current admin: {e}")
             return {'current_admin': None}
 
+    @app.context_processor
+    def inject_active_announcement():
+        """Inject active announcement into all templates if not dismissed by current user."""
+        try:
+            from app.models import Announcement, AnnouncementDismissal
+            from flask import session
+
+            # Get the active announcement
+            active_announcement = Announcement.query.filter_by(is_active=True).first()
+
+            if not active_announcement:
+                return {'active_announcement': None}
+
+            # Determine user type and ID
+            user_type = None
+            user_id = None
+
+            if session.get('is_system_admin'):
+                user_type = 'sysadmin'
+                user_id = session.get('sysadmin_id')
+            elif session.get('admin_id'):
+                user_type = 'teacher'
+                user_id = session.get('admin_id')
+            elif session.get('student_id'):
+                user_type = 'student'
+                user_id = session.get('student_id')
+            else:
+                # Not logged in, don't show announcement
+                return {'active_announcement': None}
+
+            # Check if user has dismissed this announcement
+            if active_announcement.is_dismissed_by_user(user_type, user_id):
+                return {'active_announcement': None}
+
+            return {'active_announcement': active_announcement}
+
+        except Exception as e:
+            app.logger.warning(f"Could not load active announcement: {e}")
+            return {'active_announcement': None}
+
     # -------------------- REGISTER BLUEPRINTS --------------------
     from app.routes.main import main_bp
     from app.routes.api import api_bp
