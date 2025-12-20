@@ -650,12 +650,14 @@ body.maintenance-active .main-content {
 }
 
 .hall-pass-card.out {
-    border-color: var(--success);
+    border-color: rgba(25, 135, 84, 0.45);
     box-shadow: var(--shadow-lg);
 }
 
 .hall-pass-card.returned {
-    opacity: 0.85;
+    opacity: 0.75;
+    background: rgba(248, 249, 250, 0.9);
+    border-color: rgba(206, 212, 218, 0.8);
 }
 
 .status-chip {
