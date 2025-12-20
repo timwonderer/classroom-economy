@@ -65,6 +65,13 @@ a:hover {
     color: var(--primary-hover);
 }
 
+input::placeholder,
+textarea::placeholder {
+    color: rgb(196, 196, 196);
+    font-style: italic;
+    font-size: 13pt;
+}
+
 /* Utilities */
 .text-primary { color: var(--primary) !important; }
 /* Override text-secondary to use a darker shade for better contrast on light backgrounds */

@@ -1,7 +1,7 @@
 const CACHE_NAME = 'classroom-token-hub-v2';
 const STATIC_ASSETS = [
   '/static/manifest.json',
-  '/static/images/brand-logo.svg',
+  'static/images/icon-512.png',
   '/static/images/icon-192.png',
   '/static/images/icon-512.png',
   '/static/js/timezone-utils.js',
