@@ -7,11 +7,12 @@
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
-    <link href="{{ static_url('css/style.css') }}" rel="stylesheet">
+
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="{{ static_url('css/style.css') }}" rel="stylesheet">
     <style>
         body {
-            background-color: var(--background);
+            background-color: #ebeced;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -21,7 +22,7 @@
             width: 100%;
             max-width: 900px;
             background: var(--surface);
-            border-radius: 24px;
+            
             box-shadow: var(--shadow-lg);
             overflow: hidden;
             display: flex;
@@ -62,6 +63,17 @@
             position: relative;
             z-index: 1;
         }
+        .info-card {
+            background: #fff7ec;
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.25rem;
+            box-shadow: var(--shadow-sm);
+        }
+        .form-note {
+            font-size: 0.9rem;
+            color: var(--text-secondary-contrast);
+        }
         @media (max-width: 768px) {
             .login-container {
                 flex-direction: column;
@@ -93,15 +105,25 @@
                 {% endif %}
             {% endwith %}
 
+            <div class="info-card mb-4" style="border-radius:0;">
+                <div class="d-flex align-items-start gap-2">
+                    
+                    <div>
+                        <h6 class="fw-semibold " style="color:#1a4d47">Forget password? <span style="font-weight:300">Never.</span></h6>
+                        <p class="mb-0 form-note">Teacher users use the 6-digit code from their authenticator app instead of passwords.</p>
+                    </div>
+                </div>
+            </div>
+
             <form method="POST" id="loginForm">
                 {{ form.hidden_tag() }}
                 <div class="mb-3">
-                    <label class="form-label small fw-bold text-secondary text-uppercase">Username</label>
-                    {{ form.username(class="form-control form-control-lg", placeholder="Enter your username") }}
+                    <label class="form-label small fw-bold  text-uppercase- text-secondary" >USERNAME</label>
+                    {{ form.username(class="form-control form-control-lg") }}
                 </div>
                 <div class="mb-4">
-                    <label class="form-label small fw-bold text-secondary text-uppercase">Authenticator Code</label>
-                    {{ form.totp_code(class="form-control form-control-lg", inputmode="numeric", pattern="[0-9]*", maxlength="6", placeholder="Enter 6-digit code") }}
+                    <label class="form-label small fw-bold  text-uppercase text-secondary" >Authenticator Code</label>
+                    {{ form.totp_code(class="form-control form-control-lg", inputmode="numeric", pattern="[0-9]*", maxlength="6") }}
                 </div>
 
                 {% if turnstile_site_key %}
@@ -116,11 +138,11 @@
                     <a href="{{ url_for('admin.recover') }}" class="text-decoration-none small text-secondary">Forgot credentials? Recover account</a>
                     <a href="{{ url_for('admin.resume_credentials') }}" class="text-decoration-none small text-secondary">Resume recovery</a>
                     <a href="{{ url_for('student.login') }}" class="btn btn-outline-primary btn-sm mt-2">
-                        <span class="material-symbols-outlined fs-6 align-bottom me-1">school</span>
+                        
                         Student Login
                     </a>
                     <a href="{{ url_for('admin.signup') }}" class="btn btn-outline-secondary btn-sm">
-                        <span class="material-symbols-outlined fs-6 align-bottom me-1">person_add</span>
+                        
                         Set up teacher account
                     </a>
                 </div>

@@ -30,7 +30,7 @@
     </script>
     <style>
         body {
-            background-color: var(--background);
+            background-color: #ebeced;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -40,7 +40,7 @@
             width: 100%;
             max-width: 900px;
             background: var(--surface);
-            border-radius: 24px;
+            
             box-shadow: var(--shadow-lg);
             overflow: hidden;
             display: flex;
@@ -127,12 +127,12 @@
 
                 <div class="mb-3">
                     <label class="form-label small fw-bold text-secondary text-uppercase">Username</label>
-                    {{ form.username(class="form-control form-control-lg", placeholder="happyramen2034MT", autocomplete="username") }}
+                    {{ form.username(class="form-control form-control-lg", autocomplete="username") }}
                 </div>
 
                 <div class="mb-4">
                     <label class="form-label small fw-bold text-secondary text-uppercase">PIN </label>
-                    {{ form.pin(class="form-control form-control-lg pin-input", placeholder="______", inputmode="numeric", pattern="[0-9]*", autocomplete="current-password") }}
+                    {{ form.pin(class="form-control form-control-lg pin-input", inputmode="numeric", pattern="[0-9]*", autocomplete="current-password") }}
                 </div>
 
                 {% if turnstile_site_key %}
@@ -146,7 +146,7 @@
 
             <div class="text-center pt-3 border-top">
                 <p class="mb-2 text-muted small">New student or account reset?</p>
-                <a href="{{ url_for('student.claim_account') }}" class="btn btn-outline-primary btn-sm rounded-pill px-4 mb-3">Claim Account</a>
+                <a href="{{ url_for('student.claim_account') }}" class="btn btn-outline-primary btn-sm  px-4 mb-3">Claim Account</a>
 
                 <div class="d-flex gap-3 justify-content-center mb-3">
                     <a href="{{ url_for('admin.login') }}" class="text-decoration-none small text-secondary">
@@ -162,6 +162,9 @@
                     <a href="{{ url_for('main.privacy') }}" class="text-decoration-none small text-secondary">Privacy</a>
                     <span class="text-secondary">•</span>
                     <a href="{{ url_for('main.terms') }}" class="text-decoration-none small text-secondary">Terms</a>
+                
+
+
                 </div>
             </div>
         </div>
