@@ -70,7 +70,6 @@
         .btn-primary:hover {
             background: var(--secondary);
             color: #2c2c2c;
-            transform: translateY(-2px);
         }
         .btn-outline-primary:hover {
             background: var(--secondary);
@@ -81,6 +80,9 @@
             background: var(--secondary);
             border-color: var(--secondary);
             color: #2c2c2c;
+        }
+        .subtitle {
+            color: var(--secondary) !important;
         }
         @media (max-width: 768px) {
             .login-container {
@@ -102,7 +104,7 @@
         <div class="login-left">
             <div class="mb-4">
                 <h1 class="h3 fw-bold mb-2">Teacher Login</h1>
-                <p class="text-secondary">Welcome back! Please enter your details.</p>
+                <p class="subtitle">Welcome back! Please enter your details.</p>
             </div>
 
             {% with messages = get_flashed_messages() %}
