@@ -25,7 +25,7 @@ This document provides essential guidance for Claude (or any AI assistant) worki
 - **Students** can be enrolled in multiple periods with different teachers
 - **System Admins** oversee the entire platform
 
-**Version:** 1.0.0 Stable Release
+**Version:** 1.2.0 - Progressive Web App Release
 **License:** PolyForm Noncommercial 1.0.0
 **Python:** 3.10+
 **Database:** PostgreSQL with Alembic migrations
@@ -425,5 +425,5 @@ Always prefer reading existing code and documentation before making assumptions.
 
 ---
 
-**Last Updated:** 2025-12-13
+**Last Updated:** 2025-12-18
 **For:** Claude Code and AI assistants working on Classroom Token Hub

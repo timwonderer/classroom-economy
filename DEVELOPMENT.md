@@ -1,8 +1,8 @@
 # Classroom Token Hub - Development Priorities
 
-**Last Updated:** 2025-12-12
-**Current Version:** 1.0.0
-**Target:** 1.1.0 Feature Release
+**Last Updated:** 2025-12-18
+**Current Version:** 1.2.0
+**Target:** 1.3.0 Feature Release
 
 ---
 
@@ -21,25 +21,32 @@
 
 ---
 
-## Version 1.0 Release Status
+## Recent Releases
 
-### ✅ RELEASED - December 12, 2025
+### ✅ Version 1.2.0 - December 18, 2025
 
-**All critical blockers for v1.0 were resolved:**
+**Major feature release focused on mobile experience and accessibility:**
 
-#### ✅ P0: Same-Teacher Multi-Period Data Leak
-**Status:** ✅ **RESOLVED**
+#### 🎯 Key Accomplishments
+- ✅ **Progressive Web App (PWA) Support** - Full installable mobile app experience
+- ✅ **Mobile-First UI** - Dedicated mobile templates with responsive navigation
+- ✅ **Accessibility Improvements** - Comprehensive enhancements following WCAG 2.1 AA guidelines
+- ✅ **UI Modernization** - Accordion-based admin templates for better organization
+- ✅ **Critical Payroll Fix** - Resolved multi-tenancy data leak in payroll system
+- ✅ **Improved Terminology** - "Start Work/Break Done" replaces "Tap In/Out"
 
-Students enrolled in multiple periods with the same teacher now see properly isolated data for each class period. The system correctly uses `join_code` as the source of truth for class boundaries.
+See [RELEASE_NOTES_v1.2.0.md](docs/archive/releases/RELEASE_NOTES_v1.2.0.md) for full details.
 
-#### ✅ P1: Deprecated Code Patterns
-**Status:** ✅ **RESOLVED**
+### ✅ Version 1.0.0 - November 29, 2024
 
-All deprecated Python and SQLAlchemy patterns have been updated, ensuring full compatibility with Python 3.12+ and SQLAlchemy 2.0+.
+**First stable release - all critical blockers resolved:**
+
+- ✅ **P0: Same-Teacher Multi-Period Data Leak** - Resolved with proper join_code scoping
+- ✅ **P1: Deprecated Code Patterns** - Updated for Python 3.12+ and SQLAlchemy 2.0+
 
 ---
 
-## Development Priorities (v1.1)
+## Development Priorities (v1.3)
 
 ### 🟠 HIGH PRIORITY
 
@@ -85,11 +92,14 @@ All deprecated Python and SQLAlchemy patterns have been updated, ensuring full c
 - [ ] CSV exports for store purchases
 
 #### 3. Mobile & Accessibility
-- [x] Responsive navigation for admin portal (completed 2025-12-06)
-- [x] Responsive navigation for student portal
-- [x] Larger touch targets for tap in/out
-- [x] Larger touch targets for store interactions
-- [x] ARIA labels for key buttons and forms
+- [x] Responsive navigation for admin portal (completed v1.2.0)
+- [x] Responsive navigation for student portal (completed v1.2.0)
+- [x] Larger touch targets for tap in/out (completed v1.2.0)
+- [x] Larger touch targets for store interactions (completed v1.2.0)
+- [x] ARIA labels for key buttons and forms (completed v1.2.0)
+- [x] Accessibility improvements following WCAG 2.1 AA guidelines (completed v1.2.0)
+- [x] PWA support with offline capabilities (completed v1.2.0)
+- [x] Mobile-optimized templates (completed v1.2.0)
 
 ### 🟢 LOWER PRIORITY
 

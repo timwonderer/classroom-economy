@@ -2,72 +2,235 @@
 {% set page_title = "Dashboard" %}
 {% set current_page = "dashboard" %}
 
+{% block extra_styles %}
+<style>
+    .feature-card {
+        background: white;
+        border-radius: 16px;
+        padding: 1.5rem;
+        text-decoration: none;
+        color: inherit;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 0.75rem;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: all 0.2s ease;
+        border: 1px solid rgba(0,0,0,0.05);
+        position: relative;
+    }
+    .feature-card:hover, .feature-card:active {
+        box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        transform: translateY(-2px);
+        color: inherit;
+        text-decoration: none;
+    }
+    .feature-icon {
+        width: 64px;
+        height: 64px;
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
+        color: white;
+    }
+    .feature-icon .material-symbols-outlined {
+        font-size: 36px;
+    }
+    .feature-title {
+        font-size: 1rem;
+        font-weight: 600;
+        margin: 0;
+        text-align: center;
+    }
+    .feature-subtitle {
+        font-size: 0.75rem;
+        color: #6c757d;
+        margin: 0;
+        text-align: center;
+    }
+    .badge-notification {
+        position: absolute;
+        top: 1rem;
+        right: 1rem;
+        background: #dc3545;
+        color: white;
+        border-radius: 12px;
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+        font-weight: 600;
+    }
+    .quick-stats {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.75rem;
+        margin-bottom: 1.5rem;
+    }
+    .stat-card {
+        background: white;
+        border-radius: 12px;
+        padding: 1rem;
+        text-align: center;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .stat-value {
+        font-size: 1.75rem;
+        font-weight: 700;
+        color: var(--brand-primary);
+        margin: 0;
+    }
+    .stat-label {
+        font-size: 0.75rem;
+        color: #6c757d;
+        margin: 0.25rem 0 0 0;
+    }
+    .features-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1rem;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container-fluid">
+<div class="container-fluid px-3 py-3">
     <!-- Quick Stats -->
-    <div class="row text-center mb-3">
-        <div class="col-6">
-            <div class="card">
-                <div class="card-body">
-                    <h4 class="mb-0">{{ total_students }}</h4>
-                    <small class="text-muted">Students</small>
-                </div>
-            </div>
+    <div class="quick-stats">
+        <div class="stat-card">
+            <p class="stat-value">{{ total_students }}</p>
+            <p class="stat-label">Students</p>
         </div>
-        <div class="col-6">
-            <div class="card">
-                <div class="card-body">
-                    <h4 class="mb-0">{{ total_pending_actions }}</h4>
-                    <small class="text-muted">Pending Actions</small>
-                </div>
-            </div>
+        <div class="stat-card">
+            <p class="stat-value">{{ total_pending_actions }}</p>
+            <p class="stat-label">Pending Actions</p>
         </div>
     </div>
 
-    <!-- Pending Actions -->
-    <div class="card">
-        <div class="card-header">
-            <h5 class="mb-0">Pending Actions</h5>
+    <!-- Feature Cards Grid -->
+    <div class="features-grid">
+        <!-- Hall Pass -->
+        <a href="{{ url_for('admin.hall_pass') }}" class="feature-card">
+            <div class="feature-icon">
+                <span class="material-symbols-outlined">badge</span>
+            </div>
+            <div>
+                <p class="feature-title">Hall Pass</p>
+                <p class="feature-subtitle">Manage passes</p>
+            </div>
+        </a>
+
+        <!-- Attendance -->
+        <a href="{{ url_for('admin.attendance_log') }}" class="feature-card">
+            {% if total_pending_actions > 0 %}
+                <span class="badge-notification">{{ total_pending_actions }}</span>
+            {% endif %}
+            <div class="feature-icon">
+                <span class="material-symbols-outlined">how_to_reg</span>
+            </div>
+            <div>
+                <p class="feature-title">Attendance</p>
+                <p class="feature-subtitle">Track attendance</p>
+            </div>
+        </a>
+
+        <!-- Students -->
+        <a href="{{ url_for('admin.students') }}" class="feature-card">
+            <div class="feature-icon">
+                <span class="material-symbols-outlined">group</span>
+            </div>
+            <div>
+                <p class="feature-title">Students</p>
+                <p class="feature-subtitle">{{ total_students }} enrolled</p>
+            </div>
+        </a>
+
+        <!-- Store -->
+        <a href="{{ url_for('admin.store_management') }}" class="feature-card">
+            <div class="feature-icon">
+                <span class="material-symbols-outlined">storefront</span>
+            </div>
+            <div>
+                <p class="feature-title">Store</p>
+                <p class="feature-subtitle">Manage inventory</p>
+            </div>
+        </a>
+
+        <!-- Payroll -->
+        <a href="{{ url_for('admin.payroll') }}" class="feature-card">
+            <div class="feature-icon">
+                <span class="material-symbols-outlined">payments</span>
+            </div>
+            <div>
+                <p class="feature-title">Payroll</p>
+                <p class="feature-subtitle">Configure pay</p>
+            </div>
+        </a>
+
+        <!-- Banking -->
+        <a href="{{ url_for('admin.banking') }}" class="feature-card">
+            <div class="feature-icon">
+                <span class="material-symbols-outlined">account_balance</span>
+            </div>
+            <div>
+                <p class="feature-title">Banking</p>
+                <p class="feature-subtitle">Account settings</p>
+            </div>
+        </a>
+    </div>
+
+    <!-- Pending Actions Section (Compact) -->
+    {% if total_pending_actions > 0 %}
+    <div class="card mt-3">
+        <div class="card-header bg-white">
+            <h6 class="mb-0 fw-semibold">Recent Pending Actions</h6>
         </div>
         <div class="list-group list-group-flush">
-            {% if total_pending_actions > 0 %}
-                {% for req in recent_redemptions %}
-                <div class="list-group-item">
-                    <div class="d-flex w-100 justify-content-between">
+            {% for req in recent_redemptions[:2] %}
+            <div class="list-group-item">
+                <div class="d-flex w-100 justify-content-between align-items-start mb-2">
+                    <div>
                         <h6 class="mb-1">{{ student_lookup.get(req.student_id).full_name if student_lookup.get(req.student_id) else 'Unknown' }}</h6>
-                        <small>Redemption</small>
+                        <p class="mb-0 small text-muted">Item: {{ req.store_item.name }}</p>
                     </div>
-                    <p class="mb-1">Item: {{ req.store_item.name }}</p>
-                    <button class="btn btn-sm btn-success approve-redemption-btn" data-student-item-id="{{ req.id }}">Approve</button>
+                    <span class="badge bg-primary">Redemption</span>
                 </div>
-                {% endfor %}
-                {% for pass in recent_hall_passes %}
-                <div class="list-group-item">
-                    <div class="d-flex w-100 justify-content-between">
+                <button class="btn btn-sm btn-success approve-redemption-btn w-100" data-student-item-id="{{ req.id }}">Approve</button>
+            </div>
+            {% endfor %}
+            {% for pass in recent_hall_passes[:2] %}
+            <div class="list-group-item">
+                <div class="d-flex w-100 justify-content-between align-items-start mb-2">
+                    <div>
                         <h6 class="mb-1">{{ student_lookup.get(pass.student_id).full_name if student_lookup.get(pass.student_id) else 'Unknown' }}</h6>
-                        <small>Hall Pass</small>
+                        <p class="mb-0 small text-muted">{{ pass.reason }}</p>
                     </div>
-                    <p class="mb-1">Reason: {{ pass.reason }}</p>
-                    <a href="{{ url_for('admin.hall_pass') }}" class="btn btn-sm btn-primary">View</a>
+                    <span class="badge bg-info">Hall Pass</span>
                 </div>
-                {% endfor %}
-                 {% for claim in recent_insurance_claims %}
-                <div class="list-group-item">
-                    <div class="d-flex w-100 justify-content-between">
+                <a href="{{ url_for('admin.hall_pass') }}" class="btn btn-sm btn-primary w-100">View</a>
+            </div>
+            {% endfor %}
+            {% for claim in recent_insurance_claims[:2] %}
+            <div class="list-group-item">
+                <div class="d-flex w-100 justify-content-between align-items-start mb-2">
+                    <div>
                         <h6 class="mb-1">{{ student_lookup.get(claim.student_id).full_name if student_lookup.get(claim.student_id) else 'Unknown' }}</h6>
-                        <small>Insurance Claim</small>
+                        <p class="mb-0 small text-muted">{{ claim.description[:40] }}{% if claim.description|length > 40 %}...{% endif %}</p>
                     </div>
-                    <p class="mb-1">Claim: {{ claim.description[:50] }}{% if claim.description|length > 50 %}...{% endif %}</p>
-                    <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-sm btn-primary">View</a>
+                    <span class="badge bg-warning">Insurance</span>
                 </div>
-                {% endfor %}
-            {% else %}
-                <div class="list-group-item text-center text-muted">
-                    No pending actions.
-                </div>
+                <a href="{{ url_for('admin.insurance_management') }}" class="btn btn-sm btn-primary w-100">View</a>
+            </div>
+            {% endfor %}
+            {% if total_pending_actions > 6 %}
+            <div class="list-group-item text-center">
+                <a href="{{ url_for('admin.attendance_log') }}" class="btn btn-sm btn-outline-primary">View All Pending Actions</a>
+            </div>
             {% endif %}
         </div>
     </div>
+    {% endif %}
 </div>
 {% endblock %}
 

@@ -169,5 +169,61 @@
             <img src="{{ static_url('images/2_classroom token hub 512.png') }}" alt="Student Logo" class="logo-img">
         </div>
     </div>
+
+    <!-- Loading Tips Modal -->
+    <div class="modal fade" id="loadingTipsModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-body text-center p-5">
+                    <div class="spinner-border text-primary mb-4" role="status" style="width: 3rem; height: 3rem;">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <h5 class="fw-bold mb-3 text-primary">Did you know?</h5>
+                    <p class="text-secondary mb-0" id="tipText" style="min-height: 3rem; line-height: 1.6;">
+                        Loading your account...
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ static_url('js/loading_modal.js') }}"></script>
+    <script>
+        const studentTips = [
+            "You don't have to stay logged in after starting work. You'll continue to earn minutes even when you're away from the page.",
+            "Check your balance regularly to track your earnings and plan your spending wisely.",
+            "Your teacher can award bonus tokens for exceptional work or good behavior.",
+            "Remember to log your attendance every day to earn your payroll minutes.",
+            "The shop refreshes with new items regularly - check back often for deals!",
+            "Save up for big purchases by setting financial goals for yourself.",
+            "Hall passes deduct from your balance - plan your breaks wisely.",
+            "Insurance can protect your balance from unexpected classroom events.",
+            "Ask your teacher about bonus opportunities to earn extra tokens.",
+            "Keep track of your transaction history to understand your spending habits."
+        ];
+
+        document.addEventListener('DOMContentLoaded', function() {
+            initLoadingModal(studentTips, {
+                formId: 'loginForm',
+                modalId: 'loadingTipsModal',
+                tipTextId: 'tipText',
+                minimumDisplayTime: 2500,
+                rotationInterval: 4000
+            });
+
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', () => {
+                    navigator.serviceWorker.register("/sw.js")
+                        .then(registration => {
+                            console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                        })
+                        .catch(err => {
+                            console.log('ServiceWorker registration failed: ', err);
+                        });
+                });
+            }
+        });
+    </script>
 </body>
 </html>

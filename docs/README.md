@@ -52,7 +52,11 @@ Welcome to the Classroom Token Hub documentation! This index points you to the m
 - **[Source Code Vulnerability Report](security/SOURCE_CODE_VULNERABILITY_REPORT.md)** — Code security analysis.
 - **[Network Vulnerability Report](security/NETWORK_VULNERABILITY_REPORT.md)** — Network security assessment.
 
-### 📦 Archive
+### 📦 Archive & Releases
+- **[Release Notes v1.2.0](archive/releases/RELEASE_NOTES_v1.2.0.md)** — Progressive Web App, mobile experience, accessibility (Dec 18, 2025)
+- **[Release Notes v1.1.1](archive/releases/RELEASE_NOTES_v1.1.1.md)** — Stability patch with auth and theming fixes (Dec 15, 2025)
+- **[Release Notes v1.1.0](archive/releases/RELEASE_NOTES_v1.1.0.md)** — Dashboard analytics and UI redesign (Dec 13, 2024)
+- **[Release Notes v1.0.0](archive/releases/RELEASE_NOTES_v1.0.md)** — First stable release (Nov 29, 2024)
 - **[Archived Fix Reports](archive/)** — Historical bug fix and feature implementation summaries.
 - **[Economy Balancing Report](archive/ECONOMY_BALANCING_IMPLEMENTATION_REPORT.md)** — December 2025 economy feature verification.
 - **[Migration Notes](archive/MIGRATION_NOTE_expected_weekly_hours.md)** — Historical database migration notes.
@@ -87,11 +91,12 @@ Welcome to the Classroom Token Hub documentation! This index points you to the m
 | [API Reference](technical-reference/api_reference.md) | Developers | REST API documentation | 2025-11-23 |
 | [Student Guide](user-guides/student_guide.md) | Students | How to use the platform | 2025-11-18 |
 | [Teacher Manual](user-guides/teacher_manual.md) | Teachers | Admin features and workflows | 2025-11-18 |
-| [Development Priorities](../DEVELOPMENT.md) | Developers | Current tasks, roadmap, and v1.0 status | 2025-12-11 |
+| [Development Priorities](../DEVELOPMENT.md) | Developers | Current tasks, roadmap, and version status | 2025-12-18 |
 | [Deployment Guide](DEPLOYMENT.md) | DevOps | Deployment instructions | 2025-11-25 |
 | [Economy Specification](technical-reference/ECONOMY_SPECIFICATION.md) | Developers | Financial system spec | 2025-12-11 |
 | [Migration Guide](development/MIGRATION_GUIDE.md) | Developers | Database migration help | 2025-11-18 |
 | [Operations Guides](operations/) | Ops | Operational procedures | 2025-11-28 |
-| [Changelog](../CHANGELOG.md) | All | Version history and changes | 2025-11-28 |
+| [Changelog](../CHANGELOG.md) | All | Version history and changes | 2025-12-18 |
+| [README](../README.md) | All | Project overview and quick start | 2025-12-18 |
 
 ---
