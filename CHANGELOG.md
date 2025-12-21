@@ -8,6 +8,17 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
+### Added
+- **System-Wide Announcements** - New announcement system for system administrators
+  - System admins can create, edit, and manage announcements visible to all users
+  - Announcements appear as dismissible banners at the top of all authenticated pages
+  - Support for different announcement types (info, warning, success, danger) with appropriate styling
+  - Per-user dismissal tracking - users only see each announcement once until they dismiss it
+  - Only one announcement can be active at a time
+  - Database models: `Announcement` and `AnnouncementDismissal`
+  - New system admin page for managing announcements at `/sysadmin/announcements`
+  - RESTful API endpoint for dismissing announcements
+
 ### Changed
 - Preparing for next release
 
