@@ -1,0 +1,54 @@
+
+{% extends "layout_system_admin.html" %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mt-4">Manage Announcements</h1>
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-bullhorn mr-1"></i>
+            All Announcements
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>Message</th>
+                            <th>Level</th>
+                            <th>Created At</th>
+                            <th>Status</th>
+                            <th>Dismissals</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for announcement in announcements %}
+                        <tr>
+                            <td>{{ announcement.message }}</td>
+                            <td>
+                                <span class="badge badge-{{ 'danger' if announcement.level == 'critical' else 'warning' if announcement.level == 'warning' else 'info' }}">
+                                    {{ announcement.level.capitalize() }}
+                                </span>
+                            </td>
+                            <td>{{ announcement.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+                            <td>
+                                {% if announcement.is_active %}
+                                    <span class="badge badge-success">Active</span>
+                                {% else %}
+                                    <span class="badge badge-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ announcement.dismissal_count }}</td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="5" class="text-center">No announcements found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

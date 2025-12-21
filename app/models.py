@@ -1314,3 +1314,36 @@ class TeacherOnboarding(db.Model):
     def needs_onboarding(self):
         """Check if teacher needs to complete onboarding."""
         return not self.is_completed and not self.is_skipped
+
+
+# -------------------- ANNOUNCEMENT MODELS --------------------
+
+class Announcement(db.Model):
+    """Model for system-wide announcements."""
+    __tablename__ = 'announcements'
+    id = db.Column(db.Integer, primary_key=True)
+    message = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    level = db.Column(db.String(20), default='info', nullable=False)  # 'info', 'warning', 'critical'
+
+    dismissals = db.relationship('AnnouncementDismissal', backref='announcement', lazy='dynamic', cascade='all, delete-orphan')
+
+    def __repr__(self):
+        return f'<Announcement {self.id}>'
+
+
+class AnnouncementDismissal(db.Model):
+    """Tracks when an admin dismisses an announcement."""
+    __tablename__ = 'announcement_dismissals'
+    id = db.Column(db.Integer, primary_key=True)
+    announcement_id = db.Column(db.Integer, db.ForeignKey('announcements.id'), nullable=False)
+    admin_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
+    dismissed_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('announcement_id', 'admin_id', name='uq_announcement_dismissal_announcement_admin'),
+    )
+
+    def __repr__(self):
+        return f'<AnnouncementDismissal announcement={self.announcement_id} admin={self.admin_id}>'

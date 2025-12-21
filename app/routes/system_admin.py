@@ -26,7 +26,7 @@ from app.models import (
     DeletionRequestType, DeletionRequestStatus, TeacherBlock, StudentBlock, UserReport,
     FeatureSettings, TeacherOnboarding, RentSettings, BankingSettings,
     DemoStudent, HallPassSettings, PayrollFine, PayrollReward,
-    PayrollSettings, StoreItem
+    PayrollSettings, StoreItem, Announcement, AnnouncementDismissal
 )
 from app.auth import system_admin_required
 from forms import SystemAdminLoginForm, SystemAdminInviteForm
@@ -1133,3 +1133,39 @@ def send_reward_to_reporter(report_id):
         flash("Error sending reward. Please try again.", "error")
     
     return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+
+
+# -------------------- ANNOUNCEMENTS --------------------
+
+@sysadmin_bp.route('/announcements')
+@system_admin_required
+def manage_announcements():
+    """View and manage system-wide announcements."""
+    from sqlalchemy import func
+
+    # Subquery to count dismissals per announcement
+    dismissal_counts = db.session.query(
+        AnnouncementDismissal.announcement_id,
+        func.count(AnnouncementDismissal.id).label('dismissal_count')
+    ).group_by(AnnouncementDismissal.announcement_id).subquery()
+
+    # Join Announcement with the dismissal counts
+    announcements_with_counts = db.session.query(
+        Announcement,
+        dismissal_counts.c.dismissal_count
+    ).outerjoin(
+        dismissal_counts, Announcement.id == dismissal_counts.c.announcement_id
+    ).order_by(Announcement.created_at.desc()).all()
+
+    # Prepare data for the template
+    announcements = []
+    for announcement, count in announcements_with_counts:
+        announcement.dismissal_count = count or 0  # Attach count to the object
+        announcements.append(announcement)
+
+    return render_template(
+        'system_admin_announcements.html',
+        current_page='announcements',
+        page_title='Announcements',
+        announcements=announcements
+    )
