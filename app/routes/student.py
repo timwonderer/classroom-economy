@@ -2593,6 +2593,18 @@ def rent_pay(period):
 def login():
     """Student login with username and PIN."""
     form = StudentLoginForm()
+    student_tips = [
+        "You don't have to stay logged in after starting work. You'll continue to earn minutes even when you're away from the page.",
+        "Check your balance regularly to track your earnings and plan your spending wisely.",
+        "Your teacher can award bonus tokens for exceptional work or good behavior.",
+        "Remember to log your attendance every day to earn your payroll minutes.",
+        "The shop refreshes with new items regularly - check back often for deals!",
+        "Save up for big purchases by setting financial goals for yourself.",
+        "Hall passes deduct from your balance - plan your breaks wisely.",
+        "Insurance can protect your balance from unexpected classroom events.",
+        "Ask your teacher about bonus opportunities to earn extra tokens.",
+        "Keep track of your transaction history to understand your spending habits."
+    ]
     if form.validate_on_submit():
         is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
@@ -2690,7 +2702,7 @@ def login():
 
     # Always display CTA to claim/create account for first-time users
     setup_cta = True
-    return render_template('student_login.html', setup_cta=setup_cta, form=form)
+    return render_template('student_login.html', setup_cta=setup_cta, form=form, student_tips=student_tips)
 
 
 @student_bp.route('/demo-login/<string:session_id>')
