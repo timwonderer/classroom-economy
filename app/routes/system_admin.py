@@ -1171,7 +1171,7 @@ def create_announcement():
         # Deactivate all existing announcements if this one should be active
         is_active = request.form.get('is_active') == 'on'
         if is_active:
-            Announcement.query.update({Announcement.is_active: False})
+            Announcement.query.filter_by(is_active=True).update({Announcement.is_active: False}, synchronize_session=False)
 
         # Create new announcement
         announcement = Announcement(
