@@ -963,15 +963,16 @@ def recover():
     form = AdminRecoveryForm()
     if form.validate_on_submit():
         student_usernames_str = form.student_usernames.data.strip()
-        dob_sum_str = form.dob_sum.data.strip()
+        dob_input = form.dob_sum.data
 
-        # Parse DOB sum
+        # Parse DOB and calculate sum
         try:
-            dob_sum = int(dob_sum_str)
-            if dob_sum <= 0:
-                raise ValueError("DOB sum must be positive")
-        except ValueError:
-            flash("Invalid date of birth sum. Please enter a valid number.", "error")
+            if isinstance(dob_input, str):
+                dob_input = dob_input.strip()
+                dob_input = datetime.strptime(dob_input, "%Y-%m-%d").date()
+            dob_sum = dob_input.month + dob_input.day + dob_input.year
+        except Exception:
+            flash("Invalid date of birth. Please enter a valid date.", "error")
             return render_template("admin_recover.html", form=form)
 
         # Parse student usernames
