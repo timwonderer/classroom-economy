@@ -40,6 +40,51 @@ from payroll import get_pay_rate_for_block
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
+# -------------------- TIPS API --------------------
+
+@api_bp.route('/tips/<user_type>')
+@limiter.exempt
+def get_tips(user_type):
+    """
+    Return tips for login loading screens as JSON.
+
+    Endpoint: GET /api/tips/<user_type>
+    User types: 'student' or 'teacher'
+
+    Exempt from rate limiting because it's called on every login page load.
+    """
+    if user_type == 'student':
+        tips = [
+            "You don't have to stay logged in after starting work. You'll continue to earn minutes even when you're away from the page.",
+            "Check your balance regularly to track your earnings and plan your spending wisely.",
+            "Your teacher can award bonus tokens for exceptional work or good behavior.",
+            "Remember to log your attendance every day to earn your payroll minutes.",
+            "The shop refreshes with new items regularly - check back often for deals!",
+            "Save up for big purchases by setting financial goals for yourself.",
+            "Hall passes deduct from your balance - plan your breaks wisely.",
+            "Insurance can protect your balance from unexpected classroom events.",
+            "Ask your teacher about bonus opportunities to earn extra tokens.",
+            "Keep track of your transaction history to understand your spending habits."
+        ]
+    elif user_type == 'teacher':
+        tips = [
+            "Students don't have to stay logged in after starting work. They'll continue to earn minutes even when away from the page.",
+            "Use the bulk transaction feature to quickly award or deduct tokens from multiple students.",
+            "Set up automated payroll to save time on manual attendance tracking.",
+            "The analytics dashboard shows spending trends to help you understand student behavior.",
+            "Create custom store items to incentivize specific behaviors or achievements.",
+            "Use insurance policies to teach students about risk management and financial protection.",
+            "Rent settings can simulate monthly expenses to teach budgeting skills.",
+            "Check the transaction log regularly to monitor unusual spending patterns.",
+            "Bonus tokens are a great way to reward exceptional effort or good citizenship.",
+            "Export your class data regularly for backup and analysis purposes."
+        ]
+    else:
+        return jsonify({"error": "Invalid user type. Use 'student' or 'teacher'."}), 400
+
+    return jsonify({"tips": tips})
+
+
 # -------------------- STORE API --------------------
 
 def _charge_overdraft_fee_if_needed(student, banking_settings):
@@ -1940,41 +1985,19 @@ def student_status():
 @api_bp.route('/set-timezone', methods=['POST'])
 def set_timezone():
     """Store user's timezone in session for datetime formatting"""
-    # Allow access if user is logged in as student OR admin
-    is_authenticated = False
-    now = datetime.now(timezone.utc)
+    from app.auth import get_current_user_identity
+    user_type, user_id = get_current_user_identity()
 
-    # Check Admin Session
-    if session.get('is_admin'):
-        last_activity = session.get('last_activity')
-        if last_activity:
-            try:
-                last_activity_dt = datetime.fromisoformat(last_activity)
-                if (now - last_activity_dt) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-                    is_authenticated = True
-                    session['last_activity'] = now.isoformat()
-            except ValueError:
-                pass # Invalid date format, treat as unauthenticated
-        else:
-             # If no last_activity but is_admin is set, treat as active for now
-             # (matches admin_required logic which would set it if missing)
-             is_authenticated = True
-             session['last_activity'] = now.isoformat()
-
-    # Check Student Session (if not already authenticated as admin)
-    if not is_authenticated and 'student_id' in session:
-        login_time_str = session.get('login_time')
-        if login_time_str:
-            try:
-                login_time = datetime.fromisoformat(login_time_str)
-                if (now - login_time) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-                    is_authenticated = True
-                    session['last_activity'] = now.isoformat()
-            except ValueError:
-                pass
-
-    if not is_authenticated:
+    if not user_type:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+    # Extend session timeout
+    now = datetime.now(timezone.utc)
+    if user_type in ['teacher', 'sysadmin']:
+        session['last_activity'] = now.isoformat()
+    elif user_type == 'student':
+        # Re-assert login time to keep session alive
+        session['login_time'] = now.isoformat()
 
     data = request.get_json()
     timezone_name = data.get('timezone')

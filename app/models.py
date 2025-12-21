@@ -1333,7 +1333,7 @@ class Announcement(db.Model):
     message = db.Column(db.Text, nullable=False)
 
     # Visual styling (Bootstrap alert types: info, warning, success, danger)
-    announcement_type = db.Column(db.Enum('info', 'warning', 'success', 'danger', name='announcement_type_enum'), default='info', nullable=False)
+    announcement_type = db.Column(db.String(20), default='info', nullable=False)
 
     # Status
     is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
@@ -1362,11 +1362,11 @@ class Announcement(db.Model):
         Returns:
             bool: True if the user has dismissed this announcement
         """
-        from sqlalchemy import exists
-        return db.session.query(exists().where(
-            AnnouncementDismissal.announcement_id == self.id,
-            AnnouncementDismissal.user_type == user_type,
-            AnnouncementDismissal.user_id == user_id)).scalar()
+        return AnnouncementDismissal.query.filter_by(
+            announcement_id=self.id,
+            user_type=user_type,
+            user_id=user_id
+        ).first() is not None
 
 
 class AnnouncementDismissal(db.Model):
