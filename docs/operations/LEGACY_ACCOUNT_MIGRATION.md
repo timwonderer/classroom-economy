@@ -136,7 +136,7 @@ TeacherBlock entries for Teacher 5, Period 1:
 
 **SQL Used:**
 ```sql
-UPDATE transaction AS t
+UPDATE "transaction" AS t
 SET join_code = tb.join_code
 FROM teacher_blocks AS tb
 WHERE t.join_code IS NULL
@@ -145,7 +145,6 @@ WHERE t.join_code IS NULL
   AND tb.is_claimed = TRUE
   AND tb.join_code IS NOT NULL
   AND tb.join_code != '';
-```
 
 **Multi-Tenancy Guarantee:**
 - Matching on both `student_id` AND `teacher_id` ensures proper isolation for students in multiple periods with the same teacher
