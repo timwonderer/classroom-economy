@@ -756,7 +756,7 @@ def add_class():
                 dob_input = dob_input.strip()
                 dob_input = datetime.strptime(dob_input, "%Y-%m-%d").date()
             dob_sum = dob_input.month + dob_input.day + dob_input.year
-        except Exception:
+        except (ValueError, AttributeError, TypeError):
             flash("Invalid date of birth. Please enter a valid date.", "danger")
             return redirect(_get_return_target())
 
