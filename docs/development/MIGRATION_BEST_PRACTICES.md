@@ -10,6 +10,10 @@ This document outlines best practices for creating database migrations in the Cl
 2. Previous migration runs may have partially completed before failing
 3. The same migration may exist in multiple branches that get merged
 
+### Real-World Example: Duplicate Column Protection
+
+We recently hit `psycopg2.errors.DuplicateColumn: column "join_code" of relation "student_blocks" already exists` while running `flask db upgrade` because a hotfix script had already added the column. Guarding migrations with `column_exists`/`index_exists` checks avoids this failure mode without requiring manual DB cleanup.
+
 ## Required Checks Before Schema Changes
 
 ### 1. Check if Columns Exist Before Adding
