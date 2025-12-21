@@ -20,7 +20,7 @@ from app.extensions import db, limiter
 from app.models import (
     Student, StoreItem, StudentItem, Transaction, TapEvent,
     HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
-    StudentTeacher, TeacherBlock, StudentBlock
+    StudentTeacher, TeacherBlock, StudentBlock, Announcement, AnnouncementDismissal
 )
 from app.auth import login_required, admin_required, get_logged_in_student, get_current_admin, SESSION_TIMEOUT_MINUTES
 from app.routes.student import get_current_teacher_id
@@ -2274,3 +2274,62 @@ def view_as_student_status():
         "status": "success",
         "view_as_student": session.get('view_as_student', False)
     })
+
+
+# -------------------- ANNOUNCEMENT API --------------------
+
+@api_bp.route('/announcement/dismiss/<int:announcement_id>', methods=['POST'])
+def dismiss_announcement(announcement_id):
+    """
+    Dismiss an announcement for the current user.
+
+    This endpoint works for students, teachers, and system admins.
+    It identifies the user type from the session and creates a dismissal record.
+    """
+    try:
+        # Determine user type and ID from session
+        user_type = None
+        user_id = None
+
+        if session.get('is_system_admin'):
+            user_type = 'sysadmin'
+            user_id = session.get('sysadmin_id')
+        elif session.get('admin_id'):
+            user_type = 'teacher'
+            user_id = session.get('admin_id')
+        elif session.get('student_id'):
+            user_type = 'student'
+            user_id = session.get('student_id')
+        else:
+            return jsonify({"error": "Not authenticated"}), 401
+
+        # Verify announcement exists
+        announcement = Announcement.query.get_or_404(announcement_id)
+
+        # Check if already dismissed
+        existing_dismissal = AnnouncementDismissal.query.filter_by(
+            announcement_id=announcement_id,
+            user_type=user_type,
+            user_id=user_id
+        ).first()
+
+        if existing_dismissal:
+            return jsonify({"status": "already_dismissed"}), 200
+
+        # Create dismissal record
+        dismissal = AnnouncementDismissal(
+            announcement_id=announcement_id,
+            user_type=user_type,
+            user_id=user_id
+        )
+        db.session.add(dismissal)
+        db.session.commit()
+
+        current_app.logger.info(f"{user_type} {user_id} dismissed announcement {announcement_id}")
+
+        return jsonify({"status": "success"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error dismissing announcement {announcement_id}: {str(e)}")
+        return jsonify({"error": "Failed to dismiss announcement"}), 500
