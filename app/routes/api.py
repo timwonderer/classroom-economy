@@ -40,6 +40,51 @@ from payroll import get_pay_rate_for_block
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
 
+# -------------------- TIPS API --------------------
+
+@api_bp.route('/tips/<user_type>')
+@limiter.exempt
+def get_tips(user_type):
+    """
+    Return tips for login loading screens as JSON.
+
+    Endpoint: GET /api/tips/<user_type>
+    User types: 'student' or 'teacher'
+
+    Exempt from rate limiting because it's called on every login page load.
+    """
+    if user_type == 'student':
+        tips = [
+            "You don't have to stay logged in after starting work. You'll continue to earn minutes even when you're away from the page.",
+            "Check your balance regularly to track your earnings and plan your spending wisely.",
+            "Your teacher can award bonus tokens for exceptional work or good behavior.",
+            "Remember to log your attendance every day to earn your payroll minutes.",
+            "The shop refreshes with new items regularly - check back often for deals!",
+            "Save up for big purchases by setting financial goals for yourself.",
+            "Hall passes deduct from your balance - plan your breaks wisely.",
+            "Insurance can protect your balance from unexpected classroom events.",
+            "Ask your teacher about bonus opportunities to earn extra tokens.",
+            "Keep track of your transaction history to understand your spending habits."
+        ]
+    elif user_type == 'teacher':
+        tips = [
+            "Students don't have to stay logged in after starting work. They'll continue to earn minutes even when away from the page.",
+            "Use the bulk transaction feature to quickly award or deduct tokens from multiple students.",
+            "Set up automated payroll to save time on manual attendance tracking.",
+            "The analytics dashboard shows spending trends to help you understand student behavior.",
+            "Create custom store items to incentivize specific behaviors or achievements.",
+            "Use insurance policies to teach students about risk management and financial protection.",
+            "Rent settings can simulate monthly expenses to teach budgeting skills.",
+            "Check the transaction log regularly to monitor unusual spending patterns.",
+            "Bonus tokens are a great way to reward exceptional effort or good citizenship.",
+            "Export your class data regularly for backup and analysis purposes."
+        ]
+    else:
+        return jsonify({"error": "Invalid user type. Use 'student' or 'teacher'."}), 400
+
+    return jsonify({"tips": tips})
+
+
 # -------------------- STORE API --------------------
 
 def _charge_overdraft_fee_if_needed(student, banking_settings):
