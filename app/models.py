@@ -1362,11 +1362,11 @@ class Announcement(db.Model):
         Returns:
             bool: True if the user has dismissed this announcement
         """
-        return AnnouncementDismissal.query.filter_by(
-            announcement_id=self.id,
-            user_type=user_type,
-            user_id=user_id
-        ).first() is not None
+        from sqlalchemy import exists
+        return db.session.query(exists().where(
+            AnnouncementDismissal.announcement_id == self.id,
+            AnnouncementDismissal.user_type == user_type,
+            AnnouncementDismissal.user_id == user_id)).scalar()
 
 
 class AnnouncementDismissal(db.Model):
