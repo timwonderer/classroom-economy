@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """
 Direct SQL migration to add join_code column to student_blocks table.
-Works with both SQLite and PostgreSQL.
-"""
+This script is intended for SQLite databases only.
 
 import sqlite3
 import os
