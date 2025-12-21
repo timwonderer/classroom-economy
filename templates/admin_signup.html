@@ -19,7 +19,7 @@
         .login-container {
             width: 100%;
             max-width: 900px;
-            background: var(--surface);
+            background: white;
             box-shadow: var(--shadow-lg);
             overflow: hidden;
             display: flex;
@@ -54,8 +54,8 @@
             background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
         }
         .logo-img {
-            width: 120px;
-            height: 120px;
+            width: 400px;
+            height: 400px;
             margin-bottom: 2rem;
             position: relative;
             z-index: 1;
@@ -105,8 +105,8 @@
 <body>
     <div class="login-container">
         <div class="login-left">
-            <div class="mb-4">
-                <h1 class="h3 fw-bold mb-2">Welcome, Teachers!</h1>
+            <div class="mb-2">
+                <h1 class="h3 fw-bold mb-2 text-primary">Create Teacher Account</h1>
                 <p class="subtitle">Enter your invite code to get started</p>
             </div>
 
@@ -135,19 +135,19 @@
                 {{ form.csrf_token if form and form.csrf_token }}
 
                 <div class="mb-3">
-                    <label for="invite_code" class="form-label">Invite Code <small style="color:#b30b3d">(Case-Sensitive, One-Time Use Only)</small></label>
+                    <label for="invite_code" class="form-label">Invite Code </label>
                     <input id="invite_code" name="invite_code" type="text" required autocomplete="off" class="form-control" placeholder="Enter your invite code">
                 </div>
 
                 <div class="mb-3">
-                    <label for="username" class="form-label">Create Your Username <small style="color:#b30b3d">(You may not change this later)</small></label>
-                    <input id="username" name="username" type="text" required autocomplete="username" class="form-control" placeholder="Create a unique username">
+                    <label for="username" class="form-label">Create Your Username </label>
+                    <input id="username" name="username" type="text" required autocomplete="off" class="form-control" placeholder="Create a unique username">
                 </div>
 
                 <div class="mb-4">
-                    <label for="dob_sum" class="form-label">Date of Birth Sum <small style="color:#b30b3d">(For account recovery only)</small></label>
-                    <input id="dob_sum" name="dob_sum" type="text" required autocomplete="off" class="form-control" placeholder="MM+DD+YYYY (e.g., 03+15+1985 = 2003)">
-                    <small class="text-muted">Add your birth month + day + year. This is used for account recovery and is stored securely.</small>
+                    <label for="dob_sum" class="form-label">Date of Birth</label>
+                    <input id="dob_sum" name="dob_sum" type="date" required class="form-control">
+                    <small class="text-muted">We collect this information for account recovery purposes only. This value will be converted to a numeric sum, irreversibly hashed, and cannot be converted back to plaintext.</small>
                 </div>
 
                 <button type="submit" class="btn btn-primary w-100 btn-lg mb-4">Sign Up</button>
@@ -165,9 +165,7 @@
             </div>
         </div>
         <div class="login-right">
-            <img src="{{ static_url('images/teacher-logo-512.png') }}" alt="Teacher Logo" class="logo-img">
-            <h2 class="h3 fw-bold mb-3">Classroom Token Hub</h2>
-            <p class="text-center opacity-75 px-4">Manage your classroom economy with ease. Track attendance, payroll, and more.</p>
+            <img src="{{ static_url('images/logo_teacher_transparent_512.png') }}" alt="Teacher Logo" class="logo-img">
         </div>
     </div>
 

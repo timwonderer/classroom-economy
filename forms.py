@@ -87,7 +87,7 @@ class StoreItemForm(FlaskForm):
 class AdminSignupForm(FlaskForm):
     username = StringField('Username', validators=[DataRequired()])
     invite_code = StringField('Invite Code', validators=[DataRequired()])
-    dob_sum = StringField('Date of Birth Sum (MM+DD+YYYY)', validators=[DataRequired()])
+    dob_sum = DateField('Date of Birth', format='%Y-%m-%d', validators=[DataRequired()])
 
 class AdminTOTPConfirmForm(FlaskForm):
     totp_code = StringField('TOTP Code', validators=[DataRequired()])
@@ -120,7 +120,7 @@ class StudentClaimAccountForm(FlaskForm):
     join_code = StringField('Join Code (from your teacher)', validators=[DataRequired()])
     first_initial = StringField('First Initial (e.g., J)', validators=[DataRequired(), Length(min=1, max=1)])
     last_name = StringField('Last Name', validators=[DataRequired()])
-    dob_sum = StringField('DOB Sum (MM + DD + YYYY)', validators=[DataRequired()])
+    dob_sum = DateField('Birthday', format='%Y-%m-%d', validators=[DataRequired()])
     submit = SubmitField('Claim Account')
 
 class StudentCreateUsernameForm(FlaskForm):

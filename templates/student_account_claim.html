@@ -34,7 +34,7 @@
         }
         .login-right {
             flex: 1;
-            background: linear-gradient(135deg, var(--primary) 0%, #5B8DBE 50%, var(--secondary) 100%);
+            background: var(--primary);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -44,9 +44,20 @@
             position: relative;
             overflow: hidden;
         }
+
+        .login-right::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+        }
+
         .logo-img {
-            width: 120px;
-            height: 120px;
+            width: 400px;
+            height: 400px;
             margin-bottom: 2rem;
             position: relative;
             z-index: 1;
@@ -106,15 +117,12 @@
 <body class="student-theme">
     <div class="login-container">
         <div class="login-left">
-            <div class="mb-4">
-                <h1 class="h3 fw-bold mb-2">Student Account Setup</h1>
-                <p class="subtitle">Let's get you started</p>
+            <div class="mb-2">
+                <small class="text-muted">STUDENT PORTAL</small>
+                <h1 class="h3 fw-bold mb-2  text-primary">Find Your Account</h1>
+                <p class="subtitle">Enter your information below to find the account your teacher has created for you.</p>
             </div>
 
-            <div class="info-box">
-                <p>You should only set up your account if your teacher has already created one for you.</p>
-                <p>If you are not sure or if you are having trouble locating your account, please ask your teacher for further instructions.</p>
-            </div>
 
             {% with messages = get_flashed_messages(category_filter=["claim"]) %}
                 {% if messages %}
@@ -132,9 +140,7 @@
                 <div class="mb-3">
                     <label for="join_code" class="form-label">Join Code</label>
                     {{ form.join_code(class="form-control", placeholder="Example: ABC123") }}
-                    <small class="form-text text-muted">
-                        Enter the join code provided by your teacher
-                    </small>
+                    
                     {% for error in form.join_code.errors %}
                         <div class="text-danger small">{{ error }}</div>
                     {% endfor %}
@@ -143,9 +149,6 @@
                 <div class="mb-3">
                     <label for="first_initial" class="form-label">First Initial</label>
                     {{ form.first_initial(class="form-control", placeholder="Example: J", maxlength="1") }}
-                    <small class="form-text text-muted">
-                        Enter the first letter of your first name
-                    </small>
                     {% for error in form.first_initial.errors %}
                         <div class="text-danger small">{{ error }}</div>
                     {% endfor %}
@@ -154,21 +157,14 @@
                 <div class="mb-3">
                     <label for="last_name" class="form-label">Last Name</label>
                     {{ form.last_name(class="form-control", placeholder="Example: Smith") }}
-                    <small class="form-text text-muted">
-                        Enter your last name
-                    </small>
                     {% for error in form.last_name.errors %}
                         <div class="text-danger small">{{ error }}</div>
                     {% endfor %}
                 </div>
 
                 <div class="mb-4">
-                    <label for="dob_sum" class="form-label">Birthday Sum</label>
-                    {{ form.dob_sum(class="form-control", placeholder="Example: 2028") }}
-                    <small class="form-text text-muted">
-                        Add up the numerical value of your birth month, day, and year<br>
-                        <strong>Example:</strong> March 15, 2010 → 3 + 15 + 2010 so you will enter <code>2028</code>
-                    </small>
+                    <label for="dob_sum" class="form-label">Birthday</label>
+                    {{ form.dob_sum(class="form-control", type="date") }}
                     {% for error in form.dob_sum.errors %}
                         <div class="text-danger small">{{ error }}</div>
                     {% endfor %}
@@ -189,9 +185,7 @@
             </div>
         </div>
         <div class="login-right">
-            <img src="{{ static_url('images/student-logo-512.png') }}" alt="Student Logo" class="logo-img">
-            <h2 class="h3 fw-bold mb-3">Classroom Token Hub</h2>
-            <p class="text-center opacity-75 px-4">Set up your classroom bank account and start your financial journey.</p>
+            <img src="{{ static_url('images/logo_student_transparent_512.png') }}" alt="Student Logo" class="logo-img">
         </div>
     </div>
 
