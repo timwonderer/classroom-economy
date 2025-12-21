@@ -139,6 +139,7 @@ def _tail_log_lines(file_path: str, max_lines: int = 200, chunk_size: int = 8192
 # -------------------- AUTHENTICATION --------------------
 
 @sysadmin_bp.route('/auth-check', methods=['GET'])
+@limiter.limit("100 per minute")
 def auth_check():
     """Internal auth probe for Nginx `auth_request`.
 
@@ -149,7 +150,7 @@ def auth_check():
     Note: Do NOT decorate with `@system_admin_required` because that may redirect
     to the login page; `auth_request` needs a clean 2xx/401 signal.
     """
-    if session.get("is_system_admin") is True and session.get("sysadmin_id") is not None:
+    if session.get("is_system_admin") and session.get("sysadmin_id") is not None:
         return ("", 204)
     raise Unauthorized("System admin authentication required")
 
