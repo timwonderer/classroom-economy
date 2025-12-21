@@ -1239,6 +1239,49 @@ class FeatureSettings(db.Model):
         }
 
 
+# -------------------- ANNOUNCEMENT MODELS --------------------
+class Announcement(db.Model):
+    """System-wide announcements displayed to all users."""
+    __tablename__ = 'announcements'
+    id = db.Column(db.Integer, primary_key=True)
+    message = db.Column(db.Text, nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
+    level = db.Column(db.String(20), default='info', nullable=False)  # 'info', 'warning', 'critical'
+
+    # Display window
+    start_date = db.Column(db.DateTime, nullable=True, default=_utc_now)
+    end_date = db.Column(db.DateTime, nullable=True)
+
+    # Timestamps & creator
+    created_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
+    created_by_sysadmin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id'), nullable=True)
+
+    # Relationships
+    created_by = db.relationship('SystemAdmin', backref='created_announcements')
+    dismissals = db.relationship('AnnouncementDismissal', backref='announcement', lazy='dynamic', cascade='all, delete-orphan')
+
+    def __repr__(self):
+        status = 'active' if self.is_active else 'inactive'
+        return f'<Announcement {self.id} - {status}>'
+
+
+class AnnouncementDismissal(db.Model):
+    """Tracks when a user dismisses an announcement."""
+    __tablename__ = 'announcement_dismissals'
+    id = db.Column(db.Integer, primary_key=True)
+    announcement_id = db.Column(db.Integer, db.ForeignKey('announcements.id', ondelete='CASCADE'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, nullable=False, index=True)
+    user_type = db.Column(db.String(20), nullable=False)  # 'student' or 'admin'
+    dismissed_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
+
+    __table_args__ = (
+        db.UniqueConstraint('announcement_id', 'user_id', 'user_type', name='uq_announcement_dismissal_user'),
+    )
+
+    def __repr__(self):
+        return f'<AnnouncementDismissal user={self.user_type}:{self.user_id} for announcement={self.announcement_id}>'
+
+
 # -------------------- TEACHER ONBOARDING MODEL --------------------
 class TeacherOnboarding(db.Model):
     """

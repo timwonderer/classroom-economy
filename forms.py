@@ -371,3 +371,17 @@ class StudentCompleteProfileForm(FlaskForm):
     dob_day = StringField('Day (1-31)', validators=[DataRequired(), Length(min=1, max=2)])
     dob_year = StringField('Year (4 digits)', validators=[DataRequired(), Length(min=4, max=4)])
     submit = SubmitField('Complete Profile')
+
+
+class AnnouncementForm(FlaskForm):
+    """Form for creating and editing system-wide announcements."""
+    message = TextAreaField('Message', validators=[DataRequired()])
+    level = SelectField('Level', choices=[
+        ('info', 'Info (Blue)'),
+        ('warning', 'Warning (Yellow)'),
+        ('critical', 'Critical (Red)')
+    ], default='info', validators=[DataRequired()])
+    is_active = BooleanField('Active', default=True)
+    start_date = DateField('Start Date (optional)', format='%Y-%m-%d', validators=[Optional()])
+    end_date = DateField('End Date (optional)', format='%Y-%m-%d', validators=[Optional()])
+    submit = SubmitField('Save Announcement')

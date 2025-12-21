@@ -1,0 +1,103 @@
+{% extends "layout_system_admin.html" %}
+
+{% block title %}Manage Announcements{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h1 class="mt-4">Manage Announcements</h1>
+    <p>Create, view, and manage system-wide announcements that will be displayed to all users.</p>
+
+    <div class="card mb-4">
+        <div class="card-header">
+            <i class="fas fa-bullhorn me-1"></i>
+            Create New Announcement
+        </div>
+        <div class="card-body">
+            <form method="POST" action="{{ url_for('sysadmin.manage_announcements') }}">
+                {{ form.csrf_token }}
+                <div class="mb-3">
+                    <label for="message" class="form-label">{{ form.message.label }}</label>
+                    {{ form.message(class="form-control", rows="3") }}
+                </div>
+                <div class="row">
+                    <div class="col-md-4 mb-3">
+                        <label for="level" class="form-label">{{ form.level.label }}</label>
+                        {{ form.level(class="form-select") }}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="start_date" class="form-label">{{ form.start_date.label }}</label>
+                        {{ form.start_date(class="form-control") }}
+                    </div>
+                    <div class="col-md-4 mb-3">
+                        <label for="end_date" class="form-label">{{ form.end_date.label }}</label>
+                        {{ form.end_date(class="form-control") }}
+                    </div>
+                </div>
+                <div class="form-check mb-3">
+                    {{ form.is_active(class="form-check-input") }}
+                    <label class="form-check-label" for="is_active">{{ form.is_active.label }}</label>
+                </div>
+                {{ form.submit(class="btn btn-primary") }}
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">
+            <i class="fas fa-list me-1"></i>
+            Existing Announcements
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-bordered" id="announcementsTable" width="100%" cellspacing="0">
+                    <thead>
+                        <tr>
+                            <th>Message</th>
+                            <th>Level</th>
+                            <th>Status</th>
+                            <th>Dates</th>
+                            <th>Dismissals</th>
+                            <th>Created At</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for announcement in announcements %}
+                        <tr>
+                            <td>{{ announcement.message }}</td>
+                            <td>
+                                <span class="badge bg-{% if announcement.level == 'info' %}primary{% elif announcement.level == 'warning' %}warning{% else %}danger{% endif %}">
+                                    {{ announcement.level|capitalize }}
+                                </span>
+                            </td>
+                            <td>
+                                {% if announcement.is_active %}
+                                    <span class="badge bg-success">Active</span>
+                                {% else %}
+                                    <span class="badge bg-secondary">Inactive</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if announcement.start_date %}{{ announcement.start_date.strftime('%Y-%m-%d') }}{% else %}Always{% endif %} -
+                                {% if announcement.end_date %}{{ announcement.end_date.strftime('%Y-%m-%d') }}{% else %}Never{% endif %}
+                            </td>
+                            <td>{{ announcement.dismissal_count }}</td>
+                            <td>{{ announcement.created_at.strftime('%Y-%m-%d %H:%M') }} UTC</td>
+                            <td>
+                                <!-- Placeholder for future actions -->
+                                <button class="btn btn-sm btn-outline-secondary" disabled>Edit</button>
+                                <button class="btn btn-sm btn-outline-danger" disabled>Deactivate</button>
+                            </td>
+                        </tr>
+                        {% else %}
+                        <tr>
+                            <td colspan="7" class="text-center">No announcements found.</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

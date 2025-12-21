@@ -26,10 +26,10 @@ from app.models import (
     DeletionRequestType, DeletionRequestStatus, TeacherBlock, StudentBlock, UserReport,
     FeatureSettings, TeacherOnboarding, RentSettings, BankingSettings,
     DemoStudent, HallPassSettings, PayrollFine, PayrollReward,
-    PayrollSettings, StoreItem
+    PayrollSettings, StoreItem, Announcement, AnnouncementDismissal
 )
 from app.auth import system_admin_required
-from forms import SystemAdminLoginForm, SystemAdminInviteForm
+from forms import SystemAdminLoginForm, SystemAdminInviteForm, AnnouncementForm
 
 # Import utility functions
 from app.utils.helpers import is_safe_url
@@ -1057,6 +1057,56 @@ def update_user_report(report_id):
         flash("Error updating report. Please try again.", "error")
     
     return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+
+
+# -------------------- ANNOUNCEMENTS --------------------
+
+@sysadmin_bp.route('/announcements', methods=['GET', 'POST'])
+@system_admin_required
+def manage_announcements():
+    """Manage system-wide announcements."""
+    form = AnnouncementForm()
+    if form.validate_on_submit():
+        new_announcement = Announcement(
+            message=form.message.data,
+            level=form.level.data,
+            is_active=form.is_active.data,
+            start_date=form.start_date.data,
+            end_date=form.end_date.data,
+            created_by_sysadmin_id=session.get('sysadmin_id')
+        )
+        db.session.add(new_announcement)
+        db.session.commit()
+        flash('Announcement created successfully.', 'success')
+        return redirect(url_for('sysadmin.manage_announcements'))
+
+    # N+1 Query Fix: Pre-calculate dismissal counts using a subquery
+    dismissal_count_subquery = db.session.query(
+        AnnouncementDismissal.announcement_id,
+        db.func.count(AnnouncementDismissal.id).label('dismissal_count')
+    ).group_by(AnnouncementDismissal.announcement_id).subquery()
+
+    announcements = db.session.query(
+        Announcement,
+        dismissal_count_subquery.c.dismissal_count
+    ).outerjoin(
+        dismissal_count_subquery,
+        Announcement.id == dismissal_count_subquery.c.announcement_id
+    ).order_by(Announcement.created_at.desc()).all()
+
+    # The result is a list of tuples (Announcement, dismissal_count)
+    # We'll process this into a more usable format for the template
+    announcements_with_counts = []
+    for announcement, count in announcements:
+        announcement.dismissal_count = count or 0  # Attach the count to the object
+        announcements_with_counts.append(announcement)
+
+    return render_template(
+        'system_admin_announcements.html',
+        announcements=announcements_with_counts,
+        form=form,
+        current_page='announcements'
+    )
 
 
 @sysadmin_bp.route('/user-reports/<int:report_id>/send-reward', methods=['POST'])
