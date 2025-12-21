@@ -408,7 +408,7 @@ def backfill_transaction_join_codes(stats, dry_run=False):
     # CRITICAL: Match on BOTH student_id AND teacher_id to maintain multi-tenancy isolation
     print("Backfilling transaction join codes...")
     result = db.session.execute(text("""
-        UPDATE transaction AS t
+        UPDATE \"transaction\" AS t
         SET join_code = tb.join_code
         FROM teacher_blocks AS tb
         WHERE t.join_code IS NULL
