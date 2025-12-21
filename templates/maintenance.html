@@ -38,12 +38,12 @@
             align-items: center;
             justify-content: center;
             padding: 2rem;
-            font-family: Inter
+            font-family: Inter, sans-serif;
         }
 
         .card {
             border: none;
-            border-radius: 5px;
+            
             padding: 2rem;
             max-width: 960px;
             width: 100%;
@@ -64,7 +64,7 @@
             background: rgba(255, 255, 255, 0.15);
             color: #fff;
             padding: 0.4rem 0.85rem;
-            border-radius: 999px;
+            
             font-size: 0.95rem;
             font-weight: 600;
         }
@@ -87,7 +87,7 @@
         .icon-circle {
             width: 56px;
             height: 56px;
-            border-radius: 50%;
+            
             background: rgba(76, 111, 255, 0.12);
             color: var(--gradient-start);
             display: grid;
@@ -97,7 +97,7 @@
 
         .info-tile {
             background: var(--muted-bg);
-            border-radius: 14px;
+            
             padding: 1rem 1.25rem;
         }
 
@@ -113,7 +113,7 @@
 
         .badge-container {
             margin-bottom: 1rem;
-            border-radius: 5px;
+            
             padding: 1rem;
             border-style: solid;
             border-width: 0 0 0 8px;
@@ -126,7 +126,7 @@
             color: #ffffff;
             padding: 3px 8px 3px 8px;
             width: fit-content;
-            border-radius: 40px;
+            
             text-align: center;
         }
 
@@ -144,13 +144,12 @@
                     <span class="material-symbols-outlined" style="color: #1f306e; font-size:40px;vertical-align:-10%" aria-hidden="true">computer_cancel</span>
                     <span style="color: #1f306e;font-size:25pt;vertical-align:middle">Classrooom Token Hub <span style="font-weight:300">{{ status_description or "Unavailable" }}</span></span>
                 </div>
-                <div style="border-radius: 5px; padding: 1rem; background-color: #fac0c0; border-style: solid; border-color: #a30303; border-width: 0 0 0 8px; margin-top: 1rem; color: #000000;">
-                    <div style="font-weight: 400; font-size: 12pt; color: #ffffff; background-color: #a30303; padding: 3px 8px 3px 8px; width: fit-content; border-radius: 40px; text-align: center;">
-                        <span class="material-symbols-outlined" style="font-size: 24px; vertical-align: -25%;" aria-hidden="true">error</span> IMPORTANT
+                <div style=" padding: 1rem; background-color: #0d6dfd28; border-style: solid; border-color: #0d6efd #0d6efd #0d6efd #0d6efd; border-width: 1px 1px 1px 8px; margin-top: 1rem; color: #000000;">
+                    <div class="bg-primary text-white" style="font-weight: 400; font-size: 12pt;  padding: 3px 8px 3px 8px; width: fit-content; text-align: center;">
+                        <span class="material-symbols-outlined" style="font-size: 24px; vertical-align: -25%;" aria-hidden="true">info</span> NOTE
                     </div>
-                    <div style="margin-top: 0.5rem; margin-bottom: 0;">
-                        Classroom Token Hub is an actively developing project. As such, this application may become temporarily unavailable when we detect an issue that could either degrade your experiences or compromise the integrity of our platform. <strong>Unfortunately, these events are often unpredictable and sudden.</strong><br><br>
-                        We understand that having a reliable classroom economy application you can depend on is critical to your routines and we sincerely apologize for this inconvenience. We would like to thank you for your patience and continued support during this time.</div>          
+                    <div style="margin-top: 0.5rem; margin-bottom: 0;font-weight:300">
+                        <span style="font-weight:600">Classroom Token Hub</span> is an independently developed project by a single public school teacher developer. Because this project initially started as a passion project and has since grown into a full-featured web application that is offered to other educators and students free of charge, there is no offer of guarantee that this app will always be available. <br><br> While most issues are resolved within the same day, given the busy schedule of a full-time teacher and status of a hobby developer, there may be occasional delays in addressing certain issues. We appreciate your understanding and continued support.</div>          
                     </div>
             </div>
         </div>
@@ -160,18 +159,18 @@
                 <div id="badge-label" class="badge-label">
                     <span id="badge-icon" class="material-symbols-outlined badge-icon" aria-hidden="true">{{ badge_icon }}</span> <span id="badge-text">{{ badge_text|upper }}</span>
                 </div>
-                <div style="margin-top: 0.5rem; margin-bottom: 0;">{{ message or "We're applying updates and running database checks. Thank you for your patience!" }}</div>
+                <div style="margin-top: 0.5rem; margin-bottom: 0;">{{ message or "We have detected an issue with the application and we are currently investigating it." }}</div>
             </div>
             <div class="row g-3 mb-4">
                 <div class="col-md-6">
-                    <div class="info-tile h-100">
+                    <div class="info-tile h-100 border border-2 shadow-sm">
                         <div class="fw-semibold text-uppercase text-secondary" style="letter-spacing: 0.08em; font-size: 0.8rem;">Planned timeline</div>
-                        <div class="fs-5 fw-bold mt-1">{{ expected_back or "We expect service to resume shortly." }}</div>
+                        <div class="fs-5 fw-bold mt-1">{{ expected_back or "We currently do not have an estimated time of recovery." }}</div>
                         <p class="mb-0 text-secondary mt-1">Depending on the complexity of the issue, the actual time may be earlier or later than shown.</p>
                     </div>
                 </div>
                 <div class="col-md-6">
-                    <div class="info-tile h-100">
+                    <div class="info-tile h-100 border border-2 shadow-sm">
                         <div class="fw-semibold text-uppercase text-secondary" style="letter-spacing: 0.08em; font-size: 0.8rem;">Need help?</div>
                         <p class="mb-0 text-secondary mt-1">If you need to report an urgent issue during this window, please contact us at <a href="mailto:timothy.cs.chang@gmail.com">timothy.cs.chang@gmail.com</a></p>
                     </div>
