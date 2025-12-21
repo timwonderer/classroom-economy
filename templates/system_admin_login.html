@@ -12,9 +12,9 @@
     <style>
         /* System Admin Theme Override */
         :root {
-            --sysadmin-primary: #035397;
+            --sysadmin-primary: #272727;
             --sysadmin-primary-hover: #274174;
-            --sysadmin-secondary: #00afdf;
+            --sysadmin-secondary: var(--secondary);
         }
 
         body {
@@ -42,7 +42,7 @@
         }
         .login-right {
             flex: 1;
-            background: linear-gradient(135deg, var(--sysadmin-primary), var(--sysadmin-primary-hover));
+            background: var(--sysadmin-primary);
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -132,13 +132,10 @@
             <div class="mb-2">
                 <small class="text-muted">SYSTEM ADMIN PORTAL</small>
                 <h1 class="h3 fw-bold text-primary">System Administrator</h1>
-                <p class="subtitle">Secure access for authorized personnel only</p>
+                <p class="subtitle">Log in to manage teacher accounts, access logs, and view support tickets.</p>
             </div>
 
-            <div class="security-notice">
-                <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 1rem;">warning</span>
-                <strong>Authorized Access Required</strong>
-            </div>
+            
 
             {% with messages = get_flashed_messages(with_categories=true) %}
                 {% if messages %}
@@ -155,14 +152,12 @@
                 {{ form.hidden_tag() }}
                 <div class="mb-3">
                     <label class="form-label">Username</label>
-                    {{ form.username(class="form-control form-control-lg", autofocus=True, placeholder="Enter admin username") }}
+                    {{ form.username(class="form-control form-control-lg", autocomplete="off", autocorrect="off", focus=True) }}
                 </div>
                 <div class="mb-4">
                     <label class="form-label">Authenticator Code</label>
-                    {{ form.totp_code(class="form-control form-control-lg", placeholder="000000", inputmode="numeric", pattern="\\d{6}", maxlength="6") }}
-                    <small class="text-muted">
-                        <span class="material-symbols-outlined me-1" style="vertical-align: middle; font-size: 16px;">info</span>Enter the 6-digit code from your authenticator app
-                    </small>
+                    {{ form.totp_code(class="form-control form-control-lg", autocomplete="off", autocorrect="off", autocapitalize="off",inputmode="numeric", pattern="\\d{6}", maxlength="6") }}
+                    
                 </div>
                 {% if turnstile_site_key %}
                 <div class="mb-4">
@@ -177,15 +172,11 @@
 
             <div class="text-center mt-3 pt-3 border-top">
                 <a href="{{ url_for('student.login') }}" class="text-decoration-none">
-                    <span class="material-symbols-outlined me-2" style="vertical-align: middle; font-size: 1rem;">arrow_back</span>Return to Main Login
+                    Return to Main Login
                 </a>
             </div>
 
-            <div class="text-center mt-3">
-                <small class="text-muted" style="font-size: 0.75rem;">
-                    Unauthorized access attempts are logged and monitored
-                </small>
-            </div>
+           
 
             <div class="text-center mt-2">
                 <a href="{{ url_for('main.privacy') }}" class="text-decoration-none small text-secondary">Privacy</a>
