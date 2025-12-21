@@ -1194,42 +1194,6 @@ def create_announcement():
     return redirect(url_for('sysadmin.manage_announcements'))
 
 
-@sysadmin_bp.route('/announcements/<int:announcement_id>/edit', methods=['POST'])
-@system_admin_required
-def edit_announcement(announcement_id):
-    """Edit an existing announcement."""
-    announcement = Announcement.query.get_or_404(announcement_id)
-
-    title = request.form.get('title', '').strip()
-    message = request.form.get('message', '').strip()
-    announcement_type = request.form.get('announcement_type', 'info').strip()
-
-    # Validate input
-    if not title or not message:
-        flash("Title and message are required.", "error")
-        return redirect(url_for('sysadmin.manage_announcements'))
-
-    if announcement_type not in ['info', 'warning', 'success', 'danger']:
-        announcement_type = 'info'
-
-    try:
-        announcement.title = title
-        announcement.message = message
-        announcement.announcement_type = announcement_type
-        announcement.updated_at = datetime.now(timezone.utc)
-
-        db.session.commit()
-
-        flash("Announcement updated successfully.", "success")
-        current_app.logger.info(f"System admin {session.get('sysadmin_id')} edited announcement {announcement_id}")
-    except Exception as e:
-        db.session.rollback()
-        current_app.logger.error(f"Error editing announcement {announcement_id}: {str(e)}")
-        flash("Error updating announcement. Please try again.", "error")
-
-    return redirect(url_for('sysadmin.manage_announcements'))
-
-
 @sysadmin_bp.route('/announcements/<int:announcement_id>/toggle', methods=['POST'])
 @system_admin_required
 def toggle_announcement(announcement_id):
@@ -1247,7 +1211,6 @@ def toggle_announcement(announcement_id):
             announcement.is_active = False
             flash(f"Announcement '{announcement.title}' deactivated.", "success")
 
-        announcement.updated_at = datetime.now(timezone.utc)
         db.session.commit()
 
         current_app.logger.info(f"System admin {session.get('sysadmin_id')} toggled announcement {announcement_id} to {announcement.is_active}")
