@@ -454,13 +454,16 @@ def claim_account():
         join_code = format_join_code(form.join_code.data)
         first_initial = form.first_initial.data.strip().upper()
         last_name = form.last_name.data.strip()
-        dob_sum_str = form.dob_sum.data.strip()
+        dob_input = form.dob_sum.data
 
-        if not dob_sum_str.isdigit():
-            flash("DOB sum must be a number.", "claim")
+        try:
+            if isinstance(dob_input, str):
+                dob_input = dob_input.strip()
+                dob_input = datetime.strptime(dob_input, "%Y-%m-%d").date()
+            dob_sum = dob_input.month + dob_input.day + dob_input.year
+        except Exception:
+            flash("Please enter a valid birth date.", "claim")
             return redirect(url_for('student.claim_account'))
-
-        dob_sum = int(dob_sum_str)
 
         # Find all unclaimed seats with this join code
         unclaimed_seats = TeacherBlock.query.filter_by(
