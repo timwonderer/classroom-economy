@@ -5,6 +5,7 @@ instance/
 .env
 *.sqlite3
 *.log
+*.sql
 .DS_Store
 GPT_instruction.md
 *.db
