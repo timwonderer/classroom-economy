@@ -540,26 +540,51 @@ def backfill_related_tables(stats, dry_run=False):
             print(f"  Found {null_count} records without join codes")
 
             table_columns = [c['name'] for c in inspector.get_columns(table_name)]
-            period_match_clause = ""
-            if 'period' in table_columns:
-                period_match_clause = "AND UPPER(t.period) = UPPER(sb.period)"
-            else:
+            has_period = 'period' in table_columns
+
+            if not has_period:
                 stats.warnings.append(
                     f"Backfill for {table_name} is ambiguous for students in multiple classes; using first available join_code."
                 )
 
-            # Backfill using StudentBlock relationship
-            # Strategy: Match by student_id and period (if period column exists)
-            update_query = text(f"""
-                UPDATE {table_name} AS t
-                SET join_code = (
-                    SELECT sb.join_code FROM student_blocks AS sb
-                    WHERE t.student_id = sb.student_id {period_match_clause}
-                    AND sb.join_code IS NOT NULL AND sb.join_code != ''
-                    LIMIT 1
-                )
-                WHERE t.join_code IS NULL
-            """)
+            # Backfill using StudentBlock relationship with CTE for performance
+            # Strategy: Use CTE with DISTINCT ON to avoid correlated subquery inefficiency
+            if has_period:
+                # For tables with period column: match on student_id AND period
+                update_query = text(f"""
+                    WITH student_period_join_codes AS (
+                        SELECT DISTINCT ON (student_id, UPPER(period))
+                            student_id,
+                            period,
+                            join_code
+                        FROM student_blocks
+                        WHERE join_code IS NOT NULL AND join_code != ''
+                        ORDER BY student_id, UPPER(period), join_code
+                    )
+                    UPDATE {table_name} AS t
+                    SET join_code = spjc.join_code
+                    FROM student_period_join_codes AS spjc
+                    WHERE t.join_code IS NULL
+                      AND t.student_id = spjc.student_id
+                      AND UPPER(t.period) = UPPER(spjc.period)
+                """)
+            else:
+                # For tables without period column: match on student_id only
+                update_query = text(f"""
+                    WITH student_join_codes AS (
+                        SELECT DISTINCT ON (student_id)
+                            student_id,
+                            join_code
+                        FROM student_blocks
+                        WHERE join_code IS NOT NULL AND join_code != ''
+                        ORDER BY student_id, join_code
+                    )
+                    UPDATE {table_name} AS t
+                    SET join_code = sjc.join_code
+                    FROM student_join_codes AS sjc
+                    WHERE t.join_code IS NULL
+                      AND t.student_id = sjc.student_id
+                """)
 
             result = db.session.execute(update_query)
             backfilled = result.rowcount

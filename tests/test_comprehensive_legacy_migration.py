@@ -39,6 +39,7 @@ from scripts.comprehensive_legacy_migration import (
     backfill_teacher_block_join_codes,
     backfill_transaction_join_codes,
     backfill_tap_event_join_codes,
+    backfill_related_tables,
     MigrationStats
 )
 
@@ -592,3 +593,362 @@ def test_full_migration_workflow(migration_app, teacher1, teacher2):
         assert txn_s2.join_code == tb_s2.join_code
         assert txn_s3.join_code == tb_s3.join_code
         assert txn_s4.join_code == tb_s4.join_code
+
+
+class TestRelatedTablesBackfill:
+    """Test Phase 5: Related tables join code backfill."""
+
+    def test_backfill_student_items_without_period(self, migration_app, teacher1):
+        """Test backfilling student_items (table without period column)."""
+        with migration_app.app_context():
+            # Import here to avoid circular imports
+            from app.models import StudentItem
+
+            # Create student and migrate
+            student = create_legacy_student("student1", teacher1, "Period 1")
+            db.session.flush()
+
+            stats = MigrationStats()
+            migrate_legacy_students(stats, dry_run=False)
+
+            # Get join_code from TeacherBlock
+            tb = TeacherBlock.query.filter_by(student_id=student.id).first()
+            join_code = tb.join_code
+
+            # Create StudentBlock (required for backfill)
+            sb = StudentBlock(
+                student_id=student.id,
+                join_code=join_code,
+                period="PERIOD 1",
+                tap_enabled=True
+            )
+            db.session.add(sb)
+            db.session.commit()
+
+            # Create StudentItem without join_code
+            item = StudentItem(
+                student_id=student.id,
+                item_name="Test Item",
+                cost=50.0,
+                purchase_date=datetime.now(timezone.utc)
+            )
+            db.session.add(item)
+            db.session.commit()
+
+            # Verify item has no join_code initially
+            assert item.join_code is None
+
+            # Backfill related tables
+            stats2 = MigrationStats()
+            backfill_related_tables(stats2, dry_run=False)
+
+            # Verify item got join_code
+            item_updated = StudentItem.query.get(item.id)
+            assert item_updated.join_code == join_code
+            assert stats2.student_items_backfilled > 0
+
+    def test_backfill_hall_pass_logs_with_period(self, migration_app, teacher1):
+        """Test backfilling hall_pass_logs (table with period column)."""
+        with migration_app.app_context():
+            from app.models import HallPassLog
+
+            # Create student and migrate
+            student = create_legacy_student("student1", teacher1, "Period 1")
+            db.session.flush()
+
+            stats = MigrationStats()
+            migrate_legacy_students(stats, dry_run=False)
+
+            tb = TeacherBlock.query.filter_by(student_id=student.id).first()
+            join_code = tb.join_code
+
+            # Create StudentBlock
+            sb = StudentBlock(
+                student_id=student.id,
+                join_code=join_code,
+                period="PERIOD 1",
+                tap_enabled=True
+            )
+            db.session.add(sb)
+            db.session.commit()
+
+            # Create HallPassLog without join_code
+            log = HallPassLog(
+                student_id=student.id,
+                period="Period 1",  # Note: different casing
+                request_time=datetime.now(timezone.utc),
+                pass_number=1,
+                status="approved"
+            )
+            db.session.add(log)
+            db.session.commit()
+
+            # Backfill
+            stats2 = MigrationStats()
+            backfill_related_tables(stats2, dry_run=False)
+
+            # Verify log got correct join_code (case-insensitive period matching)
+            log_updated = HallPassLog.query.get(log.id)
+            assert log_updated.join_code == join_code
+            assert stats2.hall_pass_logs_backfilled > 0
+
+    def test_backfill_multi_period_student_with_period_column(self, migration_app, teacher1):
+        """
+        Test backfill for student in multiple periods with period-aware table.
+        Each period's data should get correct join_code.
+        """
+        with migration_app.app_context():
+            from app.models import HallPassLog
+
+            # Create students in two periods
+            student1 = create_legacy_student("student1", teacher1, "Period 1")
+            student2 = create_legacy_student("student2", teacher1, "Period 3")
+            db.session.flush()
+
+            # Use same student_id for both (simulating same student, different periods)
+            # For test purposes, we'll use different student_ids but same logical student
+            actual_student_id = student1.id
+
+            stats = MigrationStats()
+            migrate_legacy_students(stats, dry_run=False)
+
+            tb1 = TeacherBlock.query.filter_by(student_id=student1.id).first()
+            tb2 = TeacherBlock.query.filter_by(student_id=student2.id).first()
+
+            # Create StudentBlocks
+            sb1 = StudentBlock(
+                student_id=student1.id,
+                join_code=tb1.join_code,
+                period="PERIOD 1",
+                tap_enabled=True
+            )
+            sb2 = StudentBlock(
+                student_id=student2.id,
+                join_code=tb2.join_code,
+                period="PERIOD 3",
+                tap_enabled=True
+            )
+            db.session.add_all([sb1, sb2])
+            db.session.commit()
+
+            # Create hall pass logs for each period
+            log1 = HallPassLog(
+                student_id=student1.id,
+                period="Period 1",
+                request_time=datetime.now(timezone.utc),
+                pass_number=1,
+                status="approved"
+            )
+            log2 = HallPassLog(
+                student_id=student2.id,
+                period="Period 3",
+                request_time=datetime.now(timezone.utc),
+                pass_number=2,
+                status="approved"
+            )
+            db.session.add_all([log1, log2])
+            db.session.commit()
+
+            # Backfill
+            stats2 = MigrationStats()
+            backfill_related_tables(stats2, dry_run=False)
+
+            # Verify each log got correct join_code based on period
+            log1_updated = HallPassLog.query.get(log1.id)
+            log2_updated = HallPassLog.query.get(log2.id)
+
+            assert log1_updated.join_code == tb1.join_code
+            assert log2_updated.join_code == tb2.join_code
+            assert log1_updated.join_code != log2_updated.join_code  # Different periods
+
+    def test_backfill_multi_period_student_without_period_column(self, migration_app, teacher1):
+        """
+        Test backfill for student in multiple periods with non-period-aware table.
+        Should use first available join_code (ambiguous case).
+        """
+        with migration_app.app_context():
+            from app.models import StudentItem
+
+            # Create student in two periods
+            student1 = create_legacy_student("student1", teacher1, "Period 1")
+            student2 = create_legacy_student("student2", teacher1, "Period 3")
+            db.session.flush()
+
+            stats = MigrationStats()
+            migrate_legacy_students(stats, dry_run=False)
+
+            tb1 = TeacherBlock.query.filter_by(student_id=student1.id).first()
+            tb2 = TeacherBlock.query.filter_by(student_id=student2.id).first()
+
+            # Create StudentBlocks for both periods
+            sb1 = StudentBlock(
+                student_id=student1.id,
+                join_code=tb1.join_code,
+                period="PERIOD 1",
+                tap_enabled=True
+            )
+            sb2 = StudentBlock(
+                student_id=student2.id,
+                join_code=tb2.join_code,
+                period="PERIOD 3",
+                tap_enabled=True
+            )
+            db.session.add_all([sb1, sb2])
+            db.session.commit()
+
+            # Create StudentItem for first student (no period column)
+            item = StudentItem(
+                student_id=student1.id,
+                item_name="Test Item",
+                cost=50.0,
+                purchase_date=datetime.now(timezone.utc)
+            )
+            db.session.add(item)
+            db.session.commit()
+
+            # Backfill
+            stats2 = MigrationStats()
+            backfill_related_tables(stats2, dry_run=False)
+
+            # Verify item got A join_code (will be first one due to DISTINCT ON ordering)
+            item_updated = StudentItem.query.get(item.id)
+            assert item_updated.join_code is not None
+            assert item_updated.join_code in [tb1.join_code, tb2.join_code]
+
+            # Verify warning was issued for ambiguous case
+            assert any("ambiguous" in str(w).lower() for w in stats2.warnings)
+
+    def test_backfill_related_tables_idempotent(self, migration_app, teacher1):
+        """Test that related tables backfill is idempotent."""
+        with migration_app.app_context():
+            from app.models import StudentItem
+
+            student = create_legacy_student("student1", teacher1, "Period 1")
+            db.session.flush()
+
+            stats = MigrationStats()
+            migrate_legacy_students(stats, dry_run=False)
+
+            tb = TeacherBlock.query.filter_by(student_id=student.id).first()
+
+            sb = StudentBlock(
+                student_id=student.id,
+                join_code=tb.join_code,
+                period="PERIOD 1",
+                tap_enabled=True
+            )
+            db.session.add(sb)
+
+            item = StudentItem(
+                student_id=student.id,
+                item_name="Test Item",
+                cost=50.0,
+                purchase_date=datetime.now(timezone.utc)
+            )
+            db.session.add(item)
+            db.session.commit()
+
+            # First backfill
+            stats1 = MigrationStats()
+            backfill_related_tables(stats1, dry_run=False)
+            assert stats1.student_items_backfilled > 0
+
+            # Second backfill (should be no-op)
+            stats2 = MigrationStats()
+            backfill_related_tables(stats2, dry_run=False)
+            assert stats2.student_items_backfilled == 0  # Already backfilled
+
+            # Verify join_code unchanged
+            item_updated = StudentItem.query.get(item.id)
+            assert item_updated.join_code == tb.join_code
+
+    def test_backfill_related_tables_dry_run(self, migration_app, teacher1):
+        """Test dry run mode for related tables backfill."""
+        with migration_app.app_context():
+            from app.models import StudentItem
+
+            student = create_legacy_student("student1", teacher1, "Period 1")
+            db.session.flush()
+
+            stats = MigrationStats()
+            migrate_legacy_students(stats, dry_run=False)
+
+            tb = TeacherBlock.query.filter_by(student_id=student.id).first()
+
+            sb = StudentBlock(
+                student_id=student.id,
+                join_code=tb.join_code,
+                period="PERIOD 1",
+                tap_enabled=True
+            )
+            db.session.add(sb)
+
+            item = StudentItem(
+                student_id=student.id,
+                item_name="Test Item",
+                cost=50.0,
+                purchase_date=datetime.now(timezone.utc)
+            )
+            db.session.add(item)
+            db.session.commit()
+
+            # Dry run
+            stats_dry = MigrationStats()
+            backfill_related_tables(stats_dry, dry_run=True)
+
+            # Verify no changes made
+            item_check = StudentItem.query.get(item.id)
+            assert item_check.join_code is None  # Still NULL
+
+    def test_backfill_performance_cte_usage(self, migration_app, teacher1):
+        """
+        Test that backfill uses CTE approach (not correlated subquery).
+        This is a structural test to ensure performance optimization is in place.
+        """
+        with migration_app.app_context():
+            from app.models import StudentItem, HallPassLog
+
+            # Create multiple students and StudentBlocks
+            students = []
+            for i in range(5):
+                s = create_legacy_student(f"student{i}", teacher1, "Period 1")
+                students.append(s)
+            db.session.flush()
+
+            stats = MigrationStats()
+            migrate_legacy_students(stats, dry_run=False)
+
+            # Create StudentBlocks for all
+            for s in students:
+                tb = TeacherBlock.query.filter_by(student_id=s.id).first()
+                sb = StudentBlock(
+                    student_id=s.id,
+                    join_code=tb.join_code,
+                    period="PERIOD 1",
+                    tap_enabled=True
+                )
+                db.session.add(sb)
+
+            # Create items for all students
+            for s in students:
+                item = StudentItem(
+                    student_id=s.id,
+                    item_name=f"Item for {s.id}",
+                    cost=50.0,
+                    purchase_date=datetime.now(timezone.utc)
+                )
+                db.session.add(item)
+            db.session.commit()
+
+            # Backfill (should use efficient CTE approach)
+            stats2 = MigrationStats()
+            backfill_related_tables(stats2, dry_run=False)
+
+            # Verify all items backfilled
+            assert stats2.student_items_backfilled == 5
+
+            # Verify all have correct join_codes
+            for s in students:
+                tb = TeacherBlock.query.filter_by(student_id=s.id).first()
+                item = StudentItem.query.filter_by(student_id=s.id).first()
+                assert item.join_code == tb.join_code

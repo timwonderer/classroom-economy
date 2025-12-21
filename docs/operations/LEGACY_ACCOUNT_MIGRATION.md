@@ -191,32 +191,47 @@ WHERE te.join_code IS NULL
 **Strategy:**
 - Match records to `StudentBlock` by `student_id`, and also by `period` when the target table
   includes a `period` column
-- Use the `join_code` from `StudentBlock` (first matching record when period is absent)
-- Bulk SQL update for performance
+- Use CTE (Common Table Expression) with `DISTINCT ON` for optimal performance
+- Avoids correlated subqueries which are inefficient on large datasets
 
 **SQL Pattern (dynamic by table shape):**
 ```sql
 -- When the table has a period column
-UPDATE {table_name} AS t
-SET join_code = (
-    SELECT sb.join_code FROM student_blocks AS sb
-    WHERE t.student_id = sb.student_id
-      AND UPPER(t.period) = UPPER(sb.period)
-      AND sb.join_code IS NOT NULL AND sb.join_code != ''
-    LIMIT 1
+WITH student_period_join_codes AS (
+    SELECT DISTINCT ON (student_id, UPPER(period))
+        student_id,
+        period,
+        join_code
+    FROM student_blocks
+    WHERE join_code IS NOT NULL AND join_code != ''
+    ORDER BY student_id, UPPER(period), join_code
 )
-WHERE t.join_code IS NULL;
+UPDATE {table_name} AS t
+SET join_code = spjc.join_code
+FROM student_period_join_codes AS spjc
+WHERE t.join_code IS NULL
+  AND t.student_id = spjc.student_id
+  AND UPPER(t.period) = UPPER(spjc.period);
 
 -- When the table does NOT have a period column (ambiguous for multi-class students)
-UPDATE {table_name} AS t
-SET join_code = (
-    SELECT sb.join_code FROM student_blocks AS sb
-    WHERE t.student_id = sb.student_id
-      AND sb.join_code IS NOT NULL AND sb.join_code != ''
-    LIMIT 1
+WITH student_join_codes AS (
+    SELECT DISTINCT ON (student_id)
+        student_id,
+        join_code
+    FROM student_blocks
+    WHERE join_code IS NOT NULL AND join_code != ''
+    ORDER BY student_id, join_code
 )
-WHERE t.join_code IS NULL;
+UPDATE {table_name} AS t
+SET join_code = sjc.join_code
+FROM student_join_codes AS sjc
+WHERE t.join_code IS NULL
+  AND t.student_id = sjc.student_id;
 ```
+
+**Performance Note:**
+- Uses CTE with `DISTINCT ON` instead of correlated subquery for significantly better performance on large datasets
+- Single table scan of `student_blocks` instead of per-row subquery execution
 
 **Limitations:**
 - Tables without a `period` column (e.g., `student_items`, `student_insurance`) are inherently
