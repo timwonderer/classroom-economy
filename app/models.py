@@ -1317,84 +1317,33 @@ class TeacherOnboarding(db.Model):
 
 
 # -------------------- ANNOUNCEMENT MODELS --------------------
-class Announcement(db.Model):
-    """
-    System-wide announcements created by system admins.
 
-    Announcements appear as banners at the top of pages for all users.
-    Only one announcement can be active at a time.
-    Users can dismiss announcements, which are tracked per-user.
-    """
+class Announcement(db.Model):
+    """Model for system-wide announcements."""
     __tablename__ = 'announcements'
     id = db.Column(db.Integer, primary_key=True)
-
-    # Announcement content
-    title = db.Column(db.String(200), nullable=False)
     message = db.Column(db.Text, nullable=False)
-
-    # Visual styling (Bootstrap alert types: info, warning, success, danger)
-    announcement_type = db.Column(db.String(20), default='info', nullable=False)
-
-    # Status
-    is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
-
-    # Metadata
     created_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
-    updated_at = db.Column(db.DateTime, default=_utc_now, onupdate=_utc_now, nullable=False)
-    created_by_sysadmin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id'), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    level = db.Column(db.String(20), default='info', nullable=False)  # 'info', 'warning', 'critical'
 
-    # Relationships
-    created_by = db.relationship('SystemAdmin', backref='announcements')
     dismissals = db.relationship('AnnouncementDismissal', backref='announcement', lazy='dynamic', cascade='all, delete-orphan')
 
     def __repr__(self):
-        status = 'active' if self.is_active else 'inactive'
-        return f'<Announcement {self.id}: {self.title[:30]} ({status})>'
-
-    def is_dismissed_by_user(self, user_type, user_id):
-        """
-        Check if this announcement has been dismissed by a specific user.
-
-        Args:
-            user_type: 'student', 'teacher', or 'sysadmin'
-            user_id: ID of the user in their respective table
-
-        Returns:
-            bool: True if the user has dismissed this announcement
-        """
-        return AnnouncementDismissal.query.filter_by(
-            announcement_id=self.id,
-            user_type=user_type,
-            user_id=user_id
-        ).first() is not None
+        return f'<Announcement {self.id}>'
 
 
 class AnnouncementDismissal(db.Model):
-    """
-    Tracks which users have dismissed which announcements.
-
-    Each user (student, teacher, or sysadmin) can dismiss an announcement once.
-    Dismissals are permanent for that announcement - if a new announcement is created,
-    users will see it even if they dismissed the previous one.
-    """
+    """Tracks when an admin dismisses an announcement."""
     __tablename__ = 'announcement_dismissals'
     id = db.Column(db.Integer, primary_key=True)
-
-    # Which announcement was dismissed
-    announcement_id = db.Column(db.Integer, db.ForeignKey('announcements.id', ondelete='CASCADE'), nullable=False)
-
-    # Who dismissed it
-    user_type = db.Column(db.String(20), nullable=False)  # 'student', 'teacher', 'sysadmin'
-    user_id = db.Column(db.Integer, nullable=False)  # ID in the respective user table
-
-    # When it was dismissed
+    announcement_id = db.Column(db.Integer, db.ForeignKey('announcements.id'), nullable=False)
+    admin_id = db.Column(db.Integer, db.ForeignKey('admins.id'), nullable=False)
     dismissed_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
 
-    # Ensure each user can only dismiss an announcement once
     __table_args__ = (
-        db.UniqueConstraint('announcement_id', 'user_type', 'user_id', name='uq_announcement_user_dismissal'),
-        db.Index('ix_announcement_dismissals_user', 'user_type', 'user_id'),
+        db.UniqueConstraint('announcement_id', 'admin_id', name='uq_announcement_dismissal_announcement_admin'),
     )
 
     def __repr__(self):
-        return f'<AnnouncementDismissal announcement={self.announcement_id} user={self.user_type}:{self.user_id}>'
+        return f'<AnnouncementDismissal announcement={self.announcement_id} admin={self.admin_id}>'
