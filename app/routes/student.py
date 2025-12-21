@@ -461,7 +461,7 @@ def claim_account():
                 dob_input = dob_input.strip()
                 dob_input = datetime.strptime(dob_input, "%Y-%m-%d").date()
             dob_sum = dob_input.month + dob_input.day + dob_input.year
-        except Exception:
+        except (ValueError, AttributeError, TypeError):
             flash("Please enter a valid birth date.", "claim")
             return redirect(url_for('student.claim_account'))
 
