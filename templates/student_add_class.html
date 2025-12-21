@@ -80,12 +80,11 @@
                     <div class="mb-4">
                         <label for="dob_sum" class="form-label">
                             <span class="material-symbols-outlined align-middle" style="font-size: 1.2rem;">cake</span>
-                            Birthday Sum
+                            Date of Birth
                         </label>
-                        {{ form.dob_sum(class="form-control", placeholder="Example: 2028", autocomplete="off") }}
+                        {{ form.dob_sum(class="form-control", type="date", autocomplete="off") }}
                         <small class="form-text text-muted">
-                            Add up the numerical value of your birth month, day, and year<br>
-                            <strong>Example:</strong> March 15, 2010 → 3 + 15 + 2010 = <code>2028</code>
+                            Enter your date of birth to verify your identity
                         </small>
                         {% for error in form.dob_sum.errors %}
                             <div class="text-danger small mt-1">{{ error }}</div>

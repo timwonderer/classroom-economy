@@ -1,249 +1,182 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Classroom Token Hub - Account Recovery</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="{{ static_url('css/style.css') }}" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         body {
-            font-family: 'Inter', sans-serif;
-            height: 100vh;
-            background: #fffaf5;
-        }
-
-        .login-wrapper {
+            background-color: var(--background);
             display: flex;
-            height:100vh;
-            width:100vw;
-            padding: 0;
-            align-items: stretch;
-        }
-
-        .login-form-side {
-            flex: 1;
-            display:flex;
             align-items: center;
             justify-content: center;
-            background: #ffffff;
-            height: 100vh;
+            min-height: 100vh;
+            margin: 0;
         }
-
-        .branding-side {
-            flex: 1;
-            background: linear-gradient(135deg, var(--primary) 0%, #00796B 50%, #004D40 100%);
+        .login-container {
+            width: 100%;
+            max-width: 900px;
+            background: white;
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
             display: flex;
+            min-height: 600px;
+        }
+        .login-left {
+            flex: 1;
+            padding: 3rem;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+        .login-right {
+            flex: 1;
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
+            display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             color: white;
+            padding: 3rem;
             position: relative;
-            height: 100vh;
-            max-width: 400px;
+            overflow: hidden;
         }
-
-        .branding-content {
-            text-align: center;
-            z-index: 2;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        .login-right::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
         }
-
-        .branding-logo-card {
-            background: rgba(255, 255, 255, 0.96);
-            padding: 2rem;
-            width: 300px;
-            height: 300px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+        .logo-img {
+            width: 400px;
+            height: 400px;
+            margin-bottom: 2rem;
+            position: relative;
+            z-index: 1;
         }
-
-        .branding-logo-card img {
-            max-width: 300px;
-            height: 300px;
-        }
-
-        .login-container {
-            width: 100%;
-            margin:auto;
-            max-width: 520px;
-        }
-
-        .login-container h1 {
-            margin-bottom: 0.5rem;
-            font-weight: 700;
-            color: var(--primary);
-            text-align: center;
-            font-size: 2rem;
-        }
-
-        .login-container .subtitle {
-            text-align: center;
-            color: #2c4a47;
-            margin-bottom: 1.5rem;
-            font-size: 0.95rem;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, var(--primary) 0%, #00796B 100%);
-            border: none;
-            padding: 0.85rem;
-            font-weight: 700;
-            transition: all 0.3s ease;
-            border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(243, 168, 54, 0.35);
-        }
-
-        .btn-primary:hover {
-            background: linear-gradient(135deg, #00796B 0%, #004D40 100%);
-        }
-
-        .first-time-link {
-            text-align: center;
-            margin-top: 2rem;
-            padding-top: 1rem;
-            border-top: 1px solid var(--primary);
-        }
-
-        .first-time-link a {
-            color: var(--primary);
-            text-decoration: none;
-            font-weight: 500;
-        }
-
-        .first-time-link a:hover {
-            color: #004D40;
-            text-decoration: underline;
-        }
-
-        .form-label {
-            font-weight: 500;
-            color: #495057;
-        }
-
-        .form-control:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 0.2rem rgba(246, 164, 59, 0.25);
-        }
-
-        .form-group {
-            margin-bottom: 1rem;
-        }
-
         .info-box {
-            background: #fff4e2;
+            background: var(--background);
             border: 1px solid var(--primary);
-            border-radius: 8px;
             padding: 1rem;
             margin-bottom: 1.5rem;
         }
-
         .info-box h5 {
             color: var(--primary);
             font-weight: 600;
             margin-bottom: 0.5rem;
         }
-
-        .info-box ul {
-            margin-bottom: 0;
-            padding-left: 1.5rem;
+        .subtitle {
+            color: var(--secondary) !important;
         }
-
+        .form-label {
+            color: var(--secondary) !important;
+            text-transform: uppercase;
+            font-weight: 600;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+        a {
+            color: var(--secondary);
+        }
+        a:hover {
+            color: var(--secondary);
+            opacity: 0.8;
+        }
+        .btn-primary {
+            background: var(--primary);
+            border: none;
+            color: white;
+            transition: all 0.3s ease;
+        }
+        .btn-primary:hover {
+            background: var(--secondary);
+            color: #2c2c2c;
+        }
         @media (max-width: 768px) {
-            .branding-side {
+            .login-container {
+                flex-direction: column;
+                margin: 1rem;
+                min-height: auto;
+            }
+            .login-right {
                 display: none;
             }
-
-            .login-form-side {
-                flex: 1;
+            .login-left {
+                padding: 2rem;
             }
         }
     </style>
 </head>
-
 <body>
-    <div class="login-wrapper">
-        <!-- Left side: Recovery Form -->
-        <div class="login-form-side">
-            <div class="login-container">
-
-                <h1>Account <span style="font-weight:300">Recovery</span></h1>
+    <div class="login-container">
+        <div class="login-left">
+            <div class="mb-2">
+                <small class="text-muted">TEACHER PORTAL</small>
+                <h1 class="h3 fw-bold text-primary">Account Recovery</h1>
                 <p class="subtitle">Recover your teacher account using student usernames</p>
+            </div>
 
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                  {% if messages %}
-                    <div class="mb-3">
-                      {% for category, message in messages %}
-                        <div class="alert
-                          {% if category == 'success' %}
-                            alert-success
-                          {% elif category == 'error' %}
-                            alert-danger
-                          {% else %}
-                            alert-secondary
-                          {% endif %}
-                          alert-dismissible fade show" role="alert">
-                          {{ message }}
-                          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-                        </div>
-                      {% endfor %}
+            {% with messages = get_flashed_messages(with_categories=true) %}
+              {% if messages %}
+                <div class="mb-3">
+                  {% for category, message in messages %}
+                    <div class="alert
+                      {% if category == 'success' %}
+                        alert-success
+                      {% elif category == 'error' %}
+                        alert-danger
+                      {% else %}
+                        alert-secondary
+                      {% endif %}
+                      alert-dismissible fade show" role="alert">
+                      {{ message }}
+                      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
                     </div>
-                  {% endif %}
-                {% endwith %}
+                  {% endfor %}
+                </div>
+              {% endif %}
+            {% endwith %}
 
-                <div class="info-box">
-                    <h5>How Recovery Works</h5>
-                    <ul class="small">
-                        <li>Provide <strong>one student username from EACH class</strong> you teach</li>
-                        <li>Enter your <strong>Date of Birth sum</strong> (MM+DD+YYYY)</li>
-                        <li>Upon verification, you can reset your username and TOTP</li>
-                    </ul>
+            <div class="info-box">
+                <h5>How Recovery Works</h5>
+                <ul class="small">
+                    <li>Provide <strong>one student username from EACH class</strong> you teach</li>
+                    <li>Enter your <strong>Date of Birth sum</strong> (MM+DD+YYYY)</li>
+                    <li>Upon verification, you can reset your username and TOTP</li>
+                </ul>
+            </div>
+
+            <form method="POST" action="{{ url_for('admin.recover') }}">
+                {{ form.csrf_token if form and form.csrf_token }}
+
+                <div class="mb-3">
+                    <label for="student_usernames" class="form-label">Student Usernames</label>
+                    <input id="student_usernames" name="student_usernames" type="text" required autocomplete="off" class="form-control" placeholder="e.g., john_smith, jane_doe, mike_jones">
+                    <small class="text-muted">Enter one username from each class you teach, separated by commas</small>
                 </div>
 
-                <form method="POST" action="{{ url_for('admin.recover') }}">
-                    {{ form.csrf_token if form and form.csrf_token }}
-
-                    <div class="form-group">
-                        <label for="student_usernames" class="form-label">Student Usernames</label>
-                        <input id="student_usernames" name="student_usernames" type="text" required autocomplete="off" class="form-control" placeholder="e.g., john_smith, jane_doe, mike_jones">
-                        <small class="text-muted">Enter one username from each class you teach, separated by commas</small>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="dob_sum" class="form-label">Date of Birth Sum</label>
-                        <input id="dob_sum" name="dob_sum" type="text" required autocomplete="off" class="form-control" placeholder="MM+DD+YYYY (e.g., 03+15+1985 = 2003)">
-                        <small class="text-muted">Add your birth month + day + year</small>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary w-100">Verify Identity</button>
-                </form>
-
-                <div class="first-time-link">
-                    <p class="mb-2">Remember your credentials?</p>
-                    <a href="{{ url_for('admin.login') }}">Back to Login</a>
+                <div class="mb-4">
+                    <label for="dob_sum" class="form-label">Date of Birth</label>
+                    <input id="dob_sum" name="dob_sum" type="date" required autocomplete="off" class="form-control form-control-lg">
+                    <small class="text-muted">Enter your date of birth</small>
                 </div>
+
+                <button type="submit" class="btn btn-primary w-100 btn-lg mb-4">Verify Identity</button>
+            </form>
+
+            <div class="text-center pt-3 border-top">
+                <p class="mb-2 text-muted small">Remember your credentials?</p>
+                <a href="{{ url_for('admin.login') }}" class="text-decoration-none">Back to Login</a>
             </div>
         </div>
-
-        <!-- Right side: Branding -->
-        <div class="branding-side">
-            <div class="branding-content">
-                <div class="branding-logo-card">
-                    <img src="{{ static_url('images/teacher-logo-192.png') }}" alt="Admin Logo">
-                </div>
-            </div>
+        <div class="login-right">
+            <img src="{{ static_url('images/logo_teacher_transparent_512.png') }}" alt="Logo" class="logo-img">
         </div>
     </div>
 

@@ -34,7 +34,7 @@ An interactive banking and classroom management platform for teaching students a
 - **Rent & Fees** — Optional recurring rent with waivers and late-fee configuration
 - **TOTP Authentication** — Secure admin access with two-factor authentication
 
-### Mobile & PWA Features ✨
+### Mobile & PWA Features 
 
 - **Progressive Web App** — Install as mobile app on iOS and Android devices
 - **Offline Support** — Intelligent caching with offline fallback page
@@ -43,7 +43,7 @@ An interactive banking and classroom management platform for teaching students a
 - **Fast Performance** — Aggressive caching for quick load times
 - **Home Screen Installation** — Add to home screen for app-like experience
 
-### Accessibility Features ♿
+### Accessibility Features 
 
 - **Enhanced Accessibility** — Improvements following WCAG 2.1 AA guidelines
 - **Screen Reader Support** — Optimized for NVDA, JAWS, and VoiceOver
@@ -51,6 +51,9 @@ An interactive banking and classroom management platform for teaching students a
 - **ARIA Labels** — Comprehensive labeling for assistive technologies
 - **High Contrast** — Improved color contrast ratios for better readability
 - **Responsive Design** — Works seamlessly across all device sizes
+
+> [!IMPORTANT]
+> While the app is designed to be accessible and meet WCAG 2.1 guidelines, no claims of compliance of any kind is being made or implied. It is not recommended to deploy this app without external audits or validations if compliance is required by law.
 
 ### Security Features
 
