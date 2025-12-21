@@ -819,17 +819,18 @@ def signup():
     if form.validate_on_submit():
         username = form.username.data.strip()
         invite_code = form.invite_code.data.strip()
-        dob_sum_str = form.dob_sum.data.strip()
+        dob_input = form.dob_sum.data
         totp_code = request.form.get("totp_code", "").strip()
 
         # Validate and parse DOB sum
         try:
-            dob_sum = int(dob_sum_str)
-            if dob_sum <= 0:
-                raise ValueError("DOB sum must be positive")
-        except ValueError:
-            current_app.logger.warning(f"🛑 Admin signup failed: invalid DOB sum")
-            msg = "Invalid date of birth sum. Please enter a valid number."
+            if isinstance(dob_input, str):
+                dob_input = dob_input.strip()
+                dob_input = datetime.strptime(dob_input, "%Y-%m-%d").date()
+            dob_sum = dob_input.month + dob_input.day + dob_input.year
+        except (ValueError, AttributeError, TypeError):
+            current_app.logger.warning(f"🛑 Admin signup failed: invalid DOB input")
+            msg = "Invalid date of birth. Please enter a valid date."
             if is_json:
                 return jsonify(status="error", message=msg), 400
             flash(msg, "error")
@@ -962,15 +963,16 @@ def recover():
     form = AdminRecoveryForm()
     if form.validate_on_submit():
         student_usernames_str = form.student_usernames.data.strip()
-        dob_sum_str = form.dob_sum.data.strip()
+        dob_input = form.dob_sum.data
 
-        # Parse DOB sum
+        # Parse DOB and calculate sum
         try:
-            dob_sum = int(dob_sum_str)
-            if dob_sum <= 0:
-                raise ValueError("DOB sum must be positive")
-        except ValueError:
-            flash("Invalid date of birth sum. Please enter a valid number.", "error")
+            if isinstance(dob_input, str):
+                dob_input = dob_input.strip()
+                dob_input = datetime.strptime(dob_input, "%Y-%m-%d").date()
+            dob_sum = dob_input.month + dob_input.day + dob_input.year
+        except (ValueError, AttributeError, TypeError):
+            flash("Invalid date of birth. Please enter a valid date.", "error")
             return render_template("admin_recover.html", form=form)
 
         # Parse student usernames

@@ -1,7 +1,7 @@
 :root {
     --primary: #1a4d47;
     --primary-hover: #2a5d57;
-    --secondary: #d4a574;
+    --secondary: #ac8255;
     --secondary-hover: #c49564;
     --background: #f5f5f3;
     --surface: #fafaf8;
@@ -26,9 +26,9 @@ body.student-theme {
     --primary-hover-home-icon-bill: #ffd900;
     --primary-hover-home-icon-store: #00ffbf;
     --primary-hover-home-icon-stock: #ff6c7d;
-    --secondary: #E89B6D;
+    --secondary: #ac8255;
     --secondary-hover: #D88B5D;
-    --background: #F4F6F9;
+    --background: #f5f5f3;
     --surface: #FFFFFF;
     --text-primary: #2c2c2c;
     --text-secondary: #6c757d;
