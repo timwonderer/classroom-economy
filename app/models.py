@@ -1333,7 +1333,7 @@ class Announcement(db.Model):
     message = db.Column(db.Text, nullable=False)
 
     # Visual styling (Bootstrap alert types: info, warning, success, danger)
-    announcement_type = db.Column(db.String(20), default='info', nullable=False)
+    announcement_type = db.Column(db.Enum('info', 'warning', 'success', 'danger', name='announcement_type_enum'), default='info', nullable=False)
 
     # Status
     is_active = db.Column(db.Boolean, default=True, nullable=False, index=True)
