@@ -61,8 +61,29 @@ python scripts/cleanup_duplicates_flask.py --delete  # Remove duplicates
 #### `cleanup_duplicates.py`
 Legacy cleanup script (simpler version). Use `cleanup_duplicates_flask.py` for production as it properly handles data migration.
 
+#### `comprehensive_legacy_migration.py` ⭐ **RECOMMENDED**
+Complete, all-in-one migration of legacy accounts to the new multi-tenancy system. This is the **recommended approach** for migrating production databases.
+
+**What it does:**
+- Migrates legacy students (creates StudentTeacher + TeacherBlock entries)
+- Backfills join_codes for all TeacherBlock entries
+- Backfills join_codes for transactions, tap events, and related tables
+- Provides comprehensive verification and error reporting
+- Supports dry-run mode for safe preview before applying changes
+
+**Usage:**
+```bash
+# Preview changes (recommended first)
+python scripts/comprehensive_legacy_migration.py --dry-run
+
+# Run migration
+python scripts/comprehensive_legacy_migration.py
+```
+
+**Documentation:** [Legacy Account Migration Guide](../docs/operations/LEGACY_ACCOUNT_MIGRATION.md)
+
 #### `migrate_legacy_students.py`
-Migrates legacy students (pre-join-code system) to use proper `StudentTeacher` associations and `TeacherBlock` entries.
+Migrates legacy students (pre-join-code system) to use proper `StudentTeacher` associations and `TeacherBlock` entries. **Note:** For production use, consider using `comprehensive_legacy_migration.py` instead.
 
 **Usage:**
 ```bash
@@ -72,11 +93,19 @@ python scripts/migrate_legacy_students.py
 **Note:** Also available as Flask CLI command: `flask migrate-legacy-students`
 
 #### `backfill_join_codes.py`
-Backfills join codes for teacher-block combinations that are missing them.
+Backfills join codes for teacher-block combinations that are missing them. **Note:** For production use, consider using `comprehensive_legacy_migration.py` instead.
 
 **Usage:**
 ```bash
 python scripts/backfill_join_codes.py
+```
+
+#### `fix_missing_student_teacher_associations.py`
+Creates StudentTeacher records for students missing them. **Note:** For production use, consider using `comprehensive_legacy_migration.py` instead.
+
+**Usage:**
+```bash
+python scripts/fix_missing_student_teacher_associations.py
 ```
 
 ---
@@ -193,4 +222,4 @@ When adding new scripts to this directory:
 
 ---
 
-**Last Updated:** 2025-11-28
+**Last Updated:** 2025-12-19
