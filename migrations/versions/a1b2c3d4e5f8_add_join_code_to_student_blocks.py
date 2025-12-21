@@ -1,6 +1,6 @@
 """Add join_code to student_blocks table
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: a1b2c3d4e5f8
 Revises: z2a3b4c5d6e7
 Create Date: 2025-12-21 19:00:00.000000
 
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'a1b2c3d4e5f6'
+revision = 'a1b2c3d4e5f8'
 down_revision = 'z2a3b4c5d6e7'
 branch_labels = None
 depends_on = None
