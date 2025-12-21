@@ -98,6 +98,7 @@ def test_new_student_can_claim_in_legacy_class(client):
     # Now simulate teacher uploading a roster with a new student
     # This would create a real TeacherBlock entry (not a placeholder)
     new_salt = get_random_salt()
+    # DOB Sum 2025 -> e.g. 2023-01-01 (2023+1+1 = 2025)
     new_seat = TeacherBlock(
         teacher_id=teacher.id,
         block="A",
@@ -123,7 +124,7 @@ def test_new_student_can_claim_in_legacy_class(client):
             "join_code": join_code,
             "first_initial": "N",
             "last_name": "Smith",
-            "dob_sum": "2025",
+            "dob_sum": "2023-01-01",  # Sums to 2025
         },
         follow_redirects=False,
     )
@@ -236,7 +237,7 @@ def test_claim_succeeds_when_seat_uses_last_initial_hash(client):
             "join_code": join_code,
             "first_initial": "B",
             "last_name": last_name,
-            "dob_sum": "2030",
+            "dob_sum": "2028-01-01",  # Sums to 2030
         },
         follow_redirects=False,
     )
