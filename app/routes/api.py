@@ -1985,41 +1985,19 @@ def student_status():
 @api_bp.route('/set-timezone', methods=['POST'])
 def set_timezone():
     """Store user's timezone in session for datetime formatting"""
-    # Allow access if user is logged in as student OR admin
-    is_authenticated = False
-    now = datetime.now(timezone.utc)
+    from app.auth import get_current_user_identity
+    user_type, user_id = get_current_user_identity()
 
-    # Check Admin Session
-    if session.get('is_admin'):
-        last_activity = session.get('last_activity')
-        if last_activity:
-            try:
-                last_activity_dt = datetime.fromisoformat(last_activity)
-                if (now - last_activity_dt) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-                    is_authenticated = True
-                    session['last_activity'] = now.isoformat()
-            except ValueError:
-                pass # Invalid date format, treat as unauthenticated
-        else:
-             # If no last_activity but is_admin is set, treat as active for now
-             # (matches admin_required logic which would set it if missing)
-             is_authenticated = True
-             session['last_activity'] = now.isoformat()
-
-    # Check Student Session (if not already authenticated as admin)
-    if not is_authenticated and 'student_id' in session:
-        login_time_str = session.get('login_time')
-        if login_time_str:
-            try:
-                login_time = datetime.fromisoformat(login_time_str)
-                if (now - login_time) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-                    is_authenticated = True
-                    session['last_activity'] = now.isoformat()
-            except ValueError:
-                pass
-
-    if not is_authenticated:
+    if not user_type:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+    # Extend session timeout
+    now = datetime.now(timezone.utc)
+    if user_type in ['teacher', 'sysadmin']:
+        session['last_activity'] = now.isoformat()
+    elif user_type == 'student':
+        # Re-assert login time to keep session alive
+        session['login_time'] = now.isoformat()
 
     data = request.get_json()
     timezone_name = data.get('timezone')

@@ -355,3 +355,14 @@ def can_access_student_routes():
         bool: True if user can access student routes, False otherwise.
     """
     return 'student_id' in session or is_viewing_as_student()
+
+
+def get_current_user_identity():
+    """Returns the user_type and user_id for the currently logged-in user, or (None, None)."""
+    if session.get('is_system_admin'):
+        return 'sysadmin', session.get('sysadmin_id')
+    if session.get('admin_id'):
+        return 'teacher', session.get('admin_id')
+    if session.get('student_id'):
+        return 'student', session.get('student_id')
+    return None, None
