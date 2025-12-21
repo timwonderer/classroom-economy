@@ -28,7 +28,7 @@ from app.models import (
     DemoStudent, HallPassSettings, PayrollFine, PayrollReward,
     PayrollSettings, StoreItem
 )
-from app.auth import system_admin_required
+from app.auth import system_admin_required, SESSION_TIMEOUT_MINUTES
 from forms import SystemAdminLoginForm, SystemAdminInviteForm
 
 # Import utility functions
@@ -150,9 +150,24 @@ def auth_check():
     Note: Do NOT decorate with `@system_admin_required` because that may redirect
     to the login page; `auth_request` needs a clean 2xx/401 signal.
     """
-    if session.get("is_system_admin") and session.get("sysadmin_id") is not None:
-        return ("", 204)
-    raise Unauthorized("System admin authentication required")
+    if not session.get("is_system_admin") or session.get("sysadmin_id") is None:
+        raise Unauthorized("System admin authentication required")
+
+    # Enforce session timeout for security, consistent with other decorators.
+    last_activity_str = session.get("last_activity")
+    if last_activity_str:
+        last_activity = datetime.fromisoformat(last_activity_str)
+        if last_activity.tzinfo is None:
+            last_activity = last_activity.replace(tzinfo=timezone.utc)
+        if (datetime.now(timezone.utc) - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+            session.pop("is_system_admin", None)
+            session.pop("sysadmin_id", None)
+            session.pop("last_activity", None)
+            raise Unauthorized("Session expired")
+
+    # Update activity to keep session alive.
+    session["last_activity"] = datetime.now(timezone.utc).isoformat()
+    return ("", 204)
 
 @sysadmin_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("10 per minute")
