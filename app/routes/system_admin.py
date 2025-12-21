@@ -1135,33 +1135,13 @@ def send_reward_to_reporter(report_id):
     return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
 
 
-# -------------------- ANNOUNCEMENTS --------------------
+# -------------------- ANNOUNCEMENT MANAGEMENT --------------------
 
 @sysadmin_bp.route('/announcements')
 @system_admin_required
 def manage_announcements():
     """View and manage system-wide announcements."""
-    from sqlalchemy import func
-
-    # Subquery to count dismissals per announcement
-    dismissal_counts = db.session.query(
-        AnnouncementDismissal.announcement_id,
-        func.count(AnnouncementDismissal.id).label('dismissal_count')
-    ).group_by(AnnouncementDismissal.announcement_id).subquery()
-
-    # Join Announcement with the dismissal counts
-    announcements_with_counts = db.session.query(
-        Announcement,
-        dismissal_counts.c.dismissal_count
-    ).outerjoin(
-        dismissal_counts, Announcement.id == dismissal_counts.c.announcement_id
-    ).order_by(Announcement.created_at.desc()).all()
-
-    # Prepare data for the template
-    announcements = []
-    for announcement, count in announcements_with_counts:
-        announcement.dismissal_count = count or 0  # Attach count to the object
-        announcements.append(announcement)
+    announcements = Announcement.query.order_by(Announcement.created_at.desc()).all()
 
     return render_template(
         'system_admin_announcements.html',
@@ -1169,3 +1149,95 @@ def manage_announcements():
         page_title='Announcements',
         announcements=announcements
     )
+
+
+@sysadmin_bp.route('/announcements/create', methods=['POST'])
+@system_admin_required
+def create_announcement():
+    """Create a new announcement."""
+    title = request.form.get('title', '').strip()
+    message = request.form.get('message', '').strip()
+    announcement_type = request.form.get('announcement_type', 'info').strip()
+
+    # Validate input
+    if not title or not message:
+        flash("Title and message are required.", "error")
+        return redirect(url_for('sysadmin.manage_announcements'))
+
+    if announcement_type not in ['info', 'warning', 'success', 'danger']:
+        announcement_type = 'info'
+
+    try:
+        # Deactivate all existing announcements if this one should be active
+        is_active = request.form.get('is_active') == 'on'
+        if is_active:
+            Announcement.query.update({Announcement.is_active: False})
+
+        # Create new announcement
+        announcement = Announcement(
+            title=title,
+            message=message,
+            announcement_type=announcement_type,
+            is_active=is_active,
+            created_by_sysadmin_id=session.get('sysadmin_id')
+        )
+        db.session.add(announcement)
+        db.session.commit()
+
+        flash("Announcement created successfully.", "success")
+        current_app.logger.info(f"System admin {session.get('sysadmin_id')} created announcement {announcement.id}")
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error creating announcement: {str(e)}")
+        flash("Error creating announcement. Please try again.", "error")
+
+    return redirect(url_for('sysadmin.manage_announcements'))
+
+
+@sysadmin_bp.route('/announcements/<int:announcement_id>/toggle', methods=['POST'])
+@system_admin_required
+def toggle_announcement(announcement_id):
+    """Activate or deactivate an announcement. Only one can be active at a time."""
+    announcement = Announcement.query.get_or_404(announcement_id)
+
+    try:
+        if not announcement.is_active:
+            # Activating this announcement - deactivate all others
+            Announcement.query.filter(Announcement.id != announcement_id).update({Announcement.is_active: False})
+            announcement.is_active = True
+            flash(f"Announcement '{announcement.title}' activated.", "success")
+        else:
+            # Deactivating this announcement
+            announcement.is_active = False
+            flash(f"Announcement '{announcement.title}' deactivated.", "success")
+
+        db.session.commit()
+
+        current_app.logger.info(f"System admin {session.get('sysadmin_id')} toggled announcement {announcement_id} to {announcement.is_active}")
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error toggling announcement {announcement_id}: {str(e)}")
+        flash("Error toggling announcement. Please try again.", "error")
+
+    return redirect(url_for('sysadmin.manage_announcements'))
+
+
+@sysadmin_bp.route('/announcements/<int:announcement_id>/delete', methods=['POST'])
+@system_admin_required
+def delete_announcement(announcement_id):
+    """Delete an announcement and all its dismissals."""
+    announcement = Announcement.query.get_or_404(announcement_id)
+
+    try:
+        announcement_title = announcement.title
+        db.session.delete(announcement)
+        db.session.commit()
+
+        flash(f"Announcement '{announcement_title}' deleted successfully.", "success")
+        current_app.logger.info(f"System admin {session.get('sysadmin_id')} deleted announcement {announcement_id}")
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting announcement {announcement_id}: {str(e)}")
+        flash("Error deleting announcement. Please try again.", "error")
+
+    return redirect(url_for('sysadmin.manage_announcements'))
