@@ -1103,12 +1103,27 @@ def send_reward_to_reporter(report_id):
     if not teacher_id:
         flash("Cannot determine student's teacher. Reward not sent.", "error")
         return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
-    
+
+    # Get join_code for this student-teacher pair
+    # Query TeacherBlock to find the join_code for multi-tenancy isolation
+    teacher_block = TeacherBlock.query.filter_by(
+        student_id=student.id,
+        teacher_id=teacher_id,
+        is_claimed=True
+    ).first()
+
+    if not teacher_block or not teacher_block.join_code:
+        flash("Cannot determine student's class period. Reward not sent.", "error")
+        return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+
+    join_code = teacher_block.join_code
+
     try:
-        # Create transaction for the reward
+        # CRITICAL FIX: Add join_code to bug report reward transaction
         transaction = Transaction(
             student_id=student.id,
             teacher_id=teacher_id,
+            join_code=join_code,  # CRITICAL: Add join_code for period isolation
             amount=reward_amount,
             account_type='checking',
             description=f"Bug Report Reward (Report #{report_id})",

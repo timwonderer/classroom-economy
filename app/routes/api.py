@@ -87,10 +87,16 @@ def get_tips(user_type):
 
 # -------------------- STORE API --------------------
 
-def _charge_overdraft_fee_if_needed(student, banking_settings):
+def _charge_overdraft_fee_if_needed(student, banking_settings, teacher_id, join_code):
     """
     Check if student's checking balance is negative and charge overdraft fee if enabled.
     Returns (fee_charged, fee_amount) tuple.
+
+    Args:
+        student: Student object
+        banking_settings: BankingSettings object
+        teacher_id: Teacher ID for multi-tenancy isolation
+        join_code: Join code for multi-tenancy isolation
     """
     if not banking_settings or not banking_settings.overdraft_fee_enabled:
         return False, 0.0
@@ -137,9 +143,11 @@ def _charge_overdraft_fee_if_needed(student, banking_settings):
                 fee_amount = max(0, banking_settings.overdraft_fee_progressive_cap - abs(total_fees_this_month))
 
     if fee_amount > 0:
-        # Charge the fee
+        # CRITICAL FIX: Add teacher_id and join_code to overdraft fee transaction
         overdraft_fee_tx = Transaction(
             student_id=student.id,
+            teacher_id=teacher_id,  # CRITICAL: Add teacher_id for multi-tenancy
+            join_code=join_code,  # CRITICAL: Add join_code for period isolation
             amount=-fee_amount,
             account_type='checking',
             type='overdraft_fee',
@@ -307,7 +315,7 @@ def purchase_item():
                     db.session.flush()  # Flush to update balances
 
             # Check if overdraft fee should be charged (after overdraft protection)
-            fee_charged, fee_amount = _charge_overdraft_fee_if_needed(student, banking_settings)
+            fee_charged, fee_amount = _charge_overdraft_fee_if_needed(student, banking_settings, teacher_id, join_code)
 
             # Commit all transactions together
             db.session.commit()
@@ -399,7 +407,7 @@ def purchase_item():
                 db.session.flush()  # Flush to update balances
 
         # Check if overdraft fee should be charged (after overdraft protection)
-        fee_charged, fee_amount = _charge_overdraft_fee_if_needed(student, banking_settings)
+        fee_charged, fee_amount = _charge_overdraft_fee_if_needed(student, banking_settings, teacher_id, join_code)
 
         # --- Collective Item Logic ---
         if item.item_type == 'collective':
