@@ -53,6 +53,7 @@
 </head>
 <body class="d-flex bg-background {% if maintenance_bypass_active %}maintenance-active{% endif %}">
     <a href="#main-content" class="skip-link">Skip to main content</a>
+    {% include '_announcement_banner.html' %}
     {% if maintenance_bypass_active %}
     <div class="maintenance-banner">
         <span class="material-symbols-outlined align-text-bottom me-1" style="font-size: 18px;">visibility</span>

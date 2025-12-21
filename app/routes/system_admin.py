@@ -1131,7 +1131,7 @@ def send_reward_to_reporter(report_id):
         db.session.rollback()
         current_app.logger.error(f"Error sending reward for report {report_id}: {str(e)}")
         flash("Error sending reward. Please try again.", "error")
-    
+
     return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
 
 

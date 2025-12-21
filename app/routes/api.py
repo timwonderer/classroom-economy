@@ -20,7 +20,7 @@ from app.extensions import db, limiter
 from app.models import (
     Student, StoreItem, StudentItem, Transaction, TapEvent,
     HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
-    StudentTeacher, TeacherBlock, StudentBlock
+    StudentTeacher, TeacherBlock, StudentBlock, Announcement, AnnouncementDismissal
 )
 from app.auth import login_required, admin_required, get_logged_in_student, get_current_admin, SESSION_TIMEOUT_MINUTES
 from app.routes.student import get_current_teacher_id
@@ -1985,41 +1985,19 @@ def student_status():
 @api_bp.route('/set-timezone', methods=['POST'])
 def set_timezone():
     """Store user's timezone in session for datetime formatting"""
-    # Allow access if user is logged in as student OR admin
-    is_authenticated = False
-    now = datetime.now(timezone.utc)
+    from app.auth import get_current_user_identity
+    user_type, user_id = get_current_user_identity()
 
-    # Check Admin Session
-    if session.get('is_admin'):
-        last_activity = session.get('last_activity')
-        if last_activity:
-            try:
-                last_activity_dt = datetime.fromisoformat(last_activity)
-                if (now - last_activity_dt) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-                    is_authenticated = True
-                    session['last_activity'] = now.isoformat()
-            except ValueError:
-                pass # Invalid date format, treat as unauthenticated
-        else:
-             # If no last_activity but is_admin is set, treat as active for now
-             # (matches admin_required logic which would set it if missing)
-             is_authenticated = True
-             session['last_activity'] = now.isoformat()
-
-    # Check Student Session (if not already authenticated as admin)
-    if not is_authenticated and 'student_id' in session:
-        login_time_str = session.get('login_time')
-        if login_time_str:
-            try:
-                login_time = datetime.fromisoformat(login_time_str)
-                if (now - login_time) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-                    is_authenticated = True
-                    session['last_activity'] = now.isoformat()
-            except ValueError:
-                pass
-
-    if not is_authenticated:
+    if not user_type:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+    # Extend session timeout
+    now = datetime.now(timezone.utc)
+    if user_type in ['teacher', 'sysadmin']:
+        session['last_activity'] = now.isoformat()
+    elif user_type == 'student':
+        # Re-assert login time to keep session alive
+        session['login_time'] = now.isoformat()
 
     data = request.get_json()
     timezone_name = data.get('timezone')
@@ -2296,3 +2274,62 @@ def view_as_student_status():
         "status": "success",
         "view_as_student": session.get('view_as_student', False)
     })
+
+
+# -------------------- ANNOUNCEMENT API --------------------
+
+@api_bp.route('/announcement/dismiss/<int:announcement_id>', methods=['POST'])
+def dismiss_announcement(announcement_id):
+    """
+    Dismiss an announcement for the current user.
+
+    This endpoint works for students, teachers, and system admins.
+    It identifies the user type from the session and creates a dismissal record.
+    """
+    try:
+        # Determine user type and ID from session
+        user_type = None
+        user_id = None
+
+        if session.get('is_system_admin'):
+            user_type = 'sysadmin'
+            user_id = session.get('sysadmin_id')
+        elif session.get('admin_id'):
+            user_type = 'teacher'
+            user_id = session.get('admin_id')
+        elif session.get('student_id'):
+            user_type = 'student'
+            user_id = session.get('student_id')
+        else:
+            return jsonify({"error": "Not authenticated"}), 401
+
+        # Verify announcement exists
+        announcement = Announcement.query.get_or_404(announcement_id)
+
+        # Check if already dismissed
+        existing_dismissal = AnnouncementDismissal.query.filter_by(
+            announcement_id=announcement_id,
+            user_type=user_type,
+            user_id=user_id
+        ).first()
+
+        if existing_dismissal:
+            return jsonify({"status": "already_dismissed"}), 200
+
+        # Create dismissal record
+        dismissal = AnnouncementDismissal(
+            announcement_id=announcement_id,
+            user_type=user_type,
+            user_id=user_id
+        )
+        db.session.add(dismissal)
+        db.session.commit()
+
+        current_app.logger.info(f"{user_type} {user_id} dismissed announcement {announcement_id}")
+
+        return jsonify({"status": "success"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error dismissing announcement {announcement_id}: {str(e)}")
+        return jsonify({"error": "Failed to dismiss announcement"}), 500

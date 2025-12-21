@@ -1,0 +1,62 @@
+{% if active_announcement %}
+<div id="announcement-banner" class="announcement-banner alert alert-{{ active_announcement.announcement_type }} alert-dismissible fade show mb-0" role="alert" style="border-radius: 0; border-left: 0; border-right: 0; border-top: 0; position: relative; z-index: 1040;">
+    <div class="container-fluid d-flex align-items-center">
+        <span class="material-symbols-outlined me-2" style="font-size: 20px;">
+            {% if active_announcement.announcement_type == 'warning' %}
+                warning
+            {% elif active_announcement.announcement_type == 'danger' %}
+                error
+            {% elif active_announcement.announcement_type == 'success' %}
+                check_circle
+            {% else %}
+                info
+            {% endif %}
+        </span>
+        <div class="flex-grow-1">
+            <strong>{{ active_announcement.title }}</strong>
+            <span class="d-none d-md-inline"> — </span>
+            <span class="d-block d-md-inline">{{ active_announcement.message }}</span>
+        </div>
+        <button type="button" class="btn-close" data-announcement-id="{{ active_announcement.id }}" aria-label="Close"></button>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const banner = document.getElementById('announcement-banner');
+    if (banner) {
+        const closeButton = banner.querySelector('.btn-close');
+        closeButton.addEventListener('click', function() {
+            const announcementId = this.getAttribute('data-announcement-id');
+
+            // Send dismiss request to server
+            fetch(`/api/announcement/dismiss/${announcementId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('meta[name="csrf-token"]')?.content || ''
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success' || data.status === 'already_dismissed') {
+                    // Hide the banner with animation
+                    banner.classList.remove('show');
+                    setTimeout(() => {
+                        banner.remove();
+                    }, 150);
+                }
+            })
+            .catch(error => {
+                console.error('Error dismissing announcement:', error);
+                // Still hide the banner on client-side even if request fails
+                banner.classList.remove('show');
+                setTimeout(() => {
+                    banner.remove();
+                }, 150);
+            });
+        });
+    }
+});
+</script>
+{% endif %}
