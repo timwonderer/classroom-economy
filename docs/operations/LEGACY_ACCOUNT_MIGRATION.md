@@ -130,7 +130,7 @@ TeacherBlock entries for Teacher 5, Period 1:
 **Purpose:** Backfill `join_code` for all transactions
 
 **Strategy:**
-- Match transactions to `TeacherBlock` entries by `student_id`
+- Match transactions to `TeacherBlock` entries by BOTH `student_id` AND `teacher_id`
 - Use the `join_code` from the corresponding claimed seat
 - Bulk SQL update for performance
 
@@ -141,17 +141,19 @@ SET join_code = tb.join_code
 FROM teacher_blocks AS tb
 WHERE t.join_code IS NULL
   AND t.student_id = tb.student_id
+  AND t.teacher_id = tb.teacher_id
   AND tb.is_claimed = TRUE
   AND tb.join_code IS NOT NULL
   AND tb.join_code != '';
 ```
 
+**Multi-Tenancy Guarantee:**
+- Matching on both `student_id` AND `teacher_id` ensures proper isolation for students in multiple periods with the same teacher
+- Example: Student in "Teacher A - Period 1" and "Teacher A - Period 3" will have transactions correctly assigned to the appropriate period based on which teacher created the transaction
+
 **Limitations:**
 - Transactions without matching `TeacherBlock` remain NULL (orphaned data)
 - Legacy test data may remain with NULL `join_code`
-- Because `transaction` lacks a `period` column, students enrolled in multiple classes may have
-  their transactions associated with an arbitrary claimed class; review balances for multi-class
-  students after the backfill.
 
 #### Phase 4: Tap Event Join Code Backfill
 

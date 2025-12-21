@@ -13,10 +13,19 @@ and this project follows semantic versioning principles.
   - Migrates students with `teacher_id` to claim-based enrollment system
   - Creates missing `StudentTeacher` associations and `TeacherBlock` entries
   - Backfills `join_code` for all TeacherBlock entries
-  - Backfills `join_code` for transactions, tap events, and related tables
+  - Backfills `join_code` for transactions, tap events, and related tables with proper multi-tenancy isolation
+  - **FIXED:** Transaction backfill now matches on BOTH `student_id` AND `teacher_id` to ensure correct period assignment for students in multiple periods with same teacher
+  - **FIXED:** Block names normalized to uppercase for consistency across database
   - Includes dry-run mode for safe preview before applying changes
   - Provides comprehensive verification and error reporting
   - Located at: `scripts/comprehensive_legacy_migration.py`
+- **Comprehensive Test Suite for Legacy Migration** - Full test coverage for migration script
+  - Tests all 5 migration phases
+  - Tests critical multi-period student scenarios
+  - Tests idempotency and error handling
+  - Tests block casing normalization
+  - Tests rollback on errors
+  - Located at: `tests/test_comprehensive_legacy_migration.py`
 - **Legacy Account Migration Documentation** - Complete guide for migration process
   - Historical context and migration strategy
   - Step-by-step deployment instructions
