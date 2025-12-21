@@ -449,6 +449,10 @@ class StudentBlock(db.Model):
     student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
     period = db.Column(db.String(10), nullable=False)
 
+    # CRITICAL: join_code is the source of truth for class isolation
+    # Links this student-period combination to a specific class economy
+    join_code = db.Column(db.String(20), nullable=True, index=True)
+
     # Toggle for enabling/disabling tap in/out for this student in this period
     tap_enabled = db.Column(db.Boolean, default=True, nullable=False)
 
