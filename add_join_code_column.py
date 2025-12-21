@@ -2,7 +2,7 @@
 """
 Direct SQL migration to add join_code column to student_blocks table.
 This script is intended for SQLite databases only.
-
+"""
 import sqlite3
 import os
 import sys

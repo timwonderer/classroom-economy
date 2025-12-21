@@ -654,18 +654,25 @@ def give_bonus_all():
     # Get current admin ID for teacher_id
     current_admin_id = session.get('admin_id')
 
-    # Stream students in batches to reduce memory usage
-    students = _scoped_students().yield_per(50)
-    for student in students:
-        # CRITICAL FIX: Get join_code for this student-teacher pair
-        # Query TeacherBlock to find the join_code for multi-tenancy isolation
-        teacher_block = TeacherBlock.query.filter_by(
-            student_id=student.id,
-            teacher_id=current_admin_id,
-            is_claimed=True
-        ).first()
+    # Prefetch join_codes for all scoped students to avoid N+1 queries
+    students_query = _scoped_students()
+    student_ids_subquery = students_query.with_entities(Student.id).subquery()
+    teacher_blocks = (
+        TeacherBlock.query
+        .filter(
+            TeacherBlock.student_id.in_(student_ids_subquery),
+            TeacherBlock.teacher_id == current_admin_id,
+            TeacherBlock.is_claimed.is_(True)
+        )
+        .with_entities(TeacherBlock.student_id, TeacherBlock.join_code)
+        .all()
+    )
+    join_code_map = {student_id: join_code for student_id, join_code in teacher_blocks}
 
-        join_code = teacher_block.join_code if teacher_block else None
+    # Stream students in batches to reduce memory usage
+    students = students_query.yield_per(50)
+    for student in students:
+        join_code = join_code_map.get(student.id)
 
         tx = Transaction(
             student_id=student.id,
