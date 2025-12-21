@@ -828,7 +828,7 @@ def signup():
                 dob_input = dob_input.strip()
                 dob_input = datetime.strptime(dob_input, "%Y-%m-%d").date()
             dob_sum = dob_input.month + dob_input.day + dob_input.year
-        except Exception:
+        except (ValueError, AttributeError, TypeError):
             current_app.logger.warning(f"🛑 Admin signup failed: invalid DOB input")
             msg = "Invalid date of birth. Please enter a valid date."
             if is_json:
