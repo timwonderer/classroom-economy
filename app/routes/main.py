@@ -9,7 +9,7 @@ from flask import Blueprint, redirect, url_for, jsonify, current_app, session, r
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.extensions import db
+from app.extensions import db, limiter
 from app.models import Admin
 from app.utils.helpers import render_template_with_fallback as render_template, is_safe_url
 
@@ -131,8 +131,13 @@ def offline():
 
 
 @main_bp.route('/sw.js')
+@limiter.exempt
 def service_worker():
-    """Serve the service worker file from the root scope."""
+    """Serve the service worker file from the root scope.
+
+    Exempt from rate limiting because browsers check this frequently
+    for PWA updates and it's a static file that doesn't need protection.
+    """
     return current_app.send_static_file('sw.js')
 
 

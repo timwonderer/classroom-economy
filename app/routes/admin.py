@@ -770,18 +770,6 @@ def login():
     session.pop("admin_id", None)
     session.pop("last_activity", None)
     form = AdminLoginForm()
-    teacher_tips = [
-        "Students don't have to stay logged in after starting work. They'll continue to earn minutes even when away from the page.",
-        "Use the bulk transaction feature to quickly award or deduct tokens from multiple students.",
-        "Set up automated payroll to save time on manual attendance tracking.",
-        "The analytics dashboard shows spending trends to help you understand student behavior.",
-        "Create custom store items to incentivize specific behaviors or achievements.",
-        "Use insurance policies to teach students about risk management and financial protection.",
-        "Rent settings can simulate monthly expenses to teach budgeting skills.",
-        "Check the transaction log regularly to monitor unusual spending patterns.",
-        "Bonus tokens are a great way to reward exceptional effort or good citizenship.",
-        "Export your class data regularly for backup and analysis purposes."
-    ]
     if form.validate_on_submit():
         username = form.username.data.strip()
         totp_code = form.totp_code.data.strip()
@@ -805,7 +793,7 @@ def login():
         current_app.logger.warning(f"🔑 Admin login failed for {username}")
         flash("Invalid credentials or TOTP code.", "error")
         return redirect(url_for("admin.login", next=request.args.get("next")))
-    return render_template("admin_login.html", form=form, teacher_tips=teacher_tips)
+    return render_template("admin_login.html", form=form)
 
 
 @admin_bp.route('/signup', methods=['GET', 'POST'])
@@ -819,17 +807,18 @@ def signup():
     if form.validate_on_submit():
         username = form.username.data.strip()
         invite_code = form.invite_code.data.strip()
-        dob_sum_str = form.dob_sum.data.strip()
+        dob_input = form.dob_sum.data
         totp_code = request.form.get("totp_code", "").strip()
 
         # Validate and parse DOB sum
         try:
-            dob_sum = int(dob_sum_str)
-            if dob_sum <= 0:
-                raise ValueError("DOB sum must be positive")
-        except ValueError:
-            current_app.logger.warning(f"🛑 Admin signup failed: invalid DOB sum")
-            msg = "Invalid date of birth sum. Please enter a valid number."
+            if isinstance(dob_input, str):
+                dob_input = dob_input.strip()
+                dob_input = datetime.strptime(dob_input, "%Y-%m-%d").date()
+            dob_sum = dob_input.month + dob_input.day + dob_input.year
+        except (ValueError, AttributeError, TypeError):
+            current_app.logger.warning(f"🛑 Admin signup failed: invalid DOB input")
+            msg = "Invalid date of birth. Please enter a valid date."
             if is_json:
                 return jsonify(status="error", message=msg), 400
             flash(msg, "error")
@@ -962,15 +951,16 @@ def recover():
     form = AdminRecoveryForm()
     if form.validate_on_submit():
         student_usernames_str = form.student_usernames.data.strip()
-        dob_sum_str = form.dob_sum.data.strip()
+        dob_input = form.dob_sum.data
 
-        # Parse DOB sum
+        # Parse DOB and calculate sum
         try:
-            dob_sum = int(dob_sum_str)
-            if dob_sum <= 0:
-                raise ValueError("DOB sum must be positive")
-        except ValueError:
-            flash("Invalid date of birth sum. Please enter a valid number.", "error")
+            if isinstance(dob_input, str):
+                dob_input = dob_input.strip()
+                dob_input = datetime.strptime(dob_input, "%Y-%m-%d").date()
+            dob_sum = dob_input.month + dob_input.day + dob_input.year
+        except (ValueError, AttributeError, TypeError):
+            flash("Invalid date of birth. Please enter a valid date.", "error")
             return render_template("admin_recover.html", form=form)
 
         # Parse student usernames

@@ -454,13 +454,16 @@ def claim_account():
         join_code = format_join_code(form.join_code.data)
         first_initial = form.first_initial.data.strip().upper()
         last_name = form.last_name.data.strip()
-        dob_sum_str = form.dob_sum.data.strip()
+        dob_input = form.dob_sum.data
 
-        if not dob_sum_str.isdigit():
-            flash("DOB sum must be a number.", "claim")
+        try:
+            if isinstance(dob_input, str):
+                dob_input = dob_input.strip()
+                dob_input = datetime.strptime(dob_input, "%Y-%m-%d").date()
+            dob_sum = dob_input.month + dob_input.day + dob_input.year
+        except (ValueError, AttributeError, TypeError):
+            flash("Please enter a valid birth date.", "claim")
             return redirect(url_for('student.claim_account'))
-
-        dob_sum = int(dob_sum_str)
 
         # Find all unclaimed seats with this join code
         unclaimed_seats = TeacherBlock.query.filter_by(
@@ -745,14 +748,17 @@ def add_class():
         join_code = format_join_code(form.join_code.data)
         first_initial = form.first_initial.data.strip().upper()
         last_name = form.last_name.data.strip()
-        dob_sum_str = form.dob_sum.data.strip()
+        dob_input = form.dob_sum.data
 
-        # Validate DOB sum is numeric
-        if not dob_sum_str.isdigit():
-            flash("DOB sum must be a number.", "danger")
+        # Parse DOB and calculate sum
+        try:
+            if isinstance(dob_input, str):
+                dob_input = dob_input.strip()
+                dob_input = datetime.strptime(dob_input, "%Y-%m-%d").date()
+            dob_sum = dob_input.month + dob_input.day + dob_input.year
+        except (ValueError, AttributeError, TypeError):
+            flash("Invalid date of birth. Please enter a valid date.", "danger")
             return redirect(_get_return_target())
-
-        dob_sum = int(dob_sum_str)
 
         # Verify the credentials match the logged-in student
         if first_initial != student.first_name[:1].upper():
@@ -2593,18 +2599,6 @@ def rent_pay(period):
 def login():
     """Student login with username and PIN."""
     form = StudentLoginForm()
-    student_tips = [
-        "You don't have to stay logged in after starting work. You'll continue to earn minutes even when you're away from the page.",
-        "Check your balance regularly to track your earnings and plan your spending wisely.",
-        "Your teacher can award bonus tokens for exceptional work or good behavior.",
-        "Remember to log your attendance every day to earn your payroll minutes.",
-        "The shop refreshes with new items regularly - check back often for deals!",
-        "Save up for big purchases by setting financial goals for yourself.",
-        "Hall passes deduct from your balance - plan your breaks wisely.",
-        "Insurance can protect your balance from unexpected classroom events.",
-        "Ask your teacher about bonus opportunities to earn extra tokens.",
-        "Keep track of your transaction history to understand your spending habits."
-    ]
     if form.validate_on_submit():
         is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
@@ -2702,7 +2696,7 @@ def login():
 
     # Always display CTA to claim/create account for first-time users
     setup_cta = True
-    return render_template('student_login.html', setup_cta=setup_cta, form=form, student_tips=student_tips)
+    return render_template('student_login.html', setup_cta=setup_cta, form=form)
 
 
 @student_bp.route('/demo-login/<string:session_id>')
