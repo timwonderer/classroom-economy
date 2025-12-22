@@ -93,7 +93,7 @@ The AI model might interpret this as legitimate instructions and:
 **Audited Workflows:**
 - ✅ `deploy.yml` - No AI agents, secure
 - ✅ `check-migrations.yml` - No AI agents, secure
-- ✅ `summary.yml` - **VULNERABLE** - Disabled
+- ❌ `summary.yml` - **VULNERABLE** - Disabled
 - ✅ `label.yml` - No AI agents, secure (uses `pull_request_target` safely)
 - ✅ `toggle-maintenance.yml` - No AI agents, secure
 
