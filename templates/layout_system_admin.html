@@ -74,10 +74,10 @@
             </div>
         </a>
 
-        <div class="sysadmin-identity" style="font-size: 24px;">
-            System Admin
+        <div class="sysadmin-identity text-white" style="font-size: 20x;">
+            {{ current_sysadmin.username if current_sysadmin else "System Administrator" }}
             <div class="mt-0" style="font-size:10pt; color: rgba(212, 168, 87, 0.6)">
-                Full Platform Access
+                System Administrator
             </div>
         </div>
 
@@ -86,7 +86,7 @@
                 <span class="material-symbols-outlined">dashboard</span> Dashboard
             </a>
 
-            <div class="nav-group-label">Management</div>
+
             <a href="{{ url_for('sysadmin.manage_teachers') }}" class="{% if current_page == 'teachers' %}active{% endif %}">
                 <span class="material-symbols-outlined">group</span> Teacher Management
             </a>
@@ -95,7 +95,6 @@
                 <span class="material-symbols-outlined">hub</span> Teacher Overview
             </a>
 
-            <div class="nav-group-label">Monitoring</div>
             <a href="/sysadmin/grafana" class="{% if current_page == 'grafana' %}active{% endif %}" target="_blank">
                 <span class="material-symbols-outlined">monitoring</span> Grafana
             </a>
@@ -108,7 +107,6 @@
                 <span class="material-symbols-outlined">network_check</span> Network Activity
             </a>
 
-            <div class="nav-group-label">Support</div>
             <a href="{{ url_for('sysadmin.user_reports') }}" class="{% if current_page == 'user_reports' %}active{% endif %}">
                 <span class="material-symbols-outlined">bug_report</span> User Reports
             </a>
@@ -132,9 +130,7 @@
                     {{ self.page_title() }}
                 </h1>
                 <div class="meta" id="current-time"></div>
-                {% if page_subtitle %}
-                <div class="meta">{{ page_subtitle }}</div>
-                {% endif %}
+               
             </div>
         </div>
 
