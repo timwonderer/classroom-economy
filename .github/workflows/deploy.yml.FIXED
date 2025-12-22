@@ -1,0 +1,115 @@
+name: Deploy to DO on push to main
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up SSH
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.DO_DEPLOY_KEY }}
+
+    # SECURITY FIX: Add SSH host key verification to prevent MITM attacks
+    - name: Set up SSH host key verification
+      run: |
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        echo "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+        chmod 644 ~/.ssh/known_hosts
+        echo "✓ SSH host key verification enabled"
+
+    - name: Deploy to DO Production Server
+      run: |
+        MAINT_MODE="${{ vars.MAINTENANCE_MODE || 'false' }}"
+        MAINT_MESSAGE="${{ vars.MAINTENANCE_MESSAGE || 'We are performing scheduled maintenance.' }}"
+        MAINT_END="${{ vars.MAINTENANCE_EXPECTED_END || '' }}"
+        MAINT_CONTACT="${{ vars.MAINTENANCE_CONTACT || '' }}"
+        TURNSTILE_SITE="${{ secrets.TURNSTILE_SITE_KEY || '' }}"
+        TURNSTILE_SECRET="${{ secrets.TURNSTILE_SECRET_KEY || '' }}"
+
+        SSH_ENV_VARS="MAINT_MODE=$(printf %q "$MAINT_MODE") MAINT_MESSAGE=$(printf %q "$MAINT_MESSAGE") MAINT_END=$(printf %q "$MAINT_END") MAINT_CONTACT=$(printf %q "$MAINT_CONTACT") TURNSTILE_SITE=$(printf %q "$TURNSTILE_SITE") TURNSTILE_SECRET=$(printf %q "$TURNSTILE_SECRET")"
+
+        # Connect to the production server and deploy
+        # SECURITY: Removed -o StrictHostKeyChecking=no (now uses known_hosts)
+        ssh root@${{ secrets.PRODUCTION_SERVER_IP }} "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
+
+          set -e  # Exit immediately if a command exits with a non-zero status
+
+          echo 'Navigating to project directory...'
+          cd ~/classroom-economy
+
+          echo 'Fetching latest changes from main...'
+          git fetch origin main
+
+          echo 'Resetting to match remote main branch...'
+          git reset --hard origin/main
+
+          echo 'Activating virtual environment...'
+          source venv/bin/activate
+
+          echo 'Updating environment variables...'
+          # SECURITY: Set restrictive file permissions before writing secrets
+          touch .env
+          chmod 600 .env
+
+          # Remove old variables if they exist
+          sed -i '/^MAINTENANCE_MODE=/d' .env 2>/dev/null || true
+          sed -i '/^MAINTENANCE_MESSAGE=/d' .env 2>/dev/null || true
+          sed -i '/^MAINTENANCE_EXPECTED_END=/d' .env 2>/dev/null || true
+          sed -i '/^MAINTENANCE_CONTACT=/d' .env 2>/dev/null || true
+          sed -i '/^TURNSTILE_SITE_KEY=/d' .env 2>/dev/null || true
+          sed -i '/^TURNSTILE_SECRET_KEY=/d' .env 2>/dev/null || true
+
+          # Add updated variables from GitHub
+          echo "MAINTENANCE_MODE=${MAINT_MODE}" >> .env
+          echo "MAINTENANCE_MESSAGE=\"${MAINT_MESSAGE}\"" >> .env
+          echo "MAINTENANCE_EXPECTED_END=\"${MAINT_END}\"" >> .env
+          echo "MAINTENANCE_CONTACT=\"${MAINT_CONTACT}\"" >> .env
+
+          # Add Turnstile keys if provided
+          if [ -n "${TURNSTILE_SITE}" ]; then
+            echo "TURNSTILE_SITE_KEY=${TURNSTILE_SITE}" >> .env
+            echo "✓ Turnstile site key configured"
+          fi
+          if [ -n "${TURNSTILE_SECRET}" ]; then
+            echo "TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET}" >> .env
+            echo "✓ Turnstile secret key configured"
+          fi
+
+          # SECURITY: Verify file permissions
+          ls -la .env | grep -q '^-rw-------' && echo "✓ Secure .env permissions (600)" || echo "⚠ Warning: .env permissions not set correctly"
+
+          echo 'Installing dependencies...'
+          pip install -r requirements.txt
+
+          # Ensure DATABASE_URL is set for migrations
+          echo 'Exporting DATABASE_URL for production migrations...'
+
+          echo '🔍 Running migration safety checks...'
+          bash scripts/check-migrations.sh || {
+            echo "❌ Migration safety check failed - deployment aborted"
+            echo "This usually means there are multiple migration heads."
+            echo "Fix this by creating a merge migration locally and pushing to main."
+            exit 1
+          }
+
+          echo 'Running database migrations...'
+          flask db upgrade
+
+
+          echo 'Restarting Gunicorn...'
+          sudo systemctl restart gunicorn
+
+          echo 'Deployment completed successfully.'
+
+        EOF
+

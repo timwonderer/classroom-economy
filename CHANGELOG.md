@@ -24,6 +24,14 @@ and this project follows semantic versioning principles.
   - Recommendations: Enable SSH host key verification, update cryptography package, improve secrets management
   - Documentation: See `docs/security/COMPREHENSIVE_ATTACK_SURFACE_AUDIT_2025.md` for complete report
 
+### Added
+- **Security Remediation Tools and Documentation** - Complete implementation guides and fixed workflow files
+  - Step-by-step remediation guide: `docs/security/SECURITY_REMEDIATION_GUIDE.md`
+  - Fixed workflow files with SSH host key verification: `.github/workflows/*.FIXED`
+  - Automated SSH security setup script: `scripts/setup-ssh-security.sh`
+  - Includes fixes for: SSH MITM vulnerability, secrets management hardening, dependency updates
+  - Ready-to-use workflow files with improved security posture
+
 ## [1.2.1] - 2025-12-21
 
 ### Added
