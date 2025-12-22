@@ -49,154 +49,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="{{ static_url('css/style.css') }}" rel="stylesheet">
-
-    <!-- System Admin Theme Styles -->
-    <style>
-        /* System Admin Theme - Dark Gray */
-        body.sysadmin-shell {
-            --sysadmin-primary: #303030;
-            --sysadmin-primary-dark: #1a1a1a;
-            --sysadmin-sidebar-bg: #2C2C2C;
-            --sysadmin-sidebar-text: #F5F5F5;
-            --sysadmin-accent: #D4A857;
-            --sysadmin-accent-bright: #FDB034;
-        }
-
-        .sysadmin-sidebar {
-            background: linear-gradient(180deg, #1a1a1a 0%, var(--sysadmin-sidebar-bg) 100%);
-            width: var(--sidebar-width);
-            min-height: 100vh;
-            padding: 1.5rem;
-            color: var(--sysadmin-sidebar-text);
-            border-right: 1px solid rgba(212, 168, 87, 0.15);
-            position: sticky;
-            top: 0;
-            align-self: flex-start;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .sysadmin-brand {
-            text-decoration: none;
-            color: var(--sysadmin-sidebar-text);
-            margin-bottom: 1rem;
-            display: block;
-        }
-
-        .sysadmin-brand > div {
-            font-size: 18px;
-            font-weight: 300;
-            letter-spacing: 0.5px;
-        }
-
-        .sysadmin-identity {
-            color: var(--sysadmin-primary);
-            font-weight: 500;
-            padding: 1rem 0;
-            border-bottom: 1px solid rgba(212, 168, 87, 0.2);
-            margin-bottom: 1rem;
-        }
-
-        .sysadmin-nav {
-            display: flex;
-            flex-direction: column;
-            gap: 0.25rem;
-            flex-grow: 1;
-        }
-
-        .sysadmin-nav a {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            padding: 0.75rem 1rem;
-            color: rgba(245, 245, 245, 0.8);
-            text-decoration: none;
-            border-radius: var(--radius-sm);
-            transition: all 0.2s ease;
-            font-weight: 400;
-        }
-
-        .sysadmin-nav a:hover {
-            background: rgba(212, 168, 87, 0.1);
-            color: var(--sysadmin-accent);
-            transform: translateX(4px);
-        }
-
-        .sysadmin-nav a.active {
-            background: rgba(212, 168, 87, 0.15);
-            color: var(--sysadmin-accent);
-            font-weight: 500;
-            box-shadow: 0 0 20px rgba(212, 168, 87, 0.2);
-        }
-
-        .sysadmin-nav .nav-group-label {
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            color: rgba(212, 168, 87, 0.5);
-            padding: 1rem 1rem 0.5rem;
-            margin-top: 0.5rem;
-        }
-
-        .sysadmin-main {
-            flex-grow: 1;
-            padding: 0;
-            background: linear-gradient(135deg, #f5f5f3 0%, #fafaf8 100%);
-        }
-
-        .sysadmin-content {
-            padding: 2rem;
-        }
-
-        /* Sysadmin specific overrides */
-        body.sysadmin-shell h1,
-        body.sysadmin-shell h2,
-        body.sysadmin-shell h3,
-        body.sysadmin-shell h4,
-        body.sysadmin-shell h5,
-        body.sysadmin-shell h6 {
-            color: var(--sysadmin-primary);
-        }
-
-        body.sysadmin-shell .btn-primary {
-            background: linear-gradient(135deg, var(--sysadmin-primary) 0%, var(--sysadmin-primary-dark) 100%);
-            border: none;
-            color: white;
-        }
-
-        body.sysadmin-shell .btn-primary:hover {
-            background: linear-gradient(135deg, var(--sysadmin-primary-dark) 0%, #000000 100%);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(48, 48, 48, 0.4);
-        }
-
-        body.sysadmin-shell .page-header {
-            background: white;
-            padding: 1.5rem 2rem;
-            border-bottom: 1px solid var(--border-color);
-            margin-bottom: 0;
-        }
-
-        body.sysadmin-shell .eyebrow {
-            font-size: 0.75rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            color: var(--sysadmin-accent);
-            margin-bottom: 0.25rem;
-        }
-
-        body.sysadmin-shell .meta {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-        }
-
-        /* Card styling for sysadmin */
-        body.sysadmin-shell .card::before {
-            background: linear-gradient(90deg, var(--sysadmin-primary), var(--sysadmin-accent));
-        }
-    </style>
+    <link href="{{ static_url('css/sysadmin-theme.css') }}" rel="stylesheet">
 
     {% block extra_head %}{% endblock %}
 </head>
@@ -352,7 +205,9 @@
                 toastEl.appendChild(flexDiv);
 
                 container.appendChild(toastEl);
-                new bootstrap.Toast(toastEl, { delay: 3000 }).show();
+                const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
+                toast.show();
+                toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
             });
         }
     });
