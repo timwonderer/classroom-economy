@@ -8,7 +8,14 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
-_No unreleased changes yet._
+### Security
+- **CRITICAL: Fixed PromptPwnd AI Prompt Injection Vulnerability** - Disabled vulnerable `summary.yml` GitHub Actions workflow
+  - Workflow used AI inference (`actions/ai-inference@v1`) with untrusted user input from issue titles/bodies
+  - Attack vector: Any user could create an issue with malicious prompt injection to leak `GITHUB_TOKEN` or manipulate workflows
+  - Remediation: Disabled workflow by renaming to `summary.yml.DISABLED`
+  - Impact: No exploitation detected - vulnerability fixed proactively
+  - Documentation: See `docs/security/PROMPTPWND_REMEDIATION.md` for full details
+  - Reference: [Aikido Security PromptPwnd Disclosure](https://www.aikido.dev/blog/promptpwnd-ai-prompt-injection-in-github-actions) (December 2025)
 
 ## [1.2.1] - 2025-12-21
 
