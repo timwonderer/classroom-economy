@@ -50,11 +50,11 @@ steps:
 
 **Critical Issues:**
 
-1. ✅ **Untrusted Input in Prompts** - Any user can create an issue with malicious prompt injection
-2. ✅ **Privileged Token Access** - Workflow has access to `GITHUB_TOKEN` with write permissions
-3. ✅ **AI Output in Shell Commands** - AI response is directly used in `gh` command
-4. ✅ **No Input Validation** - No sanitization or validation of user input
-5. ✅ **Public Trigger** - Any external user can trigger this workflow
+1. ❌ **Untrusted Input in Prompts** - Any user can create an issue with malicious prompt injection
+2. ❌ **Privileged Token Access** - Workflow has access to `GITHUB_TOKEN` with write permissions
+3. ❌ **AI Output in Shell Commands** - AI response is directly used in `gh` command
+4. ❌ **No Input Validation** - No sanitization or validation of user input
+5. ❌ **Public Trigger** - Any external user can trigger this workflow
 
 ### Attack Scenario
 
