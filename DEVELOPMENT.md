@@ -1,7 +1,7 @@
 # Classroom Token Hub - Development Priorities
 
-**Last Updated:** 2025-12-18
-**Current Version:** 1.2.0
+**Last Updated:** 2025-12-21
+**Current Version:** 1.2.1
 **Target:** 1.3.0 Feature Release
 
 ---

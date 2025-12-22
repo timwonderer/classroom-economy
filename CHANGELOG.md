@@ -8,6 +8,10 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
+_No unreleased changes yet._
+
+## [1.2.1] - 2025-12-21
+
 ### Added
 - **Comprehensive Legacy Account Migration Script** - Complete migration tool for transitioning all legacy accounts to new multi-tenancy system
   - Migrates students with `teacher_id` to claim-based enrollment system
@@ -36,10 +40,18 @@ and this project follows semantic versioning principles.
   - Post-migration verification procedures
   - Roadmap for deprecating `teacher_id` column
   - Located at: `docs/operations/LEGACY_ACCOUNT_MIGRATION.md`
+- **Join Code Schema Audit Tool** - `scripts/inspect_join_code_columns.py` lists which tables have or are missing `join_code` to support multi-tenancy audits
+- **StudentBlock Join Code Migration** - Added idempotent migration (`a1b2c3d4e5f8`) to create `join_code` column and index on `student_blocks`, with safeguards for partially applied schemas
 
 ### Changed
 - Preparing for final deprecation of `teacher_id`-based linkage system
 - All legacy data now ready for migration to `join_code`-based multi-tenancy
+- Hardened migration best practices documentation for avoiding duplicate-column errors in `student_blocks` hotfix scenarios
+- Refreshed maintenance page copy and styling for clearer outage messaging
+
+### Fixed
+- Closed multi-tenancy gaps by adding `join_code` propagation to overdraft fees, bonus/bulk payroll postings, insurance reimbursements, manual payments, and bug-report rewards
+- Improved bonus join_code lookup performance to reduce N+1 queries during mass payouts
 
 ## [1.2.0] - 2025-12-18
 

@@ -126,6 +126,24 @@ Append-only log of tap in/out actions.
 | `status` | String(10) | `active` or `inactive`. |
 | `timestamp` | DateTime | Event timestamp. |
 | `reason` | String(50) | Optional reason. |
+| `join_code` | String(20) | Source of truth for class/period scoping. Indexed. |
+| `is_deleted` | Boolean | Soft-delete flag for teacher removals. |
+| `deleted_at` | DateTime | Timestamp when deleted. |
+| `deleted_by` | Integer | FK to `admins.id` for who deleted. |
+
+### `student_blocks`
+Per-student, per-period state (attendance gating, join-code mapping).
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | Integer | Primary key. |
+| `student_id` | Integer | FK to `students.id` (CASCADE). |
+| `period` | String(10) | Class period label. |
+| `join_code` | String(20) | Source of truth for class isolation. Indexed. |
+| `tap_enabled` | Boolean | Whether tap in/out is enabled for this period. |
+| `done_for_day_date` | Date | Pacific-date stamp when student marks done for day. |
+| `created_at` | DateTime | Creation timestamp. |
+| `updated_at` | DateTime | Last update timestamp. |
 
 ### `hall_pass_logs`
 Tracks hall pass lifecycle.

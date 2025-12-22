@@ -2,7 +2,7 @@
 
 An interactive banking and classroom management platform for teaching students about money while tracking classroom participation.
 
-**Version:** 1.2.0
+**Version:** 1.2.1
 
 ---
 
@@ -12,7 +12,7 @@ An interactive banking and classroom management platform for teaching students a
 
 **License:** [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) - Free for educational and nonprofit use, not for commercial applications.
 
-**Project Status:** Version 1.2.0 Released! This major release introduces Progressive Web App (PWA) support, mobile-first experience, accessibility improvements following WCAG 2.1 AA guidelines, and modernized UI with accordion layouts. Install as a mobile app for faster, offline-capable access! See [RELEASE_NOTES_v1.2.0.md](docs/archive/releases/RELEASE_NOTES_v1.2.0.md) for full details.
+**Project Status:** Version 1.2.1 Released! This patch release finalizes the legacy account migration toolkit, hardens multi-tenancy by ensuring join_code coverage across all transaction paths, and adds schema diagnostics for join_code audits. See [RELEASE_NOTES_v1.2.1.md](docs/archive/releases/RELEASE_NOTES_v1.2.1.md) for full details.
 
 ---
 
@@ -318,4 +318,4 @@ This project is licensed under the [PolyForm Noncommercial License 1.0.0](https:
 
 Built for educators and students to make learning about finance engaging and practical.
 
-**Last Updated:** 2025-12-18
+**Last Updated:** 2025-12-21

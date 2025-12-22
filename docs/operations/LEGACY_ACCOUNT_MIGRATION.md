@@ -80,6 +80,9 @@ This script combines and extends the functionality of three previous migration s
 - `migrate_legacy_students.py` - Creates StudentTeacher and TeacherBlock entries
 - `backfill_join_codes.py` - Backfills TeacherBlock join codes
 - `fix_missing_student_teacher_associations.py` - Creates missing associations
+- `inspect_join_code_columns.py` - Verifies which tables already have `join_code` (use before/after migration)
+
+> **Pre-check:** Ensure the idempotent migration `a1b2c3d4e5f8_add_join_code_to_student_blocks.py` has been applied. This adds `student_blocks.join_code` with an index and safely skips environments where the column already exists (e.g., manual hotfixes).
 
 ### Migration Phases
 
