@@ -1,290 +1,165 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-    /* Modern Geometric Design System - System Admin */
-    :root {
-        --brand-primary: #274174;
-        --brand-cyan: #00afdf;
-        --brand-gold: #fdb034;
-        --brand-blue: #035397;
-        --brand-teal: #005e77;
-        --gray-50: #f8f9fa;
-        --gray-100: #f1f3f5;
-        --gray-200: #e9ecef;
-        --gray-600: #6c757d;
-        --gray-800: #343a40;
-        --white: #ffffff;
-        --sidebar-bg: linear-gradient(180deg, #1a2634 0%, #274174 100%);
-        --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
-        --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
-        --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.12);
-    }
-
-    body {
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-        background: linear-gradient(135deg, var(--gray-50) 0%, var(--gray-100) 100%);
-        color: var(--gray-800);
-    }
-
-    .sidebar {
-        background: var(--sidebar-bg);
-        box-shadow: var(--shadow-lg);
-        color: var(--white);
-    }
-
-    .sidebar h5 {
-        color: var(--white);
-        font-weight: 700;
-        margin-bottom: 1.5rem;
-        font-size: 1.125rem;
-    }
-
-    .sidebar small {
-        color: rgba(255, 255, 255, 0.7);
-    }
-
-    .sidebar .btn {
-        border-radius: 10px;
-        font-weight: 500;
-        transition: all 0.2s ease;
-        text-align: left;
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        padding: 0.75rem 1rem;
-    }
-
-    .sidebar .btn-primary {
-        background: rgba(0, 175, 223, 0.25) !important;
-        border: 2px solid var(--brand-cyan) !important;
-        box-shadow: 0 0 20px rgba(0, 175, 223, 0.4);
-    }
-
-    .sidebar .btn-outline-primary {
-        color: rgba(255, 255, 255, 0.8) !important;
-        border: none !important;
-        background: transparent;
-    }
-
-    .sidebar .btn-outline-primary:hover {
-        background: rgba(255, 255, 255, 0.1) !important;
-        color: var(--white) !important;
-        transform: translateX(4px);
-    }
-
-    .sidebar .btn-outline-secondary {
-        color: rgba(255, 255, 255, 0.9) !important;
-        border: 1px solid rgba(255, 255, 255, 0.2) !important;
-    }
-
-    .sidebar .btn-outline-secondary:hover {
-        background: rgba(239, 68, 68, 0.15) !important;
-        border-color: #ef4444 !important;
-    }
-
-    .card {
-        background: var(--white);
-        border: none;
-        border-radius: 16px;
-        box-shadow: var(--shadow-sm);
-        position: relative;
-        overflow: hidden;
-    }
-
-    .card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 4px;
-        background: linear-gradient(90deg, var(--brand-cyan), var(--brand-gold));
-    }
-
-
-    .card-header {
-        background: var(--gray-50);
-        border: none;
-        border-bottom: 2px solid var(--gray-200);
-        color: var(--brand-primary);
-        font-weight: 600;
-    }
-
-    .btn {
-        border-radius: 10px;
-        font-weight: 500;
-        padding: 0.625rem 1.25rem;
-        transition: all 0.2s ease;
-    }
-
-    .btn-primary {
-        background: linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-blue) 100%);
-        border: none;
-        box-shadow: var(--shadow-sm);
-    }
-
-    .btn-primary:hover {
-        transform: translateY(-2px);
-        box-shadow: var(--shadow-md);
-    }
-
-    .btn-success {
-        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-        border: none;
-    }
-
-    .btn-danger {
-        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-        border: none;
-    }
-
-    .btn-outline-danger {
-        color: #ef4444;
-        border: 2px solid #ef4444;
-    }
-
-    .main-content {
-        background: transparent;
-    }
-
-    h2, h3, h4, h5, h6 {
-        color: var(--brand-primary);
-    }
-
-    .badge {
-        border-radius: 6px;
-        font-weight: 600;
-    }
-
-    .stat-card {
-        background: var(--white);
-        border: none;
-        box-shadow: var(--shadow-sm);
-        border-radius: 12px;
-    }
-
-
-    .table {
-        border-radius: 12px;
-        overflow: hidden;
-    }
-
-    .table thead {
-        background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
-        color: var(--white);
-    }
-
-    .table thead th {
-        border: none;
-        font-weight: 600;
-        font-size: 0.875rem;
-        text-transform: uppercase;
-        letter-spacing: 0.025em;
-    }
-
-    .table-striped > tbody > tr:nth-of-type(odd) > * {
-        background-color: var(--gray-50);
-    }
-
-    .text-muted {
-        color: var(--gray-600) !important;
-    }
-
-    .lock-icon {
-        font-size: 1.2rem;
-    }
-</style>
-
-    <title>{{ page_title or "System Admin" }}</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block page_title %}{{ page_title or "System Admin" }}{% endblock %}</title>
     <meta name="csrf-token" content="{{ csrf_token() }}">
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#303030">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="manifest" href="{{ static_url('manifest.json') }}">
+    <link rel="apple-touch-icon" href="{{ static_url('images/icon-192.png') }}">
+
+    <!-- Fonts - preconnect for faster loading -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+    <!-- Preload Material Symbols font for faster icon rendering -->
+    <link rel="preload" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" as="style">
+
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=swap" rel="stylesheet">
+
+    <!-- Material Symbols fallback CSS -->
+    <style>
+        .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined', sans-serif;
+            font-weight: normal;
+            font-style: normal;
+            font-size: 24px;
+            line-height: 1;
+            letter-spacing: normal;
+            text-transform: none;
+            display: inline-block;
+            white-space: nowrap;
+            word-wrap: normal;
+            direction: ltr;
+            -webkit-font-feature-settings: 'liga';
+            font-feature-settings: 'liga';
+            -webkit-font-smoothing: antialiased;
+        }
+    </style>
+
+    <!-- CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="{{ static_url('css/style.css') }}" rel="stylesheet">
+    <link href="{{ static_url('css/sysadmin-theme.css') }}" rel="stylesheet">
+
+    {% block extra_head %}{% endblock %}
 </head>
-<body style="font-family: 'Inter', sans-serif;" class="d-flex">
-{% if maintenance_bypass_active %}
-<div style="position:fixed;top:0;left:0;right:0;z-index:2000;background:#111827;color:#ffffff;font-size:12px;padding:6px 12px;text-align:center;box-shadow:0 2px 6px rgba(0,0,0,0.4);letter-spacing:.5px;font-weight:500;">
-    <span class="material-symbols-outlined" style="font-size:18px;vertical-align:-4px;">visibility</span>
-    Maintenance bypass active – end users still see maintenance page.
-</div>
-<div style="height:32px"></div>
-{% endif %}
-    <!-- Flash Toast Container -->
+<body class="sysadmin-shell d-flex {% if maintenance_bypass_active %}maintenance-active{% endif %}">
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    {% if maintenance_bypass_active %}
+    <div class="maintenance-banner">
+        <span class="material-symbols-outlined align-text-bottom me-1" style="font-size: 18px;">visibility</span>
+        Maintenance bypass active – end users still see maintenance page.
+    </div>
+    {% endif %}
+
     <div id="flashToastContainer" class="position-fixed bottom-0 end-0 p-3" style="z-index: 1050;"></div>
 
     <!-- Sidebar -->
-    <div class="sidebar border-end p-3 d-flex flex-column" style="width: 260px; min-height: 100vh; position: sticky; top: 0; align-self: flex-start;">
-        <div class="text-center mb-3">
-            <img src="{{ static_url('images/sys-admin-logo.svg') }}" alt="System Admin Logo" style="max-width: 80%; height: auto; margin-bottom: 1rem;">
-            <h5><span class="material-symbols-outlined lock-icon">lock</span> System Admin</h5>
-            <small>Authorized Access Only</small>
+    <aside class="sysadmin-sidebar">
+        <a class="sysadmin-brand" href="{{ url_for('sysadmin.dashboard') }}">
+            <div>
+                <div><span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200; color: var(--sysadmin-accent)">local_atm</span> Classroom</div>
+                <div><span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200; color: var(--sysadmin-accent-bright)">store</span> Token</div>
+                <div><span class="material-symbols-outlined" style="font-size: 30px; vertical-align: middle; font-weight:200; color: var(--sysadmin-accent)">finance_mode</span> Hub</div>
+            </div>
+        </a>
+
+        <div class="sysadmin-identity text-white" style="font-size: 20x;">
+            {{ current_sysadmin.username if current_sysadmin else "System Administrator" }}
+            <div class="mt-0" style="font-size:10pt; color: rgba(212, 168, 87, 0.6)">
+                System Administrator
+            </div>
         </div>
 
-        <div class="d-grid gap-2">
-            <a href="{{ url_for('sysadmin.dashboard') }}"
-               class="btn text-start {% if current_page == 'dashboard' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
-               <span class="material-symbols-outlined">dashboard</span>Dashboard
+        <nav class="sysadmin-nav">
+            <a href="{{ url_for('sysadmin.dashboard') }}" class="{% if current_page == 'dashboard' %}active{% endif %}">
+                <span class="material-symbols-outlined">dashboard</span> Dashboard
             </a>
 
-            <a href="{{ url_for('sysadmin.manage_teachers') }}"
-               class="btn text-start {% if current_page == 'teachers' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
-               <span class="material-symbols-outlined">group</span>Teacher Management
+
+            <a href="{{ url_for('sysadmin.manage_teachers') }}" class="{% if current_page == 'teachers' %}active{% endif %}">
+                <span class="material-symbols-outlined">group</span> Teacher Management
             </a>
 
-            <a href="{{ url_for('sysadmin.teacher_overview') }}"
-               class="btn text-start {% if current_page == 'teacher_overview' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
-               <span class="material-symbols-outlined">hub</span>Teacher Overview
+            <a href="{{ url_for('sysadmin.teacher_overview') }}" class="{% if current_page == 'teacher_overview' %}active{% endif %}">
+                <span class="material-symbols-outlined">hub</span> Teacher Overview
             </a>
 
-            <a href="{{ url_for('sysadmin.logs_testing') }}"
-               class="btn text-start {% if current_page == 'logs' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
-               <span class="material-symbols-outlined">description</span>Logs & Testing
+            <a href="/sysadmin/grafana" class="{% if current_page == 'grafana' %}active{% endif %}" target="_blank">
+                <span class="material-symbols-outlined">monitoring</span> Grafana
             </a>
 
-            <a href="{{ url_for('sysadmin.network_activity') }}"
-               class="btn text-start {% if current_page == 'network_activity' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
-               <span class="material-symbols-outlined">network_check</span>Network Activity
+            <a href="{{ url_for('sysadmin.logs_testing') }}" class="{% if current_page == 'logs' %}active{% endif %}">
+                <span class="material-symbols-outlined">description</span> Logs &amp; Testing
             </a>
 
-            <a href="{{ url_for('sysadmin.user_reports') }}"
-               class="btn text-start {% if current_page == 'user_reports' %}btn-primary text-white{% else %}btn-outline-primary{% endif %}">
-               <span class="material-symbols-outlined">bug_report</span>User Reports
+            <a href="{{ url_for('sysadmin.network_activity') }}" class="{% if current_page == 'network_activity' %}active{% endif %}">
+                <span class="material-symbols-outlined">network_check</span> Network Activity
             </a>
-        </div>
 
-        <div class="mt-auto">
-            <hr style="border-color: rgba(255, 255, 255, 0.1);">
-            <a href="{{ url_for('sysadmin.logout') }}" class="btn btn-outline-secondary text-start w-100">
-                <span class="material-symbols-outlined me-2">logout</span>Sign Out
+            <a href="{{ url_for('sysadmin.user_reports') }}" class="{% if current_page == 'user_reports' %}active{% endif %}">
+                <span class="material-symbols-outlined">bug_report</span> User Reports
             </a>
-        </div>
-    </div>
+
+            <div style="margin-top: auto;">
+                <hr style="border-color: rgba(212, 168, 87, 0.2); margin: 1rem 0;">
+                <a href="{{ url_for('sysadmin.logout') }}" class="text-danger">
+                    <span class="material-symbols-outlined">logout</span> Sign Out
+                </a>
+            </div>
+        </nav>
+    </aside>
 
     <!-- Main Content -->
-    <div class="flex-grow-1 p-4 main-content">
-        <div class="d-flex justify-content-between align-items-center mb-4">
+    <main id="main-content" class="sysadmin-main flex-grow-1">
+        <div class="page-header">
             <div>
-                <h2 class="mb-0">{{ page_title or "System Admin" }}</h2>
-                {% if page_subtitle %}
-                <p class="text-muted mb-0" style="font-size: 0.9rem;">{{ page_subtitle }}</p>
-                {% endif %}
+                <div class="eyebrow">Classroom Token Hub</div>
+                <h1 class="d-flex align-items-center gap-2 mb-1">
+                    <span class="material-symbols-outlined">{% block page_icon %}dashboard{% endblock %}</span>
+                    {{ self.page_title() }}
+                </h1>
+                <div class="meta" id="current-time"></div>
+               
             </div>
-            <time id="current-time" style="font-size: 0.9rem; opacity: 0.7;"></time>
         </div>
 
-        {% block content %}{% endblock %}
-    </div>
+        <div class="sysadmin-content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'error' else 'danger' }} alert-dismissible fade show shadow-sm border-0 mb-4" role="alert">
+                            {{ message }}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
 
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <script type="application/json" id="flashMessages">
+        {{ get_flashed_messages(with_categories=true) | tojson }}
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="{{ static_url('js/timezone-utils.js') }}"></script>
     <script>
-        // Update time display
         function updateTime() {
             const now = new Date();
             const timeElement = document.getElementById('current-time');
+            if (!timeElement) return;
             const optionsDate = { weekday: 'long', year: 'numeric', month: 'short', day: 'numeric' };
             const optionsTime = { hour: 'numeric', minute: 'numeric', hour12: true };
             timeElement.textContent = now.toLocaleDateString(undefined, optionsDate) + ' ' +
@@ -293,33 +168,60 @@
         setInterval(updateTime, 1000);
         updateTime();
     </script>
-
-    <!-- Flash Messages Toast -->
-    <script type="application/json" id="flashMessages">
-        {{ get_flashed_messages(with_categories=true) | tojson }}
-    </script>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const container = document.getElementById('flashToastContainer');
-            const msgs = JSON.parse(document.getElementById('flashMessages').textContent);
+    document.addEventListener('DOMContentLoaded', () => {
+        const container = document.getElementById('flashToastContainer');
+        const msgsEl = document.getElementById('flashMessages');
+        if (container && msgsEl) {
+            const msgs = JSON.parse(msgsEl.textContent || '[]');
             msgs.forEach(([category, message]) => {
                 const toastEl = document.createElement('div');
-                toastEl.className = 'toast align-items-center text-bg-' + (category==='success'?'success':'warning') + ' border-0 mb-2';
-                toastEl.setAttribute('role','alert');
-                toastEl.setAttribute('aria-live','assertive');
-                toastEl.setAttribute('aria-atomic','true');
-                toastEl.innerHTML = `
-                    <div class="d-flex">
-                        <div class="toast-body">${message}</div>
-                        <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast"></button>
-                    </div>
-                `;
+                const type = category === 'success' ? 'success' : (category === 'error' ? 'danger' : 'warning');
+                toastEl.className = 'toast align-items-center text-bg-' + type + ' border-0 mb-2';
+                toastEl.setAttribute('role', 'alert');
+                toastEl.setAttribute('aria-live', 'assertive');
+                toastEl.setAttribute('aria-atomic', 'true');
+
+                // Create elements safely to prevent XSS
+                const flexDiv = document.createElement('div');
+                flexDiv.className = 'd-flex';
+
+                const toastBody = document.createElement('div');
+                toastBody.className = 'toast-body';
+                toastBody.textContent = message; // Use textContent instead of innerHTML
+
+                const closeBtn = document.createElement('button');
+                closeBtn.type = 'button';
+                closeBtn.className = 'btn-close btn-close-white me-2 m-auto';
+                closeBtn.setAttribute('data-bs-dismiss', 'toast');
+                closeBtn.setAttribute('aria-label', 'Close');
+
+                flexDiv.appendChild(toastBody);
+                flexDiv.appendChild(closeBtn);
+                toastEl.appendChild(flexDiv);
+
                 container.appendChild(toastEl);
-                const toast = new bootstrap.Toast(toastEl, { delay: 5000 });
+                const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
                 toast.show();
                 toastEl.addEventListener('hidden.bs.toast', () => toastEl.remove());
             });
-        });
+        }
+    });
     </script>
+    <!-- Service Worker Registration for PWA -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register("/sw.js")
+                    .then(registration => {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    })
+                    .catch(err => {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
+        }
+    </script>
+    {% block extra_scripts %}{% endblock %}
 </body>
 </html>
