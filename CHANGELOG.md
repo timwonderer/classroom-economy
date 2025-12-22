@@ -9,6 +9,11 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Added
+- **V1.3 Feature Development Plan** - Comprehensive planning document for v1.3.0 release
+  - CSV data export system design
+  - Achievement badge system design
+  - Multi-teacher hardening completion plan
+  - Located at: `docs/development/V1.3_FEATURE_PLAN.md`
 - **Comprehensive Legacy Account Migration Script** - Complete migration tool for transitioning all legacy accounts to new multi-tenancy system
   - Migrates students with `teacher_id` to claim-based enrollment system
   - Creates missing `StudentTeacher` associations and `TeacherBlock` entries
@@ -38,8 +43,22 @@ and this project follows semantic versioning principles.
   - Located at: `docs/operations/LEGACY_ACCOUNT_MIGRATION.md`
 
 ### Changed
+- **Major Documentation Reorganization** - Improved documentation structure and organization (2025-12-22)
+  - Archived completed implementation reports to `docs/archive/implementation-reports/`
+  - Archived completed design documents to `docs/archive/design-docs/`
+  - Created comprehensive archive index with proper categorization
+  - Updated DEVELOPMENT.md with v1.3 roadmap and priorities
+  - Updated all documentation dates and references
 - Preparing for final deprecation of `teacher_id`-based linkage system
 - All legacy data now ready for migration to `join_code`-based multi-tenancy
+
+### Removed
+- **Obsolete Documentation** - Moved to archive (2025-12-22)
+  - `docs/development/ISSUE_FIX_SUMMARY.md` → `docs/archive/implementation-reports/`
+  - `docs/development/MIGRATION_STATUS_REPORT.md` → `docs/archive/implementation-reports/`
+  - `docs/operations/SECURITY_IMPROVEMENTS_IMPLEMENTATION.md` → `docs/archive/implementation-reports/`
+  - `docs/PWA_ICON_REQUIREMENTS.md` → `docs/archive/design-docs/`
+  - `docs/development/TEMPLATE_REDESIGN_RECOMMENDATIONS.md` → `docs/archive/design-docs/`
 
 ## [1.2.0] - 2025-12-18
 

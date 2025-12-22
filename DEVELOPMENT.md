@@ -1,8 +1,8 @@
 # Classroom Token Hub - Development Priorities
 
-**Last Updated:** 2025-12-18
+**Last Updated:** 2025-12-22
 **Current Version:** 1.2.0
-**Target:** 1.3.0 Feature Release
+**Target:** 1.3.0 Data Export & Gamification Release
 
 ---
 
@@ -50,8 +50,30 @@ See [RELEASE_NOTES_v1.2.0.md](docs/archive/releases/RELEASE_NOTES_v1.2.0.md) for
 
 ### 🟠 HIGH PRIORITY
 
-#### 1. Multi-Teacher Hardening
+#### 1. Data Export Capabilities
+**Status:** Not started
+**Target:** v1.3.0 release
+**Priority:** HIGH - Teachers need data portability
+
+**Tasks:**
+- [ ] Design CSV export data structures and formats
+- [ ] Implement roster export (student list with balances)
+- [ ] Implement transaction history export (scoped by join_code)
+- [ ] Implement attendance records export
+- [ ] Implement payroll history export
+- [ ] Implement store purchase history export
+- [ ] Add "Export" buttons to relevant teacher dashboard pages
+- [ ] Implement rate limiting for exports (prevent abuse)
+- [ ] Add optional data encryption for sensitive exports
+- [ ] Create export documentation for teachers
+
+**Rationale:** Teachers need to export data for grading systems, parent communication, and record-keeping. This is a highly requested feature.
+
+**Estimated Effort:** 3-4 weeks
+
+#### 2. Multi-Teacher Hardening
 **Status:** In progress (sharing + scoped queries shipped)
+**Priority:** HIGH - Technical debt and data integrity
 
 **Remaining Tasks:**
 - [ ] Finalize migration to remove legacy `students.teacher_id` (deprecated in models)
@@ -61,51 +83,107 @@ See [RELEASE_NOTES_v1.2.0.md](docs/archive/releases/RELEASE_NOTES_v1.2.0.md) for
 
 **Context:** The `student_teachers` link table is the authoritative ownership model. Join codes partition class economies.
 
-#### 2. Shared-Student Test Coverage
+**Estimated Effort:** 2-3 weeks
+
+#### 3. Shared-Student Test Coverage
 **Status:** Pending
+**Priority:** HIGH - Quality assurance
 
 **Tasks:**
 - [ ] Add pytest coverage for payroll flows with students linked to multiple teachers
 - [ ] Add pytest coverage for attendance flows with shared students
 - [ ] Add DB-level uniqueness regression test for `student_teachers` constraint
+- [ ] Test multi-period enrollment scenarios
+
+**Estimated Effort:** 1-2 weeks
+
+### 🟡 MEDIUM PRIORITY
+
+#### 1. Basic Gamification Features
+**Status:** Not started
+**Target:** v1.3.0 release
+**Priority:** MEDIUM - Student engagement
+
+**Tasks:**
+- [ ] Design achievement badge system (attendance streaks, savings goals, etc.)
+- [ ] Implement badge database models and migrations
+- [ ] Create badge awarding logic (triggered by various events)
+- [ ] Build student profile page with badge display
+- [ ] Add teacher controls to enable/disable gamification per class
+- [ ] Implement optional class leaderboards with privacy controls
+- [ ] Create badge notification system (subtle, non-disruptive)
+- [ ] Add badge icons and visual design
+
+**Rationale:** Gamification increases student engagement and motivation while teaching goal-setting.
+
+**Estimated Effort:** 4-6 weeks
+
+#### 2. Admin Experience Polish
+**Status:** Ongoing improvements
+**Priority:** MEDIUM - UX enhancement
+
+**Tasks:**
+- [ ] System-admin filters to view students by primary/shared teachers
+- [ ] Clearer UI messaging when acting on shared students
+- [ ] Payroll scope hints in transaction history
+- [ ] Enhanced teacher dashboard with quick stats
+- [ ] Improved mobile navigation for admin portal
+- [ ] Bulk operations for student management
+
+**Estimated Effort:** 2-3 weeks
 
 #### 3. Operational Safety Documentation
 **Status:** Pending
+**Priority:** MEDIUM - Operations best practices
 
 **Tasks:**
 - [ ] Create runbook for schema changes affecting tenancy or payroll
 - [ ] Document pre/post checks for migrations with maintenance mode
 - [ ] Establish migration validation checklist
+- [ ] Document backup and disaster recovery procedures
+- [ ] Create troubleshooting guides for common issues
 
-### 🟡 MEDIUM PRIORITY
-
-#### 1. Admin Experience Polish
-- [ ] System-admin filters to view students by primary/shared teachers
-- [ ] Clearer UI messaging when acting on shared students
-- [ ] Payroll scope hints in transaction history
-
-#### 2. Data Export Capabilities
-- [ ] CSV exports for rosters
-- [ ] CSV exports for transactions
-- [ ] CSV exports for attendance history
-- [ ] CSV exports for payroll history
-- [ ] CSV exports for store purchases
-
-#### 3. Mobile & Accessibility
-- [x] Responsive navigation for admin portal (completed v1.2.0)
-- [x] Responsive navigation for student portal (completed v1.2.0)
-- [x] Larger touch targets for tap in/out (completed v1.2.0)
-- [x] Larger touch targets for store interactions (completed v1.2.0)
-- [x] ARIA labels for key buttons and forms (completed v1.2.0)
-- [x] Accessibility improvements following WCAG 2.1 AA guidelines (completed v1.2.0)
-- [x] PWA support with offline capabilities (completed v1.2.0)
-- [x] Mobile-optimized templates (completed v1.2.0)
+**Estimated Effort:** 1-2 weeks
 
 ### 🟢 LOWER PRIORITY
 
-- [ ] Enhanced student dashboard insights (balance history, projected earnings)
-- [ ] Performance profiling for large rosters (pagination partial; continue optimization)
+#### 1. Enhanced Analytics
+**Status:** Not started
+**Priority:** LOW - Nice-to-have features
+
+**Tasks:**
+- [ ] Student balance history graph (interactive chart over time)
+- [ ] Enhanced projected earnings calculator with scenarios
+- [ ] Class-wide spending trends and insights
+- [ ] Teacher analytics dashboard with financial health metrics
+- [ ] Student financial literacy progress tracking
+
+**Estimated Effort:** 3-4 weeks
+
+#### 2. Performance Optimization
+**Status:** Ongoing
+**Priority:** LOW - Current performance is acceptable
+
+**Tasks:**
+- [ ] Performance profiling for large rosters (100+ students)
+- [ ] Database query optimization review and indexing
+- [ ] Frontend asset optimization and lazy loading
+- [ ] Caching strategy improvements (Redis consideration)
+- [ ] Pagination enhancement for all list views
+
+**Estimated Effort:** 2-3 weeks
+
+#### 3. Communication Features
+**Status:** Not started
+**Priority:** LOW - Future enhancement
+
+**Tasks:**
 - [ ] Optional email notifications for teacher/system-admin events
+- [ ] In-app announcements system (see SYSADMIN_INTERFACE_DESIGN.md)
+- [ ] Teacher-to-student messaging (optional, privacy-controlled)
+- [ ] Parent portal integration (v2.0+ feature)
+
+**Estimated Effort:** 4-6 weeks
 
 ## Known Issues (P2 and below)
 
@@ -126,28 +204,41 @@ See [RELEASE_NOTES_v1.2.0.md](docs/archive/releases/RELEASE_NOTES_v1.2.0.md) for
 
 **See:** [RELEASE_NOTES_v1.1.0.md](docs/archive/releases/RELEASE_NOTES_v1.1.0.md) for complete details
 
-### Version 1.2 - Mobile Experience
-- Progressive Web App (PWA) capabilities
-- Native mobile app exploration
-- Offline support for attendance tracking
-- Improved touch interfaces
+### Version 1.2 - Mobile Experience ✅ **RELEASED 2025-12-18**
+- ✅ Progressive Web App (PWA) capabilities
+- ✅ Mobile-optimized templates and navigation
+- ✅ Offline support for attendance tracking
+- ✅ Improved touch interfaces and tap targets
+- ✅ Accessibility enhancements (WCAG 2.1 AA)
+- ✅ Service worker with intelligent caching
 
-### Version 1.3 - Gamification
-- Achievement badge system
-- Optional leaderboards (privacy-conscious)
-- Progress tracking and milestones
-- Student engagement metrics
+### Version 1.3 - Data Export & Gamification (Target: Q1 2026)
+- [ ] CSV data export capabilities (rosters, transactions, attendance, payroll)
+- [ ] Basic achievement badge system
+- [ ] Optional leaderboards (privacy-conscious)
+- [ ] Multi-teacher hardening completion
+- [ ] Enhanced shared-student test coverage
+- [ ] Operational safety documentation
 
-### Version 1.4 - Extended Features
-- Parent portal (optional, privacy-controlled)
-- Curriculum integration resources
-- Pre-built lesson plans
-- Financial literacy assessment tools
+### Version 1.4 - Extended Features (Target: Q2 2026)
+- [ ] Jobs feature restoration (classroom job market system)
+- [ ] Enhanced teacher analytics and insights
+- [ ] Performance optimization for large rosters
+- [ ] Bulk operations for student management
+- [ ] Curriculum integration resources
 
-### Version 2.0 - Internationalization
-- Multi-language support
-- Currency localization
-- Regional educational standard alignment
+### Version 1.5 - Communication & Advanced Features (Target: Q3 2026)
+- [ ] In-app announcements and messaging system
+- [ ] Parent portal (optional, privacy-controlled)
+- [ ] Custom condition builder (advanced rules engine)
+- [ ] Pre-built lesson plans and financial literacy assessments
+- [ ] Teacher self-serve TOTP recovery
+
+### Version 2.0 - Internationalization (Target: 2027)
+- [ ] Multi-language support (Spanish, French, etc.)
+- [ ] Currency localization and formatting
+- [ ] Regional educational standard alignment
+- [ ] International deployment support
 
 ### Planned Features (Future Releases)
 
@@ -516,19 +607,21 @@ Version 1.0 has been successfully released with the following criteria met:
 
 ---
 
-**Next Immediate Actions (v1.2):**
+**Next Immediate Actions (v1.3):**
 
-1. Begin mobile experience improvements (PWA capabilities)
-2. Complete multi-teacher hardening (remove `students.teacher_id` dependency)
-3. Add shared-student test coverage for payroll and attendance
-4. Explore offline support for attendance tracking
-5. Continue "Admin Experience Polish" initiatives
+1. Design and implement CSV export system for teacher data portability
+2. Create basic achievement badge system for student engagement
+3. Complete multi-teacher hardening (remove `students.teacher_id` dependency)
+4. Add shared-student test coverage for payroll and attendance flows
+5. Enhance documentation with operational runbooks and best practices
 
 **Recent Releases:**
+- **v1.2.0** (2025-12-18) - Progressive Web App, mobile experience, accessibility
+- **v1.1.1** (2025-12-15) - Stability patch with auth and theming fixes
 - **v1.1.0** (2024-12-13) - Analytics dashboard, savings projections, UI redesign
 - **v1.0.0** (2024-11-29) - Initial stable release
 
 ---
 
-**Last Updated:** 2024-12-13
+**Last Updated:** 2025-12-22
 **Maintained by:** Project maintainers and contributors
