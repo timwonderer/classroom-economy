@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Classroom Token Hub - An interactive banking and classroom management platform for teaching students about money while tracking classroom participation.">
     <title>Classroom Token Hub - Educational Banking Simulation</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
     <link rel="icon" type="image/png" href="../static/images/icon-192.png">
     <style>
         * {
@@ -14,21 +18,21 @@
         }
 
         :root {
-            --primary-color: #2563eb;
-            --primary-dark: #1e40af;
-            --secondary-color: #10b981;
-            --accent-color: #f59e0b;
-            --text-dark: #1f2937;
+            --primary-color: #236960;
+            --primary-dark: #1a4742;
+            --secondary-color: #ac8255;
+            --accent-color: #c49564;
+            --text-dark: #2c2c2c;
             --text-light: #6b7280;
-            --bg-light: #f9fafb;
+            --bg-light: #f5f5f3;
             --bg-white: #ffffff;
-            --border-color: #e5e7eb;
+            --border-color: #e5e5e3;
             --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
             --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: 'Inter', sans-serif;
             line-height: 1.6;
             color: var(--text-dark);
             background-color: var(--bg-light);
@@ -84,7 +88,7 @@
         }
 
         .nav-links a:hover {
-            color: var(--primary-color);
+            color: var(--secondary-color);
         }
 
         .btn {
@@ -92,7 +96,7 @@
             border-radius: 0.5rem;
             text-decoration: none;
             font-weight: 600;
-            transition: all 0.3s;
+            
             display: inline-block;
         }
 
@@ -102,25 +106,26 @@
         }
 
         .btn-primary:hover {
-            background-color: var(--primary-dark);
-            transform: translateY(-2px);
-            box-shadow: var(--shadow-lg);
+            border-style:solid;
+            border-color:white;
+            border-width:2px;
+            
         }
 
         .btn-secondary {
             background-color: transparent;
-            color: var(--primary-color);
-            border: 2px solid var(--primary-color);
+            color: var(--secondary-color);
+            border: 2px solid var(--secondary-color);
         }
 
         .btn-secondary:hover {
-            background-color: var(--primary-color);
+            background-color: var(--secondary-color);
             color: white;
         }
 
         /* Hero Section */
         .hero {
-            background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-dark) 100%);
+            background: var(--primary-dark);
             color: white;
             padding: 5rem 2rem;
             text-align: center;
@@ -160,7 +165,7 @@
 
         .hero-buttons .btn-secondary {
             background-color: white;
-            color: var(--primary-color);
+            color: var(--secondary-color);
             border: none;
         }
 
@@ -219,8 +224,11 @@
         }
 
         .feature-icon {
+            font-family: 'Material Symbols Outlined', sans-serif;
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
             font-size: 2.5rem;
             margin-bottom: 1rem;
+            color: var(--primary-dark);
         }
 
         .feature-card h3 {
@@ -247,6 +255,7 @@
             overflow: hidden;
             box-shadow: var(--shadow);
             transition: transform 0.3s;
+            cursor: pointer;
         }
 
         .screenshot-card:hover {
@@ -260,7 +269,9 @@
         }
 
         .screenshot-placeholder {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: var(--primary-dark);
+            position: relative;
+            overflow: hidden;
             aspect-ratio: 16/9;
             display: flex;
             align-items: center;
@@ -268,6 +279,77 @@
             color: white;
             font-size: 1.25rem;
             font-weight: 600;
+        }
+
+        .screenshot-placeholder img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center top;
+            transform: scale(1.08);
+            display: block;
+        }
+
+        .screenshot-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            z-index: 2000;
+        }
+
+        .screenshot-modal.open {
+            display: flex;
+        }
+
+        .screenshot-modal .modal-content {
+            background: var(--bg-white);
+            border-radius: 1rem;
+            max-width: 960px;
+            width: 100%;
+            box-shadow: var(--shadow-lg);
+            overflow: hidden;
+        }
+
+        .screenshot-modal header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.5rem;
+            background: var(--primary-dark);
+            color: white;
+        }
+
+        .screenshot-modal header h3 {
+            margin: 0;
+        }
+
+        .screenshot-modal header button {
+            background: transparent;
+            border: none;
+            color: white;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+
+        .screenshot-modal .modal-body {
+            padding: 1.5rem;
+        }
+
+        .screenshot-modal .modal-body img {
+            width: 100%;
+            height: auto;
+            border-radius: 0.75rem;
+            margin-bottom: 1rem;
+            box-shadow: var(--shadow);
+        }
+
+        .screenshot-modal .modal-body p {
+            color: var(--text-light);
+            margin: 0;
         }
 
         .screenshot-card .caption {
@@ -436,7 +518,7 @@
     <nav>
         <div class="nav-container">
             <a href="#" class="logo">
-                <img src="../static/images/icon-192.png" alt="Classroom Token Hub Logo">
+                
                 <h1>Classroom Token Hub</h1>
             </a>
             <div class="nav-links">
@@ -451,9 +533,10 @@
     <!-- Hero Section -->
     <section class="hero">
         <div class="hero-container">
-            <span class="badge">Version 1.2.1 - Progressive Web App</span>
-            <h2>🎓 Teach Financial Literacy Through Hands-On Experience</h2>
-            <p>An interactive banking and classroom management platform that helps students learn about money while tracking classroom participation. Built for educators, by educators.</p>
+            <img alt="GitHub Release" src="https://img.shields.io/github/v/release/timwonderer/classroom-economy?link=https%3A%2F%2Fgithub.com%2Ftimwonderer%2Fclassroom-economy"><br>
+            <span style="font-size:30pt">Classroom Economy System. <span style="font-weight:600; color:#f9d004">Reimagined.</span></strong>
+            <p>Classroom Financial Simulation that promotes student engagement and prepare them for real-world financial decisions.</p>
+            <p>Made with innovation and care by a current classroom teacher</p>
             <div class="hero-buttons">
                 <a href="#access" class="btn btn-primary">Request Access</a>
                 <a href="https://github.com/timwonderer/classroom-economy" target="_blank" rel="noopener" class="btn btn-secondary">View on GitHub</a>
@@ -489,55 +572,55 @@
             <h2 class="section-title">Powerful Features for Modern Classrooms</h2>
             <div class="features-grid">
                 <div class="feature-card">
-                    <div class="feature-icon">💰</div>
+                    <div class="feature-icon" aria-hidden="true">attach_money</div>
                     <h3>Banking Simulation</h3>
                     <p>Students manage checking and savings accounts, learning real-world financial concepts through hands-on experience with virtual tokens.</p>
                 </div>
 
                 <div class="feature-card">
-                    <div class="feature-icon">📊</div>
+                    <div class="feature-icon" aria-hidden="true">dashboard</div>
                     <h3>Teacher Dashboard</h3>
                     <p>Comprehensive management tools for running payroll, configuring settings, tracking attendance, and managing classroom economies.</p>
                 </div>
 
                 <div class="feature-card">
-                    <div class="feature-icon">🎯</div>
+                    <div class="feature-icon" aria-hidden="true">payments</div>
                     <h3>Automated Payroll</h3>
                     <p>Configure pay rates, schedules, and automatic rewards or fines. Let the system handle the calculations while you focus on teaching.</p>
                 </div>
 
                 <div class="feature-card">
-                    <div class="feature-icon">🏪</div>
+                    <div class="feature-icon" aria-hidden="true">storefront</div>
                     <h3>Classroom Store</h3>
                     <p>Virtual and physical items with bundles, expirations, and redemption tracking. Students learn budgeting and purchasing decisions.</p>
                 </div>
 
                 <div class="feature-card">
-                    <div class="feature-icon">🎫</div>
+                    <div class="feature-icon" aria-hidden="true">confirmation_number</div>
                     <h3>Hall Pass System</h3>
                     <p>Time-limited passes with automatic tracking and cost management. Teaches responsibility and time management.</p>
                 </div>
 
                 <div class="feature-card">
-                    <div class="feature-icon">🏥</div>
+                    <div class="feature-icon" aria-hidden="true">health_and_safety</div>
                     <h3>Insurance & Rent</h3>
                     <p>Optional insurance policies and rent systems add real-world financial complexity for advanced lessons.</p>
                 </div>
 
                 <div class="feature-card">
-                    <div class="feature-icon">📱</div>
+                    <div class="feature-icon" aria-hidden="true">install_mobile</div>
                     <h3>Progressive Web App</h3>
                     <p>Install as a mobile app on any device. Works offline with intelligent caching for fast, reliable access anywhere.</p>
                 </div>
 
                 <div class="feature-card">
-                    <div class="feature-icon">🔒</div>
+                    <div class="feature-icon" aria-hidden="true">security</div>
                     <h3>Security First</h3>
                     <p>PII encryption at rest, TOTP authentication, CSRF protection, and comprehensive security measures throughout.</p>
                 </div>
 
                 <div class="feature-card">
-                    <div class="feature-icon">♿</div>
+                    <div class="feature-icon" aria-hidden="true">accessibility_new</div>
                     <h3>Accessible Design</h3>
                     <p>Built following WCAG 2.1 guidelines with screen reader support, keyboard navigation, and high contrast for all students.</p>
                 </div>
@@ -548,32 +631,38 @@
         <section id="screenshots" class="section">
             <h2 class="section-title">See It In Action</h2>
             <div class="screenshots-grid">
-                <div class="screenshot-card">
-                    <div class="screenshot-placeholder">Teacher Dashboard Screenshot</div>
+                <div class="screenshot-card" role="button" tabindex="0" aria-label="Open Teacher Dashboard screenshot" data-img="../static/images/teacher_dashboard.png" data-title="Teacher Dashboard" data-description="Manage your classroom economy with an intuitive interface. Run payroll, track students, and configure all settings in one place.">
+                    <div class="screenshot-placeholder"> <img src="../static/images/teacher_dashboard.png" alt="Teacher Dashboard Screenshot"></div>
                     <div class="caption">
                         <h3>Teacher Dashboard</h3>
                         <p>Manage your classroom economy with an intuitive interface. Run payroll, track students, and configure all settings in one place.</p>
                     </div>
                 </div>
 
-                <div class="screenshot-card">
-                    <div class="screenshot-placeholder">Student Portal Screenshot</div>
+                <div class="screenshot-card" role="button" tabindex="0" aria-label="Open Student Portal screenshot" data-img="../static/images/student_dashboard.png" data-title="Student Portal" data-description="Students view their balances, redeem store items, manage accounts, and track their financial progress throughout the semester.">
+                    <div class="screenshot-placeholder">
+                        <img src="../static/images/student_dashboard.png" alt="Student Dashboard Screenshot">
+                    </div>
                     <div class="caption">
                         <h3>Student Portal</h3>
                         <p>Students view their balances, redeem store items, manage accounts, and track their financial progress throughout the semester.</p>
                     </div>
                 </div>
 
-                <div class="screenshot-card">
-                    <div class="screenshot-placeholder">Mobile Experience Screenshot</div>
+                <div class="screenshot-card" role="button" tabindex="0" aria-label="Open Mobile-Optimized screenshot" data-img="../static/images/classroomtokenhub.com_admin_(Pixel 7).png" data-title="Mobile-Optimized" data-description="Progressive Web App design means students can install the app on their phones and access it like any native mobile application.">
+                    <div class="screenshot-placeholder">
+                        <img src="../static/images/classroomtokenhub.com_admin_(Pixel 7).png" alt="Mobile-Optimized Screenshot">
+                    </div>
                     <div class="caption">
                         <h3>Mobile-Optimized</h3>
                         <p>Progressive Web App design means students can install the app on their phones and access it like any native mobile application.</p>
                     </div>
                 </div>
 
-                <div class="screenshot-card">
-                    <div class="screenshot-placeholder">Store Management Screenshot</div>
+                <div class="screenshot-card" role="button" tabindex="0" aria-label="Open Classroom Store screenshot" data-img="../static/images/store_promo.png" data-title="Classroom Store" data-description="Set up virtual and physical items, manage inventory, track redemptions, and create bundles to engage students.">
+                    <div class="screenshot-placeholder">
+                        <img src="../static/images/store_promo.png" alt="Classroom Store Screenshot">
+                    </div>
                     <div class="caption">
                         <h3>Classroom Store</h3>
                         <p>Set up virtual and physical items, manage inventory, track redemptions, and create bundles to engage students.</p>
@@ -581,6 +670,19 @@
                 </div>
             </div>
         </section>
+
+        <div class="screenshot-modal" id="screenshotModal" aria-hidden="true">
+            <div class="modal-content" role="dialog" aria-modal="true" aria-labelledby="screenshotModalTitle">
+                <header>
+                    <h3 id="screenshotModalTitle"></h3>
+                    <button type="button" id="screenshotModalClose" aria-label="Close screenshot preview">&times;</button>
+                </header>
+                <div class="modal-body">
+                    <img id="screenshotModalImage" src="" alt="">
+                    <p id="screenshotModalDescription"></p>
+                </div>
+            </div>
+        </div>
 
         <!-- Request Access Section -->
         <section id="access" class="section">
@@ -590,7 +692,7 @@
 
                 <!-- Replace the Google Form URL below with your actual Google Form embed URL -->
                 <div class="form-placeholder">
-                    <h3>📝 Google Form Embed Goes Here</h3>
+                    <h3><span class="material-symbols-outlined" aria-hidden="true">edit_note</span> Google Form Embed Goes Here</h3>
                     <p style="color: var(--text-light); margin: 1rem 0;">
                         To add your Google Form:
                     </p>
@@ -654,5 +756,51 @@
             <p>Built for educators and students to make learning about finance engaging and practical.</p>
         </div>
     </footer>
+
+    <script>
+        const modal = document.getElementById('screenshotModal');
+        const modalImage = document.getElementById('screenshotModalImage');
+        const modalTitle = document.getElementById('screenshotModalTitle');
+        const modalDescription = document.getElementById('screenshotModalDescription');
+        const modalClose = document.getElementById('screenshotModalClose');
+
+        function openModal(card) {
+            modalImage.src = card.dataset.img;
+            modalImage.alt = card.dataset.title + ' full preview';
+            modalTitle.textContent = card.dataset.title;
+            modalDescription.textContent = card.dataset.description;
+            modal.classList.add('open');
+            modal.setAttribute('aria-hidden', 'false');
+            modalClose.focus();
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeModal() {
+            modal.classList.remove('open');
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+        }
+
+        document.querySelectorAll('.screenshot-card').forEach(card => {
+            const activate = () => openModal(card);
+            card.addEventListener('click', activate);
+            card.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    activate();
+                }
+            });
+        });
+
+        modalClose.addEventListener('click', closeModal);
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeModal();
+        });
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && modal.classList.contains('open')) {
+                closeModal();
+            }
+        });
+    </script>
 </body>
 </html>
