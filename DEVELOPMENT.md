@@ -48,7 +48,46 @@ See [RELEASE_NOTES_v1.2.0.md](docs/archive/releases/RELEASE_NOTES_v1.2.0.md) for
 
 ## Development Priorities (v1.3)
 
-### 🟠 HIGH PRIORITY
+### 🔴 IMMEDIATE PRIORITY - Complete In-Progress Features
+
+#### 1. System Admin Announcements
+**Status:** Designed but not implemented
+**Priority:** URGENT - Finish what we started
+**Target:** Complete before v1.3 work begins
+
+**Design Reference:** `docs/development/SYSADMIN_INTERFACE_DESIGN.md` (Section 6)
+
+**Tasks:**
+- [ ] Create database models for announcements
+  - `Announcement` model (id, title, message, priority, start_date, end_date, target_audience)
+  - Migration for announcements table
+- [ ] Implement sysadmin announcement routes (`/sysadmin/announcements`)
+  - Create announcement form
+  - List/edit/delete announcements
+  - Preview announcement display
+- [ ] Implement announcement display system
+  - Banner component for high-priority announcements
+  - Dismissible notifications for normal announcements
+  - Targeted display (all users, teachers only, students only)
+- [ ] Add announcement display to layouts
+  - Admin layout
+  - Student layout
+  - System admin layout
+- [ ] Write tests for announcement system
+- [ ] Update system admin documentation
+
+**Use Cases:**
+- System-wide maintenance notifications
+- Emergency alerts
+- Policy updates
+- Teacher/student-specific messages
+
+**Estimated Effort:** 1-2 weeks
+**Rationale:** Already designed, smaller scope than v1.3 features, high value for system operators
+
+---
+
+### 🟠 HIGH PRIORITY - v1.3 Features
 
 #### 1. Data Export Capabilities
 **Status:** Not started
@@ -607,13 +646,17 @@ Version 1.0 has been successfully released with the following criteria met:
 
 ---
 
-**Next Immediate Actions (v1.3):**
+**Next Immediate Actions:**
 
-1. Design and implement CSV export system for teacher data portability
-2. Create basic achievement badge system for student engagement
-3. Complete multi-teacher hardening (remove `students.teacher_id` dependency)
-4. Add shared-student test coverage for payroll and attendance flows
-5. Enhance documentation with operational runbooks and best practices
+**BEFORE v1.3 - Complete In-Progress Work:**
+1. ✅ **System Admin Announcements** - Finish the designed but unimplemented announcement system (1-2 weeks)
+
+**v1.3 Development:**
+2. Design and implement CSV export system for teacher data portability
+3. Create basic achievement badge system for student engagement
+4. Complete multi-teacher hardening (remove `students.teacher_id` dependency)
+5. Add shared-student test coverage for payroll and attendance flows
+6. Enhance documentation with operational runbooks and best practices
 
 **Recent Releases:**
 - **v1.2.0** (2025-12-18) - Progressive Web App, mobile experience, accessibility
