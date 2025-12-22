@@ -59,31 +59,39 @@ See [RELEASE_NOTES_v1.2.0.md](docs/archive/releases/RELEASE_NOTES_v1.2.0.md) for
 
 **Tasks:**
 - [ ] Create database models for announcements
-  - `Announcement` model (id, title, message, priority, start_date, end_date, target_audience)
+  - `SystemAnnouncement` model (id, title, message, priority, start_date, end_date, is_active)
+  - Simple global announcements only (no targeting/personalization)
   - Migration for announcements table
 - [ ] Implement sysadmin announcement routes (`/sysadmin/announcements`)
-  - Create announcement form
+  - Create announcement form (title, message, priority, dates)
   - List/edit/delete announcements
   - Preview announcement display
 - [ ] Implement announcement display system
-  - Banner component for high-priority announcements
+  - Banner component for high-priority announcements (site-wide)
   - Dismissible notifications for normal announcements
-  - Targeted display (all users, teachers only, students only)
-- [ ] Add announcement display to layouts
-  - Admin layout
-  - Student layout
-  - System admin layout
+  - **NO class-specific targeting** (sysadmin has no visibility into classes)
+- [ ] Add announcement banner to all layouts
+  - Admin layout (teachers see system announcements)
+  - Student layout (students see system announcements)
+  - System admin layout (sysadmin creates announcements)
 - [ ] Write tests for announcement system
 - [ ] Update system admin documentation
 
-**Use Cases:**
-- System-wide maintenance notifications
-- Emergency alerts
-- Policy updates
-- Teacher/student-specific messages
+**Use Cases (System-Wide Only):**
+- ✅ Scheduled maintenance notifications ("System down tonight 10-11 PM")
+- ✅ Known bugs/issues ("Working on fixing store purchase bug")
+- ✅ Platform updates ("New feature: PWA support now available")
+- ✅ Policy changes ("Updated terms of service")
+- ❌ **NOT for class-specific messages** (sysadmin can't see class details)
 
 **Estimated Effort:** 1-2 weeks
 **Rationale:** Already designed, smaller scope than v1.3 features, high value for system operators
+
+**Important Constraints:**
+- Sysadmins have NO visibility into class-specific data
+- Announcements are SYSTEM-WIDE only (visible to all users)
+- No targeting by teacher/class/student
+- Sysadmins can only see: teacher usernames, student counts (totals only)
 
 ---
 
