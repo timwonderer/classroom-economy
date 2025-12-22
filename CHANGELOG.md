@@ -16,6 +16,13 @@ and this project follows semantic versioning principles.
   - Impact: No exploitation detected - vulnerability fixed proactively
   - Documentation: See `docs/security/PROMPTPWND_REMEDIATION.md` for full details
   - Reference: [Aikido Security PromptPwnd Disclosure](https://www.aikido.dev/blog/promptpwnd-ai-prompt-injection-in-github-actions) (December 2025)
+- **Comprehensive Attack Surface Security Audit Completed** - Full security review of codebase, CI/CD, and infrastructure
+  - Audited: GitHub Actions workflows, authentication, authorization, encryption, multi-tenancy, dependencies, and API security
+  - Findings: 16 total findings (2 critical, 2 high, 3 medium, 4 low, 5 informational)
+  - Critical issues: AI prompt injection (fixed), SSH host key verification disabled (open)
+  - Strengths: Excellent CSRF protection, SQL injection prevention, XSS mitigation, PII encryption, multi-tenancy isolation
+  - Recommendations: Enable SSH host key verification, update cryptography package, improve secrets management
+  - Documentation: See `docs/security/COMPREHENSIVE_ATTACK_SURFACE_AUDIT_2025.md` for complete report
 
 ## [1.2.1] - 2025-12-21
 
