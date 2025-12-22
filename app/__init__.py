@@ -482,6 +482,22 @@ def create_app():
             app.logger.warning(f"Could not load current admin: {e}")
             return {'current_admin': None}
 
+    @app.context_processor
+    def inject_current_sysadmin():
+        """Inject current system admin object into all templates."""
+        try:
+            from app.models import SystemAdmin
+            from flask import session
+
+            sysadmin_id = session.get('sysadmin_id')
+            if sysadmin_id:
+                sysadmin = SystemAdmin.query.get(sysadmin_id)
+                return {'current_sysadmin': sysadmin}
+            return {'current_sysadmin': None}
+        except Exception as e:
+            app.logger.warning(f"Could not load current system admin: {e}")
+            return {'current_sysadmin': None}
+
     # -------------------- REGISTER BLUEPRINTS --------------------
     from app.routes.main import main_bp
     from app.routes.api import api_bp
