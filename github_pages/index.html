@@ -24,7 +24,7 @@
             --accent-color: #c49564;
             --text-dark: #2c2c2c;
             --text-light: #6b7280;
-            --bg-light: #f5f5f3;
+            --bg-light: #dededec4;
             --bg-white: #ffffff;
             --border-color: #e5e5e3;
             --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
@@ -268,7 +268,7 @@
         }
 
         .screenshot-placeholder {
-            background: var(--bg-light);
+            background: white;
             position: relative;
             overflow: hidden;
             display: flex;
@@ -550,13 +550,13 @@
         <div class="nav-container">
             <a href="#" class="logo">
                 
-                <h1 class="text-primary-color" style="font-size:20pt;"><span class="material-symbols-outlined" style="font-size:20pt; vertical-align:-15%;">local_atmstorefinance_mode</span> Classroom Token Hub</h1>
+                <h1 style="font-size:20pt;"><span class="material-symbols-outlined" style="font-size:20pt; vertical-align:-15%;">local_atmstorefinance_mode</span> <span style="color:var(--primary-color)">Classroom Token Hub</span></h1>
             </a>
             <div class="nav-links" style="font-size:15pt;">
                 <a href="#features">Features</a>
-                <a href="#screenshots">Screenshots</a>
+                <a href="#designs">Designs</a>
 
-                <a href="https://github.com/timwonderer/classroom-economy" target="_blank" rel="noopener">GitHub</a>
+                <a href="https://github.com/timwonderer/classroom-economy" target="_blank" rel="noopener">GitHub Repo<span class="material-symbols-outlined" style="vertical-align:middle;color:#236960">outbound</span> </a>
             </div>
         </div>
     </nav>
@@ -659,7 +659,7 @@
     
 
         <!-- Screenshots Section -->
-        <section id="screenshots" class="section">
+        <section id="designs" class="section">
             <h2 class="section-title"><span style="font-weight:300;">Another Hard to Learn App?</span> Not Us.</h2>
             <div class="screenshots-grid">
                 <div class="screenshot-card" role="button" tabindex="0" aria-label="Open Teacher Dashboard screenshot" data-img="../static/images/teacher_dashboard.png" data-title="Teacher Dashboard" data-description="Manage your classroom economy with an intuitive interface. Run payroll, track students, and configure all settings in one place.">
@@ -721,7 +721,7 @@
 
         <!-- Tech Stack Section -->
         <section class="section">
-            <h2 class="section-title">Built With Modern Technologies</h2>
+            <h2 class="section-title"><span style="font-weight:300;">Ever Evolving, </span>Continuously Improving.</h2>
             <div class="stats">
                 <div style="text-align: center; max-width: 800px; margin: 0 auto;">
                     <p style="font-size: 1.1rem; margin-bottom: 2rem; color: var(--text-light);">
@@ -731,15 +731,29 @@
                         <strong>Frontend:</strong> Jinja2, Bootstrap 5, Material Symbols, Service Workers
                     </p>
                     <p style="font-size: 1.1rem; margin-bottom: 2rem; color: var(--text-light);">
-                        <strong>Security:</strong> TOTP Authentication, PII Encryption, CSRF Protection
+                        <strong>Security:</strong> TOTP Authentication, PII Encryption, CSRF Protection, Join Code-Based Scoping
                     </p>
-                    <p style="font-size: 1.1rem; color: var(--text-light);">
-                        <strong>License:</strong> <a href="https://polyformproject.org/licenses/noncommercial/1.0.0/" target="_blank" style="color: var(--primary-color);">PolyForm Noncommercial 1.0.0</a> - Free for educational use
+                    <p style="font-size: 1.1rem; margin-bottom: 2rem; color: var(--text-light);">
+                        <strong>Future Features: </strong>CSV Exporting, Classroom Announcements and Messaging, Job Board, CWI Auto Balancing Tool
                     </p>
                 </div>
             </div>
         </section>
+
+        <section class="section">
+            <h2 class="section-title"><span style="font-weight:300;">Request, </span>Get Invited.</h2>
+            <div class="stats">
+                <div style="text-align: center; max-width: 800px; margin: 0 auto;">
+                <h2 style="color:#236960">Want to try Classroom Token Hub?</h2> 
+              <p style="font-size: 1.1rem; margin-top: 1.5rem;margin-bottom: 2rem; color: var(--text-light);">Right now, this app is running on a self-hosted server (2 vCPUs with 4GB Ram) so we are scaling up very slowly and carefully. We are also busy squashing bugs and implementing fixes quite frequently so crashes are pretty common.</p> 
+              <p style="font-size: 1.1rem; margin-bottom: 2rem; color: var(--text-light);">As soon as we know the app can support an additional cohort of students (200+), we will post an interest form soon for you to request an invite code. </p>
+            </div>
+            
+        </section>
     </div>
+
+    
+  
 
     <!-- Footer -->
     <footer>
@@ -751,7 +765,7 @@
                 <a href="https://github.com/timwonderer/classroom-economy/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener">Contributing</a>
                 <a href="https://polyformproject.org/licenses/noncommercial/1.0.0/" target="_blank" rel="noopener">License</a>
             </div>
-            <p>&copy; 2025 Classroom Token Hub. Licensed under PolyForm Noncommercial 1.0.0</p>
+            <p>&copy; 2025 Classroom Token Hub. Licensed under <a href="https://polyformproject.org/licenses/noncommercial/1.0.0/" style="color: #de9b37;" target="_blank">PolyForm Noncommercial 1.0.0</a>, which makes this app free for educational use</p>
             <p><i>Built by a classroom teacher who had the mindset of "I'll just make it myself."</i></p><br>
              <img alt="GitHub Release" src="https://img.shields.io/github/v/release/timwonderer/classroom-economy?link=https%3A%2F%2Fgithub.com%2Ftimwonderer%2Fclassroom-economy">
         </div>
