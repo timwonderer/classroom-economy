@@ -34,7 +34,7 @@ students_in_block = Student.query.filter_by(block=student.block).all()
 student = Student.query.get(student_id)
 ```
 **Risk:** Could expose student data before authorization check
-**Fix:** Use `get_student_for_admin(student_id, admin)`
+**Fix:** Use `get_student_for_admin(student_id)`
 
 ### 3. app/routes/api.py:1772 - Tap Event Processing
 **Issue:** Direct `Student.query.get()` without access check
@@ -50,7 +50,7 @@ student = Student.query.get(event.student_id)
 student = Student.query.get(student_id)
 ```
 **Risk:** No verification that admin owns this student
-**Fix:** Use `get_student_for_admin()`
+**Fix:** Use `get_student_for_admin(student_id)`
 
 ### 5. app/routes/student.py:511 - Student Leaderboard
 **Issue:** Queries by block without join_code
@@ -148,7 +148,7 @@ student = Student.query.filter_by(username_lookup_hash=lookup_hash).first()
 student = Student.query.get(student_id)
 ```
 **Context:** In admin route, should verify ownership
-**Fix:** Use `get_student_for_admin()`
+**Fix:** Use `get_student_for_admin(student_id)`
 
 ### 17. app/routes/admin.py:2366 - Duplicate Check
 **Issue:** Direct query for duplicates
