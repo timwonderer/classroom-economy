@@ -1777,7 +1777,7 @@ def delete_tap_entry(event_id):
     # SECURITY FIX: Use scoped helper to verify admin owns this student
     student = get_student_for_admin(event.student_id)
     if not student:
-        return jsonify({"error": "Access denied"}), 403
+        return jsonify({"error": "Student not found or access denied"}), 404
 
     # Mark as deleted
     event.is_deleted = True
