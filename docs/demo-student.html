@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Demo - Classroom Token Hub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2F4F7F;
+            --primary-hover: #253a5f;
+            --secondary: #ac8255;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            margin: 0;
+        }
+
+        .student-sidebar {
+            width: 260px;
+            background: linear-gradient(180deg, var(--primary) 0%, var(--primary-hover) 100%);
+            color: white;
+            padding: 1.5rem 1rem;
+            overflow-y: auto;
+        }
+
+        .student-brand {
+            margin-bottom: 1.5rem;
+            font-size: 15px;
+            font-weight: 600;
+            line-height: 1.3;
+        }
+
+        .student-brand div {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .student-identity {
+            font-size: 22px;
+            font-weight: 600;
+            margin-top: 1rem;
+        }
+
+        .student-identity div {
+            font-size: 11px;
+            color: rgba(255,255,255,0.8);
+            margin-top: 0.25rem;
+        }
+
+        .student-nav {
+            margin-top: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+
+        .student-nav a {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.6rem 1rem;
+            color: rgba(255,255,255,0.85);
+            text-decoration: none;
+            border-radius: 6px;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        .student-nav a:hover {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+
+        .student-nav a.active {
+            background: rgba(255,255,255,0.15);
+            color: white;
+            font-weight: 500;
+        }
+
+        .student-main {
+            flex: 1;
+            overflow-y: auto;
+            background: #f5f5f3;
+        }
+
+        .content-wrapper {
+            padding: 2rem;
+            max-width: 1400px;
+        }
+
+        .page-header {
+            margin-bottom: 2rem;
+        }
+
+        .page-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .eyebrow {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: #6c757d;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .view-section {
+            display: none;
+        }
+
+        .view-section.active {
+            display: block;
+        }
+
+        .demo-banner {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+            color: white;
+            padding: 0.6rem;
+            text-align: center;
+            font-size: 0.85rem;
+        }
+
+        .balance-card {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+            border-radius: 12px;
+            padding: 2rem;
+            color: white;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08);
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-banner">📱 Interactive Demo - Click menu items to explore core features</div>
+
+    <aside class="student-sidebar">
+        <div class="student-brand">
+            <div><span class="material-symbols-outlined" style="font-size: 30px; font-weight:200">local_atm</span>Classroom</div>
+            <div><span class="material-symbols-outlined" style="font-size: 30px; font-weight:200">store</span>Token</div>
+            <div><span class="material-symbols-outlined" style="font-size: 30px; font-weight:200">finance_mode</span>Hub</div>
+            <hr style="border-color: rgba(255,255,255,0.2); margin: 1rem 0;">
+            <div class="student-identity">
+                Alex
+                <div>Student</div>
+            </div>
+        </div>
+
+        <nav class="student-nav">
+            <a href="#" class="nav-link active" data-view="dashboard">
+                <span class="material-symbols-outlined" style="font-size: 20px">home</span> Dashboard
+            </a>
+            <a href="#" class="nav-link" data-view="accounts">
+                <span class="material-symbols-outlined" style="font-size: 20px">account_balance_wallet</span> Accounts
+            </a>
+            <a href="#" class="nav-link" data-view="store">
+                <span class="material-symbols-outlined" style="font-size: 20px">storefront</span> Store
+            </a>
+            <a href="#" class="nav-link" data-view="payroll">
+                <span class="material-symbols-outlined" style="font-size: 20px">credit_score</span> Work &amp; Pay
+            </a>
+            <a href="#" onclick="alert('Demo only - would sign out in real app'); return false;">
+                <span class="material-symbols-outlined" style="font-size: 20px">logout</span> Sign Out
+            </a>
+        </nav>
+    </aside>
+
+    <main class="student-main">
+        <div class="content-wrapper">
+            <!-- Dashboard View -->
+            <div class="view-section active" id="dashboard-view">
+                <div class="page-header">
+                    <div class="eyebrow">Classroom Token Hub</div>
+                    <h1><span class="material-symbols-outlined">dashboard</span> Dashboard</h1>
+                    <div class="text-muted">Ms. Johnson • Period 3</div>
+                </div>
+
+                <div class="alert alert-info">This is a static demo with simulated data.</div>
+
+                <div class="card shadow-sm mb-4">
+                    <div class="card-body p-4">
+                        <div class="d-flex align-items-center mb-3">
+                            <span class="material-symbols-outlined text-primary me-2">analytics</span>
+                            <h5 class="fw-bold mb-0">Weekly Stats</h5>
+                        </div>
+                        <div class="row g-3">
+                            <div class="col-6 col-md-3">
+                                <div class="text-center p-3 bg-primary bg-opacity-10 rounded-3">
+                                    <div class="h2 fw-bold text-primary mb-0 mt-2">5</div>
+                                    <div class="small text-muted">Days Tapped In</div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <div class="text-center p-3 bg-info bg-opacity-10 rounded-3">
+                                    <div class="h2 fw-bold text-info mb-0 mt-2">240</div>
+                                    <div class="small text-muted">Minutes This Week</div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <div class="text-center p-3 bg-success bg-opacity-10 rounded-3">
+                                    <div class="h2 fw-bold text-success mb-0 mt-2">$125</div>
+                                    <div class="small text-muted">Earned This Week</div>
+                                </div>
+                            </div>
+                            <div class="col-6 col-md-3">
+                                <div class="text-center p-3 bg-danger bg-opacity-10 rounded-3">
+                                    <div class="h2 fw-bold text-danger mb-0 mt-2">$75</div>
+                                    <div class="small text-muted">Spent This Week</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="balance-card mb-4">
+                    <div class="row align-items-center">
+                        <div class="col-7">
+                            <div style="color: rgba(255,255,255,0.7); font-size: 0.85rem; text-transform: uppercase; margin-bottom: 0.5rem; letter-spacing: 1px;">Current Balance</div>
+                            <div class="display-4 fw-bold mb-0">$1,245</div>
+                        </div>
+                        <div class="col-5 text-end">
+                            <div class="bg-white bg-opacity-10 rounded-3 p-3 d-inline-block text-start" style="min-width: 120px;">
+                                <div style="color: rgba(255,255,255,0.7); font-size: 0.85rem; margin-bottom: 0.25rem;">Savings</div>
+                                <div class="h4 fw-bold mb-0 text-white">$850</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center mb-3 px-1">
+                    <h5 class="fw-bold mb-0">Recent Activity</h5>
+                </div>
+
+                <div class="card shadow-sm">
+                    <div class="card-body p-0">
+                        <div class="list-group list-group-flush">
+                            <div class="list-group-item border-0 px-4 py-3">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-semibold">Weekly Payroll</div>
+                                        <div class="small text-muted">Attendance payment • Dec 23</div>
+                                    </div>
+                                    <div class="fw-bold text-success">+$125.00</div>
+                                </div>
+                            </div>
+                            <div class="list-group-item border-0 px-4 py-3">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-semibold">Hall Pass Purchase</div>
+                                        <div class="small text-muted">10-minute pass • Dec 22</div>
+                                    </div>
+                                    <div class="fw-bold text-danger">-$50.00</div>
+                                </div>
+                            </div>
+                            <div class="list-group-item border-0 px-4 py-3">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-semibold">Bonus</div>
+                                        <div class="small text-muted">Perfect quiz score • Dec 21</div>
+                                    </div>
+                                    <div class="fw-bold text-success">+$100.00</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Accounts View -->
+            <div class="view-section" id="accounts-view">
+                <div class="page-header">
+                    <div class="eyebrow">Classroom Token Hub</div>
+                    <h1><span class="material-symbols-outlined">account_balance_wallet</span> Accounts</h1>
+                </div>
+
+                <div class="row g-4 mb-4">
+                    <div class="col-md-6">
+                        <div class="card h-100 shadow-sm">
+                            <div class="card-body p-4 text-center">
+                                <span class="material-symbols-outlined text-primary mb-3" style="font-size: 3rem;">account_balance_wallet</span>
+                                <h3 class="display-5 fw-bold text-primary mb-2">$1,245</h3>
+                                <p class="text-secondary mb-3">Checking Account</p>
+                                <button class="btn btn-primary">Transfer Funds</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card h-100 shadow-sm">
+                            <div class="card-body p-4 text-center">
+                                <span class="material-symbols-outlined text-success mb-3" style="font-size: 3rem;">savings</span>
+                                <h3 class="display-5 fw-bold text-success mb-2">$850</h3>
+                                <p class="text-secondary mb-3">Savings Account</p>
+                                <button class="btn btn-success">Withdraw</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm">
+                    <div class="card-body p-4">
+                        <h5 class="fw-bold mb-4">Transfer Between Accounts</h5>
+                        <form>
+                            <div class="row g-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">From Account</label>
+                                    <select class="form-select">
+                                        <option>Checking</option>
+                                        <option>Savings</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">To Account</label>
+                                    <select class="form-select">
+                                        <option>Savings</option>
+                                        <option>Checking</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">Amount</label>
+                                    <input type="number" class="form-control" placeholder="$0.00">
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-primary mt-3" onclick="alert('Demo only')">Transfer Funds</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Store View -->
+            <div class="view-section" id="store-view">
+                <div class="page-header">
+                    <div class="eyebrow">Classroom Token Hub</div>
+                    <h1><span class="material-symbols-outlined">storefront</span> Store</h1>
+                </div>
+
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Homework Pass</h5>
+                                <div class="mb-2">
+                                    <span class="badge bg-primary fs-6">$250.00</span>
+                                    <span class="badge bg-warning text-dark">Delayed Use</span>
+                                </div>
+                                <p class="card-text text-muted">Skip one homework assignment</p>
+                                <button class="btn btn-primary w-100" onclick="alert('Demo only')">Purchase</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Hall Pass (10 min)</h5>
+                                <div class="mb-2">
+                                    <span class="badge bg-primary fs-6">$50.00</span>
+                                    <span class="badge bg-secondary">Hall Pass</span>
+                                </div>
+                                <p class="card-text text-muted">10-minute hall pass</p>
+                                <button class="btn btn-primary w-100" onclick="alert('Demo only')">Purchase</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body">
+                                <h5 class="card-title">Bonus Points</h5>
+                                <div class="mb-2">
+                                    <span class="badge bg-primary fs-6">$150.00</span>
+                                    <span class="badge bg-success">Immediate</span>
+                                </div>
+                                <p class="card-text text-muted">+50 bonus points</p>
+                                <button class="btn btn-primary w-100" onclick="alert('Demo only')">Purchase</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payroll View -->
+            <div class="view-section" id="payroll-view">
+                <div class="page-header">
+                    <div class="eyebrow">Classroom Token Hub</div>
+                    <h1><span class="material-symbols-outlined">credit_score</span> Work &amp; Pay</h1>
+                </div>
+
+                <div class="row g-4 mb-4">
+                    <div class="col-md-4">
+                        <div class="card shadow-sm">
+                            <div class="card-body text-center p-4">
+                                <span class="material-symbols-outlined text-success" style="font-size: 2.5rem;">paid</span>
+                                <h3 class="fw-bold text-success mt-2">$125.00</h3>
+                                <p class="text-muted mb-0">This Week</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card shadow-sm">
+                            <div class="card-body text-center p-4">
+                                <span class="material-symbols-outlined text-info" style="font-size: 2.5rem;">schedule</span>
+                                <h3 class="fw-bold text-info mt-2">240</h3>
+                                <p class="text-muted mb-0">Minutes Worked</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card shadow-sm">
+                            <div class="card-body text-center p-4">
+                                <span class="material-symbols-outlined text-primary" style="font-size: 2.5rem;">trending_up</span>
+                                <h3 class="fw-bold text-primary mt-2">$1,245</h3>
+                                <p class="text-muted mb-0">Total Earned</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow-sm">
+                    <div class="card-body p-4">
+                        <h5 class="fw-bold mb-4">Recent Payslips</h5>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Period</th>
+                                    <th>Minutes</th>
+                                    <th>Rate</th>
+                                    <th class="text-end">Amount</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Dec 23, 2025</td>
+                                    <td>Weekly</td>
+                                    <td>240 min</td>
+                                    <td>$0.52/min</td>
+                                    <td class="text-end fw-bold text-success">$125.00</td>
+                                </tr>
+                                <tr>
+                                    <td>Dec 16, 2025</td>
+                                    <td>Weekly</td>
+                                    <td>230 min</td>
+                                    <td>$0.52/min</td>
+                                    <td class="text-end fw-bold text-success">$120.00</td>
+                                </tr>
+                                <tr>
+                                    <td>Dec 9, 2025</td>
+                                    <td>Weekly</td>
+                                    <td>250 min</td>
+                                    <td>$0.52/min</td>
+                                    <td class="text-end fw-bold text-success">$130.00</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const view = this.getAttribute('data-view');
+                if (!view) return;
+
+                // Hide all views
+                document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
+
+                // Remove active from all links
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+
+                // Show selected view
+                document.getElementById(view + '-view').classList.add('active');
+
+                // Mark link as active
+                this.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>

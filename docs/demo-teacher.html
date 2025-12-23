@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Demo - Classroom Token Hub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1a4d47;
+            --primary-hover: #154139;
+            --secondary: #ac8255;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+            margin: 0;
+        }
+
+        .sidebar {
+            width: 260px;
+            background: linear-gradient(180deg, var(--primary) 0%, var(--primary-hover) 100%);
+            color: white;
+            padding: 1.5rem 1rem;
+            overflow-y: auto;
+        }
+
+        .sidebar-brand {
+            margin-bottom: 1.5rem;
+            font-size: 15px;
+            font-weight: 600;
+            line-height: 1.3;
+        }
+
+        .sidebar-brand div {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .user-name {
+            font-size: 22px;
+            font-weight: 600;
+            margin-top: 1rem;
+        }
+
+        .user-role {
+            font-size: 11px;
+            color: rgba(255,255,255,0.8);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar-nav {
+            margin-top: 2rem;
+        }
+
+        .nav-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .nav-group-title {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: rgba(255,255,255,0.6);
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+        }
+
+        .sidebar-nav a {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.6rem 1rem;
+            color: rgba(255,255,255,0.85);
+            text-decoration: none;
+            border-radius: 6px;
+            transition: all 0.2s;
+            font-size: 14px;
+            margin-bottom: 2px;
+        }
+
+        .sidebar-nav a:hover {
+            background: rgba(255,255,255,0.1);
+            color: white;
+        }
+
+        .sidebar-nav a.active {
+            background: rgba(255,255,255,0.15);
+            color: white;
+            font-weight: 500;
+        }
+
+        .main-content {
+            flex: 1;
+            overflow-y: auto;
+            background: #f5f5f3;
+        }
+
+        .content-wrapper {
+            padding: 2rem;
+            max-width: 1400px;
+        }
+
+        .page-header {
+            margin-bottom: 2rem;
+        }
+
+        .page-header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .eyebrow {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            color: #6c757d;
+            font-weight: 600;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .view-section {
+            display: none;
+        }
+
+        .view-section.active {
+            display: block;
+        }
+
+        .demo-banner {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
+            color: white;
+            padding: 0.6rem;
+            text-align: center;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-banner">📚 Interactive Demo - Click menu items to explore core features</div>
+
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <div><span class="material-symbols-outlined" style="font-size: 30px; font-weight:200">local_atm</span>Classroom</div>
+            <div><span class="material-symbols-outlined" style="font-size: 30px; font-weight:200">store</span>Token</div>
+            <div><span class="material-symbols-outlined" style="font-size: 30px; font-weight:200">finance_mode</span>Hub</div>
+            <hr style="border-color: rgba(255,255,255,0.2); margin: 1rem 0;">
+            <div class="user-name">Ms. Johnson</div>
+            <div class="user-role">Teacher</div>
+        </div>
+
+        <nav class="sidebar-nav">
+            <div class="nav-group">
+                <div class="nav-group-title">Classroom</div>
+                <a href="#" class="nav-link active" data-view="dashboard">
+                    <span class="material-symbols-outlined" style="font-size: 20px">home</span> Dashboard
+                </a>
+                <a href="#" class="nav-link" data-view="students">
+                    <span class="material-symbols-outlined" style="font-size: 20px">school</span> Students
+                </a>
+            </div>
+
+            <div class="nav-group">
+                <div class="nav-group-title">Economy</div>
+                <a href="#" class="nav-link" data-view="payroll">
+                    <span class="material-symbols-outlined" style="font-size: 20px">payments</span> Payroll
+                </a>
+                <a href="#" class="nav-link" data-view="store">
+                    <span class="material-symbols-outlined" style="font-size: 20px">storefront</span> Store
+                </a>
+            </div>
+
+            <div class="nav-group">
+                <div class="nav-group-title">System</div>
+                <a href="#" onclick="alert('Demo only - would sign out in real app'); return false;">
+                    <span class="material-symbols-outlined" style="font-size: 20px">logout</span> Sign Out
+                </a>
+            </div>
+        </nav>
+    </aside>
+
+    <main class="main-content">
+        <div class="content-wrapper">
+            <!-- Dashboard View -->
+            <div class="view-section active" id="dashboard-view">
+                <div class="page-header">
+                    <div class="eyebrow">Classroom Token Hub</div>
+                    <h1><span class="material-symbols-outlined">home</span> Dashboard</h1>
+                </div>
+
+                <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>This is a static demo with simulated data.</div>
+
+                <div class="row g-3 mb-4">
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3 class="text-primary mb-0">24</h3>
+                                <small class="text-muted">Total Students</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3 class="text-success mb-0">$2,450</h3>
+                                <small class="text-muted">Next Payroll</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3 class="text-info mb-0">12</h3>
+                                <small class="text-muted">Store Items</small>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card">
+                            <div class="card-body text-center">
+                                <h3 class="text-warning mb-0">87%</h3>
+                                <small class="text-muted">Avg Attendance</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-graph-up me-2"></i>Quick Stats</h5>
+                    </div>
+                    <div class="card-body">
+                        <p class="text-muted">Recent activity and classroom metrics would appear here.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Students View -->
+            <div class="view-section" id="students-view">
+                <div class="page-header">
+                    <div class="eyebrow">Classroom Token Hub</div>
+                    <h1><span class="material-symbols-outlined">school</span> Student Management</h1>
+                </div>
+
+                <div class="card shadow">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><span class="material-symbols-outlined me-2">groups</span>Class Roster</h5>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Checking Balance</th>
+                                    <th>Savings Balance</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Alex Johnson</td>
+                                    <td>$125.50</td>
+                                    <td>$450.00</td>
+                                    <td><button class="btn btn-sm btn-outline-primary">View</button></td>
+                                </tr>
+                                <tr>
+                                    <td>Sam Martinez</td>
+                                    <td>$98.75</td>
+                                    <td>$320.25</td>
+                                    <td><button class="btn btn-sm btn-outline-primary">View</button></td>
+                                </tr>
+                                <tr>
+                                    <td>Jordan Lee</td>
+                                    <td>$210.00</td>
+                                    <td>$580.50</td>
+                                    <td><button class="btn btn-sm btn-outline-primary">View</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Payroll View -->
+            <div class="view-section" id="payroll-view">
+                <div class="page-header">
+                    <div class="eyebrow">Classroom Token Hub</div>
+                    <h1><span class="material-symbols-outlined">receipt_long</span> Payroll Management</h1>
+                </div>
+
+                <div class="row g-4 mb-4">
+                    <div class="col-md-6">
+                        <div class="card shadow">
+                            <div class="card-header bg-primary text-white">
+                                <h5 class="mb-0"><i class="bi bi-calendar-event me-2"></i>Next Payroll</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div>
+                                        <h3 class="text-primary mb-0">$2,450</h3>
+                                        <small class="text-muted">Estimated Payout</small>
+                                    </div>
+                                </div>
+                                <p class="text-muted mb-0"><i class="bi bi-clock me-2"></i>Next run: Friday, 3:00 PM</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card shadow">
+                            <div class="card-header bg-success text-white">
+                                <h5 class="mb-0"><i class="bi bi-gear me-2"></i>Settings</h5>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-2">
+                                    <strong>Pay Rate:</strong> $0.50/minute
+                                </div>
+                                <div class="mb-2">
+                                    <strong>Schedule:</strong> Weekly (Friday)
+                                </div>
+                                <div>
+                                    <strong>Status:</strong> <span class="badge bg-success">Active</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Store View -->
+            <div class="view-section" id="store-view">
+                <div class="page-header">
+                    <div class="eyebrow">Classroom Token Hub</div>
+                    <h1><span class="material-symbols-outlined">storefront</span> Store Management</h1>
+                </div>
+
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-primary text-white">
+                        <h5 class="mb-0"><i class="bi bi-graph-up me-2"></i>Store Statistics</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row text-center">
+                            <div class="col-4">
+                                <h3 class="text-primary">12</h3>
+                                <small class="text-muted">Total Items</small>
+                            </div>
+                            <div class="col-4">
+                                <h3 class="text-success">9</h3>
+                                <small class="text-muted">Active Items</small>
+                            </div>
+                            <div class="col-4">
+                                <h3 class="text-info">45</h3>
+                                <small class="text-muted">Total Purchases</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card shadow">
+                    <div class="card-header bg-info text-white">
+                        <h5 class="mb-0"><i class="bi bi-star me-2"></i>Active Store Items</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="row g-3">
+                            <div class="col-md-4">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Homework Pass</h6>
+                                        <p class="card-text text-muted small">Skip one homework assignment</p>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="badge bg-success">$250.00</span>
+                                            <span class="badge bg-warning text-dark">Delayed Use</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Hall Pass (10 min)</h6>
+                                        <p class="card-text text-muted small">10-minute hall pass</p>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="badge bg-success">$50.00</span>
+                                            <span class="badge bg-secondary">Hall Pass</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="card-title">Bonus Points</h6>
+                                        <p class="card-text text-muted small">+50 bonus points</p>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="badge bg-success">$150.00</span>
+                                            <span class="badge bg-success">Immediate</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', function(e) {
+                e.preventDefault();
+                const view = this.getAttribute('data-view');
+                if (!view) return;
+
+                // Hide all views
+                document.querySelectorAll('.view-section').forEach(v => v.classList.remove('active'));
+
+                // Remove active from all links
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+
+                // Show selected view
+                document.getElementById(view + '-view').classList.add('active');
+
+                // Mark link as active
+                this.classList.add('active');
+            });
+        });
+    </script>
+</body>
+</html>
