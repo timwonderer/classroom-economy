@@ -186,7 +186,7 @@
                         If your rent is more than <strong>{{ settings.grace_period_days }} days</strong> late, you will be charged a late fee of <strong>${{ "%.2f"|format(settings.late_fee) }}</strong>
                     </li>
                     <li class="mb-2">
-                        You are {% if settings.allow_partial_payment %}<span class="badge bg-success">allowed</span>{% else %}<span class="badge bg-danger">not allowed</span>{% endif %} to pay your rent in small chunks.
+                        You are {% if settings.allow_incremental_payment %}<span class="badge bg-success">allowed</span>{% else %}<span class="badge bg-danger">not allowed</span>{% endif %} to pay your rent in small chunks.
                     </li>
                     <li class="mb-2">
                         You
