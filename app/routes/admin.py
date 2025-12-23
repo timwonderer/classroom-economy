@@ -256,10 +256,11 @@ def _get_students_needing_transaction_backfill(teacher_id):
         return []
     
     affected_student_ids = [tx.student_id for tx in transactions_needing_backfill]
-    
-    # Get the student objects
-    students = Student.query.filter(Student.id.in_(affected_student_ids)).all()
-    
+
+    # SECURITY FIX: Get the student objects using scoped query for defense-in-depth
+    # While the IDs are already from scoped students, this ensures consistency
+    students = _scoped_students().filter(Student.id.in_(affected_student_ids)).all()
+
     return students
 
 
