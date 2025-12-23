@@ -33,6 +33,20 @@ How to monitor and clean demo student sessions that power the admin "view as stu
 - Provides a manual cleanup snippet using `cleanup_demo_student_data`
 - Notes the foreign-key-safe deletion order and required transaction commit
 
+### [Public Demo Environment (Teacher + Student)](DEMO_ENV_SETUP.md)
+
+How to stand up the landing-page demo endpoints (teacher and student) using the built-in demo session lifecycle and seeded data.
+
+**Use this when:**
+- You need the `docs/index.html` demo iframes/buttons to point at a live demo
+- Standing up a separate demo deployment that is isolated from production data
+- Creating disposable demo student sessions for public previews
+
+**Key features:**
+- Reuses `create_demo_student` and the 10-minute auto-cleanup pipeline
+- References existing scheduler job and schema
+- Provides curl example to mint a demo session URL for embedding
+
 ### [UptimeRobot Monitoring Setup](UPTIMEROBOT_SETUP.md)
 
 Complete guide for setting up UptimeRobot monitoring and creating a public status page.

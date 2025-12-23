@@ -366,6 +366,100 @@
             font-size: 0.95rem;
         }
 
+        .demo-launcher {
+            background: var(--bg-white);
+            border-radius: 1rem;
+            box-shadow: var(--shadow);
+            padding: 1.75rem 2rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+            flex-wrap: wrap;
+        }
+
+        .demo-launcher .demo-text {
+            max-width: 560px;
+            color: var(--text-dark);
+            line-height: 1.5;
+        }
+
+        .demo-launcher .demo-note {
+            color: var(--text-light);
+            font-size: 0.95rem;
+            margin-top: 0.35rem;
+        }
+
+        .demo-buttons {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .todo-note {
+            background: #fff7e6;
+            color: #8a5a12;
+            border: 1px solid #f3d19c;
+            border-radius: 0.75rem;
+            padding: 0.85rem 1rem;
+            font-size: 0.95rem;
+            box-shadow: var(--shadow);
+            margin-top: 0.5rem;
+        }
+
+        .demo-embeds {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 1.5rem;
+            margin: 1rem 0 2.5rem 0;
+        }
+
+        .demo-embed-card {
+            background: var(--bg-white);
+            border-radius: 1rem;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            padding: 1.25rem;
+        }
+
+        .demo-embed-header {
+            display: flex;
+            justify-content: space-between;
+            gap: 0.75rem;
+            align-items: flex-start;
+            flex-wrap: wrap;
+        }
+
+        .demo-label {
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        .demo-iframe-wrapper {
+            border: 1px solid var(--border-color);
+            border-radius: 0.75rem;
+            overflow: hidden;
+            background: var(--bg-light);
+        }
+
+        .demo-iframe {
+            width: 100%;
+            height: 520px;
+            border: none;
+            display: block;
+        }
+
+        .demo-fallback {
+            padding: 1rem;
+            color: var(--text-light);
+            text-align: center;
+            font-size: 0.95rem;
+        }
+
         /* Stats */
         .stats {
             background-color: var(--bg-white);
@@ -536,7 +630,7 @@
             <img alt="GitHub Release" src="https://img.shields.io/github/v/release/timwonderer/classroom-economy?link=https%3A%2F%2Fgithub.com%2Ftimwonderer%2Fclassroom-economy"><br>
             <span style="font-size:30pt">Classroom Economy System. <span style="font-weight:600; color:#f9d004">Reimagined.</span></strong>
             <p>Classroom Financial Simulation that promotes student engagement and prepare them for real-world financial decisions.</p>
-            <p>Made with innovation and care by a current classroom teacher</p>
+            <p>Brought to you by a classroom teacher with the mindset of <br><i>"I'll just make it myself"</i></p>
             <div class="hero-buttons">
                 <a href="#access" class="btn btn-primary">Request Access</a>
                 <a href="https://github.com/timwonderer/classroom-economy" target="_blank" rel="noopener" class="btn btn-secondary">View on GitHub</a>
@@ -546,30 +640,32 @@
 
     <!-- Stats Section -->
     <div class="container">
-        <div class="stats">
-            <div class="stats-grid">
-                <div class="stat">
-                    <h4>35+</h4>
-                    <p>Database Models</p>
-                </div>
-                <div class="stat">
-                    <h4>PWA</h4>
-                    <p>Mobile App Ready</p>
-                </div>
-                <div class="stat">
-                    <h4>100%</h4>
-                    <p>Free for Education</p>
-                </div>
-                <div class="stat">
-                    <h4>WCAG 2.1</h4>
-                    <p>Accessibility Focused</p>
+            <h2 class="section-title">Built thoughtfully and flexibly</h2>
+            <div class="stats">
+                <div class="stats-grid">
+                    <div class="stat">
+                    <h4>PostgreSQL <span style="font-weight:300;">powered</span></h4>
+                    <p>Normalized schema plus materialized views tuned for classroom-scale workloads.</p>
+                    </div>
+                    <div class="stat">
+                    <h4>Continously <span style="font-weight:300;">available</span></h4>
+                    <p>Service workers keep the app usable when hallway Wi-Fi drops.</p>
+                    </div>
+                    <div class="stat">
+                    <h4>Privacy <span style="font-weight:300;">centered</span></h4>
+                    <p>Minimal personal information by design to minimize data exposure.</p>
+                    </div>
+                    <div class="stat">
+                    <h4>Security<span style="font-weight:300;"> focused</span></h4>
+          
+                    <p>TOTP auth, CSRF protection, and encrypted PII across the stack.</p>
+                    </div>
                 </div>
             </div>
-        </div>
 
         <!-- Features Section -->
         <section id="features" class="section">
-            <h2 class="section-title">Powerful Features for Modern Classrooms</h2>
+            <h2 class="section-title">Complex Classroom Economy? Handled.</h2>
             <div class="features-grid">
                 <div class="feature-card">
                     <div class="feature-icon" aria-hidden="true">attach_money</div>
@@ -630,6 +726,57 @@
         <!-- Screenshots Section -->
         <section id="screenshots" class="section">
             <h2 class="section-title">See It In Action</h2>
+            <div class="demo-launcher">
+                <div class="demo-text">
+                    <strong>Interactive demo (read-only)</strong>
+                    <p class="demo-note">Explore navigation, balances, and store flows without saving any changes. Replace these URLs with your demo instances when ready.</p>
+                    <div class="todo-note"><strong>TODO:</strong> deploy read-only demo instances (teacher + student) with seeded data and point the URLs/iframes below to them.</div>
+                </div>
+                <div class="demo-buttons">
+                    <a class="btn btn-primary" href="https://demo.classroomtokenhub.com/teacher" target="_blank" rel="noopener">Launch Teacher Demo</a>
+                    <a class="btn btn-secondary" href="https://demo.classroomtokenhub.com/student" target="_blank" rel="noopener">Launch Student Demo</a>
+                </div>
+            </div>
+            <div class="demo-embeds" role="group" aria-label="Interactive demo previews">
+                <div class="demo-embed-card">
+                    <div class="demo-embed-header">
+                        <div>
+                            <p class="demo-label">Teacher Demo (read-only)</p>
+                            <p class="demo-note">Inline preview. Mutations blocked; navigation is open.</p>
+                        </div>
+                        <a class="btn btn-secondary" href="https://demo.classroomtokenhub.com/teacher" target="_blank" rel="noopener">Open in new tab</a>
+                    </div>
+                    <div class="demo-iframe-wrapper">
+                        <iframe
+                            class="demo-iframe"
+                            title="Teacher demo"
+                            src="https://demo.classroomtokenhub.com/teacher"
+                            sandbox="allow-same-origin allow-scripts allow-forms"
+                            loading="lazy">
+                        </iframe>
+                        <div class="demo-fallback">If this preview is blocked by browser settings, use the “Open in new tab” link.</div>
+                    </div>
+                </div>
+                <div class="demo-embed-card">
+                    <div class="demo-embed-header">
+                        <div>
+                            <p class="demo-label">Student Demo (read-only)</p>
+                            <p class="demo-note">Inline preview. Mutations blocked; navigation is open.</p>
+                        </div>
+                        <a class="btn btn-secondary" href="https://demo.classroomtokenhub.com/student" target="_blank" rel="noopener">Open in new tab</a>
+                    </div>
+                    <div class="demo-iframe-wrapper">
+                        <iframe
+                            class="demo-iframe"
+                            title="Student demo"
+                            src="https://demo.classroomtokenhub.com/student"
+                            sandbox="allow-same-origin allow-scripts allow-forms"
+                            loading="lazy">
+                        </iframe>
+                        <div class="demo-fallback">If this preview is blocked by browser settings, use the “Open in new tab” link.</div>
+                    </div>
+                </div>
+            </div>
             <div class="screenshots-grid">
                 <div class="screenshot-card" role="button" tabindex="0" aria-label="Open Teacher Dashboard screenshot" data-img="../static/images/teacher_dashboard.png" data-title="Teacher Dashboard" data-description="Manage your classroom economy with an intuitive interface. Run payroll, track students, and configure all settings in one place.">
                     <div class="screenshot-placeholder"> <img src="../static/images/teacher_dashboard.png" alt="Teacher Dashboard Screenshot"></div>
