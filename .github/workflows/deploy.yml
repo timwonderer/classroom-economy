@@ -18,7 +18,14 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.DO_DEPLOY_KEY }}
 
-
+    # SECURITY FIX: Add SSH host key verification to prevent MITM attacks
+    - name: Set up SSH host key verification
+      run: |
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        echo "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+        chmod 644 ~/.ssh/known_hosts
+        echo "✓ SSH host key verification enabled"
 
     - name: Deploy to DO Production Server
       run: |
@@ -32,7 +39,8 @@ jobs:
         SSH_ENV_VARS="MAINT_MODE=$(printf %q "$MAINT_MODE") MAINT_MESSAGE=$(printf %q "$MAINT_MESSAGE") MAINT_END=$(printf %q "$MAINT_END") MAINT_CONTACT=$(printf %q "$MAINT_CONTACT") TURNSTILE_SITE=$(printf %q "$TURNSTILE_SITE") TURNSTILE_SECRET=$(printf %q "$TURNSTILE_SECRET")"
 
         # Connect to the production server and deploy
-        ssh -o StrictHostKeyChecking=no root@${{ secrets.PRODUCTION_SERVER_IP }} "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
+        # SECURITY: Removed -o StrictHostKeyChecking=no (now uses known_hosts)
+        ssh root@${{ secrets.PRODUCTION_SERVER_IP }} "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
 
           set -e  # Exit immediately if a command exits with a non-zero status
 
@@ -49,6 +57,10 @@ jobs:
           source venv/bin/activate
 
           echo 'Updating environment variables...'
+          # SECURITY: Set restrictive file permissions before writing secrets
+          touch .env
+          chmod 600 .env
+
           # Remove old variables if they exist
           sed -i '/^MAINTENANCE_MODE=/d' .env 2>/dev/null || true
           sed -i '/^MAINTENANCE_MESSAGE=/d' .env 2>/dev/null || true
@@ -72,6 +84,9 @@ jobs:
             echo "TURNSTILE_SECRET_KEY=${TURNSTILE_SECRET}" >> .env
             echo "✓ Turnstile secret key configured"
           fi
+
+          # SECURITY: Verify file permissions
+          ls -la .env | grep -q '^-rw-------' && echo "✓ Secure .env permissions (600)" || echo "⚠ Warning: .env permissions not set correctly"
 
           echo 'Installing dependencies...'
           pip install -r requirements.txt
