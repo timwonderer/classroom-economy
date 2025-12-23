@@ -6,291 +6,84 @@
     <title>Student Portal Demo - Classroom Token Hub</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        :root {
+            --primary: #2F4F7F;
+            --primary-hover: #202b3b;
+            --secondary: #ac8255;
+            --secondary-hover: #D88B5D;
+            --background: #f5f5f3;
+            --surface: #FFFFFF;
+            --text-primary: #2c2c2c;
+            --text-secondary: #6c757d;
+            --border-color: #DDE2E8;
+            --radius-md: 12px;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.04);
+            --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.08);
         }
 
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #f5f5f3;
-            color: #2c2c2c;
-            line-height: 1.6;
+            background-color: var(--background);
+            color: var(--text-primary);
+        }
+
+        .material-symbols-outlined {
+            font-family: 'Material Symbols Outlined', sans-serif;
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
         }
 
         .demo-banner {
-            background: linear-gradient(135deg, #236960 0%, #1a4742 100%);
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
             color: white;
             padding: 0.75rem;
             text-align: center;
             font-size: 0.9rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .container {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
-        .header {
-            background: white;
-            padding: 1.75rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            margin-bottom: 2rem;
-            text-align: center;
-        }
-
-        .header h1 {
-            font-size: 1.75rem;
-            color: #236960;
-            margin-bottom: 0.5rem;
-        }
-
-        .header .student-info {
-            color: #6b7280;
-            font-size: 0.95rem;
-        }
-
-        .balance-cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-            margin-bottom: 2rem;
-        }
-
-        .balance-card {
-            background: white;
-            padding: 1.75rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            text-align: center;
-            transition: transform 0.2s, box-shadow 0.2s;
-        }
-
-        .balance-card:hover {
-            transform: translateY(-4px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-        }
-
-        .balance-card .icon {
-            font-family: 'Material Symbols Outlined';
-            font-size: 3rem;
-            color: #236960;
-            margin-bottom: 0.75rem;
-        }
-
-        .balance-card .amount {
-            font-size: 2.25rem;
-            font-weight: 700;
-            color: #236960;
-            margin-bottom: 0.5rem;
-        }
-
-        .balance-card .label {
-            color: #6b7280;
-            font-size: 0.9rem;
-            margin-bottom: 1rem;
-        }
-
-        .balance-card .action {
-            margin-top: 1rem;
+            box-shadow: var(--shadow-md);
         }
 
         .card {
-            background: white;
-            padding: 1.75rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            margin-bottom: 1.5rem;
-        }
-
-        .card h2 {
-            font-size: 1.3rem;
-            margin-bottom: 1.25rem;
-            color: #236960;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .card h2 .icon {
-            font-family: 'Material Symbols Outlined';
-            font-size: 1.5rem;
-        }
-
-        .store-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 1rem;
-        }
-
-        .store-item {
-            border: 1px solid #e5e5e3;
-            border-radius: 0.5rem;
-            padding: 1rem;
-            text-align: center;
-            transition: all 0.2s;
-        }
-
-        .store-item:hover {
-            border-color: #236960;
-            box-shadow: 0 2px 8px rgba(35, 105, 96, 0.1);
-        }
-
-        .store-item .item-icon {
-            font-family: 'Material Symbols Outlined';
-            font-size: 2.5rem;
-            color: #ac8255;
-            margin-bottom: 0.5rem;
-        }
-
-        .store-item h3 {
-            font-size: 1rem;
-            margin-bottom: 0.5rem;
-            color: #2c2c2c;
-        }
-
-        .store-item .price {
-            font-weight: 700;
-            color: #236960;
-            margin-bottom: 0.75rem;
-        }
-
-        .btn {
-            padding: 0.6rem 1.25rem;
-            border-radius: 0.5rem;
-            border: none;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            font-size: 0.9rem;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            width: 100%;
-            justify-content: center;
+            background: var(--surface);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-sm);
         }
 
         .btn-primary {
-            background-color: #236960;
+            background-color: var(--primary);
+            border-color: var(--primary);
             color: white;
+            font-weight: 500;
         }
 
         .btn-primary:hover {
-            background-color: #1a4742;
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(35, 105, 96, 0.3);
+            background-color: var(--primary-hover);
+            border-color: var(--primary-hover);
+            color: white;
         }
 
         .btn-secondary {
-            background-color: #ac8255;
-            color: white;
+            background-color: var(--secondary);
+            border-color: var(--secondary);
+            color: var(--primary);
+            font-weight: 500;
         }
 
         .btn-secondary:hover {
-            background-color: #8a6844;
+            background-color: var(--secondary-hover);
+            border-color: var(--secondary-hover);
+            color: var(--primary);
         }
 
-        .btn .icon {
-            font-family: 'Material Symbols Outlined';
-            font-size: 1.2rem;
-        }
-
-        .transaction-list {
-            list-style: none;
-        }
-
-        .transaction-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1rem;
-            border-bottom: 1px solid #e5e5e3;
-        }
-
-        .transaction-item:last-child {
-            border-bottom: none;
-        }
-
-        .transaction-item .info {
-            flex: 1;
-        }
-
-        .transaction-item .type {
+        h1, h2, h3, h4, h5 {
             font-weight: 600;
-            color: #2c2c2c;
-            margin-bottom: 0.25rem;
+            color: var(--primary);
         }
 
-        .transaction-item .desc {
-            font-size: 0.85rem;
-            color: #6b7280;
-        }
-
-        .transaction-item .amount {
-            font-weight: 700;
-            font-size: 1.1rem;
-        }
-
-        .transaction-item .amount.positive {
-            color: #10b981;
-        }
-
-        .transaction-item .amount.negative {
-            color: #ef4444;
-        }
-
-        .demo-notice {
-            background: #fff7e6;
-            border: 1px solid #f3d19c;
-            color: #8a5a12;
-            padding: 1rem;
-            border-radius: 0.5rem;
-            margin-bottom: 1.5rem;
-            font-size: 0.9rem;
-        }
-
-        .attendance-status {
-            background: white;
-            padding: 1.5rem;
-            border-radius: 0.75rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-            margin-bottom: 2rem;
-            text-align: center;
-        }
-
-        .attendance-status .status-text {
-            font-size: 1.1rem;
-            color: #6b7280;
-            margin-bottom: 1rem;
-        }
-
-        .attendance-status .status-indicator {
-            display: inline-block;
-            padding: 0.5rem 1rem;
-            background-color: #10b981;
-            color: white;
-            border-radius: 2rem;
-            font-weight: 600;
-        }
-
-        @media (max-width: 768px) {
-            .container {
-                padding: 1rem;
-            }
-
-            .balance-cards {
-                grid-template-columns: 1fr;
-            }
-
-            .store-grid {
-                grid-template-columns: 1fr;
-            }
-        }
+        .text-primary { color: var(--primary) !important; }
+        .bg-primary { background-color: var(--primary) !important; }
+        .bg-secondary { background-color: var(--secondary) !important; }
     </style>
 </head>
 <body>
@@ -298,174 +91,220 @@
         📱 Interactive Demo (Read-Only) - Explore the student portal interface
     </div>
 
-    <div class="container">
-        <div class="header">
-            <h1>Welcome, Alex!</h1>
-            <p class="student-info">Period 3 • Ms. Johnson • Economics</p>
+    <div class="container py-4">
+        <div class="alert alert-warning border-0 shadow-sm mb-4 d-flex align-items-center" role="alert">
+            <span class="material-symbols-outlined me-2">info</span>
+            <div class="flex-grow-1">This is a static demo. All data is simulated and changes won't be saved.</div>
         </div>
 
-        <div class="demo-notice">
-            ℹ️ This is a static demo showing the interface. All data is simulated and changes won't be saved.
+        <!-- Header -->
+        <div class="mb-4 text-center">
+            <h1 class="mb-1">Welcome, Alex!</h1>
+            <p class="text-secondary mb-0">Period 3 • Ms. Johnson • Economics</p>
         </div>
 
-        <div class="attendance-status">
-            <p class="status-text">Current Status</p>
-            <span class="status-indicator">✓ Working (Started 8:45 AM)</span>
-        </div>
-
-        <div class="balance-cards">
-            <div class="balance-card">
-                <div class="icon">account_balance_wallet</div>
-                <div class="amount">$1,245</div>
-                <div class="label">Checking Account</div>
-                <button class="btn btn-primary" onclick="showMessage('Transfer')">
-                    <span class="icon">swap_horiz</span>
-                    Transfer
-                </button>
-            </div>
-
-            <div class="balance-card">
-                <div class="icon">savings</div>
-                <div class="amount">$850</div>
-                <div class="label">Savings Account</div>
-                <button class="btn btn-secondary" onclick="showMessage('Withdraw')">
-                    <span class="icon">download</span>
-                    Withdraw
-                </button>
-            </div>
-        </div>
-
-        <div class="card">
-            <h2><span class="icon">storefront</span>Classroom Store</h2>
-            <div class="store-grid">
-                <div class="store-item">
-                    <div class="item-icon">edit_note</div>
-                    <h3>Homework Pass</h3>
-                    <p class="price">$250</p>
-                    <button class="btn btn-primary" onclick="showMessage('Homework Pass')">Purchase</button>
+        <!-- Weekly Stats -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body p-4">
+                <div class="d-flex align-items-center mb-3">
+                    <span class="material-symbols-outlined text-primary me-2">analytics</span>
+                    <h5 class="fw-bold mb-0">Weekly Stats</h5>
                 </div>
-                <div class="store-item">
-                    <div class="item-icon">confirmation_number</div>
-                    <h3>Hall Pass (10 min)</h3>
-                    <p class="price">$50</p>
-                    <button class="btn btn-primary" onclick="showMessage('Hall Pass')">Purchase</button>
-                </div>
-                <div class="store-item">
-                    <div class="item-icon">chair</div>
-                    <h3>Seat Upgrade</h3>
-                    <p class="price">$400</p>
-                    <button class="btn btn-primary" onclick="showMessage('Seat Upgrade')">Purchase</button>
-                </div>
-                <div class="store-item">
-                    <div class="item-icon">headphones</div>
-                    <h3>Music Privilege</h3>
-                    <p class="price">$150</p>
-                    <button class="btn btn-primary" onclick="showMessage('Music Privilege')">Purchase</button>
-                </div>
-                <div class="store-item">
-                    <div class="item-icon">celebration</div>
-                    <h3>Bonus Points</h3>
-                    <p class="price">$500</p>
-                    <button class="btn btn-primary" onclick="showMessage('Bonus Points')">Purchase</button>
-                </div>
-                <div class="store-item">
-                    <div class="item-icon">restaurant</div>
-                    <h3>Snack Voucher</h3>
-                    <p class="price">$75</p>
-                    <button class="btn btn-primary" onclick="showMessage('Snack Voucher')">Purchase</button>
+                <div class="row g-3">
+                    <div class="col-6 col-md-3">
+                        <div class="text-center p-3 bg-primary bg-opacity-10 rounded-3">
+                            <span class="material-symbols-outlined text-primary fs-3">event_available</span>
+                            <div class="h2 fw-bold text-primary mb-0 mt-2">5</div>
+                            <div class="small text-muted">Days Tapped In</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="text-center p-3 bg-info bg-opacity-10 rounded-3">
+                            <span class="material-symbols-outlined text-info fs-3">schedule</span>
+                            <div class="h2 fw-bold text-info mb-0 mt-2">240</div>
+                            <div class="small text-muted">Minutes This Week</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="text-center p-3 bg-success bg-opacity-10 rounded-3">
+                            <span class="material-symbols-outlined text-success fs-3">trending_up</span>
+                            <div class="h2 fw-bold text-success mb-0 mt-2">$125</div>
+                            <div class="small text-muted">Earned This Week</div>
+                        </div>
+                    </div>
+                    <div class="col-6 col-md-3">
+                        <div class="text-center p-3 bg-danger bg-opacity-10 rounded-3">
+                            <span class="material-symbols-outlined text-danger fs-3">trending_down</span>
+                            <div class="h2 fw-bold text-danger mb-0 mt-2">$75</div>
+                            <div class="small text-muted">Spent This Week</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
-        <div class="card">
-            <h2><span class="icon">history</span>Recent Transactions</h2>
-            <ul class="transaction-list">
-                <li class="transaction-item">
-                    <div class="info">
-                        <div class="type">Weekly Payroll</div>
-                        <div class="desc">Attendance payment • Dec 23, 2025</div>
+        <!-- Account Balances -->
+        <div class="row g-4 mb-4">
+            <div class="col-12 col-md-6">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body p-4 text-center">
+                        <span class="material-symbols-outlined text-primary mb-3" style="font-size: 3rem;">account_balance_wallet</span>
+                        <h3 class="display-5 fw-bold text-primary mb-2">$1,245</h3>
+                        <p class="text-secondary mb-3">Checking Account</p>
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-primary" onclick="showMessage('Transfer Funds')">
+                                <span class="material-symbols-outlined me-1" style="font-size: 1.2rem; vertical-align: middle;">swap_horiz</span>
+                                Transfer
+                            </button>
+                            <button class="btn btn-outline-primary" onclick="showMessage('View History')">View History</button>
+                        </div>
                     </div>
-                    <div class="amount positive">+$125</div>
-                </li>
-                <li class="transaction-item">
-                    <div class="info">
-                        <div class="type">Hall Pass Purchase</div>
-                        <div class="desc">10-minute pass • Dec 22, 2025</div>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-6">
+                <div class="card h-100 border-0 shadow-sm">
+                    <div class="card-body p-4 text-center">
+                        <span class="material-symbols-outlined text-success mb-3" style="font-size: 3rem;">savings</span>
+                        <h3 class="display-5 fw-bold text-success mb-2">$850</h3>
+                        <p class="text-secondary mb-3">Savings Account</p>
+                        <div class="d-grid gap-2">
+                            <button class="btn btn-success" onclick="showMessage('Withdraw Funds')">
+                                <span class="material-symbols-outlined me-1" style="font-size: 1.2rem; vertical-align: middle;">download</span>
+                                Withdraw
+                            </button>
+                            <button class="btn btn-outline-success" onclick="showMessage('View History')">View History</button>
+                        </div>
                     </div>
-                    <div class="amount negative">-$50</div>
-                </li>
-                <li class="transaction-item">
-                    <div class="info">
-                        <div class="type">Bonus</div>
-                        <div class="desc">Perfect quiz score • Dec 21, 2025</div>
-                    </div>
-                    <div class="amount positive">+$100</div>
-                </li>
-                <li class="transaction-item">
-                    <div class="info">
-                        <div class="type">Transfer to Savings</div>
-                        <div class="desc">Account transfer • Dec 20, 2025</div>
-                    </div>
-                    <div class="amount">$200</div>
-                </li>
-                <li class="transaction-item">
-                    <div class="info">
-                        <div class="type">Weekly Payroll</div>
-                        <div class="desc">Attendance payment • Dec 16, 2025</div>
-                    </div>
-                    <div class="amount positive">+$125</div>
-                </li>
-                <li class="transaction-item">
-                    <div class="info">
-                        <div class="type">Store Purchase</div>
-                        <div class="desc">Homework pass • Dec 15, 2025</div>
-                    </div>
-                    <div class="amount negative">-$250</div>
-                </li>
-            </ul>
+                </div>
+            </div>
         </div>
 
-        <div class="card">
-            <h2><span class="icon">assessment</span>Your Stats</h2>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1.5rem; text-align: center;">
-                <div>
-                    <div style="font-size: 2rem; font-weight: 700; color: #236960;">96%</div>
-                    <div style="color: #6b7280; font-size: 0.9rem;">Attendance Rate</div>
+        <!-- Classroom Store -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body p-4">
+                <h5 class="fw-bold mb-3 text-primary">
+                    <span class="material-symbols-outlined align-middle me-2">storefront</span>
+                    Classroom Store
+                </h5>
+                <div class="row g-3">
+                    <div class="col-12 col-sm-6 col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <span class="material-symbols-outlined text-warning mb-2" style="font-size: 2.5rem;">edit_note</span>
+                                <h6 class="fw-bold">Homework Pass</h6>
+                                <p class="text-primary fw-bold mb-3">$250</p>
+                                <button class="btn btn-sm btn-primary w-100" onclick="showMessage('Homework Pass')">Purchase</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-6 col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <span class="material-symbols-outlined text-info mb-2" style="font-size: 2.5rem;">confirmation_number</span>
+                                <h6 class="fw-bold">Hall Pass (10 min)</h6>
+                                <p class="text-primary fw-bold mb-3">$50</p>
+                                <button class="btn btn-sm btn-primary w-100" onclick="showMessage('Hall Pass')">Purchase</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-6 col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <span class="material-symbols-outlined text-success mb-2" style="font-size: 2.5rem;">chair</span>
+                                <h6 class="fw-bold">Seat Upgrade</h6>
+                                <p class="text-primary fw-bold mb-3">$400</p>
+                                <button class="btn btn-sm btn-primary w-100" onclick="showMessage('Seat Upgrade')">Purchase</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-6 col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <span class="material-symbols-outlined text-danger mb-2" style="font-size: 2.5rem;">headphones</span>
+                                <h6 class="fw-bold">Music Privilege</h6>
+                                <p class="text-primary fw-bold mb-3">$150</p>
+                                <button class="btn btn-sm btn-primary w-100" onclick="showMessage('Music Privilege')">Purchase</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-6 col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <span class="material-symbols-outlined text-primary mb-2" style="font-size: 2.5rem;">celebration</span>
+                                <h6 class="fw-bold">Bonus Points</h6>
+                                <p class="text-primary fw-bold mb-3">$500</p>
+                                <button class="btn btn-sm btn-primary w-100" onclick="showMessage('Bonus Points')">Purchase</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-sm-6 col-md-4">
+                        <div class="card h-100">
+                            <div class="card-body text-center">
+                                <span class="material-symbols-outlined text-secondary mb-2" style="font-size: 2.5rem;">restaurant</span>
+                                <h6 class="fw-bold">Snack Voucher</h6>
+                                <p class="text-primary fw-bold mb-3">$75</p>
+                                <button class="btn btn-sm btn-primary w-100" onclick="showMessage('Snack Voucher')">Purchase</button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <div style="font-size: 2rem; font-weight: 700; color: #236960;">$2,095</div>
-                    <div style="color: #6b7280; font-size: 0.9rem;">Total Balance</div>
-                </div>
-                <div>
-                    <div style="font-size: 2rem; font-weight: 700; color: #236960;">8</div>
-                    <div style="color: #6b7280; font-size: 0.9rem;">Items Purchased</div>
-                </div>
-                <div>
-                    <div style="font-size: 2rem; font-weight: 700; color: #236960;">12</div>
-                    <div style="color: #6b7280; font-size: 0.9rem;">Days Present</div>
+            </div>
+        </div>
+
+        <!-- Recent Transactions -->
+        <div class="card border-0 shadow-sm mb-4">
+            <div class="card-body p-4">
+                <h5 class="fw-bold mb-3 text-primary">
+                    <span class="material-symbols-outlined align-middle me-2">history</span>
+                    Recent Transactions
+                </h5>
+                <div class="list-group list-group-flush">
+                    <div class="list-group-item d-flex justify-content-between align-items-start border-0 px-0">
+                        <div class="flex-grow-1">
+                            <div class="fw-bold">Weekly Payroll</div>
+                            <small class="text-muted">Attendance payment • Dec 23, 2025</small>
+                        </div>
+                        <span class="badge bg-success fs-6">+$125</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-start border-0 px-0">
+                        <div class="flex-grow-1">
+                            <div class="fw-bold">Hall Pass Purchase</div>
+                            <small class="text-muted">10-minute pass • Dec 22, 2025</small>
+                        </div>
+                        <span class="badge bg-danger fs-6">-$50</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-start border-0 px-0">
+                        <div class="flex-grow-1">
+                            <div class="fw-bold">Bonus</div>
+                            <small class="text-muted">Perfect quiz score • Dec 21, 2025</small>
+                        </div>
+                        <span class="badge bg-success fs-6">+$100</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-start border-0 px-0">
+                        <div class="flex-grow-1">
+                            <div class="fw-bold">Transfer to Savings</div>
+                            <small class="text-muted">Account transfer • Dec 20, 2025</small>
+                        </div>
+                        <span class="badge bg-secondary fs-6">$200</span>
+                    </div>
+                    <div class="list-group-item d-flex justify-content-between align-items-start border-0 px-0">
+                        <div class="flex-grow-1">
+                            <div class="fw-bold">Weekly Payroll</div>
+                            <small class="text-muted">Attendance payment • Dec 16, 2025</small>
+                        </div>
+                        <span class="badge bg-success fs-6">+$125</span>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function showMessage(action) {
             alert(`This is a demo interface. In the real app, clicking "${action}" would complete that action.\n\nTo use the full application, request access from the main landing page.`);
         }
-
-        // Add subtle animation on load
-        document.addEventListener('DOMContentLoaded', () => {
-            const cards = document.querySelectorAll('.balance-card, .card, .attendance-status');
-            cards.forEach((card, index) => {
-                card.style.opacity = '0';
-                card.style.transform = 'translateY(20px)';
-                setTimeout(() => {
-                    card.style.transition = 'opacity 0.5s, transform 0.5s';
-                    card.style.opacity = '1';
-                    card.style.transform = 'translateY(0)';
-                }, index * 100);
-            });
-        });
     </script>
 </body>
 </html>
