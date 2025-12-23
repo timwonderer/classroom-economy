@@ -48,6 +48,15 @@ jobs:
       with:
         ssh-private-key: ${{ secrets.DO_DEPLOY_KEY }}
 
+    # SECURITY FIX: Add SSH host key verification to prevent MITM attacks
+    - name: Set up SSH host key verification
+      run: |
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        echo "${{ secrets.KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+        chmod 644 ~/.ssh/known_hosts
+        echo "✓ SSH host key verification enabled"
+
     - name: Update maintenance mode on server
       run: |
         ENABLED="${{ inputs.enabled }}"
@@ -64,13 +73,18 @@ jobs:
 
         SSH_ENV_VARS="MODE_VALUE=$(printf %q "${MODE_VALUE}") MESSAGE=$(printf %q "${MESSAGE}") EXPECTED_END=$(printf %q "${EXPECTED_END}") CONTACT=$(printf %q "${CONTACT}") BADGE_TYPE=$(printf %q "${BADGE_TYPE}") STATUS_DESCRIPTION=$(printf %q "${STATUS_DESCRIPTION}")"
 
-        ssh -o StrictHostKeyChecking=no root@${{ secrets.PRODUCTION_SERVER_IP }} "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
+        # SECURITY: Removed -o StrictHostKeyChecking=no (now uses known_hosts)
+        ssh root@${{ secrets.PRODUCTION_SERVER_IP }} "export ${SSH_ENV_VARS}; bash -s" << 'EOF'
           set -e
 
           echo 'Navigating to project directory...'
           cd ~/classroom-economy
 
           echo 'Updating maintenance mode settings...'
+          # SECURITY: Set restrictive file permissions before writing
+          touch .env
+          chmod 600 .env
+
           # Remove old maintenance mode variables
           sed -i '/^MAINTENANCE_MODE=/d' .env 2>/dev/null || true
           sed -i '/^MAINTENANCE_MESSAGE=/d' .env 2>/dev/null || true
@@ -110,3 +124,4 @@ jobs:
         else
           echo "Maintenance mode DISABLED - Site is live"
         fi
+
