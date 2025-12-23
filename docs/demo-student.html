@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Portal Demo - Classroom Token Hub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f5f5f3;
+            color: #2c2c2c;
+            line-height: 1.6;
+        }
+
+        .demo-banner {
+            background: linear-gradient(135deg, #236960 0%, #1a4742 100%);
+            color: white;
+            padding: 0.75rem;
+            text-align: center;
+            font-size: 0.9rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            background: white;
+            padding: 1.75rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 1.75rem;
+            color: #236960;
+            margin-bottom: 0.5rem;
+        }
+
+        .header .student-info {
+            color: #6b7280;
+            font-size: 0.95rem;
+        }
+
+        .balance-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .balance-card {
+            background: white;
+            padding: 1.75rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .balance-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+
+        .balance-card .icon {
+            font-family: 'Material Symbols Outlined';
+            font-size: 3rem;
+            color: #236960;
+            margin-bottom: 0.75rem;
+        }
+
+        .balance-card .amount {
+            font-size: 2.25rem;
+            font-weight: 700;
+            color: #236960;
+            margin-bottom: 0.5rem;
+        }
+
+        .balance-card .label {
+            color: #6b7280;
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+
+        .balance-card .action {
+            margin-top: 1rem;
+        }
+
+        .card {
+            background: white;
+            padding: 1.75rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 1.5rem;
+        }
+
+        .card h2 {
+            font-size: 1.3rem;
+            margin-bottom: 1.25rem;
+            color: #236960;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card h2 .icon {
+            font-family: 'Material Symbols Outlined';
+            font-size: 1.5rem;
+        }
+
+        .store-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+        }
+
+        .store-item {
+            border: 1px solid #e5e5e3;
+            border-radius: 0.5rem;
+            padding: 1rem;
+            text-align: center;
+            transition: all 0.2s;
+        }
+
+        .store-item:hover {
+            border-color: #236960;
+            box-shadow: 0 2px 8px rgba(35, 105, 96, 0.1);
+        }
+
+        .store-item .item-icon {
+            font-family: 'Material Symbols Outlined';
+            font-size: 2.5rem;
+            color: #ac8255;
+            margin-bottom: 0.5rem;
+        }
+
+        .store-item h3 {
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+            color: #2c2c2c;
+        }
+
+        .store-item .price {
+            font-weight: 700;
+            color: #236960;
+            margin-bottom: 0.75rem;
+        }
+
+        .btn {
+            padding: 0.6rem 1.25rem;
+            border-radius: 0.5rem;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            width: 100%;
+            justify-content: center;
+        }
+
+        .btn-primary {
+            background-color: #236960;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #1a4742;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(35, 105, 96, 0.3);
+        }
+
+        .btn-secondary {
+            background-color: #ac8255;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: #8a6844;
+        }
+
+        .btn .icon {
+            font-family: 'Material Symbols Outlined';
+            font-size: 1.2rem;
+        }
+
+        .transaction-list {
+            list-style: none;
+        }
+
+        .transaction-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem;
+            border-bottom: 1px solid #e5e5e3;
+        }
+
+        .transaction-item:last-child {
+            border-bottom: none;
+        }
+
+        .transaction-item .info {
+            flex: 1;
+        }
+
+        .transaction-item .type {
+            font-weight: 600;
+            color: #2c2c2c;
+            margin-bottom: 0.25rem;
+        }
+
+        .transaction-item .desc {
+            font-size: 0.85rem;
+            color: #6b7280;
+        }
+
+        .transaction-item .amount {
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+
+        .transaction-item .amount.positive {
+            color: #10b981;
+        }
+
+        .transaction-item .amount.negative {
+            color: #ef4444;
+        }
+
+        .demo-notice {
+            background: #fff7e6;
+            border: 1px solid #f3d19c;
+            color: #8a5a12;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+        }
+
+        .attendance-status {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+
+        .attendance-status .status-text {
+            font-size: 1.1rem;
+            color: #6b7280;
+            margin-bottom: 1rem;
+        }
+
+        .attendance-status .status-indicator {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            background-color: #10b981;
+            color: white;
+            border-radius: 2rem;
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .balance-cards {
+                grid-template-columns: 1fr;
+            }
+
+            .store-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-banner">
+        📱 Interactive Demo (Read-Only) - Explore the student portal interface
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <h1>Welcome, Alex!</h1>
+            <p class="student-info">Period 3 • Ms. Johnson • Economics</p>
+        </div>
+
+        <div class="demo-notice">
+            ℹ️ This is a static demo showing the interface. All data is simulated and changes won't be saved.
+        </div>
+
+        <div class="attendance-status">
+            <p class="status-text">Current Status</p>
+            <span class="status-indicator">✓ Working (Started 8:45 AM)</span>
+        </div>
+
+        <div class="balance-cards">
+            <div class="balance-card">
+                <div class="icon">account_balance_wallet</div>
+                <div class="amount">$1,245</div>
+                <div class="label">Checking Account</div>
+                <button class="btn btn-primary" onclick="showMessage('Transfer')">
+                    <span class="icon">swap_horiz</span>
+                    Transfer
+                </button>
+            </div>
+
+            <div class="balance-card">
+                <div class="icon">savings</div>
+                <div class="amount">$850</div>
+                <div class="label">Savings Account</div>
+                <button class="btn btn-secondary" onclick="showMessage('Withdraw')">
+                    <span class="icon">download</span>
+                    Withdraw
+                </button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2><span class="icon">storefront</span>Classroom Store</h2>
+            <div class="store-grid">
+                <div class="store-item">
+                    <div class="item-icon">edit_note</div>
+                    <h3>Homework Pass</h3>
+                    <p class="price">$250</p>
+                    <button class="btn btn-primary" onclick="showMessage('Homework Pass')">Purchase</button>
+                </div>
+                <div class="store-item">
+                    <div class="item-icon">confirmation_number</div>
+                    <h3>Hall Pass (10 min)</h3>
+                    <p class="price">$50</p>
+                    <button class="btn btn-primary" onclick="showMessage('Hall Pass')">Purchase</button>
+                </div>
+                <div class="store-item">
+                    <div class="item-icon">chair</div>
+                    <h3>Seat Upgrade</h3>
+                    <p class="price">$400</p>
+                    <button class="btn btn-primary" onclick="showMessage('Seat Upgrade')">Purchase</button>
+                </div>
+                <div class="store-item">
+                    <div class="item-icon">headphones</div>
+                    <h3>Music Privilege</h3>
+                    <p class="price">$150</p>
+                    <button class="btn btn-primary" onclick="showMessage('Music Privilege')">Purchase</button>
+                </div>
+                <div class="store-item">
+                    <div class="item-icon">celebration</div>
+                    <h3>Bonus Points</h3>
+                    <p class="price">$500</p>
+                    <button class="btn btn-primary" onclick="showMessage('Bonus Points')">Purchase</button>
+                </div>
+                <div class="store-item">
+                    <div class="item-icon">restaurant</div>
+                    <h3>Snack Voucher</h3>
+                    <p class="price">$75</p>
+                    <button class="btn btn-primary" onclick="showMessage('Snack Voucher')">Purchase</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2><span class="icon">history</span>Recent Transactions</h2>
+            <ul class="transaction-list">
+                <li class="transaction-item">
+                    <div class="info">
+                        <div class="type">Weekly Payroll</div>
+                        <div class="desc">Attendance payment • Dec 23, 2025</div>
+                    </div>
+                    <div class="amount positive">+$125</div>
+                </li>
+                <li class="transaction-item">
+                    <div class="info">
+                        <div class="type">Hall Pass Purchase</div>
+                        <div class="desc">10-minute pass • Dec 22, 2025</div>
+                    </div>
+                    <div class="amount negative">-$50</div>
+                </li>
+                <li class="transaction-item">
+                    <div class="info">
+                        <div class="type">Bonus</div>
+                        <div class="desc">Perfect quiz score • Dec 21, 2025</div>
+                    </div>
+                    <div class="amount positive">+$100</div>
+                </li>
+                <li class="transaction-item">
+                    <div class="info">
+                        <div class="type">Transfer to Savings</div>
+                        <div class="desc">Account transfer • Dec 20, 2025</div>
+                    </div>
+                    <div class="amount">$200</div>
+                </li>
+                <li class="transaction-item">
+                    <div class="info">
+                        <div class="type">Weekly Payroll</div>
+                        <div class="desc">Attendance payment • Dec 16, 2025</div>
+                    </div>
+                    <div class="amount positive">+$125</div>
+                </li>
+                <li class="transaction-item">
+                    <div class="info">
+                        <div class="type">Store Purchase</div>
+                        <div class="desc">Homework pass • Dec 15, 2025</div>
+                    </div>
+                    <div class="amount negative">-$250</div>
+                </li>
+            </ul>
+        </div>
+
+        <div class="card">
+            <h2><span class="icon">assessment</span>Your Stats</h2>
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1.5rem; text-align: center;">
+                <div>
+                    <div style="font-size: 2rem; font-weight: 700; color: #236960;">96%</div>
+                    <div style="color: #6b7280; font-size: 0.9rem;">Attendance Rate</div>
+                </div>
+                <div>
+                    <div style="font-size: 2rem; font-weight: 700; color: #236960;">$2,095</div>
+                    <div style="color: #6b7280; font-size: 0.9rem;">Total Balance</div>
+                </div>
+                <div>
+                    <div style="font-size: 2rem; font-weight: 700; color: #236960;">8</div>
+                    <div style="color: #6b7280; font-size: 0.9rem;">Items Purchased</div>
+                </div>
+                <div>
+                    <div style="font-size: 2rem; font-weight: 700; color: #236960;">12</div>
+                    <div style="color: #6b7280; font-size: 0.9rem;">Days Present</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showMessage(action) {
+            alert(`This is a demo interface. In the real app, clicking "${action}" would complete that action.\n\nTo use the full application, request access from the main landing page.`);
+        }
+
+        // Add subtle animation on load
+        document.addEventListener('DOMContentLoaded', () => {
+            const cards = document.querySelectorAll('.balance-card, .card, .attendance-status');
+            cards.forEach((card, index) => {
+                card.style.opacity = '0';
+                card.style.transform = 'translateY(20px)';
+                setTimeout(() => {
+                    card.style.transition = 'opacity 0.5s, transform 0.5s';
+                    card.style.opacity = '1';
+                    card.style.transform = 'translateY(0)';
+                }, index * 100);
+            });
+        });
+    </script>
+</body>
+</html>

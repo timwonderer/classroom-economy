@@ -17,6 +17,12 @@ and this project follows semantic versioning principles.
   - Technology stack overview and licensing information
   - Comprehensive setup documentation at `docs/GITHUB_PAGES_SETUP.md`
   - Located at: `docs/index.html`
+- **Static Interactive Demos** - Pure JavaScript/HTML demos for GitHub Pages
+  - Teacher dashboard demo showing roster, transactions, and payroll interface (`docs/demo-teacher.html`)
+  - Student portal demo showing balances, store, and transaction history (`docs/demo-student.html`)
+  - No backend required - runs entirely in browser with simulated data
+  - Embedded in landing page via iframes for instant preview
+  - Gives visitors a feel for the app without requiring deployment
 
 ## [1.2.1] - 2025-12-21
 

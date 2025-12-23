@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Dashboard Demo - Classroom Token Hub</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f5f5f3;
+            color: #2c2c2c;
+            line-height: 1.6;
+        }
+
+        .demo-banner {
+            background: linear-gradient(135deg, #236960 0%, #1a4742 100%);
+            color: white;
+            padding: 0.75rem;
+            text-align: center;
+            font-size: 0.9rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .header {
+            background: white;
+            padding: 1.5rem 2rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .header h1 {
+            font-size: 1.75rem;
+            color: #236960;
+        }
+
+        .header .teacher-info {
+            color: #6b7280;
+            font-size: 0.95rem;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 1.5rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+
+        .stat-card .icon {
+            font-family: 'Material Symbols Outlined';
+            font-size: 2rem;
+            color: #236960;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card .value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #236960;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-card .label {
+            color: #6b7280;
+            font-size: 0.9rem;
+        }
+
+        .card {
+            background: white;
+            padding: 1.75rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            margin-bottom: 1.5rem;
+        }
+
+        .card h2 {
+            font-size: 1.3rem;
+            margin-bottom: 1.25rem;
+            color: #236960;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .card h2 .icon {
+            font-family: 'Material Symbols Outlined';
+            font-size: 1.5rem;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        table th {
+            text-align: left;
+            padding: 0.75rem;
+            background-color: #f5f5f3;
+            color: #236960;
+            font-weight: 600;
+            border-bottom: 2px solid #e5e5e3;
+        }
+
+        table td {
+            padding: 0.75rem;
+            border-bottom: 1px solid #e5e5e3;
+        }
+
+        table tr:hover {
+            background-color: #f9fafb;
+        }
+
+        .btn {
+            padding: 0.6rem 1.25rem;
+            border-radius: 0.5rem;
+            border: none;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 0.9rem;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .btn-primary {
+            background-color: #236960;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background-color: #1a4742;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(35, 105, 96, 0.3);
+        }
+
+        .btn-secondary {
+            background-color: #ac8255;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background-color: #8a6844;
+        }
+
+        .btn .icon {
+            font-family: 'Material Symbols Outlined';
+            font-size: 1.2rem;
+        }
+
+        .balance {
+            font-weight: 600;
+        }
+
+        .balance.positive {
+            color: #10b981;
+        }
+
+        .balance.negative {
+            color: #ef4444;
+        }
+
+        .actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .quick-actions {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .demo-notice {
+            background: #fff7e6;
+            border: 1px solid #f3d19c;
+            color: #8a5a12;
+            padding: 1rem;
+            border-radius: 0.5rem;
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            table {
+                font-size: 0.85rem;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="demo-banner">
+        📚 Interactive Demo (Read-Only) - Explore the teacher dashboard interface
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Teacher Dashboard</h1>
+                <p class="teacher-info">Ms. Johnson • Period 3 • Economics</p>
+            </div>
+            <div class="quick-actions">
+                <button class="btn btn-primary" onclick="showMessage('Payroll')">
+                    <span class="icon">payments</span>
+                    Run Payroll
+                </button>
+                <button class="btn btn-secondary" onclick="showMessage('Settings')">
+                    <span class="icon">settings</span>
+                    Settings
+                </button>
+            </div>
+        </div>
+
+        <div class="demo-notice">
+            ℹ️ This is a static demo showing the interface. All data is simulated and changes won't be saved.
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="icon">group</div>
+                <div class="value">28</div>
+                <div class="label">Active Students</div>
+            </div>
+            <div class="stat-card">
+                <div class="icon">account_balance</div>
+                <div class="value">$42,350</div>
+                <div class="label">Total Class Balance</div>
+            </div>
+            <div class="stat-card">
+                <div class="icon">storefront</div>
+                <div class="value">15</div>
+                <div class="label">Store Items</div>
+            </div>
+            <div class="stat-card">
+                <div class="icon">trending_up</div>
+                <div class="value">94%</div>
+                <div class="label">Attendance Rate</div>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2><span class="icon">people</span>Student Roster</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Student Name</th>
+                        <th>Checking Balance</th>
+                        <th>Savings Balance</th>
+                        <th>Attendance</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="studentTable">
+                    <tr>
+                        <td>Alex Martinez</td>
+                        <td class="balance positive">$1,245</td>
+                        <td class="balance positive">$850</td>
+                        <td>96%</td>
+                        <td><button class="btn btn-primary" onclick="showMessage('Alex Martinez')">View</button></td>
+                    </tr>
+                    <tr>
+                        <td>Sarah Chen</td>
+                        <td class="balance positive">$2,150</td>
+                        <td class="balance positive">$1,200</td>
+                        <td>100%</td>
+                        <td><button class="btn btn-primary" onclick="showMessage('Sarah Chen')">View</button></td>
+                    </tr>
+                    <tr>
+                        <td>Marcus Johnson</td>
+                        <td class="balance positive">$890</td>
+                        <td class="balance positive">$450</td>
+                        <td>92%</td>
+                        <td><button class="btn btn-primary" onclick="showMessage('Marcus Johnson')">View</button></td>
+                    </tr>
+                    <tr>
+                        <td>Emily Rodriguez</td>
+                        <td class="balance positive">$1,670</td>
+                        <td class="balance positive">$980</td>
+                        <td>98%</td>
+                        <td><button class="btn btn-primary" onclick="showMessage('Emily Rodriguez')">View</button></td>
+                    </tr>
+                    <tr>
+                        <td>James Wilson</td>
+                        <td class="balance negative">-$125</td>
+                        <td class="balance positive">$200</td>
+                        <td>88%</td>
+                        <td><button class="btn btn-primary" onclick="showMessage('James Wilson')">View</button></td>
+                    </tr>
+                    <tr>
+                        <td>Olivia Brown</td>
+                        <td class="balance positive">$1,425</td>
+                        <td class="balance positive">$750</td>
+                        <td>95%</td>
+                        <td><button class="btn btn-primary" onclick="showMessage('Olivia Brown')">View</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h2><span class="icon">history</span>Recent Transactions</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Date</th>
+                        <th>Student</th>
+                        <th>Type</th>
+                        <th>Amount</th>
+                        <th>Description</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>2025-12-23</td>
+                        <td>Sarah Chen</td>
+                        <td>Store Purchase</td>
+                        <td class="balance negative">-$50</td>
+                        <td>Homework Pass Bundle</td>
+                    </tr>
+                    <tr>
+                        <td>2025-12-23</td>
+                        <td>Alex Martinez</td>
+                        <td>Payroll</td>
+                        <td class="balance positive">+$125</td>
+                        <td>Weekly attendance payment</td>
+                    </tr>
+                    <tr>
+                        <td>2025-12-22</td>
+                        <td>Marcus Johnson</td>
+                        <td>Hall Pass</td>
+                        <td class="balance negative">-$25</td>
+                        <td>10-minute hall pass</td>
+                    </tr>
+                    <tr>
+                        <td>2025-12-22</td>
+                        <td>Emily Rodriguez</td>
+                        <td>Bonus</td>
+                        <td class="balance positive">+$200</td>
+                        <td>Perfect test score</td>
+                    </tr>
+                    <tr>
+                        <td>2025-12-21</td>
+                        <td>Olivia Brown</td>
+                        <td>Transfer</td>
+                        <td class="balance">$300</td>
+                        <td>Checking → Savings</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="actions">
+            <button class="btn btn-primary" onclick="showMessage('Add Student')">
+                <span class="icon">person_add</span>
+                Add Student
+            </button>
+            <button class="btn btn-secondary" onclick="showMessage('Upload CSV')">
+                <span class="icon">upload_file</span>
+                Upload CSV
+            </button>
+            <button class="btn btn-secondary" onclick="showMessage('Store Settings')">
+                <span class="icon">storefront</span>
+                Manage Store
+            </button>
+            <button class="btn btn-secondary" onclick="showMessage('Reports')">
+                <span class="icon">assessment</span>
+                View Reports
+            </button>
+        </div>
+    </div>
+
+    <script>
+        function showMessage(action) {
+            alert(`This is a demo interface. In the real app, clicking "${action}" would take you to that feature.\n\nTo use the full application, request access from the main landing page.`);
+        }
+
+        // Add subtle animation on load
+        document.addEventListener('DOMContentLoaded', () => {
+            const cards = document.querySelectorAll('.stat-card, .card');
+            cards.forEach((card, index) => {
+                card.style.opacity = '0';
+                card.style.transform = 'translateY(20px)';
+                setTimeout(() => {
+                    card.style.transition = 'opacity 0.5s, transform 0.5s';
+                    card.style.opacity = '1';
+                    card.style.transform = 'translateY(0)';
+                }, index * 100);
+            });
+        });
+    </script>
+</body>
+</html>
