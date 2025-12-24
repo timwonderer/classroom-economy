@@ -36,7 +36,7 @@ body.student-theme {
     --border-color: #DDE2E8;
     --success: #4A8B6C;
     --info: #5B8DBE;
-    --warning: #E8A756;
+    --warning: #c9970f;
     --danger: #D97070;
 }
 
@@ -154,17 +154,17 @@ a:hover {
 }
 
 /* Ensure readable header text on dark backgrounds */
-.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) {
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-warning):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) {
     color: #ffffff;
 }
-.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h1,
-.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h2,
-.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h3,
-.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h4,
-.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h5,
-.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h6,
-.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) .card-title,
-.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) .fw-bold {
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-warning):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h1,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-warning):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h2,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-warning):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h3,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-warning):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h4,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-warning):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h5,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-warning):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) h6,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-warning):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) .card-title,
+.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-warning):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) .fw-bold {
     color: #ffffff;
 }
 
