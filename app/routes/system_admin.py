@@ -537,13 +537,15 @@ def delete_admin(admin_id):
     admin = Admin.query.get_or_404(admin_id)
 
     try:
-        primary_student_ids = [s.id for s in Student.query.filter_by(teacher_id=admin.id)]
+        # SECURITY FIX: Only use StudentTeacher table, NOT deprecated teacher_id
+        # Get all students linked to this teacher via StudentTeacher table
         linked_student_ids = [
             st.student_id for st in StudentTeacher.query.filter_by(admin_id=admin.id)
         ]
 
-        candidate_student_ids = set(primary_student_ids + linked_student_ids)
+        candidate_student_ids = set(linked_student_ids)
 
+        # Find students that are shared with other teachers
         shared_student_ids = set()
         if candidate_student_ids:
             shared_student_ids = set(
@@ -553,14 +555,6 @@ def delete_admin(admin_id):
                     StudentTeacher.admin_id != admin.id,
                 )
             )
-            shared_student_ids.update([
-                sid for (sid,) in db.session.query(Student.id)
-                .filter(
-                    Student.id.in_(candidate_student_ids),
-                    Student.teacher_id.isnot(None),
-                    Student.teacher_id != admin.id,
-                )
-            ])
 
         exclusive_student_ids = candidate_student_ids - shared_student_ids
 

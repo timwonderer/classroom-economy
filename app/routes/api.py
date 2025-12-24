@@ -411,9 +411,16 @@ def purchase_item():
 
         # --- Collective Item Logic ---
         if item.item_type == 'collective':
-            # Check if all students in the same block have purchased this item
-            students_in_block = Student.query.filter_by(block=student.block).all()
-            student_ids_in_block = {s.id for s in students_in_block}
+            # SECURITY FIX: Check if all students in the same block AND same join_code have purchased
+            # Must scope by join_code to prevent cross-period data leaks
+            from app.models import StudentBlock
+
+            # Get student IDs in this specific class period (join_code + block combination)
+            student_blocks = StudentBlock.query.filter_by(
+                period=student.block,
+                join_code=join_code
+            ).all()
+            student_ids_in_block = {sb.student_id for sb in student_blocks}
 
             purchased_students_count = db.session.query(func.count(func.distinct(StudentItem.student_id))).filter(
                 StudentItem.store_item_id == item.id,
@@ -1689,15 +1696,13 @@ def get_tap_entries(student_id):
     if not admin:
         return jsonify({"error": "Unauthorized"}), 401
 
-    from app.models import Student, TapEvent
-    student = Student.query.get(student_id)
-    if not student:
-        return jsonify({"error": "Student not found"}), 404
+    from app.models import TapEvent
+    from app.auth import get_student_for_admin
 
-    # Check if admin has access to this student via StudentTeacher association
-    # SECURITY: Only use StudentTeacher table, NOT the deprecated teacher_id field
-    if student.teachers.filter_by(id=admin.id).count() == 0:
-        return jsonify({"error": "Access denied"}), 403
+    # SECURITY FIX: Use scoped helper to verify admin owns this student
+    student = get_student_for_admin(student_id)
+    if not student:
+        return jsonify({"error": "Student not found or access denied"}), 404
 
     # Get all tap events for this student
     events = TapEvent.query.filter_by(
@@ -1762,16 +1767,17 @@ def delete_tap_entry(event_id):
     if not admin:
         return jsonify({"error": "Unauthorized"}), 401
 
-    from app.models import TapEvent, Student
+    from app.models import TapEvent
+    from app.auth import get_student_for_admin
+
     event = TapEvent.query.get(event_id)
     if not event:
         return jsonify({"error": "Tap entry not found"}), 404
 
-    # Check if admin has access to this student via StudentTeacher association
-    # SECURITY: Only use StudentTeacher table, NOT the deprecated teacher_id field
-    student = Student.query.get(event.student_id)
-    if not student or student.teachers.filter_by(id=admin.id).count() == 0:
-        return jsonify({"error": "Access denied"}), 403
+    # SECURITY FIX: Use scoped helper to verify admin owns this student
+    student = get_student_for_admin(event.student_id)
+    if not student:
+        return jsonify({"error": "Student not found or access denied"}), 404
 
     # Mark as deleted
     event.is_deleted = True
@@ -1805,14 +1811,13 @@ def update_student_block_settings():
     if not student_id or not period or tap_enabled is None:
         return jsonify({"error": "Missing required fields"}), 400
 
-    from app.models import Student, StudentBlock
-    student = Student.query.get(student_id)
-    if not student:
-        return jsonify({"error": "Student not found"}), 404
+    from app.models import StudentBlock
+    from app.auth import get_student_for_admin
 
-    # Check if admin has access to this student (many-to-many or legacy teacher_id)
-    if not (student.teachers.filter_by(id=admin.id).first() or student.teacher_id == admin.id):
-        return jsonify({"error": "Access denied"}), 403
+    # SECURITY FIX: Use scoped helper AND removed deprecated teacher_id check
+    student = get_student_for_admin(student_id)
+    if not student:
+        return jsonify({"error": "Student not found or access denied"}), 404
 
     # Get or create StudentBlock record
     student_block = StudentBlock.query.filter_by(
