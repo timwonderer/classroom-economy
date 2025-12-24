@@ -55,21 +55,21 @@
 </div>
 
 <div class="card mb-4 {% if status.is_paid %}border-success{% elif status.is_late %}border-danger{% else %}border-warning{% endif %}">
-    <div class="card-header {% if status.is_paid %}bg-success text-white{% elif status.is_late %}bg-danger text-white{% else %}bg-warning{% endif %}">
+    <div class="card-header {% if status.is_paid %}bg-success text-white{% elif status.is_late %}bg-danger text-white{% else %}bg-warning text-primary{% endif %}">
         <h5 class="mb-0 d-flex align-items-center justify-content-between">
-            <span>Period {{ current_block|upper }}</span>
+            <span>Class: {{ current_block|upper }}</span>
             <span>
                 {% if status.is_paid %}
                 <span class="material-symbols-outlined" style="vertical-align: middle;">check_circle</span> Paid
                 {% elif status.is_late %}
                 <span class="material-symbols-outlined" style="vertical-align: middle;">cancel</span> Past Due
                 {% else %}
-                <span class="material-symbols-outlined" style="vertical-align: middle;">calendar_today</span> Upcoming
+                <span class="material-symbols-outlined" style="vertical-align: middle;">calendar_today</span> Upcoming - Not Yet Paid
                 {% endif %}
             </span>
         </h5>
     </div>
-    <div class="card-body">
+    <div class="card-body student-theme">
         {% if not status.rent_is_active %}
         <div class="alert alert-info mb-0">
             <strong>Not Yet Due</strong>
@@ -78,7 +78,7 @@
         {% else %}
         {% if status.is_preview_period and not status.is_paid %}
         <div class="alert alert-success mb-3">
-            <span class="material-symbols-outlined">receipt_long</span><strong>Available Bill</strong>
+            <h2 class="text-success"><span class="material-symbols-outlined bill-icon">receipt_long</span><strong>You have a new bill</strong></h2>
             <br>You can now pay rent early! Due date: {{ due_date.strftime('%B %d, %Y') }}
         </div>
         {% endif %}
@@ -186,7 +186,7 @@
                         If your rent is more than <strong>{{ settings.grace_period_days }} days</strong> late, you will be charged a late fee of <strong>${{ "%.2f"|format(settings.late_fee) }}</strong>
                     </li>
                     <li class="mb-2">
-                        You are {% if settings.allow_partial_payment %}<span class="badge bg-success">allowed</span>{% else %}<span class="badge bg-danger">not allowed</span>{% endif %} to pay your rent in small chunks.
+                        You are {% if settings.allow_incremental_payment %}<span class="badge bg-success">allowed</span>{% else %}<span class="badge bg-danger">not allowed</span>{% endif %} to pay your rent in small chunks.
                     </li>
                     <li class="mb-2">
                         You

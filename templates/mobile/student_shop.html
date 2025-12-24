@@ -13,7 +13,7 @@
                         <h5 class="card-title fw-bold mb-0">{{ item.name }}</h5>
                         <span class="badge bg-primary rounded-pill fs-6">${{ "%.2f"|format(item.price) }}</span>
                     </div>
-                    <p class="card-text text-muted mb-3">{{ item.description or 'No description available.' }}</p>
+                    <div class="card-text text-muted mb-3">{{ (item.description or 'No description available.') | markdown }}</div>
                     <div class="d-grid">
                         <button class="btn btn-primary btn-lg py-2" data-bs-toggle="modal" data-bs-target="#buyItemModal-{{ item.id }}" aria-label="Purchase {{ item.name }} for ${{ '%.2f'|format(item.price) }}">
                             Purchase
