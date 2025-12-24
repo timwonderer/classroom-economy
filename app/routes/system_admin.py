@@ -512,8 +512,6 @@ def reset_teacher_totp(admin_id):
         buf.seek(0)
         qr_b64 = base64.b64encode(buf.read()).decode('utf-8')
 
-        current_app.logger.info(f"System Admin reset TOTP for teacher {admin.username}")
-
         return jsonify({
             "status": "success",
             "message": f"TOTP secret reset for {admin.username}",

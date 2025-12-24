@@ -9,6 +9,15 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Security
+- **Removed Sensitive Information from Application Logs** - Eliminated logging of usernames, hashes, and PII
+  - Removed username logging from student login, admin login, admin signup, and admin recovery flows
+  - Removed partial hash logging from student authentication
+  - Removed student name and DOB sum logging from bulk upload process
+  - Impact: Prevents accidental exposure of PII in development logs, log files, or screenshots
+  - Note: Production deployments should configure `LOG_LEVEL=WARNING` or higher to minimize log output
+  - **KNOWN ISSUE: TOTP secrets still stored as plaintext in database** - See `docs/security/ACCESS_AND_SECRETS_REPORT.md`
+    - Risk: Database compromise allows attacker to generate valid 2FA codes
+    - Recommended fix: Encrypt `totp_secret` column at rest using separate key (tracked in security backlog)
 - **CRITICAL: Fixed PromptPwnd AI Prompt Injection Vulnerability** - Disabled vulnerable `summary.yml` GitHub Actions workflow
   - Workflow used AI inference (`actions/ai-inference@v1`) with untrusted user input from issue titles/bodies
   - Attack vector: Any user could create an issue with malicious prompt injection to leak `GITHUB_TOKEN` or manipulate workflows

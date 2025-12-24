@@ -813,13 +813,11 @@ def login():
                 session["is_admin"] = True
                 session["admin_id"] = admin.id
                 session["last_activity"] = datetime.now(timezone.utc).isoformat()
-                current_app.logger.info(f"✅ Admin login success for {username}")
                 flash("Admin login successful.")
                 next_url = request.args.get("next")
                 if not is_safe_url(next_url):
                     return redirect(url_for("admin.dashboard"))
                 return redirect(next_url or url_for("admin.dashboard"))
-        current_app.logger.warning(f"🔑 Admin login failed for {username}")
         flash("Invalid credentials or TOTP code.", "error")
         return redirect(url_for("admin.login", next=request.args.get("next")))
     return render_template("admin_login.html", form=form)
@@ -904,7 +902,6 @@ def signup():
             img.save(buf, format='PNG')
             buf.seek(0)
             img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-            current_app.logger.info(f"🔐 Admin signup: showing QR for {username}")
             form = AdminTOTPConfirmForm()
             return render_template(
                 "admin_signup_totp.html",
@@ -918,7 +915,6 @@ def signup():
         # Step 5: Validate entered TOTP code
         totp = pyotp.TOTP(totp_secret)
         if not totp.verify(totp_code):
-            current_app.logger.warning(f"🛑 Admin signup failed: invalid TOTP code for {username}")
             msg = "Invalid TOTP code. Please try again."
             if is_json:
                 return jsonify(status="error", message=msg), 400
@@ -940,9 +936,6 @@ def signup():
                 totp_secret=totp_secret
             )
         # Step 6: Create admin account and mark invite as used
-        # Log the TOTP secret being saved for debug
-        current_app.logger.info(f"🎯 Admin signup: TOTP secret being saved for {username}")
-
         # Hash DOB sum
         salt = get_random_salt()
         dob_sum_str = str(dob_sum).encode()
@@ -959,7 +952,6 @@ def signup():
         session.pop("admin_totp_secret", None)
         session.pop("admin_totp_username", None)
         session.pop("admin_dob_sum", None)
-        current_app.logger.info(f"🎉 Admin signup: {username} created successfully via invite")
         msg = "Admin account created successfully! Please log in using your authenticator app."
         if is_json:
             return jsonify(status="success", message=msg)
@@ -1325,7 +1317,6 @@ def confirm_reset():
     session.pop('reset_totp_secret', None)
     session.pop('reset_new_username', None)
 
-    current_app.logger.info(f"🎉 Admin recovery: account reset successful for {new_username}")
     flash("Your account has been successfully reset! Please log in with your new username and TOTP.", "success")
     return redirect(url_for('admin.login'))
 
@@ -5139,7 +5130,6 @@ def upload_students():
                     break
 
             if existing_seat:
-                current_app.logger.info(f"Seat for {first_name} {last_name} (DOB sum: {dob_sum}) already exists in block {block}, skipping.")
                 duplicated += 1
                 continue
 
