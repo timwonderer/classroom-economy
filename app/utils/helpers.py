@@ -142,13 +142,14 @@ def render_markdown(text):
     allowed_protocols = ['http', 'https', 'mailto']
 
     # Sanitize HTML to prevent XSS attacks
-    sanitized_html = bleach.clean(
-        html,
+    cleaner = bleach.Cleaner(
         tags=allowed_tags,
         attributes=allowed_attributes,
         protocols=allowed_protocols,
-        strip=True
+        strip=True,
+        strip_comments=True,
     )
+    sanitized_html = cleaner.clean(html)
 
     # Return as Markup so Jinja2 doesn't double-escape it
     return Markup(sanitized_html)

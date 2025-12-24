@@ -78,7 +78,7 @@
         {% else %}
         {% if status.is_preview_period and not status.is_paid %}
         <div class="alert alert-success mb-3">
-            <h2 class="text-success"><span class="material-symbols-outlined" style="vertical-align: middle;font-size:26pt">receipt_long</span><strong>You have a new bill</strong></h2>
+            <h2 class="text-success"><span class="material-symbols-outlined bill-icon">receipt_long</span><strong>You have a new bill</strong></h2>
             <br>You can now pay rent early! Due date: {{ due_date.strftime('%B %d, %Y') }}
         </div>
         {% endif %}

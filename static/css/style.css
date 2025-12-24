@@ -154,12 +154,16 @@ a:hover {
 }
 
 /* Ensure readable header text on dark backgrounds */
-.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-warning):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) {
+.card-header:is([class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-warning):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle)) {
     color: #ffffff;
 }
-.card-header[class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-warning):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle) :is(h1, h2, h3, h4, h5, h6, .card-title, .fw-bold) {
-    color: #ffffff;
+.card-header:is([class*="bg-"]:not(.bg-light):not(.bg-white):not(.bg-warning):not(.bg-primary-subtle):not(.bg-success-subtle):not(.bg-info-subtle):not(.bg-warning-subtle):not(.bg-danger-subtle):not(.bg-secondary-subtle):not(.bg-dark-subtle)) :is(h1, h2, h3, h4, h5, h6, .card-title, .fw-bold) {
+    color: inherit;
 }
+
+.bill-icon {
+    vertical-align: middle;
+    font-size: 26pt;
 }
 
 /* Student Layout */
