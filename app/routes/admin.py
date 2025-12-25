@@ -58,7 +58,7 @@ from app.utils.claim_credentials import (
 from app.utils.ip_handler import get_real_ip
 from app.utils.name_utils import hash_last_name_parts, verify_last_name_parts
 from app.utils.help_content import HELP_ARTICLES
-from app.utils.passwordless_client import get_passwordless_client
+from app.utils.passwordless_client import get_passwordless_client, decode_credential_id
 from app.utils.encryption import encrypt_totp, decrypt_totp
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll
@@ -6791,7 +6791,6 @@ def passkey_register_finish():
     
     Expected JSON payload:
         {
-            "token": "token from passwordless.dev frontend",
             "credentialId": "base64url-encoded credential ID",
             "authenticatorName": "User-friendly name for the authenticator"
         }
@@ -6799,21 +6798,15 @@ def passkey_register_finish():
     try:
         admin_id = session.get('admin_id')
         data = request.get_json()
-        
-        if not data or 'token' not in data:
-            return jsonify({"error": "Missing token"}), 400
-            
-        if 'credentialId' not in data:
+
+        if not data or 'credentialId' not in data:
             return jsonify({"error": "Missing credential ID"}), 400
         
         # Get authenticator name (optional)
         authenticator_name = data.get('authenticatorName', 'Unnamed Passkey')
-        
+
         # Decode credential ID from base64url
-        credential_id_b64 = data['credentialId']
-        # Add padding if needed
-        credential_id_b64 += '=' * (4 - len(credential_id_b64) % 4)
-        credential_id = base64.urlsafe_b64decode(credential_id_b64)
+        credential_id = decode_credential_id(data['credentialId'])
         
         # Check if this credential already exists
         existing = AdminCredential.query.filter_by(credential_id=credential_id).first()
@@ -6868,14 +6861,14 @@ def passkey_auth_start():
         # Look up admin by username
         admin = Admin.query.filter_by(username=username).first()
         if not admin:
-            # Use a generic error message to avoid username enumeration
-            return jsonify({"error": "Passkey authentication is not available"}), 401
-        
+            # Don't reveal if user exists
+            return jsonify({"error": "Invalid credentials"}), 401
+
         # Check if user has any passkeys registered
         has_passkeys = AdminCredential.query.filter_by(admin_id=admin.id).first() is not None
         if not has_passkeys:
-            # Same generic message as above to avoid revealing account existence or passkey status
-            return jsonify({"error": "Passkey authentication is not available"}), 401
+            # Use generic error message to prevent username enumeration
+            return jsonify({"error": "Invalid credentials"}), 401
         
         # Get passwordless.dev client
         client = get_passwordless_client()
@@ -6950,11 +6943,10 @@ def passkey_auth_finish():
         # Update credential last_used timestamp
         credential_id_b64 = verification.get('credentialId')
         if credential_id_b64:
-            # Decode credential ID
-            credential_id_b64 += '=' * (4 - len(credential_id_b64) % 4)
-            credential_id = base64.urlsafe_b64decode(credential_id_b64)
-            
+            credential_id = decode_credential_id(credential_id_b64)
             credential = AdminCredential.query.filter_by(credential_id=credential_id).first()
+            if credential:
+                credential.last_used = datetime.now(timezone.utc)
                 db.session.commit()
             else:
                 # Log a warning if verification succeeds but no matching credential record is found
@@ -6963,8 +6955,6 @@ def passkey_auth_finish():
                     admin.id,
                     verification.get('credentialId'),
                 )
-                credential.last_used = datetime.now(timezone.utc)
-                db.session.commit()
         
         # Update admin last_login
         admin.last_login = datetime.now(timezone.utc)

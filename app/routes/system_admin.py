@@ -33,7 +33,7 @@ from forms import SystemAdminLoginForm, SystemAdminInviteForm
 
 # Import utility functions
 from app.utils.helpers import is_safe_url
-from app.utils.passwordless_client import get_passwordless_client
+from app.utils.passwordless_client import get_passwordless_client, decode_credential_id
 from app.utils.encryption import encrypt_totp, decrypt_totp
 
 # Create blueprint
@@ -295,9 +295,7 @@ def passkey_register_finish():
         authenticator_name = data.get('authenticatorName', 'Unnamed Passkey')
 
         # Decode credential ID from base64url
-        # Add padding if needed
-        credential_id_b64 += '=' * (4 - len(credential_id_b64) % 4)
-        credential_id = base64.urlsafe_b64decode(credential_id_b64)
+        credential_id = decode_credential_id(credential_id_b64)
 
         # Check if this credential already exists
         existing = SystemAdminCredential.query.filter_by(credential_id=credential_id).first()
@@ -433,10 +431,7 @@ def passkey_auth_finish():
         # Update credential last_used timestamp
         credential_id_b64 = verification.get('credentialId')
         if credential_id_b64:
-            # Decode credential ID
-            credential_id_b64 += '=' * (4 - len(credential_id_b64) % 4)
-            credential_id = base64.urlsafe_b64decode(credential_id_b64)
-
+            credential_id = decode_credential_id(credential_id_b64)
             credential = SystemAdminCredential.query.filter_by(
                 credential_id=credential_id
             ).first()
