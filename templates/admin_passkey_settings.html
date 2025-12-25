@@ -190,8 +190,6 @@
             } else if (typeof result === 'string' && result) {
                 credentialId = result;
             }
-            console.log('Extracted credentialId:', credentialId);
-            console.log('credentialId type:', typeof credentialId);
 
             if (!credentialId) {
                 throw new Error('Failed to get credential ID from registration result');
