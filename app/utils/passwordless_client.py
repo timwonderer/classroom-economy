@@ -74,7 +74,7 @@ class PasswordlessClient:
         Args:
             user_id: Unique identifier for the system admin (e.g., "sysadmin_123")
             username: System admin username
-            displayname: Display name for the credential
+            displayname: Display name for the credential (used as username in SDK)
 
         Returns:
             Registration token to be used in the frontend
@@ -82,11 +82,12 @@ class PasswordlessClient:
         Raises:
             Exception: If the SDK request fails
         """
+        # Note: RegisterToken only accepts user_id, username, and aliases
+        # The username parameter is what shows in the browser UI
         register_token = RegisterToken(
             user_id=user_id,
-            username=username,
-            displayname=displayname,
-            aliases=[username]  # Allow login by username
+            username=displayname,  # This is shown in browser UI
+            aliases=[username]      # Allow login by username
         )
 
         response: RegisteredToken = self._client.register_token(register_token)
