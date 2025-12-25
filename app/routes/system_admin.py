@@ -33,6 +33,7 @@ from forms import SystemAdminLoginForm, SystemAdminInviteForm
 
 # Import utility functions
 from app.utils.helpers import is_safe_url
+from app.utils.encryption import encrypt_totp, decrypt_totp
 
 # Create blueprint
 sysadmin_bp = Blueprint('sysadmin', __name__, url_prefix='/sysadmin')
@@ -182,7 +183,9 @@ def login():
         totp_code = form.totp_code.data.strip()
         admin = SystemAdmin.query.filter_by(username=username).first()
         if admin:
-            totp = pyotp.TOTP(admin.totp_secret)
+            # Decrypt TOTP secret (handles both encrypted and legacy plaintext)
+            decrypted_secret = decrypt_totp(admin.totp_secret)
+            totp = pyotp.TOTP(decrypted_secret)
             if totp.verify(totp_code, valid_window=1):
                 session["is_system_admin"] = True
                 session["sysadmin_id"] = admin.id
@@ -497,7 +500,7 @@ def reset_teacher_totp(admin_id):
     try:
         # Generate new secret
         new_secret = pyotp.random_base32()
-        admin.totp_secret = new_secret
+        admin.totp_secret = encrypt_totp(new_secret)  # Encrypt before storing
         db.session.commit()
 
         # Generate QR code
@@ -511,8 +514,6 @@ def reset_teacher_totp(admin_id):
         img.save(buf, format='PNG')
         buf.seek(0)
         qr_b64 = base64.b64encode(buf.read()).decode('utf-8')
-
-        current_app.logger.info(f"System Admin reset TOTP for teacher {admin.username}")
 
         return jsonify({
             "status": "success",

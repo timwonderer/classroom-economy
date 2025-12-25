@@ -12,6 +12,7 @@ from io import BytesIO
 from app import app
 from app.extensions import db
 from app.models import SystemAdmin, Admin
+from app.utils.encryption import encrypt_totp
 
 def create_system_admin(username):
     """Create a system admin account."""
@@ -28,7 +29,7 @@ def create_system_admin(username):
         # Create the admin
         admin = SystemAdmin(
             username=username,
-            totp_secret=totp_secret
+            totp_secret=encrypt_totp(totp_secret)  # Encrypt before storing
         )
         db.session.add(admin)
         db.session.commit()
@@ -71,7 +72,7 @@ def create_regular_admin(username):
         # Create the admin
         admin = Admin(
             username=username,
-            totp_secret=totp_secret
+            totp_secret=encrypt_totp(totp_secret)  # Encrypt before storing
         )
         db.session.add(admin)
         db.session.commit()

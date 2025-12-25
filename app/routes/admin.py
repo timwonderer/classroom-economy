@@ -57,6 +57,7 @@ from app.utils.claim_credentials import (
 from app.utils.ip_handler import get_real_ip
 from app.utils.name_utils import hash_last_name_parts, verify_last_name_parts
 from app.utils.help_content import HELP_ARTICLES
+from app.utils.encryption import encrypt_totp, decrypt_totp
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll
 from attendance import get_last_payroll_time, calculate_unpaid_attendance_seconds, get_join_code_for_student_period
@@ -804,7 +805,9 @@ def login():
         totp_code = form.totp_code.data.strip()
         admin = Admin.query.filter_by(username=username).first()
         if admin:
-            totp = pyotp.TOTP(admin.totp_secret)
+            # Decrypt TOTP secret (handles both encrypted and legacy plaintext)
+            decrypted_secret = decrypt_totp(admin.totp_secret)
+            totp = pyotp.TOTP(decrypted_secret)
             if totp.verify(totp_code, valid_window=1):
                 # Update last login timestamp
                 admin.last_login = datetime.now(timezone.utc)
@@ -813,13 +816,11 @@ def login():
                 session["is_admin"] = True
                 session["admin_id"] = admin.id
                 session["last_activity"] = datetime.now(timezone.utc).isoformat()
-                current_app.logger.info(f"✅ Admin login success for {username}")
                 flash("Admin login successful.")
                 next_url = request.args.get("next")
                 if not is_safe_url(next_url):
                     return redirect(url_for("admin.dashboard"))
                 return redirect(next_url or url_for("admin.dashboard"))
-        current_app.logger.warning(f"🔑 Admin login failed for {username}")
         flash("Invalid credentials or TOTP code.", "error")
         return redirect(url_for("admin.login", next=request.args.get("next")))
     return render_template("admin_login.html", form=form)
@@ -904,7 +905,6 @@ def signup():
             img.save(buf, format='PNG')
             buf.seek(0)
             img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-            current_app.logger.info(f"🔐 Admin signup: showing QR for {username}")
             form = AdminTOTPConfirmForm()
             return render_template(
                 "admin_signup_totp.html",
@@ -918,7 +918,6 @@ def signup():
         # Step 5: Validate entered TOTP code
         totp = pyotp.TOTP(totp_secret)
         if not totp.verify(totp_code):
-            current_app.logger.warning(f"🛑 Admin signup failed: invalid TOTP code for {username}")
             msg = "Invalid TOTP code. Please try again."
             if is_json:
                 return jsonify(status="error", message=msg), 400
@@ -940,15 +939,14 @@ def signup():
                 totp_secret=totp_secret
             )
         # Step 6: Create admin account and mark invite as used
-        # Log the TOTP secret being saved for debug
-        current_app.logger.info(f"🎯 Admin signup: TOTP secret being saved for {username}")
-
         # Hash DOB sum
         salt = get_random_salt()
         dob_sum_str = str(dob_sum).encode()
         dob_sum_hash = hash_hmac(dob_sum_str, salt)
 
-        new_admin = Admin(username=username, totp_secret=totp_secret, dob_sum_hash=dob_sum_hash, salt=salt)
+        # Encrypt TOTP secret before storing
+        encrypted_totp_secret = encrypt_totp(totp_secret)
+        new_admin = Admin(username=username, totp_secret=encrypted_totp_secret, dob_sum_hash=dob_sum_hash, salt=salt)
         db.session.add(new_admin)
         db.session.execute(
             text("UPDATE admin_invite_codes SET used = TRUE WHERE code = :code"),
@@ -959,7 +957,6 @@ def signup():
         session.pop("admin_totp_secret", None)
         session.pop("admin_totp_username", None)
         session.pop("admin_dob_sum", None)
-        current_app.logger.info(f"🎉 Admin signup: {username} created successfully via invite")
         msg = "Admin account created successfully! Please log in using your authenticator app."
         if is_json:
             return jsonify(status="success", message=msg)
@@ -1313,7 +1310,7 @@ def confirm_reset():
 
     # Update teacher account
     teacher.username = new_username
-    teacher.totp_secret = totp_secret
+    teacher.totp_secret = encrypt_totp(totp_secret)  # Encrypt before storing
 
     # Mark recovery request as completed
     recovery_request.status = 'verified'
@@ -1325,7 +1322,6 @@ def confirm_reset():
     session.pop('reset_totp_secret', None)
     session.pop('reset_new_username', None)
 
-    current_app.logger.info(f"🎉 Admin recovery: account reset successful for {new_username}")
     flash("Your account has been successfully reset! Please log in with your new username and TOTP.", "success")
     return redirect(url_for('admin.login'))
 
@@ -5139,7 +5135,6 @@ def upload_students():
                     break
 
             if existing_seat:
-                current_app.logger.info(f"Seat for {first_name} {last_name} (DOB sum: {dob_sum}) already exists in block {block}, skipping.")
                 duplicated += 1
                 continue
 
