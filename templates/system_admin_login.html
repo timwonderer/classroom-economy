@@ -256,11 +256,15 @@
                 const p = new Passwordless.Client({ apiKey: apiKey });
 
                 // Step 3: Perform WebAuthn authentication using username/alias
-                // Using signin() instead of signinWithDiscoverable() for better compatibility
-                // with password managers like Bitwarden
-                const token = await p.signin(username);
+                // Using signinWithAlias() for better compatibility with password managers like Bitwarden
+                const { token, error } = await p.signinWithAlias(username);
 
-                if (!token || !token.token) {
+                if (error) {
+                    console.error('Passwordless.dev error:', error);
+                    throw new Error(error.title || 'Authentication failed');
+                }
+
+                if (!token) {
                     throw new Error('Authentication was cancelled or failed');
                 }
 
