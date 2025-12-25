@@ -269,13 +269,14 @@
                 }
 
                 // Step 4: Verify with backend
+                // token is already the verify token string (e.g., "verify_xxyyzz"), not an object
                 const finishResponse = await fetch('{{ url_for("sysadmin.passkey_auth_finish") }}', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-CSRFToken': csrfToken
                     },
-                    body: JSON.stringify({ token: token.token })
+                    body: JSON.stringify({ token: token })
                 });
 
                 if (!finishResponse.ok) {
