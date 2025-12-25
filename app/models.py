@@ -424,7 +424,7 @@ class SystemAdminCredential(db.Model):
 
     # WebAuthn credential data
     credential_id = db.Column(db.LargeBinary, unique=True, nullable=False, index=True)  # Base64url decoded credential ID
-    public_key = db.Column(db.LargeBinary, nullable=False)  # COSE-encoded public key
+    public_key = db.Column(db.LargeBinary, nullable=True)  # COSE-encoded public key
     sign_count = db.Column(db.Integer, default=0, nullable=False)  # For clone detection
 
     # Authenticator metadata
