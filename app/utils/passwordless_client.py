@@ -1,9 +1,10 @@
 """
-Passwordless.dev API Client
+Passwordless.dev API Client (Official SDK Wrapper)
 
-This module provides a client for interacting with the Passwordless.dev (Bitwarden)
-API for WebAuthn/FIDO2 passkey authentication.
+This module provides a wrapper around the official Bitwarden Passwordless.dev
+Python SDK for WebAuthn/FIDO2 passkey authentication.
 
+Official SDK: https://github.com/bitwarden/passwordless-python
 Documentation: https://docs.passwordless.dev/guide/api
 
 Environment Variables Required:
@@ -16,18 +17,30 @@ WebAuthn using the py-webauthn library for future migration if needed.
 """
 
 import os
-import requests
-from typing import Dict, Any, Optional
+from typing import Dict, Any
+
+from passwordless import (
+    PasswordlessClient as _PasswordlessClient,
+    PasswordlessClientBuilder,
+    PasswordlessOptions,
+    RegisterToken,
+    RegisteredToken,
+    VerifySignIn,
+    VerifiedUser,
+)
 
 
 class PasswordlessClient:
-    """Client for Passwordless.dev API operations."""
+    """
+    Wrapper around the official Passwordless.dev SDK.
 
-    API_BASE_URL = "https://v4.passwordless.dev"
+    Provides a simplified interface for passkey operations while using
+    the official Bitwarden SDK under the hood.
+    """
 
     def __init__(self):
         """
-        Initialize the Passwordless.dev client.
+        Initialize the Passwordless.dev client using the official SDK.
 
         Raises:
             ValueError: If required API keys are not configured
@@ -47,42 +60,9 @@ class PasswordlessClient:
                 "Get your API keys from https://admin.passwordless.dev"
             )
 
-    def _make_request(
-        self,
-        method: str,
-        endpoint: str,
-        data: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """
-        Make an authenticated request to the Passwordless.dev API.
-
-        Args:
-            method: HTTP method (GET, POST, DELETE)
-            endpoint: API endpoint path (e.g., "/register/token")
-            data: Request payload (for POST requests)
-
-        Returns:
-            JSON response from the API
-
-        Raises:
-            requests.HTTPError: If the API request fails
-        """
-        url = f"{self.API_BASE_URL}{endpoint}"
-        headers = {
-            "ApiSecret": self.api_key,
-            "Content-Type": "application/json"
-        }
-
-        response = requests.request(
-            method=method,
-            url=url,
-            headers=headers,
-            json=data,
-            timeout=10
-        )
-
-        response.raise_for_status()
-        return response.json()
+        # Initialize the official SDK client
+        options = PasswordlessOptions(self.api_key)
+        self._client: _PasswordlessClient = PasswordlessClientBuilder(options).build()
 
     def register_token(self, user_id: str, username: str, displayname: str) -> str:
         """
@@ -100,17 +80,17 @@ class PasswordlessClient:
             Registration token to be used in the frontend
 
         Raises:
-            requests.HTTPError: If the API request fails
+            Exception: If the SDK request fails
         """
-        payload = {
-            "userId": user_id,
-            "username": username,
-            "displayname": displayname,
-            "aliases": [username]  # Allow login by username
-        }
+        register_token = RegisterToken(
+            user_id=user_id,
+            username=username,
+            displayname=displayname,
+            aliases=[username]  # Allow login by username
+        )
 
-        response = self._make_request("POST", "/register/token", payload)
-        return response.get("token")
+        response: RegisteredToken = self._client.register_token(register_token)
+        return response.token
 
     def verify_signin(self, token: str) -> Dict[str, Any]:
         """
@@ -125,55 +105,34 @@ class PasswordlessClient:
 
         Returns:
             Dictionary containing:
-                - success (bool): Whether verification succeeded
+                - success (bool): Whether verification succeeded (always True if no exception)
                 - userId (str): The user ID if successful
                 - timestamp (str): When the token was verified
                 - origin (str): Origin of the request
                 - device (str): Device information
                 - country (str): Country code
-                - nickname (str): Credential nickname if set
                 - credentialId (str): The credential ID used
+                - type (str): Credential type
                 - expiresAt (str): When the token expires
 
         Raises:
-            requests.HTTPError: If verification fails
+            Exception: If verification fails
         """
-        payload = {"token": token}
-        return self._make_request("POST", "/signin/verify", payload)
+        verify_signin = VerifySignIn(token)
+        user: VerifiedUser = self._client.sign_in(verify_signin)
 
-    def list_credentials(self, user_id: str) -> list:
-        """
-        List all credentials for a user.
-
-        Args:
-            user_id: The user ID to query credentials for
-
-        Returns:
-            List of credential dictionaries
-
-        Raises:
-            requests.HTTPError: If the API request fails
-        """
-        endpoint = f"/credentials/list?userId={user_id}"
-        response = self._make_request("GET", endpoint)
-        return response.get("values", [])
-
-    def delete_credential(self, credential_id: str) -> bool:
-        """
-        Delete a specific credential.
-
-        Args:
-            credential_id: The credential ID to delete
-
-        Returns:
-            True if deletion succeeded
-
-        Raises:
-            requests.HTTPError: If the API request fails
-        """
-        endpoint = f"/credentials/{credential_id}"
-        self._make_request("DELETE", endpoint)
-        return True
+        # Convert VerifiedUser to dictionary format expected by our code
+        return {
+            "success": True,
+            "userId": user.user_id,
+            "timestamp": user.timestamp,
+            "origin": user.origin,
+            "device": user.device,
+            "country": user.country,
+            "credentialId": user.credential_id,
+            "type": user.type,
+            "expiresAt": user.expires_at
+        }
 
     def get_public_key(self) -> str:
         """

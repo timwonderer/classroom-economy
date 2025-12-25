@@ -43,5 +43,5 @@ APScheduler==3.10.4
 Flask-Limiter==3.5.0
 redis>=5.0.0
 webauthn==2.7.0
-requests==2.32.3
+passwordless==2.0.0
 

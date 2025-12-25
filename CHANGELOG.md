@@ -39,6 +39,7 @@ and this project follows semantic versioning principles.
   - Requires environment variables: `PASSWORDLESS_API_KEY`, `PASSWORDLESS_API_PUBLIC`
   - Full CSRF protection and rate limiting on all passkey endpoints
   - Tracks credential usage timestamps for security auditing
+  - Uses official Bitwarden Passwordless SDK (`passwordless==2.0.0`) for type-safe API interactions
 - **Security Remediation Tools and Documentation** - Complete implementation guides and fixed workflow files
   - Step-by-step remediation guide: `docs/security/SECURITY_REMEDIATION_GUIDE.md`
   - Fixed workflow files with SSH host key verification: `.github/workflows/*.FIXED`

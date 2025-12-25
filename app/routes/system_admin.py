@@ -11,7 +11,6 @@ import secrets
 import io
 import base64
 import qrcode
-import requests
 from datetime import datetime, timedelta, timezone
 
 from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app, jsonify
@@ -455,13 +454,9 @@ def passkey_auth_finish():
             "redirect": redirect_url
         }), 200
 
-    except requests.HTTPError as e:
-        current_app.logger.error(f"Passwordless.dev verification failed: {e}")
-        return jsonify({"error": "Authentication failed"}), 401
-
     except Exception as e:
         current_app.logger.error(f"Error finishing passkey authentication: {e}")
-        return jsonify({"error": "Authentication failed"}), 500
+        return jsonify({"error": "Authentication failed"}), 401
 
 
 @sysadmin_bp.route('/passkey/list', methods=['GET'])
