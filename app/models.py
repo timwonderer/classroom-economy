@@ -977,6 +977,37 @@ class Admin(db.Model):
         return self.display_name if self.display_name else self.username
 
 
+class AdminCredential(db.Model):
+    """
+    Stores WebAuthn/FIDO2 credentials for teacher passwordless authentication.
+    Each credential represents a passkey or security key registered to a teacher admin.
+    """
+    __tablename__ = 'admin_credentials'
+
+    id = db.Column(db.Integer, primary_key=True)
+    admin_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
+
+    # WebAuthn credential data
+    credential_id = db.Column(db.LargeBinary, unique=True, nullable=False, index=True)  # Base64url decoded credential ID
+    public_key = db.Column(db.LargeBinary, nullable=True)  # COSE-encoded public key (empty for passwordless.dev)
+    sign_count = db.Column(db.Integer, default=0, nullable=False)  # For clone detection
+
+    # Authenticator metadata
+    transports = db.Column(db.String(255))  # Comma-separated: "usb,nfc,ble,internal"
+    authenticator_name = db.Column(db.String(100))  # User-friendly name e.g., "iPhone Touch ID"
+    aaguid = db.Column(db.String(36))  # Authenticator Attestation GUID (optional)
+
+    # Timestamps (all UTC)
+    created_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
+    last_used = db.Column(db.DateTime)
+
+    # Relationships
+    admin = db.relationship('Admin', backref=db.backref('credentials', lazy='dynamic', cascade='all, delete-orphan'))
+
+    def __repr__(self):
+        return f'<AdminCredential {self.authenticator_name or "Unnamed"} for Admin {self.admin_id}>'
+
+
 # ---- Account Recovery Models ----
 class RecoveryRequest(db.Model):
     """Teacher account recovery request - requires student verification"""
