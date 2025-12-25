@@ -179,7 +179,7 @@
                     'X-CSRFToken': csrfToken
                 },
                 body: JSON.stringify({
-                    credentialId: result.credentialId || result.token, // Use credentialId if available
+                    credentialId: result.credentialId,
                     authenticatorName: friendlyName
                 })
             });
