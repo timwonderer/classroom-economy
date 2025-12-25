@@ -82,7 +82,7 @@ def decrypt_totp(encrypted_secret):
 
     # Heuristic: Encrypted secrets are base64 (longer), plaintext TOTP secrets are exactly 32 chars
     # and only contain A-Z2-7 (base32 alphabet)
-    if len(encrypted_secret) == 32 and all(c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567' for c in encrypted_secret):
+    if len(encrypted_secret) == 32 and all(c in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567' for c in encrypted_secret.upper()):
         # Legacy plaintext secret - return as-is
         return encrypted_secret
 
