@@ -9,6 +9,20 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Security
+- **Encrypted TOTP Secrets at Rest** - TOTP 2FA secrets now encrypted in database using Fernet (AES-128-CBC)
+  - Added `encrypt_totp()` and `decrypt_totp()` helper functions in `app/utils/encryption.py`
+  - All new admin/system admin accounts store encrypted TOTP secrets (base64-encoded)
+  - Backward compatible: `decrypt_totp()` handles both encrypted and legacy plaintext secrets transparently
+  - **MIGRATION REQUIRED**: Column length expanded from VARCHAR(32) to VARCHAR(200) - See `MIGRATION_TOTP_ENCRYPTION.md`
+  - Defense in depth: Database compromise alone no longer sufficient to generate valid 2FA codes
+  - **Note:** Still requires `ENCRYPTION_KEY` security - future migration to AWS Secrets Manager/Vault recommended
+  - Files changed: `app/utils/encryption.py`, `app/models.py`, `app/routes/admin.py`, `app/routes/system_admin.py`, `wsgi.py`, `create_admin.py`
+- **Removed Sensitive Information from Application Logs** - Eliminated logging of usernames, hashes, and PII
+  - Removed username logging from student login, admin login, admin signup, and admin recovery flows
+  - Removed partial hash logging from student authentication
+  - Removed student name and DOB sum logging from bulk upload process
+  - Impact: Prevents accidental exposure of PII in development logs, log files, or screenshots
+  - Note: Production deployments should configure `LOG_LEVEL=WARNING` or higher to minimize log output
 - **CRITICAL: Fixed PromptPwnd AI Prompt Injection Vulnerability** - Disabled vulnerable `summary.yml` GitHub Actions workflow
   - Workflow used AI inference (`actions/ai-inference@v1`) with untrusted user input from issue titles/bodies
   - Attack vector: Any user could create an issue with malicious prompt injection to leak `GITHUB_TOKEN` or manipulate workflows
@@ -23,6 +37,15 @@ and this project follows semantic versioning principles.
   - Strengths: Excellent CSRF protection, SQL injection prevention, XSS mitigation, PII encryption, multi-tenancy isolation
   - Recommendations: Enable SSH host key verification, update cryptography package, improve secrets management
   - Documentation: See `docs/security/COMPREHENSIVE_ATTACK_SURFACE_AUDIT_2025.md` for complete report
+
+### Changed
+- **Improved Store Management Overview Page** - Replaced "Active Store Items" section with more actionable information
+  - Now displays "Pending Redemption Requests" table showing items awaiting teacher approval
+  - Shows "Recent Purchases" table with the 10 most recent student purchases
+  - Each pending redemption includes student name, item, request time, details, and quick review link
+  - Recent purchases show student name, item, price, purchase time, and current status
+  - Fixed markdown rendering issue in item descriptions (was showing raw "####" markdown syntax)
+  - More useful for teachers to see what requires their attention rather than what's already in their store
 
 ### Added
 - **Passwordless Authentication for System Admins** - Implemented WebAuthn/FIDO2 passkey authentication using passwordless.dev

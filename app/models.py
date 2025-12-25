@@ -409,7 +409,7 @@ class SystemAdmin(db.Model):
     __tablename__ = 'system_admins'
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
-    totp_secret = db.Column(db.String(32), nullable=False)
+    totp_secret = db.Column(db.String(200), nullable=False)  # Stores base64-encoded encrypted TOTP secret
 
 
 class SystemAdminCredential(db.Model):
@@ -963,8 +963,8 @@ class Admin(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     display_name = db.Column(db.String(100), nullable=True)  # Teacher's display name (defaults to username if not set)
-    # TOTP-only: store secret, remove password_hash
-    totp_secret = db.Column(db.String(32), nullable=False)
+    # TOTP-only: store secret (base64-encoded encrypted data)
+    totp_secret = db.Column(db.String(200), nullable=False)  # Stores base64-encoded encrypted TOTP secret
     # Account recovery: Hashed DOB sum (similar to student system)
     dob_sum_hash = db.Column(db.String(64), nullable=True)  # Hashed Sum of MM + DD + YYYY
     salt = db.Column(db.LargeBinary(16), nullable=True)  # Salt for DOB sum hash

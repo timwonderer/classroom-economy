@@ -100,6 +100,7 @@ def ensure_admin_command():
 def create_sysadmin():
     """Create initial system admin account interactively."""
     import pyotp
+    from app.utils.encryption import encrypt_totp
     username = input("Enter system admin username: ").strip()
     if not username:
         print("Username is required.")
@@ -109,7 +110,7 @@ def create_sysadmin():
         print(f"System admin '{username}' already exists.")
         return
     totp_secret = pyotp.random_base32()
-    sysadmin = SystemAdmin(username=username, totp_secret=totp_secret)
+    sysadmin = SystemAdmin(username=username, totp_secret=encrypt_totp(totp_secret))
     db.session.add(sysadmin)
     db.session.commit()
     print(f"✅ System admin '{username}' created successfully.")
