@@ -133,17 +133,26 @@ async function networkFirst(event) {
     return await caches.match(request);
   }
 }
-  
+
 async function cacheFirst(event) {
   const { request } = event;
 
   if (!shouldCache(request)) {
     return fetch(request);
   }
+
+  const cachedResponse = await caches.match(request);
+  if (cachedResponse) {
+    return cachedResponse;
   }
-  if (!shouldCache(request)) {
-    return fetch(request);
-  }
+
+  try {
+    const networkResponse = await fetch(request);
+
+    // Clone the response before consuming it to avoid "body already used" errors
+    if (networkResponse && networkResponse.status === 200) {
+      const responseToCache = networkResponse.clone();
+      event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
           return cache.put(request, responseToCache);
         })
