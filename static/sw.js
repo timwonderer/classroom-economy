@@ -137,21 +137,13 @@ async function networkFirst(event) {
 async function cacheFirst(event) {
   const { request } = event;
 
-  // Don't cache chrome-extension requests or non-http(s) schemes
-  if (!request.url.startsWith('http')) {
-    return fetch(request);
   if (!shouldCache(request)) {
     return fetch(request);
   }
   }
-
-  try {
-    const networkResponse = await fetch(request);
-
-    // Clone the response before consuming it to avoid "body already used" errors
-    if (networkResponse && networkResponse.status === 200) {
-      const responseToCache = networkResponse.clone();
-      event.waitUntil(
+  if (!shouldCache(request)) {
+    return fetch(request);
+  }
         caches.open(CACHE_NAME).then((cache) => {
           return cache.put(request, responseToCache);
         })

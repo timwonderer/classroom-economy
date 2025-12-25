@@ -179,21 +179,21 @@
             //   { token: string }  // primary expected format
             // or, in some cases, an object containing a credentialId, or even a raw string.
             // To keep this robust and explicit, we extract the credential ID with type checks.
-            let credId = null;
+            let credentialId = null;
 
             if (result && typeof result === 'object') {
                 if (typeof result.credentialId === 'string' && result.credentialId) {
-                    credId = result.credentialId;
+                    credentialId = result.credentialId;
                 } else if (typeof result.token === 'string' && result.token) {
-                    credId = result.token;
+                    credentialId = result.token;
                 }
             } else if (typeof result === 'string' && result) {
-                credId = result;
+                credentialId = result;
             }
-            console.log('Extracted credentialId:', credId);
-            console.log('credId type:', typeof credId);
+            console.log('Extracted credentialId:', credentialId);
+            console.log('credentialId type:', typeof credentialId);
 
-            if (!credId) {
+            if (!credentialId) {
                 throw new Error('Failed to get credential ID from registration result');
             }
 
