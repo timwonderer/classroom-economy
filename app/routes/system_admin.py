@@ -313,8 +313,8 @@ def passkey_register_finish():
             credential_id=credential_id,
             public_key=b'',  # Empty for passwordless.dev; populated for self-hosted
             sign_count=0,
-            authenticator_name=authenticator_name,
-            created_at=datetime.now(timezone.utc)
+            authenticator_name=authenticator_name
+            # created_at is set automatically by the model default
         )
 
         db.session.add(credential)
@@ -418,7 +418,12 @@ def passkey_auth_finish():
         if not user_id or not user_id.startswith('sysadmin_'):
             return jsonify({"error": "Invalid user ID"}), 401
 
-        sysadmin_id = int(user_id.replace('sysadmin_', ''))
+        # Parse sysadmin ID with error handling for malformed IDs
+        try:
+            sysadmin_id = int(user_id.replace('sysadmin_', ''))
+        except ValueError:
+            current_app.logger.error(f"Invalid userId format from passwordless.dev: {user_id}")
+            return jsonify({"error": "Invalid user ID format"}), 401
 
         # Verify system admin exists
         admin = SystemAdmin.query.get(sysadmin_id)
