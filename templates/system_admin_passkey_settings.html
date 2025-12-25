@@ -122,6 +122,9 @@
 <script src="https://cdn.passwordless.dev/dist/1.1.0/umd/passwordless.umd.min.js" crossorigin="anonymous"></script>
 
 <script>
+    // Get CSRF token
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
     // Passkey Registration Handler
     document.getElementById('registerPasskeyButton').addEventListener('click', async function() {
         const button = this;
@@ -136,6 +139,7 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
                 }
             });
 
@@ -171,6 +175,7 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
                 },
                 body: JSON.stringify({
                     credentialId: result.credentialId || result.token, // Use credentialId if available
@@ -212,6 +217,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
                     }
                 });
 
