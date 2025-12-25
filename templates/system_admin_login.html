@@ -226,7 +226,11 @@
                 button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Authenticating...';
 
                 // Get CSRF token
-                const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+                const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+                if (!csrfMeta) {
+                    throw new Error('CSRF token not found. Please refresh the page and try again.');
+                }
+                const csrfToken = csrfMeta.getAttribute('content');
 
                 // Get username from form
                 const usernameInput = document.querySelector('input[name="username"]');
