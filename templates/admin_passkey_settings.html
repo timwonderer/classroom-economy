@@ -206,7 +206,7 @@
             const credentialId = this.dataset.credentialId;
             const credentialName = this.dataset.credentialName;
 
-            if (!confirm(`Are you sure you want to delete "${credentialName}"?\n\nYou can still sign in with TOTP during the backup.`)) {
+            if (!confirm(`Are you sure you want to delete "${credentialName}"?\n\nYou can still sign in with TOTP as a backup.`)) {
                 return;
             }
 
@@ -237,7 +237,7 @@
                 showToast('Passkey deleted successfully', 'success');
 
                 // Reload if no passkeys left to show empty state
-                const remainingPasskeys = document.querySelectorAll('.delete-passkey-btn').length;
+                const remainingPasskeys = document.querySelectorAll('.delete-passkey-btn').length - 1;
                 if (remainingPasskeys === 0) {
                     window.location.reload();
                 }
@@ -263,7 +263,13 @@
             </div>
         `;
 
-        document.getElementById('flashToastContainer').appendChild(toast);
+        const container = document.getElementById('flashToastContainer');
+        if (!container) {
+            console.warn('flashToastContainer element not found; toast will not be displayed.');
+            return;
+        }
+
+        container.appendChild(toast);
         const bsToast = new bootstrap.Toast(toast);
         bsToast.show();
 

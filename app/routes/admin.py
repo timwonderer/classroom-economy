@@ -6868,12 +6868,14 @@ def passkey_auth_start():
         # Look up admin by username
         admin = Admin.query.filter_by(username=username).first()
         if not admin:
-            return jsonify({"error": "Invalid credentials"}), 401
+            # Use a generic error message to avoid username enumeration
+            return jsonify({"error": "Passkey authentication is not available"}), 401
         
         # Check if user has any passkeys registered
         has_passkeys = AdminCredential.query.filter_by(admin_id=admin.id).first() is not None
         if not has_passkeys:
-            return jsonify({"error": "No passkeys registered for this account"}), 401
+            # Same generic message as above to avoid revealing account existence or passkey status
+            return jsonify({"error": "Passkey authentication is not available"}), 401
         
         # Get passwordless.dev client
         client = get_passwordless_client()
@@ -6953,7 +6955,14 @@ def passkey_auth_finish():
             credential_id = base64.urlsafe_b64decode(credential_id_b64)
             
             credential = AdminCredential.query.filter_by(credential_id=credential_id).first()
-            if credential:
+                db.session.commit()
+            else:
+                # Log a warning if verification succeeds but no matching credential record is found
+                current_app.logger.warning(
+                    "Passwordless login for admin_id=%s used unknown credentialId=%s",
+                    admin.id,
+                    verification.get('credentialId'),
+                )
                 credential.last_used = datetime.now(timezone.utc)
                 db.session.commit()
         
