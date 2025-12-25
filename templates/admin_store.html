@@ -90,51 +90,111 @@
       </div>
     </div>
 
-    <!-- Recent Items -->
-    <div class="card shadow">
-      <div class="card-header bg-info text-white">
-        <h5 class="mb-0"><i class="bi bi-star me-2"></i>Active Store Items</h5>
+    <!-- Pending Redemption Requests -->
+    <div class="card shadow mb-4">
+      <div class="card-header bg-warning text-dark">
+        <h5 class="mb-0"><i class="bi bi-hourglass-split me-2"></i>Pending Redemption Requests</h5>
       </div>
       <div class="card-body">
-        {% if items %}
-        <div class="row">
-          {% for item in items[:6] if item.is_active %}
-          <div class="col-md-4 mb-3">
-            <div class="card h-100">
-              <div class="card-body">
-                <h6 class="card-title">{{ item.name }}</h6>
-                <p class="card-text text-muted small">{{ item.description[:50] }}{% if item.description and item.description|length > 50 %}...{% endif %}</p>
-                <div class="d-flex justify-content-between align-items-center">
-                  <span class="badge bg-success">${{ "%.2f"|format(item.price) }}</span>
-                  <span class="badge bg-secondary">{{ item.item_type.replace('_', ' ')|title }}</span>
-                </div>
-                {% if item.tier %}
-                <div class="mt-2">
-                  <span class="badge
-                    {% if item.tier == 'basic' %}bg-secondary
-                    {% elif item.tier == 'standard' %}bg-primary
-                    {% elif item.tier == 'premium' %}bg-warning text-dark
-                    {% elif item.tier == 'luxury' %}bg-danger
-                    {% endif %}">{{ item.tier|title }}</span>
-                </div>
-                {% endif %}
-                {% if item.is_bundle %}
-                <div class="mt-2">
-                  <span class="badge bg-warning text-dark"><i class="bi bi-box-seam"></i> Bundle ({{ item.bundle_quantity }})</span>
-                </div>
-                {% endif %}
-                {% if item.bulk_discount_enabled %}
-                <div class="mt-2">
-                  <span class="badge bg-info"><i class="bi bi-percent"></i> {{ item.bulk_discount_percentage }}% off {{ item.bulk_discount_quantity }}+</span>
-                </div>
-                {% endif %}
-              </div>
-            </div>
-          </div>
-          {% endfor %}
+        {% if pending_redemptions %}
+        <div class="table-responsive">
+          <table class="table table-hover">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Item</th>
+                <th>Requested</th>
+                <th>Details</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for student_item in pending_redemptions %}
+              <tr>
+                <td>{{ student_item.student.first_name }} {{ student_item.student.last_initial }}.</td>
+                <td>{{ student_item.store_item.name }}</td>
+                <td><small class="text-muted local-timestamp" data-timestamp="{{ student_item.redemption_date.isoformat() }}Z"></small></td>
+                <td>
+                  {% if student_item.redemption_details %}
+                    <div class="text-muted small">{{ student_item.redemption_details | markdown | safe }}</div>
+                  {% else %}
+                    <small class="text-muted">-</small>
+                  {% endif %}
+                </td>
+                <td>
+                  <button class="btn btn-sm btn-success approve-redemption-btn" data-student-item-id="{{ student_item.id }}">
+                    <i class="bi bi-check-circle me-1"></i>Approve
+                  </button>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <div class="text-center mt-3">
+          <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline-primary">View All Pending Items</a>
         </div>
         {% else %}
-        <p class="text-muted">No items in store yet. Click "Manage Items" to add some!</p>
+        <div class="text-center text-muted py-3">
+          <i class="bi bi-check-circle" style="font-size: 2rem;"></i>
+          <p class="mb-0">No pending redemption requests</p>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Recent Purchases -->
+    <div class="card shadow">
+      <div class="card-header bg-info text-white">
+        <h5 class="mb-0"><i class="bi bi-clock-history me-2"></i>Recent Purchases</h5>
+      </div>
+      <div class="card-body">
+        {% if recent_purchases %}
+        <div class="table-responsive">
+          <table class="table table-hover">
+            <thead>
+              <tr>
+                <th>Student</th>
+                <th>Item</th>
+                <th>Price</th>
+                <th>Purchased</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for student_item in recent_purchases %}
+              <tr>
+                <td>{{ student_item.student.first_name }} {{ student_item.student.last_initial }}.</td>
+                <td>{{ student_item.store_item.name }}</td>
+                <td>${{ "%.2f"|format(student_item.store_item.price) }}</td>
+                <td><small class="text-muted local-timestamp" data-timestamp="{{ student_item.purchase_date.isoformat() }}Z"></small></td>
+                <td>
+                  {% if student_item.status == 'purchased' %}
+                    <span class="badge bg-success">Purchased</span>
+                  {% elif student_item.status == 'processing' %}
+                    <span class="badge bg-warning text-dark">Processing</span>
+                  {% elif student_item.status == 'pending' %}
+                    <span class="badge bg-secondary">Pending</span>
+                  {% elif student_item.status == 'redeemed' %}
+                    <span class="badge bg-primary">Redeemed</span>
+                  {% elif student_item.status == 'completed' %}
+                    <span class="badge bg-success">Completed</span>
+                  {% elif student_item.status == 'expired' %}
+                    <span class="badge bg-danger">Expired</span>
+                  {% else %}
+                    <span class="badge bg-secondary">{{ student_item.status|title }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-center text-muted py-3">
+          <i class="bi bi-cart-x" style="font-size: 2rem;"></i>
+          <p class="mb-0">No purchases yet</p>
+        </div>
         {% endif %}
       </div>
     </div>
@@ -642,6 +702,67 @@
     // Initial state
     updateCollectiveGoalTypeVisibility();
   }
+
+  // Approve redemption requests from overview tab
+  document.querySelectorAll(".approve-redemption-btn").forEach(button => {
+    button.addEventListener("click", () => {
+      const studentItemId = button.dataset.studentItemId;
+      const csrfToken = document.querySelector('meta[name=\"csrf-token\"]').getAttribute('content');
+
+      // Disable button and show loading state
+      button.disabled = true;
+      const originalHtml = button.innerHTML;
+      button.innerHTML = '<i class=\"bi bi-hourglass-split\"></i> Processing...';
+
+      fetch('/api/approve-redemption', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': csrfToken
+        },
+        body: JSON.stringify({ student_item_id: studentItemId })
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.status === 'success') {
+          const row = button.closest('tr');
+          row.style.transition = 'opacity 0.3s';
+          row.style.opacity = '0';
+          setTimeout(() => row.remove(), 300);
+
+          const toastContainer = document.getElementById('flashToastContainer') || (() => {
+            const container = document.createElement('div');
+            container.id = 'flashToastContainer';
+            container.className = 'position-fixed bottom-0 end-0 p-3';
+            container.style.zIndex = '1050';
+            document.body.appendChild(container);
+            return container;
+          })();
+
+          const toastEl = document.createElement('div');
+          toastEl.className = 'toast align-items-center text-bg-success border-0';
+          toastEl.setAttribute('role', 'alert');
+          toastEl.innerHTML = `
+            <div class=\"d-flex\">
+              <div class=\"toast-body\">Redemption approved successfully!</div>
+              <button type=\"button\" class=\"btn-close btn-close-white me-2 m-auto\" data-bs-dismiss=\"toast\"></button>
+            </div>`;
+          toastContainer.appendChild(toastEl);
+          new bootstrap.Toast(toastEl).show();
+        } else {
+          alert('Approval failed: ' + data.message);
+          button.disabled = false;
+          button.innerHTML = originalHtml;
+        }
+      })
+      .catch(error => {
+        console.error('Approval error:', error);
+        alert('An unexpected error occurred.');
+        button.disabled = false;
+        button.innerHTML = originalHtml;
+      });
+    });
+  });
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/easymde/dist/easymde.min.js"></script>

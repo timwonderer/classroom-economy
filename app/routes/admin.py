@@ -25,6 +25,7 @@ from flask import (
 )
 from urllib.parse import urlparse
 from sqlalchemy import desc, text, or_, func
+from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError
 import sqlalchemy as sa
 import pyotp
@@ -2707,8 +2708,32 @@ def store_management():
         .count()
     )
 
+    # Get pending redemption requests (items awaiting teacher approval)
+    pending_redemptions = (
+        StudentItem.query
+        .options(joinedload(StudentItem.student), joinedload(StudentItem.store_item))
+        .join(Student, StudentItem.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .filter(StudentItem.status == 'processing')
+        .order_by(StudentItem.redemption_date.desc())
+        .limit(10)
+        .all()
+    )
+
+    # Get recent purchases (all statuses, ordered by purchase date)
+    recent_purchases = (
+        StudentItem.query
+        .options(joinedload(StudentItem.student), joinedload(StudentItem.store_item))
+        .join(Student, StudentItem.student_id == Student.id)
+        .filter(Student.id.in_(student_ids_subq))
+        .order_by(StudentItem.purchase_date.desc())
+        .limit(10)
+        .all()
+    )
+
     return render_template('admin_store.html', form=form, items=items, current_page="store",
-                         total_items=total_items, active_items=active_items, total_purchases=total_purchases)
+                         total_items=total_items, active_items=active_items, total_purchases=total_purchases,
+                         pending_redemptions=pending_redemptions, recent_purchases=recent_purchases)
 
 
 @admin_bp.route('/store/edit/<int:item_id>', methods=['GET', 'POST'])

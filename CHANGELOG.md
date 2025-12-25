@@ -38,6 +38,15 @@ and this project follows semantic versioning principles.
   - Recommendations: Enable SSH host key verification, update cryptography package, improve secrets management
   - Documentation: See `docs/security/COMPREHENSIVE_ATTACK_SURFACE_AUDIT_2025.md` for complete report
 
+### Changed
+- **Improved Store Management Overview Page** - Replaced "Active Store Items" section with more actionable information
+  - Now displays "Pending Redemption Requests" table showing items awaiting teacher approval
+  - Shows "Recent Purchases" table with the 10 most recent student purchases
+  - Each pending redemption includes student name, item, request time, details, and quick review link
+  - Recent purchases show student name, item, price, purchase time, and current status
+  - Fixed markdown rendering issue in item descriptions (was showing raw "####" markdown syntax)
+  - More useful for teachers to see what requires their attention rather than what's already in their store
+
 ### Added
 - **Security Remediation Tools and Documentation** - Complete implementation guides and fixed workflow files
   - Step-by-step remediation guide: `docs/security/SECURITY_REMEDIATION_GUIDE.md`
