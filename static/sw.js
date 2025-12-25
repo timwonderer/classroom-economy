@@ -111,7 +111,6 @@ async function networkFirst(event) {
   const { request } = event;
 
   if (!shouldCache(request)) {
-  if (request.method !== 'GET') {
     return fetch(request);
   }
 
@@ -135,24 +134,15 @@ async function networkFirst(event) {
   }
 }
   
-}
-  
 async function cacheFirst(event) {
   const { request } = event;
 
   // Don't cache chrome-extension requests or non-http(s) schemes
   if (!request.url.startsWith('http')) {
     return fetch(request);
-  }
-
-  // Don't cache POST/PUT/DELETE requests
-  if (request.method !== 'GET') {
+  if (!shouldCache(request)) {
     return fetch(request);
   }
-
-  const cachedResponse = await caches.match(request);
-  if (cachedResponse) {
-    return cachedResponse;
   }
 
   try {
