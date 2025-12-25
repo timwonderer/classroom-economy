@@ -159,10 +159,6 @@
             // Step 3: Perform WebAuthn registration
             const result = await p.register(token);
 
-            console.log('Passkey registration result:', result);
-            console.log('Result type:', typeof result);
-            console.log('Result keys:', result ? Object.keys(result) : 'null/undefined');
-
             if (!result) {
                 throw new Error('Registration was cancelled or failed');
             }
@@ -190,8 +186,6 @@
             } else if (typeof result === 'string' && result) {
                 credentialId = result;
             }
-            console.log('Extracted credentialId:', credentialId);
-            console.log('credentialId type:', typeof credentialId);
 
             if (!credentialId) {
                 throw new Error('Failed to get credential ID from registration result');

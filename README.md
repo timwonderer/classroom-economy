@@ -2,7 +2,7 @@
 
 An interactive banking and classroom management platform for teaching students about money while tracking classroom participation.
 
-**Version:** 1.2.1
+**Version:** 1.3.0
 
 ---
 
@@ -12,7 +12,7 @@ An interactive banking and classroom management platform for teaching students a
 
 **License:** [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) - Free for educational and nonprofit use, not for commercial applications.
 
-**Project Status:** Version 1.2.1 Released! This patch release finalizes the legacy account migration toolkit, hardens multi-tenancy by ensuring join_code coverage across all transaction paths, and adds schema diagnostics for join_code audits. See [RELEASE_NOTES_v1.2.1.md](docs/archive/releases/RELEASE_NOTES_v1.2.1.md) for full details.
+**Project Status:** Version 1.3.0 Released! This release adds passwordless authentication (passkeys) for both teachers and system admins using WebAuthn/FIDO2, encrypted TOTP secrets at rest, comprehensive security improvements, and critical bug fixes. See [RELEASE_NOTES_v1.3.0.md](docs/archive/releases/RELEASE_NOTES_v1.3.0.md) for full details.
 
 ---
 
