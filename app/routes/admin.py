@@ -6940,14 +6940,14 @@ def passkey_auth_finish():
         if not admin:
             return jsonify({"error": "Admin not found"}), 401
         
-        # Update credential last_used timestamp
+        # Update credential last_used timestamp and admin last_login
+        now = datetime.now(timezone.utc)
         credential_id_b64 = verification.get('credentialId')
         if credential_id_b64:
             credential_id = decode_credential_id(credential_id_b64)
             credential = AdminCredential.query.filter_by(credential_id=credential_id).first()
             if credential:
-                credential.last_used = datetime.now(timezone.utc)
-                db.session.commit()
+                credential.last_used = now
             else:
                 # Log a warning if verification succeeds but no matching credential record is found
                 current_app.logger.warning(
@@ -6956,11 +6956,8 @@ def passkey_auth_finish():
                     verification.get('credentialId'),
                 )
         
-        # Update admin last_login
-        admin.last_login = datetime.now(timezone.utc)
+        admin.last_login = now
         db.session.commit()
-        
-        # Create session
         session.clear()
         session['admin_id'] = admin.id
         session['is_admin'] = True
