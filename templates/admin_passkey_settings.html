@@ -175,9 +175,21 @@
 
             button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
 
-            // The passwordless.dev register() method returns the raw credential ID
-            // We need to extract it correctly
-            const credId = result.credentialId || result.token || result;
+            // The passwordless.dev register() method typically returns an object, e.g.:
+            //   { token: string }  // primary expected format
+            // or, in some cases, an object containing a credentialId, or even a raw string.
+            // To keep this robust and explicit, we extract the credential ID with type checks.
+            let credId = null;
+
+            if (result && typeof result === 'object') {
+                if (typeof result.credentialId === 'string' && result.credentialId) {
+                    credId = result.credentialId;
+                } else if (typeof result.token === 'string' && result.token) {
+                    credId = result.token;
+                }
+            } else if (typeof result === 'string' && result) {
+                credId = result;
+            }
             console.log('Extracted credentialId:', credId);
             console.log('credId type:', typeof credId);
 

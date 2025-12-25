@@ -93,15 +93,24 @@ async function handleNavigation(event) {
   }
 }
 
-async function networkFirst(event) {
-  const { request } = event;
-
+function shouldCache(request) {
   // Don't cache chrome-extension requests or non-http(s) schemes
-  if (!request.url.startsWith('http')) {
-    return fetch(request);
+  if (!request || !request.url || !request.url.startsWith('http')) {
+    return false;
   }
 
   // Don't cache POST/PUT/DELETE requests
+  if (request.method !== 'GET') {
+    return false;
+  }
+
+  return true;
+}
+
+async function networkFirst(event) {
+  const { request } = event;
+
+  if (!shouldCache(request)) {
   if (request.method !== 'GET') {
     return fetch(request);
   }
@@ -125,7 +134,9 @@ async function networkFirst(event) {
     return await caches.match(request);
   }
 }
-
+  
+}
+  
 async function cacheFirst(event) {
   const { request } = event;
 
