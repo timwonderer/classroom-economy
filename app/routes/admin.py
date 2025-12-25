@@ -38,7 +38,7 @@ from app.models import (
     StudentInsurance, InsuranceClaim, HallPassLog, PayrollSettings, PayrollReward, PayrollFine,
     BankingSettings, TeacherBlock, DeletionRequest, DeletionRequestType, DeletionRequestStatus,
     UserReport, FeatureSettings, TeacherOnboarding, StudentBlock, RecoveryRequest, StudentRecoveryCode,
-    DemoStudent
+    DemoStudent, AdminCredential
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
@@ -58,6 +58,7 @@ from app.utils.claim_credentials import (
 from app.utils.ip_handler import get_real_ip
 from app.utils.name_utils import hash_last_name_parts, verify_last_name_parts
 from app.utils.help_content import HELP_ARTICLES
+from app.utils.passwordless_client import get_passwordless_client
 from app.utils.encryption import encrypt_totp, decrypt_totp
 from hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from payroll import calculate_payroll
@@ -6731,3 +6732,315 @@ def api_economy_validate(feature):
     except Exception as e:
         current_app.logger.error(f"Error validating {feature}: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# ==================== PASSKEY AUTHENTICATION ROUTES ====================
+
+@admin_bp.route('/passkey/register/start', methods=['POST'])
+@admin_required
+@limiter.limit("10 per minute")
+def passkey_register_start():
+    """
+    Generate a passkey registration token from passwordless.dev.
+    
+    This is called when a teacher wants to add a new passkey from their account settings.
+    Returns a registration token that the frontend uses to initiate the WebAuthn ceremony.
+    """
+    try:
+        admin_id = session.get('admin_id')
+        admin = Admin.query.get_or_404(admin_id)
+        
+        # Get passwordless.dev client
+        client = get_passwordless_client()
+        
+        # Generate registration token
+        # userId format: "admin_{id}" to distinguish from system admins
+        user_id = f"admin_{admin.id}"
+        username = admin.username
+        displayname = admin.get_display_name()
+        
+        token = client.register_token(
+            user_id=user_id,
+            username=username,
+            displayname=displayname
+        )
+        
+        return jsonify({
+            "token": token,
+            "apiKey": client.get_public_key()
+        }), 200
+        
+    except ValueError as e:
+        current_app.logger.error(f"Passwordless.dev configuration error: {e}")
+        return jsonify({"error": "Passkey service not configured"}), 503
+        
+    except Exception as e:
+        current_app.logger.error(f"Error starting passkey registration: {e}")
+        return jsonify({"error": "Failed to start registration"}), 500
+
+
+@admin_bp.route('/passkey/register/finish', methods=['POST'])
+@admin_required
+@limiter.limit("10 per minute")
+def passkey_register_finish():
+    """
+    Finish passkey registration and save credential to database.
+    
+    After the frontend completes the WebAuthn ceremony, this endpoint
+    saves the credential metadata to the database.
+    
+    Expected JSON payload:
+        {
+            "token": "token from passwordless.dev frontend",
+            "credentialId": "base64url-encoded credential ID",
+            "authenticatorName": "User-friendly name for the authenticator"
+        }
+    """
+    try:
+        admin_id = session.get('admin_id')
+        data = request.get_json()
+        
+        if not data or 'token' not in data:
+            return jsonify({"error": "Missing token"}), 400
+            
+        if 'credentialId' not in data:
+            return jsonify({"error": "Missing credential ID"}), 400
+        
+        # Get authenticator name (optional)
+        authenticator_name = data.get('authenticatorName', 'Unnamed Passkey')
+        
+        # Decode credential ID from base64url
+        credential_id_b64 = data['credentialId']
+        # Add padding if needed
+        credential_id_b64 += '=' * (4 - len(credential_id_b64) % 4)
+        credential_id = base64.urlsafe_b64decode(credential_id_b64)
+        
+        # Check if this credential already exists
+        existing = AdminCredential.query.filter_by(credential_id=credential_id).first()
+        if existing:
+            return jsonify({"error": "This credential is already registered"}), 409
+        
+        # Create new credential record
+        # Note: With passwordless.dev, we don't store the public key locally
+        credential = AdminCredential(
+            admin_id=admin_id,
+            credential_id=credential_id,
+            public_key=b'',  # Empty for passwordless.dev
+            sign_count=0,
+            authenticator_name=authenticator_name
+            # created_at is set automatically by the model default
+        )
+        
+        db.session.add(credential)
+        db.session.commit()
+        
+        flash("Passkey registered successfully!", "success")
+        return jsonify({"success": True, "message": "Passkey registered"}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error finishing passkey registration: {e}")
+        return jsonify({"error": "Failed to register passkey"}), 500
+
+
+@admin_bp.route('/passkey/auth/start', methods=['POST'])
+@limiter.limit("20 per minute")
+def passkey_auth_start():
+    """
+    Start passkey authentication by providing the public API key.
+    
+    This is called from the login page when a teacher clicks "Sign in with Passkey".
+    Returns the public API key needed for the frontend to initiate WebAuthn.
+    
+    Expected JSON payload:
+        {
+            "username": "teacher username"
+        }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'username' not in data:
+            return jsonify({"error": "Missing username"}), 400
+        
+        username = data['username'].strip()
+        
+        # Look up admin by username
+        admin = Admin.query.filter_by(username=username).first()
+        if not admin:
+            return jsonify({"error": "Invalid credentials"}), 401
+        
+        # Check if user has any passkeys registered
+        has_passkeys = AdminCredential.query.filter_by(admin_id=admin.id).first() is not None
+        if not has_passkeys:
+            return jsonify({"error": "No passkeys registered for this account"}), 401
+        
+        # Get passwordless.dev client
+        client = get_passwordless_client()
+        
+        return jsonify({
+            "apiKey": client.get_public_key(),
+            "userId": f"admin_{admin.id}"
+        }), 200
+        
+    except ValueError as e:
+        current_app.logger.error(f"Passwordless.dev configuration error: {e}")
+        return jsonify({"error": "Passkey service not configured"}), 503
+        
+    except Exception as e:
+        current_app.logger.error(f"Error starting passkey authentication: {e}")
+        return jsonify({"error": "Authentication failed"}), 500
+
+
+@admin_bp.route('/passkey/auth/finish', methods=['POST'])
+@limiter.limit("20 per minute")
+def passkey_auth_finish():
+    """
+    Finish passkey authentication and create session.
+    
+    After the frontend completes the WebAuthn ceremony, this endpoint
+    verifies the authentication token with passwordless.dev and creates
+    a session for the teacher.
+    
+    Expected JSON payload:
+        {
+            "token": "token from passwordless.dev frontend"
+        }
+    
+    Returns:
+        {
+            "success": true,
+            "redirect": "/admin/dashboard"
+        }
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'token' not in data:
+            return jsonify({"error": "Missing token"}), 400
+        
+        token = data['token']
+        
+        # Verify token with passwordless.dev
+        client = get_passwordless_client()
+        verification = client.verify_signin(token)
+        
+        if not verification.get('success'):
+            return jsonify({"error": "Authentication failed"}), 401
+        
+        # Extract user ID (format: "admin_{id}")
+        user_id = verification.get('userId')
+        if not user_id or not user_id.startswith('admin_'):
+            return jsonify({"error": "Invalid user ID"}), 401
+        
+        # Parse admin ID with error handling for malformed IDs
+        try:
+            admin_id = int(user_id.replace('admin_', ''))
+        except ValueError:
+            current_app.logger.error(f"Invalid userId format from passwordless.dev: {user_id}")
+            return jsonify({"error": "Invalid user ID format"}), 401
+        
+        # Verify admin exists
+        admin = Admin.query.get(admin_id)
+        if not admin:
+            return jsonify({"error": "Admin not found"}), 401
+        
+        # Update credential last_used timestamp
+        credential_id_b64 = verification.get('credentialId')
+        if credential_id_b64:
+            # Decode credential ID
+            credential_id_b64 += '=' * (4 - len(credential_id_b64) % 4)
+            credential_id = base64.urlsafe_b64decode(credential_id_b64)
+            
+            credential = AdminCredential.query.filter_by(credential_id=credential_id).first()
+            if credential:
+                credential.last_used = datetime.now(timezone.utc)
+                db.session.commit()
+        
+        # Update admin last_login
+        admin.last_login = datetime.now(timezone.utc)
+        db.session.commit()
+        
+        # Create session
+        session.clear()
+        session['admin_id'] = admin.id
+        session['is_admin'] = True
+        session['username'] = admin.username
+        session['last_activity'] = datetime.now(timezone.utc).isoformat()
+        session.permanent = True
+        
+        return jsonify({
+            "success": True,
+            "redirect": url_for('admin.dashboard')
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error finishing passkey authentication: {e}")
+        return jsonify({"error": "Authentication failed"}), 401
+
+
+@admin_bp.route('/passkey/list', methods=['GET'])
+@admin_required
+def passkey_list():
+    """List all passkeys for the current teacher."""
+    try:
+        admin_id = session.get('admin_id')
+        credentials = AdminCredential.query.filter_by(admin_id=admin_id).order_by(AdminCredential.created_at.desc()).all()
+        
+        return jsonify({
+            "passkeys": [{
+                "id": cred.id,
+                "name": cred.authenticator_name or "Unnamed Passkey",
+                "created_at": cred.created_at.isoformat() if cred.created_at else None,
+                "last_used": cred.last_used.isoformat() if cred.last_used else None
+            } for cred in credentials]
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error listing passkeys: {e}")
+        return jsonify({"error": "Failed to list passkeys"}), 500
+
+
+@admin_bp.route('/passkey/<int:passkey_id>/delete', methods=['DELETE'])
+@admin_required
+@limiter.limit("10 per minute")
+def passkey_delete(passkey_id):
+    """Delete a passkey for the current teacher."""
+    try:
+        admin_id = session.get('admin_id')
+        credential = AdminCredential.query.filter_by(id=passkey_id, admin_id=admin_id).first()
+        
+        if not credential:
+            return jsonify({"error": "Passkey not found"}), 404
+        
+        # Check if this is the only credential
+        total_credentials = AdminCredential.query.filter_by(admin_id=admin_id).count()
+        if total_credentials <= 1:
+            # Still allow deletion - teacher can use TOTP as backup
+            pass
+        
+        db.session.delete(credential)
+        db.session.commit()
+        
+        flash("Passkey deleted successfully", "success")
+        return jsonify({"success": True, "message": "Passkey deleted"}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting passkey: {e}")
+        return jsonify({"error": "Failed to delete passkey"}), 500
+
+
+@admin_bp.route('/passkey/settings')
+@admin_required
+def passkey_settings():
+    """Passkey management page for teachers."""
+    admin_id = session.get('admin_id')
+    admin = Admin.query.get_or_404(admin_id)
+    
+    # Get all passkeys for this teacher
+    credentials = AdminCredential.query.filter_by(admin_id=admin_id).order_by(AdminCredential.created_at.desc()).all()
+    
+    return render_template('admin_passkey_settings.html',
+                         admin=admin,
+                         credentials=credentials)
