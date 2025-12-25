@@ -25,6 +25,20 @@ and this project follows semantic versioning principles.
   - Documentation: See `docs/security/COMPREHENSIVE_ATTACK_SURFACE_AUDIT_2025.md` for complete report
 
 ### Added
+- **Passwordless Authentication for System Admins** - Implemented WebAuthn/FIDO2 passkey authentication using passwordless.dev
+  - Supports hardware security keys (YubiKey, Google Titan Key, etc.)
+  - Supports platform authenticators (Touch ID, Face ID, Windows Hello)
+  - Supports synced passkeys across devices
+  - Phishing-resistant authentication (domain-bound credentials)
+  - New `/sysadmin/passkey/settings` page for passkey management
+  - Backend routes for passkey registration and authentication
+  - Frontend integration with passwordless.dev JavaScript SDK
+  - Database model `SystemAdminCredential` for storing passkey metadata
+  - Migration period: TOTP authentication remains available alongside passkeys
+  - Self-hosted ready: Infrastructure supports future migration to py-webauthn library
+  - Requires environment variables: `PASSWORDLESS_API_KEY`, `PASSWORDLESS_API_PUBLIC`
+  - Full CSRF protection and rate limiting on all passkey endpoints
+  - Tracks credential usage timestamps for security auditing
 - **Security Remediation Tools and Documentation** - Complete implementation guides and fixed workflow files
   - Step-by-step remediation guide: `docs/security/SECURITY_REMEDIATION_GUIDE.md`
   - Fixed workflow files with SSH host key verification: `.github/workflows/*.FIXED`

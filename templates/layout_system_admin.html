@@ -113,6 +113,9 @@
 
             <div style="margin-top: auto;">
                 <hr style="border-color: rgba(212, 168, 87, 0.2); margin: 1rem 0;">
+                <a href="{{ url_for('sysadmin.passkey_settings') }}" class="{% if current_page == 'passkey_settings' %}active{% endif %}">
+                    <span class="material-symbols-outlined">fingerprint</span> Passkey Settings
+                </a>
                 <a href="{{ url_for('sysadmin.logout') }}" class="text-danger">
                     <span class="material-symbols-outlined">logout</span> Sign Out
                 </a>

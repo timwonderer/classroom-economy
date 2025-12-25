@@ -540,6 +540,34 @@ def passkey_delete(credential_id):
         return jsonify({"error": "Failed to delete passkey"}), 500
 
 
+@sysadmin_bp.route('/passkey/settings', methods=['GET'])
+@system_admin_required
+def passkey_settings():
+    """
+    Passkey management page for system admin.
+
+    Displays registered passkeys and allows registration of new passkeys.
+    """
+    sysadmin_id = session.get("sysadmin_id")
+    if not sysadmin_id:
+        flash("Session expired. Please log in again.", "error")
+        return redirect(url_for("sysadmin.login"))
+
+    # Get current admin info
+    admin = SystemAdmin.query.get_or_404(sysadmin_id)
+
+    # Get all passkeys for this admin
+    credentials = SystemAdminCredential.query.filter_by(
+        sysadmin_id=sysadmin_id
+    ).order_by(SystemAdminCredential.created_at.desc()).all()
+
+    return render_template(
+        "system_admin_passkey_settings.html",
+        admin=admin,
+        credentials=credentials
+    )
+
+
 # -------------------- DASHBOARD --------------------
 
 @sysadmin_bp.route('/dashboard', methods=['GET', 'POST'])
