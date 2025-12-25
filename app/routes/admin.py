@@ -25,6 +25,7 @@ from flask import (
 )
 from urllib.parse import urlparse
 from sqlalchemy import desc, text, or_, func
+from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError
 import sqlalchemy as sa
 import pyotp
@@ -2714,6 +2715,7 @@ def store_management():
     # Get pending redemption requests (items awaiting teacher approval)
     pending_redemptions = (
         StudentItem.query
+        .options(joinedload(StudentItem.student), joinedload(StudentItem.store_item))
         .join(Student, StudentItem.student_id == Student.id)
         .filter(Student.id.in_(student_ids_subq))
         .filter(StudentItem.status == 'processing')
@@ -2725,6 +2727,7 @@ def store_management():
     # Get recent purchases (all statuses, ordered by purchase date)
     recent_purchases = (
         StudentItem.query
+        .options(joinedload(StudentItem.student), joinedload(StudentItem.store_item))
         .join(Student, StudentItem.student_id == Student.id)
         .filter(Student.id.in_(student_ids_subq))
         .order_by(StudentItem.purchase_date.desc())
