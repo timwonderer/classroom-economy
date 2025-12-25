@@ -159,6 +159,10 @@
             // Step 3: Perform WebAuthn registration
             const result = await p.register(token);
 
+            console.log('Passkey registration result:', result);
+            console.log('Result type:', typeof result);
+            console.log('Result keys:', result ? Object.keys(result) : 'null/undefined');
+
             if (!result) {
                 throw new Error('Registration was cancelled or failed');
             }
