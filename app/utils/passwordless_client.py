@@ -61,7 +61,9 @@ class PasswordlessClient:
             )
 
         # Initialize the official SDK client
-        options = PasswordlessOptions(self.api_key)
+        # PasswordlessOptions(secret, url) - url defaults to https://v4.passwordless.dev
+        api_url = os.environ.get("PASSWORDLESS_API_URL", "https://v4.passwordless.dev")
+        options = PasswordlessOptions(self.api_key, api_url)
         self._client: _PasswordlessClient = PasswordlessClientBuilder(options).build()
 
     def register_token(self, user_id: str, username: str, displayname: str) -> str:
