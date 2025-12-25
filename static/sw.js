@@ -1,4 +1,4 @@
-const CACHE_NAME = 'classroom-token-hub-v5';
+const CACHE_NAME = 'classroom-token-hub-v6';
 const STATIC_ASSETS = [
   '/static/manifest.json',
   '/static/images/brand-logo.svg',
@@ -99,14 +99,15 @@ async function networkFirst(event) {
   try {
     const networkResponse = await fetch(request);
 
-    event.waitUntil(
-      (async () => {
-        if (networkResponse && networkResponse.status === 200) {
-          const cache = await caches.open(CACHE_NAME);
-          await cache.put(request, networkResponse.clone());
-        }
-      })()
-    );
+    // Clone the response before consuming it to avoid "body already used" errors
+    if (networkResponse && networkResponse.status === 200) {
+      const responseToCache = networkResponse.clone();
+      event.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => {
+          return cache.put(request, responseToCache);
+        })
+      );
+    }
 
     return networkResponse;
   } catch (error) {
@@ -125,14 +126,15 @@ async function cacheFirst(event) {
   try {
     const networkResponse = await fetch(request);
 
-    event.waitUntil(
-      (async () => {
-        if (networkResponse && networkResponse.status === 200) {
-          const cache = await caches.open(CACHE_NAME);
-          await cache.put(request, networkResponse.clone());
-        }
-      })()
-    );
+    // Clone the response before consuming it to avoid "body already used" errors
+    if (networkResponse && networkResponse.status === 200) {
+      const responseToCache = networkResponse.clone();
+      event.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => {
+          return cache.put(request, responseToCache);
+        })
+      );
+    }
 
     return networkResponse;
   } catch (error) {
