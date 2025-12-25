@@ -2019,7 +2019,23 @@ def set_timezone():
              is_authenticated = True
              session['last_activity'] = now.isoformat()
 
-    # Check Student Session (if not already authenticated as admin)
+    # Check System Admin Session (if not already authenticated)
+    if not is_authenticated and session.get('sysadmin_id'):
+        last_activity = session.get('last_activity')
+        if last_activity:
+            try:
+                last_activity_dt = datetime.fromisoformat(last_activity)
+                if (now - last_activity_dt) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+                    is_authenticated = True
+                    session['last_activity'] = now.isoformat()
+            except ValueError:
+                pass
+        else:
+            # If no last_activity but sysadmin_id is set, treat as active
+            is_authenticated = True
+            session['last_activity'] = now.isoformat()
+
+    # Check Student Session (if not already authenticated as admin or sysadmin)
     if not is_authenticated and 'student_id' in session:
         login_time_str = session.get('login_time')
         if login_time_str:

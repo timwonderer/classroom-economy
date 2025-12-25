@@ -12,7 +12,10 @@
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <link rel="manifest" href="{{ static_url('manifest.json') }}">
-    <link rel="apple-touch-icon" href="{{ static_url('images/icon-192.png') }}">
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" sizes="192x192" href="{{ static_url('images/icon-192.png') }}">
+    <link rel="apple-touch-icon" sizes="192x192" href="{{ static_url('images/icon-192.png') }}">
 
     <!-- Fonts - preconnect for faster loading -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -113,6 +116,9 @@
 
             <div style="margin-top: auto;">
                 <hr style="border-color: rgba(212, 168, 87, 0.2); margin: 1rem 0;">
+                <a href="{{ url_for('sysadmin.passkey_settings') }}" class="{% if current_page == 'passkey_settings' %}active{% endif %}">
+                    <span class="material-symbols-outlined">fingerprint</span> Passkey Settings
+                </a>
                 <a href="{{ url_for('sysadmin.logout') }}" class="text-danger">
                     <span class="material-symbols-outlined">logout</span> Sign Out
                 </a>
