@@ -17,6 +17,7 @@ WebAuthn using the py-webauthn library for future migration if needed.
 """
 
 import os
+import base64
 from typing import Dict, Any
 
 from passwordless import (
@@ -145,6 +146,26 @@ class PasswordlessClient:
             The public API key
         """
         return self.api_public
+
+
+def decode_credential_id(credential_id_b64: str) -> bytes:
+    """
+    Decode a base64url-encoded credential ID from passwordless.dev.
+
+    Handles padding automatically as credential IDs may not be padded.
+
+    Args:
+        credential_id_b64: Base64url-encoded credential ID string
+
+    Returns:
+        Decoded credential ID as bytes
+
+    Raises:
+        ValueError: If the credential ID cannot be decoded
+    """
+    # Add padding if needed (base64url strings must be multiples of 4)
+    credential_id_b64 += '=' * (4 - len(credential_id_b64) % 4)
+    return base64.urlsafe_b64decode(credential_id_b64)
 
 
 # Singleton instance

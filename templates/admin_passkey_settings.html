@@ -1,0 +1,280 @@
+{% extends "layout_admin.html" %}
+{% set page_title = "Passkey Settings" %}
+{% set page_subtitle = "Manage your passkeys and security keys" %}
+{% set current_page = "passkey_settings" %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+            <!-- Header -->
+            <div class="card mb-4">
+                <div class="card-body">
+                    <h2 class="mb-2">
+                        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 32px;">fingerprint</span>
+                        Passkey Authentication
+                    </h2>
+                    <p class="text-muted">
+                        Passkeys provide a more secure and convenient way to sign in. Use your security key, biometric, or device passkey instead of TOTP codes.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Info Banner -->
+            <div class="alert alert-info d-flex align-items-start mb-4">
+                <span class="material-symbols-outlined me-2 mt-1">info</span>
+                <div>
+                    <strong>About Passkeys</strong><br>
+                    Passkeys use industry-standard WebAuthn/FIDO2 technology for phishing-resistant authentication. They work with:
+                    <ul class="mb-0 mt-2">
+                        <li>Hardware security keys (YubiKey, Google Titan Key, etc.)</li>
+                        <li>Platform authenticators (Touch ID, Face ID, Windows Hello)</li>
+                        <li>Synced passkeys across your devices</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Registered Passkeys -->
+            <div class="card mb-4">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">
+                        <span class="material-symbols-outlined" style="vertical-align: middle;">security</span>
+                        Your Passkeys
+                    </h5>
+                    <button class="btn btn-primary" id="registerPasskeyButton">
+                        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 18px;">add</span>
+                        Register New Passkey
+                    </button>
+                </div>
+                <div class="card-body">
+                    {% if credentials %}
+                        <div class="list-group list-group-flush">
+                            {% for cred in credentials %}
+                            <div class="list-group-item px-0 d-flex justify-content-between align-items-start" data-credential-id="{{ cred.id }}">
+                                <div class="flex-grow-1">
+                                    <div class="d-flex align-items-center mb-2">
+                                        <span class="material-symbols-outlined text-primary me-2">security_key</span>
+                                        <h6 class="mb-0">{{ cred.authenticator_name or "Unnamed Passkey" }}</h6>
+                                    </div>
+                                    <div class="text-muted small">
+                                        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 14px;">calendar_today</span>
+                                        Registered: {{ cred.created_at.strftime('%B %d, %Y at %I:%M %p') if cred.created_at else 'Unknown' }}
+                                    </div>
+                                    {% if cred.last_used %}
+                                    <div class="text-muted small">
+                                        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 14px;">schedule</span>
+                                        Last used: {{ cred.last_used.strftime('%B %d, %Y at %I:%M %p') }}
+                                    </div>
+                                    {% else %}
+                                    <div class="text-muted small">
+                                        <span class="material-symbols-outlined" style="vertical-align: middle; font-size: 14px;">schedule</span>
+                                        Never used
+                                    </div>
+                                    {% endif %}
+                                    {% if cred.transports %}
+                                    <div class="mt-1">
+                                        {% for transport in cred.transports.split(',') %}
+                                        <span class="badge bg-secondary me-1">{{ transport.strip() }}</span>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </div>
+                                <button class="btn btn-sm btn-outline-danger delete-passkey-btn" data-credential-id="{{ cred.id }}" data-credential-name="{{ cred.authenticator_name or 'Unnamed Passkey' }}">
+                                    <span class="material-symbols-outlined" style="font-size: 16px;">delete</span>
+                                    Delete
+                                </button>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                        <div class="text-center py-5">
+                            <span class="material-symbols-outlined text-muted mb-3" style="font-size: 64px;">security_key</span>
+                            <p class="text-muted">
+                                You don't have any passkeys registered yet.<br>
+                                Click "Register New Passkey" above to get started.
+                            </p>
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- TOTP Status (Migration Period) -->
+            <div class="card border-warning">
+                <div class="card-header bg-warning bg-opacity-10">
+                    <h6 class="mb-0">
+                        <span class="material-symbols-outlined" style="vertical-align: middle;">warning</span>
+                        Migration Period Notice
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <p class="mb-0">
+                        <strong>TOTP authentication is still available</strong> during the testing period.
+                        Once passkey authentication is fully validated, TOTP will be removed in a future update.
+                        Please ensure you have at least one working passkey before that transition.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Passwordless.dev SDK (UMD version for browser) -->
+<script src="https://cdn.passwordless.dev/dist/1.1.0/umd/passwordless.umd.min.js" crossorigin="anonymous"></script>
+
+
+<script>
+    // Get CSRF token
+    const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
+
+    // Passkey Registration Handler
+    document.getElementById('registerPasskeyButton').addEventListener('click', async function() {
+        const button = this;
+        const originalHTML = button.innerHTML;
+
+        try {
+            button.disabled = true;
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Initializing...';
+
+            // Step 1: Get registration token from backend
+            const startResponse = await fetch('{{ url_for("admin.passkey_register_start") }}', {
+                method: "POST",
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                }
+            });
+
+            if (!startResponse.ok) {
+                const error = await startResponse.json();
+                throw new Error(error.error || 'Failed to start registration');
+            }
+
+            const { token, apiKey } = await startResponse.json();
+
+            // Step 2: Initialize Passwordless.dev client
+            const p = new Passwordless.Client({ apiKey: apiKey });
+
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Complete on your device...';
+
+            // Step 3: Perform WebAuthn registration
+            const result = await p.register(token);
+
+            if (!result) {
+                throw new Error('Registration was cancelled or failed');
+            }
+
+            // Step 4: Prompt for friendly name
+            const friendlyName = prompt('Give this passkey a friendly name (e.g., "YubiKey 5C", "Touch ID"):', 'My Passkey');
+            if (!friendlyName) {
+                throw new Error('Registration cancelled - name is required');
+            }
+
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
+
+            // Step 5: Save to backend
+            const finishResponse = await fetch('{{ url_for("admin.passkey_register_finish") }}', {
+                method: "POST",
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken
+                },
+                body: JSON.stringify({
+                    credentialId: result.credentialId,
+                    authenticatorName: friendlyName
+                })
+            });
+
+            if (!finishResponse.ok) {
+                const error = await finishResponse.json();
+                throw new Error(error.error || 'Failed to save passkey');
+            }
+
+            // Success! Reload page to show new passkey
+            window.location.reload();
+
+        } catch (error) {
+            console.error('Passkey registration error:', error);
+            alert('Error: ' + (error.message || 'Failed to register passkey. Please try again.'));
+            button.disabled = false;
+            button.innerHTML = originalHTML;
+        }
+    });
+
+    // Passkey Deletion Handler
+    document.querySelectorAll('.delete-passkey-btn').forEach(button => {
+        button.addEventListener('click', async function() {
+            const credentialId = this.dataset.credentialId;
+            const credentialName = this.dataset.credentialName;
+
+            if (!confirm(`Are you sure you want to delete "${credentialName}"?\n\nYou can still sign in with TOTP as a backup.`)) {
+                return;
+            }
+
+            try {
+                this.disabled = true;
+                this.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+                const response = await fetch(`{{ url_for("admin.passkey_delete", passkey_id=0) }}`.replace('/0/', `/${credentialId}/`), {
+                    method: "DELETE",
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrfToken
+                    }
+                });
+
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to delete passkey');
+                }
+
+                // Remove from UI
+                const listItem = document.querySelector(`[data-credential-id="${credentialId}"]`);
+                if (listItem) {
+                    listItem.remove();
+                }
+
+                // Show success message
+                showToast('Passkey deleted successfully', 'success');
+
+                // Reload if no passkeys left to show empty state
+                const remainingPasskeys = document.querySelectorAll('.delete-passkey-btn').length - 1;
+                if (remainingPasskeys === 0) {
+                    window.location.reload();
+                }
+
+            } catch (error) {
+                console.error('Passkey deletion error:', error);
+                alert('Error: ' + (error.message || 'Failed to delete passkey'));
+                this.disabled = false;
+                this.innerHTML = '<span class="material-symbols-outlined" style="font-size: 16px;">delete</span> Delete';
+            }
+        });
+    });
+
+    // Toast notification helper
+    function showToast(message, type = 'info') {
+        const toast = document.createElement('div');
+        toast.className = `toast align-items-center text-white bg-${type} border-0`;
+        toast.setAttribute('role', 'alert');
+        toast.innerHTML = `
+            <div class="d-flex">
+                <div class="toast-body">${message}</div>
+                <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+            </div>
+        `;
+
+        const container = document.getElementById('flashToastContainer');
+        if (!container) {
+            console.warn('flashToastContainer element not found; toast will not be displayed.');
+            return;
+        }
+
+        container.appendChild(toast);
+        const bsToast = new bootstrap.Toast(toast);
+        bsToast.show();
+
+        toast.addEventListener('hidden.bs.toast', () => toast.remove());
+    }
+</script>
+
+{% endblock %}
