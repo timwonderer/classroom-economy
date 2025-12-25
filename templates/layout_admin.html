@@ -130,6 +130,9 @@
             <a href="{{ url_for('admin.deletion_requests') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'deletion_requests' %}active{% endif %}">
                 <span class="material-symbols-outlined">manage_accounts</span> Account
             </a>
+            <a href="{{ url_for('admin.passkey_settings') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'passkey_settings' %}active{% endif %}">
+                <span class="material-symbols-outlined">fingerprint</span> Passkey Settings
+            </a>
             <a href="{{ url_for('admin.help_support') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'help' %}active{% endif %}">
                 <span class="material-symbols-outlined">help</span> Help &amp; Support
             </a>
