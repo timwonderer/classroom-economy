@@ -1,7 +1,6 @@
-const CACHE_NAME = 'classroom-token-hub-v6';
+const CACHE_NAME = 'classroom-token-hub-v7';
 const STATIC_ASSETS = [
   '/static/manifest.json',
-  '/static/images/brand-logo.svg',
   '/static/images/icon-192.png',
   '/static/images/icon-512.png',
   '/static/js/timezone-utils.js',
@@ -96,6 +95,17 @@ async function handleNavigation(event) {
 
 async function networkFirst(event) {
   const { request } = event;
+
+  // Don't cache chrome-extension requests or non-http(s) schemes
+  if (!request.url.startsWith('http')) {
+    return fetch(request);
+  }
+
+  // Don't cache POST/PUT/DELETE requests
+  if (request.method !== 'GET') {
+    return fetch(request);
+  }
+
   try {
     const networkResponse = await fetch(request);
 
@@ -118,6 +128,17 @@ async function networkFirst(event) {
 
 async function cacheFirst(event) {
   const { request } = event;
+
+  // Don't cache chrome-extension requests or non-http(s) schemes
+  if (!request.url.startsWith('http')) {
+    return fetch(request);
+  }
+
+  // Don't cache POST/PUT/DELETE requests
+  if (request.method !== 'GET') {
+    return fetch(request);
+  }
+
   const cachedResponse = await caches.match(request);
   if (cachedResponse) {
     return cachedResponse;

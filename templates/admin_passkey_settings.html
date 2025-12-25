@@ -159,6 +159,10 @@
             // Step 3: Perform WebAuthn registration
             const result = await p.register(token);
 
+            console.log('Passkey registration result:', result);
+            console.log('Result type:', typeof result);
+            console.log('Result keys:', result ? Object.keys(result) : 'null/undefined');
+
             if (!result) {
                 throw new Error('Registration was cancelled or failed');
             }
@@ -171,6 +175,16 @@
 
             button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Saving...';
 
+            // The passwordless.dev register() method returns the raw credential ID
+            // We need to extract it correctly
+            const credId = result.credentialId || result.token || result;
+            console.log('Extracted credentialId:', credId);
+            console.log('credId type:', typeof credId);
+
+            if (!credId) {
+                throw new Error('Failed to get credential ID from registration result');
+            }
+
             // Step 5: Save to backend
             const finishResponse = await fetch('{{ url_for("admin.passkey_register_finish") }}', {
                 method: "POST",
@@ -179,7 +193,7 @@
                     'X-CSRFToken': csrfToken
                 },
                 body: JSON.stringify({
-                    credentialId: result.credentialId,
+                    credentialId: credId,
                     authenticatorName: friendlyName
                 })
             });
