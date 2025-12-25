@@ -255,8 +255,10 @@
                 // Step 2: Initialize Passwordless.dev client
                 const p = new Passwordless.Client({ apiKey: apiKey });
 
-                // Step 3: Perform WebAuthn authentication
-                const token = await p.signinWithDiscoverable();
+                // Step 3: Perform WebAuthn authentication using username/alias
+                // Using signin() instead of signinWithDiscoverable() for better compatibility
+                // with password managers like Bitwarden
+                const token = await p.signin(username);
 
                 if (!token || !token.token) {
                     throw new Error('Authentication was cancelled or failed');
