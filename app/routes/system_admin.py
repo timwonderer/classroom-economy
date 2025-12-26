@@ -27,7 +27,7 @@ from app.models import (
     DeletionRequestType, DeletionRequestStatus, TeacherBlock, StudentBlock, UserReport,
     FeatureSettings, TeacherOnboarding, RentSettings, BankingSettings,
     DemoStudent, HallPassSettings, PayrollFine, PayrollReward,
-    PayrollSettings, StoreItem
+    PayrollSettings, StoreItem, Announcement
 )
 from app.auth import system_admin_required, SESSION_TIMEOUT_MINUTES
 from forms import SystemAdminLoginForm, SystemAdminInviteForm
@@ -1666,3 +1666,200 @@ def grafana_proxy(path):
         current_app.logger.error(f"Error proxying request to Grafana: {str(e)}")
         flash("An error occurred while accessing Grafana.", "error")
         return redirect(url_for('sysadmin.dashboard'))
+
+
+# -------------------- SYSTEM ADMIN ANNOUNCEMENTS --------------------
+
+@sysadmin_bp.route('/announcements')
+@system_admin_required
+def announcements():
+    """
+    System admin announcement management.
+
+    View and manage system-wide announcements.
+    System admins cannot see teacher-created class announcements.
+    """
+    from app.models import Announcement
+
+    # Get only system admin announcements (not teacher announcements)
+    announcements_list = Announcement.query.filter(
+        Announcement.system_admin_id != None
+    ).order_by(Announcement.created_at.desc()).all()
+
+    # Get list of teachers for display
+    teachers_dict = {admin.id: admin for admin in Admin.query.all()}
+
+    # Attach audience info to each announcement
+    for announcement in announcements_list:
+        if announcement.audience_type == 'teacher_all_classes' and announcement.target_teacher_id:
+            teacher = teachers_dict.get(announcement.target_teacher_id)
+            announcement.audience_display = f"All classes of {teacher.get_display_name() if teacher else 'Unknown Teacher'}"
+        else:
+            announcement.audience_display = announcement.get_audience_label()
+
+    return render_template(
+        'sysadmin_announcements.html',
+        announcements=announcements_list
+    )
+
+
+@sysadmin_bp.route('/announcements/create', methods=['GET', 'POST'])
+@system_admin_required
+def announcement_create():
+    """Create a new system-wide announcement."""
+    from forms import SystemAdminAnnouncementForm
+    from app.models import Announcement
+
+    sysadmin_id = session.get('sysadmin_id')
+
+    form = SystemAdminAnnouncementForm()
+
+    # Populate teacher choices
+    teachers = Admin.query.order_by(Admin.username).all()
+    form.target_teacher.choices = [('', '-- Select Teacher --')] + [
+        (teacher.id, f"{teacher.get_display_name()} ({teacher.username})")
+        for teacher in teachers
+    ]
+
+    if form.validate_on_submit():
+        try:
+            # Validate target_teacher requirement
+            if form.audience_type.data == 'teacher_all_classes':
+                if not form.target_teacher.data:
+                    flash('Please select a target teacher for "All Classes of Specific Teacher" audience.', 'danger')
+                    return render_template('sysadmin_announcement_form.html', form=form, action='Create')
+
+            announcement = Announcement(
+                system_admin_id=sysadmin_id,
+                audience_type=form.audience_type.data,
+                target_teacher_id=form.target_teacher.data if form.audience_type.data == 'teacher_all_classes' else None,
+                title=form.title.data,
+                message=form.message.data,
+                priority=form.priority.data,
+                is_active=form.is_active.data,
+                expires_at=form.expires_at.data
+            )
+            db.session.add(announcement)
+            db.session.commit()
+
+            flash(f'System announcement "{announcement.title}" created successfully!', 'success')
+            return redirect(url_for('sysadmin.announcements'))
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error creating system announcement: {e}")
+            flash('An error occurred while creating the announcement.', 'danger')
+
+    return render_template('sysadmin_announcement_form.html', form=form, action='Create')
+
+
+@sysadmin_bp.route('/announcements/edit/<int:announcement_id>', methods=['GET', 'POST'])
+@system_admin_required
+def announcement_edit(announcement_id):
+    """Edit an existing system announcement."""
+    from forms import SystemAdminAnnouncementForm
+    from app.models import Announcement
+
+    sysadmin_id = session.get('sysadmin_id')
+
+    # Get announcement and verify it's a system admin announcement
+    announcement = Announcement.query.filter_by(id=announcement_id).first()
+
+    if not announcement or not announcement.is_system_admin_announcement():
+        flash('Announcement not found or access denied.', 'danger')
+        return redirect(url_for('sysadmin.announcements'))
+
+    form = SystemAdminAnnouncementForm(obj=announcement)
+
+    # Populate teacher choices
+    teachers = Admin.query.order_by(Admin.username).all()
+    form.target_teacher.choices = [('', '-- Select Teacher --')] + [
+        (teacher.id, f"{teacher.get_display_name()} ({teacher.username})")
+        for teacher in teachers
+    ]
+
+    if form.validate_on_submit():
+        try:
+            # Validate target_teacher requirement
+            if form.audience_type.data == 'teacher_all_classes':
+                if not form.target_teacher.data:
+                    flash('Please select a target teacher for "All Classes of Specific Teacher" audience.', 'danger')
+                    return render_template('sysadmin_announcement_form.html', form=form, announcement=announcement, action='Edit')
+
+            announcement.audience_type = form.audience_type.data
+            announcement.target_teacher_id = form.target_teacher.data if form.audience_type.data == 'teacher_all_classes' else None
+            announcement.title = form.title.data
+            announcement.message = form.message.data
+            announcement.priority = form.priority.data
+            announcement.is_active = form.is_active.data
+            announcement.expires_at = form.expires_at.data
+            announcement.updated_at = datetime.now(timezone.utc)
+
+            db.session.commit()
+
+            flash(f'System announcement "{announcement.title}" updated successfully!', 'success')
+            return redirect(url_for('sysadmin.announcements'))
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error updating system announcement: {e}")
+            flash('An error occurred while updating the announcement.', 'danger')
+
+    return render_template('sysadmin_announcement_form.html', form=form, announcement=announcement, action='Edit')
+
+
+@sysadmin_bp.route('/announcements/delete/<int:announcement_id>', methods=['POST'])
+@system_admin_required
+def announcement_delete(announcement_id):
+    """Delete a system announcement."""
+    from app.models import Announcement
+
+    # Get announcement and verify it's a system admin announcement
+    announcement = Announcement.query.filter_by(id=announcement_id).first()
+
+    if not announcement or not announcement.is_system_admin_announcement():
+        flash('Announcement not found or access denied.', 'danger')
+        return redirect(url_for('sysadmin.announcements'))
+
+    try:
+        title = announcement.title
+        db.session.delete(announcement)
+        db.session.commit()
+
+        flash(f'System announcement "{title}" deleted successfully!', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting system announcement: {e}")
+        flash('An error occurred while deleting the announcement.', 'danger')
+
+    return redirect(url_for('sysadmin.announcements'))
+
+
+@sysadmin_bp.route('/announcements/toggle/<int:announcement_id>', methods=['POST'])
+@system_admin_required
+def announcement_toggle(announcement_id):
+    """Toggle system announcement active status."""
+    from app.models import Announcement
+
+    # Get announcement and verify it's a system admin announcement
+    announcement = Announcement.query.filter_by(id=announcement_id).first()
+
+    if not announcement or not announcement.is_system_admin_announcement():
+        return jsonify({'status': 'error', 'message': 'Announcement not found'}), 404
+
+    try:
+        announcement.is_active = not announcement.is_active
+        announcement.updated_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'is_active': announcement.is_active,
+            'message': f'Announcement {"activated" if announcement.is_active else "deactivated"}'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error toggling system announcement: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
