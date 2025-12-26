@@ -1,7 +1,6 @@
-const CACHE_NAME = 'classroom-token-hub-v5';
+const CACHE_NAME = 'classroom-token-hub-v7';
 const STATIC_ASSETS = [
   '/static/manifest.json',
-  '/static/images/brand-logo.svg',
   '/static/images/icon-192.png',
   '/static/images/icon-512.png',
   '/static/js/timezone-utils.js',
@@ -94,19 +93,39 @@ async function handleNavigation(event) {
   }
 }
 
+function shouldCache(request) {
+  // Don't cache chrome-extension requests or non-http(s) schemes
+  if (!request || !request.url || !request.url.startsWith('http')) {
+    return false;
+  }
+
+  // Don't cache POST/PUT/DELETE requests
+  if (request.method !== 'GET') {
+    return false;
+  }
+
+  return true;
+}
+
 async function networkFirst(event) {
   const { request } = event;
+
+  if (!shouldCache(request)) {
+    return fetch(request);
+  }
+
   try {
     const networkResponse = await fetch(request);
 
-    event.waitUntil(
-      (async () => {
-        if (networkResponse && networkResponse.status === 200) {
-          const cache = await caches.open(CACHE_NAME);
-          await cache.put(request, networkResponse.clone());
-        }
-      })()
-    );
+    // Clone the response before consuming it to avoid "body already used" errors
+    if (networkResponse && networkResponse.status === 200) {
+      const responseToCache = networkResponse.clone();
+      event.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => {
+          return cache.put(request, responseToCache);
+        })
+      );
+    }
 
     return networkResponse;
   } catch (error) {
@@ -117,6 +136,11 @@ async function networkFirst(event) {
 
 async function cacheFirst(event) {
   const { request } = event;
+
+  if (!shouldCache(request)) {
+    return fetch(request);
+  }
+
   const cachedResponse = await caches.match(request);
   if (cachedResponse) {
     return cachedResponse;
@@ -125,14 +149,15 @@ async function cacheFirst(event) {
   try {
     const networkResponse = await fetch(request);
 
-    event.waitUntil(
-      (async () => {
-        if (networkResponse && networkResponse.status === 200) {
-          const cache = await caches.open(CACHE_NAME);
-          await cache.put(request, networkResponse.clone());
-        }
-      })()
-    );
+    // Clone the response before consuming it to avoid "body already used" errors
+    if (networkResponse && networkResponse.status === 200) {
+      const responseToCache = networkResponse.clone();
+      event.waitUntil(
+        caches.open(CACHE_NAME).then((cache) => {
+          return cache.put(request, responseToCache);
+        })
+      );
+    }
 
     return networkResponse;
   } catch (error) {

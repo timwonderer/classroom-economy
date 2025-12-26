@@ -8,7 +8,57 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
+## [1.3.0] - 2025-12-25
+
+### Added
+- **Passwordless Authentication for Teachers** - Implemented WebAuthn/FIDO2 passkey authentication for teacher admins
+  - Supports hardware security keys (YubiKey, Google Titan Key, etc.)
+  - Supports platform authenticators (Touch ID, Face ID, Windows Hello)
+  - Supports synced passkeys across devices
+  - Phishing-resistant authentication (domain-bound credentials)
+  - New `/admin/passkey/settings` page for passkey management
+  - Backend routes for passkey registration and authentication
+  - Database model `AdminCredential` for storing passkey metadata
+  - TOTP authentication remains available as backup option
+  - Full CSRF protection and rate limiting on all passkey endpoints
+  - Passkey settings link added to teacher navigation sidebar
+- **Passwordless Authentication for System Admins** - Implemented WebAuthn/FIDO2 passkey authentication using passwordless.dev
+  - Supports hardware security keys (YubiKey, Google Titan Key, etc.)
+  - Supports platform authenticators (Touch ID, Face ID, Windows Hello)
+  - Supports synced passkeys across devices
+  - Phishing-resistant authentication (domain-bound credentials)
+  - New `/sysadmin/passkey/settings` page for passkey management
+  - Backend routes for passkey registration and authentication
+  - Frontend integration with passwordless.dev JavaScript SDK
+  - Database model `SystemAdminCredential` for storing passkey metadata
+  - TOTP authentication remains available alongside passkeys
+  - Self-hosted ready: Infrastructure supports future migration to py-webauthn library
+  - Requires environment variables: `PASSWORDLESS_API_KEY`, `PASSWORDLESS_API_PUBLIC`
+  - Full CSRF protection and rate limiting on all passkey endpoints
+  - Tracks credential usage timestamps for security auditing
+  - Uses official Bitwarden Passwordless SDK (`passwordless==2.0.0`) for type-safe API interactions
+- **Security Remediation Tools and Documentation** - Complete implementation guides and fixed workflow files
+  - Step-by-step remediation guide: `docs/security/SECURITY_REMEDIATION_GUIDE.md`
+  - Fixed workflow files with SSH host key verification: `.github/workflows/*.FIXED`
+  - Automated SSH security setup script: `scripts/setup-ssh-security.sh`
+  - Includes fixes for: SSH MITM vulnerability, secrets management hardening, dependency updates
+  - Ready-to-use workflow files with improved security posture
+
 ### Security
+- **Encrypted TOTP Secrets at Rest** - TOTP 2FA secrets now encrypted in database using Fernet (AES-128-CBC)
+  - Added `encrypt_totp()` and `decrypt_totp()` helper functions in `app/utils/encryption.py`
+  - All new admin/system admin accounts store encrypted TOTP secrets (base64-encoded)
+  - Backward compatible: `decrypt_totp()` handles both encrypted and legacy plaintext secrets transparently
+  - **MIGRATION REQUIRED**: Column length expanded from VARCHAR(32) to VARCHAR(200) - See `MIGRATION_TOTP_ENCRYPTION.md`
+  - Defense in depth: Database compromise alone no longer sufficient to generate valid 2FA codes
+  - **Note:** Still requires `ENCRYPTION_KEY` security - future migration to AWS Secrets Manager/Vault recommended
+  - Files changed: `app/utils/encryption.py`, `app/models.py`, `app/routes/admin.py`, `app/routes/system_admin.py`, `wsgi.py`, `create_admin.py`
+- **Removed Sensitive Information from Application Logs** - Eliminated logging of usernames, hashes, and PII
+  - Removed username logging from student login, admin login, admin signup, and admin recovery flows
+  - Removed partial hash logging from student authentication
+  - Removed student name and DOB sum logging from bulk upload process
+  - Impact: Prevents accidental exposure of PII in development logs, log files, or screenshots
+  - Note: Production deployments should configure `LOG_LEVEL=WARNING` or higher to minimize log output
 - **CRITICAL: Fixed PromptPwnd AI Prompt Injection Vulnerability** - Disabled vulnerable `summary.yml` GitHub Actions workflow
   - Workflow used AI inference (`actions/ai-inference@v1`) with untrusted user input from issue titles/bodies
   - Attack vector: Any user could create an issue with malicious prompt injection to leak `GITHUB_TOKEN` or manipulate workflows
@@ -23,14 +73,36 @@ and this project follows semantic versioning principles.
   - Strengths: Excellent CSRF protection, SQL injection prevention, XSS mitigation, PII encryption, multi-tenancy isolation
   - Recommendations: Enable SSH host key verification, update cryptography package, improve secrets management
   - Documentation: See `docs/security/COMPREHENSIVE_ATTACK_SURFACE_AUDIT_2025.md` for complete report
+- **Fixed Username Enumeration Vulnerability in Passkey Authentication** - Generic error messages prevent attackers from discovering valid usernames
+  - Changed "No passkeys registered" to generic "Invalid credentials" error
+  - Prevents reconnaissance attacks to enumerate valid accounts
+- **Passkey Endpoints Allowed Through Maintenance Mode** - System admin and teacher passkey authentication endpoints now bypass maintenance mode
+  - Allows administrators to authenticate during maintenance windows
+  - Matches existing behavior for standard login endpoints
 
-### Added
-- **Security Remediation Tools and Documentation** - Complete implementation guides and fixed workflow files
-  - Step-by-step remediation guide: `docs/security/SECURITY_REMEDIATION_GUIDE.md`
-  - Fixed workflow files with SSH host key verification: `.github/workflows/*.FIXED`
-  - Automated SSH security setup script: `scripts/setup-ssh-security.sh`
-  - Includes fixes for: SSH MITM vulnerability, secrets management hardening, dependency updates
-  - Ready-to-use workflow files with improved security posture
+### Changed
+- **Improved Store Management Overview Page** - Replaced "Active Store Items" section with more actionable information
+  - Now displays "Pending Redemption Requests" table showing items awaiting teacher approval
+  - Shows "Recent Purchases" table with the 10 most recent student purchases
+  - Each pending redemption includes student name, item, request time, details, and quick review link
+  - Recent purchases show student name, item, price, purchase time, and current status
+  - Fixed markdown rendering issue in item descriptions (was showing raw "####" markdown syntax)
+  - More useful for teachers to see what requires their attention rather than what's already in their store
+
+### Fixed
+- **Service Worker Cache Errors** - Fixed persistent browser console errors from Service Worker
+  - Stopped caching `chrome-extension://` URLs (was causing repeated errors)
+  - Stopped caching POST/PUT/DELETE requests (HTTP method not cacheable)
+  - Removed non-existent `brand-logo.svg` from static assets cache list
+  - Bumped cache version to v7 to force fresh cache on next page load
+  - Created `shouldCache()` helper function to centralize cache eligibility logic
+- **Passkey Registration ReferenceError** - Fixed JavaScript error preventing passkey registration
+  - Variable was renamed from `credId` to `credentialId` but one reference wasn't updated
+  - Would have caused all passkey registration attempts to fail with `ReferenceError: credId is not defined`
+  - Caught by AI code review tools (Copilot and Gemini)
+- **Broken Service Worker cacheFirst() Function** - Fixed corrupted function from bad merge
+  - Function had duplicate code blocks and missing logic
+  - Restored proper cache-first strategy with network fallback
 
 ## [1.2.1] - 2025-12-21
 

@@ -203,7 +203,13 @@ def create_app():
             return None
 
         # Allow system admin login/logout routes so admins can establish a bypass session.
-        if request.endpoint in {"sysadmin.login", "sysadmin.logout"}:
+        # Also allow passkey authentication endpoints for passwordless login.
+        if request.endpoint in {
+            "sysadmin.login",
+            "sysadmin.logout",
+            "sysadmin.passkey_auth_start",
+            "sysadmin.passkey_auth_finish"
+        }:
             return None
 
         # --- Bypass Logic --------------------------------------------------
@@ -548,14 +554,14 @@ def create_app():
 
         # Content Security Policy (CSP)
         # Restricts resource loading to prevent XSS attacks
-        # Adjusted for Google Fonts, Material Icons, Cloudflare Turnstile, jsdelivr CDN (Bootstrap, EasyMDE, zxcvbn), and Font Awesome
+        # Adjusted for Google Fonts, Material Icons, Cloudflare Turnstile, jsdelivr CDN (Bootstrap, EasyMDE, zxcvbn), Font Awesome, and Passwordless.dev
         csp_directives = [
             "default-src 'self'",
-            "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com",
+            "script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://cdn.jsdelivr.net https://static.cloudflareinsights.com https://cdn.passwordless.dev",
             "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
             "font-src 'self' https://fonts.gstatic.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com",
             "img-src 'self' data: https:",
-            "connect-src 'self' https://challenges.cloudflare.com https://cdn.jsdelivr.net",
+            "connect-src 'self' https://challenges.cloudflare.com https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://cdn.passwordless.dev https://v4.passwordless.dev",
             "frame-src https://challenges.cloudflare.com",
             "base-uri 'self'",
             "form-action 'self'",

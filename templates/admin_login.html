@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Teacher Login - Classroom Token Hub</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ csrf_token() }}">
     <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet">
@@ -147,7 +148,19 @@
                 </div>
                 {% endif %}
 
-                {{ form.submit(class="btn btn-primary w-100 btn-lg mb-4") }}
+                {{ form.submit(class="btn btn-primary w-100 btn-lg mb-3") }}
+
+                <div class="text-center my-3">
+                    <div class="position-relative">
+                        <hr class="my-0">
+                        <span class="position-absolute top-50 start-50 translate-middle bg-white px-3 text-muted small">OR</span>
+                    </div>
+                </div>
+
+                <button type="button" id="passkeySignInButton" class="btn btn-outline-primary w-100 btn-lg mb-4">
+                    <span class="material-symbols-outlined align-middle me-2" style="font-size: 1.5rem;">fingerprint</span>
+                    Sign in with Passkey
+                </button>
 
                 <div class="text-center d-grid gap-2">
                     <a href="{{ url_for('admin.recover') }}" class="text-decoration-none small text-secondary">I need to recover my teacher account</a>
@@ -200,6 +213,20 @@
                 minimumDisplayTime: 2500,
                 rotationInterval: 4000
             });
+        });
+    </script>
+
+    <!-- Passwordless.dev SDK (UMD version for browser) -->
+    <script src="https://cdn.passwordless.dev/dist/1.1.0/umd/passwordless.umd.min.js" crossorigin="anonymous"></script>
+    <script src="{{ static_url('js/passkey_login.js') }}"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            initializePasskeyLogin(
+                'passkeySignInButton',
+                '{{ url_for("admin.passkey_auth_start") }}',
+                '{{ url_for("admin.passkey_auth_finish") }}',
+                '{{ url_for("admin.dashboard") }}'
+            );
         });
     </script>
 </body>
