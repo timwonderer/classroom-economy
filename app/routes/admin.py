@@ -6275,7 +6275,7 @@ def announcements():
         })
 
     return render_template(
-        'admin/announcements.html',
+        'admin_announcements.html',
         announcements=announcements_list,
         teacher_blocks=teacher_blocks,
         blocks_by_join_code=blocks_by_join_code
@@ -6341,7 +6341,7 @@ def announcement_create():
             flash('An error occurred while creating the announcement.', 'danger')
 
     return render_template(
-        'admin/announcement_form.html',
+        'admin_announcement_form.html',
         form=form,
         action='Create',
         teacher_blocks=teacher_blocks
@@ -6397,7 +6397,7 @@ def announcement_edit(announcement_id):
             flash('An error occurred while updating the announcement.', 'danger')
 
     return render_template(
-        'admin/announcement_form.html',
+        'admin_announcement_form.html',
         form=form,
         announcement=announcement,
         teacher_block=teacher_block,
