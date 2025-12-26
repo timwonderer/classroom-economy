@@ -1862,4 +1862,4 @@ def announcement_toggle(announcement_id):
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error toggling system announcement: {e}")
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({'status': 'error', 'message': 'An internal error occurred while updating the announcement.'}), 500
