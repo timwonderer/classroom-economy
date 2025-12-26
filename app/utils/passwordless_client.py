@@ -67,7 +67,7 @@ class PasswordlessClient:
         options = PasswordlessOptions(self.api_key, api_url)
         self._client: _PasswordlessClient = PasswordlessClientBuilder(options).build()
 
-    def register_token(self, user_id: str, username: str, displayname: str) -> str:
+    def register_token(self, user_id: str, username: str, displayname: str, discoverable: bool = True) -> str:
         """
         Generate a registration token for creating a new passkey.
 
@@ -78,6 +78,8 @@ class PasswordlessClient:
             user_id: Unique identifier for the system admin (e.g., "sysadmin_123")
             username: System admin username
             displayname: Display name for the credential (used as username in SDK)
+            discoverable: Whether to create a discoverable credential (resident key).
+                         Defaults to True for cross-device syncing with password managers.
 
         Returns:
             Registration token to be used in the frontend
@@ -85,12 +87,14 @@ class PasswordlessClient:
         Raises:
             Exception: If the SDK request fails
         """
-        # Note: RegisterToken only accepts user_id, username, and aliases
-        # The username parameter is what shows in the browser UI
+        # Create discoverable credentials by default for better password manager support
+        # Discoverable credentials (resident keys) allow syncing across devices via
+        # password managers like Bitwarden
         register_token = RegisterToken(
             user_id=user_id,
             username=displayname,  # This is shown in browser UI
-            aliases=[username]      # Allow login by username
+            aliases=[username],     # Allow login by username
+            discoverable=discoverable  # Enable discoverable credentials for cross-device syncing
         )
 
         response: RegisteredToken = self._client.register_token(register_token)
