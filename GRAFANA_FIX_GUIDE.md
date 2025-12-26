@@ -15,9 +15,18 @@ proxy_pass http://127.0.0.1:3000/;
 
 Grafana is configured to serve from subpath `/sysadmin/grafana/` (via `serve_from_sub_path = true`), but Nginx removes this path when proxying, causing Grafana to redirect back, creating an infinite loop.
 
-## Solution Options
+## Solution: Dual-Layer Approach (Best Practice)
 
-You have **two solutions** - choose the one that fits your deployment:
+This branch implements **both solutions** for maximum reliability:
+
+1. **Primary (Nginx)**: Fast, production-ready proxy
+2. **Fallback (Flask)**: Works in all environments, no Nginx required
+
+**How it works:**
+- With Nginx configured: Nginx intercepts requests → Grafana (⚡ fastest)
+- Without Nginx / Dev mode: Flask proxy handles requests (🛟 reliable fallback)
+
+You can deploy **just the Flask proxy** (merge this branch), or **both** (merge + fix Nginx).
 
 ### Option 1: Fix Nginx Configuration (Recommended for Production)
 
@@ -88,15 +97,41 @@ If not set, defaults to `http://localhost:3000`.
 4. Flask proxies request to Grafana service
 5. Response flows back through Flask to browser
 
+## Quick Reference
+
+### Deploy Flask Proxy (Immediate Fix)
+```bash
+# Merge this branch and deploy
+git merge claude/fix-grafana-redirect-Q3rDh
+# Deploy to production
+# Grafana will work immediately via Flask proxy
+```
+
+### Add Nginx Fix (Performance Boost)
+```bash
+# SSH to server
+ssh user@classroomtokenhub.com
+
+# Edit Nginx config
+sudo nano /etc/nginx/sites-available/default
+
+# Line 85: Remove trailing slash
+# Change: proxy_pass http://127.0.0.1:3000/;
+# To:     proxy_pass http://127.0.0.1:3000;
+
+# Reload
+sudo nginx -t && sudo systemctl reload nginx
+```
+
 ## Comparison
 
-| Feature | Nginx Fix | Flask Proxy |
-|---------|-----------|-------------|
-| **Performance** | Better (Nginx is faster) | Good (Python overhead) |
-| **Setup** | Requires server access | Just deploy code |
-| **Maintenance** | Standard Nginx setup | No Nginx changes needed |
-| **Authentication** | Via `auth_request` | Via Flask decorator |
-| **Recommended For** | Production deployments | Quick fix / development |
+| Feature | Nginx Fix | Flask Proxy | **Both (Recommended)** |
+|---------|-----------|-------------|------------------------|
+| **Performance** | ⚡ Excellent | ✅ Good | ⚡ Excellent (Nginx takes priority) |
+| **Setup** | Requires SSH | Just deploy | Deploy + SSH |
+| **Resilience** | Production only | All environments | ✅ Maximum (auto-fallback) |
+| **Maintenance** | One config change | Zero config | One config change |
+| **Recommended For** | Production only | Dev/Quick fix | ✅ **All scenarios** |
 
 ## Testing
 

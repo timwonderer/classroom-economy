@@ -10,12 +10,20 @@ and this project follows semantic versioning principles.
 
 ### Fixed
 - **Grafana Access Issue** - Fixed "connection refused" error when accessing Grafana from system admin dashboard
-  - Added Flask proxy route `/sysadmin/grafana` to forward requests to Grafana service
-  - Proxy maintains system admin authentication and session state
-  - Configurable via `GRAFANA_URL` environment variable (defaults to `http://localhost:3000`)
-  - Route is rate-limit exempt for smooth dashboard operation
-  - Graceful error handling with user-friendly messages when Grafana service is unavailable
-  - Added `requests==2.32.3` dependency for HTTP proxying
+  - **Root Cause**: Nginx `proxy_pass` had trailing slash that stripped URL path, causing infinite redirects
+  - **Dual-Layer Solution** for maximum reliability:
+    - **Flask Proxy (Fallback)**: Added `/sysadmin/grafana` route that proxies to Grafana service
+      - Works immediately without Nginx configuration changes
+      - Maintains system admin authentication via `@system_admin_required`
+      - Configurable via `GRAFANA_URL` environment variable (defaults to `http://localhost:3000`)
+      - Rate-limit exempt for smooth dashboard operation
+      - Graceful error handling with user-friendly messages
+      - Added `requests==2.32.3` dependency
+    - **Nginx Fix (Production)**: Corrected configuration provided in `nginx-grafana-fix.conf`
+      - Remove trailing slash from `proxy_pass http://127.0.0.1:3000/` → `proxy_pass http://127.0.0.1:3000`
+      - Nginx intercepts requests before Flask (faster performance)
+      - Auto-fallback to Flask proxy if Nginx not configured
+  - See `GRAFANA_FIX_GUIDE.md` for detailed implementation guide
 
 ## [1.3.0] - 2025-12-25
 
