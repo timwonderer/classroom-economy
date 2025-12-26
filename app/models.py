@@ -1380,3 +1380,73 @@ class TeacherOnboarding(db.Model):
     def needs_onboarding(self):
         """Check if teacher needs to complete onboarding."""
         return not self.is_completed and not self.is_skipped
+
+
+# -------------------- ANNOUNCEMENT MODEL --------------------
+class Announcement(db.Model):
+    """
+    Teacher announcements for a specific class period.
+
+    Teachers can post announcements to communicate with students in a specific class.
+    Announcements are scoped by join_code to ensure proper multi-tenancy isolation.
+    """
+    __tablename__ = 'announcements'
+
+    id = db.Column(db.Integer, primary_key=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=False)
+    join_code = db.Column(db.String(20), nullable=False, index=True)
+
+    # Announcement content
+    title = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+
+    # Display settings
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    priority = db.Column(db.String(20), default='normal', nullable=False)  # 'low', 'normal', 'high', 'urgent'
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=_utc_now, onupdate=_utc_now, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=True)  # Optional expiration
+
+    # Relationships
+    teacher = db.relationship('Admin', backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
+
+    # Indexes
+    __table_args__ = (
+        db.Index('ix_announcements_join_code_active', 'join_code', 'is_active'),
+        db.Index('ix_announcements_teacher_join_code', 'teacher_id', 'join_code'),
+    )
+
+    def __repr__(self):
+        return f'<Announcement {self.id} - {self.title[:30]} ({self.priority})>'
+
+    def is_expired(self):
+        """Check if announcement has expired."""
+        if self.expires_at is None:
+            return False
+        return datetime.now(timezone.utc) > self.expires_at
+
+    def should_display(self):
+        """Check if announcement should be displayed."""
+        return self.is_active and not self.is_expired()
+
+    def get_priority_class(self):
+        """Get CSS class for announcement priority."""
+        priority_classes = {
+            'low': 'alert-secondary',
+            'normal': 'alert-info',
+            'high': 'alert-warning',
+            'urgent': 'alert-danger'
+        }
+        return priority_classes.get(self.priority, 'alert-info')
+
+    def get_priority_icon(self):
+        """Get icon for announcement priority."""
+        priority_icons = {
+            'low': '📌',
+            'normal': '📢',
+            'high': '⚠️',
+            'urgent': '🚨'
+        }
+        return priority_icons.get(self.priority, '📢')

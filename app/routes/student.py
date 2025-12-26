@@ -1123,6 +1123,15 @@ def dashboard():
         if tx.amount < 0 and _occurred_after(tx.timestamp, month_start) and not tx.is_void
     ))
 
+    # Get active announcements for this class (scoped by join_code)
+    from app.models import Announcement
+    announcements = Announcement.query.filter_by(
+        join_code=join_code,
+        is_active=True
+    ).order_by(Announcement.created_at.desc()).all()
+    # Filter out expired announcements
+    announcements = [a for a in announcements if not a.is_expired()]
+
     return render_template(
         'student_dashboard.html',
         student=student,
@@ -1156,6 +1165,7 @@ def dashboard():
         earnings_this_month=round(earnings_this_month, 2),
         spending_this_week=round(spending_this_week, 2),
         spending_this_month=round(spending_this_month, 2),
+        announcements=announcements,
     )
 
 

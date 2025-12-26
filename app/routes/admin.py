@@ -38,7 +38,7 @@ from app.models import (
     StudentInsurance, InsuranceClaim, HallPassLog, PayrollSettings, PayrollReward, PayrollFine,
     BankingSettings, TeacherBlock, DeletionRequest, DeletionRequestType, DeletionRequestStatus,
     UserReport, FeatureSettings, TeacherOnboarding, StudentBlock, RecoveryRequest, StudentRecoveryCode,
-    DemoStudent, AdminCredential
+    DemoStudent, AdminCredential, Announcement
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
@@ -6229,6 +6229,225 @@ def copy_feature_settings():
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error copying feature settings: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# -------------------- ANNOUNCEMENTS --------------------
+
+@admin_bp.route('/announcements')
+@admin_required
+def announcements():
+    """
+    Manage class announcements.
+
+    Teachers can create, edit, and delete announcements for their class periods.
+    Announcements are scoped by join_code for proper multi-tenancy isolation.
+    """
+    admin_id = session.get('admin_id')
+    current_period = session.get('current_period')
+
+    if not current_period:
+        flash('Please select a class period first.', 'warning')
+        return redirect(url_for('admin.dashboard'))
+
+    # Get join_code for current period
+    teacher_block = TeacherBlock.query.filter_by(
+        teacher_id=admin_id,
+        block=current_period
+    ).first()
+
+    if not teacher_block:
+        flash('Invalid class period selected.', 'danger')
+        return redirect(url_for('admin.dashboard'))
+
+    join_code = teacher_block.join_code
+
+    # Get all announcements for this class (join_code)
+    from app.models import Announcement
+    announcements_list = Announcement.query.filter_by(
+        teacher_id=admin_id,
+        join_code=join_code
+    ).order_by(Announcement.created_at.desc()).all()
+
+    return render_template(
+        'admin/announcements.html',
+        announcements=announcements_list,
+        current_period=current_period
+    )
+
+
+@admin_bp.route('/announcements/create', methods=['GET', 'POST'])
+@admin_required
+def announcement_create():
+    """Create a new announcement."""
+    from forms import AnnouncementForm
+    from app.models import Announcement
+
+    admin_id = session.get('admin_id')
+    current_period = session.get('current_period')
+
+    if not current_period:
+        flash('Please select a class period first.', 'warning')
+        return redirect(url_for('admin.dashboard'))
+
+    # Get join_code for current period
+    teacher_block = TeacherBlock.query.filter_by(
+        teacher_id=admin_id,
+        block=current_period
+    ).first()
+
+    if not teacher_block:
+        flash('Invalid class period selected.', 'danger')
+        return redirect(url_for('admin.dashboard'))
+
+    join_code = teacher_block.join_code
+
+    form = AnnouncementForm()
+
+    if form.validate_on_submit():
+        try:
+            announcement = Announcement(
+                teacher_id=admin_id,
+                join_code=join_code,
+                title=form.title.data,
+                message=form.message.data,
+                priority=form.priority.data,
+                is_active=form.is_active.data,
+                expires_at=form.expires_at.data
+            )
+            db.session.add(announcement)
+            db.session.commit()
+
+            flash(f'Announcement "{announcement.title}" created successfully!', 'success')
+            return redirect(url_for('admin.announcements'))
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error creating announcement: {e}")
+            flash('An error occurred while creating the announcement.', 'danger')
+
+    return render_template(
+        'admin/announcement_form.html',
+        form=form,
+        action='Create',
+        current_period=current_period
+    )
+
+
+@admin_bp.route('/announcements/edit/<int:announcement_id>', methods=['GET', 'POST'])
+@admin_required
+def announcement_edit(announcement_id):
+    """Edit an existing announcement."""
+    from forms import AnnouncementForm
+    from app.models import Announcement
+
+    admin_id = session.get('admin_id')
+    current_period = session.get('current_period')
+
+    # Get announcement and verify ownership
+    announcement = Announcement.query.filter_by(
+        id=announcement_id,
+        teacher_id=admin_id
+    ).first()
+
+    if not announcement:
+        flash('Announcement not found or access denied.', 'danger')
+        return redirect(url_for('admin.announcements'))
+
+    form = AnnouncementForm(obj=announcement)
+
+    if form.validate_on_submit():
+        try:
+            announcement.title = form.title.data
+            announcement.message = form.message.data
+            announcement.priority = form.priority.data
+            announcement.is_active = form.is_active.data
+            announcement.expires_at = form.expires_at.data
+            announcement.updated_at = datetime.now(timezone.utc)
+
+            db.session.commit()
+
+            flash(f'Announcement "{announcement.title}" updated successfully!', 'success')
+            return redirect(url_for('admin.announcements'))
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error updating announcement: {e}")
+            flash('An error occurred while updating the announcement.', 'danger')
+
+    return render_template(
+        'admin/announcement_form.html',
+        form=form,
+        announcement=announcement,
+        action='Edit',
+        current_period=current_period
+    )
+
+
+@admin_bp.route('/announcements/delete/<int:announcement_id>', methods=['POST'])
+@admin_required
+def announcement_delete(announcement_id):
+    """Delete an announcement."""
+    from app.models import Announcement
+
+    admin_id = session.get('admin_id')
+
+    # Get announcement and verify ownership
+    announcement = Announcement.query.filter_by(
+        id=announcement_id,
+        teacher_id=admin_id
+    ).first()
+
+    if not announcement:
+        flash('Announcement not found or access denied.', 'danger')
+        return redirect(url_for('admin.announcements'))
+
+    try:
+        title = announcement.title
+        db.session.delete(announcement)
+        db.session.commit()
+
+        flash(f'Announcement "{title}" deleted successfully!', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting announcement: {e}")
+        flash('An error occurred while deleting the announcement.', 'danger')
+
+    return redirect(url_for('admin.announcements'))
+
+
+@admin_bp.route('/announcements/toggle/<int:announcement_id>', methods=['POST'])
+@admin_required
+def announcement_toggle(announcement_id):
+    """Toggle announcement active status."""
+    from app.models import Announcement
+
+    admin_id = session.get('admin_id')
+
+    # Get announcement and verify ownership
+    announcement = Announcement.query.filter_by(
+        id=announcement_id,
+        teacher_id=admin_id
+    ).first()
+
+    if not announcement:
+        return jsonify({'status': 'error', 'message': 'Announcement not found'}), 404
+
+    try:
+        announcement.is_active = not announcement.is_active
+        announcement.updated_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'is_active': announcement.is_active,
+            'message': f'Announcement {"activated" if announcement.is_active else "deactivated"}'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error toggling announcement: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
