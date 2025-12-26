@@ -218,109 +218,15 @@
 
     <!-- Passwordless.dev SDK (UMD version for browser) -->
     <script src="https://cdn.passwordless.dev/dist/1.1.0/umd/passwordless.umd.min.js" crossorigin="anonymous"></script>
-
+    <script src="{{ static_url('js/passkey_login.js') }}"></script>
     <script>
-        // Passkey Sign-In Handler
-        document.getElementById('passkeySignInButton').addEventListener('click', async function() {
-            const button = this;
-            const originalText = button.innerHTML;
-
-            try {
-                // Disable button and show loading state
-                button.disabled = true;
-                button.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Authenticating...';
-
-                // Get CSRF token
-                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content;
-                if (!csrfToken) {
-                    throw new Error('CSRF token not found or is empty. Please refresh the page and try again.');
-                }
-
-                // Get username from form
-                const usernameInput = document.querySelector('input[name="username"]');
-                if (!usernameInput || !usernameInput.value.trim()) {
-                    throw new Error('Please enter your username first');
-                }
-                const username = usernameInput.value.trim();
-
-                // Step 1: Get API key from backend
-                const startResponse = await fetch('{{ url_for("admin.passkey_auth_start") }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: JSON.stringify({ username: username })
-                });
-
-                if (!startResponse.ok) {
-                    const error = await startResponse.json();
-                    throw new Error(error.error || 'Failed to start authentication');
-                }
-
-                const { apiKey, userId } = await startResponse.json();
-
-                // Step 2: Check if Passwordless.dev SDK is loaded
-                if (typeof Passwordless === 'undefined') {
-                    throw new Error('Passkey library failed to load. Please refresh the page and try again. If the problem persists, try clearing your browser cache.');
-                }
-
-                // Step 3: Initialize Passwordless.dev client
-                const p = new Passwordless.Client({ apiKey: apiKey });
-
-                // Step 4: Perform WebAuthn authentication using username/alias
-                const { token, error } = await p.signinWithAlias(username);
-
-                if (error) {
-                    console.error('Passwordless.dev error:', error);
-                    throw new Error(error.title || 'Authentication failed');
-                }
-
-                if (!token) {
-                    throw new Error('Authentication was cancelled or failed');
-                }
-
-                // Step 4: Verify with backend
-                const finishResponse = await fetch('{{ url_for("admin.passkey_auth_finish") }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrfToken
-                    },
-                    body: JSON.stringify({ token: token })
-                });
-
-                if (!finishResponse.ok) {
-                    const error = await finishResponse.json();
-                    throw new Error(error.error || 'Authentication failed');
-                }
-
-                const result = await finishResponse.json();
-
-                // Success! Redirect to dashboard
-                window.location.href = result.redirect || '{{ url_for("admin.dashboard") }}';
-
-            } catch (error) {
-                console.error('Passkey authentication error:', error);
-
-                // Show error message
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'alert alert-danger border-0 shadow-sm mb-4';
-                errorDiv.textContent = error.message || 'Passkey authentication failed. Please try again or use TOTP.';
-
-                // Insert before the form
-                const form = document.querySelector('form');
-                if (form) {
-                    form.parentNode.insertBefore(errorDiv, form);
-
-                    // Remove error after 5 seconds
-                    setTimeout(() => errorDiv.remove(), 5000);
-                }
-
-                // Re-enable button
-                button.disabled = false;
-                button.innerHTML = originalText;
-            }
+        document.addEventListener('DOMContentLoaded', function() {
+            initializePasskeyLogin(
+                'passkeySignInButton',
+                '{{ url_for("admin.passkey_auth_start") }}',
+                '{{ url_for("admin.passkey_auth_finish") }}',
+                '{{ url_for("admin.dashboard") }}'
+            );
         });
     </script>
 </body>
