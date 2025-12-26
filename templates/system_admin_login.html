@@ -255,10 +255,15 @@
 
                 const { apiKey, userId } = await startResponse.json();
 
-                // Step 2: Initialize Passwordless.dev client
+                // Step 2: Check if Passwordless.dev SDK is loaded
+                if (typeof Passwordless === 'undefined') {
+                    throw new Error('Passkey library failed to load. Please refresh the page and try again. If the problem persists, try clearing your browser cache.');
+                }
+
+                // Step 3: Initialize Passwordless.dev client
                 const p = new Passwordless.Client({ apiKey: apiKey });
 
-                // Step 3: Perform WebAuthn authentication using username/alias
+                // Step 4: Perform WebAuthn authentication using username/alias
                 // Using signinWithAlias() for better compatibility with password managers like Bitwarden
                 const { token, error } = await p.signinWithAlias(username);
 
