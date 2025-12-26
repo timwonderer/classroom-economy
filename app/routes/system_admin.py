@@ -1636,15 +1636,16 @@ def grafana_proxy(path):
             data=request.get_data(),
             cookies=request.cookies,
             allow_redirects=False,
-            timeout=30
+            timeout=30,
+            stream=True
         )
 
-        # Create response
+        # Create streaming response
         excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
         response_headers = [(name, value) for name, value in resp.raw.headers.items()
                            if name.lower() not in excluded_headers]
 
-        response = Response(resp.content, resp.status_code, response_headers)
+        response = Response(resp.iter_content(chunk_size=8192), resp.status_code, response_headers)
         return response
 
     except requests.exceptions.ConnectionError:
