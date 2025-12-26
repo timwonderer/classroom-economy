@@ -1530,25 +1530,24 @@ def send_reward_to_reporter(report_id):
     return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
 
 
+from flask import session, Response
+from app.models import SystemAdmin
+
 @sysadmin_bp.route('/grafana/auth-check', methods=['GET'])
 @system_admin_required
 def grafana_auth_check():
     """Auth check endpoint for nginx auth_request."""
     # If we get here, user is authenticated as sysadmin
     # Return the username in a header for nginx to use
-    from flask import session, Response
-    from app.models import SystemAdmin
-    
+
     sysadmin_id = session.get('sysadmin_id')
-    if not sysadmin_id:
-        return Response('Unauthorized', 401)
-    
-    sysadmin = SystemAdmin.query.get(sysadmin_id)
+    sysadmin = SystemAdmin.query.get(sysadmin_id) if sysadmin_id else None
     if not sysadmin:
         return Response('Unauthorized', 401)
-    
-    # Return 200 with username header
+
+    # Sanitize username for header (prevent response splitting)
+    username = sysadmin.username.replace('\n', '').replace('\r', '') if sysadmin.username else ''
     response = Response('OK', 200)
-    response.headers['X-Auth-User'] = sysadmin.username
+    response.headers['X-Auth-User'] = username
     return response
 
