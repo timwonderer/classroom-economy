@@ -168,7 +168,9 @@ def decode_credential_id(credential_id_b64: str) -> bytes:
         ValueError: If the credential ID cannot be decoded
     """
     # Add padding if needed (base64url strings must be multiples of 4)
-    credential_id_b64 += '=' * (4 - len(credential_id_b64) % 4)
+    # Only add padding if length is not already a multiple of 4
+    padding_needed = (4 - len(credential_id_b64) % 4) % 4
+    credential_id_b64 += '=' * padding_needed
     return base64.urlsafe_b64decode(credential_id_b64)
 
 
