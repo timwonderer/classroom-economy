@@ -1129,7 +1129,11 @@ def dashboard():
     from sqlalchemy import or_
 
     announcements = Announcement.query.filter(
-        Announcement.is_active == True,
+        Announcement.is_active.is_(True),
+        or_(
+            Announcement.expires_at.is_(None),
+            Announcement.expires_at > datetime.now(timezone.utc)
+        ),
         or_(
             # Class-specific announcements
             Announcement.join_code == join_code,
@@ -1141,9 +1145,6 @@ def dashboard():
             (Announcement.audience_type == 'teacher_all_classes') & (Announcement.target_teacher_id == teacher_id)
         )
     ).order_by(Announcement.created_at.desc()).all()
-
-    # Filter out expired announcements
-    announcements = [a for a in announcements if not a.is_expired()]
 
     return render_template(
         'student_dashboard.html',
