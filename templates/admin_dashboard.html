@@ -1,8 +1,23 @@
 {% extends "layout_admin.html" %}
 
-{% block page_title %}Teacher Dashboard{% endblock %}
+{% block page_title %}
+    Welcome, {{ current_admin.get_display_name() if current_admin else 'Teacher' }}
+{% endblock %}
 
 {% block content %}
+<!-- Personalized Greeting -->
+<div class="mb-4">
+    <h2 class="h3 fw-bold text-primary mb-1" id="dashboard-greeting">
+        Welcome, {{ current_admin.get_display_name() if current_admin else 'Teacher' }}!
+    </h2>
+    <p class="text-muted">
+        <a href="{{ url_for('admin.settings') }}" class="text-decoration-none">
+            <span class="material-symbols-outlined align-bottom fs-6">edit</span>
+            Change your displayed name
+        </a>
+    </p>
+</div>
+
 {% if show_recovery_setup %}
 <div class="alert alert-warning border-0 shadow-sm mb-4 d-flex align-items-center" role="alert">
     <span class="material-symbols-outlined me-3 fs-3">warning</span>
@@ -26,8 +41,6 @@
     </div>
 </div>
 {% endif %}
-
-<h1 class="visually-hidden">Admin Panel</h1>
 
 <div class="row g-4 mb-4">
     <!-- Key Metrics -->

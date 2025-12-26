@@ -9,6 +9,27 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Added
+- **UI/UX Improvements** - Comprehensive redesign of dashboard and navigation interfaces
+  - **Personalized Greetings**:
+    - Teacher dashboard now displays personalized greeting using display name with link to change it
+    - Student dashboard shows time-based greeting (Good morning/afternoon/evening) with first name
+  - **Enhanced Student Dashboard**:
+    - Removed redundant left navigation sidebar
+    - Added side-by-side account balance cards for Checking and Savings accounts
+    - Savings account displays projected monthly interest when balance > 0
+    - Encouragement message to save when savings balance is $0
+  - **Accordion-Style Admin Navigation**:
+    - Reorganized sidebar navigation into collapsible accordion categories
+    - Categories: Classroom, Economy, Bills, Settings
+    - Only one accordion section open at a time for cleaner interface
+    - Consolidated Settings section (Account, Passkey, Features, Help & Support)
+    - Removed "Mobile Site" link as it doesn't trigger any action
+  - **Improved Sign Out Button**: Enhanced contrast with red filled button and white text
+  - **Streamlined Authentication Flow**:
+    - Login forms now present two authentication method buttons upfront
+    - "Use my authenticator" shows TOTP field with Back button
+    - "Use my passkey" triggers WebAuthn flow, falls back to TOTP on failure
+    - Cleaner, more intuitive authentication experience
 - **Teacher Announcements** - Teachers can now post announcements to communicate with students in specific class periods
   - Create, edit, and delete announcements via `/admin/announcements`
   - Priority levels: Low, Normal, High, Urgent (with distinct visual styles and icons)

@@ -83,68 +83,116 @@
        
 
         <nav class="nav flex-column">
+            <!-- Dashboard Link (Always visible) -->
             <a href="{{ url_for('admin.dashboard') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'dashboard' %}active{% endif %}">
                 <span class="material-symbols-outlined">dashboard</span> Dashboard
             </a>
 
-            <div class="nav-group-label">Classroom</div>
-            <a href="{{ url_for('admin.students') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'students' %}active{% endif %}">
-                <span class="material-symbols-outlined">group</span> Students
-            </a>
-            <a href="{{ url_for('admin.announcements') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'announcements' %}active{% endif %}">
-                <span class="material-symbols-outlined">campaign</span> Announcements
-            </a>
-            <a href="{{ url_for('admin.attendance_log') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'attendance' %}active{% endif %}">
-                <span class="material-symbols-outlined">fact_check</span> Attendance
-            </a>
-            <a href="{{ url_for('admin.hall_pass') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'hall_pass' %}active{% endif %}">
-                <span class="material-symbols-outlined">confirmation_number</span> Hall Pass
-            </a>
+            <!-- Accordion Navigation -->
+            <div class="accordion accordion-flush mt-2" id="sidebarAccordion">
 
-            <div class="nav-group-label">Economy</div>
-            <a href="{{ url_for('admin.payroll') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'payroll' %}active{% endif %}">
-                <span class="material-symbols-outlined">payments</span> Payroll
-            </a>
-            <a href="{{ url_for('admin.economy_health') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'economy_health' %}active{% endif %}">
-                <span class="material-symbols-outlined">monitor_heart</span> CWI Balancing
-            </a>
-            <a href="{{ url_for('admin.store_management') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'store' %}active{% endif %}">
-                <span class="material-symbols-outlined">storefront</span> Store
-            </a>
-            <a href="{{ url_for('admin.banking') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'banking' %}active{% endif %}">
-                <span class="material-symbols-outlined">account_balance</span> Banking
-            </a>
+                <!-- Classroom Section -->
+                <div class="accordion-item bg-transparent border-0">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed nav-accordion-btn" type="button" data-bs-toggle="collapse" data-bs-target="#classroomCollapse" aria-expanded="false">
+                            <span class="material-symbols-outlined me-2">school</span> Classroom
+                        </button>
+                    </h2>
+                    <div id="classroomCollapse" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
+                        <div class="accordion-body p-0">
+                            <a href="{{ url_for('admin.students') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'students' %}active{% endif %}">
+                                <span class="material-symbols-outlined">group</span> Students
+                            </a>
+                            <a href="{{ url_for('admin.announcements') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'announcements' %}active{% endif %}">
+                                <span class="material-symbols-outlined">campaign</span> Announcements
+                            </a>
+                            <a href="{{ url_for('admin.attendance_log') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'attendance' %}active{% endif %}">
+                                <span class="material-symbols-outlined">fact_check</span> Attendance
+                            </a>
+                            <a href="{{ url_for('admin.hall_pass') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'hall_pass' %}active{% endif %}">
+                                <span class="material-symbols-outlined">confirmation_number</span> Hall Pass
+                            </a>
+                        </div>
+                    </div>
+                </div>
 
-            <div class="nav-group-label">Bills</div>
-            <a href="{{ url_for('admin.rent_settings') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'rent' %}active{% endif %}">
-                <span class="material-symbols-outlined">home</span> Rent
-            </a>
-            <a href="{{ url_for('admin.insurance_management') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'insurance' %}active{% endif %}">
-                <span class="material-symbols-outlined">shield</span> Insurance
-            </a>
+                <!-- Economy Section -->
+                <div class="accordion-item bg-transparent border-0">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed nav-accordion-btn" type="button" data-bs-toggle="collapse" data-bs-target="#economyCollapse" aria-expanded="false">
+                            <span class="material-symbols-outlined me-2">account_balance</span> Economy
+                        </button>
+                    </h2>
+                    <div id="economyCollapse" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
+                        <div class="accordion-body p-0">
+                            <a href="{{ url_for('admin.payroll') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'payroll' %}active{% endif %}">
+                                <span class="material-symbols-outlined">payments</span> Payroll
+                            </a>
+                            <a href="{{ url_for('admin.economy_health') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'economy_health' %}active{% endif %}">
+                                <span class="material-symbols-outlined">monitor_heart</span> CWI Balancing
+                            </a>
+                            <a href="{{ url_for('admin.store_management') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'store' %}active{% endif %}">
+                                <span class="material-symbols-outlined">storefront</span> Store
+                            </a>
+                            <a href="{{ url_for('admin.banking') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'banking' %}active{% endif %}">
+                                <span class="material-symbols-outlined">account_balance</span> Banking
+                            </a>
+                        </div>
+                    </div>
+                </div>
 
-            <div class="nav-group-label">System</div>
-            <a href="{{ url_for('admin.settings') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'settings' %}active{% endif %}">
-                <span class="material-symbols-outlined">settings</span> Settings
-            </a>
-            <a href="{{ url_for('admin.feature_settings') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'feature_settings' %}active{% endif %}">
-                <span class="material-symbols-outlined">tune</span> Features
-            </a>
-            <a href="{{ url_for('admin.deletion_requests') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'deletion_requests' %}active{% endif %}">
-                <span class="material-symbols-outlined">manage_accounts</span> Account
-            </a>
-            <a href="{{ url_for('admin.passkey_settings') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'passkey_settings' %}active{% endif %}">
-                <span class="material-symbols-outlined">fingerprint</span> Passkey Settings
-            </a>
-            <a href="{{ url_for('admin.help_support') }}" class="nav-link d-flex align-items-center gap-2 {% if current_page == 'help' %}active{% endif %}">
-                <span class="material-symbols-outlined">help</span> Help &amp; Support
-            </a>
-            <a href="{{ url_for('main.switch_view', view='mobile', next=request.path) }}" class="nav-link d-flex align-items-center gap-2">
-                <span class="material-symbols-outlined">phone_iphone</span> Mobile Site
-            </a>
-            <a href="{{ url_for('admin.logout') }}" class="nav-link d-flex align-items-center gap-2 text-danger">
-                <span class="material-symbols-outlined">logout</span> Sign Out
-            </a>
+                <!-- Bills Section -->
+                <div class="accordion-item bg-transparent border-0">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed nav-accordion-btn" type="button" data-bs-toggle="collapse" data-bs-target="#billsCollapse" aria-expanded="false">
+                            <span class="material-symbols-outlined me-2">receipt</span> Bills
+                        </button>
+                    </h2>
+                    <div id="billsCollapse" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
+                        <div class="accordion-body p-0">
+                            <a href="{{ url_for('admin.rent_settings') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'rent' %}active{% endif %}">
+                                <span class="material-symbols-outlined">home</span> Rent
+                            </a>
+                            <a href="{{ url_for('admin.insurance_management') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'insurance' %}active{% endif %}">
+                                <span class="material-symbols-outlined">shield</span> Insurance
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Settings Section -->
+                <div class="accordion-item bg-transparent border-0">
+                    <h2 class="accordion-header">
+                        <button class="accordion-button collapsed nav-accordion-btn" type="button" data-bs-toggle="collapse" data-bs-target="#settingsCollapse" aria-expanded="false">
+                            <span class="material-symbols-outlined me-2">settings</span> Settings
+                        </button>
+                    </h2>
+                    <div id="settingsCollapse" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
+                        <div class="accordion-body p-0">
+                            <a href="{{ url_for('admin.settings') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'settings' %}active{% endif %}">
+                                <span class="material-symbols-outlined">manage_accounts</span> Account
+                            </a>
+                            <a href="{{ url_for('admin.passkey_settings') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'passkey_settings' %}active{% endif %}">
+                                <span class="material-symbols-outlined">fingerprint</span> Passkey
+                            </a>
+                            <a href="{{ url_for('admin.feature_settings') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'feature_settings' %}active{% endif %}">
+                                <span class="material-symbols-outlined">tune</span> Features
+                            </a>
+                            <a href="{{ url_for('admin.help_support') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'help' %}active{% endif %}">
+                                <span class="material-symbols-outlined">help</span> Help &amp; Support
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Sign Out Button (Improved styling in next task) -->
+            <div class="mt-auto pt-3">
+                <a href="{{ url_for('admin.logout') }}" class="btn btn-danger w-100 d-flex align-items-center justify-content-center gap-2">
+                    <span class="material-symbols-outlined">logout</span> Sign Out
+                </a>
+            </div>
         </nav>
     </aside>
 
