@@ -141,7 +141,7 @@ def _tail_log_lines(file_path: str, max_lines: int = 200, chunk_size: int = 8192
 # -------------------- AUTHENTICATION --------------------
 
 @sysadmin_bp.route('/auth-check', methods=['GET'])
-@limiter.limit("100 per minute")
+@limiter.exempt
 def auth_check():
     """Internal auth probe for Nginx `auth_request`.
 
