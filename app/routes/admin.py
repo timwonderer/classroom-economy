@@ -6238,87 +6238,101 @@ def copy_feature_settings():
 @admin_required
 def announcements():
     """
-    Manage class announcements.
+    Manage class announcements across all class periods.
 
-    Teachers can create, edit, and delete announcements for their class periods.
-    Announcements are scoped by join_code for proper multi-tenancy isolation.
+    Teachers can view, filter, and manage announcements for all their class periods.
+    No period selection required - shows all announcements with period filtering.
     """
     admin_id = session.get('admin_id')
-    current_period = session.get('current_period')
 
-    if not current_period:
-        flash('Please select a class period first.', 'warning')
-        return redirect(url_for('admin.dashboard'))
+    # Get all teacher blocks (class periods)
+    teacher_blocks = TeacherBlock.query.filter_by(
+        teacher_id=admin_id
+    ).order_by(TeacherBlock.block).all()
 
-    # Get join_code for current period
-    teacher_block = TeacherBlock.query.filter_by(
-        teacher_id=admin_id,
-        block=current_period
-    ).first()
+    # Create a mapping of join_code to block info
+    blocks_by_join_code = {
+        tb.join_code: {
+            'block': tb.block,
+            'label': tb.get_class_label(),
+            'join_code': tb.join_code
+        }
+        for tb in teacher_blocks
+    }
 
-    if not teacher_block:
-        flash('Invalid class period selected.', 'danger')
-        return redirect(url_for('admin.dashboard'))
-
-    join_code = teacher_block.join_code
-
-    # Get all announcements for this class (join_code)
+    # Get all announcements for this teacher (across all periods)
     from app.models import Announcement
     announcements_list = Announcement.query.filter_by(
-        teacher_id=admin_id,
-        join_code=join_code
+        teacher_id=admin_id
     ).order_by(Announcement.created_at.desc()).all()
+
+    # Attach block info to each announcement
+    for announcement in announcements_list:
+        announcement.block_info = blocks_by_join_code.get(announcement.join_code, {
+            'block': 'Unknown',
+            'label': 'Unknown Period',
+            'join_code': announcement.join_code
+        })
 
     return render_template(
         'admin/announcements.html',
         announcements=announcements_list,
-        current_period=current_period
+        teacher_blocks=teacher_blocks,
+        blocks_by_join_code=blocks_by_join_code
     )
 
 
 @admin_bp.route('/announcements/create', methods=['GET', 'POST'])
 @admin_required
 def announcement_create():
-    """Create a new announcement."""
+    """Create a new announcement for selected class periods."""
     from forms import AnnouncementForm
     from app.models import Announcement
 
     admin_id = session.get('admin_id')
-    current_period = session.get('current_period')
 
-    if not current_period:
-        flash('Please select a class period first.', 'warning')
+    # Get all teacher blocks for period selection
+    teacher_blocks = TeacherBlock.query.filter_by(
+        teacher_id=admin_id
+    ).order_by(TeacherBlock.block).all()
+
+    if not teacher_blocks:
+        flash('You need to set up class periods before creating announcements.', 'warning')
         return redirect(url_for('admin.dashboard'))
 
-    # Get join_code for current period
-    teacher_block = TeacherBlock.query.filter_by(
-        teacher_id=admin_id,
-        block=current_period
-    ).first()
-
-    if not teacher_block:
-        flash('Invalid class period selected.', 'danger')
-        return redirect(url_for('admin.dashboard'))
-
-    join_code = teacher_block.join_code
-
+    # Create form and populate period choices
     form = AnnouncementForm()
+    form.periods.choices = [
+        (tb.join_code, f"{tb.get_class_label()} (Period {tb.block})")
+        for tb in teacher_blocks
+    ]
 
     if form.validate_on_submit():
         try:
-            announcement = Announcement(
-                teacher_id=admin_id,
-                join_code=join_code,
-                title=form.title.data,
-                message=form.message.data,
-                priority=form.priority.data,
-                is_active=form.is_active.data,
-                expires_at=form.expires_at.data
-            )
-            db.session.add(announcement)
+            selected_join_codes = form.periods.data
+            created_count = 0
+
+            # Create an announcement for each selected period
+            for join_code in selected_join_codes:
+                announcement = Announcement(
+                    teacher_id=admin_id,
+                    join_code=join_code,
+                    title=form.title.data,
+                    message=form.message.data,
+                    priority=form.priority.data,
+                    is_active=form.is_active.data,
+                    expires_at=form.expires_at.data
+                )
+                db.session.add(announcement)
+                created_count += 1
+
             db.session.commit()
 
-            flash(f'Announcement "{announcement.title}" created successfully!', 'success')
+            if created_count == 1:
+                flash(f'Announcement "{form.title.data}" created successfully!', 'success')
+            else:
+                flash(f'Announcement "{form.title.data}" posted to {created_count} class periods!', 'success')
+
             return redirect(url_for('admin.announcements'))
 
         except Exception as e:
@@ -6330,7 +6344,7 @@ def announcement_create():
         'admin/announcement_form.html',
         form=form,
         action='Create',
-        current_period=current_period
+        teacher_blocks=teacher_blocks
     )
 
 
@@ -6342,7 +6356,6 @@ def announcement_edit(announcement_id):
     from app.models import Announcement
 
     admin_id = session.get('admin_id')
-    current_period = session.get('current_period')
 
     # Get announcement and verify ownership
     announcement = Announcement.query.filter_by(
@@ -6354,7 +6367,15 @@ def announcement_edit(announcement_id):
         flash('Announcement not found or access denied.', 'danger')
         return redirect(url_for('admin.announcements'))
 
+    # Get the block info for this announcement
+    teacher_block = TeacherBlock.query.filter_by(
+        teacher_id=admin_id,
+        join_code=announcement.join_code
+    ).first()
+
     form = AnnouncementForm(obj=announcement)
+    # Don't need periods field for editing - it's locked to one period
+    del form.periods
 
     if form.validate_on_submit():
         try:
@@ -6379,8 +6400,8 @@ def announcement_edit(announcement_id):
         'admin/announcement_form.html',
         form=form,
         announcement=announcement,
-        action='Edit',
-        current_period=current_period
+        teacher_block=teacher_block,
+        action='Edit'
     )
 
 
