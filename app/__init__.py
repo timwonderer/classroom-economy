@@ -105,6 +105,7 @@ def create_app():
         SESSION_COOKIE_SECURE=os.environ["FLASK_ENV"] == "production",  # Only require HTTPS in production
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_PATH="/",
         TEMPLATES_AUTO_RELOAD=True,
         TURNSTILE_SITE_KEY=os.getenv("TURNSTILE_SITE_KEY"),
         TURNSTILE_SECRET_KEY=os.getenv("TURNSTILE_SECRET_KEY"),
