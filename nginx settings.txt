@@ -1,0 +1,123 @@
+server {
+    if ($host = www.classroomtokenhub.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    if ($host = classroomtokenhub.com) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80;
+    server_name classroomtokenhub.com www.classroomtokenhub.com;
+    return 301 https://$host$request_uri;
+
+
+
+
+}
+
+server {
+    listen 443 ssl;
+    server_name classroomtokenhub.com www.classroomtokenhub.com;
+    ssl_certificate /etc/letsencrypt/live/classroomtokenhub.com/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/classroomtokenhub.com/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+# Let people reach the login page (no auth gate here)
+location = /sysadmin/login {
+    auth_request off;
+    auth_basic off;
+    proxy_pass http://127.0.0.1:8000;
+    include proxy_params;  # or your proxy headers block
+}
+
+# If you have logout, exempt it too (optional but usually needed)
+location = /sysadmin/logout {
+    auth_request off;
+    auth_basic off;
+    proxy_pass http://127.0.0.1:8000;
+    include proxy_params;
+}
+
+# ADD THESE TWO BLOCKS FOR PASSKEY AUTHENTICATION:
+location = /sysadmin/passkey/auth/start {
+    auth_request off;
+    auth_basic off;
+    proxy_pass http://127.0.0.1:8000;
+    include proxy_params;
+}
+
+location = /sysadmin/passkey/auth/finish {
+    auth_request off;
+    auth_basic off;
+    proxy_pass http://127.0.0.1:8000;
+    include proxy_params;
+}
+
+#Auth probe endpoint for auth_request
+location /sysadmin/auth-check {
+    internal;
+    auth_request off;
+    proxy_pass http://127.0.0.1:8000;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+}
+
+
+location /sysadmin/grafana/ {
+    # Auth check - validate sysadmin session
+    auth_request /sysadmin/auth-check;
+    auth_request_set $auth_user $upstream_http_x_auth_user;
+    
+    # If auth fails, redirect to login
+    error_page 401 = @grafana_login_redirect;
+    proxy_cache auth_cache;
+    proxy_cache_valid 200 5s;
+    proxy_pass http://127.0.0.1:3000/;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    
+    # Use the validated username from auth check
+    proxy_set_header X-WEBAUTH-USER $auth_user;
+    proxy_set_header X-WEBAUTH-ROLE Admin;
+    
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+}
+
+# Redirect to login if not authenticated
+location @grafana_login_redirect {
+    return 302 /sysadmin/login;
+}
+
+location /sysadmin/ {
+    auth_request /sysadmin/auth-check;
+    proxy_pass http://127.0.0.1:8000;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+
+location / {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+
+
+}
