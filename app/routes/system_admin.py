@@ -1626,7 +1626,13 @@ def grafana_proxy(path):
         headers = {key: value for key, value in request.headers if key.lower() not in ['host', 'connection']}
 
         # Add the authenticated user header for Grafana
-        headers['X-WEBAUTH-USER'] = session.get('sysadmin_id', 'unknown')
+        # Fetch admin to get username (Grafana auth proxy expects username, not ID)
+        admin = SystemAdmin.query.get(session.get('sysadmin_id'))
+        if not admin:
+            # Stale session - admin was deleted
+            flash("Authentication failed: user not found.", "error")
+            return redirect(url_for('sysadmin.dashboard'))
+        headers['X-WEBAUTH-USER'] = admin.username
 
         # Make the request to Grafana
         resp = requests.request(
