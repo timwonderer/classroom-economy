@@ -31,7 +31,7 @@ from app.models import (
     Student, Admin, StudentTeacher, TeacherBlock, StudentBlock,
     Transaction, TapEvent
 )
-from hash_utils import hash_username, get_random_salt, hash_password, encrypt_value
+from hash_utils import hash_username, get_random_salt
 
 # Import migration functions
 from scripts.comprehensive_legacy_migration import (
@@ -42,6 +42,14 @@ from scripts.comprehensive_legacy_migration import (
     backfill_related_tables,
     MigrationStats
 )
+
+
+def hash_password(password, salt):
+    return "hashed_password"
+
+
+def encrypt_value(value):
+    return "encrypted_value"
 
 
 @pytest.fixture

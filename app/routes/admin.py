@@ -3753,6 +3753,13 @@ def transactions():
 def void_transaction(transaction_id):
     """Void a transaction."""
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    def get_safe_redirect():
+        target = request.referrer
+        if target and is_safe_url(target):
+            return target
+        return url_for('admin.dashboard')
+
     tx = (
         Transaction.query
         .join(Student, Transaction.student_id == Student.id)
@@ -3770,27 +3777,12 @@ def void_transaction(transaction_id):
         if is_json:
             return jsonify(status="error", message="Failed to void transaction"), 500
         flash("Error voiding transaction.", "error")
-        # Safe redirect: validate referrer to prevent open redirects
-        ref = request.referrer or ""
-        potential_url = ref.replace('\\', '')
-        parsed = urlparse(potential_url)
-        if not parsed.scheme and not parsed.netloc:
-            return_url = potential_url
-        else:
-            return_url = url_for('admin.dashboard')
-        return redirect(return_url)
+        return redirect(get_safe_redirect())
+
     if is_json:
         return jsonify(status="success", message="Transaction voided.")
     flash("✅ Transaction voided.", "success")
-    # Safe redirect: validate referrer to prevent open redirects
-    ref = request.referrer or ""
-    potential_url = ref.replace('\\', '')
-    parsed = urlparse(potential_url)
-    if not parsed.scheme and not parsed.netloc:
-        return_url = potential_url
-    else:
-        return_url = url_for('admin.dashboard')
-    return redirect(return_url)
+    return redirect(get_safe_redirect())
 
 
 # -------------------- HALL PASS MANAGEMENT --------------------
