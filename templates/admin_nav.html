@@ -13,6 +13,11 @@
           <a class="nav-link {% if current_page == 'students' %}active{% endif %}" href="{{ url_for('admin.students') }}">Students</a>
         </li>
         <li class="nav-item">
+          <a class="nav-link {% if current_page == 'announcements' %}active{% endif %}" href="{{ url_for('admin.announcements') }}">
+            <i class="bi bi-megaphone"></i> Announcements
+          </a>
+        </li>
+        <li class="nav-item">
           <a class="nav-link {% if current_page == 'hall_pass' %}active{% endif %}" href="{{ url_for('admin.hall_pass') }}">Hall Pass</a>
         </li>
         <li class="nav-item">

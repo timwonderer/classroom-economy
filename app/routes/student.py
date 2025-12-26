@@ -1123,6 +1123,29 @@ def dashboard():
         if tx.amount < 0 and _occurred_after(tx.timestamp, month_start) and not tx.is_void
     ))
 
+    # Get active announcements for this student
+    # Include: class-specific, system-wide, all students, and teacher's all classes
+    from app.models import Announcement
+    from sqlalchemy import or_
+
+    announcements = Announcement.query.filter(
+        Announcement.is_active.is_(True),
+        or_(
+            Announcement.expires_at.is_(None),
+            Announcement.expires_at > datetime.now(timezone.utc)
+        ),
+        or_(
+            # Class-specific announcements
+            Announcement.join_code == join_code,
+            # System-wide announcements
+            Announcement.audience_type == 'system_wide',
+            # All students announcements
+            Announcement.audience_type == 'all_students',
+            # Teacher's all classes announcements
+            (Announcement.audience_type == 'teacher_all_classes') & (Announcement.target_teacher_id == teacher_id)
+        )
+    ).order_by(Announcement.created_at.desc()).all()
+
     return render_template(
         'student_dashboard.html',
         student=student,
@@ -1156,6 +1179,7 @@ def dashboard():
         earnings_this_month=round(earnings_this_month, 2),
         spending_this_week=round(spending_this_week, 2),
         spending_this_month=round(spending_this_month, 2),
+        announcements=announcements,
     )
 
 

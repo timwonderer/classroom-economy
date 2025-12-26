@@ -8,6 +8,19 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
+### Added
+- **Teacher Announcements** - Teachers can now post announcements to communicate with students in specific class periods
+  - Create, edit, and delete announcements via `/admin/announcements`
+  - Priority levels: Low, Normal, High, Urgent (with distinct visual styles and icons)
+  - Optional expiration dates for time-limited announcements
+  - Active/inactive toggle for controlling announcement visibility
+  - Announcements displayed prominently on student dashboard
+  - Proper multi-tenancy scoping by `join_code` (announcements isolated per class period)
+  - Database model: `Announcement` with indexes for efficient querying
+  - Full CRUD routes with ownership verification and CSRF protection
+  - Bootstrap alert styling with dismiss buttons for students
+  - Comprehensive test coverage for model, multi-tenancy, and cascade deletion
+
 ### Fixed
 - **Grafana Access Issue** - Fixed "connection refused" error when accessing Grafana from system admin dashboard
   - **Root Cause**: Nginx `proxy_pass` had trailing slash that stripped URL path, causing infinite redirects
