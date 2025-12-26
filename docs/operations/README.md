@@ -72,6 +72,15 @@ Infrastructure setup guide for production deployment.
 - Configuring firewall rules
 - Managing Cloudflare proxy settings
 
+### [Grafana Auth Proxy Troubleshooting](GRAFANA_AUTH_PROXY.md)
+
+Checklist for debugging Grafana behind the system admin Nginx auth proxy.
+
+**Use this when:**
+- The sysadmin Grafana link is stuck in a redirect loop
+- Grafana returns `ERR_CONNECTION_REFUSED` after authentication changes
+- You need to verify the expected headers and `grafana.ini` subpath settings
+
 ### [PII Audit](PII_AUDIT.md)
 
 Review of personally identifiable information handling in the multi-tenancy system.

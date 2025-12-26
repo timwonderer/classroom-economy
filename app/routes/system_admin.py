@@ -13,7 +13,7 @@ import base64
 import qrcode
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app, jsonify, make_response, Response
 from sqlalchemy import delete, or_, case
 from werkzeug.exceptions import BadRequest, Unauthorized, Forbidden, NotFound, ServiceUnavailable
 import pyotp
@@ -140,6 +140,45 @@ def _tail_log_lines(file_path: str, max_lines: int = 200, chunk_size: int = 8192
 
 # -------------------- AUTHENTICATION --------------------
 
+def _clear_sysadmin_session():
+    """Remove system admin session keys to enforce re-authentication."""
+    session.pop("is_system_admin", None)
+    session.pop("sysadmin_id", None)
+    session.pop("last_activity", None)
+
+
+def _get_authenticated_sysadmin_for_auth():
+    """Validate the sysadmin session for auth_request probes.
+
+    Returns the SystemAdmin record when the session is present and fresh; otherwise
+    clears the session and returns ``None``.
+    """
+    if not session.get("is_system_admin") or session.get("sysadmin_id") is None:
+        return None
+
+    last_activity_str = session.get("last_activity")
+    if last_activity_str:
+        last_activity = datetime.fromisoformat(last_activity_str)
+        if last_activity.tzinfo is None:
+            last_activity = last_activity.replace(tzinfo=timezone.utc)
+        if (datetime.now(timezone.utc) - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+            _clear_sysadmin_session()
+            return None
+
+    sysadmin = SystemAdmin.query.get(session.get("sysadmin_id"))
+    if not sysadmin:
+        _clear_sysadmin_session()
+        return None
+
+    session["last_activity"] = datetime.now(timezone.utc).isoformat()
+    return sysadmin
+
+
+def _sanitize_header_value(value: str) -> str:
+    """Strip characters that could break header parsing."""
+    return (value or "").replace("\n", "").replace("\r", "")
+
+
 @sysadmin_bp.route('/auth-check', methods=['GET'])
 @limiter.exempt
 def auth_check():
@@ -152,24 +191,13 @@ def auth_check():
     Note: Do NOT decorate with `@system_admin_required` because that may redirect
     to the login page; `auth_request` needs a clean 2xx/401 signal.
     """
-    if not session.get("is_system_admin") or session.get("sysadmin_id") is None:
+    sysadmin = _get_authenticated_sysadmin_for_auth()
+    if not sysadmin:
         raise Unauthorized("System admin authentication required")
 
-    # Enforce session timeout for security, consistent with other decorators.
-    last_activity_str = session.get("last_activity")
-    if last_activity_str:
-        last_activity = datetime.fromisoformat(last_activity_str)
-        if last_activity.tzinfo is None:
-            last_activity = last_activity.replace(tzinfo=timezone.utc)
-        if (datetime.now(timezone.utc) - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-            session.pop("is_system_admin", None)
-            session.pop("sysadmin_id", None)
-            session.pop("last_activity", None)
-            raise Unauthorized("Session expired")
-
-    # Update activity to keep session alive.
-    session["last_activity"] = datetime.now(timezone.utc).isoformat()
-    return ("", 204)
+    response = make_response("", 204)
+    response.headers["X-Auth-User"] = _sanitize_header_value(sysadmin.username)
+    return response
 
 @sysadmin_bp.route('/login', methods=['GET', 'POST'])
 @limiter.limit("10 per minute")
@@ -1539,37 +1567,12 @@ def grafana_auth_check():
     Returns 200 with X-Auth-User header if authenticated, 401 if not.
     Exempt from rate limiting to prevent blocking Grafana's multiple auth checks per page.
     """
-    from flask import Response
-    from datetime import datetime, timedelta, timezone
-    from app.auth import SESSION_TIMEOUT_MINUTES
-    from app.models import SystemAdmin
-
-    # Check if user is logged in as system admin
-    if not session.get("is_system_admin") or not session.get("sysadmin_id"):
-        return Response('Unauthorized', 401)
-
-    # Check session timeout
-    last_activity_str = session.get("last_activity")
-    if last_activity_str:
-        last_activity = datetime.fromisoformat(last_activity_str)
-        if last_activity.tzinfo is None:
-            last_activity = last_activity.replace(tzinfo=timezone.utc)
-        if (datetime.now(timezone.utc) - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-            session.clear()
-            return Response('Unauthorized: Session expired', 401)
-
-    # Update activity to keep session alive
-    session["last_activity"] = datetime.now(timezone.utc).isoformat()
-
-    # Verify the sysadmin still exists
-    sysadmin = SystemAdmin.query.get(session.get('sysadmin_id'))
+    sysadmin = _get_authenticated_sysadmin_for_auth()
     if not sysadmin:
-        # Admin was deleted but session still exists
-        session.clear()
         return Response('Unauthorized', 401)
 
     # Sanitize username for header (prevent response splitting)
-    username = sysadmin.username.replace('\n', '').replace('\r', '') if sysadmin.username else ''
+    username = _sanitize_header_value(sysadmin.username)
 
     response = Response('OK', 200)
     response.headers['X-Auth-User'] = username
