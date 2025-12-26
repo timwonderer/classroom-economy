@@ -1590,11 +1590,34 @@ def grafana_proxy(path):
 
     The route is exempt from rate limiting to allow smooth dashboard operation.
     """
+    # Validate the requested Grafana path to prevent proxying to arbitrary URLs
+    # Disallow absolute or protocol-relative URLs and restrict to known Grafana prefixes.
+    normalized_path = path or ''
+    if normalized_path.startswith(('http://', 'https://', '//')):
+        current_app.logger.warning(f"Rejected unsafe Grafana proxy path: {normalized_path}")
+        raise BadRequest("Invalid Grafana path.")
+
+    allowed_prefixes = (
+        '',                 # root
+        'd/',               # dashboard URLs
+        'dashboard/',       # legacy dashboard URLs
+        'dashboards/',      # dashboards listing
+        'api/',             # Grafana API
+        'public/',          # public assets
+        'avatar/',          # user avatars
+        'static/',          # static content
+        'login',            # login page
+        'logout',           # logout
+    )
+    if normalized_path and not normalized_path.startswith(allowed_prefixes):
+        current_app.logger.warning(f"Rejected disallowed Grafana proxy path: {normalized_path}")
+        raise BadRequest("Invalid Grafana path.")
+
     # Get Grafana URL from environment or use default
     grafana_url = os.getenv('GRAFANA_URL', 'http://localhost:3000')
 
     # Build the target URL
-    target_url = f"{grafana_url}/{path}"
+    target_url = f"{grafana_url}/{normalized_path}"
     if request.query_string:
         target_url = f"{target_url}?{request.query_string.decode('utf-8')}"
 
