@@ -1540,7 +1540,9 @@ def grafana_auth_check():
     Exempt from rate limiting to prevent blocking Grafana's multiple auth checks per page.
     """
     from flask import Response
+    from datetime import datetime, timedelta, timezone
     from app.auth import SESSION_TIMEOUT_MINUTES
+    from app.models import SystemAdmin
 
     # Check if user is logged in as system admin
     if not session.get("is_system_admin") or not session.get("sysadmin_id"):
