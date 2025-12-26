@@ -1,4 +1,5 @@
 {% extends "layout_admin.html" %}
+{% set current_page = "announcements" %}
 {% set page_title = action + " Announcement" %}
 {% block title %}{{ action }} Announcement{% endblock %}
 {% block page_icon %}{{ 'pencil' if action == 'Edit' else 'plus-circle' }}{% endblock %}
