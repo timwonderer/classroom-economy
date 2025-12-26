@@ -396,11 +396,9 @@ class SystemAdminAnnouncementForm(FlaskForm):
         ('system_wide', 'Everyone (System-Wide)'),
         ('all_students', 'All Students'),
         ('all_teachers', 'All Teachers'),
-        ('teacher_all_classes', 'All Classes of Specific Teacher'),
-        ('specific_class', 'Specific Class Period')
+        ('teacher_all_classes', 'All Classes of Specific Teacher')
     ], validators=[DataRequired()])
     target_teacher = SelectField('Target Teacher', choices=[], validators=[Optional()], coerce=int)
-    target_class = SelectField('Target Class', choices=[], validators=[Optional()])
     title = StringField('Announcement Title', validators=[DataRequired(), Length(min=1, max=200)])
     message = TextAreaField('Message', validators=[DataRequired()])
     priority = SelectField('Priority', choices=[

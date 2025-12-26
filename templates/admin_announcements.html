@@ -154,7 +154,51 @@ function toggleAnnouncement(announcementId) {
     .then(response => response.json())
     .then(data => {
         if (data.status === 'success') {
-            location.reload();
+            // Update UI dynamically instead of reloading
+            const button = document.querySelector(`button[onclick="toggleAnnouncement(${announcementId})"]`);
+            const card = button.closest('.card');
+            const cardHeader = card.querySelector('.card-header > div:first-child');
+
+            // Find or create the inactive badge
+            let inactiveBadge = cardHeader.querySelector('.badge.bg-secondary');
+
+            if (data.is_active) {
+                // Announcement is now active
+                button.className = 'btn btn-sm btn-outline-secondary';
+                button.innerHTML = '<i class="bi bi-eye-slash"></i> Deactivate';
+
+                // Add border to card
+                card.classList.add('border-start', 'border-5');
+                const priorityClass = card.className.match(/border-(danger|warning|info|secondary)/)?.[0] || 'border-info';
+                if (!card.classList.contains(priorityClass)) {
+                    card.classList.add(priorityClass);
+                }
+
+                // Remove inactive badge if it exists
+                if (inactiveBadge) {
+                    inactiveBadge.remove();
+                }
+            } else {
+                // Announcement is now inactive
+                button.className = 'btn btn-sm btn-outline-success';
+                button.innerHTML = '<i class="bi bi-eye"></i> Activate';
+
+                // Remove border from card
+                card.classList.remove('border-start', 'border-5');
+
+                // Add inactive badge if it doesn't exist
+                if (!inactiveBadge) {
+                    const expiredBadge = cardHeader.querySelector('.badge.bg-dark');
+                    const newBadge = document.createElement('span');
+                    newBadge.className = 'badge bg-secondary ms-2';
+                    newBadge.textContent = 'Inactive';
+                    if (expiredBadge) {
+                        cardHeader.insertBefore(newBadge, expiredBadge);
+                    } else {
+                        cardHeader.appendChild(newBadge);
+                    }
+                }
+            }
         } else {
             alert('Error: ' + data.message);
         }
