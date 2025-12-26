@@ -1123,12 +1123,25 @@ def dashboard():
         if tx.amount < 0 and _occurred_after(tx.timestamp, month_start) and not tx.is_void
     ))
 
-    # Get active announcements for this class (scoped by join_code)
+    # Get active announcements for this student
+    # Include: class-specific, system-wide, all students, and teacher's all classes
     from app.models import Announcement
-    announcements = Announcement.query.filter_by(
-        join_code=join_code,
-        is_active=True
+    from sqlalchemy import or_
+
+    announcements = Announcement.query.filter(
+        Announcement.is_active == True,
+        or_(
+            # Class-specific announcements
+            Announcement.join_code == join_code,
+            # System-wide announcements
+            Announcement.audience_type == 'system_wide',
+            # All students announcements
+            Announcement.audience_type == 'all_students',
+            # Teacher's all classes announcements
+            (Announcement.audience_type == 'teacher_all_classes') & (Announcement.target_teacher_id == teacher_id)
+        )
     ).order_by(Announcement.created_at.desc()).all()
+
     # Filter out expired announcements
     announcements = [a for a in announcements if not a.is_expired()]
 

@@ -1,0 +1,83 @@
+{% extends "layout_system_admin.html" %}
+{% set page_title = action + " System Announcement" %}
+{% block title %}{{ action }} System Announcement{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">{{ action }} System Announcement</h4>
+                </div>
+                <div class="card-body">
+                    <form method="POST" action="">
+                        {{ form.csrf_token }}
+
+                        <div class="mb-3">
+                            {{ form.audience_type.label(class="form-label") }}
+                            {{ form.audience_type(class="form-select", id="audience_type") }}
+                            <small class="form-text text-muted">Who should see this announcement?</small>
+                        </div>
+
+                        <div class="mb-3" id="target_teacher_field" style="display: none;">
+                            {{ form.target_teacher.label(class="form-label") }}
+                            {{ form.target_teacher(class="form-select") }}
+                        </div>
+
+                        <div class="mb-3">
+                            {{ form.title.label(class="form-label") }}
+                            {{ form.title(class="form-control") }}
+                        </div>
+
+                        <div class="mb-3">
+                            {{ form.message.label(class="form-label") }}
+                            {{ form.message(class="form-control", rows=6) }}
+                        </div>
+
+                        <div class="mb-3">
+                            {{ form.priority.label(class="form-label") }}
+                            {{ form.priority(class="form-select") }}
+                        </div>
+
+                        <div class="mb-3">
+                            {{ form.expires_at.label(class="form-label") }}
+                            {{ form.expires_at(class="form-control") }}
+                        </div>
+
+                        <div class="mb-4">
+                            <div class="form-check">
+                                {{ form.is_active(class="form-check-input") }}
+                                {{ form.is_active.label(class="form-check-label") }}
+                            </div>
+                        </div>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="{{ url_for('sysadmin.announcements') }}" class="btn btn-secondary">Cancel</a>
+                            {{ form.submit(class="btn btn-primary") }}
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const audienceType = document.getElementById('audience_type');
+    const targetTeacherField = document.getElementById('target_teacher_field');
+
+    function toggleTargetTeacher() {
+        if (audienceType.value === 'teacher_all_classes') {
+            targetTeacherField.style.display = 'block';
+        } else {
+            targetTeacherField.style.display = 'none';
+        }
+    }
+
+    audienceType.addEventListener('change', toggleTargetTeacher);
+    toggleTargetTeacher(); // Initial check
+});
+</script>
+{% endblock %}

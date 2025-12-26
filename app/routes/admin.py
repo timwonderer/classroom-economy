@@ -6261,9 +6261,11 @@ def announcements():
     }
 
     # Get all announcements for this teacher (across all periods)
+    # Exclude system admin announcements
     from app.models import Announcement
     announcements_list = Announcement.query.filter_by(
-        teacher_id=admin_id
+        teacher_id=admin_id,
+        system_admin_id=None  # Only teacher-created announcements
     ).order_by(Announcement.created_at.desc()).all()
 
     # Attach block info to each announcement
