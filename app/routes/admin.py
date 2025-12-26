@@ -6254,7 +6254,7 @@ def announcements():
     blocks_by_join_code = {
         tb.join_code: {
             'block': tb.block,
-            'label': tb.get_class_label(),
+            'label': f"{tb.get_class_label()} (Period {tb.block})",
             'join_code': tb.join_code
         }
         for tb in teacher_blocks
