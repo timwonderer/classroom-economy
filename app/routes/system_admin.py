@@ -11,9 +11,10 @@ import secrets
 import io
 import base64
 import qrcode
+import requests
 from datetime import datetime, timedelta, timezone
 
-from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app, jsonify
+from flask import Blueprint, render_template, redirect, url_for, flash, request, session, current_app, jsonify, Response
 from sqlalchemy import delete, or_, case
 from werkzeug.exceptions import BadRequest, Unauthorized, Forbidden, NotFound, ServiceUnavailable
 import pyotp
@@ -1574,3 +1575,64 @@ def grafana_auth_check():
     response = Response('OK', 200)
     response.headers['X-Auth-User'] = username
     return response
+
+
+@sysadmin_bp.route('/grafana', methods=['GET'], defaults={'path': ''})
+@sysadmin_bp.route('/grafana/<path:path>', methods=['GET', 'POST', 'PUT', 'DELETE', 'PATCH'])
+@system_admin_required
+@limiter.exempt
+def grafana_proxy(path):
+    """
+    Proxy requests to Grafana dashboard.
+
+    This route forwards all requests to the Grafana service running on localhost:3000
+    (or configured GRAFANA_URL) while maintaining system admin authentication.
+
+    The route is exempt from rate limiting to allow smooth dashboard operation.
+    """
+    # Get Grafana URL from environment or use default
+    grafana_url = os.getenv('GRAFANA_URL', 'http://localhost:3000')
+
+    # Build the target URL
+    target_url = f"{grafana_url}/{path}"
+    if request.query_string:
+        target_url = f"{target_url}?{request.query_string.decode('utf-8')}"
+
+    try:
+        # Forward the request to Grafana
+        headers = {key: value for key, value in request.headers if key.lower() not in ['host', 'connection']}
+
+        # Add the authenticated user header for Grafana
+        headers['X-WEBAUTH-USER'] = session.get('sysadmin_id', 'unknown')
+
+        # Make the request to Grafana
+        resp = requests.request(
+            method=request.method,
+            url=target_url,
+            headers=headers,
+            data=request.get_data(),
+            cookies=request.cookies,
+            allow_redirects=False,
+            timeout=30
+        )
+
+        # Create response
+        excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
+        response_headers = [(name, value) for name, value in resp.raw.headers.items()
+                           if name.lower() not in excluded_headers]
+
+        response = Response(resp.content, resp.status_code, response_headers)
+        return response
+
+    except requests.exceptions.ConnectionError:
+        current_app.logger.error(f"Failed to connect to Grafana at {grafana_url}")
+        flash("Grafana service is not available. Please contact the system administrator.", "error")
+        return redirect(url_for('sysadmin.dashboard'))
+    except requests.exceptions.Timeout:
+        current_app.logger.error(f"Timeout connecting to Grafana at {grafana_url}")
+        flash("Grafana service timed out. Please try again later.", "error")
+        return redirect(url_for('sysadmin.dashboard'))
+    except Exception as e:
+        current_app.logger.error(f"Error proxying request to Grafana: {str(e)}")
+        flash("An error occurred while accessing Grafana.", "error")
+        return redirect(url_for('sysadmin.dashboard'))

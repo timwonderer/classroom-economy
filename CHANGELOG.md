@@ -8,6 +8,15 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
+### Fixed
+- **Grafana Access Issue** - Fixed "connection refused" error when accessing Grafana from system admin dashboard
+  - Added Flask proxy route `/sysadmin/grafana` to forward requests to Grafana service
+  - Proxy maintains system admin authentication and session state
+  - Configurable via `GRAFANA_URL` environment variable (defaults to `http://localhost:3000`)
+  - Route is rate-limit exempt for smooth dashboard operation
+  - Graceful error handling with user-friendly messages when Grafana service is unavailable
+  - Added `requests==2.32.3` dependency for HTTP proxying
+
 ## [1.3.0] - 2025-12-25
 
 ### Added
