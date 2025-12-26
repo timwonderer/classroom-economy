@@ -1528,3 +1528,43 @@ def send_reward_to_reporter(report_id):
         flash("Error sending reward. Please try again.", "error")
     
     return redirect(url_for('sysadmin.view_user_report', report_id=report_id))
+
+
+from flask import session, Response
+@sysadmin_bp.route('/grafana/auth-check', methods=['GET'])
+def grafana_auth_check():
+    """Auth check endpoint for nginx auth_request."""
+    # Explicitly check for admin status and session timeout, returning 401 on failure.
+    # This avoids the redirect from @system_admin_required, which is unsafe for auth_request.
+    from flask import Response, session
+    from datetime import datetime, timedelta, timezone
+    from app.auth import SESSION_TIMEOUT_MINUTES
+    from app.models import SystemAdmin
+
+    if not session.get("is_system_admin") or not session.get("sysadmin_id"):
+        return Response('Unauthorized', 401)
+
+    last_activity_str = session.get("last_activity")
+    if last_activity_str:
+        last_activity = datetime.fromisoformat(last_activity_str)
+        if last_activity.tzinfo is None:
+            last_activity = last_activity.replace(tzinfo=timezone.utc)
+        if (datetime.now(timezone.utc) - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+            session.clear()
+            return Response('Unauthorized: Session expired', 401)
+
+    # Update activity to keep session alive.
+    session["last_activity"] = datetime.now(timezone.utc).isoformat()
+
+    sysadmin = SystemAdmin.query.get(session.get('sysadmin_id'))
+    if not sysadmin:
+        # This can happen if the admin was deleted but the session still exists.
+        session.clear()
+        return Response('Unauthorized', 401)
+
+    # Sanitize username for header (prevent response splitting)
+    username = sysadmin.username.replace('\n', '').replace('\r', '') if sysadmin.username else ''
+    response = Response('OK', 200)
+    response.headers['X-Auth-User'] = username
+    return response
+
