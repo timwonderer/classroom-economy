@@ -856,12 +856,13 @@ def signup():
             flash(msg, "error")
             return redirect(url_for('admin.signup'))
         # Step 1: Validate invite code
+        current_app.logger.info(f"🔍 Validating invite code: {repr(invite_code)}")
         code_row = db.session.execute(
-            text("SELECT * FROM admin_invite_codes WHERE code = :code"),
+            text("SELECT * FROM admin_invite_codes WHERE TRIM(code) = :code"),
             {"code": invite_code}
         ).fetchone()
         if not code_row:
-            current_app.logger.warning(f"🛑 Admin signup failed: invalid invite code")
+            current_app.logger.warning(f"🛑 Admin signup failed: invalid invite code {repr(invite_code)}")
             msg = "Invalid invite code."
             if is_json:
                 return jsonify(status="error", message=msg), 400
