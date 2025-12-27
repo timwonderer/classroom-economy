@@ -906,9 +906,11 @@ def signup():
             session["admin_totp_secret"] = totp_secret
             session["admin_totp_username"] = username
             session["admin_dob_sum"] = dob_sum
+            session["admin_dob_string"] = dob_input.strftime("%Y-%m-%d")  # Store original date string
         else:
             totp_secret = session["admin_totp_secret"]
             dob_sum = session.get("admin_dob_sum", dob_sum)
+            dob_input = datetime.strptime(session.get("admin_dob_string"), "%Y-%m-%d").date()
         totp_uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy Admin")
         # Step 4: If no TOTP code submitted yet, show QR
         if not totp_code:
@@ -924,7 +926,7 @@ def signup():
                 form=form,
                 username=username,
                 invite_code=invite_code,
-                dob_sum=dob_sum,
+                dob_sum=dob_input.strftime("%Y-%m-%d"),  # Pass date string, not integer
                 qr_b64=img_b64,
                 totp_secret=totp_secret
             )
@@ -947,7 +949,7 @@ def signup():
                 form=form,
                 username=username,
                 invite_code=invite_code,
-                dob_sum=dob_sum,
+                dob_sum=dob_input.strftime("%Y-%m-%d"),  # Pass date string, not integer
                 qr_b64=img_b64,
                 totp_secret=totp_secret
             )
@@ -970,6 +972,7 @@ def signup():
         session.pop("admin_totp_secret", None)
         session.pop("admin_totp_username", None)
         session.pop("admin_dob_sum", None)
+        session.pop("admin_dob_string", None)
         msg = "Admin account created successfully! Please log in using your authenticator app."
         if is_json:
             return jsonify(status="success", message=msg)
