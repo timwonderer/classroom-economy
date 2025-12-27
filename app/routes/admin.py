@@ -118,6 +118,23 @@ def _get_class_labels_for_blocks(admin_id, blocks):
     return labels
 
 
+def _get_unique_teacher_blocks_by_join_code(admin_id):
+    """Return TeacherBlock rows deduplicated by join_code for a teacher."""
+
+    subquery = (
+        db.session.query(func.min(TeacherBlock.id))
+        .filter(TeacherBlock.teacher_id == admin_id)
+        .group_by(TeacherBlock.join_code)
+        .subquery()
+    )
+
+    return (
+        TeacherBlock.query.filter(TeacherBlock.id.in_(subquery))
+        .order_by(TeacherBlock.block)
+        .all()
+    )
+
+
 def _student_scope_subquery(include_unassigned=True):
     """Return a subquery of student IDs the current admin can access."""
     return (
@@ -6238,9 +6255,7 @@ def announcements():
     admin_id = session.get('admin_id')
 
     # Get all teacher blocks (class periods)
-    teacher_blocks = TeacherBlock.query.filter_by(
-        teacher_id=admin_id
-    ).order_by(TeacherBlock.block).all()
+    teacher_blocks = _get_unique_teacher_blocks_by_join_code(admin_id)
 
     # Create a mapping of join_code to block info
     blocks_by_join_code = {
@@ -6286,9 +6301,7 @@ def announcement_create():
     admin_id = session.get('admin_id')
 
     # Get all teacher blocks for period selection
-    teacher_blocks = TeacherBlock.query.filter_by(
-        teacher_id=admin_id
-    ).order_by(TeacherBlock.block).all()
+    teacher_blocks = _get_unique_teacher_blocks_by_join_code(admin_id)
 
     if not teacher_blocks:
         flash('You need to set up class periods before creating announcements.', 'warning')

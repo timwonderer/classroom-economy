@@ -137,6 +137,17 @@ a:hover {
     color: var(--primary);
 }
 
+.dashboard-greeting {
+    font-size: 2rem;
+}
+
+.dashboard-greeting-info {
+    border-radius: 1rem;
+    padding: 3px;
+    background-color: var(--primary);
+    color: white;
+}
+
 /* Cards */
 .card {
     background: var(--surface);

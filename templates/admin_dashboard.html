@@ -5,9 +5,9 @@
 {% block content %}
 <!-- Personalized Greeting -->
 <div class="mb-4 text-center">
-    <p class="p fw-bold text-primary mb-1" id="dashboard-greeting" style="font-size: 2rem;">
-        <span style="font-weight:300">Hi,</span> {{ current_admin.get_display_name() }} <a href="{{ url_for('admin.settings') }}" class="text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Click here to change your display name">
-            <span class="material-symbols-outlined align-top fs-6 bg-primary text-white" style="border-radius: 1rem; padding:3px">info</span>
+    <p class="p fw-bold text-primary mb-1 dashboard-greeting" id="dashboard-greeting">
+        <span class="fw-light">Hi,</span> {{ current_admin.get_display_name() }} <a href="{{ url_for('admin.settings') }}" class="text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Click here to change your display name">
+            <span class="material-symbols-outlined align-top fs-6 dashboard-greeting-info">info</span>
         </a>
     </p>
     
