@@ -18,6 +18,9 @@ def get_connection():
         exit(1)
 
 def create_invite(code: str, expires_at: str | None) -> None:
+    # Strip whitespace from code to prevent validation issues
+    code = code.strip()
+
     try:
         expires_date = None
         if expires_at:

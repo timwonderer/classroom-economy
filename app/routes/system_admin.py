@@ -967,7 +967,7 @@ def manage_teachers():
     # Handle invite code form submission
     form = SystemAdminInviteForm()
     if form.validate_on_submit():
-        code = form.code.data or secrets.token_urlsafe(8)
+        code = (form.code.data.strip() if form.code.data else None) or secrets.token_urlsafe(8)
         expiry_days = request.form.get('expiry_days', 30, type=int)
         expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
         invite = AdminInviteCode(code=code, expires_at=expires_at)
