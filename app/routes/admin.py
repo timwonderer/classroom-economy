@@ -6245,10 +6245,19 @@ def announcements():
     """
     admin_id = session.get('admin_id')
 
-    # Get all teacher blocks (class periods)
-    teacher_blocks = TeacherBlock.query.filter_by(
+    # Get unique teacher blocks (class periods) by join_code
+    # TeacherBlock has one row per student seat, so we need to get distinct periods
+    teacher_blocks_query = TeacherBlock.query.filter_by(
         teacher_id=admin_id
     ).order_by(TeacherBlock.block).all()
+
+    # Deduplicate by join_code to get unique periods
+    seen_join_codes = set()
+    teacher_blocks = []
+    for tb in teacher_blocks_query:
+        if tb.join_code not in seen_join_codes:
+            seen_join_codes.add(tb.join_code)
+            teacher_blocks.append(tb)
 
     # Create a mapping of join_code to block info
     blocks_by_join_code = {
@@ -6293,10 +6302,19 @@ def announcement_create():
 
     admin_id = session.get('admin_id')
 
-    # Get all teacher blocks for period selection
-    teacher_blocks = TeacherBlock.query.filter_by(
+    # Get unique teacher blocks (class periods) by join_code
+    # TeacherBlock has one row per student seat, so we need to get distinct periods
+    teacher_blocks_query = TeacherBlock.query.filter_by(
         teacher_id=admin_id
     ).order_by(TeacherBlock.block).all()
+
+    # Deduplicate by join_code to get unique periods
+    seen_join_codes = set()
+    teacher_blocks = []
+    for tb in teacher_blocks_query:
+        if tb.join_code not in seen_join_codes:
+            seen_join_codes.add(tb.join_code)
+            teacher_blocks.append(tb)
 
     if not teacher_blocks:
         flash('You need to set up class periods before creating announcements.', 'warning')
