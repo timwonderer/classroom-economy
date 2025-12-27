@@ -39,24 +39,24 @@
         width: 40px;
         height: 40px;
         border-radius: 50%;
-        background: var(--gray-200);
+        background: var(--primary);
         display: flex;
         align-items: center;
         justify-content: center;
         margin: 0 auto 0.5rem;
         font-weight: 600;
-        color: var(--gray-600);
+        color: var(--secondary);
         transition: all 0.3s ease;
     }
     
     .step-item.active .step-circle {
-        background: linear-gradient(135deg, var(--brand-cyan) 0%, var(--brand-blue) 100%);
+        background: var(--secondary);
         color: white;
         box-shadow: 0 4px 12px rgba(0, 175, 223, 0.3);
     }
     
     .step-item.completed .step-circle {
-        background: #10b981;
+        background: #818181ff;
         color: white;
     }
     
@@ -71,7 +71,7 @@
     }
     
     .welcome-hero {
-        background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%);
+        background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
         color: white;
         padding: 3rem;
         border-radius: 16px;
@@ -81,6 +81,7 @@
     
     .welcome-hero h1 {
         margin-bottom: 1rem;
+        color:white;
     }
     
     .feature-selection-grid {
@@ -156,22 +157,29 @@
     <!-- Step 1: Welcome -->
     <div class="step-content {% if current_step == 1 %}active{% endif %}" id="step-welcome">
         <div class="welcome-hero">
-            <span class="material-symbols-outlined" style="font-size: 4rem;">school</span>
-            <h1>Welcome to Classroom Economy!</h1>
-            <p class="lead mb-0">
-                Let's set up your virtual classroom economy. This quick setup will help you get started in just a few minutes.
+            <span class="material-symbols-outlined mb-0" style="font-size: 40pt;color:#D3AF37">local_atmstorefinance_mode</span>
+            <hr>
+            <h1><span style="font-weight:300">Hello</span>, Teachers!</h1>
+            <p class="mb-0 text-start ">
+                Thank you for bringing Classroom Token Hub into your classroom.</p>
             </p>
+            <p class="mb-0 text-start ">
+               To ensure you can start using Classroom Token Hub quickly, we have created this set up wizard to guide you through the key compoents of your classroom economy. If you need any assistant, you can find tutorials under settings on the left menu bar or submit a support ticket to us</p>
+            </p>
+            <p class="mb-0 text-start ">
+               We hope you find Classroom Token Hub to be as useful as we have designed it to be. We look forward to hear your feedback and suggestions to make it even better!</p>
         </div>
 
         <div class="card shadow">
             <div class="card-body">
-                <h4 class="mb-4">What is Classroom Economy?</h4>
+                <h4 class="mb-1">What is Classroom Token Hub?</h4>
+                <p class="mb-4"> We are many things. But at our core, we are a classroom management system that simulates a real-world economy to teach students financial literacy and responsibility. Here are some of the key features:</p>
                 <div class="row g-4">
                     <div class="col-md-4">
                         <div class="text-center">
                             <span class="material-symbols-outlined text-primary" style="font-size: 3rem;">payments</span>
                             <h5 class="mt-2">Earn & Save</h5>
-                            <p class="text-muted small">Students earn virtual currency through attendance and good behavior.</p>
+                            <p class="text-muted small">Students earn virtual currency through attendance and good behavior. </p>
                         </div>
                     </div>
                     <div class="col-md-4">
@@ -189,7 +197,7 @@
                         </div>
                     </div>
                 </div>
-
+                <p class="mt-2 alert alert-info"> During this set up, if you don't want to set up certain features, you can simply skip them. You can always activate them later in your settings.</p>
                 <div class="onboarding-nav">
                     <button type="button" class="btn btn-outline-secondary" onclick="skipOnboarding()">
                         Skip Setup
@@ -422,7 +430,7 @@
                         </div>
                     </div>
                 </div>
-
+                <p class="mt-2 alert alert-warning">It is very important that you followed the template format exactly to ensure the app can interpret your submissions. Watch out for roster with cutoff names</p>
                 <div class="onboarding-nav">
                     <button type="button" class="btn btn-outline-secondary" onclick="prevStep('roster')">
                         <span class="material-symbols-outlined me-1" style="vertical-align: middle;">arrow_back</span>
@@ -457,6 +465,7 @@
                             <div class="card-header">
                                 <span class="material-symbols-outlined me-2" style="vertical-align: middle;">payments</span>
                                 Payroll Settings
+                                <div class="text-muted small"> This is for pay based on attendance</div>
                             </div>
                             <div class="card-body">
                                 <div class="mb-3">
@@ -507,7 +516,7 @@
                         <span class="material-symbols-outlined" style="font-size: 2rem;">celebration</span>
                         <div>
                             <strong>You're all set!</strong><br>
-                            Click "Complete Setup" to finish and start using Classroom Economy.
+                            Click "Complete Setup" to finish and start using Classroom Token Hub. You can always find support under "Settings" in the left menu bar.
                         </div>
                     </div>
                 </div>
