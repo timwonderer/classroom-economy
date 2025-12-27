@@ -920,13 +920,14 @@ def signup():
             img.save(buf, format='PNG')
             buf.seek(0)
             img_b64 = base64.b64encode(buf.read()).decode('utf-8')
-            form = AdminTOTPConfirmForm()
+            # Populate form with data
+            totp_form = AdminTOTPConfirmForm()
+            totp_form.username.data = username
+            totp_form.invite_code.data = invite_code
+            totp_form.dob_sum.data = dob_input.strftime("%Y-%m-%d")
             return render_template(
                 "admin_signup_totp.html",
-                form=form,
-                username=username,
-                invite_code=invite_code,
-                dob_sum=dob_input.strftime("%Y-%m-%d"),  # Pass date string, not integer
+                form=totp_form,
                 qr_b64=img_b64,
                 totp_secret=totp_secret
             )
@@ -944,12 +945,14 @@ def signup():
             img.save(buf, format='PNG')
             buf.seek(0)
             img_b64 = base64.b64encode(buf.read()).decode('utf-8')
+            # Populate form with data
+            totp_form = AdminTOTPConfirmForm()
+            totp_form.username.data = username
+            totp_form.invite_code.data = invite_code
+            totp_form.dob_sum.data = dob_input.strftime("%Y-%m-%d")
             return render_template(
                 "admin_signup_totp.html",
-                form=form,
-                username=username,
-                invite_code=invite_code,
-                dob_sum=dob_input.strftime("%Y-%m-%d"),  # Pass date string, not integer
+                form=totp_form,
                 qr_b64=img_b64,
                 totp_secret=totp_secret
             )

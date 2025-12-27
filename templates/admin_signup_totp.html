@@ -225,9 +225,9 @@
 
                     <form method="POST" autocomplete="off">
                         {{ form.hidden_tag() }}
-                        <input type="hidden" name="username" value="{{ username }}">
-                        <input type="hidden" name="invite_code" value="{{ invite_code }}">
-                        <input type="hidden" name="dob_sum" value="{{ dob_sum }}">
+                        {{ form.username }}
+                        {{ form.invite_code }}
+                        {{ form.dob_sum }}
 
                         <div class="text-center mb-3">
                             <div class="step-indicator">2</div>
