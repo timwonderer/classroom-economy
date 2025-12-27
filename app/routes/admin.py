@@ -848,7 +848,7 @@ def signup():
     # Debug logging
     if request.method == 'POST':
         current_app.logger.info(f"📥 Signup POST request received (TOTP submission: {is_totp_submission})")
-        current_app.logger.info(f"   Form data: username={request.form.get('username')}, invite_code={repr(request.form.get('invite_code'))}, dob_sum={request.form.get('dob_sum')}")
+        current_app.logger.info(f"   Form data: username={request.form.get('username')}, invite_code={repr(request.form.get('invite_code'))}")
 
     if form.validate_on_submit():
         current_app.logger.info(f"✅ Form validation passed")
@@ -958,7 +958,7 @@ def signup():
                 totp_secret=totp_secret
             )
         # Step 5: Validate entered TOTP code
-        current_app.logger.info(f"🔐 TOTP code received: {repr(totp_code)} (length: {len(totp_code)})")
+        current_app.logger.info(f"🔐 TOTP code submitted (length: {len(totp_code)})")
         totp = pyotp.TOTP(totp_secret)
         is_valid = totp.verify(totp_code)
         current_app.logger.info(f"🔐 TOTP verification result: {is_valid}")
