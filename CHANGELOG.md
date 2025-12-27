@@ -89,6 +89,21 @@ and this project follows semantic versioning principles.
   - Affects student add-class flow redirect handling (`app/routes/student.py:710-877`)
 
 ### Fixed
+- **Teacher Invite Code Validation** - Fixed critical bugs preventing teacher signup with invite codes (#738)
+  - **Whitespace Handling**: Strip whitespace from invite codes during creation and validation
+  - **Timezone Comparison Error**: Fixed TypeError when comparing invite code expiration dates (timezone-aware vs timezone-naive datetimes)
+  - **TOTP Form Validation**: Properly handle TOTP confirmation form submission separate from initial signup form
+  - **Form Field Population**: Use AdminTOTPConfirmForm for TOTP submissions instead of AdminSignupForm
+  - **Date String Handling**: Pass date string instead of integer for dob_sum field in TOTP confirmation
+  - Added comprehensive debug logging for invite code creation and validation
+  - Added cleanup script (`cleanup_invite_codes.py`) for existing codes with whitespace
+  - Ensures consistency between invite code creation and validation across system admin and CLI tools
+- **TOTP Setup UI** - Updated TOTP setup page to match new brand theme
+  - Replaced hardcoded colors with CSS variables (--primary, --secondary, etc.)
+  - Updated gradient and logo to match refreshed brand
+  - Added pattern background to match signup page design
+  - Improved button hover states for consistency
+- **Onboarding Templates** - Updated color scheme and text for better consistency with new brand theme
 - **Admin Dashboard**: Removed duplicate greeting that was appearing in both page header and content section
 - **Student Dashboard**: Improved account balance cards with clearer styling using light backgrounds instead of semi-transparent overlays for better readability
 - **Mobile Responsiveness**: Enhanced responsive behavior with proper Bootstrap column classes (col-12 col-md-6)

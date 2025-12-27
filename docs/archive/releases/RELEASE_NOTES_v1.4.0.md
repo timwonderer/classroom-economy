@@ -186,6 +186,53 @@ Resolved "connection refused" error when accessing Grafana from system admin das
 
 ## 🐛 Bug Fixes
 
+### Teacher Invite Code Validation
+
+Fixed critical bugs preventing teacher signup with invite codes (#738):
+
+**Whitespace Handling**
+- Strip whitespace from invite codes during creation and validation
+- Prevents copy-paste errors where whitespace causes "invalid invite code" errors
+- Ensures consistency between code creation (system admin/CLI) and validation (signup)
+- Added cleanup script (`cleanup_invite_codes.py`) for existing codes with whitespace
+
+**Timezone Comparison Error**
+- Fixed TypeError when comparing invite code expiration dates
+- Database stores datetimes as timezone-naive (UTC)
+- Comparison was using timezone-aware datetime.now(timezone.utc)
+- Added conversion to make database datetime timezone-aware before comparison
+- Fixes: TypeError: can't compare offset-naive and offset-aware datetimes
+
+**TOTP Form Validation**
+- Properly handle TOTP confirmation form submission separate from initial signup form
+- Use AdminTOTPConfirmForm for TOTP submissions instead of AdminSignupForm
+- Populate form data fields before rendering for proper WTForms validation
+- Pass date string (YYYY-MM-DD) instead of integer for dob_sum field in TOTP confirmation
+- Fixes: "dob_sum field is required" error when submitting TOTP code
+
+**Debug Logging**
+- Added comprehensive logging for invite code creation and validation
+- Log TOTP code receipt, length, and verification result
+- Log form validation errors and submission details
+- Helps diagnose signup issues quickly
+
+### TOTP Setup UI
+
+Updated TOTP setup page to match new brand theme:
+
+**Theme Consistency**
+- Replaced hardcoded colors with CSS variables (--primary, --secondary, etc.)
+- Updated gradient to use var(--primary) and var(--primary-hover)
+- Changed logo from teacher-logo-192.png to logo_teacher_transparent_512.png
+- Updated QR panel and manual code styling to use theme variables
+- Added pattern background to branding side to match signup page
+- Updated button hover states to match new brand guidelines
+
+### Onboarding Templates
+
+- Updated color scheme and text for better consistency with new brand theme
+- Improved visual consistency across all onboarding flows
+
 ### Admin Dashboard
 - Fixed duplicate greeting that was appearing in both page header and content section
 - Now shows single, centered greeting for cleaner appearance
@@ -215,14 +262,19 @@ None - This is a feature and UI-focused release with no schema changes
 ### Files Changed
 
 **Major File Updates**
-- `app/routes/admin.py` - Announcement system routes
-- `app/routes/system_admin.py` - Grafana proxy and global announcements
+- `app/routes/admin.py` - Announcement system routes, invite code validation fixes, TOTP form handling
+- `app/routes/system_admin.py` - Grafana proxy, global announcements, invite code whitespace handling
 - `app/routes/student.py` - Enhanced redirect protection
 - `app/templates/admin_layout.html` - Accordion navigation
 - `app/templates/student_dashboard.html` - Enhanced dashboard with greetings and balance cards
 - `app/templates/admin_dashboard.html` - Personalized greeting
 - `app/templates/admin_login.html` - Streamlined authentication flow
 - `app/templates/system_admin_login.html` - Streamlined authentication flow
+- `app/templates/admin_signup_totp.html` - TOTP setup UI with new brand theme
+- `app/templates/admin_onboarding.html` - Updated color scheme and text
+- `cleanup_invite_codes.py` - New script for cleaning up whitespace in existing invite codes
+- `manage_invites.py` - Updated to strip whitespace from invite codes
+- `static/css/style.css` - Minor style updates for onboarding
 
 ### Security Improvements
 - CodeQL security alerts remediation (62 alerts addressed)
@@ -249,7 +301,12 @@ None - This is a feature and UI-focused release with no schema changes
    - For optimal performance, update Nginx configuration (see `nginx-grafana-fix.conf`)
    - Set `GRAFANA_URL` environment variable if Grafana is not on localhost:3000
 
-3. **UI Changes**
+3. **Teacher Signup Fixes**
+   - Teacher signup with invite codes now works reliably
+   - If you have existing invite codes with whitespace issues, run `python cleanup_invite_codes.py`
+   - TOTP setup page now matches new brand theme
+
+4. **UI Changes**
    - Navigation reorganized into accordion sections
    - All existing functionality remains accessible, just better organized
    - Students will see new dashboard layout on next login
