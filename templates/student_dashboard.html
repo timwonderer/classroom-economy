@@ -20,13 +20,12 @@
     if (hour >= 5 && hour < 12) {
         greeting = 'Good morning';
     } else if (hour >= 12 && hour < 17) {
-        greeting = mid_day_greeting[Math.floor(Math.random() * mid_day_greeting.length)];
+        greeting = midDayGreeting[Math.floor(Math.random() * midDayGreeting.length)];
     } else if (hour >= 17 || hour < 5) {
         greeting = 'Good evening';
     }
 
     document.getElementById('greeting-text').textContent = greeting;
-    document.getElementById('dashboard-greeting').textContent = greeting + ', {{ student.first_name }}!';
 })();
 </script>
 <!-- Toast Container for Notifications -->

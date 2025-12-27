@@ -148,6 +148,8 @@
                 {% endif %}
             {% endwith %}
 
+            <div id="loginError" class="alert alert-danger border-0 shadow-sm mb-4 d-none" role="alert"></div>
+
             {% if form %}
             <form method="POST" id="loginForm">
                 {{ form.hidden_tag() }}
@@ -215,97 +217,25 @@
     <script src="{{ static_url('js/passkey_login.js') }}"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
-            const authMethodSelection = document.getElementById('authMethodSelection');
-            const totpFieldContainer = document.getElementById('totpFieldContainer');
-            const useAuthenticatorBtn = document.getElementById('useAuthenticatorBtn');
-            const usePasskeyBtn = document.getElementById('usePasskeyBtn');
-            const backToMethodsBtn = document.getElementById('backToMethodsBtn');
-            const usernameField = document.getElementById('usernameField');
-
-            // Handle "Use my authenticator" button click
-            useAuthenticatorBtn.addEventListener('click', function() {
-                authMethodSelection.style.display = 'none';
-                totpFieldContainer.style.display = 'block';
-                document.getElementById('totp_code').focus();
+            initializeAuthMethodSwitch({
+                authContainerId: 'authMethodSelection',
+                totpContainerId: 'totpFieldContainer',
+                authenticatorButtonId: 'useAuthenticatorBtn',
+                backButtonId: 'backToMethodsBtn',
+                totpInputId: 'totp_code'
             });
 
-            // Handle "Use my passkey" button click
-            usePasskeyBtn.addEventListener('click', async function() {
-                const username = usernameField.value.trim();
-                if (!username) {
-                    alert('Please enter your username first');
-                    usernameField.focus();
-                    return;
-                }
-
-                // Trigger passkey authentication
-                try {
-                    await triggerPasskeyAuth();
-                } catch (error) {
-                    console.error('Passkey authentication failed:', error);
-                    // Show TOTP field as fallback
-                    authMethodSelection.style.display = 'none';
-                    totpFieldContainer.style.display = 'block';
-                    document.getElementById('totp_code').focus();
-                }
+            setupPasskeyAuthFlow({
+                buttonId: 'usePasskeyBtn',
+                usernameFieldId: 'usernameField',
+                startUrl: '{{ url_for("sysadmin.passkey_auth_start") }}',
+                finishUrl: '{{ url_for("sysadmin.passkey_auth_finish") }}',
+                dashboardUrl: '{{ url_for("sysadmin.dashboard") }}',
+                useCsrf: false,
+                authContainerId: 'authMethodSelection',
+                totpContainerId: 'totpFieldContainer',
+                errorContainerId: 'loginError'
             });
-
-            // Handle "Back" button click
-            backToMethodsBtn.addEventListener('click', function() {
-                totpFieldContainer.style.display = 'none';
-                authMethodSelection.style.display = 'block';
-                document.getElementById('totp_code').value = '';
-            });
-
-            // Passkey authentication function
-            async function triggerPasskeyAuth() {
-                const button = usePasskeyBtn;
-                const originalContent = button.innerHTML;
-                button.disabled = true;
-                button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Authenticating...';
-
-                try {
-                    // Initialize passkey login
-                    const response = await fetch('{{ url_for("sysadmin.passkey_auth_start") }}', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        }
-                    });
-
-                    const options = await response.json();
-
-                    if (options.error) {
-                        throw new Error(options.error);
-                    }
-
-                    // Use passwordless.dev client
-                    const p = new Passwordless.Client({ apiUrl: 'https://v4.passwordless.dev' });
-                    const token = await p.signinWithDiscoverable(options);
-
-                    // Verify the token
-                    const verifyResponse = await fetch('{{ url_for("sysadmin.passkey_auth_finish") }}', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ token })
-                    });
-
-                    const result = await verifyResponse.json();
-
-                    if (result.success) {
-                        window.location.href = '{{ url_for("sysadmin.dashboard") }}';
-                    } else {
-                        throw new Error(result.error || 'Authentication failed');
-                    }
-                } catch (error) {
-                    console.error('Passkey error:', error);
-                    button.disabled = false;
-                    button.innerHTML = originalContent;
-                    throw error;
-                }
-            }
         });
     </script>
 </body>

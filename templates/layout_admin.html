@@ -175,6 +175,9 @@
                             <a href="{{ url_for('admin.feature_settings') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'feature_settings' %}active{% endif %}">
                                 <span class="material-symbols-outlined">tune</span> Features
                             </a>
+                            <a href="{{ url_for('admin.deletion_requests') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'deletion_requests' %}active{% endif %}">
+                                <span class="material-symbols-outlined">person_cancel</span> Account Deletion Requests
+                            </a>
                             <a href="{{ url_for('admin.help_support') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'help' %}active{% endif %}">
                                 <span class="material-symbols-outlined">help</span> Help &amp; Support
                             </a>
