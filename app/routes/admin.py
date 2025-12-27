@@ -38,7 +38,7 @@ from app.models import (
     StudentInsurance, InsuranceClaim, HallPassLog, PayrollSettings, PayrollReward, PayrollFine,
     BankingSettings, TeacherBlock, DeletionRequest, DeletionRequestType, DeletionRequestStatus,
     UserReport, FeatureSettings, TeacherOnboarding, StudentBlock, RecoveryRequest, StudentRecoveryCode,
-    DemoStudent, AdminCredential, Announcement
+    DemoStudent, AdminCredential
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
@@ -3753,6 +3753,13 @@ def transactions():
 def void_transaction(transaction_id):
     """Void a transaction."""
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+
+    def get_safe_redirect():
+        target = request.referrer
+        if target and is_safe_url(target):
+            return target
+        return url_for('admin.dashboard')
+
     tx = (
         Transaction.query
         .join(Student, Transaction.student_id == Student.id)
@@ -3770,27 +3777,12 @@ def void_transaction(transaction_id):
         if is_json:
             return jsonify(status="error", message="Failed to void transaction"), 500
         flash("Error voiding transaction.", "error")
-        # Safe redirect: validate referrer to prevent open redirects
-        ref = request.referrer or ""
-        potential_url = ref.replace('\\', '')
-        parsed = urlparse(potential_url)
-        if not parsed.scheme and not parsed.netloc:
-            return_url = potential_url
-        else:
-            return_url = url_for('admin.dashboard')
-        return redirect(return_url)
+        return redirect(get_safe_redirect())
+
     if is_json:
         return jsonify(status="success", message="Transaction voided.")
     flash("✅ Transaction voided.", "success")
-    # Safe redirect: validate referrer to prevent open redirects
-    ref = request.referrer or ""
-    potential_url = ref.replace('\\', '')
-    parsed = urlparse(potential_url)
-    if not parsed.scheme and not parsed.netloc:
-        return_url = potential_url
-    else:
-        return_url = url_for('admin.dashboard')
-    return redirect(return_url)
+    return redirect(get_safe_redirect())
 
 
 # -------------------- HALL PASS MANAGEMENT --------------------
@@ -6245,25 +6237,16 @@ def announcements():
     """
     admin_id = session.get('admin_id')
 
-    # Get unique teacher blocks (class periods) by join_code
-    # TeacherBlock has one row per student seat, so we need to get distinct periods
-    teacher_blocks_query = TeacherBlock.query.filter_by(
+    # Get all teacher blocks (class periods)
+    teacher_blocks = TeacherBlock.query.filter_by(
         teacher_id=admin_id
     ).order_by(TeacherBlock.block).all()
-
-    # Deduplicate by join_code to get unique periods
-    seen_join_codes = set()
-    teacher_blocks = []
-    for tb in teacher_blocks_query:
-        if tb.join_code not in seen_join_codes:
-            seen_join_codes.add(tb.join_code)
-            teacher_blocks.append(tb)
 
     # Create a mapping of join_code to block info
     blocks_by_join_code = {
         tb.join_code: {
             'block': tb.block,
-            'label': f"{tb.get_class_label()} (Period {tb.block})",
+            'label': tb.get_class_label(),
             'join_code': tb.join_code
         }
         for tb in teacher_blocks
@@ -6302,19 +6285,10 @@ def announcement_create():
 
     admin_id = session.get('admin_id')
 
-    # Get unique teacher blocks (class periods) by join_code
-    # TeacherBlock has one row per student seat, so we need to get distinct periods
-    teacher_blocks_query = TeacherBlock.query.filter_by(
+    # Get all teacher blocks for period selection
+    teacher_blocks = TeacherBlock.query.filter_by(
         teacher_id=admin_id
     ).order_by(TeacherBlock.block).all()
-
-    # Deduplicate by join_code to get unique periods
-    seen_join_codes = set()
-    teacher_blocks = []
-    for tb in teacher_blocks_query:
-        if tb.join_code not in seen_join_codes:
-            seen_join_codes.add(tb.join_code)
-            teacher_blocks.append(tb)
 
     if not teacher_blocks:
         flash('You need to set up class periods before creating announcements.', 'warning')
