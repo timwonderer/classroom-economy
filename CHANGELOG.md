@@ -8,10 +8,6 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
-### Fixed
-- **Admin Dashboard**: Removed duplicate greeting that was appearing in both page header and content section
-- **Student Dashboard**: Improved account balance cards with clearer styling (using light backgrounds instead of semi-transparent overlays) and better mobile responsiveness
-
 ### Added
 - **UI/UX Improvements** - Comprehensive redesign of dashboard and navigation interfaces
   - **Personalized Greetings**:
@@ -26,7 +22,7 @@ and this project follows semantic versioning principles.
     - Reorganized sidebar navigation into collapsible accordion categories
     - Categories: Classroom, Economy, Bills, Settings
     - Only one accordion section open at a time for cleaner interface
-    - Consolidated Settings section (Account, Passkey, Features, Help & Support)
+    - Consolidated Settings section (Personalization, Passkey, Features, Help & Support)
     - Removed "Mobile Site" link as it doesn't trigger any action
   - **Improved Sign Out Button**: Enhanced contrast with red filled button and white text
   - **Streamlined Authentication Flow**:
@@ -47,6 +43,8 @@ and this project follows semantic versioning principles.
   - Comprehensive test coverage for model, multi-tenancy, and cascade deletion
 
 ### Fixed
+- **Admin Dashboard**: Removed duplicate greeting that was appearing in both page header and content section
+- **Student Dashboard**: Improved account balance cards with clearer styling (using light backgrounds instead of semi-transparent overlays) and better mobile responsiveness
 - **Grafana Access Issue** - Fixed "connection refused" error when accessing Grafana from system admin dashboard
   - **Root Cause**: Nginx `proxy_pass` had trailing slash that stripped URL path, causing infinite redirects
   - **Dual-Layer Solution** for maximum reliability:
