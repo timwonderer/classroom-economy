@@ -1,8 +1,8 @@
 # Classroom Token Hub - Development Priorities
 
-**Last Updated:** 2025-12-21
-**Current Version:** 1.2.1
-**Target:** 1.3.0 Feature Release
+**Last Updated:** 2025-12-27
+**Current Version:** 1.4.0
+**Target:** 1.5.0 Feature Release
 
 ---
 
@@ -22,6 +22,31 @@
 ---
 
 ## Recent Releases
+
+### ✅ Version 1.4.0 - December 27, 2025
+
+**Major feature release focused on classroom communication and UI/UX enhancements:**
+
+#### 🎯 Key Accomplishments
+- ✅ **Announcement System** - Teachers can create and manage announcements for class periods
+- ✅ **UI/UX Redesign** - Personalized greetings, enhanced dashboards, accordion navigation
+- ✅ **Enhanced Security** - Fixed open redirect vulnerabilities and Grafana access issues
+- ✅ **Streamlined Authentication** - Improved login flow with better error handling
+- ✅ **Student Dashboard Improvements** - Side-by-side account cards with projected interest
+
+See [RELEASE_NOTES_v1.4.0.md](docs/archive/releases/RELEASE_NOTES_v1.4.0.md) for full details.
+
+### ✅ Version 1.3.0 - December 25, 2025
+
+**Major security-focused release with passwordless authentication:**
+
+#### 🎯 Key Accomplishments
+- ✅ **Passwordless Authentication** - WebAuthn/FIDO2 passkey support for teachers and system admins
+- ✅ **Encrypted TOTP Secrets** - TOTP 2FA secrets now encrypted at rest using Fernet
+- ✅ **Security Audit** - Comprehensive attack surface security audit completed
+- ✅ **Service Worker Fixes** - Resolved persistent browser console errors
+
+See [RELEASE_NOTES_v1.3.0.md](docs/archive/releases/RELEASE_NOTES_v1.3.0.md) for full details.
 
 ### ✅ Version 1.2.0 - December 18, 2025
 

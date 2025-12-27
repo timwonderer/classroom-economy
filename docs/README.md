@@ -53,6 +53,8 @@ Welcome to the Classroom Token Hub documentation! This index points you to the m
 - **[Network Vulnerability Report](security/NETWORK_VULNERABILITY_REPORT.md)** — Network security assessment.
 
 ### 📦 Archive & Releases
+- **[Release Notes v1.4.0](archive/releases/RELEASE_NOTES_v1.4.0.md)** — Announcement system, UI/UX enhancements, security fixes (Dec 27, 2025)
+- **[Release Notes v1.3.0](archive/releases/RELEASE_NOTES_v1.3.0.md)** — Passwordless authentication (passkeys), encrypted TOTP, security audit (Dec 25, 2025)
 - **[Release Notes v1.2.1](archive/releases/RELEASE_NOTES_v1.2.1.md)** — Migration hardening, join code audits, multi-tenancy fixes (Dec 21, 2025)
 - **[Release Notes v1.2.0](archive/releases/RELEASE_NOTES_v1.2.0.md)** — Progressive Web App, mobile experience, accessibility (Dec 18, 2025)
 - **[Release Notes v1.1.1](archive/releases/RELEASE_NOTES_v1.1.1.md)** — Stability patch with auth and theming fixes (Dec 15, 2025)
@@ -97,7 +99,7 @@ Welcome to the Classroom Token Hub documentation! This index points you to the m
 | [Economy Specification](technical-reference/ECONOMY_SPECIFICATION.md) | Developers | Financial system spec | 2025-12-11 |
 | [Migration Guide](development/MIGRATION_GUIDE.md) | Developers | Database migration help | 2025-11-18 |
 | [Operations Guides](operations/) | Ops | Operational procedures | 2025-11-28 |
-| [Changelog](../CHANGELOG.md) | All | Version history and changes | 2025-12-21 |
+| [Changelog](../CHANGELOG.md) | All | Version history and changes | 2025-12-27 |
 | [README](../README.md) | All | Project overview and quick start | 2025-12-21 |
 
 ---

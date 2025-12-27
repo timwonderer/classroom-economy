@@ -9,6 +9,16 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+### Security
+
+## [1.4.0] - 2025-12-27
+
+### Added
 - **Announcement System** - Teachers can create and manage announcements for their class periods
   - Display announcements on student dashboards with dismiss capability
   - Filter announcements by class period
@@ -46,7 +56,29 @@ and this project follows semantic versioning principles.
     - Applied to both admin and system admin login pages
     - Cleaner, more intuitive authentication experience with proper error handling
 
+### Changed
+- **Dependency Updates** - Updated key dependencies for security and stability
+  - Updated `click` from 8.1.8 to 8.3.1
+  - Updated `beautifulsoup4` from 4.13.4 to 4.14.3
+  - Updated `requests` from 2.32.3 to 2.32.4
+
 ### Security
+- **CodeQL Security Alerts Remediation** - Addressed 62 security alerts identified by CodeQL scanning (#737)
+  - **Clear-text Logging of Sensitive Information**:
+    - Remove TOTP secret printing from `create_admin.py`, `wsgi.py`, and seed scripts
+    - TOTP secrets now encrypted in database with secure access only
+    - Prevents TOTP secrets from appearing in logs, console output, or command history
+  - **DOM XSS Vulnerabilities**:
+    - Fixed `innerHTML` usage in `templates/student_transfer.html`
+    - Fixed `innerHTML` usage in `static/js/attendance.js`
+    - Replaced with safe DOM manipulation using `createElement` and `textContent`
+    - Prevents XSS attacks via user-controlled data
+  - **GitHub Actions Workflow Permissions**:
+    - Added explicit permissions to `toggle-maintenance.yml`, `check-migrations.yml`, and `deploy.yml`
+    - Follows principle of least privilege for workflow security
+    - Reduces workflow attack surface
+  - **Documentation**: Added `SECURITY_FIXES_SUMMARY.md` with complete analysis of all 62 alerts
+  - **Summary**: Fixed 23+ real security issues, suppressed 2 false positives, reviewed 37 false positives (already mitigated)
 - **Enhanced Open Redirect Protection** - Improved URL validation in student class enrollment redirects
   - Upgraded `_is_safe_url()` function to use same-origin validation
   - Now uses `urljoin()` to resolve relative URLs against application's base URL
@@ -485,4 +517,4 @@ When adding entries:
 - Keep entries concise but informative
 - Update the date when moving Unreleased to a version
 
-**Last Updated:** 2025-12-18
+**Last Updated:** 2025-12-27
