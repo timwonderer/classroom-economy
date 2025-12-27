@@ -171,7 +171,7 @@ Resolved "connection refused" error when accessing Grafana from system admin das
 - Configurable via `GRAFANA_URL` environment variable (defaults to `http://localhost:3000`)
 - Rate-limit exempt for smooth dashboard operation
 - Graceful error handling with user-friendly messages
-- Added `requests==2.32.3` dependency
+- Initially added `requests==2.32.3` dependency, which was later updated (see Dependency Updates section).
 
 **Nginx Fix (Production)**
 - Corrected configuration provided in `nginx-grafana-fix.conf`
