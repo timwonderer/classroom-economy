@@ -967,12 +967,14 @@ def manage_teachers():
     # Handle invite code form submission
     form = SystemAdminInviteForm()
     if form.validate_on_submit():
-        code = form.code.data or secrets.token_urlsafe(8)
+        code = (form.code.data.strip() if form.code.data else None) or secrets.token_urlsafe(8)
+        current_app.logger.info(f"📝 Creating invite code: {repr(code)} (length: {len(code)})")
         expiry_days = request.form.get('expiry_days', 30, type=int)
         expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
         invite = AdminInviteCode(code=code, expires_at=expires_at)
         db.session.add(invite)
         db.session.commit()
+        current_app.logger.info(f"✅ Invite code created in database: {repr(invite.code)} (id: {invite.id})")
         flash(f"✅ Invite code '{code}' created successfully.", "success")
         return redirect(url_for("sysadmin.manage_teachers") + "#invite-codes")
 
