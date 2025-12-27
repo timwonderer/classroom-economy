@@ -125,12 +125,12 @@ response = Response(resp.iter_content(chunk_size=8192), resp.status_code, respon
 
 | Category | Count | Status |
 |----------|-------|--------|
-| Clear-text logging | ~15 | ✅ Fixed |
-| DOM XSS (innerHTML) | 5 | ✅ Fixed |
+| Clear-text logging | 16 | ✅ Fixed |
+| DOM XSS (innerHTML) | 2 | ✅ Fixed |
 | Workflow permissions | 3 | ✅ Fixed |
 | Test false positives | 2 | ✅ Suppressed |
-| URL redirect (mitigated) | ~30 | 🔍 Already safe |
-| Exception exposure | ~10 | 🔍 False positive |
+| URL redirect (mitigated) |19| 🔍 Already safe |
+| Exception exposure | 19 | 🔍 False positive |
 | Reflected XSS | 1 | 🔍 False positive |
 | **Total** | **62** | **✅ All addressed** |
 
