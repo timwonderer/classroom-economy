@@ -242,38 +242,86 @@ function updateHallPassOverlay(period, hallPass) {
   // Show pass info inline based on status
   if (passInfoDisplay) {
     passInfoDisplay.style.display = 'block';
+    passInfoDisplay.textContent = ''; // Clear existing content
 
     if (hallPass.status === 'pending') {
-      passInfoDisplay.innerHTML = `
-        <div class="alert alert-warning mb-2">
-          <strong>🕐 Hall Pass: Pending Approval</strong><br>
-          <small>Destination: ${hallPass.reason}</small><br>
-          <button class="btn btn-sm btn-danger mt-1" onclick="cancelHallPass(${hallPass.id}, '${period}')">Cancel</button>
-        </div>
-      `;
+      const alertDiv = document.createElement('div');
+      alertDiv.className = 'alert alert-warning mb-2';
+
+      const strong = document.createElement('strong');
+      strong.textContent = '🕐 Hall Pass: Pending Approval';
+      alertDiv.appendChild(strong);
+      alertDiv.appendChild(document.createElement('br'));
+
+      const small = document.createElement('small');
+      small.textContent = 'Destination: ' + (hallPass.reason || 'N/A');
+      alertDiv.appendChild(small);
+      alertDiv.appendChild(document.createElement('br'));
+
+      const button = document.createElement('button');
+      button.className = 'btn btn-sm btn-danger mt-1';
+      button.textContent = 'Cancel';
+      button.onclick = function() { cancelHallPass(hallPass.id, period); };
+      alertDiv.appendChild(button);
+
+      passInfoDisplay.appendChild(alertDiv);
     } else if (hallPass.status === 'approved') {
-      passInfoDisplay.innerHTML = `
-        <div class="alert alert-success mb-2">
-          <strong>✅ Hall Pass Approved!</strong><br>
-          <span class="badge bg-success" style="font-size: 1.2rem; letter-spacing: 0.1em;">Pass #${hallPass.pass_number}</span><br>
-          <small>Go to terminal to check in</small>
-        </div>
-      `;
+      const alertDiv = document.createElement('div');
+      alertDiv.className = 'alert alert-success mb-2';
+
+      const strong = document.createElement('strong');
+      strong.textContent = '✅ Hall Pass Approved!';
+      alertDiv.appendChild(strong);
+      alertDiv.appendChild(document.createElement('br'));
+
+      const badge = document.createElement('span');
+      badge.className = 'badge bg-success';
+      badge.style.fontSize = '1.2rem';
+      badge.style.letterSpacing = '0.1em';
+      badge.textContent = 'Pass #' + (hallPass.pass_number || '');
+      alertDiv.appendChild(badge);
+      alertDiv.appendChild(document.createElement('br'));
+
+      const small = document.createElement('small');
+      small.textContent = 'Go to terminal to check in';
+      alertDiv.appendChild(small);
+
+      passInfoDisplay.appendChild(alertDiv);
     } else if (hallPass.status === 'left') {
-      passInfoDisplay.innerHTML = `
-        <div class="alert alert-info mb-2">
-          <strong>📍 Currently Out</strong><br>
-          <span class="badge bg-info" style="font-size: 1.1rem;">Pass #${hallPass.pass_number}</span><br>
-          <small>Destination: ${hallPass.reason}</small>
-        </div>
-      `;
+      const alertDiv = document.createElement('div');
+      alertDiv.className = 'alert alert-info mb-2';
+
+      const strong = document.createElement('strong');
+      strong.textContent = '📍 Currently Out';
+      alertDiv.appendChild(strong);
+      alertDiv.appendChild(document.createElement('br'));
+
+      const badge = document.createElement('span');
+      badge.className = 'badge bg-info';
+      badge.style.fontSize = '1.1rem';
+      badge.textContent = 'Pass #' + (hallPass.pass_number || '');
+      alertDiv.appendChild(badge);
+      alertDiv.appendChild(document.createElement('br'));
+
+      const small = document.createElement('small');
+      small.textContent = 'Destination: ' + (hallPass.reason || 'N/A');
+      alertDiv.appendChild(small);
+
+      passInfoDisplay.appendChild(alertDiv);
     } else if (hallPass.status === 'rejected') {
-      passInfoDisplay.innerHTML = `
-        <div class="alert alert-danger mb-2">
-          <strong>❌ Hall Pass Denied</strong><br>
-          <small>Reason: ${hallPass.reason}</small>
-        </div>
-      `;
+      const alertDiv = document.createElement('div');
+      alertDiv.className = 'alert alert-danger mb-2';
+
+      const strong = document.createElement('strong');
+      strong.textContent = '❌ Hall Pass Denied';
+      alertDiv.appendChild(strong);
+      alertDiv.appendChild(document.createElement('br'));
+
+      const small = document.createElement('small');
+      small.textContent = 'Reason: ' + (hallPass.reason || 'N/A');
+      alertDiv.appendChild(small);
+
+      passInfoDisplay.appendChild(alertDiv);
     } else {
       passInfoDisplay.style.display = 'none';
     }

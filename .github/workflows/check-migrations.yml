@@ -10,6 +10,10 @@ on:
   # Also allow manual trigger
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write  # For commenting on PRs
+
 jobs:
   check-migration-heads:
     runs-on: ubuntu-latest

@@ -708,8 +708,8 @@ def seed_database():
     print("-" * 80)
     for teacher_cred in credentials['teachers']:
         print(f"\nUsername: {teacher_cred['username']}")
-        print(f"TOTP Secret: {teacher_cred['totp_secret']}")
-        print(f"TOTP Setup URL: {teacher_cred['totp_url']}")
+        print("TOTP Secret: [REDACTED - stored encrypted in database]")
+        print("Note: For security, TOTP secrets are not displayed in logs.")
 
     # Class periods
     print("\n" + "-" * 80)

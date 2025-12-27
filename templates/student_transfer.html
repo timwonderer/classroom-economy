@@ -396,8 +396,21 @@
 
         const fromText = fromAccount.charAt(0).toUpperCase() + fromAccount.slice(1);
         const toText = toAccount.charAt(0).toUpperCase() + toAccount.slice(1);
-        document.getElementById("transfer-summary").innerHTML =
-            `Transfer <strong>$${amount}</strong> from <strong>${fromText}</strong> to <strong>${toText}</strong>`;
+        // Use textContent to prevent XSS - create structure manually
+        const summaryEl = document.getElementById("transfer-summary");
+        summaryEl.textContent = ''; // Clear existing content
+        summaryEl.appendChild(document.createTextNode('Transfer '));
+        const amountStrong = document.createElement('strong');
+        amountStrong.textContent = `$${amount}`;
+        summaryEl.appendChild(amountStrong);
+        summaryEl.appendChild(document.createTextNode(' from '));
+        const fromStrong = document.createElement('strong');
+        fromStrong.textContent = fromText;
+        summaryEl.appendChild(fromStrong);
+        summaryEl.appendChild(document.createTextNode(' to '));
+        const toStrong = document.createElement('strong');
+        toStrong.textContent = toText;
+        summaryEl.appendChild(toStrong);
 
         // Show modal
         const modal = new bootstrap.Modal(document.getElementById('passphraseModal'));

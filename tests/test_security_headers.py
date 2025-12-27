@@ -11,8 +11,8 @@ def test_csp_header(client):
     # Check for new directives
     # connect-src should contain cdn.jsdelivr.net
     assert "connect-src" in csp
-    assert "https://cdn.jsdelivr.net" in csp
+    assert "https://cdn.jsdelivr.net" in csp  # nosec B105 - False positive: testing CSP header contains expected URL
 
     # script-src should contain static.cloudflareinsights.com
     assert "script-src" in csp
-    assert "https://static.cloudflareinsights.com" in csp
+    assert "https://static.cloudflareinsights.com" in csp  # nosec B105 - False positive: testing CSP header contains expected URL

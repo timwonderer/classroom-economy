@@ -114,9 +114,9 @@ def create_sysadmin():
     db.session.add(sysadmin)
     db.session.commit()
     print(f"✅ System admin '{username}' created successfully.")
-    print(f"🔑 TOTP secret for authenticator app: {totp_secret}")
-    uri = pyotp.totp.TOTP(totp_secret).provisioning_uri(name=username, issuer_name="Classroom Economy SysAdmin")
-    print(f"📱 QR Code URI: {uri}")
+    print("🔑 TOTP secret has been encrypted and stored securely in the database.")
+    print("   For security reasons, the plaintext secret is not displayed.")
+    print("   Access it through secure administrative channels only.")
 
 
 # -------------------- APPLICATION HOOKS --------------------

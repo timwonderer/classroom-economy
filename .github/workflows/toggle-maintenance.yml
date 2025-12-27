@@ -38,6 +38,9 @@ on:
         required: false
         default: ''
 
+permissions:
+  contents: read
+
 jobs:
   toggle:
     runs-on: ubuntu-latest
