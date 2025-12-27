@@ -9,6 +9,13 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Added
+- **Announcement System** - Teachers can create and manage announcements for their class periods
+  - Display announcements on student dashboards with dismiss capability
+  - Filter announcements by class period
+  - Toggle announcement visibility (active/inactive)
+  - Create, edit, and delete announcements with rich formatting
+  - System admins can create global announcements visible across all classes
+  - Announcements link added to admin navigation under Classroom section
 - **UI/UX Improvements** - Comprehensive redesign of dashboard and navigation interfaces
   - **Personalized Greetings**:
     - Teacher dashboard displays centered "Hi, [Display Name]" greeting with info icon tooltip linking to settings
