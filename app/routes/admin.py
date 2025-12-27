@@ -963,7 +963,7 @@ def signup():
         is_valid = totp.verify(totp_code)
         current_app.logger.info(f"🔐 TOTP verification result: {is_valid}")
         if not is_valid:
-            current_app.logger.warning(f"🛑 TOTP verification failed for code: {repr(totp_code)}")
+            current_app.logger.warning(f"🛑 TOTP verification failed for user: {username}")
             msg = "Invalid TOTP code. Please try again."
             if is_json:
                 return jsonify(status="error", message=msg), 400
