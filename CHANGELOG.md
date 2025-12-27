@@ -11,40 +11,38 @@ and this project follows semantic versioning principles.
 ### Added
 - **UI/UX Improvements** - Comprehensive redesign of dashboard and navigation interfaces
   - **Personalized Greetings**:
-    - Teacher dashboard now displays personalized greeting using display name with link to change it
-    - Student dashboard shows time-based greeting (Good morning/afternoon/evening) with first name
+    - Teacher dashboard displays centered "Hi, [Display Name]" greeting with info icon tooltip linking to settings
+    - Student dashboard shows dynamic time-based greeting with first name
+    - Mid-day greetings randomize between friendly options: "Howdy", "Good day to you", "Good to see you again", "Great timing", "Let us get started"
+    - Morning (5am-12pm): "Good morning"
+    - Afternoon (12pm-5pm): Random friendly greeting
+    - Evening (5pm-5am): "Good evening"
   - **Enhanced Student Dashboard**:
-    - Removed redundant left navigation sidebar
+    - Removed redundant left navigation sidebar for cleaner layout
     - Added side-by-side account balance cards for Checking and Savings accounts
+    - Light gray card backgrounds for better visibility
     - Savings account displays projected monthly interest when balance > 0
-    - Encouragement message to save when savings balance is $0
+    - Encouragement message when savings balance is $0 to promote saving habits
+    - Fully responsive design (side-by-side on desktop, stacked on mobile)
   - **Accordion-Style Admin Navigation**:
     - Reorganized sidebar navigation into collapsible accordion categories
     - Categories: Classroom, Economy, Bills, Settings
-    - Only one accordion section open at a time for cleaner interface
-    - Consolidated Settings section (Personalization, Passkey, Features, Help & Support)
-    - Removed "Mobile Site" link as it doesn't trigger any action
+    - Bootstrap accordion ensures only one section open at a time for cleaner interface
+    - Consolidated Settings section: Personalization, Passkey, Features, Help & Support
+    - Removed non-functional "Mobile Site" link from navigation
+    - Custom CSS styling for dark sidebar theme with smooth transitions
   - **Improved Sign Out Button**: Enhanced contrast with red filled button and white text
   - **Streamlined Authentication Flow**:
-    - Login forms now present two authentication method buttons upfront
-    - "Use my authenticator" shows TOTP field with Back button
-    - "Use my passkey" triggers WebAuthn flow, falls back to TOTP on failure
-    - Cleaner, more intuitive authentication experience
-- **Teacher Announcements** - Teachers can now post announcements to communicate with students in specific class periods
-  - Create, edit, and delete announcements via `/admin/announcements`
-  - Priority levels: Low, Normal, High, Urgent (with distinct visual styles and icons)
-  - Optional expiration dates for time-limited announcements
-  - Active/inactive toggle for controlling announcement visibility
-  - Announcements displayed prominently on student dashboard
-  - Proper multi-tenancy scoping by `join_code` (announcements isolated per class period)
-  - Database model: `Announcement` with indexes for efficient querying
-  - Full CRUD routes with ownership verification and CSRF protection
-  - Bootstrap alert styling with dismiss buttons for students
-  - Comprehensive test coverage for model, multi-tenancy, and cascade deletion
+    - Login forms present two authentication method buttons upfront
+    - "Use my authenticator" button reveals TOTP field with Back button
+    - "Use my passkey" button triggers WebAuthn flow with automatic fallback to TOTP on failure
+    - Applied to both admin and system admin login pages
+    - Cleaner, more intuitive authentication experience with proper error handling
 
 ### Fixed
 - **Admin Dashboard**: Removed duplicate greeting that was appearing in both page header and content section
-- **Student Dashboard**: Improved account balance cards with clearer styling (using light backgrounds instead of semi-transparent overlays) and better mobile responsiveness
+- **Student Dashboard**: Improved account balance cards with clearer styling using light backgrounds instead of semi-transparent overlays for better readability
+- **Mobile Responsiveness**: Enhanced responsive behavior with proper Bootstrap column classes (col-12 col-md-6)
 - **Grafana Access Issue** - Fixed "connection refused" error when accessing Grafana from system admin dashboard
   - **Root Cause**: Nginx `proxy_pass` had trailing slash that stripped URL path, causing infinite redirects
   - **Dual-Layer Solution** for maximum reliability:
