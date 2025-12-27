@@ -709,7 +709,7 @@ def seed_database():
     for teacher_cred in credentials['teachers']:
         print(f"\nUsername: {teacher_cred['username']}")
         print(f"TOTP Secret: {teacher_cred['totp_secret']}")
-        print(f"TOTP Setup URL: {teacher_cred['totp_url']}")
+        print("TOTP Setup URL: [redacted - contains secret]")
 
     # Class periods
     print("\n" + "-" * 80)
