@@ -8,6 +8,10 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
+### Fixed
+- **Admin Dashboard**: Removed duplicate greeting that was appearing in both page header and content section
+- **Student Dashboard**: Improved account balance cards with clearer styling (using light backgrounds instead of semi-transparent overlays) and better mobile responsiveness
+
 ### Added
 - **UI/UX Improvements** - Comprehensive redesign of dashboard and navigation interfaces
   - **Personalized Greetings**:
