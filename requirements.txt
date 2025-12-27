@@ -32,7 +32,7 @@ tomli==2.2.1
 typing_extensions==4.15.0
 Werkzeug==3.1.4
 zope.event==5.0
-zope.interface==7.2
+zope.interface==8.1.1
 python-dateutil==2.8.2
 cryptography==46.0.3
 Flask-WTF==1.2.2
