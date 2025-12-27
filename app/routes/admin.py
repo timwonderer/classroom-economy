@@ -38,7 +38,7 @@ from app.models import (
     StudentInsurance, InsuranceClaim, HallPassLog, PayrollSettings, PayrollReward, PayrollFine,
     BankingSettings, TeacherBlock, DeletionRequest, DeletionRequestType, DeletionRequestStatus,
     UserReport, FeatureSettings, TeacherOnboarding, StudentBlock, RecoveryRequest, StudentRecoveryCode,
-    DemoStudent, AdminCredential
+    DemoStudent, AdminCredential, Announcement
 )
 from app.auth import admin_required, get_admin_student_query, get_student_for_admin
 from forms import (
@@ -6221,6 +6221,248 @@ def copy_feature_settings():
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Error copying feature settings: {e}")
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+
+
+# -------------------- ANNOUNCEMENTS --------------------
+
+@admin_bp.route('/announcements')
+@admin_required
+def announcements():
+    """
+    Manage class announcements across all class periods.
+
+    Teachers can view, filter, and manage announcements for all their class periods.
+    No period selection required - shows all announcements with period filtering.
+    """
+    admin_id = session.get('admin_id')
+
+    # Get all teacher blocks (class periods)
+    teacher_blocks = TeacherBlock.query.filter_by(
+        teacher_id=admin_id
+    ).order_by(TeacherBlock.block).all()
+
+    # Create a mapping of join_code to block info
+    blocks_by_join_code = {
+        tb.join_code: {
+            'block': tb.block,
+            'label': tb.get_class_label(),
+            'join_code': tb.join_code
+        }
+        for tb in teacher_blocks
+    }
+
+    # Get all announcements for this teacher (across all periods)
+    # Exclude system admin announcements
+    from app.models import Announcement
+    announcements_list = Announcement.query.filter_by(
+        teacher_id=admin_id,
+        system_admin_id=None  # Only teacher-created announcements
+    ).order_by(Announcement.created_at.desc()).all()
+
+    # Attach block info to each announcement
+    for announcement in announcements_list:
+        announcement.block_info = blocks_by_join_code.get(announcement.join_code, {
+            'block': 'Unknown',
+            'label': 'Unknown Period',
+            'join_code': announcement.join_code
+        })
+
+    return render_template(
+        'admin_announcements.html',
+        announcements=announcements_list,
+        teacher_blocks=teacher_blocks,
+        blocks_by_join_code=blocks_by_join_code
+    )
+
+
+@admin_bp.route('/announcements/create', methods=['GET', 'POST'])
+@admin_required
+def announcement_create():
+    """Create a new announcement for selected class periods."""
+    from forms import AnnouncementForm
+    from app.models import Announcement
+
+    admin_id = session.get('admin_id')
+
+    # Get all teacher blocks for period selection
+    teacher_blocks = TeacherBlock.query.filter_by(
+        teacher_id=admin_id
+    ).order_by(TeacherBlock.block).all()
+
+    if not teacher_blocks:
+        flash('You need to set up class periods before creating announcements.', 'warning')
+        return redirect(url_for('admin.dashboard'))
+
+    # Create form and populate period choices
+    form = AnnouncementForm()
+    form.periods.choices = [
+        (tb.join_code, f"{tb.get_class_label()} (Period {tb.block})")
+        for tb in teacher_blocks
+    ]
+
+    if form.validate_on_submit():
+        try:
+            selected_join_codes = form.periods.data
+            created_count = 0
+
+            # Create an announcement for each selected period
+            for join_code in selected_join_codes:
+                announcement = Announcement(
+                    teacher_id=admin_id,
+                    join_code=join_code,
+                    title=form.title.data,
+                    message=form.message.data,
+                    priority=form.priority.data,
+                    is_active=form.is_active.data,
+                    expires_at=form.expires_at.data
+                )
+                db.session.add(announcement)
+                created_count += 1
+
+            db.session.commit()
+
+            if created_count == 1:
+                flash(f'Announcement "{form.title.data}" created successfully!', 'success')
+            else:
+                flash(f'Announcement "{form.title.data}" posted to {created_count} class periods!', 'success')
+
+            return redirect(url_for('admin.announcements'))
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error creating announcement: {e}")
+            flash('An error occurred while creating the announcement.', 'danger')
+
+    return render_template(
+        'admin_announcement_form.html',
+        form=form,
+        action='Create',
+        teacher_blocks=teacher_blocks
+    )
+
+
+@admin_bp.route('/announcements/edit/<int:announcement_id>', methods=['GET', 'POST'])
+@admin_required
+def announcement_edit(announcement_id):
+    """Edit an existing announcement."""
+    from forms import AnnouncementForm
+    from app.models import Announcement
+
+    admin_id = session.get('admin_id')
+
+    # Get announcement and verify ownership
+    announcement = Announcement.query.filter_by(
+        id=announcement_id,
+        teacher_id=admin_id
+    ).first()
+
+    if not announcement:
+        flash('Announcement not found or access denied.', 'danger')
+        return redirect(url_for('admin.announcements'))
+
+    # Get the block info for this announcement
+    teacher_block = TeacherBlock.query.filter_by(
+        teacher_id=admin_id,
+        join_code=announcement.join_code
+    ).first()
+
+    form = AnnouncementForm(obj=announcement)
+    # Don't need periods field for editing - it's locked to one period
+    del form.periods
+
+    if form.validate_on_submit():
+        try:
+            announcement.title = form.title.data
+            announcement.message = form.message.data
+            announcement.priority = form.priority.data
+            announcement.is_active = form.is_active.data
+            announcement.expires_at = form.expires_at.data
+            announcement.updated_at = datetime.now(timezone.utc)
+
+            db.session.commit()
+
+            flash(f'Announcement "{announcement.title}" updated successfully!', 'success')
+            return redirect(url_for('admin.announcements'))
+
+        except Exception as e:
+            db.session.rollback()
+            current_app.logger.error(f"Error updating announcement: {e}")
+            flash('An error occurred while updating the announcement.', 'danger')
+
+    return render_template(
+        'admin_announcement_form.html',
+        form=form,
+        announcement=announcement,
+        teacher_block=teacher_block,
+        action='Edit'
+    )
+
+
+@admin_bp.route('/announcements/delete/<int:announcement_id>', methods=['POST'])
+@admin_required
+def announcement_delete(announcement_id):
+    """Delete an announcement."""
+    from app.models import Announcement
+
+    admin_id = session.get('admin_id')
+
+    # Get announcement and verify ownership
+    announcement = Announcement.query.filter_by(
+        id=announcement_id,
+        teacher_id=admin_id
+    ).first()
+
+    if not announcement:
+        flash('Announcement not found or access denied.', 'danger')
+        return redirect(url_for('admin.announcements'))
+
+    try:
+        title = announcement.title
+        db.session.delete(announcement)
+        db.session.commit()
+
+        flash(f'Announcement "{title}" deleted successfully!', 'success')
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error deleting announcement: {e}")
+        flash('An error occurred while deleting the announcement.', 'danger')
+
+    return redirect(url_for('admin.announcements'))
+
+
+@admin_bp.route('/announcements/toggle/<int:announcement_id>', methods=['POST'])
+@admin_required
+def announcement_toggle(announcement_id):
+    """Toggle announcement active status."""
+    from app.models import Announcement
+
+    admin_id = session.get('admin_id')
+
+    # Get announcement and verify ownership
+    announcement = Announcement.query.filter_by(
+        id=announcement_id,
+        teacher_id=admin_id
+    ).first()
+
+    if not announcement:
+        return jsonify({'status': 'error', 'message': 'Announcement not found'}), 404
+
+    try:
+        announcement.is_active = not announcement.is_active
+        announcement.updated_at = datetime.now(timezone.utc)
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'is_active': announcement.is_active,
+            'message': f'Announcement {"activated" if announcement.is_active else "deactivated"}'
+        })
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Error toggling announcement: {e}")
         return jsonify({'status': 'error', 'message': str(e)}), 500
 
 
