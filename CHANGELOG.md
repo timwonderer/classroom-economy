@@ -9,6 +9,16 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+### Security
+
+## [1.4.0] - 2025-12-27
+
+### Added
 - **Announcement System** - Teachers can create and manage announcements for their class periods
   - Display announcements on student dashboards with dismiss capability
   - Filter announcements by class period
@@ -46,7 +56,29 @@ and this project follows semantic versioning principles.
     - Applied to both admin and system admin login pages
     - Cleaner, more intuitive authentication experience with proper error handling
 
+### Changed
+- **Dependency Updates** - Updated key dependencies for security and stability
+  - Updated `click` from 8.1.8 to 8.3.1
+  - Updated `beautifulsoup4` from 4.13.4 to 4.14.3
+  - Updated `requests` from 2.32.3 to 2.32.4
+
 ### Security
+- **CodeQL Security Alerts Remediation** - Addressed 62 security alerts identified by CodeQL scanning (#737)
+  - **Clear-text Logging of Sensitive Information**:
+    - Remove TOTP secret printing from `create_admin.py`, `wsgi.py`, and seed scripts
+    - TOTP secrets now encrypted in database with secure access only
+    - Prevents TOTP secrets from appearing in logs, console output, or command history
+  - **DOM XSS Vulnerabilities**:
+    - Fixed `innerHTML` usage in `templates/student_transfer.html`
+    - Fixed `innerHTML` usage in `static/js/attendance.js`
+    - Replaced with safe DOM manipulation using `createElement` and `textContent`
+    - Prevents XSS attacks via user-controlled data
+  - **GitHub Actions Workflow Permissions**:
+    - Added explicit permissions to `toggle-maintenance.yml`, `check-migrations.yml`, and `deploy.yml`
+    - Follows principle of least privilege for workflow security
+    - Reduces workflow attack surface
+  - **Documentation**: Added `SECURITY_FIXES_SUMMARY.md` with complete analysis of all 62 alerts
+  - **Summary**: Fixed 23+ real security issues, suppressed 2 false positives, reviewed 37 false positives (already mitigated)
 - **Enhanced Open Redirect Protection** - Improved URL validation in student class enrollment redirects
   - Upgraded `_is_safe_url()` function to use same-origin validation
   - Now uses `urljoin()` to resolve relative URLs against application's base URL
@@ -57,6 +89,21 @@ and this project follows semantic versioning principles.
   - Affects student add-class flow redirect handling (`app/routes/student.py:710-877`)
 
 ### Fixed
+- **Teacher Invite Code Validation** - Fixed critical bugs preventing teacher signup with invite codes (#738)
+  - **Whitespace Handling**: Strip whitespace from invite codes during creation and validation
+  - **Timezone Comparison Error**: Fixed TypeError when comparing invite code expiration dates (timezone-aware vs timezone-naive datetimes)
+  - **TOTP Form Validation**: Properly handle TOTP confirmation form submission separate from initial signup form
+  - **Form Field Population**: Use AdminTOTPConfirmForm for TOTP submissions instead of AdminSignupForm
+  - **Date String Handling**: Pass date string instead of integer for dob_sum field in TOTP confirmation
+  - Added comprehensive debug logging for invite code creation and validation
+  - Added cleanup script (`cleanup_invite_codes.py`) for existing codes with whitespace
+  - Ensures consistency between invite code creation and validation across system admin and CLI tools
+- **TOTP Setup UI** - Updated TOTP setup page to match new brand theme
+  - Replaced hardcoded colors with CSS variables (--primary, --secondary, etc.)
+  - Updated gradient and logo to match refreshed brand
+  - Added pattern background to match signup page design
+  - Improved button hover states for consistency
+- **Onboarding Templates** - Updated color scheme and text for better consistency with new brand theme
 - **Admin Dashboard**: Removed duplicate greeting that was appearing in both page header and content section
 - **Student Dashboard**: Improved account balance cards with clearer styling using light backgrounds instead of semi-transparent overlays for better readability
 - **Mobile Responsiveness**: Enhanced responsive behavior with proper Bootstrap column classes (col-12 col-md-6)
@@ -485,4 +532,4 @@ When adding entries:
 - Keep entries concise but informative
 - Update the date when moving Unreleased to a version
 
-**Last Updated:** 2025-12-18
+**Last Updated:** 2025-12-27
