@@ -832,22 +832,48 @@ def login():
 def signup():
     """
     TOTP-only admin registration. Requires valid invite code.
-    Uses AdminSignupForm for CSRF and validation.
+    Uses AdminSignupForm for initial signup, AdminTOTPConfirmForm for TOTP confirmation.
     """
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
-    form = AdminSignupForm()
+
+    # Check if this is TOTP confirmation (has totp_code field)
+    is_totp_submission = 'totp_code' in request.form
+
+    # Use appropriate form based on submission type
+    if is_totp_submission:
+        form = AdminTOTPConfirmForm()
+    else:
+        form = AdminSignupForm()
 
     # Debug logging
     if request.method == 'POST':
-        current_app.logger.info(f"📥 Signup POST request received")
+        current_app.logger.info(f"📥 Signup POST request received (TOTP submission: {is_totp_submission})")
         current_app.logger.info(f"   Form data: username={request.form.get('username')}, invite_code={repr(request.form.get('invite_code'))}, dob_sum={request.form.get('dob_sum')}")
 
     if form.validate_on_submit():
         current_app.logger.info(f"✅ Form validation passed")
-        username = form.username.data.strip()
-        invite_code = form.invite_code.data.strip()
-        dob_input = form.dob_sum.data
-        totp_code = request.form.get("totp_code", "").strip()
+
+        # Get form data
+        if is_totp_submission:
+            # TOTP form has all fields as strings
+            username = form.username.data.strip()
+            invite_code = form.invite_code.data.strip()
+            dob_string = form.dob_sum.data  # This is a string from hidden field
+            totp_code = form.totp_code.data.strip()
+            # Parse the date string
+            try:
+                dob_input = datetime.strptime(dob_string, "%Y-%m-%d").date()
+            except (ValueError, TypeError):
+                current_app.logger.warning(f"🛑 TOTP submission failed: invalid DOB string")
+                msg = "Invalid date of birth. Please try again."
+                flash(msg, "error")
+                return redirect(url_for('admin.signup'))
+        else:
+            # Initial signup form
+            username = form.username.data.strip()
+            invite_code = form.invite_code.data.strip()
+            dob_input = form.dob_sum.data
+            totp_code = ""
 
         # Validate and parse DOB sum
         try:
