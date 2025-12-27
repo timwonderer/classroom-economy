@@ -836,7 +836,14 @@ def signup():
     """
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
     form = AdminSignupForm()
+
+    # Debug logging
+    if request.method == 'POST':
+        current_app.logger.info(f"📥 Signup POST request received")
+        current_app.logger.info(f"   Form data: username={request.form.get('username')}, invite_code={repr(request.form.get('invite_code'))}, dob_sum={request.form.get('dob_sum')}")
+
     if form.validate_on_submit():
+        current_app.logger.info(f"✅ Form validation passed")
         username = form.username.data.strip()
         invite_code = form.invite_code.data.strip()
         dob_input = form.dob_sum.data
@@ -966,6 +973,9 @@ def signup():
         flash(msg, "success")
         return redirect(url_for("admin.login"))
     # GET or invalid POST: render signup form with form instance (for CSRF)
+    if request.method == 'POST':
+        current_app.logger.warning(f"❌ Form validation failed")
+        current_app.logger.warning(f"   Form errors: {form.errors}")
     return render_template("admin_signup.html", form=form)
 
 
