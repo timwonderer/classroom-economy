@@ -958,8 +958,12 @@ def signup():
                 totp_secret=totp_secret
             )
         # Step 5: Validate entered TOTP code
+        current_app.logger.info(f"🔐 TOTP code received: {repr(totp_code)} (length: {len(totp_code)})")
         totp = pyotp.TOTP(totp_secret)
-        if not totp.verify(totp_code):
+        is_valid = totp.verify(totp_code)
+        current_app.logger.info(f"🔐 TOTP verification result: {is_valid}")
+        if not is_valid:
+            current_app.logger.warning(f"🛑 TOTP verification failed for code: {repr(totp_code)}")
             msg = "Invalid TOTP code. Please try again."
             if is_json:
                 return jsonify(status="error", message=msg), 400
@@ -983,6 +987,7 @@ def signup():
                 totp_secret=totp_secret
             )
         # Step 6: Create admin account and mark invite as used
+        current_app.logger.info(f"✅ TOTP verified! Creating admin account for: {username}")
         # Hash DOB sum
         salt = get_random_salt()
         dob_sum_str = str(dob_sum).encode()
@@ -997,6 +1002,7 @@ def signup():
             {"code": invite_code}
         )
         db.session.commit()
+        current_app.logger.info(f"✅ Admin account created successfully: {username}")
         # Clear session
         session.pop("admin_totp_secret", None)
         session.pop("admin_totp_username", None)
