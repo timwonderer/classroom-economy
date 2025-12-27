@@ -1490,7 +1490,7 @@ def settings():
         admin=admin,
         blocks=blocks,
         current_page='settings',
-        page_title='Account Settings'
+        page_title='Account Personalization'
     )
 
 
