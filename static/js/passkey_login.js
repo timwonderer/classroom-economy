@@ -97,3 +97,129 @@ function initializePasskeyLogin(buttonId, startUrl, finishUrl, dashboardUrl) {
         }
     });
 }
+
+function initializeAuthMethodSwitch({ authContainerId, totpContainerId, authenticatorButtonId, backButtonId, totpInputId }) {
+    const authContainer = document.getElementById(authContainerId);
+    const totpContainer = document.getElementById(totpContainerId);
+    const authenticatorButton = document.getElementById(authenticatorButtonId);
+    const backButton = document.getElementById(backButtonId);
+    const totpInput = totpInputId ? document.getElementById(totpInputId) : null;
+
+    if (!authContainer || !totpContainer) return;
+
+    authenticatorButton?.addEventListener('click', () => {
+        authContainer.style.display = 'none';
+        totpContainer.style.display = 'block';
+        totpInput?.focus();
+    });
+
+    backButton?.addEventListener('click', () => {
+        totpContainer.style.display = 'none';
+        authContainer.style.display = 'block';
+        if (totpInput) {
+            totpInput.value = '';
+        }
+    });
+}
+
+function setupPasskeyAuthFlow({
+    buttonId,
+    usernameFieldId,
+    startUrl,
+    finishUrl,
+    dashboardUrl,
+    useCsrf = false,
+    authContainerId,
+    totpContainerId,
+    errorContainerId
+}) {
+    const passkeyButton = document.getElementById(buttonId);
+    const usernameField = document.getElementById(usernameFieldId);
+    const authContainer = document.getElementById(authContainerId);
+    const totpContainer = document.getElementById(totpContainerId);
+    const errorContainer = document.getElementById(errorContainerId);
+
+    if (!passkeyButton || !usernameField) return;
+
+    const showError = (message) => {
+        if (!errorContainer) return;
+        errorContainer.textContent = message;
+        errorContainer.classList.remove('d-none');
+    };
+
+    const clearError = () => {
+        if (!errorContainer) return;
+        errorContainer.classList.add('d-none');
+        errorContainer.textContent = '';
+    };
+
+    passkeyButton.addEventListener('click', async () => {
+        clearError();
+
+        const username = usernameField.value.trim();
+        if (!username) {
+            showError('Please enter your username first');
+            usernameField.focus();
+            return;
+        }
+
+        const originalContent = passkeyButton.innerHTML;
+        passkeyButton.disabled = true;
+        passkeyButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>Authenticating...';
+
+        const headers = { 'Content-Type': 'application/json' };
+        const csrfToken = document.querySelector('meta[name=\"csrf-token\"]')?.getAttribute('content');
+        if (useCsrf && csrfToken) {
+            headers['X-CSRFToken'] = csrfToken;
+        }
+
+        try {
+            const startResponse = await fetch(startUrl, {
+                method: 'POST',
+                headers,
+            });
+
+            const options = await startResponse.json();
+            if (!startResponse.ok || options.error) {
+                throw new Error(options.error || 'Failed to start authentication');
+            }
+
+            if (typeof Passwordless === 'undefined') {
+                throw new Error('Passkey library failed to load. Please refresh the page and try again.');
+            }
+
+            const client = new Passwordless.Client({ apiUrl: 'https://v4.passwordless.dev' });
+            const token = await client.signinWithDiscoverable(options);
+
+            if (!token) {
+                throw new Error('Authentication was cancelled or failed');
+            }
+
+            const finishResponse = await fetch(finishUrl, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify({ token })
+            });
+
+            const result = await finishResponse.json();
+            if (!finishResponse.ok || !result.success) {
+                throw new Error(result.error || 'Authentication failed');
+            }
+
+            window.location.href = dashboardUrl;
+        } catch (error) {
+            console.error('Passkey authentication error:', error);
+            showError(error.message || 'Passkey authentication failed. Please try again or use TOTP.');
+
+            if (authContainer && totpContainer) {
+                authContainer.style.display = 'none';
+                totpContainer.style.display = 'block';
+                const totpInput = totpContainer.querySelector('input');
+                totpInput?.focus();
+            }
+        } finally {
+            passkeyButton.disabled = false;
+            passkeyButton.innerHTML = originalContent;
+        }
+    });
+}

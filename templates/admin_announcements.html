@@ -1,0 +1,220 @@
+{% extends "layout_admin.html" %}
+{% set current_page = "announcements" %}
+{% set page_title = "Class Announcements" %}
+{% block title %}Class Announcements{% endblock %}
+{% block page_icon %}campaign{% endblock %}
+
+{% block content %}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><span class="material-symbols-outlined me-2">campaign</span>Class Announcements</h2>
+    <a href="{{ url_for('admin.announcement_create') }}" class="btn btn-primary">
+        <i class="bi bi-plus-circle me-1"></i>New Announcement
+    </a>
+</div>
+
+<!-- Period Filter (if teacher has multiple periods) -->
+{% if teacher_blocks and teacher_blocks|length > 1 %}
+<div class="card shadow-sm mb-4">
+    <div class="card-body">
+        <div class="d-flex align-items-center gap-3 flex-wrap">
+            <span class="fw-bold text-muted">Filter by Period:</span>
+            <div class="btn-group btn-group-sm" role="group" id="periodFilter">
+                <input type="checkbox" class="btn-check" id="filter-all" checked>
+                <label class="btn btn-outline-primary" for="filter-all">All Periods</label>
+
+                {% for block in teacher_blocks %}
+                <input type="checkbox" class="btn-check period-filter" id="filter-{{ block.join_code }}" data-join-code="{{ block.join_code }}" checked>
+                <label class="btn btn-outline-primary" for="filter-{{ block.join_code }}">{{ block.get_class_label() }} (Period {{ block.block }})</label>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if announcements %}
+    <div class="row" id="announcementsList">
+        {% for announcement in announcements %}
+        <div class="col-lg-12 mb-3 announcement-card" data-join-code="{{ announcement.join_code }}">
+            <div class="card shadow {{ 'border-start border-5' if announcement.is_active else '' }} {{ 'border-danger' if announcement.priority == 'urgent' else 'border-warning' if announcement.priority == 'high' else 'border-info' if announcement.priority == 'normal' else 'border-secondary' }}">
+                <div class="card-header d-flex justify-content-between align-items-center {{ announcement.get_priority_class() }}">
+                    <div>
+                        <span class="me-2">{{ announcement.get_priority_icon() }}</span>
+                        <strong>{{ announcement.title }}</strong>
+                        <span class="badge bg-dark ms-2">{{ announcement.block_info.label }}</span>
+                        {% if not announcement.is_active %}
+                            <span class="badge bg-secondary ms-2">Inactive</span>
+                        {% endif %}
+                        {% if announcement.is_expired() %}
+                            <span class="badge bg-dark ms-2">Expired</span>
+                        {% endif %}
+                    </div>
+                    <div class="btn-group btn-group-sm">
+                        <button type="button" class="btn btn-sm btn-outline-{{ 'success' if not announcement.is_active else 'secondary' }}"
+                                onclick="toggleAnnouncement({{ announcement.id }})"
+                                id="toggle-btn-{{ announcement.id }}">
+                            <i class="bi bi-{{ 'eye' if not announcement.is_active else 'eye-slash' }}"></i>
+                            {{ 'Activate' if not announcement.is_active else 'Deactivate' }}
+                        </button>
+                        <a href="{{ url_for('admin.announcement_edit', announcement_id=announcement.id) }}"
+                           class="btn btn-sm btn-outline-primary">
+                            <i class="bi bi-pencil"></i> Edit
+                        </a>
+                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                onclick="deleteAnnouncement({{ announcement.id }}, '{{ announcement.title }}')">
+                            <i class="bi bi-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <p class="mb-2">{{ announcement.message|nl2br|safe }}</p>
+                    <div class="text-muted small">
+                        <i class="bi bi-calendar me-1"></i>Created: {{ announcement.created_at.strftime('%b %d, %Y at %I:%M %p') }}
+                        {% if announcement.expires_at %}
+                            <span class="ms-3">
+                                <i class="bi bi-clock me-1"></i>Expires: {{ announcement.expires_at.strftime('%b %d, %Y') }}
+                            </span>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+{% else %}
+    <div class="alert alert-info">
+        <i class="bi bi-info-circle me-2"></i>No announcements yet. Create your first announcement to communicate with students in this class period.
+    </div>
+{% endif %}
+
+<!-- Delete Confirmation Form (hidden) -->
+<form id="delete-form" method="POST" style="display: none;">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
+</form>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Period filtering
+document.addEventListener('DOMContentLoaded', function() {
+    const filterAll = document.getElementById('filter-all');
+    const periodFilters = document.querySelectorAll('.period-filter');
+    const announcementCards = document.querySelectorAll('.announcement-card');
+
+    function updateFilters() {
+        // Get selected join codes
+        const selectedJoinCodes = new Set();
+        periodFilters.forEach(checkbox => {
+            if (checkbox.checked) {
+                selectedJoinCodes.add(checkbox.dataset.joinCode);
+            }
+        });
+
+        // Show/hide announcements
+        announcementCards.forEach(card => {
+            const joinCode = card.dataset.joinCode;
+            if (filterAll.checked || selectedJoinCodes.has(joinCode)) {
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+
+        // Update "All" checkbox state
+        const allChecked = Array.from(periodFilters).every(cb => cb.checked);
+        filterAll.checked = allChecked;
+    }
+
+    // Filter all handler
+    if (filterAll) {
+        filterAll.addEventListener('change', function() {
+            periodFilters.forEach(checkbox => {
+                checkbox.checked = this.checked;
+            });
+            updateFilters();
+        });
+    }
+
+    // Individual period filter handlers
+    periodFilters.forEach(checkbox => {
+        checkbox.addEventListener('change', updateFilters);
+    });
+});
+
+function toggleAnnouncement(announcementId) {
+    fetch(`/admin/announcements/toggle/${announcementId}`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': '{{ csrf_token() }}'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Update UI dynamically instead of reloading
+            const button = document.querySelector(`button[onclick="toggleAnnouncement(${announcementId})"]`);
+            const card = button.closest('.card');
+            const cardHeader = card.querySelector('.card-header > div:first-child');
+
+            // Find or create the inactive badge
+            let inactiveBadge = cardHeader.querySelector('.badge.bg-secondary');
+
+            if (data.is_active) {
+                // Announcement is now active
+                button.className = 'btn btn-sm btn-outline-secondary';
+                button.innerHTML = '<i class="bi bi-eye-slash"></i> Deactivate';
+
+                // Add border to card
+                card.classList.add('border-start', 'border-5');
+                const priorityClass = card.className.match(/border-(danger|warning|info|secondary)/)?.[0] || 'border-info';
+                if (!card.classList.contains(priorityClass)) {
+                    card.classList.add(priorityClass);
+                }
+
+                // Remove inactive badge if it exists
+                if (inactiveBadge) {
+                    inactiveBadge.remove();
+                }
+            } else {
+                // Announcement is now inactive
+                button.className = 'btn btn-sm btn-outline-success';
+                button.innerHTML = '<i class="bi bi-eye"></i> Activate';
+
+                // Remove border from card
+                card.classList.remove('border-start', 'border-5');
+
+                // Add inactive badge if it doesn't exist
+                if (!inactiveBadge) {
+                    const expiredBadge = cardHeader.querySelector('.badge.bg-dark');
+                    const newBadge = document.createElement('span');
+                    newBadge.className = 'badge bg-secondary ms-2';
+                    newBadge.textContent = 'Inactive';
+                    if (expiredBadge) {
+                        cardHeader.insertBefore(newBadge, expiredBadge);
+                    } else {
+                        cardHeader.appendChild(newBadge);
+                    }
+                }
+            }
+        } else {
+            alert('Error: ' + data.message);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while updating the announcement.');
+    });
+}
+
+function deleteAnnouncement(announcementId, title) {
+    if (confirm(`Are you sure you want to delete the announcement "${title}"? This action cannot be undone.`)) {
+        const form = document.getElementById('delete-form');
+        form.action = `/admin/announcements/delete/${announcementId}`;
+        form.submit();
+    }
+}
+</script>
+{% endblock %}

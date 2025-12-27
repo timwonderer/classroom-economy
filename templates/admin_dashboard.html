@@ -3,6 +3,18 @@
 {% block page_title %}Teacher Dashboard{% endblock %}
 
 {% block content %}
+<!-- Personalized Greeting -->
+<div class="mb-4 text-center">
+    <p class="p fw-bold text-primary mb-1 dashboard-greeting" id="dashboard-greeting">
+        <span class="fw-light">Hi,</span> {{ current_admin.get_display_name() }} <a href="{{ url_for('admin.settings') }}" class="text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Click here to change your display name">
+            <span class="material-symbols-outlined align-top fs-6 dashboard-greeting-info">info</span>
+        </a>
+    </p>
+    
+        
+ 
+</div>
+
 {% if show_recovery_setup %}
 <div class="alert alert-warning border-0 shadow-sm mb-4 d-flex align-items-center" role="alert">
     <span class="material-symbols-outlined me-3 fs-3">warning</span>
@@ -26,8 +38,6 @@
     </div>
 </div>
 {% endif %}
-
-<h1 class="visually-hidden">Admin Panel</h1>
 
 <div class="row g-4 mb-4">
     <!-- Key Metrics -->
@@ -398,6 +408,8 @@
 
 {% block extra_scripts %}
 <script>
+    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
+    const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
     document.getElementById('enforceLimitsBtn').addEventListener('click', async function() {
         const btn = this;
         const originalContent = btn.innerHTML;

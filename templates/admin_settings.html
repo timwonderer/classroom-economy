@@ -1,7 +1,7 @@
 {% extends "layout_admin.html" %}
-{% set page_title = "Account Settings" %}
-{% block title %}Account Settings{% endblock %}
-{% block page_icon %}settings{% endblock %}
+{% set page_title = "Account Personalization" %}
+{% block title %}Account Personalization{% endblock %}
+{% block page_icon %}style{% endblock %}
 
 {% block content %}
 <div class="row">
@@ -10,7 +10,7 @@
             <div class="card-header" style="background: linear-gradient(135deg, var(--brand-primary) 0%, var(--brand-blue) 100%); color: white;">
                 <h5 class="mb-0">
                     <span class="material-symbols-outlined" style="vertical-align: middle;">person</span>
-                    Profile Settings
+                    Update how my students see me and how they see their classes
                 </h5>
             </div>
             <div class="card-body">
@@ -26,7 +26,7 @@
                         <div class="mb-3">
                             <label for="display_name" class="form-label">
                                 Your Display Name
-                                <small class="text-muted">(shown in navigation and to students)</small>
+                                <small class="text-muted">(This is shown to students and is displayed on your menu bar and dashboard.)</small>
                             </label>
                             <input
                                 type="text"
@@ -37,7 +37,7 @@
                                 placeholder="{{ admin.username }}"
                                 maxlength="100">
                             <div class="form-text">
-                                Leave blank to use your username: <strong>{{ admin.username }}</strong>
+                                If you don't change this, it will remain: <strong>{{ admin.username }}</strong>
                             </div>
                         </div>
                     </div>
@@ -61,7 +61,7 @@
                                 <div class="card border">
                                     <div class="card-body">
                                         <label for="class_label_{{ block_data.block }}" class="form-label">
-                                            <strong>Block {{ block_data.block }}</strong>
+                                            <strong>Block/Period {{ block_data.block }}</strong>
                                         </label>
                                         <input
                                             type="text"
@@ -72,7 +72,7 @@
                                             placeholder="e.g., Period 1, Honors Bio, AP Calc"
                                             maxlength="50">
                                         <div class="form-text">
-                                            Current: <strong>{{ block_data.class_label or block_data.block }}</strong>
+                                            This is what is being shown to students: <strong>{{ block_data.class_label or block_data.block }}</strong>
                                         </div>
                                     </div>
                                 </div>

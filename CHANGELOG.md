@@ -8,7 +8,58 @@ and this project follows semantic versioning principles.
 
 ## [Unreleased]
 
+### Added
+- **Announcement System** - Teachers can create and manage announcements for their class periods
+  - Display announcements on student dashboards with dismiss capability
+  - Filter announcements by class period
+  - Toggle announcement visibility (active/inactive)
+  - Create, edit, and delete announcements with rich formatting
+  - System admins can create global announcements visible across all classes
+  - Announcements link added to admin navigation under Classroom section
+- **UI/UX Improvements** - Comprehensive redesign of dashboard and navigation interfaces
+  - **Personalized Greetings**:
+    - Teacher dashboard displays centered "Hi, [Display Name]" greeting with info icon tooltip linking to settings
+    - Student dashboard shows dynamic time-based greeting with first name
+    - Mid-day greetings randomize between friendly options: "Howdy", "Good day to you", "Good to see you again", "Great timing", "Let us get started"
+    - Morning (5am-12pm): "Good morning"
+    - Afternoon (12pm-5pm): Random friendly greeting
+    - Evening (5pm-5am): "Good evening"
+  - **Enhanced Student Dashboard**:
+    - Removed redundant left navigation sidebar for cleaner layout
+    - Added side-by-side account balance cards for Checking and Savings accounts
+    - Light gray card backgrounds for better visibility
+    - Savings account displays projected monthly interest when balance > 0
+    - Encouragement message when savings balance is $0 to promote saving habits
+    - Fully responsive design (side-by-side on desktop, stacked on mobile)
+  - **Accordion-Style Admin Navigation**:
+    - Reorganized sidebar navigation into collapsible accordion categories
+    - Categories: Classroom, Economy, Bills, Settings
+    - Bootstrap accordion ensures only one section open at a time for cleaner interface
+    - Consolidated Settings section: Personalization, Passkey, Features, Help & Support
+    - Removed non-functional "Mobile Site" link from navigation
+    - Custom CSS styling for dark sidebar theme with smooth transitions
+  - **Improved Sign Out Button**: Enhanced contrast with red filled button and white text
+  - **Streamlined Authentication Flow**:
+    - Login forms present two authentication method buttons upfront
+    - "Use my authenticator" button reveals TOTP field with Back button
+    - "Use my passkey" button triggers WebAuthn flow with automatic fallback to TOTP on failure
+    - Applied to both admin and system admin login pages
+    - Cleaner, more intuitive authentication experience with proper error handling
+
+### Security
+- **Enhanced Open Redirect Protection** - Improved URL validation in student class enrollment redirects
+  - Upgraded `_is_safe_url()` function to use same-origin validation
+  - Now uses `urljoin()` to resolve relative URLs against application's base URL
+  - Validates that redirect targets match the application's scheme and domain
+  - Prevents protocol-relative URLs and external redirects
+  - Added explicit security annotations (`# nosec`) with justification at all redirect points
+  - Addresses all 9 CodeQL security scanner findings for URL redirection vulnerabilities
+  - Affects student add-class flow redirect handling (`app/routes/student.py:710-877`)
+
 ### Fixed
+- **Admin Dashboard**: Removed duplicate greeting that was appearing in both page header and content section
+- **Student Dashboard**: Improved account balance cards with clearer styling using light backgrounds instead of semi-transparent overlays for better readability
+- **Mobile Responsiveness**: Enhanced responsive behavior with proper Bootstrap column classes (col-12 col-md-6)
 - **Grafana Access Issue** - Fixed "connection refused" error when accessing Grafana from system admin dashboard
   - **Root Cause**: Nginx `proxy_pass` had trailing slash that stripped URL path, causing infinite redirects
   - **Dual-Layer Solution** for maximum reliability:

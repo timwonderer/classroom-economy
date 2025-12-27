@@ -137,6 +137,17 @@ a:hover {
     color: var(--primary);
 }
 
+.dashboard-greeting {
+    font-size: 2rem;
+}
+
+.dashboard-greeting-info {
+    border-radius: 1rem;
+    padding: 3px;
+    background-color: var(--primary);
+    color: white;
+}
+
 /* Cards */
 .card {
     background: var(--surface);
@@ -409,6 +420,49 @@ a:hover {
     letter-spacing: 0.05em;
     color: rgba(255, 255, 255, 0.5);
     margin: 1.5rem 0 0.5rem 1rem;
+}
+
+/* Accordion Navigation Styles */
+.nav-accordion-btn {
+    background-color: transparent;
+    color: rgba(255, 255, 255, 0.8);
+    border: none;
+    padding: 0.75rem 1rem;
+    font-weight: 500;
+    border-radius: var(--radius-sm);
+    transition: all 0.2s;
+    box-shadow: none;
+}
+
+.nav-accordion-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: white;
+}
+
+.nav-accordion-btn:not(.collapsed) {
+    background-color: rgba(255, 255, 255, 0.15);
+    color: white;
+    box-shadow: none;
+}
+
+.nav-accordion-btn:focus {
+    box-shadow: none;
+    border: none;
+}
+
+.nav-accordion-btn::after {
+    filter: brightness(0) invert(1);
+    opacity: 0.8;
+}
+
+.nav-sub-link {
+    padding-left: 3rem !important;
+    font-size: 0.9rem;
+}
+
+.accordion-body {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
 }
 
 .main-content {
