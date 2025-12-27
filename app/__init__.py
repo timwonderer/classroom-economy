@@ -39,15 +39,6 @@ def url_encode_filter(s):
     return urllib.parse.quote_plus(s)
 
 
-def nl2br_filter(s):
-    """Convert newlines to <br> tags for HTML display."""
-    from markupsafe import Markup
-    if s is None:
-        return ''
-    # Replace \n with <br> and return as safe HTML
-    return Markup(str(s).replace('\n', '<br>\n'))
-
-
 def format_datetime(value, fmt='%Y-%m-%d %I:%M %p'):
     """
     Convert a UTC datetime to the user's timezone (from session) and format it.
@@ -160,7 +151,6 @@ def create_app():
     app.jinja_env.filters['urlencode'] = url_encode_filter
     app.jinja_env.filters['format_datetime'] = format_datetime
     app.jinja_env.filters['markdown'] = render_markdown
-    app.jinja_env.filters['nl2br'] = nl2br_filter
 
     # Add built-in functions to Jinja2 globals
     app.jinja_env.globals['min'] = min
