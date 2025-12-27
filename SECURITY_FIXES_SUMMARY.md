@@ -60,9 +60,11 @@ This document summarizes the resolution of 62 CodeQL security alerts across the 
 
 **File:** `tests/test_security_headers.py` (lines 14, 18)
 
-**Resolution:** Added `# nosec B105` comments - these are false positives. The test is validating that CSP headers contain expected URLs, not performing sanitization.
+**Resolution:** Added `# lgtm[py/incomplete-url-substring-sanitization]` comments - these are false positives. The test is validating that CSP headers contain expected URLs, not performing sanitization.
 
 **Impact:** No security impact - this was a false positive in test code.
+
+**Note:** Initially used Bandit-style `# nosec` comments, but CodeQL requires `# lgtm[...]` format.
 
 ---
 
