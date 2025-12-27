@@ -6,9 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Classroom Token Hub - TOTP Setup</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:ital,wght@0,100..900;1,100..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link href="{{ static_url('css/style.css') }}" rel="stylesheet">
     <style>
         * {
@@ -20,7 +18,7 @@
         body {
             font-family: 'Inter', sans-serif;
             height: 100vh;
-            background: #fffaf5;
+            background-color: var(--background);
         }
 
        .login-wrapper {
@@ -37,15 +35,12 @@
             align-items: center;
             justify-content: center;
             background: #ffffff;
-
             height: 100vh;
-
         }
 
         .branding-side {
             flex: 1;
-
-            background: linear-gradient(135deg, var(--primary) 0%, #00796B 50%, #004D40 100%);
+            background: linear-gradient(135deg, var(--primary), var(--primary-hover));
             display: flex;
             align-items: center;
             justify-content: center;
@@ -53,7 +48,17 @@
             position: relative;
             height: 100vh;
             max-width: 400px;
+            overflow: hidden;
+        }
 
+        .branding-side::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
         }
 
         .branding-content {
@@ -66,18 +71,16 @@
         }
 
         .branding-logo-card {
-            background: rgba(255, 255, 255, 0.96);
-            padding: 2rem;
-            width: 300px;
-            height: 300px;
             display: flex;
             align-items: center;
             justify-content: center;
         }
 
         .branding-logo-card img {
-            max-width: 300px;
-            height: 300px;
+            width: 400px;
+            height: 400px;
+            position: relative;
+            z-index: 1;
         }
 
         .login-container {
@@ -97,7 +100,7 @@
 
         .login-container .subtitle {
             text-align: center;
-            color: #2c4a47;
+            color: var(--secondary);
             margin-bottom: 0.5rem;
             font-size: 0.95rem;
         }
@@ -106,7 +109,7 @@
             border: 2px solid var(--primary);
             border-radius: 12px;
             padding: 1.5rem;
-            background: #e8f5f3;
+            background: var(--background);
             text-align: center;
             margin-bottom: 1.5rem;
         }
@@ -114,18 +117,19 @@
         .qr-panel img {
             width: 200px;
             border-radius: 10px;
-            box-shadow: 0 8px 24px rgba(0, 105, 92, 0.25);
+            box-shadow: var(--shadow-md);
             margin-bottom: 1rem;
         }
 
         .manual-code {
-            background: #d0ebe8;
+            background: var(--background);
+            border: 1px solid var(--border);
             border-radius: 10px;
             padding: 0.75rem 1rem;
             margin: 1rem 0;
             letter-spacing: 0.08em;
             font-weight: 700;
-            color: #004D40;
+            color: var(--primary);
             font-size: 1.1rem;
         }
 
@@ -144,17 +148,18 @@
         }
 
         .btn-primary {
-            background: linear-gradient(135deg, var(--primary) 0%, #00796B 100%);
+            background: var(--primary);
             border: none;
             padding: 0.85rem;
             font-weight: 700;
             transition: all 0.3s ease;
             border-radius: 12px;
-            box-shadow: 0 8px 24px rgba(0, 105, 92, 0.35);
+            color: white;
         }
 
         .btn-primary:hover {
-            background: linear-gradient(135deg, #00796B 0%, #004D40 100%);
+            background: var(--secondary);
+            color: #2c2c2c;
         }
 
         .footer-info {
@@ -264,7 +269,7 @@
             <div class="branding-side">
                 <div class="branding-content">
                     <div class="branding-logo-card">
-                        <img src="{{ static_url('images/teacher-logo-192.png') }}" alt="Admin Logo">
+                        <img src="{{ static_url('images/logo_teacher_transparent_512.png') }}" alt="Teacher Logo">
                     </div>
                 </div>
             </div>
