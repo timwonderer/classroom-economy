@@ -709,19 +709,34 @@ def add_class():
 
     def _is_safe_url(target):
         """
-        Returns True if the target is a local URL (preventing open redirect).
+        Returns True if the target is a same-origin URL (preventing open redirect).
+
+        Uses same-origin validation to ensure redirect targets are internal to this
+        application. This prevents open redirect vulnerabilities where attackers could
+        redirect users to malicious external sites.
+
+        Args:
+            target: The URL to validate
+
+        Returns:
+            bool: True if the URL is safe (same origin), False otherwise
         """
-        from urllib.parse import urlparse
+        from urllib.parse import urlparse, urljoin
+
         if not target:
             return False
+
+        # Normalize backslashes to prevent Windows path tricks
         target = target.replace("\\", "")
-        parsed = urlparse(target)
-        # Only allow relative URLs with no scheme and no netloc, nor starting with double slashes
-        if parsed.scheme or parsed.netloc:
-            return False
-        if target.startswith('//'):  # Prevent protocol-relative URLs
-            return False
-        return True
+
+        # Resolve relative URLs against the current application's base URL
+        # This converts relative paths like "dashboard" to full URLs
+        target_url = urlparse(urljoin(request.host_url, target))
+        ref_url = urlparse(request.host_url)
+
+        # Only allow same-origin URLs (same scheme and domain)
+        # This prevents redirects to external sites or protocol-relative URLs
+        return target_url.scheme == ref_url.scheme and target_url.netloc == ref_url.netloc
 
     def _get_return_target(default_endpoint='student.dashboard'):
         """

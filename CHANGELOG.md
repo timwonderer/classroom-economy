@@ -46,6 +46,15 @@ and this project follows semantic versioning principles.
     - Applied to both admin and system admin login pages
     - Cleaner, more intuitive authentication experience with proper error handling
 
+### Security
+- **Enhanced Open Redirect Protection** - Improved URL validation in student class enrollment redirects
+  - Upgraded `_is_safe_url()` function to use same-origin validation
+  - Now uses `urljoin()` to resolve relative URLs against application's base URL
+  - Validates that redirect targets match the application's scheme and domain
+  - Prevents protocol-relative URLs and external redirects
+  - Addresses CodeQL security scanner findings for URL redirection vulnerabilities
+  - Affects student add-class flow redirect handling (`app/routes/student.py:710-739`)
+
 ### Fixed
 - **Admin Dashboard**: Removed duplicate greeting that was appearing in both page header and content section
 - **Student Dashboard**: Improved account balance cards with clearer styling using light backgrounds instead of semi-transparent overlays for better readability
