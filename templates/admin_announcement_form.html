@@ -1,0 +1,148 @@
+{% extends "layout_admin.html" %}
+{% set current_page = "announcements" %}
+{% set page_title = action + " Announcement" %}
+{% block title %}{{ action }} Announcement{% endblock %}
+{% block page_icon %}{{ 'pencil' if action == 'Edit' else 'plus-circle' }}{% endblock %}
+
+{% block content %}
+
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0">
+                    <i class="bi bi-{{ 'pencil' if action == 'Edit' else 'plus-circle' }} me-2"></i>
+                    {{ action }} Announcement
+                </h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" action="">
+                    {{ form.csrf_token }}
+
+                    {% if action == 'Create' and form.periods %}
+                    <div class="mb-3">
+                        {{ form.periods.label(class="form-label") }}
+                        <div class="border rounded p-3">
+                            {% for value, label in form.periods.choices %}
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" name="periods" value="{{ value }}" id="period-{{ value }}" checked>
+                                <label class="form-check-label" for="period-{{ value }}">
+                                    {{ label }}
+                                </label>
+                            </div>
+                            {% endfor %}
+                        </div>
+                        {% if form.periods.errors %}
+                            <div class="text-danger small mt-1">
+                                {% for error in form.periods.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
+                        <small class="form-text text-muted">Select one or more class periods to post this announcement to.</small>
+                    </div>
+                    {% elif action == 'Edit' and teacher_block %}
+                    <div class="alert alert-info mb-3">
+                        <i class="bi bi-info-circle me-2"></i>
+                        <strong>Class Period:</strong> {{ teacher_block.get_class_label() }} (Period {{ teacher_block.block }})
+                        <br><small>You cannot change the period for an existing announcement. To post to other periods, create a new announcement.</small>
+                    </div>
+                    {% endif %}
+
+                    <div class="mb-3">
+                        {{ form.title.label(class="form-label") }}
+                        {{ form.title(class="form-control" + (' is-invalid' if form.title.errors else ''), placeholder="e.g., Store Update, Important Reminder, Class Celebration") }}
+                        {% if form.title.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.title.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.message.label(class="form-label") }}
+                        {{ form.message(class="form-control" + (' is-invalid' if form.message.errors else ''), rows=6, placeholder="Enter your announcement message here...") }}
+                        {% if form.message.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.message.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
+                        <small class="form-text text-muted">Students will see this message on their dashboard.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.priority.label(class="form-label") }}
+                        {{ form.priority(class="form-select" + (' is-invalid' if form.priority.errors else '')) }}
+                        {% if form.priority.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.priority.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
+                        <small class="form-text text-muted">
+                            Priority determines the visual style:
+                            <span class="badge bg-secondary">Low</span>
+                            <span class="badge bg-info">Normal</span>
+                            <span class="badge bg-warning text-dark">High</span>
+                            <span class="badge bg-danger">Urgent</span>
+                        </small>
+                    </div>
+
+                    <div class="mb-3">
+                        {{ form.expires_at.label(class="form-label") }}
+                        {{ form.expires_at(class="form-control" + (' is-invalid' if form.expires_at.errors else '')) }}
+                        {% if form.expires_at.errors %}
+                            <div class="invalid-feedback">
+                                {% for error in form.expires_at.errors %}{{ error }}{% endfor %}
+                            </div>
+                        {% endif %}
+                        <small class="form-text text-muted">Leave blank for no expiration. Expired announcements will be hidden automatically.</small>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="form-check">
+                            {{ form.is_active(class="form-check-input") }}
+                            {{ form.is_active.label(class="form-check-label") }}
+                        </div>
+                        <small class="form-text text-muted">Inactive announcements are hidden from students.</small>
+                    </div>
+
+                    <div class="d-flex justify-content-between">
+                        <a href="{{ url_for('admin.announcements') }}" class="btn btn-secondary">
+                            <i class="bi bi-x-circle me-1"></i>Cancel
+                        </a>
+                        {{ form.submit(class="btn btn-primary") }}
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        {% if action == 'Edit' and announcement %}
+        <div class="card shadow mt-3">
+            <div class="card-header bg-light">
+                <h5 class="mb-0"><i class="bi bi-info-circle me-2"></i>Preview</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert {{ announcement.get_priority_class() }} mb-0">
+                    <strong>{{ announcement.get_priority_icon() }} {{ announcement.title }}</strong>
+                    <p class="mb-0 mt-2">{{ announcement.message }}</p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Auto-resize textarea
+document.addEventListener('DOMContentLoaded', function() {
+    const textarea = document.querySelector('textarea[name="message"]');
+    if (textarea) {
+        textarea.addEventListener('input', function() {
+            this.style.height = 'auto';
+            this.style.height = (this.scrollHeight) + 'px';
+        });
+    }
+});
+</script>
+{% endblock %}

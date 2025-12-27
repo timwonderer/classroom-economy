@@ -1380,3 +1380,107 @@ class TeacherOnboarding(db.Model):
     def needs_onboarding(self):
         """Check if teacher needs to complete onboarding."""
         return not self.is_completed and not self.is_skipped
+
+
+# -------------------- ANNOUNCEMENT MODEL --------------------
+class Announcement(db.Model):
+    """
+    Announcements for teachers and system administrators.
+
+    Teacher Announcements:
+    - Teachers post to specific class periods (scoped by join_code)
+    - Only visible to students in that class period
+
+    System Admin Announcements:
+    - System admins post with broader audience types
+    - Can target: all students, all teachers, specific teacher's classes, or everyone
+    - Teachers cannot see these in their announcement management
+    """
+    __tablename__ = 'announcements'
+
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Author (one of these will be set)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=True)
+    system_admin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id', ondelete='CASCADE'), nullable=True)
+
+    # Audience targeting
+    join_code = db.Column(db.String(20), nullable=True, index=True)  # For teacher/sysadmin specific class announcements
+    audience_type = db.Column(db.String(30), default='class', nullable=False)  # 'class', 'system_wide', 'all_teachers', 'all_students', 'teacher_all_classes', 'specific_class'
+    target_teacher_id = db.Column(db.Integer, db.ForeignKey('admins.id', ondelete='CASCADE'), nullable=True)  # For 'teacher_all_classes' audience type
+
+    # Announcement content
+    title = db.Column(db.String(200), nullable=False)
+    message = db.Column(db.Text, nullable=False)
+
+    # Display settings
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    priority = db.Column(db.String(20), default='normal', nullable=False)  # 'low', 'normal', 'high', 'urgent'
+
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=_utc_now, nullable=False)
+    updated_at = db.Column(db.DateTime, default=_utc_now, onupdate=_utc_now, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=True)  # Optional expiration
+
+    # Relationships
+    teacher = db.relationship('Admin', foreign_keys=[teacher_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
+    system_admin = db.relationship('SystemAdmin', foreign_keys=[system_admin_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
+    target_teacher = db.relationship('Admin', foreign_keys=[target_teacher_id], backref=db.backref('targeted_announcements', lazy='dynamic', passive_deletes=True))
+
+    # Indexes
+    __table_args__ = (
+        db.Index('ix_announcements_join_code_active', 'join_code', 'is_active'),
+        db.Index('ix_announcements_teacher_join_code', 'teacher_id', 'join_code'),
+        db.Index('ix_announcements_audience_type', 'audience_type', 'is_active'),
+        db.Index('ix_announcements_system_admin', 'system_admin_id', 'is_active'),
+    )
+
+    def __repr__(self):
+        author = f"Teacher {self.teacher_id}" if self.teacher_id else f"SysAdmin {self.system_admin_id}"
+        return f'<Announcement {self.id} - {self.title[:30]} ({author}, {self.audience_type})>'
+
+    def is_expired(self):
+        """Check if announcement has expired."""
+        if self.expires_at is None:
+            return False
+        return datetime.now(timezone.utc) > self.expires_at
+
+    def should_display(self):
+        """Check if announcement should be displayed."""
+        return self.is_active and not self.is_expired()
+
+    def get_priority_class(self):
+        """Get CSS class for announcement priority."""
+        priority_classes = {
+            'low': 'alert-secondary',
+            'normal': 'alert-info',
+            'high': 'alert-warning',
+            'urgent': 'alert-danger'
+        }
+        return priority_classes.get(self.priority, 'alert-info')
+
+    def get_priority_icon(self):
+        """Get icon for announcement priority."""
+        priority_icons = {
+            'low': '📌',
+            'normal': '📢',
+            'high': '⚠️',
+            'urgent': '🚨'
+        }
+        return priority_icons.get(self.priority, '📢')
+
+    def get_audience_label(self):
+        """Get human-readable label for audience type."""
+        labels = {
+            'class': 'Class Period',
+            'system_wide': 'Everyone (System-Wide)',
+            'all_teachers': 'All Teachers',
+            'all_students': 'All Students',
+            'teacher_all_classes': 'Teacher\'s All Classes',
+            'specific_class': 'Specific Class'
+        }
+        return labels.get(self.audience_type, 'Unknown')
+
+    def is_system_admin_announcement(self):
+        """Check if this is a system admin announcement."""
+        return self.system_admin_id is not None

@@ -707,18 +707,41 @@ def add_class():
     student = get_logged_in_student()
     form = StudentAddClassForm()
 
-    def get_return_target(default_endpoint='student.dashboard'):
+    def _is_safe_url(target):
+        """
+        Returns True if the target is a local URL (preventing open redirect).
+        """
+        from urllib.parse import urlparse
+        if not target:
+            return False
+        target = target.replace("\\", "")
+        parsed = urlparse(target)
+        # Only allow relative URLs with no scheme and no netloc, nor starting with double slashes
+        if parsed.scheme or parsed.netloc:
+            return False
+        if target.startswith('//'):  # Prevent protocol-relative URLs
+            return False
+        return True
+
+    def _get_return_target(default_endpoint='student.dashboard'):
         """
         Return the safest place to redirect back to after add-class attempts.
 
         Prioritize an explicit `next` value, fall back to referrer, then dashboard.
 
-        Security: All redirect targets are validated with is_safe_url() to ensure
+        Security: All redirect targets are validated with _is_safe_url() to ensure
         they are same-origin URLs, preventing open redirect vulnerabilities.
         """
-        for target in request.values.get('next'), request.referrer:
-            if target and is_safe_url(target):
-                return target
+        next_url = request.form.get('next') or request.args.get('next')
+        if next_url and _is_safe_url(next_url):
+            return next_url
+
+        # Validate referrer to prevent open redirects (same-origin check)
+        ref_url = request.referrer
+        if ref_url and _is_safe_url(ref_url):
+            return ref_url
+
+        # Safe fallback: always use internal route
         return url_for(default_endpoint)
 
     if form.validate_on_submit():
@@ -735,21 +758,21 @@ def add_class():
             dob_sum = dob_input.month + dob_input.day + dob_input.year
         except (ValueError, AttributeError, TypeError):
             flash("Invalid date of birth. Please enter a valid date.", "danger")
-            return redirect(get_return_target())
+            return redirect(_get_return_target())
 
         # Verify the credentials match the logged-in student
         if first_initial != student.first_name[:1].upper():
             flash("The first initial doesn't match your account. Please check and try again.", "danger")
-            return redirect(get_return_target())
+            return redirect(_get_return_target())
 
         if dob_sum != student.dob_sum:
             flash("The DOB sum doesn't match your account. Please check and try again.", "danger")
-            return redirect(get_return_target())
+            return redirect(_get_return_target())
 
         # Verify last name matches using the same fuzzy matching logic
         if not verify_last_name_parts(last_name, student.last_name_hash_by_part, student.salt):
             flash("The last name doesn't match your account. Please check and try again.", "danger")
-            return redirect(get_return_target())
+            return redirect(_get_return_target())
 
         # Find all unclaimed seats with this join code
         unclaimed_seats = TeacherBlock.query.filter_by(
@@ -759,7 +782,7 @@ def add_class():
 
         if not unclaimed_seats:
             flash("Invalid join code or all seats already claimed. Check with your teacher.", "danger")
-            return redirect(get_return_target())
+            return redirect(_get_return_target())
 
         # Try to find a matching seat for this student
         matched_seat = None
@@ -790,7 +813,7 @@ def add_class():
 
         if not matched_seat:
             flash("No matching seat found for your account. Please verify your join code and credentials.", "danger")
-            return redirect(get_return_target())
+            return redirect(_get_return_target())
 
         # Check if student is already linked to this teacher
         existing_link = StudentTeacher.query.filter_by(
@@ -800,7 +823,7 @@ def add_class():
 
         if existing_link:
             flash("You are already enrolled in this teacher's class.", "warning")
-            return redirect(get_return_target())
+            return redirect(_get_return_target())
 
         # Normalize claim hash to canonical pattern
         canonical_claim_hash = compute_primary_claim_hash(first_initial, dob_sum, matched_seat.salt)
@@ -831,12 +854,12 @@ def add_class():
         try:
             db.session.commit()
             flash(f"Successfully added to Block {new_block}! You can now access this class from your dashboard.", "success")
-            return redirect(get_return_target())
+            return redirect(_get_return_target())
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error adding class for student {student.id}: {str(e)}")
             flash("An error occurred while adding the class. Please try again or contact your teacher.", "danger")
-            return redirect(get_return_target())
+            return redirect(_get_return_target())
 
     return render_template('student_add_class.html', form=form)
 
@@ -1100,6 +1123,29 @@ def dashboard():
         if tx.amount < 0 and _occurred_after(tx.timestamp, month_start) and not tx.is_void
     ))
 
+    # Get active announcements for this student
+    # Include: class-specific, system-wide, all students, and teacher's all classes
+    from app.models import Announcement
+    from sqlalchemy import or_
+
+    announcements = Announcement.query.filter(
+        Announcement.is_active.is_(True),
+        or_(
+            Announcement.expires_at.is_(None),
+            Announcement.expires_at > datetime.now(timezone.utc)
+        ),
+        or_(
+            # Class-specific announcements
+            Announcement.join_code == join_code,
+            # System-wide announcements
+            Announcement.audience_type == 'system_wide',
+            # All students announcements
+            Announcement.audience_type == 'all_students',
+            # Teacher's all classes announcements
+            (Announcement.audience_type == 'teacher_all_classes') & (Announcement.target_teacher_id == teacher_id)
+        )
+    ).order_by(Announcement.created_at.desc()).all()
+
     return render_template(
         'student_dashboard.html',
         student=student,
@@ -1133,6 +1179,7 @@ def dashboard():
         earnings_this_month=round(earnings_this_month, 2),
         spending_this_week=round(spending_this_week, 2),
         spending_this_month=round(spending_this_month, 2),
+        announcements=announcements,
     )
 
 
