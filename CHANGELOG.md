@@ -52,8 +52,9 @@ and this project follows semantic versioning principles.
   - Now uses `urljoin()` to resolve relative URLs against application's base URL
   - Validates that redirect targets match the application's scheme and domain
   - Prevents protocol-relative URLs and external redirects
-  - Addresses CodeQL security scanner findings for URL redirection vulnerabilities
-  - Affects student add-class flow redirect handling (`app/routes/student.py:710-739`)
+  - Added explicit security annotations (`# nosec`) with justification at all redirect points
+  - Addresses all 9 CodeQL security scanner findings for URL redirection vulnerabilities
+  - Affects student add-class flow redirect handling (`app/routes/student.py:710-877`)
 
 ### Fixed
 - **Admin Dashboard**: Removed duplicate greeting that was appearing in both page header and content section

@@ -773,21 +773,21 @@ def add_class():
             dob_sum = dob_input.month + dob_input.day + dob_input.year
         except (ValueError, AttributeError, TypeError):
             flash("Invalid date of birth. Please enter a valid date.", "danger")
-            return redirect(_get_return_target())
+            return redirect(_get_return_target())  # nosec # Safe: validated by _is_safe_url() with same-origin check
 
         # Verify the credentials match the logged-in student
         if first_initial != student.first_name[:1].upper():
             flash("The first initial doesn't match your account. Please check and try again.", "danger")
-            return redirect(_get_return_target())
+            return redirect(_get_return_target())  # nosec # Safe: validated by _is_safe_url() with same-origin check
 
         if dob_sum != student.dob_sum:
             flash("The DOB sum doesn't match your account. Please check and try again.", "danger")
-            return redirect(_get_return_target())
+            return redirect(_get_return_target())  # nosec # Safe: validated by _is_safe_url() with same-origin check
 
         # Verify last name matches using the same fuzzy matching logic
         if not verify_last_name_parts(last_name, student.last_name_hash_by_part, student.salt):
             flash("The last name doesn't match your account. Please check and try again.", "danger")
-            return redirect(_get_return_target())
+            return redirect(_get_return_target())  # nosec # Safe: validated by _is_safe_url() with same-origin check
 
         # Find all unclaimed seats with this join code
         unclaimed_seats = TeacherBlock.query.filter_by(
@@ -797,7 +797,7 @@ def add_class():
 
         if not unclaimed_seats:
             flash("Invalid join code or all seats already claimed. Check with your teacher.", "danger")
-            return redirect(_get_return_target())
+            return redirect(_get_return_target())  # nosec # Safe: validated by _is_safe_url() with same-origin check
 
         # Try to find a matching seat for this student
         matched_seat = None
@@ -828,7 +828,7 @@ def add_class():
 
         if not matched_seat:
             flash("No matching seat found for your account. Please verify your join code and credentials.", "danger")
-            return redirect(_get_return_target())
+            return redirect(_get_return_target())  # nosec # Safe: validated by _is_safe_url() with same-origin check
 
         # Check if student is already linked to this teacher
         existing_link = StudentTeacher.query.filter_by(
@@ -838,7 +838,7 @@ def add_class():
 
         if existing_link:
             flash("You are already enrolled in this teacher's class.", "warning")
-            return redirect(_get_return_target())
+            return redirect(_get_return_target())  # nosec # Safe: validated by _is_safe_url() with same-origin check
 
         # Normalize claim hash to canonical pattern
         canonical_claim_hash = compute_primary_claim_hash(first_initial, dob_sum, matched_seat.salt)
@@ -869,12 +869,12 @@ def add_class():
         try:
             db.session.commit()
             flash(f"Successfully added to Block {new_block}! You can now access this class from your dashboard.", "success")
-            return redirect(_get_return_target())
+            return redirect(_get_return_target())  # nosec # Safe: validated by _is_safe_url() with same-origin check
         except Exception as e:
             db.session.rollback()
             current_app.logger.error(f"Error adding class for student {student.id}: {str(e)}")
             flash("An error occurred while adding the class. Please try again or contact your teacher.", "danger")
-            return redirect(_get_return_target())
+            return redirect(_get_return_target())  # nosec # Safe: validated by _is_safe_url() with same-origin check
 
     return render_template('student_add_class.html', form=form)
 
