@@ -170,7 +170,7 @@
                     <div id="settingsCollapse" class="accordion-collapse collapse" data-bs-parent="#sidebarAccordion">
                         <div class="accordion-body p-0">
                             <a href="{{ url_for('admin.settings') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'settings' %}active{% endif %}">
-                                <span class="material-symbols-outlined">manage_accounts</span> Account
+                                <span class="material-symbols-outlined">style</span> Personalization
                             </a>
                             <a href="{{ url_for('admin.passkey_settings') }}" class="nav-link nav-sub-link d-flex align-items-center gap-2 {% if current_page == 'passkey_settings' %}active{% endif %}">
                                 <span class="material-symbols-outlined">fingerprint</span> Passkey
@@ -202,7 +202,7 @@
             <div>
                 <div class="eyebrow">Classroom Token Hub</div>
                 <h1 class="d-flex align-items-center gap-2 mb-1">
-                    <span class="material-symbols-outlined">{% block page_icon %}dashboard{% endblock %}</span>
+                    <span class="material-symbols-outlined" style="font-size:2rem">{% block page_icon %}dashboard{% endblock %}</span>
                     {{ self.page_title() }}
                 </h1>
                 <div class="meta" id="current-time"></div>

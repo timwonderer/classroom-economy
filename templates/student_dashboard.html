@@ -1,13 +1,13 @@
 {% extends "layout_student.html" %}
 {% set current_page = "dashboard" %}
-{% block title %}<span id="student-greeting">Dashboard</span>{% endblock %}
+{% block title %}Student Dashboard{% endblock %}
 {% block page_icon %}dashboard{% endblock %}
 {% block content %}
 
 <!-- Personalized Time-Based Greeting -->
 <div class="mb-4">
-    <h2 class="h3 fw-bold text-primary mb-0" id="dashboard-greeting">
-        <span id="greeting-text">Good day</span>, {{ student.first_name }}!
+    <h2 class="h3 fw-bold text-primary mb-0 text-center" id="dashboard-greeting">
+        <span id="greeting-text" style="font-weight:300">Good day</span>, {{ student.first_name }}!
     </h2>
 </div>
 
@@ -16,17 +16,17 @@
 (function() {
     const hour = new Date().getHours();
     let greeting = 'Good day';
-
+    const midDayGreeting = ['Howdy', 'Good day to you', 'Good to see you again', 'Great timing', 'Let us get started'];
     if (hour >= 5 && hour < 12) {
         greeting = 'Good morning';
     } else if (hour >= 12 && hour < 17) {
-        greeting = 'Good afternoon';
+        greeting = mid_day_greeting[Math.floor(Math.random() * mid_day_greeting.length)];
     } else if (hour >= 17 || hour < 5) {
         greeting = 'Good evening';
     }
 
     document.getElementById('greeting-text').textContent = greeting;
-    document.getElementById('student-greeting').textContent = greeting + ', {{ student.first_name }}!';
+    document.getElementById('dashboard-greeting').textContent = greeting + ', {{ student.first_name }}!';
 })();
 </script>
 <!-- Toast Container for Notifications -->

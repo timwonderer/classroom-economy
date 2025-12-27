@@ -4,16 +4,15 @@
 
 {% block content %}
 <!-- Personalized Greeting -->
-<div class="mb-4">
-    <h2 class="h3 fw-bold text-primary mb-1" id="dashboard-greeting">
-        Welcome, {{ current_admin.get_display_name() if current_admin else 'Teacher' }}!
-    </h2>
-    <p class="text-muted">
-        <a href="{{ url_for('admin.settings') }}" class="text-decoration-none">
-            <span class="material-symbols-outlined align-bottom fs-6">edit</span>
-            Change your displayed name
+<div class="mb-4 text-center">
+    <p class="p fw-bold text-primary mb-1" id="dashboard-greeting" style="font-size: 2rem;">
+        <span style="font-weight:300">Hi,</span> {{ current_admin.get_display_name() }} <a href="{{ url_for('admin.settings') }}" class="text-decoration-none" data-bs-toggle="tooltip" data-bs-placement="top" data-bs-title="Click here to change your display name">
+            <span class="material-symbols-outlined align-top fs-6 bg-primary text-white" style="border-radius: 1rem; padding:3px">info</span>
         </a>
     </p>
+    
+        
+ 
 </div>
 
 {% if show_recovery_setup %}
@@ -409,6 +408,8 @@
 
 {% block extra_scripts %}
 <script>
+    const tooltipTriggerList = document.querySelectorAll('[data-bs-toggle="tooltip"]')
+    const tooltipList = [...tooltipTriggerList].map(tooltipTriggerEl => new bootstrap.Tooltip(tooltipTriggerEl))
     document.getElementById('enforceLimitsBtn').addEventListener('click', async function() {
         const btn = this;
         const originalContent = btn.innerHTML;
