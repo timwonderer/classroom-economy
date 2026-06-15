@@ -3,7 +3,6 @@ from app.feats.base import InvariantViolation
 from app.extensions import db
 from tests.helpers.v2_fixtures import make_admin
 from tests.helpers.class_scope import create_class_scope
-from tests.helpers.mock_teacher_block import TeacherBlock
 from app.models import ClassFeature, Seat
 
 
@@ -135,15 +134,6 @@ def test_payroll_scope_resolves_active_teacher_seat(client):
     class_a = create_class_scope(teacher=teacher, join_code="CLSA01", display_name="Class A")
     class_b = create_class_scope(teacher=teacher, join_code="CLSB02", display_name="Class B")
 
-    tb_a = TeacherBlock(
-        teacher_id=teacher.id, join_code="CLSA01", class_id=class_a.class_id, block="1",
-        first_name="TestA", last_initial="A", salt=b"salta", first_half_hash="hasha"
-    )
-    tb_b = TeacherBlock(
-        teacher_id=teacher.id, join_code="CLSB02", class_id=class_b.class_id, block="2",
-        first_name="TestB", last_initial="B", salt=b"saltb", first_half_hash="hashb"
-    )
-    db.session.add_all([tb_a, tb_b])
     db.session.commit()
 
     from app.routes.admin import _require_payroll_feature_scope_from_request

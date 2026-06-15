@@ -15,7 +15,7 @@ def parse_server_state(html):
     return json.loads(script.string)
 
 def create_claimed_seat(teacher_id, student_id, block, join_code, salt=None, username=None, pin=None):
-    from app.models import TeacherBlock, ClassEconomy, Seat, User, UserRole
+    from app.models import ClassEconomy, Seat, User, UserRole, IdentityProfile
     if salt is None:
         salt = get_random_salt()
 
@@ -53,20 +53,13 @@ def create_claimed_seat(teacher_id, student_id, block, join_code, salt=None, use
     elif not identity_user.last_active_class_id:
         identity_user.last_active_class_id = class_economy.class_id
 
-    tb = TeacherBlock(
-        teacher_id=teacher_id,
-        class_id=class_economy.class_id,
-        block=block,
-        first_name="Test",
-        last_initial="S",
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=salt,
-        first_half_hash="mock",
-        join_code=join_code,
-        student_id=student_id,
-        is_claimed=True
-    )
+    tb = Seat(student_id=student_id, class_id=class_economy.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+
+    db.session.add(tb)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Test", last_initial="S"))
     db.session.add(tb)
     db.session.flush()
 

@@ -1,7 +1,6 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Student, Transaction, StoreItem, StudentItem, Admin, Seat, User, ClassMembership, StudentTeacher
+from app.models import Student, Transaction, StoreItem, StudentItem, Admin, IdentityProfile, Seat, User, ClassMembership, StudentTeacher
 from app.utils.analytics_engine import AnalyticsEngine
 from app import db
 import time
@@ -50,12 +49,11 @@ def test_teacher_student_lifecycle(client, teacher, app):
         block = "Z"
         _ensure_teacher_student_seat(teacher.id, join_code, block)
 
-        # Verify TeacherBlock created
-        tb = TeacherBlock.query.filter_by(teacher_id=teacher.id, join_code=join_code, is_teacher=True).first()
+        # Verify Seat created
+        tb = Seat.query.filter_by(join_code=join_code, role='teacher').first()
         assert tb is not None
-        assert tb.first_name == "Teacher"
-        assert tb.last_initial == "S"
-        assert tb.dob_sum_hash is not None
+        assert tb.identity_profile.first_name == "Teacher"
+        assert tb.identity_profile.last_initial == "S"
 
         # 2. Claim the account (Step 1)
         response = client.post('/student/claim-account', data={
@@ -67,9 +65,9 @@ def test_teacher_student_lifecycle(client, teacher, app):
 
         assert response.status_code == 200
 
-        # Verify TeacherBlock is claimed and linked
+        # Verify Seat is claimed and linked
         db.session.refresh(tb)
-        assert tb.is_claimed is True
+        assert tb.claimed_at is not None
         assert tb.student_id is not None
 
         student = db.session.get(Student, tb.student_id)
@@ -154,20 +152,20 @@ def test_teacher_student_lifecycle(client, teacher, app):
         db.session.add(regular_student)
         db.session.commit()
 
-        regular_tb = TeacherBlock(
-            teacher_id=teacher.id,
-            block="Z",
-            join_code=join_code,
+        from app.models import ClassEconomy
+        class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+        regular_seat = Seat(
             student_id=regular_student.id,
-            is_claimed=True,
-            first_name="Regular",
-            last_initial="R",
-            dob_sum_hash=None,
-            salt=regular_student.salt,
-            first_half_hash=b'fakehash',
-            last_name_hash_by_part=None
+            class_id=class_row.class_id if class_row else None,
+            join_code=join_code,
+            block="Z",
+            block_identifier="Z",
+            role="student",
+            claimed_at=datetime.now(timezone.utc),
         )
-        db.session.add(regular_tb)
+        db.session.add(regular_seat)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=regular_seat.id, profile_type="student_claimed", first_name="Regular", last_initial="R"))
 
         # Add StudentTeacher link
         from app.models import StudentTeacher
@@ -211,20 +209,18 @@ def test_teacher_student_lifecycle(client, teacher, app):
         db.session.add(lazy_student)
         db.session.commit()
 
-        lazy_tb = TeacherBlock(
-            teacher_id=teacher.id,
-            block="Z",
-            join_code=join_code,
+        lazy_seat = Seat(
             student_id=lazy_student.id,
-            is_claimed=True,
-            first_name="Lazy",
-            last_initial="L",
-            dob_sum_hash=None,
-            salt=lazy_student.salt,
-            first_half_hash=b'fakehash2',
-            last_name_hash_by_part=None
+            class_id=class_row.class_id if class_row else None,
+            join_code=join_code,
+            block="Z",
+            block_identifier="Z",
+            role="student",
+            claimed_at=datetime.now(timezone.utc),
         )
-        db.session.add(lazy_tb)
+        db.session.add(lazy_seat)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=lazy_seat.id, profile_type="student_claimed", first_name="Lazy", last_initial="L"))
 
         # Add StudentTeacher link
         st2 = StudentTeacher(student_id=lazy_student.id, teacher_id=teacher.id)
@@ -320,10 +316,10 @@ def test_teacher_student_reuses_identity_across_join_codes(client, teacher, app)
         }, follow_redirects=True)
         assert response.status_code == 200
 
-        tb_a = TeacherBlock.query.filter_by(
-            teacher_id=teacher.id, join_code=join_code_a, is_teacher=True
+        tb_a = Seat.query.filter_by(
+            join_code=join_code_a, role='teacher'
         ).first()
-        assert tb_a.is_claimed is True
+        assert tb_a.claimed_at is not None
         student_a = db.session.get(Student, tb_a.student_id)
         assert student_a is not None
         assert student_a.is_teacher is True
@@ -357,10 +353,10 @@ def test_teacher_student_reuses_identity_across_join_codes(client, teacher, app)
         }, follow_redirects=True)
         assert response.status_code == 200
 
-        tb_b = TeacherBlock.query.filter_by(
-            teacher_id=teacher.id, join_code=join_code_b, is_teacher=True
+        tb_b = Seat.query.filter_by(
+            join_code=join_code_b, role='teacher'
         ).first()
-        assert tb_b.is_claimed is True
+        assert tb_b.claimed_at is not None
         student_b = db.session.get(Student, tb_b.student_id)
         assert student_b is not None
         assert student_b.is_teacher is True

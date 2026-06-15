@@ -3,8 +3,7 @@ from datetime import datetime, timezone, timedelta
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from app.extensions import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, ClassEconomy, ClassMembership, Student, Transaction, TransactionStatus, StoreItem, StudentItem, IssueCategory, Issue, Seat, ClassFeature
+from app.models import Admin, ClassEconomy, ClassMembership, Student, Transaction, TransactionStatus, StoreItem, StudentItem, IssueCategory, Issue, Seat, ClassFeature, IdentityProfile
 
 def _login_admin(client, admin_id):
     with client.session_transaction() as sess:
@@ -183,34 +182,14 @@ def test_file_claim_scoped_to_class(client):
         ClassFeature(class_id=class_a.class_id, feature_name="insurance"),
         ClassFeature(class_id=class_b.class_id, feature_name="insurance"),
     ])
-    seat_a = Seat(student_id=student.id, class_id=class_a.class_id, join_code="CLAIM_A", block="A", role="student")
-    seat_b = Seat(student_id=student.id, class_id=class_b.class_id, join_code="CLAIM_B", block="B", role="student")
-    db.session.add_all([
-        TeacherBlock(
-            teacher_id=admin.id,
-            block="A",
-            first_name="Claimer",
-            last_initial="S",
-            salt=b"salt",
-            first_half_hash="claim-a-hash",
-            join_code="CLAIM_A",
-            student_id=student.id,
-            is_claimed=True,
-        )(
-            teacher_id=admin.id,
-            block="B",
-            first_name="Claimer",
-            last_initial="S",
-            salt=b"salt",
-            first_half_hash="claim-b-hash",
-            join_code="CLAIM_B",
-            student_id=student.id,
-            is_claimed=True,
-        ),
-        seat_a,
-        seat_b,
-    ])
+    seat_a = Seat(student_id=student.id, class_id=class_a.class_id, join_code="CLAIM_A", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_b = Seat(student_id=student.id, class_id=class_b.class_id, join_code="CLAIM_B", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add_all([seat_a, seat_b])
     db.session.flush()
+    db.session.add_all([
+        IdentityProfile(seat_id=seat_a.id, profile_type='student_claimed', first_name="Claimer", last_initial="S"),
+        IdentityProfile(seat_id=seat_b.id, profile_type='student_claimed', first_name="Claimer", last_initial="S"),
+    ])
 
     # Policy in Class A
     from app.models import InsurancePolicy, StudentInsurance

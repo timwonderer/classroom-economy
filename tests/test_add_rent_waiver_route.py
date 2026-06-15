@@ -3,8 +3,7 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
-from app.hash_utils import get_random_salt, hash_username
-from tests.helpers.mock_teacher_block import TeacherBlock
+from app.hash_utils import hash_username
 from app.models import (
     Admin,
     AnalyticsEvent,
@@ -13,6 +12,7 @@ from app.models import (
     IdentityProfile,
     RentSettings,
     RentWaiver,
+    Seat,
     Student,
     StudentTeacher,
     )
@@ -27,32 +27,22 @@ def _make_admin(suffix):
 
 
 def _make_teacher_block(admin_id, block, join_code):
-    salt = get_random_salt()
-    identity = IdentityProfile(profile_type="roster", first_name="Teacher", last_initial="T")
-    db.session.add(identity)
-    db.session.flush()
     economy = ClassEconomy(join_code=join_code, teacher_id=admin_id, created_by_admin_id=admin_id)
     db.session.add(economy)
     db.session.flush()
     db.session.add(ClassMembership(join_code=join_code, admin_id=admin_id, role="admin"))
-    tb = TeacherBlock(
-        teacher_id=admin_id,
-        block=block,
-        first_name="Teacher",
-        last_initial="T",
-        identity_id=identity.id,
-        salt=salt,
-        first_half_hash="teac",
-        last_name_hash_by_part=[],
-        dob_sum_hash="hash",
-        join_code=join_code,
+    seat = Seat(
         class_id=economy.class_id,
-        is_claimed=False,
-        is_teacher=True,
+        join_code=join_code,
+        block=block,
+        block_identifier=block,
+        role="teacher",
     )
-    db.session.add(tb)
+    db.session.add(seat)
     db.session.flush()
-    return tb
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student_unclaimed", first_name="Teacher", last_initial="T"))
+    db.session.flush()
+    return seat
 
 
 def _make_rent_settings(admin_id, block, first_due, class_id=None, join_code=None, frequency_type="weekly"):

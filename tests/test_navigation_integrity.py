@@ -2,8 +2,7 @@ import os
 import pytest
 from datetime import datetime, timezone
 from app.extensions import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import TeacherOnboarding, Student, StudentTeacher
+from app.models import TeacherOnboarding, Student, StudentTeacher, Seat, IdentityProfile
 from app.hash_utils import get_random_salt, hash_username
 from app.utils.economy_policy import replace_enabled_class_features
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
@@ -58,22 +57,10 @@ def test_teacher_navigation_integrity(client, integrity_tester):
     db.session.add(student)
     db.session.flush()
     db.session.add(StudentTeacher(student_id=student.id, teacher_id=admin.id))
-    db.session.add(
-        TeacherBlock(
-            teacher_id=admin.id,
-            class_id=class_row.class_id,
-            block="A",
-            first_name="Nav",
-            last_initial="T",
-            last_name_hash_by_part=["hash"],
-            dob_sum_hash=None,
-            salt=os.urandom(16),
-            first_half_hash="hash",
-            join_code="NAVTECH1",
-            student_id=student.id,
-            is_claimed=True,
-        )
-    )
+    _tb_seat = Seat(student_id=student.id, class_id=class_row.class_id, join_code="NAVTECH1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name="Nav", last_initial="T"))
     replace_enabled_class_features(
         class_row.class_id,
         {"insurance", "banking", "rent", "hall_pass", "store"},
@@ -117,20 +104,13 @@ def test_student_navigation_integrity(client, integrity_tester):
     db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
     db.session.commit()
 
-    seat = TeacherBlock(
-        teacher_id=teacher.id,
-        class_id=class_row.class_id,
-        block="A",
-        first_name="Nav",
-        last_initial="S",
-        last_name_hash_by_part=["hash"],
-        dob_sum_hash=None,
-        salt=os.urandom(16),
-        first_half_hash="hash",
-        join_code="NAVSTU1",
-        student_id=student.id,
-        is_claimed=True,
-    )
+    seat = Seat(student_id=student.id, class_id=class_row.class_id, join_code="NAVSTU1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+
+    db.session.add(seat)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Nav", last_initial="S"))
     db.session.add(seat)
     db.session.commit()
 

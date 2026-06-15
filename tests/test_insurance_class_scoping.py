@@ -14,13 +14,12 @@ import pytest
 from datetime import datetime, timedelta, timezone
 
 from app import db
-from tests.helpers.mock_teacher_block import TeacherBlock
 from app.models import (
-    Admin, Student, StudentBlock, StudentTeacher,
+    Admin, ClassEconomy, IdentityProfile, Student, StudentBlock, StudentTeacher,
     InsurancePolicy, InsurancePolicyBlock, StudentInsurance, InsuranceClaim,
     InsuranceEnrollment, Seat,
 )
-from app.hash_utils import hash_username, get_random_salt
+from app.hash_utils import hash_username
 from tests.helpers.class_scope import create_class_scope
 
 
@@ -34,32 +33,18 @@ def teacher_with_two_classes(client):
 
     salt = get_random_salt()
 
-    # Create TeacherBlock for Period A with join_code JOINA123
-    tb_a = TeacherBlock(
-        teacher_id=teacher.id,
-        block="A",
-        join_code="JOINA123",
-        first_name="Placeholder",
-        last_initial="P",
-        dob_sum_hash=None,
-        salt=salt,
-        first_half_hash="hash1",
-        last_name_hash_by_part=None
-    )
+    # Create Seat for Period A with join_code JOINA123
+    tb_a = Seat(join_code="JOINA123", block="A", block_identifier="A", role="student")
+    db.session.add(tb_a)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=tb_a.id, profile_type='student_unclaimed', first_name="Placeholder", last_initial="P"))
     db.session.add(tb_a)
 
-    # Create TeacherBlock for Period B with join_code JOINB456
-    tb_b = TeacherBlock(
-        teacher_id=teacher.id,
-        block="B",
-        join_code="JOINB456",
-        first_name="Placeholder",
-        last_initial="P",
-        dob_sum_hash=None,
-        salt=salt,
-        first_half_hash="hash2",
-        last_name_hash_by_part=None
-    )
+    # Create Seat for Period B with join_code JOINB456
+    tb_b = Seat(join_code="JOINB456", block="B", block_identifier="B", role="student")
+    db.session.add(tb_b)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=tb_b.id, profile_type='student_unclaimed', first_name="Placeholder", last_initial="P"))
     db.session.add(tb_b)
 
     db.session.commit()
@@ -439,17 +424,10 @@ def test_no_data_shown_for_class_without_insurance(
     salt = get_random_salt()
 
     # Add a third class period with no insurance policies
-    tb_c = TeacherBlock(
-        teacher_id=teacher.id,
-        block="C",
-        join_code="JOINC789",
-        first_name="Placeholder",
-        last_initial="P",
-        dob_sum_hash=None,
-        salt=salt,
-        first_half_hash="hash3",
-        last_name_hash_by_part=None
-    )
+    tb_c = Seat(join_code="JOINC789", block="C", block_identifier="C", role="student")
+    db.session.add(tb_c)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=tb_c.id, profile_type='student_unclaimed', first_name="Placeholder", last_initial="P"))
     db.session.add(tb_c)
     db.session.commit()
 

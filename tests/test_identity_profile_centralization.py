@@ -1,8 +1,7 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, IdentityProfile, Student
+from app.models import Admin, IdentityProfile, Student, Seat
 
 
 def _create_admin(username: str) -> Admin:
@@ -65,19 +64,13 @@ def test_teacher_block_auto_creates_identity_profile(client):
     admin = _create_admin("identity-teacher")
     salt = get_random_salt()
 
-    seat = TeacherBlock(
-        teacher_id=admin.id,
-        block="A",
-        class_label="A",
-        first_name="Mateo",
-        last_initial="R",
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=salt,
-        first_half_hash="hash-seat",
-        join_code="JOIN-IDENTITY",
-        is_claimed=False,
-    )
+    seat = Seat(join_code="JOIN-IDENTITY", block="A", block_identifier="A", role="student")
+
+    db.session.add(seat)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_unclaimed', first_name="Mateo", last_initial="R"))
     db.session.add(seat)
     db.session.commit()
 

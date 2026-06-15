@@ -9,7 +9,6 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import app, db
-from tests.helpers.mock_teacher_block import TeacherBlock
 from app.models import (
     UserRole,
     Admin,

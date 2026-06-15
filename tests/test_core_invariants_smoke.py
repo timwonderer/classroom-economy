@@ -7,26 +7,7 @@ from werkzeug.security import generate_password_hash
 
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import (
-    Admin,
-    ClassMembership,
-    ClassFeature,
-    InsuranceClaim,
-    InsuranceEnrollment,
-    InsurancePolicy,
-    RentPayment,
-    RentSettings,
-    StoreItem,
-    Student,
-    StudentInsurance,
-    StudentTeacher,
-    TapEvent,
-    Transaction,
-    TransactionStatus,
-    Seat,
-    ClassEconomy,
-)
+from app.models import Seat, IdentityProfile, Admin, ClassMembership, ClassFeature, InsuranceClaim, InsuranceEnrollment, InsurancePolicy, RentPayment, RentSettings, StoreItem, Student, StudentInsurance, StudentTeacher, TapEvent, Transaction, TransactionStatus, ClassEconomy
 from app.services import ledger_service, obligations_service
 from tests.helpers.admin_context import login_admin
 from tests.helpers.class_scope import create_class_scope
@@ -95,21 +76,10 @@ def _link_student_to_teacher(student: Student, admin: Admin, join_code: str, blo
             for feature_name in ClassFeature.feature_names():
                 if not ClassFeature.query.filter_by(class_id=economy.class_id, feature_name=feature_name).first():
                     db.session.add(ClassFeature(class_id=economy.class_id, feature_name=feature_name))
-    db.session.add(
-        TeacherBlock(
-            teacher_id=admin.id,
-            student_id=student.id,
-            block=block,
-            join_code=join_code,
-            is_claimed=True,
-            first_name=student.first_name,
-            last_initial=student.last_initial,
-            last_name_hash_by_part=[],
-            dob_sum_hash=None,
-            salt=b"seat-salt",
-            first_half_hash="seat-hash",
-        )
-    )
+    _tb_seat = Seat(student_id=student.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
     economy = ClassEconomy.query.filter_by(join_code=join_code).first()
     if economy:
         seat = Seat.query.filter_by(student_id=student.id, class_id=economy.class_id).first()
@@ -402,7 +372,6 @@ def test_transfer_pairs_are_zero_sum_within_class_scope(client):
     _link_student_to_teacher(other_student, admin, "JOIN-OTHER", block="B")
     db.session.commit()
 
-    from app.models import Seat, ClassEconomy
     seat = Seat.query.filter_by(student_id=student.id, join_code="JOIN-XFER").first()
     other_seat = Seat.query.filter_by(student_id=other_student.id, join_code="JOIN-OTHER").first()
     economy = ClassEconomy.query.filter_by(join_code="JOIN-XFER").first()

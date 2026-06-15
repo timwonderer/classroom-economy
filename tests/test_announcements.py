@@ -9,8 +9,7 @@ import pytest
 import pyotp
 from datetime import datetime, timedelta, timezone
 from app import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, Announcement, ClassEconomy
+from app.models import Admin, Announcement, ClassEconomy, Seat, IdentityProfile
 
 
 @pytest.fixture
@@ -38,17 +37,13 @@ def teacher_block(test_teacher):
         db.session.add(economy)
         db.session.flush()
     
-    block = TeacherBlock(
-        teacher_id=test_teacher.id,
-        block='A',
-        join_code='TEST123',
-        first_name='encrypted_test_name',
-        last_initial='T',
-        last_name_hash_by_part=['hash1'],
-        dob_sum_hash=None,
-        salt=b'testsalt12345678',
-        first_half_hash='testhash123',
-    )
+    block = Seat(join_code='TEST123', block='A', block_identifier='A', role="student")
+    
+    db.session.add(block)
+    
+    db.session.flush()
+    
+    db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='encrypted_test_name', last_initial='T'))
     db.session.add(block)
     db.session.commit()
     return block
@@ -212,28 +207,14 @@ class TestAnnouncementMultiTenancy:
         db.session.flush()
         
         # Create two different blocks with different join codes
-        block_a = TeacherBlock(
-            teacher_id=test_teacher.id,
-            block='A',
-            join_code='CODE_A',
-            first_name='encrypted_test_name',
-            last_initial='T',
-            last_name_hash_by_part=['hash1'],
-            dob_sum_hash=None,
-            salt=b'testsalt12345678',
-            first_half_hash='testhash123',
-        )
-        block_b = TeacherBlock(
-            teacher_id=test_teacher.id,
-            block='B',
-            join_code='CODE_B',
-            first_name='encrypted_test_name',
-            last_initial='T',
-            last_name_hash_by_part=['hash1'],
-            dob_sum_hash=None,
-            salt=b'testsalt87654321',
-            first_half_hash='testhash456',
-        )
+        block_a = Seat(join_code='CODE_A', block='A', block_identifier='A', role="student")
+        db.session.add(block_a)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=block_a.id, profile_type='student_unclaimed', first_name='encrypted_test_name', last_initial='T'))
+        block_b = Seat(join_code='CODE_B', block='B', block_identifier='B', role="student")
+        db.session.add(block_b)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=block_b.id, profile_type='student_unclaimed', first_name='encrypted_test_name', last_initial='T'))
         db.session.add(block_a)
         db.session.add(block_b)
         db.session.commit()

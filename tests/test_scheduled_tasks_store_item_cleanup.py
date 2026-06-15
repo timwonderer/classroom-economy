@@ -2,7 +2,7 @@ import pytest
 pytest.skip('Legacy TeacherBlock test', allow_module_level=True)
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, ClassEconomy, ClassMembership, StoreItem, StoreItemBlock, TeacherBlock
+from app.models import Admin, ClassEconomy, ClassMembership, StoreItem, StoreItemBlock, Seat
 from app.scheduled_tasks import database_maintenance_job
 
 

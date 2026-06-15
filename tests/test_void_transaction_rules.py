@@ -5,19 +5,7 @@ from werkzeug.security import generate_password_hash
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import (
-    Admin,
-    InsurancePolicy,
-    RentPayment,
-    Seat,
-    StoreItem,
-    Student,
-    StudentInsurance,
-    StudentItem,
-    StudentTeacher,
-    Transaction,
-)
+from app.models import Seat, IdentityProfile, Admin, InsurancePolicy, RentPayment, StoreItem, Student, StudentInsurance, StudentItem, StudentTeacher, Transaction
 
 
 def _login_admin(client, admin_id):
@@ -50,19 +38,10 @@ def _build_teacher_student(join_code='VOID123'):
         block='A',
         role='student',
     ))
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        block='A',
-        join_code=join_code,
-        student_id=student.id,
-        is_claimed=True,
-        first_name='Void',
-        last_initial='T',
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b'salt',
-        first_half_hash='hash',
-    ))
+    _tb_seat = Seat(student_id=student.id, join_code=join_code, block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Void', last_initial='T'))
     db.session.commit()
     return teacher, student
 

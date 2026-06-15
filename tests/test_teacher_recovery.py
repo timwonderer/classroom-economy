@@ -3,8 +3,7 @@ import pytest
 import pyotp
 import bcrypt
 from datetime import datetime, timezone, timedelta
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, Student, RecoveryRequest, StudentRecoveryCode, StudentTeacher, ClassEconomy, User, UserRole
+from app.models import Admin, IdentityProfile, Seat, Student, RecoveryRequest, StudentRecoveryCode, StudentTeacher, ClassEconomy, User, UserRole, Seat, IdentityProfile
 from app.extensions import db
 from app.hash_utils import hash_username_lookup, get_random_salt, hash_hmac
 
@@ -62,18 +61,13 @@ def create_student(teacher, username="student1", block="A"):
         db.session.add(class_economy)
         db.session.flush()
 
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        block=block,
-        join_code=join_code,
-        first_name=first_name,
-        last_initial=last_initial,
-        salt=salt,
-        first_half_hash="0"*64,
-        class_id=class_economy.class_id,
-        is_claimed=True,
-        student_id=student.id,
-    ))
+    _tb_seat = Seat(student_id=student.id, class_id=class_economy.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+
+    db.session.add(_tb_seat)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_initial=last_initial))
     db.session.flush()
 
     return student

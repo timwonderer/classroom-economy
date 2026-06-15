@@ -12,7 +12,7 @@ FLOAT_TOLERANCE = 0.0001
 @pytest.fixture
 def test_teacher(client):
     """Fixture to create a test teacher for payroll tests."""
-    from app.models import Admin
+    from app.models import Admin, Seat, IdentityProfile
     teacher = make_admin("test_teacher", "s")
     db.session.add(teacher)
     db.session.commit()
@@ -35,7 +35,7 @@ def test_class(test_teacher):
     return class_economy
 
 def test_calculate_payroll(client):
-    from app.models import AttendanceSession, TeacherBlock, Student
+    from app.models import AttendanceSession, Student
     from tests.helpers.class_scope import create_class_scope
 
     # Create Teacher
@@ -63,20 +63,10 @@ def test_calculate_payroll(client):
     )
 
     # CRITICAL: Link student to claimed seat scope for payroll.
-    tb = TeacherBlock(
-        teacher_id=teacher.id,
-        student_id=student.id,
-        block="A",
-        join_code="JOIN123",
-        class_id=class_economy.class_id,
-        is_claimed=True,
-        first_name="Test",
-        last_initial="S",
-        last_name_hash_by_part=None,
-        first_half_hash='hash123',
-        salt=b's',
-        dob_sum_hash=None
-    )
+    tb = Seat(student_id=student.id, class_id=class_economy.class_id, join_code="JOIN123", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(tb)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Test", last_initial="S"))
     db.session.add(tb)
     db.session.commit()
 
@@ -142,7 +132,7 @@ def test_calculate_payroll(client):
 
 
 def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
-    from app.models import AttendanceSession, Admin, TeacherBlock, Student
+    from app.models import AttendanceSession, Admin, Student
     from tests.helpers.class_scope import create_class_scope
 
     teacher = make_admin("prof_multiclass", "s")
@@ -174,34 +164,17 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
     )
     db.session.flush()
 
-    tb_a = TeacherBlock(
-        teacher_id=teacher.id,
-        student_id=student.id,
-        block="A",
-        join_code="PAYA01",
-        class_id=class_a.class_id,
-        is_claimed=True,
-        first_name="Multi",
-        last_initial="S",
-        last_name_hash_by_part=None,
-        first_half_hash='hash-a',
-        salt=b's',
-        dob_sum_hash=None,
-    )
-    tb_b = TeacherBlock(
-        teacher_id=teacher.id,
-        student_id=student.id,
-        block="B",
-        join_code="PAYB01",
-        class_id=class_b.class_id,
-        is_claimed=True,
-        first_name="Multi",
-        last_initial="S",
-        last_name_hash_by_part=None,
-        first_half_hash='hash-b',
-        salt=b's',
-        dob_sum_hash=None,
-    )
+    tb_a = Seat(student_id=student.id, class_id=class_a.class_id, join_code="PAYA01", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+
+    db.session.add(tb_a)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=tb_a.id, profile_type='student_claimed', first_name="Multi", last_initial="S"))
+    tb_b = Seat(student_id=student.id, class_id=class_b.class_id, join_code="PAYB01", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(tb_b)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=tb_b.id, profile_type='student_claimed', first_name="Multi", last_initial="S"))
     db.session.add_all([tb_a, tb_b])
     db.session.flush()
 
@@ -446,7 +419,7 @@ def test_get_pay_rate_for_block_requires_class_scope(client):
 def test_get_cached_payroll_with_meta(client):
     """Test the caching logic for payroll."""
     from app.payroll import get_cached_payroll_with_meta
-    from app.models import Admin, AttendanceSession, Student, TeacherBlock, PayrollCache
+    from app.models import Admin, Seat, IdentityProfile, AttendanceSession, Student, PayrollCache
     from tests.helpers.class_scope import create_class_scope
     from datetime import datetime, timedelta, timezone
 
@@ -469,11 +442,10 @@ def test_get_cached_payroll_with_meta(client):
     db.session.commit()
 
     # Link
-    tb = TeacherBlock(
-        teacher_id=teacher.id, student_id=student.id, block="A", join_code="CACHE1", is_claimed=True,
-        class_id=class_economy.class_id,
-        first_name="CacheUser", last_initial="T", last_name_hash_by_part=None, first_half_hash='h', salt=b's', dob_sum_hash=None
-    )
+    tb = Seat(student_id=student.id, class_id=class_economy.class_id, join_code="CACHE1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(tb)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="CacheUser", last_initial="T"))
     db.session.add(tb)
     db.session.commit()
 
