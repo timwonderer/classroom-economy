@@ -245,23 +245,6 @@ _BANKING_REDIRECT_QUERY_KEYS = {
     "settings_block",
 }
 
-_SAFE_VOID_ERROR_MESSAGES = {
-    "This purchase transaction cannot be voided automatically.",
-    "Transaction is missing class scope (class_id) and cannot be voided safely.",
-    "Purchase item record was not found. This transaction cannot be voided.",
-    "Immediate-use item purchases are not voidable.",
-    "Only delayed-use item purchases are voidable.",
-    "No matching student item was found for this purchase.",
-    "Unable to map this transaction to purchasable student items.",
-    "Delayed-use item has already been used (redemption requested or completed) and cannot be voided.",
-}
-
-
-def _safe_known_message(message, allowed_messages, default_message):
-    if message in allowed_messages:
-        return message
-    return default_message
-
 ADMIN_FEATURE_ENDPOINTS = {
     "admin.payroll": "payroll",
     "admin.store_management": "store",
@@ -8070,9 +8053,7 @@ def void_transaction(transaction_id):
     except ValueError as e:
         db.session.rollback()
         current_app.logger.info("Transaction void validation failed for %s: %s", transaction_id, e)
-        return _void_error(
-            _safe_known_message(str(e), _SAFE_VOID_ERROR_MESSAGES, "Transaction could not be voided."),
-        )
+        return _void_error("Transaction could not be voided.")
     except SQLAlchemyError as e:
         db.session.rollback()
         current_app.logger.error(f"Failed to void transaction {transaction_id}: {e}", exc_info=True)
