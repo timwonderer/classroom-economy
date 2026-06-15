@@ -37,8 +37,8 @@ Routes and background jobs never call `db.session.add/commit` on domain models d
 | Identity | `User`, `Seat`, `IdentityProfile`, `ClassEconomy` | Auth, class-local actor, display name, class boundary |
 | Financial | `Transaction`, `BalanceCache` | Ledger entries and cached balances (seat + class scoped) |
 | Configuration | `PayrollSettings`, `RentSettings`, `BankingSettings`, `FeatureSettings` | Per-class economy settings |
-| Obligations | `AssessmentEvent`, `ObligationLifecycle` | Rent, insurance, and fee lifecycle |
-| Store | `StoreItem`, `StorePurchase`, `RedemptionEvent` | Classroom store catalog and purchases |
+| Obligations | `ObligationAssessment`, `ObligationLifecycle` | Rent, insurance, and fee lifecycle |
+| Store | `StoreItem`, `StudentItem`, `RedemptionAuditLog` | Classroom store catalog and purchases |
 | Attendance | `TapEvent`, `HallPassLog` | Start Work / Break Done tracking, hall passes |
 
 55+ models total. Legacy tables (`Admin`, `Student`, `TeacherBlock`) still exist as compatibility shadows during the auth transition.
