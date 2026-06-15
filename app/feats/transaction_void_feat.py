@@ -18,6 +18,14 @@ class VoidTransactionResult:
     reversal_transaction_id: int | None
 
 
+class ImmediatePurchaseNotVoidable(ValueError):
+    pass
+
+
+class UsedDelayedPurchaseNotVoidable(ValueError):
+    pass
+
+
 def execute_void_transaction(tx: Transaction) -> VoidTransactionResult:
     """Ledger-led FEAT for transaction void orchestration."""
     is_pending = tx.status == TransactionStatus.PENDING
@@ -69,7 +77,7 @@ def _void_purchase(tx: Transaction) -> None:
     if not store_item:
         raise ValueError("Purchase item record was not found. This transaction cannot be voided.")
     if store_item.item_type == 'immediate':
-        raise ValueError("Immediate-use item purchases are not voidable.")
+        raise ImmediatePurchaseNotVoidable
     if store_item.item_type != 'delayed':
         raise ValueError("Only delayed-use item purchases are voidable.")
     matching_items = StudentItem.query.filter(
@@ -100,7 +108,7 @@ def _void_purchase(tx: Transaction) -> None:
 
     used_statuses = {'processing', 'completed', 'redeemed'}
     if any((student_item.status or '').lower() in used_statuses for student_item in selected_items):
-        raise ValueError("Delayed-use item has already been used (redemption requested or completed) and cannot be voided.")
+        raise UsedDelayedPurchaseNotVoidable
 
     ledger_service.create_pending_transaction(
         seat_id=tx.seat_id,
