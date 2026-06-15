@@ -30,7 +30,7 @@ Pygments==2.20.0
 pyotp==2.9.0
 pytest==9.0.3
 pytest-flask==1.3.0
-playwright==1.55.0
+playwright==1.60.0
 pytz==2026.2
 PyYAML==6.0.3
 soupsieve==2.8.3
