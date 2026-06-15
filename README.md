@@ -1,6 +1,6 @@
 # Classroom Token Hub
 
-An educational banking simulation platform for teaching financial literacy in classrooms.
+A classroom management platform that uses a simulated token economy to drive student engagement and participation.
 
 **Version:** 2.0.0 (live-test candidate)  
 **License:** [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) — Free for educational and nonprofit use.  
@@ -10,9 +10,9 @@ An educational banking simulation platform for teaching financial literacy in cl
 
 ## Overview
 
-Classroom Token Hub lets teachers run a simulated economy inside their classroom. Students earn tokens through attendance, spend them in a class store, pay rent, manage checking and savings accounts, and file insurance claims — all scoped to individual class periods. Teachers configure pay rates, rent, store items, and feature toggles per class.
+Classroom Token Hub gives teachers a token-based economy to manage their classroom. Students earn tokens for attendance and participation, then spend them in a class store, use them for hall passes, or save them — creating a feedback loop that reinforces positive classroom behavior. Teachers configure pay rates, rent, store items, and feature toggles per class period.
 
-The platform is multi-tenant: a single deployment serves many teachers, each with multiple class periods. Students can belong to multiple classes with different teachers. All financial and participation data is isolated by class.
+The platform is multi-tenant: a single deployment serves many teachers, each with multiple class periods. Students can belong to multiple classes with different teachers. All data is isolated by class.
 
 ---
 
@@ -238,4 +238,4 @@ See [LICENSE](LICENSE) for complete terms. See [Third-Party Notices](docs/archiv
 
 ---
 
-Built for educators and students to make learning about finance engaging and practical.
+Built for educators who want a practical, engaging way to manage their classrooms.
