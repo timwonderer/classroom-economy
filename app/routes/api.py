@@ -122,10 +122,8 @@ def _log_api_client_error(route_name, exc, *, extra=None):
 
 def _safe_exception_message(exc, default_message, *, allowed_messages=None):
     message = str(exc)
-    if allowed_messages:
-        for allowed_message in allowed_messages:
-            if message == allowed_message:
-                return allowed_message
+    if allowed_messages and message in allowed_messages:
+        return message
     return default_message
 
 

@@ -21,6 +21,7 @@ from urllib.parse import urlparse
 
 from app.utils.helpers import (
     docs_url_for,
+    get_external_docs_base_url,
     render_template_with_fallback,
     should_redirect_public_docs,
 )
@@ -111,7 +112,7 @@ def _redirect_to_public_docs(doc_path=None):
     target = docs_url_for(doc_path)
     parsed = urlparse(target)
     if parsed.scheme in ("http", "https"):
-        configured_base = current_app.config.get("EXTERNAL_DOCS_BASE_URL", "").rstrip("/")
+        configured_base = (get_external_docs_base_url() or "").rstrip("/")
         configured_parsed = urlparse(configured_base) if configured_base else None
         normalized_base_path = configured_parsed.path.rstrip("/") if configured_parsed else ""
         target_path = parsed.path.rstrip("/")

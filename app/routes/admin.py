@@ -258,9 +258,10 @@ _SAFE_VOID_ERROR_MESSAGES = {
 
 
 def _safe_local_redirect_target(target):
-    if not target or not is_safe_url(target):
+    normalized_target = (target or "").replace("\\", "")
+    if not normalized_target or not is_safe_url(normalized_target, request.host_url):
         return None
-    parsed = urlparse(urljoin(request.host_url, target))
+    parsed = urlparse(urljoin(request.host_url, normalized_target))
     safe_target = parsed.path or "/"
     if parsed.query:
         safe_target = f"{safe_target}?{parsed.query}"
@@ -270,9 +271,8 @@ def _safe_local_redirect_target(target):
 
 
 def _safe_known_message(message, allowed_messages, default_message):
-    for allowed_message in allowed_messages:
-        if message == allowed_message:
-            return allowed_message
+    if message in allowed_messages:
+        return message
     return default_message
 
 ADMIN_FEATURE_ENDPOINTS = {
