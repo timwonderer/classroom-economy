@@ -20,6 +20,7 @@ from markdown.extensions.tables import TableExtension
 from urllib.parse import urlparse
 
 from app.utils.helpers import (
+    EXTERNAL_DOCS_ROUTE_MAP,
     docs_url_for,
     get_external_docs_base_url,
     render_template_with_fallback,
@@ -109,25 +110,19 @@ _ALERT_START = re.compile(
 
 
 def _redirect_to_public_docs(doc_path=None):
-    target = docs_url_for(doc_path)
-    parsed = urlparse(target)
-    if parsed.scheme in ("http", "https"):
-        configured_base = (get_external_docs_base_url() or "").rstrip("/")
-        configured_parsed = urlparse(configured_base) if configured_base else None
-        normalized_base_path = configured_parsed.path.rstrip("/") if configured_parsed else ""
-        target_path = parsed.path.rstrip("/")
-        if (
-            not configured_parsed
-            or parsed.scheme != configured_parsed.scheme
-            or parsed.netloc != configured_parsed.netloc
-            or not (
-                target_path == normalized_base_path
-                or target_path.startswith(f"{normalized_base_path}/")
-            )
-        ):
-            abort(404)
-    elif parsed.scheme or parsed.netloc:
+    external_base = get_external_docs_base_url()
+    normalized_doc_path = (doc_path or "").strip().strip("/")
+    if not external_base:
         abort(404)
+
+    if normalized_doc_path:
+        if normalized_doc_path not in EXTERNAL_DOCS_ROUTE_MAP:
+            abort(404)
+        external_target = EXTERNAL_DOCS_ROUTE_MAP[normalized_doc_path].strip("/")
+    else:
+        external_target = ""
+
+    target = external_base if not external_target else f"{external_base}/{external_target}"
     return redirect(target)
 
 

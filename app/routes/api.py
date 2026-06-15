@@ -120,13 +120,6 @@ def _log_api_client_error(route_name, exc, *, extra=None):
     )
 
 
-def _safe_exception_message(exc, default_message, *, allowed_messages=None):
-    message = str(exc)
-    if allowed_messages and message in allowed_messages:
-        return message
-    return default_message
-
-
 def _safe_exception_prefix_message(exc, default_message, *, allowed_prefixes=None):
     message = str(exc)
     if allowed_prefixes:
@@ -1225,11 +1218,7 @@ def cancel_hall_pass(pass_id):
         _log_api_client_error("cancel_hall_pass", exc, extra=f"pass_id={pass_id}")
         return jsonify({
             "status": "error",
-            "message": _safe_exception_message(
-                exc,
-                "Hall pass cannot be cancelled in its current state.",
-                allowed_messages={"Only pending passes can be cancelled."},
-            ),
+            "message": "Only pending passes can be cancelled.",
         }), 400
 
 

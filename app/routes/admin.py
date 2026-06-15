@@ -41,7 +41,7 @@ from flask import (
     Blueprint, redirect, url_for, flash, request, session,
     jsonify, Response, send_file, current_app, abort, g
 )
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 from sqlalchemy import desc, text, or_, and_, func
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
@@ -255,19 +255,6 @@ _SAFE_VOID_ERROR_MESSAGES = {
     "Unable to map this transaction to purchasable student items.",
     "Delayed-use item has already been used (redemption requested or completed) and cannot be voided.",
 }
-
-
-def _safe_local_redirect_target(target):
-    normalized_target = (target or "").replace("\\", "")
-    if not normalized_target or not is_safe_url(normalized_target, request.host_url):
-        return None
-    parsed = urlparse(urljoin(request.host_url, normalized_target))
-    safe_target = parsed.path or "/"
-    if parsed.query:
-        safe_target = f"{safe_target}?{parsed.query}"
-    if parsed.fragment:
-        safe_target = f"{safe_target}#{parsed.fragment}"
-    return safe_target
 
 
 def _safe_known_message(message, allowed_messages, default_message):
@@ -8049,10 +8036,8 @@ def void_transaction(transaction_id):
     """Void a transaction."""
     requested_with = (request.headers.get("X-Requested-With") or "").strip().lower()
     is_json = request.is_json or requested_with == "xmlhttprequest"
+
     def _safe_referrer_redirect():
-        safe_target = _safe_local_redirect_target(request.referrer)
-        if safe_target:
-            return redirect(safe_target)
         return redirect(url_for('admin.dashboard'))
 
     def _void_error(message, status_code=400):
@@ -9421,11 +9406,6 @@ def update_expected_weekly_hours():
         db.session.rollback()
         current_app.logger.error(f"Error updating expected weekly hours: {e}")
         flash(f'Error updating expected weekly hours', 'error')
-
-    # Redirect back with cwi_block parameter to maintain the selected class
-    safe_next_target = _safe_local_redirect_target(request.form.get('next'))
-    if safe_next_target:
-        return redirect(safe_next_target)
 
     if redirect_block:
         return redirect(url_for('admin.payroll', cwi_block=redirect_block))
