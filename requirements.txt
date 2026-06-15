@@ -42,7 +42,7 @@ Werkzeug==3.1.8
 # breaking changes (transitive dep for gevent) before upgrading from 5.0 to 6.1
 zope.event==5.0
 # Upgraded to 8.4 in PR #1203 after comprehensive v2.0 compatibility testing
-zope.interface==8.4
+zope.interface==8.5
 python-dateutil==2.9.0.post0
 cryptography==48.0.0
 Flask-WTF==1.3.0
