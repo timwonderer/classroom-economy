@@ -13,6 +13,8 @@ jobs:
   guardrails-pr:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -30,6 +32,8 @@ jobs:
   guardrails-main:
     if: github.event_name == 'push' && github.ref == 'refs/heads/codex/v2.0'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout
         uses: actions/checkout@v4

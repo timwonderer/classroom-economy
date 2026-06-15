@@ -20,7 +20,9 @@ from markdown.extensions.tables import TableExtension
 from urllib.parse import urlparse
 
 from app.utils.helpers import (
+    EXTERNAL_DOCS_ROUTE_MAP,
     docs_url_for,
+    get_external_docs_base_url,
     render_template_with_fallback,
     should_redirect_public_docs,
 )
@@ -105,6 +107,23 @@ _ALERT_START = re.compile(
     r'^>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(.*)$',
     re.IGNORECASE,
 )
+
+
+def _redirect_to_public_docs(doc_path=None):
+    external_base = get_external_docs_base_url()
+    normalized_doc_path = (doc_path or "").strip().strip("/")
+    if not external_base:
+        abort(404)
+
+    if normalized_doc_path:
+        if normalized_doc_path not in EXTERNAL_DOCS_ROUTE_MAP:
+            abort(404)
+        external_target = EXTERNAL_DOCS_ROUTE_MAP[normalized_doc_path].strip("/")
+    else:
+        external_target = ""
+
+    target = external_base if not external_target else f"{external_base}/{external_target}"
+    return redirect(target)
 
 
 def parse_front_matter(content):
@@ -393,7 +412,7 @@ def set_audience():
 def index():
     """Documentation homepage with categories."""
     if should_redirect_public_docs():
-        return redirect(docs_url_for())
+        return _redirect_to_public_docs()
 
     audience = get_docs_audience()
     return render_template_with_fallback('docs/index.html', audience=audience)
@@ -403,7 +422,7 @@ def index():
 def timeline():
     """Interactive project development timeline."""
     if should_redirect_public_docs('timeline'):
-        return redirect(docs_url_for('timeline'))
+        return _redirect_to_public_docs('timeline')
 
     return render_template_with_fallback('docs/timeline.html')
 
@@ -422,7 +441,7 @@ def view_doc(doc_path):
         doc_path: Path to the documentation file (without .md extension)
     """
     if should_redirect_public_docs(doc_path):
-        return redirect(docs_url_for(doc_path))
+        return _redirect_to_public_docs(doc_path)
 
     # Security: Validate input and prevent directory traversal
     try:
@@ -647,7 +666,7 @@ def search():
     - description: "..." - Used for search context and relevance
     """
     if should_redirect_public_docs('search'):
-        return redirect(docs_url_for('search'))
+        return _redirect_to_public_docs('search')
 
     query = request.args.get('q', '').strip()
     audience = get_docs_audience()
