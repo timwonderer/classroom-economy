@@ -150,7 +150,11 @@ from app.utils.transaction_idempotency import create_idempotent_transaction, voi
 from app.feats.admin_adjustment_feat import execute_admin_adjustments
 from app.feats.attendance import student_tap
 from app.feats.insurance_claim_feat import execute_insurance_claim_resolution
-from app.feats.transaction_void_feat import execute_void_transaction
+from app.feats.transaction_void_feat import (
+    ImmediatePurchaseNotVoidable,
+    UsedDelayedPurchaseNotVoidable,
+    execute_void_transaction,
+)
 from app.hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from app.payroll import calculate_payroll_breakdown, get_cached_payroll_with_meta
 from app.attendance import (
@@ -244,23 +248,6 @@ _BANKING_REDIRECT_QUERY_KEYS = {
     "page",
     "settings_block",
 }
-
-_SAFE_VOID_ERROR_MESSAGES = {
-    "This purchase transaction cannot be voided automatically.",
-    "Transaction is missing class scope (class_id) and cannot be voided safely.",
-    "Purchase item record was not found. This transaction cannot be voided.",
-    "Immediate-use item purchases are not voidable.",
-    "Only delayed-use item purchases are voidable.",
-    "No matching student item was found for this purchase.",
-    "Unable to map this transaction to purchasable student items.",
-    "Delayed-use item has already been used (redemption requested or completed) and cannot be voided.",
-}
-
-
-def _safe_known_message(message, allowed_messages, default_message):
-    if message in allowed_messages:
-        return message
-    return default_message
 
 ADMIN_FEATURE_ENDPOINTS = {
     "admin.payroll": "payroll",
@@ -8067,12 +8054,18 @@ def void_transaction(transaction_id):
         db.session.rollback()
         current_app.logger.info("Transaction void denied for %s: %s", transaction_id, e)
         return _void_error("You do not have permission to void this transaction.", status_code=403)
+    except ImmediatePurchaseNotVoidable:
+        db.session.rollback()
+        return _void_error("Immediate-use item purchases are not voidable.")
+    except UsedDelayedPurchaseNotVoidable:
+        db.session.rollback()
+        return _void_error(
+            "Delayed-use item has already been used and cannot be voided.",
+        )
     except ValueError as e:
         db.session.rollback()
         current_app.logger.info("Transaction void validation failed for %s: %s", transaction_id, e)
-        return _void_error(
-            _safe_known_message(str(e), _SAFE_VOID_ERROR_MESSAGES, "Transaction could not be voided."),
-        )
+        return _void_error("Transaction could not be voided.")
     except SQLAlchemyError as e:
         db.session.rollback()
         current_app.logger.error(f"Failed to void transaction {transaction_id}: {e}", exc_info=True)
