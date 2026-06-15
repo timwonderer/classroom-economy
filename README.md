@@ -4,7 +4,7 @@ A classroom management platform that uses a simulated token economy to drive stu
 
 **Version:** 2.0.0 (live-test candidate)  
 **License:** [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) — Free for educational and nonprofit use.  
-**Branch:** `codex/v2.0`
+**Development branch:** `codex/v2.0`
 
 ---
 
@@ -28,7 +28,7 @@ The v2 architecture is built on three layers:
 Routes → FEAT → Domain Services → Ledger
 ```
 
-Routes and background jobs never call `db.session.add/commit` on domain models directly. GET handlers are pure (no DB writes).
+New code must route writes through FEATs; legacy routes that commit directly are being migrated. GET handlers must not trigger DB writes.
 
 ### Key Models
 
@@ -133,7 +133,7 @@ Navigate to `http://localhost:5000`.
 ./scripts/setup-hooks.sh
 ```
 
-Enables branch-aware database switching (`codex/v2.0` → v2 database, other branches → `production_dev`) and pre-push migration-head safety checks.
+Enables branch-aware database switching (`codex/v2.0` / `codex/v2-*` → `classroom_economy`, other branches → `production_dev`) and pre-push migration-head safety checks.
 
 ---
 
@@ -172,10 +172,8 @@ wsgi.py                   # WSGI entry point (gunicorn wsgi:app)
 pytest                              # All tests
 pytest tests/test_payroll.py        # Specific file
 pytest -k "recovery"                # Pattern match
-pytest --cov=app tests/             # With coverage
+pytest --cov=app tests/             # With coverage (requires pytest-cov)
 ```
-
-Current baseline: 708 passed, 1 skipped on the validated v2 branch.
 
 ### Database Migrations
 
