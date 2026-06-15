@@ -150,7 +150,11 @@ from app.utils.transaction_idempotency import create_idempotent_transaction, voi
 from app.feats.admin_adjustment_feat import execute_admin_adjustments
 from app.feats.attendance import student_tap
 from app.feats.insurance_claim_feat import execute_insurance_claim_resolution
-from app.feats.transaction_void_feat import execute_void_transaction
+from app.feats.transaction_void_feat import (
+    ImmediatePurchaseNotVoidable,
+    UsedDelayedPurchaseNotVoidable,
+    execute_void_transaction,
+)
 from app.hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from app.payroll import calculate_payroll_breakdown, get_cached_payroll_with_meta
 from app.attendance import (
@@ -233,6 +237,17 @@ _table_names_cache_lock = threading.Lock()
 
 # Create blueprint
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
+
+_BANKING_REDIRECT_QUERY_KEYS = {
+    "student",
+    "block",
+    "account",
+    "type",
+    "start_date",
+    "end_date",
+    "page",
+    "settings_block",
+}
 
 ADMIN_FEATURE_ENDPOINTS = {
     "admin.payroll": "payroll",
@@ -7994,8 +8009,11 @@ def process_claim(claim_id):
 @admin_required
 def transactions():
     """Redirect to banking page - transactions now under banking."""
-    # Preserve query parameters when redirecting
-    return redirect(url_for('admin.banking', **request.args))
+    safe_args = {
+        key: value for key, value in request.args.items()
+        if key in _BANKING_REDIRECT_QUERY_KEYS
+    }
+    return redirect(url_for('admin.banking', **safe_args))
 
 
 @admin_bp.route('/void-transaction/<int:transaction_id>', methods=['POST'])
@@ -8003,14 +8021,10 @@ def transactions():
 @feat_shell("FEAT-ADMN-001")
 def void_transaction(transaction_id):
     """Void a transaction."""
-    is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
+    requested_with = (request.headers.get("X-Requested-With") or "").strip().lower()
+    is_json = request.is_json or requested_with == "xmlhttprequest"
+
     def _safe_referrer_redirect():
-        # Safe redirect: validate referrer to prevent open redirects
-        ref = request.referrer or ""
-        potential_url = ref.replace('\\', '')
-        parsed = urlparse(potential_url)
-        if not parsed.scheme and not parsed.netloc:
-            return redirect(potential_url)
         return redirect(url_for('admin.dashboard'))
 
     def _void_error(message, status_code=400):
@@ -8038,10 +8052,20 @@ def void_transaction(transaction_id):
         current_app.logger.info(f"Transaction {transaction_id} voided")
     except (AccessScopeDenied, access_policy_service.AccessPolicyDenied) as e:
         db.session.rollback()
-        return _void_error(e.message if hasattr(e, "message") else str(e), status_code=403)
+        current_app.logger.info("Transaction void denied for %s: %s", transaction_id, e)
+        return _void_error("You do not have permission to void this transaction.", status_code=403)
+    except ImmediatePurchaseNotVoidable:
+        db.session.rollback()
+        return _void_error("Immediate-use item purchases are not voidable.")
+    except UsedDelayedPurchaseNotVoidable:
+        db.session.rollback()
+        return _void_error(
+            "Delayed-use item has already been used and cannot be voided.",
+        )
     except ValueError as e:
         db.session.rollback()
-        return _void_error(str(e))
+        current_app.logger.info("Transaction void validation failed for %s: %s", transaction_id, e)
+        return _void_error("Transaction could not be voided.")
     except SQLAlchemyError as e:
         db.session.rollback()
         current_app.logger.error(f"Failed to void transaction {transaction_id}: {e}", exc_info=True)
@@ -9375,11 +9399,6 @@ def update_expected_weekly_hours():
         db.session.rollback()
         current_app.logger.error(f"Error updating expected weekly hours: {e}")
         flash(f'Error updating expected weekly hours', 'error')
-
-    # Redirect back with cwi_block parameter to maintain the selected class
-    next_url = request.form.get('next')
-    if next_url and is_safe_url(next_url, request.host_url):
-        return redirect(next_url)  # nosec # Safe: validated by is_safe_url()
 
     if redirect_block:
         return redirect(url_for('admin.payroll', cwi_block=redirect_block))
