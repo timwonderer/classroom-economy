@@ -110,6 +110,33 @@ from app.payroll import get_pay_rate_for_block
 # Create blueprint
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
+
+def _log_api_client_error(route_name, exc, *, extra=None):
+    current_app.logger.info(
+        "API client error on %s: %s%s",
+        route_name,
+        exc.__class__.__name__,
+        f" ({extra})" if extra else "",
+    )
+
+
+def _safe_exception_message(exc, default_message, *, allowed_messages=None):
+    message = str(exc)
+    if allowed_messages:
+        for allowed_message in allowed_messages:
+            if message == allowed_message:
+                return allowed_message
+    return default_message
+
+
+def _safe_exception_prefix_message(exc, default_message, *, allowed_prefixes=None):
+    message = str(exc)
+    if allowed_prefixes:
+        for allowed_prefix in allowed_prefixes:
+            if message.startswith(allowed_prefix):
+                return allowed_prefix
+    return default_message
+
 @api_bp.errorhandler(ContextResolutionError)
 def handle_api_context_resolution_error(e):
     from app.services.context_resolver import ContextForbidden, ContextMismatch
@@ -973,7 +1000,10 @@ def approve_redemption():
             student_item_id,
             e,
         )
-        return jsonify({"status": "error", "message": str(e)}), 409
+        return jsonify({
+            "status": "error",
+            "message": "Redemption request is no longer pending and cannot be approved.",
+        }), 409
 
     return jsonify({"status": "success", "message": result.message})
 
@@ -1022,7 +1052,10 @@ def reject_redemption():
             student_item_id,
             e,
         )
-        return jsonify({"status": "error", "message": str(e)}), 409
+        return jsonify({
+            "status": "error",
+            "message": "Redemption request could not be rejected in its current state.",
+        }), 409
 
     return jsonify({"status": "success", "message": result.message})
 
@@ -1057,7 +1090,14 @@ def handle_hall_pass_action(pass_id, action):
             result = feat_return_hall_pass(log_entry=log_entry, now_utc=now)
             return jsonify({"status": "success", "message": result.message})
     except ValueError as exc:
-        return jsonify({"status": "error", "message": str(exc)}), 400
+        _log_api_client_error("handle_hall_pass_action", exc, extra=f"action={action}")
+        safe_messages = {
+            "approve": "Hall pass cannot be approved in its current state.",
+            "reject": "Hall pass cannot be rejected in its current state.",
+            "leave": "Hall pass cannot be checked out in its current state.",
+            "return": "Hall pass cannot be checked in in its current state.",
+        }
+        return jsonify({"status": "error", "message": safe_messages.get(action, "Invalid action.")}), 400
 
     return jsonify({"status": "error", "message": "Invalid action."}), 400
 
@@ -1184,7 +1224,15 @@ def cancel_hall_pass(pass_id):
         result = feat_cancel_hall_pass(log_entry=log_entry, now_utc=utc_now())
         return jsonify({"status": "success", "message": result.message})
     except ValueError as exc:
-        return jsonify({"status": "error", "message": str(exc)}), 400
+        _log_api_client_error("cancel_hall_pass", exc, extra=f"pass_id={pass_id}")
+        return jsonify({
+            "status": "error",
+            "message": _safe_exception_message(
+                exc,
+                "Hall pass cannot be cancelled in its current state.",
+                allowed_messages={"Only pending passes can be cancelled."},
+            ),
+        }), 400
 
 
 @api_bp.route('/hall-pass/checkout', methods=['POST'])
@@ -1241,9 +1289,17 @@ def checkout_hall_pass():
             pass_id,
             str(exc),
         )
-        return jsonify({"status": "error", "message": str(exc)}), 401
+        return jsonify({"status": "error", "message": "Student session is missing required class context."}), 401
     except ValueError as exc:
-        return jsonify({"status": "error", "message": str(exc)}), 400
+        _log_api_client_error("checkout_hall_pass", exc, extra=f"pass_id={pass_id}")
+        return jsonify({
+            "status": "error",
+            "message": _safe_exception_prefix_message(
+                exc,
+                "Hall pass cannot be checked out in its current state.",
+                allowed_prefixes={"Pass is not approved."},
+            ),
+        }), 400
     except SQLAlchemyError as e:
         db.session.rollback()
         current_app.logger.error(f"Hall pass checkout failed: {e}", exc_info=True)
@@ -1300,9 +1356,17 @@ def checkin_hall_pass():
             pass_id,
             str(exc),
         )
-        return jsonify({"status": "error", "message": str(exc)}), 401
+        return jsonify({"status": "error", "message": "Student session is missing required class context."}), 401
     except ValueError as exc:
-        return jsonify({"status": "error", "message": str(exc)}), 400
+        _log_api_client_error("checkin_hall_pass", exc, extra=f"pass_id={pass_id}")
+        return jsonify({
+            "status": "error",
+            "message": _safe_exception_prefix_message(
+                exc,
+                "Hall pass cannot be checked in in its current state.",
+                allowed_prefixes={"You are not currently checked out."},
+            ),
+        }), 400
     except SQLAlchemyError as e:
         db.session.rollback()
         current_app.logger.error(f"Hall pass checkin failed: {e}", exc_info=True)
@@ -1361,7 +1425,8 @@ def update_hall_pass_settings():
             updated_at=utc_now(),
         )
     except ValueError as exc:
-        return jsonify({"status": "error", "message": str(exc)}), 400
+        _log_api_client_error("update_hall_pass_settings", exc, extra=f"class_id={class_id}")
+        return jsonify({"status": "error", "message": "Hall pass settings are invalid."}), 400
 
     return jsonify({
         "status": "success",
@@ -1636,7 +1701,8 @@ def rotate_hall_pass_verify_token():
     try:
         token = feat_rotate_teacher_hall_pass_verify_token(teacher_id=teacher_id)
     except LookupError as exc:
-        return jsonify({"status": "error", "message": str(exc)}), 404
+        _log_api_client_error("rotate_hall_pass_verify_token", exc, extra=f"teacher_id={teacher_id}")
+        return jsonify({"status": "error", "message": "Hall pass verification settings were not found."}), 404
     except SQLAlchemyError:
         db.session.rollback()
         current_app.logger.error("Failed to rotate hall pass verify token", exc_info=True)

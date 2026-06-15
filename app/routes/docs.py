@@ -107,6 +107,29 @@ _ALERT_START = re.compile(
 )
 
 
+def _redirect_to_public_docs(doc_path=None):
+    target = docs_url_for(doc_path)
+    parsed = urlparse(target)
+    if parsed.scheme in ("http", "https"):
+        configured_base = current_app.config.get("EXTERNAL_DOCS_BASE_URL", "").rstrip("/")
+        configured_parsed = urlparse(configured_base) if configured_base else None
+        normalized_base_path = configured_parsed.path.rstrip("/") if configured_parsed else ""
+        target_path = parsed.path.rstrip("/")
+        if (
+            not configured_parsed
+            or parsed.scheme != configured_parsed.scheme
+            or parsed.netloc != configured_parsed.netloc
+            or not (
+                target_path == normalized_base_path
+                or target_path.startswith(f"{normalized_base_path}/")
+            )
+        ):
+            abort(404)
+    elif parsed.scheme or parsed.netloc:
+        abort(404)
+    return redirect(target)
+
+
 def parse_front_matter(content):
     """
     Extract YAML-style front matter from markdown content using PyYAML.
@@ -393,7 +416,7 @@ def set_audience():
 def index():
     """Documentation homepage with categories."""
     if should_redirect_public_docs():
-        return redirect(docs_url_for())
+        return _redirect_to_public_docs()
 
     audience = get_docs_audience()
     return render_template_with_fallback('docs/index.html', audience=audience)
@@ -403,7 +426,7 @@ def index():
 def timeline():
     """Interactive project development timeline."""
     if should_redirect_public_docs('timeline'):
-        return redirect(docs_url_for('timeline'))
+        return _redirect_to_public_docs('timeline')
 
     return render_template_with_fallback('docs/timeline.html')
 
@@ -422,7 +445,7 @@ def view_doc(doc_path):
         doc_path: Path to the documentation file (without .md extension)
     """
     if should_redirect_public_docs(doc_path):
-        return redirect(docs_url_for(doc_path))
+        return _redirect_to_public_docs(doc_path)
 
     # Security: Validate input and prevent directory traversal
     try:
@@ -647,7 +670,7 @@ def search():
     - description: "..." - Used for search context and relevance
     """
     if should_redirect_public_docs('search'):
-        return redirect(docs_url_for('search'))
+        return _redirect_to_public_docs('search')
 
     query = request.args.get('q', '').strip()
     audience = get_docs_audience()
