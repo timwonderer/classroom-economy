@@ -154,7 +154,7 @@
 <body>
   <div class="container">
     <h1>Classroom Token Hub <span style="font-weight:400;">For District Partners</span></h1>
-    <p class="last-updated">Last Updated: April 15, 2026</p>
+    <p class="last-updated">Last Updated: June 16, 2026</p>
 
     <div class="summary-box">
       <h2>Overview</h2>
@@ -242,7 +242,19 @@
       <li>No global admin identity or privileges or superuser capabilties by design</li>
     </ul>
 
-    <h2>9. Compliance and Standards</h2>
+    <h2>9. Single Sign-On (SSO) and Identity Federation</h2>
+    <p>Some district security reviews expect applications to support institution-provided Single Sign-On through SAML 2.0 or OpenID Connect for both student and staff access. Classroom Token Hub intentionally does not federate identity through an external identity provider, and this section explains why — including why doing so would make a breach worse, not better.</p>
+    <h3>Why CTH does not federate student identity</h3>
+    <p>A database compromise today exposes a display first name, a last initial, a pseudonymous class-scoped identifier, and a simulated currency ledger with no real monetary value — and no email, phone, date of birth, address, or government/district ID, because none of those are collected. There is no resolvable path from that data to a real person. The worst realistic harm is embarrassment-tier, not identity theft or financial fraud.</p>
+    <p>SSO protocols work by asserting durable, attributed identity: a SAML assertion or OIDC token typically carries a student's full name, email address, and a persistent district-issued identifier. Accepting those attributes would not just add a new data category — it would attach exactly the kind of real, resolvable identity that keeps a worst-case breach low-severity today. A compromise of a federated dataset stops being "a list of first names with no external reference" and becomes "this specific, real, named child." Adopting SSO would increase the severity of a breach, not reduce it.</p>
+    <p>Federated identity also introduces a single shared point of access across every classroom that trusts the identity provider. CTH's class-scoped model keeps a compromised credential or misconfiguration contained to one class; a compromised or misconfigured federated identity provider would not have the benefit of that containment, since it authenticates broadly across the whole institution by design.</p>
+    <h3>Alignment with recognized security frameworks</h3>
+    <p>Frameworks such as the NIST Cybersecurity Framework's Identity Management, Authentication, and Access Control category call for managed credentials and access scoped to assessed risk — they describe an outcome, not a specific protocol, and they're explicit that controls should be commensurate with risk. A blanket SSO requirement is calibrated for systems holding grades, SIS records, or other high-sensitivity education data. Applied to a system whose entire worst-case exposure is a first name, last initial, and play-money ledger, that requirement is disproportionate to the asset — and, per above, counterproductive to it. CTH meets the underlying outcome through locally managed, salted and hashed/encrypted credentials, mandatory multi-factor authentication for system administrators, short session lifetimes, and strict per-class access scoping, rather than through SSO specifically.</p>
+    <h3>Why this also applies to staff-only SSO</h3>
+    <p>A common middle ground is to federate sign-in for teachers only, while leaving student claim and login unchanged. CTH does not adopt this as a default integration path, because it reintroduces the same severity-increase risk one layer up. Teacher and student actors are both referenced through a deidentified, class-scoped public identifier rather than any real name, specifically so that a database compromise exposes only a fictitious actor reference paired with minimally identified students (first name and last initial) — with no path back to a real name, email, or institutional record. Federating teacher login requires storing a durable link between that real institutional identity and the teacher's account, and therefore between that identity and every class and student roster the teacher's seats belong to. If that link exists in the database, a compromise no longer exposes a deidentified classroom — it exposes which specific, named adult is associated with which specific classroom and which specific students. That is a strictly worse outcome than the current design, even though only the staff member's identity was federated.</p>
+    <p>Where SSO is required as a matter of institutional policy rather than a specific security gap, the only accommodation consistent with this design would avoid persisting any stable federated identifier on the account record — for example, a one-time employment verification step that confirms a teacher is a legitimate staff member without leaving a durable cross-reference in the database. That approach trades away the continuous-assurance and centralized deprovisioning benefits SSO is normally adopted for, and would need to be evaluated on those terms rather than treated as a drop-in substitute for full federation.</p>
+
+    <h2>10. Compliance and Standards</h2>
     <h3>FERPA</h3>
     <p>Classroom Token Hub is designed to operate in alignment with FERPA principles. The system minimizes the collection of personally identifiable information, restricts access to authorized educators within a class context, and does not share student data with third parties.</p>
     <h3>COPPA (School Consent Model)</h3>
@@ -252,7 +264,7 @@
     <p>Classroom Token Hub is designed with accessibility in mind and follows WCAG 2.1 Level AA guidelines where feasible. The platform is continuously improved to support a wide range of users, including those using assistive technologies.</p>
     <p>While formal accessibility audits have not yet been conducted, the system is developed with accessibility best practices as a core consideration. Districts with specific compliance requirements may choose to conduct independent evaluations.</p>
 
-    <h2>10. What CTH Does Not Do</h2>
+    <h2>11. What CTH Does Not Do</h2>
     <ul>
       <li>No advertising or data selling</li>
       <li>No third-party analytics</li>

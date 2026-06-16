@@ -169,6 +169,7 @@ These legacy specifications remain active for reference during the transitional 
 - [SEC-AUD-018_Pii_Audit.md](../../SECURITY/AUDITS/SEC-AUD-018_Pii_Audit.md)
 - [SEC-AUD-020_Security_Audit_2025.md](../../SECURITY/AUDITS/SEC-AUD-020_Security_Audit_2025.md)
 - [SEC-AUD-025_Validation_Report.md](../../SECURITY/AUDITS/SEC-AUD-025_Validation_Report.md)
+- [SEC-AUD-028_Sso_Compliance_Justification.md](../../SECURITY/AUDITS/SEC-AUD-028_Sso_Compliance_Justification.md)
 - [SEC-CONT-014_Github_Secrets_Management.md](../../SECURITY/CONTROLS/SEC-CONT-014_Github_Secrets_Management.md)
 - [SEC-CONT-019_Promptpwnd_Remediation.md](../../SECURITY/CONTROLS/SEC-CONT-019_Promptpwnd_Remediation.md)
 - [SEC-CONT-021_Security_Fixes_Summary.md](../../SECURITY/CONTROLS/SEC-CONT-021_Security_Fixes_Summary.md)
