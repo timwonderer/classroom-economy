@@ -11,7 +11,7 @@
 | 1 | block | Definition incomplete; frequency wildly inflated (8250→~3700, many are model names like `StudentBlock`) | Rewrote definition to reflect current transitional state; corrected frequency |
 | 2 | class_economies | Marked v1-only but the Python model `ClassEconomy` is still the active class anchor (mapped to `classes` table) | Changed to "both"; clarified table-name vs model-name distinction |
 | 3 | ClassEconomy | Marked v1-only but it is the active runtime model | Changed to "both" |
-| 4 | ClassMembership | Marked v1-only but still active in routes and listed in CLAUDE.md as current scoping authority | Changed to "both" |
+| 4 | ClassMembership | Marked v1-only but still active in routes and listed in `.claude/CLAUDE.md` as current scoping authority | Changed to "both" |
 | 5 | balance_cache | Marked v1-only but `BalanceCache` model is active (backed by `ledger_balance_snapshot` table) | Changed to "both"; clarified the table rename |
 | 6 | StudentBlock | Marked v1-only but still actively used in routes for per-seat per-class state | Changed to "both" |
 | 7 | tap_events | Marked v1-only/superseded but still in active dual-write transition | Changed to "both" |

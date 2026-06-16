@@ -93,7 +93,7 @@ A per-student daily lock that prevents further attendance taps after the student
 An individual classroom economy. Each class has its own join code, settings, students, and financial records. A teacher may run multiple classes; a student may belong to multiple classes.
 
 **Join Code**
-The short code students use to find and join a class. It is the public-facing name for a class; internally, the system uses a private class ID.
+The short code students use to find and join a class. It is the public-facing identifier for a class (distinct from the class display name); internally, the system uses a private class ID.
 
 **Section**
 A label for the class period — for example, "Block A" or "Period 3." Used for display only; it does not affect how the system scopes data.

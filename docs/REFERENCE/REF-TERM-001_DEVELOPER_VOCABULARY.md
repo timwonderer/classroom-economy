@@ -53,7 +53,7 @@ Named solvency check asking whether students can still preserve a minimum weekly
 ### C
 
 **Canonical Class Time**
-The class-local current time derived from UTC plus the class IANA timezone. Modeled as the `class_time` field inside `TemporalContext`. All behavioral evaluation (attendance boundaries, due dates, accrual windows) must use this rather than raw UTC or server-local time.
+The class-local current time derived from UTC plus the class IANA timezone. In the planned v2 temporal model, this is the `class_time` field inside a per-request temporal context object. All behavioral evaluation (attendance boundaries, due dates, accrual windows) must use canonical class time rather than raw UTC or server-local time.
 
 **Catastrophe Stability Rule**
 Economy solvency rule testing whether a student can recover within roughly one cycle from a pair of shocks such as fines or loss. Distinguished from Budget Survival Test by its focus on shock recovery rather than steady-state viability.
@@ -309,7 +309,7 @@ Feature-specific behavioral rules: Mid-Period Lock, Rent Late Fee Reversal, rent
 
 ### Removed (Replaced or Premature)
 
-Legacy terms being replaced by canonical vocabulary: `block` (→ section), `StudentBlock` (→ seat_attendance_state), `tap_events` (→ attendance_sessions), `teacher_blocks` (removed from codebase). Premature terms: `TemporalContext` (no code yet). Derivable model names: `AnalyticsAlert`, `AnalyticsSnapshot`.
+Legacy terms being replaced by canonical vocabulary: `block` (→ section), `StudentBlock` (→ seat_attendance_state), `tap_events` (→ attendance_sessions), `teacher_blocks` (model removed from `models.py`; legacy references remain in a few admin routes and CLI commands). Premature terms: `TemporalContext` (no code yet). Derivable model names: `AnalyticsAlert`, `AnalyticsSnapshot`.
 
 ---
 
