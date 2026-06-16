@@ -10,52 +10,64 @@ searchable: false
 
 ## 1. Purpose
 
-This document responds to an institutional security and privacy review finding that flagged Classroom Token Hub ("CTH") as non-compliant for not implementing institution-provided Single Sign-On (SSO) via SAML 2.0 or OpenID Connect (OIDC) for student and teacher access, as referenced in a NIST Cybersecurity Framework (CSF) 2.0-aligned procurement questionnaire.
+This document explains why CTH's identity architecture, which utilizes class-scoped isolation anchored on `class_id`, a deidentified public actor reference (`seats.public_id`), and a no-DOB, minimal-PII claim model, was deliberately chosen over institutional SSO. It explains why that architecture satisfies the underlying risk-management intent of CSF 2.0's access-control function (`PR.AA`) more effectively than SSO would, given this product's data model and the actual severity of a worst-case breach. 
 
-It explains why CTH's identity architecture — class-scoped isolation anchored on `class_id`, a deidentified public actor reference (`seats.public_id`), and a no-DOB, minimal-PII claim model — was deliberately chosen over institutional SSO federation, and why that architecture satisfies the underlying risk-management intent of CSF 2.0's access-control function (`PR.AA`) more effectively than SSO would, given this product's data model and the actual severity of a worst-case breach.
+This document outlines a risk-based engineering decision. SSO would not merely fail to improve this system's security posture, it would affirmatively increase the severity of a breach by attaching durable, real-world identity to data that is currently low-severity specifically because it currently does not carry it.
 
-This document does not request an exception to a hard legal requirement. It documents a risk-based engineering decision for reviewer evaluation: SSO would not merely fail to improve this system's security posture, it would affirmatively increase the severity of a breach by attaching durable, real-world identity to data that is currently low-severity specifically because it carries none. This holds even for a staff-only SSO carve-out. The document also describes what a privacy-preserving accommodation would need to look like if SSO is required as a contractual/policy matter rather than a security one.
+> [!IMPORTANT]
+> This document does not constitute a legal exception to FERPA or any other statute. It is intended for informational purposes only, and not as a substitute for legal counsel. This document does not claim, implicitly or otherwise, any form of certification, approval, or exemption from any legal or regulatory framework such as FERPA, COPPA, GDPR, or NIST CSF 2.0. **CTH strongly recommends that reviewing institutions consult with their own legal counsel for definitive guidance regarding compliance with applicable statutes and regulations.** However, the following sections outline why CTH's identity architecture satisfies the underlying risk-management intent of CSF 2.0's access-control function (`PR.AA`) more effectively than SSO would, given this product's data model and the actual severity of a worst-case breach. 
 
 ## 2. Scope
 
-This document covers the authentication and identity architecture for all three CTH principals (Student, Teacher, System Administrator), as defined by `INV-CORE-000` (Core Invariants), `INV-ARC-019` (Identity and Ownership Model), `DOM-IDEN-001` (Identity/Class Binding Domain), `DOM-IDEN-003`/`DOM-IDEN-004` (Teacher Identity and Recovery), `DOM-IDEN-002` (Student Account Recovery), and `SEC-CORE-000` (Security Architecture Foundation).
+> [!IMPORTANT]
+> This document is describing v2.0 architecture and invariants, which is currently being implemented across the codebase. At the time of this writing, not all components of the system have been migrated to v2.0, and some components may still be using v1.0 architecture. However, the system will be v2.0 compliant by public release. The v1.0 architecture is intentionally kept out of scope for the purposes of this document.
 
-## 3. Summary of the Finding
+This document covers the authentication and identity architecture for all three CTH principals (Student, Teacher, System Administrator).
 
-The reviewing institution's security and privacy questionnaire requires the use of Single Sign-On (SSO) credentials, preferably through SAML 2.0 or OpenID Connect, for student and teacher access to instructional applications and digital resources, citing alignment with NIST CSF 2.0.
+This document is not a normative documentation within the CTH documentation namespace system and thus shall not modify or supersede CTH's official policies, standards, or requirements unless explicitly incorporated by reference. Please consult the following documentation for specification and invariants:
 
-This was raised as a compliance gap because CTH currently authenticates users with locally issued credentials rather than federating identity through an institution-provided identity provider (IdP).
+- `INV-CORE-000` (Core Invariants)
+- `INV-ARC-019` (Identity and Ownership Model)
+- `DOM-IDEN-001` (Identity/Class Binding Domain)
+- `DOM-IDEN-002` (Student Account Recovery)
+- `DOM-IDEN-003`/`DOM-IDEN-004` (Teacher Identity and Recovery)
 
-## 4. Current Architecture
 
-### 4.1 Identity model
+
+
+## 3. Current Architecture
+
+### 3.1 Identity model
 
 CTH separates identity into three layers, per `INV-ARC-019`:
 
-- **`users`** — the authentication principal. Owns login, credentials, TOTP/passkeys, recovery, and session state. A `users` row represents one human; it does not represent class membership and is never directly visible across class boundaries.
-- **`seats`** — the operational actor inside exactly one class. Owns attendance, economy operations, claim verification artifacts, and all class-local state. A user may own multiple seats across multiple classes, but no seat spans more than one class.
-- **`classes`** — the isolation boundary, identified by `class_id`. Per `INV-CORE-000` §1, all data access and mutation must resolve to a single `class_id`; `join_code` is only a human-facing alias that must resolve to `class_id` before any authority-sensitive operation. There is no global student directory, no institution-wide account, and no shared identity broker.
+- **`users`** is the authentication principal. Owns login, credentials, TOTP/passkeys, recovery, and session state. A `users` row represents one human; it does not represent class membership and is never directly visible across class boundaries.
+- **`seats`** is the operational actor inside exactly one class. Owns attendance, economy operations, claim verification artifacts, and all class-local state. A user may own multiple seats across multiple classes, but no seat spans more than one class.
+- **`classes`** is the isolation boundary, identified by `class_id`. Per `INV-CORE-000` §1, all data access and mutation must resolve to a single `class_id`; `join_code` is only a human-facing alias that must resolve to `class_id` before any authority-sensitive operation. There is no global student directory, no institution-wide account, and no shared identity broker.
 
-Students authenticate with a join code (resolved to `class_id`) plus username + PIN + passphrase, established at claim. Teachers authenticate with locally hashed username/password credentials, optional passkeys, and TOTP. System administrators require mandatory TOTP and have no path to class-scoped data (`SEC-CONT-026`).
+Students claim seats with a `join_code` (resolved to `class_id`) plus first name and last name. Student create username + PIN + passphrase, after account is claimed. Teachers and System Administrators authenticate with locally hashed username and forced TOTP at signup, optional passkeys.
 
-### 4.2 PII minimization
+### 3.2 PII minimization
 
 Per `INV-CORE-000` §2 ("Minimal Use and Storage of PII"):
 
-- **No DOB, DOB hash, DOB sum, or any birth-date-derived value is collected, stored, or used anywhere in the v2 identity model**, for either role. Duplicate-name students within one class roster are disambiguated by a teacher-issued `dedupe_code`, not by date of birth.
-- No contact method of any kind (email, phone) may be stored, processed, or requested.
-- PII stored for display (e.g., first name in `identity_profiles`) must be symmetrically encrypted at rest; PII stored for lookup/matching (e.g., roster claim hashes on `seats`) must be one-way HMAC-hashed and not recoverable.
-- PII must be deleted when its owning record is deleted; no PII may survive deletion of its parent seat, user, or class.
+- **No PII other than first name and last name is collected, used, or stored for student users:** Student `seats` are pre-created by teachers and never exposed outside the class. Student claims seat via a `join_code`, `first_name`, and `last_name`. Backend normalizes and hashes to compare against existing seat fingerprints. Duplicate-name students within one class roster are disambiguated by a teacher-issued `dedupe_code`, which are two-digit numbers between 01-99 scoped to the class roster. 
+- **Teachers accounts are created without any PII:** Teacher account is created with a username and forced TOTP at signup, optional passkeys. No name, email, phone, or other identifying information is collected, used, or stored.
+- **No PII in plaintext:** PII stored for display (e.g., first name and last name in `identity_profiles`) must be symmetrically encrypted at rest; PII stored for lookup/matching (e.g., roster claim hashes on `seats`) must be one-way HMAC-hashed and not recoverable.
+- **No Persistent Archives:** When a teacher removes a student from their class, all data related to that student within that class, including PII, is deleted immediately. Student authenticated `users.id` will exist as long as the student is enrolled in at least one class as a `seat`. When the student loses their last seat in the last class they are enrolled in, their `users.id` and all associated data will be deleted. Same effect occurs if the teacher deletes the entire class or the teacher account itself. Any account that are inactive for 180 days (close to the length of an academic semester, which is 4.5 months) will be deleted.
+
+> [!NOTE]
+> Classroom Token Hub does not have a global archive, inactive status for users, or soft deletes. Deletion within the app is a hard delete with no traceable history other than operational logs that are rotated and truncated frequently. Deletion is in effect, the same as if the account never existed. 
 
 Teacher and student actor identity is itself deidentified at the public-reference layer: `seats.public_id`, a UUID carrying no human-readable or role-specific meaning, is the canonical way either role is referenced in any class-scoped context (`INV-ARC-019` §IX). It resolves only under the active `class_id` and grants no authority by itself.
 
-### 4.3 Credential storage
+### 3.3 Credential storage
 
-Usernames are never persisted in plaintext — only as salted HMAC lookup hashes. Passwords/PINs use bcrypt with a server-side pepper. TOTP secrets and passkey metadata are encrypted at rest and owned by `users.id`. All of this is internal to CTH; no third-party identity provider sees or stores any of it.
+Usernames are never persisted in plaintext and are instead stored as salted HMAC lookup hashes. Passwords/PINs use bcrypt with a server-side pepper. TOTP secrets and passkey metadata are encrypted at rest and are owned by `users.id`. All of this is only ever internal to CTH and is never exposed to any third-party identity provider.
 
-## 5. Why SSO Would Increase, Not Reduce, Breach Severity
+## 4. Risk-Benefit Analysis of SSO Integration
 
-### 5.1 The asset SSO would protect is already low-severity because it is deidentified
+### 4.1 SSO integration addresses security concerns that are not currently applicable to CTH.
 
 A worst-case compromise of CTH's database currently exposes: a display first name and last initial per seat, a deidentified `seats.public_id`, and a simulated currency ledger with no real monetary value. There is no DOB, no email, no phone, no address, no government or district ID, and no resolvable link from a `seats.public_id` to a real institutional identity for either students or teachers. The worst realistic harm from this exposure is dignity- or embarrassment-tier — not identity theft, not financial fraud, and not a FERPA-grade education-record disclosure, because no education record beyond a simulated classroom economy exists in this system.
 
@@ -65,23 +77,23 @@ The display name itself is also weaker than typical PII in a second respect: it 
 
 Access to this display name is also narrow today: outside of direct database access, the only principal who can ever see a seat's decrypted first name and last initial is the teacher who owns that seat's class, through `identity_profiles`. Students do not see other students' names — they have no peer-name lookup surface. System administrators have no route that decrypts or displays `identity_profiles`; their tooling operates on `seats.public_id` and other non-identity fields only (`SEC-CONT-026`). A breach that compromises application-layer access (rather than the underlying database directly) would therefore not expose a single name beyond what one teacher could already see for their own roster.
 
-### 5.2 SSO collapses the tenant isolation boundary
+### 4.2 SSO undermines tenant isolation 
 
 `INV-CORE-000` §1 makes `class_id` the sole isolation boundary, and the project's own incident history (`SEC-INC-013`, the P0 same-teacher multi-period data leak) demonstrates that cross-class identity bleed is the highest-realized risk in this system. An institutional IdP authenticates a student or teacher once, globally, then expects applications to manage authorization on top of that single identity. This reintroduces exactly the failure mode CTH's architecture was rebuilt to eliminate: a single identity object that exists outside any one `class_id` and must be correctly re-scoped by the application on every request. The current design instead makes a global identity unnecessary for normal operation — every actor reference is local to one class and one seat by construction.
 
-### 5.3 SSO concentrates blast radius
+### 4.3 SSO concentrates blast radius
 
 Under the current model, compromise of one student's or teacher's credentials exposes only the data within that single class. Under SSO, the institutional IdP becomes a single point of compromise for every classroom, every institution, and every deployment of CTH that trusts it — a breach, misconfiguration, or stale group/claims mapping at the IdP layer would simultaneously affect every tenant, and would do so with real identity attached. This is a direct tradeoff against the CSF 2.0 risk-management objective the requirement is nominally trying to serve: the severity of the worst case goes up while the asset being protected has not changed.
 
-### 5.4 SSO does not fit the deployment model
+### 4.4 SSO does not fit the deployment model
 
 CTH is used by individual teachers across institutions, charter schools, and homeschool co-ops, many without a SAML/OIDC-capable IdP at all. The product's accessibility — a teacher can run a class economy without any institutional IT involvement — is itself a privacy benefit: it avoids the alternative of ad hoc spreadsheets, third-party form tools, or other unmanaged systems that actually do collect names, emails, and grades with no encryption or access control. Hard-coding a dependency on one institution's IdP would not generalize, and would not by itself improve the security posture for any tenant that already operates inside the `class_id` isolation model.
 
-### 5.5 CSF 2.0 does not mandate SSO specifically — and is risk-based by design
+### 4.5 CSF 2.0 does not mandate SSO specifically, and is risk-based by design
 
 NIST CSF 2.0's `PR.AA` (Identity Management, Authentication, and Access Control) category requires that "identities and credentials for authorized users... are managed by the organization" and that access is "limited to authorized users... and authorized devices, services, and connections is managed commensurate with the assessed risk." The phrase "commensurate with the assessed risk" is load-bearing: CSF 2.0 is a risk-based framework, not a fixed control checklist, and a control's appropriateness depends on the sensitivity of the asset it protects. SSO is a common implementation pattern for satisfying `PR.AA` for systems holding grades, SIS records, financial-aid data, or other high-sensitivity education records. Applied to a system whose worst-case exposure is a first name, last initial, and play-money ledger, a blanket SSO mandate is disproportionate to the asset, and — per §5.1 — actively counterproductive to the risk it is meant to manage. CTH satisfies the same underlying control objectives — credential management, least-privilege scoping, session expiry, MFA for administrative roles — through mechanisms suited to its actual risk profile: locally salted/peppered/hashed credentials, mandatory TOTP for system administrators, strict non-sliding 10-minute session windows, and CSRF/Turnstile-protected entry points (`SEC-CORE-000` §IV).
 
-## 6. Comparative Risk Assessment
+## 5. Comparative Risk Assessment
 
 | Dimension | Institutional SSO (SAML/OIDC) | CTH `class_id`/`seats` Model (v2) |
 |---|---|---|
@@ -95,21 +107,15 @@ NIST CSF 2.0's `PR.AA` (Identity Management, Authentication, and Access Control)
 | Data sharing agreement scope | Requires the institution to release PII attributes to CTH via assertions | None — no PII is requested from or shared with any external identity system |
 | Alignment with `INV-CORE-000` §2 (PII minimization) | Conflicts — requires durable PII the invariant prohibits, including categories (email, persistent ID) never collected today | Native — invariant was authored around this exact model |
 
-## 7. Why Staff-Only SSO Is Not a Safe Compromise
 
-A common middle ground proposed during reviews is to federate sign-in for teachers only, leaving the student claim and login flow unchanged. CTH does not adopt this, because it reintroduces the same severity-increase problem one layer up rather than eliminating it.
+## 6. Conclusion
 
-`seats.public_id` exists specifically so that a database compromise exposes only a deidentified, class-scoped actor reference paired with minimally identified students (encrypted first name + last initial) — per `INV-ARC-019` §IX, no view, including the system administrator view, ever resolves `seats.public_id` back to a real name or institutional identity. Federating teacher login requires persisting a durable link between a real institutional identity (district email or IdP subject identifier) and that teacher's `users` row, and therefore transitively to every class and student roster that teacher's seats own.
+CTH's non-implementation of SSO is a deliberate, documented architectural decision, not an oversight. The `class_id`/`seats`-centric, no-DOB, minimal-PII model defined in `INV-CORE-000` and `INV-ARC-019` achieves the access-control and identity-management intent behind CSF 2.0's `PR.AA` category through mechanisms better suited to this product's actual risk profile than federated SSO would be. Because CTH's worst-case breach exposure currently contains no resolvable real-world identity, federating identity through an institutional IdP would convert a low-severity, deidentified exposure into a high-severity, attributable one, while also concentrating breach impact across every classroom rather than containing it to one, and reintroducing the class of cross-tenant identity bleed that CTH's prior incident response (`SEC-INC-013`) was specifically architected to eliminate. 
 
-If that link is stored, a database compromise no longer exposes a deidentified classroom; it exposes which specific, named adult is associated with which specific classroom and which specific students. This is a strictly worse outcome than the current design, even though only the staff member's own identity was federated — the harm lands on the students whose roster becomes attributable through the teacher. A "staff-only" SSO accommodation is therefore not a privacy-neutral compromise; it removes the deidentification `seats.public_id` is specifically designed to provide, and increases breach severity by the same mechanism described in §5.1.
+> [!IMPORTANT]
+> If SSO is required as a matter of institutional policy, local educational agencies are encouraged to fork this project and implement SSO in their own instances. In that case, Classroom Token Hub no longer retains any responsibility for the security and privacy of that instance nor does the instance represents Classroom Token Hub in any way.
 
-The only accommodation consistent with this design would avoid persisting any stable federated identifier on the `users` record at all — for example, a one-time employment-verification check performed against an IdP at signup, with no subject identifier, email, or token retained afterward. This trades away the continuous-assurance and centralized-deprovisioning benefits SSO is normally adopted for, and should be evaluated by the reviewing institution on those terms rather than treated as equivalent to standard SAML/OIDC federation.
-
-## 8. Conclusion
-
-CTH's non-implementation of institutional SSO is a deliberate, documented architectural decision, not an oversight. The `class_id`/`seats`-centric, no-DOB, minimal-PII model defined in `INV-CORE-000` and `INV-ARC-019` achieves the access-control and identity-management intent behind CSF 2.0's `PR.AA` category through mechanisms better suited to this product's actual risk profile than federated SSO would be. Because CTH's worst-case breach exposure currently contains no resolvable real-world identity, federating identity through an institutional IdP would not merely fail to improve security — it would convert a low-severity, deidentified exposure into a high-severity, attributable one, while also concentrating breach impact across every classroom rather than containing it to one, and reintroducing the class of cross-tenant identity bleed that CTH's prior incident response (`SEC-INC-013`) was specifically architected to eliminate. This holds even for a staff-only federation scope, since `seats.public_id` only protects students if it remains unlinkable to the teacher's real institutional identity. We request the finding be reclassified as a documented risk-based deviation with compensating controls. If SSO is required as a matter of institutional policy, the only accommodation that preserves this protection is a non-persistent, one-time verification step rather than standard continuous federation.
-
-## 9. References
+## 7. References
 
 - `docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md` — §1 (`class_id`-Centric Isolation), §2 (Minimal Use and Storage of PII)
 - `docs/INVARIANT/ARCHITECTURE/INV-ARC-019_IDENTITY_AND_OWNERSHIP_MODEL.md` — Principal/actor/boundary separation and `seats.public_id` semantics
