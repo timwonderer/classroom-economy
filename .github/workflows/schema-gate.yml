@@ -137,12 +137,11 @@ jobs:
             cp "$FILE" /tmp/head_model.py
 
             # Compare ASTs (strips docstrings, comments, and whitespace)
-            python3 -c "
+            if ! python3 -c "
           import ast, sys
           def ast_dump(path):
               try:
                   tree = ast.parse(open(path).read())
-                  # Remove docstrings from all nodes
                   for node in ast.walk(tree):
                       if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
                           if (node.body and isinstance(node.body[0], ast.Expr)
@@ -154,11 +153,9 @@ jobs:
           base = ast_dump('/tmp/base_model.py')
           head = ast_dump('/tmp/head_model.py')
           if base != head:
-              print(f'STRUCTURAL_CHANGE:{path}')
+              print(f'STRUCTURAL_CHANGE:{sys.argv[1]}')
               sys.exit(1)
-          " "$FILE"
-
-            if [ $? -ne 0 ]; then
+          " "$FILE"; then
               echo "❌ NON-MODEL CHANGE selected but structural AST changes detected in $FILE"
               exit 1
             fi
