@@ -2172,15 +2172,16 @@ Constraint:
    - Test `pg_dump` + `pg_restore` against canonical 44-table schema
    - Document in `docs/operations/Deployment_Guide.md`
 
-2. **Teacher onboarding (replaces v1 invite codes)** — open self-signup flow:
+2. **Teacher onboarding (replaces v1 invite codes)** — planned open self-signup flow:
    - Turnstile-gated registration form: username → setup TOTP → optional passkey → done
-   - `AdminInviteCode` / `teacher_invite_codes` table dropped; `user_invite_tokens` no longer used for teacher gating
-   - On first sign-in, teacher lands on a **class-creation page** (the only page that does not require class context):
+   - `AdminInviteCode` / `teacher_invite_codes` table to be dropped; `user_invite_tokens` no longer used for teacher gating
+   - On first sign-in, teacher to be routed to a **class-creation page** (the only page that does not require class context):
      - Download CSV template → fill → upload to create new class
-     - This is the **only** entry point for new class creation
+     - This will be the **only** entry point for new class creation
      - Creates a new `class_id` with user-supplied `display_name` and `section`
      - `display_name` and `section` are display metadata only, never used as reference keys
      - Duplicate `display_name` / `section` across classes is acceptable — each upload creates a distinct `class_id`
+   - **Status:** Not yet implemented. `AdminInviteCode` and related routes remain in codebase as v1 legacy.
 
 3. **Sysadmin audit** — system admin routes reviewed for DOM-IDEN/DOM-OPS compliance; phantom scope access (INV-ARC-011) eliminated
 

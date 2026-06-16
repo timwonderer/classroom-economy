@@ -63,7 +63,8 @@ New code must route writes through FEATs; legacy routes that commit directly are
 - **Account Recovery** — Student-assisted teacher recovery flow
 
 ### For System Admins
-- **Admin Portal** — Review error logs and broadcast announcements
+- **Admin Portal** — Teacher overview, support tickets, error/event logs, broadcast announcements
+  > **v2 direction:** Invite-code gating replaced by open teacher self-signup; sysadmin role shifts to operational oversight.
 
 ### Platform
 - **Multi-Tenant** — Full class-period isolation; shared students across teachers

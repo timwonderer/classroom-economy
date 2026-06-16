@@ -864,7 +864,8 @@ def manage_admins():
 def reset_teacher_totp(admin_id):
     """
     V1 LEGACY — only accessible via manage_admins (no nav link).
-    v2 teacher TOTP is owned by User model; recovery uses student-assisted flow.
+    v2 teacher TOTP is owned by User model. Student-assisted teacher recovery
+    (app/routes/recovery.py) is the canonical account recovery method.
     """
     admin = db.get_or_404(Admin, admin_id)
 
