@@ -78,7 +78,8 @@ jobs:
             const classifications = [
               "EXPAND",
               "CONTRACT (CODE ONLY)",
-              "CONTRACT (DATABASE)"
+              "CONTRACT (DATABASE)",
+              "NON-MODEL CHANGE"
             ];
 
             const matches = [];
@@ -106,12 +107,32 @@ jobs:
             }
 
       # -----------------------------------------------------------
-      # 2. Deprecated Symbol Audit (Requirement 3.3)
+      # 1b. NON-MODEL CHANGE Verification
       # -----------------------------------------------------------
+      - name: Verify Non-Model Change
+        id: verify_non_model
+        if: steps.check_classification.outputs.classification == 'NON-MODEL CHANGE'
+        run: |
+          BASE_SHA=$(git merge-base origin/${{ github.base_ref }} HEAD)
+          DIFF=$(git diff "$BASE_SHA" -- app/models.py app/models/ | grep '^[+-]' | grep -v '^[+-][+-][+-]' | grep -v '^[+-]\s*#' | grep -v '^[+-]\s*$' | grep -v '^[+-]\s*"""' | grep -v "^[+-]\s*'''" || true)
+          if [ -n "$DIFF" ]; then
+            echo "❌ NON-MODEL CHANGE selected but structural model changes detected:"
+            echo "$DIFF"
+            exit 1
+          fi
+          MIGRATION_DIFF=$(git diff "$BASE_SHA" --name-only -- migrations/versions/)
+          if [ -n "$MIGRATION_DIFF" ]; then
+            echo "❌ NON-MODEL CHANGE selected but migration files were modified:"
+            echo "$MIGRATION_DIFF"
+            exit 1
+          fi
+          echo "✅ Verified: only comments/docstrings/whitespace changed in model files, no migrations touched."
+
       # -----------------------------------------------------------
       # 2. Deprecated Symbol Audit (Requirement 3.3)
       # -----------------------------------------------------------
       - name: Audit Deprecated Symbols
+        if: steps.check_classification.outputs.classification != 'NON-MODEL CHANGE'
         run: |
           echo "🔍 Scanning for deprecated symbol usage in application code..."
 
@@ -144,6 +165,7 @@ jobs:
       # 3. Migration Rehearsal (Requirement 3.5)
       # -----------------------------------------------------------
       - name: Rehearse Migration (Upgrade & Downgrade)
+        if: steps.check_classification.outputs.classification != 'NON-MODEL CHANGE'
         env:
           FLASK_APP: app
           FLASK_ENV: testing
@@ -191,6 +213,7 @@ jobs:
       # 4. Smoke Test Critical Workflows (Requirements 3.6 & 3.7)
       # -----------------------------------------------------------
       - name: Run Critical Workflow Smoke Tests
+        if: steps.check_classification.outputs.classification != 'NON-MODEL CHANGE'
         env:
           FLASK_APP: app
           FLASK_ENV: testing
