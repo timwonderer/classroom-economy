@@ -97,7 +97,7 @@ jobs:
             });
 
             if (matches.length === 0) {
-              core.setFailed("❌ Schema Change Gate Failed: No PR classification selected. Check one of: EXPAND, CONTRACT (CODE ONLY), CONTRACT (DATABASE)");
+              core.setFailed("❌ Schema Change Gate Failed: No PR classification selected. Check one of: EXPAND, CONTRACT (CODE ONLY), CONTRACT (DATABASE), NON-MODEL CHANGE");
             } else if (matches.length > 1) {
               core.setFailed("❌ Schema Change Gate Failed: Multiple classifications selected. Please select exactly ONE.");
             } else {
@@ -114,19 +114,57 @@ jobs:
         if: steps.check_classification.outputs.classification == 'NON-MODEL CHANGE'
         run: |
           BASE_SHA=$(git merge-base origin/${{ github.base_ref }} HEAD)
-          DIFF=$(git diff "$BASE_SHA" -- app/models.py app/models/ | grep '^[+-]' | grep -v '^[+-][+-][+-]' | grep -v '^[+-]\s*#' | grep -v '^[+-]\s*$' | grep -v '^[+-]\s*"""' | grep -v "^[+-]\s*'''" || true)
-          if [ -n "$DIFF" ]; then
-            echo "❌ NON-MODEL CHANGE selected but structural model changes detected:"
-            echo "$DIFF"
-            exit 1
-          fi
+
+          # Fail if any migration files were touched
           MIGRATION_DIFF=$(git diff "$BASE_SHA" --name-only -- migrations/versions/)
           if [ -n "$MIGRATION_DIFF" ]; then
             echo "❌ NON-MODEL CHANGE selected but migration files were modified:"
             echo "$MIGRATION_DIFF"
             exit 1
           fi
-          echo "✅ Verified: only comments/docstrings/whitespace changed in model files, no migrations touched."
+
+          # AST-compare each changed model file: strip docstrings and comments,
+          # then compare the AST dump. If the AST differs, it's a structural change.
+          MODEL_FILES=$(git diff "$BASE_SHA" --name-only -- app/models.py app/models/)
+          if [ -z "$MODEL_FILES" ]; then
+            echo "✅ No model files changed."
+            exit 0
+          fi
+
+          for FILE in $MODEL_FILES; do
+            # Get base version
+            git show "$BASE_SHA:$FILE" > /tmp/base_model.py 2>/dev/null || echo "" > /tmp/base_model.py
+            cp "$FILE" /tmp/head_model.py
+
+            # Compare ASTs (strips docstrings, comments, and whitespace)
+            python3 -c "
+          import ast, sys
+          def ast_dump(path):
+              try:
+                  tree = ast.parse(open(path).read())
+                  # Remove docstrings from all nodes
+                  for node in ast.walk(tree):
+                      if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Module)):
+                          if (node.body and isinstance(node.body[0], ast.Expr)
+                              and isinstance(node.body[0].value, (ast.Constant, ast.Str))):
+                              node.body.pop(0)
+                  return ast.dump(tree)
+              except SyntaxError:
+                  return open(path).read()
+          base = ast_dump('/tmp/base_model.py')
+          head = ast_dump('/tmp/head_model.py')
+          if base != head:
+              print(f'STRUCTURAL_CHANGE:{path}')
+              sys.exit(1)
+          " "$FILE"
+
+            if [ $? -ne 0 ]; then
+              echo "❌ NON-MODEL CHANGE selected but structural AST changes detected in $FILE"
+              exit 1
+            fi
+          done
+
+          echo "✅ Verified: model file ASTs unchanged (comments/docstrings only), no migrations touched."
 
       # -----------------------------------------------------------
       # 2. Deprecated Symbol Audit (Requirement 3.3)
