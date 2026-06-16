@@ -2,11 +2,11 @@
 searchable: false
 ---
 
-# SSO Non-Implementation: Technical and Privacy Justification
+# PRN-SNP-001: Why Classroom Token Hub Does Not Implement SSO
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| SEC-AUD-028      | 1.0     | 2026-06-16     | N/A        | Informative      |
+| PRN-SNP-001      | 1.0     | 2026-06-16     | N/A        | Informative      |
 
 ## 1. Purpose
 
