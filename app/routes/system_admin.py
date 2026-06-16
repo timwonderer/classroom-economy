@@ -833,10 +833,8 @@ def test_error_503():
 @system_admin_required
 def manage_admins():
     """
-    View and manage all admin (teacher) accounts.
-    Shows admin details, student counts per teacher, signup date, and last login.
-    
-    Note: System admins see teacher info and student counts only, not individual student details.
+    V1 LEGACY — admin account management (no nav link in layout_system_admin.html).
+    v2 replaces with DOM-IDEN/DOM-OPS compliant sysadmin audit (Wave 11 item 3).
     """
     # Get all admins with student counts
     admins = Admin.query.order_by(db.func.coalesce(Admin.teacher_public_id, ''), Admin.id.asc()).all()
@@ -865,8 +863,8 @@ def manage_admins():
 @system_admin_required
 def reset_teacher_totp(admin_id):
     """
-    Reset a teacher's TOTP secret and return the new setup details (JSON).
-    This allows recovery of lost accounts.
+    V1 LEGACY — only accessible via manage_admins (no nav link).
+    v2 teacher TOTP is owned by User model; recovery uses student-assisted flow.
     """
     admin = db.get_or_404(Admin, admin_id)
 
@@ -992,8 +990,8 @@ def delete_admin(admin_id):
 @system_admin_required
 def manage_teachers():
     """
-    Unified teacher management page: invite codes + teacher overview with stats.
-    Merges the old manage_teachers and teacher_overview into a single page.
+    V1 LEGACY — invite-code based teacher management.
+    v2 replaces this with open teacher signup (Turnstile-gated form → TOTP → passkey → done).
     """
     # Handle invite code form submission
     form = SystemAdminInviteForm()

@@ -54,22 +54,21 @@ New code must route writes through FEATs; legacy routes that commit directly are
 - **Classroom Store** — Virtual and physical items with bundles, expirations, and redemption tracking
 - **Rent & Fees** — Recurring rent with waivers, late fees, and immutable policy versioning
 - **Insurance** — Policies, enrollments, and claims with canonical obligation lifecycle
-- **Analytics** — CWI analysis, participation tracking, system health metrics
+- **Analytics** — Aggregate class metrics: participation rate, money velocity, spending/hoarding behavior, budget survivability; weekly and monthly views
 - **Hall Passes** — Time-limited passes with automatic tracking
 
 ### For Students
 - **Portal** — View balances, transaction history, store, and attendance
-- **Transfers** — Send tokens to other students in the same class
+- **Account Transfers** — Move funds between checking and savings accounts
 - **Account Recovery** — Student-assisted teacher recovery flow
 
 ### For System Admins
-- **Admin Portal** — Manage teachers, review error logs, broadcast announcements
-- **2FA Reset** — Reset teacher TOTP when locked out
+- **Admin Portal** — Review error logs and broadcast announcements
 
 ### Platform
 - **Multi-Tenant** — Full class-period isolation; shared students across teachers
 - **Progressive Web App** — Installable on mobile with offline fallback
-- **Accessibility** — WCAG 2.1 AA design guidelines, keyboard navigation, ARIA labels, screen reader support
+- **Accessibility** — WCAG 2.1 AA design guidelines, keyboard navigation, ARIA labels, screen reader support. Automated testing uses axe-core; no formal certification.
 - **Security** — PII encryption at rest, TOTP 2FA for admins, CSRF protection, salted+peppered credential hashing, Cloudflare Turnstile bot protection, post-claim PII deletion
 
 ---
@@ -199,7 +198,7 @@ python scripts/seed_dummy_students.py   # Seed test data
 ## Documentation
 
 - **[Architecture Foundation](docs/ARCHITECTURE/ARC-CORE-000_Architecture_Foundation.md)** — System design and domain boundaries
-- **[Authority Model](docs/INV-CORE-001_Authority_Model.md)** — INV → DOM → FEAT enforcement hierarchy
+- **[Authority Model](docs/INVARIANT/CORE/INV-CORE-001_CAPABILITY_BASED_ARCHITECTURE_AND_AUTHORITY_MODEL.md)** — INV → DOM → FEAT enforcement hierarchy
 - **[Domain Specs](docs/DOMAIN/)** — Per-domain authority contracts
 - **[FEAT Contracts](docs/FEATURE-EXECUTION/)** — Execution layer specifications
 - **[API Reference](docs/ARCHITECTURE/OPERATIONS/ARC-OPS-005_Api_Reference.md)** — REST API documentation
