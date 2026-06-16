@@ -113,8 +113,8 @@ These documents conform to the V2 capability-based architecture and domain autho
 - [MAP/MAP-CORE-001_DOMAIN_TO_FEAT_CAPABILITY_MAP.md](MAP/MAP-CORE-001_DOMAIN_TO_FEAT_CAPABILITY_MAP.md)
 
 ### Reference — Terminology (REF-TERM)
-- [REFERENCE/REF-TERM-001_DEVELOPER_VOCABULARY.md](../REFERENCE/REF-TERM-001_DEVELOPER_VOCABULARY.md) — Authoritative developer-facing vocabulary
-- [REFERENCE/REF-TERM-002_USER_VOCABULARY.md](../REFERENCE/REF-TERM-002_USER_VOCABULARY.md) — Authoritative user-facing vocabulary
+- [REFERENCE/REF-TERM-001_DEVELOPER_VOCABULARY.md](REFERENCE/REF-TERM-001_DEVELOPER_VOCABULARY.md) — Authoritative developer-facing vocabulary
+- [REFERENCE/REF-TERM-002_USER_VOCABULARY.md](REFERENCE/REF-TERM-002_USER_VOCABULARY.md) — Authoritative user-facing vocabulary
 
 ---
 
