@@ -7,8 +7,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import uuid
 
 from app.extensions import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, ClassMembership, StoreItem, StoreItemBlock, Student, StudentItem, StudentTeacher, Transaction
+from app.models import Admin, ClassMembership, StoreItem, StoreItemBlock, Student, StudentItem, StudentTeacher, Transaction, Seat, IdentityProfile
 from tests.helpers.class_scope import create_class_scope
 
 
@@ -54,19 +53,10 @@ def _create_student(teacher, first_name, join_code, block='A'):
             role='student',
         ))
     db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        block=block,
-        join_code=join_code,
-        student_id=student.id,
-        is_claimed=True,
-        first_name=first_name,
-        last_initial='S',
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b'salt',
-        first_half_hash=f'hash_{first_name}_{join_code}',
-    ))
+    _tb_seat = Seat(student_id=student.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_initial='S'))
     db.session.add(Transaction(
         student_id=student.id,
         teacher_id=teacher.id,
@@ -507,19 +497,10 @@ def test_whole_class_goal_with_duplicate_seats_shows_correct_roster(client):
     db.session.flush()
     
     # Add a duplicate TeacherBlock entry for student_a1 (simulating data inconsistency)
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        block='A',
-        join_code='JOINDUP',
-        student_id=student_a1.id,
-        is_claimed=True,
-        first_name='Laura',
-        last_initial='S',
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b'salt',
-        first_half_hash=f'hash_Laura_JOINDUP_dup',
-    ))
+    _tb_seat = Seat(student_id=student_a1.id, join_code='JOINDUP', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Laura', last_initial='S'))
     db.session.flush()
 
     item = StoreItem(

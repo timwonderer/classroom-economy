@@ -3,19 +3,7 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import (
-    Admin,
-    ClassMembership,
-    Student,
-    StudentTeacher,
-    Transaction,
-    StoreItem,
-    StoreItemBlock,
-    StudentItem,
-    IssueCategory,
-    Issue,
-)
+from app.models import Seat, IdentityProfile, Admin, ClassMembership, Student, StudentTeacher, Transaction, StoreItem, StoreItemBlock, StudentItem, IssueCategory, Issue
 from app.hash_utils import get_random_salt, hash_hmac
 from tests.helpers.class_scope import create_class_scope
 
@@ -51,19 +39,10 @@ def _create_student(teacher: Admin, first_name: str, block: str, join_code: str)
         display_name=block,
     )
     db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        block=block,
-        first_name=first_name,
-        last_initial=first_name[0].upper(),
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=salt,
-        first_half_hash=first_half_hash,
-        join_code=join_code,
-        is_claimed=True,
-        student_id=student.id,
-    ))
+    _tb_seat = Seat(student_id=student.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_initial=first_name[0].upper()))
     db.session.commit()
     return student
 

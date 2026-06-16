@@ -13,8 +13,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 from os import urandom
 from app import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, ClassEconomy, EconomySnapshot, PayrollSettings
+from app.models import Admin, ClassEconomy, EconomySnapshot, PayrollSettings, Seat, IdentityProfile
 from app.utils.economy_balance import EconomyBalanceChecker, WarningLevel
 from app.routes import admin as admin_routes
 from tests.helpers.class_scope import create_class_scope
@@ -89,24 +88,10 @@ def _attach_join_code(admin, block='A', token='JOIN-A'):
         db.session.add(economy)
         db.session.flush()
 
-    teacher_block = TeacherBlock.query.filter_by(teacher_id=admin.id, block=block).first()
-    if teacher_block:
-        teacher_block.join_code = token
-    else:
-        db.session.add(TeacherBlock(
-            teacher_id=admin.id,
-            block=block,
-            class_label=block,
-            first_name='Test',
-            last_initial='A',
-            last_name_hash_by_part=['hash'],
-            dob_sum_hash=None,
-            salt=urandom(16),
-            first_half_hash=f'hash-{block.lower()}',
-            join_code=token,
-            student_id=None,
-            is_claimed=False,
-        ))
+    _tb_seat = Seat(student_id=None, join_code=token, block=block, block_identifier=block, class_id=economy.class_id, role="student")
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name='Test', last_initial='A'))
 
     payroll_settings = PayrollSettings.query.filter_by(teacher_id=admin.id, block=block).first()
     if payroll_settings:
@@ -962,20 +947,13 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client, caplog):
     db.session.add(admin)
     db.session.flush()
 
-    db.session.add(TeacherBlock(
-        teacher_id=admin.id,
-        block="A",
-        class_label="A",
-        first_name="Scoped",
-        last_initial="T",
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b'salt',
-        first_half_hash="hash-a",
-        join_code="SCOPEA1",
-        student_id=None,
-        is_claimed=False
-    ))
+    _tb_seat = Seat(student_id=None, join_code="SCOPEA1", block="A", block_identifier="A", role="student")
+
+    db.session.add(_tb_seat)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_initial="T"))
     db.session.commit()
 
     from app.models import User, UserRole
@@ -1013,20 +991,13 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client, caplog):
     db.session.add(admin)
     db.session.flush()
 
-    db.session.add(TeacherBlock(
-        teacher_id=admin.id,
-        block="A",
-        class_label="A",
-        first_name="Scoped",
-        last_initial="V",
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b'salt',
-        first_half_hash="hash-v",
-        join_code="SCOPEV1",
-        student_id=None,
-        is_claimed=False
-    ))
+    _tb_seat = Seat(student_id=None, join_code="SCOPEV1", block="A", block_identifier="A", role="student")
+
+    db.session.add(_tb_seat)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_initial="V"))
     db.session.commit()
 
     from app.models import User, UserRole
@@ -1072,20 +1043,10 @@ def test_analyze_block_prefers_join_code_scoped_payroll_settings(client):
         create_claimed_teacher_block=True,
         teacher_block_claimed=False,
     )
-    db.session.add(TeacherBlock(
-        teacher_id=admin.id,
-        block="A",
-        class_label="A",
-        first_name="Scoped",
-        last_initial="J",
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b'salt',
-        first_half_hash="hash-j",
-        join_code="JOINA123",
-        student_id=None,
-        is_claimed=False
-    ))
+    _tb_seat = Seat(student_id=None, join_code="JOINA123", block="A", block_identifier="A", role="student")
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_initial="J"))
     # Join-code scoped row: should win.
     db.session.add(PayrollSettings(
         class_id=class_scope.class_id,

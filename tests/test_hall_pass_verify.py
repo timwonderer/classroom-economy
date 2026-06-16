@@ -17,8 +17,7 @@ import unicodedata
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, Student, StudentTeacher, HallPassLog
+from app.models import Admin, Student, StudentTeacher, HallPassLog, Seat, IdentityProfile
 from app.hash_utils import get_random_salt, hash_username
 
 
@@ -52,16 +51,13 @@ def hp_student(client, hp_teacher):
 
     db.session.add(StudentTeacher(student_id=student.id, teacher_id=hp_teacher.id))
 
-    block = TeacherBlock(
-        teacher_id=hp_teacher.id,
-        block="Period3",
-        class_label="Period 3 – Chemistry",
-        join_code="jc_chem3",
-        first_name="Maria",
-        last_initial="G",
-        salt=get_random_salt(),
-        first_half_hash="placeholder",
-    )
+    block = Seat(join_code="jc_chem3", block="Period3", block_identifier="Period3", role="student")
+
+    db.session.add(block)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name="Maria", last_initial="G"))
     db.session.add(block)
     db.session.commit()
     return student

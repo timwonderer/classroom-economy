@@ -14,7 +14,7 @@ not count toward balances in a class-scoped student session.
 
 from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash
-from app.models import Student, Admin, Transaction, TeacherBlock, ClassEconomy, TransactionStatus, Seat
+from app.models import Student, Admin, Transaction, ClassEconomy, TransactionStatus, Seat
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
 

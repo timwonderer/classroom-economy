@@ -4,8 +4,7 @@ import os
 
 from werkzeug.security import generate_password_hash
 
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, Student, RentSettings
+from app.models import Admin, Student, RentSettings, Seat, IdentityProfile
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
 
@@ -29,32 +28,17 @@ def test_dashboard_handles_rent_with_multi_block_student(client):
     db.session.add(student)
     db.session.commit()
 
-    seat_a = TeacherBlock(
-        teacher_id=teacher.id,
-        block="A",
-        first_name="Rent",
-        last_initial="R",
-        last_name_hash_by_part=["hash_a"],
-        dob_sum_hash=None,
-        salt=os.urandom(16),
-        first_half_hash="hash_a",
-        join_code="JOINA",
-        student_id=student.id,
-        is_claimed=True,
-    )
-    seat_b = TeacherBlock(
-        teacher_id=teacher.id,
-        block="B",
-        first_name="Rent",
-        last_initial="R",
-        last_name_hash_by_part=["hash_b"],
-        dob_sum_hash=None,
-        salt=os.urandom(16),
-        first_half_hash="hash_b",
-        join_code="JOINB",
-        student_id=student.id,
-        is_claimed=True,
-    )
+    seat_a = Seat(student_id=student.id, join_code="JOINA", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+
+    db.session.add(seat_a)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=seat_a.id, profile_type='student_claimed', first_name="Rent", last_initial="R"))
+    seat_b = Seat(student_id=student.id, join_code="JOINB", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(seat_b)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type='student_claimed', first_name="Rent", last_initial="R"))
     db.session.add_all([seat_a, seat_b])
 
     rent_settings = RentSettings(

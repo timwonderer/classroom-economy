@@ -2,8 +2,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, Student, Transaction, StoreItem, StudentItem, StudentTeacher, ClassEconomy, ClassMembership
+from app.models import Admin, Student, Transaction, StoreItem, StudentItem, StudentTeacher, ClassEconomy, ClassMembership, Seat, IdentityProfile
 from app.extensions import db
 from werkzeug.security import generate_password_hash
 
@@ -32,11 +31,13 @@ def student_in_class(client, teacher_admin):
     link = StudentTeacher(student_id=student.id, teacher_id=teacher_admin.id)
     db.session.add(link)
 
-    seat = TeacherBlock(
-        teacher_id=teacher_admin.id, block='A', join_code='REJECT123',
-        student_id=student.id, is_claimed=True,
-        first_name='TestRejection', last_initial='S', last_name_hash_by_part=None, dob_sum_hash=None, salt=b'salt', first_half_hash='hash'
-    )
+    seat = Seat(student_id=student.id, join_code='REJECT123', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
+
+    db.session.add(seat)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name='TestRejection', last_initial='S'))
     db.session.add(seat)
 
     db.session.add(ClassEconomy(join_code='REJECT123', teacher_id=teacher_admin.id, status="active", created_by_admin_id=teacher_admin.id))

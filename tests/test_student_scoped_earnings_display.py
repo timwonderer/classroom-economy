@@ -3,7 +3,6 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from tests.helpers.mock_teacher_block import TeacherBlock
 from app.models import Admin, Student, StudentTeacher, Transaction, TransactionStatus
 from tests.helpers.class_scope import create_class_scope
 
@@ -29,33 +28,6 @@ def _build_multi_class_student():
     class_a = create_class_scope(teacher=teacher, join_code="STUDSC1", student=student, block="A", display_name="A")
     class_b = create_class_scope(teacher=teacher, join_code="STUDSC2", student=student, block="B", display_name="B")
     db.session.add_all([
-        TeacherBlock(
-            teacher_id=teacher.id,
-            block="A",
-            join_code="STUDSC1",
-            class_id=class_a.class_id,
-            student_id=student.id,
-            is_claimed=True,
-            first_name=student.first_name,
-            last_initial=student.last_initial,
-            last_name_hash_by_part=[],
-            dob_sum_hash=None,
-            salt=b"salt",
-            first_half_hash="hash-a",
-        )(
-            teacher_id=teacher.id,
-            block="B",
-            join_code="STUDSC2",
-            class_id=class_b.class_id,
-            student_id=student.id,
-            is_claimed=True,
-            first_name=student.first_name,
-            last_initial=student.last_initial,
-            last_name_hash_by_part=[],
-            dob_sum_hash=None,
-            salt=b"salt",
-            first_half_hash="hash-b",
-        ),
         Transaction(
             student_id=student.id,
             teacher_id=teacher.id,

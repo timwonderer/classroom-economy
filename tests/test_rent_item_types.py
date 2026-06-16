@@ -2,8 +2,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 import re
 from decimal import Decimal
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import RentItem, RentSettings, RentPayment, RentWaiver, StoreItem, StudentItem, Student, Transaction, StudentBlock, Admin, StudentTeacher, ClassEconomy, ClassMembership, Seat
+from app.models import RentItem, RentSettings, RentPayment, RentWaiver, StoreItem, StudentItem, Student, Transaction, StudentBlock, Admin, StudentTeacher, ClassEconomy, ClassMembership, Seat, IdentityProfile
 from app.extensions import db
 from datetime import datetime, timezone, timedelta
 
@@ -32,11 +31,10 @@ def student_in_class(client, teacher_admin):
     db.session.add(link)
 
     # Create seat
-    seat = TeacherBlock(
-        teacher_id=teacher_admin.id, block='A', join_code='JOINCODE123',
-        student_id=student.id, is_claimed=True,
-        first_name='Test', last_initial='S', salt=b'salt', first_half_hash='hash'
-    )
+    seat = Seat(student_id=student.id, join_code='JOINCODE123', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name='Test', last_initial='S'))
     db.session.add(seat)
     db.session.add(seat)
     
@@ -770,11 +768,10 @@ def test_mid_period_lock_blocks_semantic_changes(client, teacher_admin):
     db.session.flush()
 
     # Create a TeacherBlock with join_code
-    tb = TeacherBlock(
-        teacher_id=teacher_admin.id, block='A', join_code='LOCKTEST',
-        first_name='Seat', last_initial='1',
-        salt=b'salt', first_half_hash='hash'
-    )
+    tb = Seat(join_code='LOCKTEST', block='A', block_identifier='A', role="student")
+    db.session.add(tb)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_unclaimed', first_name='Seat', last_initial='1'))
     db.session.add(tb)
     db.session.flush()
 
@@ -845,11 +842,13 @@ def test_mid_period_lock_allows_new_items(client, teacher_admin):
     db.session.add(settings)
     db.session.flush()
 
-    tb = TeacherBlock(
-        teacher_id=teacher_admin.id, block='A', join_code='LOCKTEST2',
-        first_name='Seat', last_initial='2',
-        salt=b'salt', first_half_hash='hash'
-    )
+    tb = Seat(join_code='LOCKTEST2', block='A', block_identifier='A', role="student")
+
+    db.session.add(tb)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_unclaimed', first_name='Seat', last_initial='2'))
     db.session.add(tb)
     db.session.flush()
 

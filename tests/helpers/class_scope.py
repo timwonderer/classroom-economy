@@ -1,5 +1,4 @@
 from app.extensions import db
-from tests.helpers.mock_teacher_block import TeacherBlock
 from app.models import ClassEconomy, ClassMembership, Seat, IdentityProfile
 from datetime import datetime, timezone
 from uuid import uuid4
@@ -15,13 +14,20 @@ def create_class_scope(
     class_status="active",
     create_teacher_membership=True,
     create_student_membership=True,
+    create_seat=True,
+    # Legacy param names kept for caller compatibility during migration
     create_claimed_teacher_block=False,
     teacher_block_teacher=None,
     teacher_block_student=None,
     teacher_block_claimed=False,
-    create_seat=True,
 ):
-    """Create canonical class scope for tests under the v2 join-code model."""
+    """Create canonical class scope for tests under the v2 model.
+
+    Uses Seat + IdentityProfile exclusively. The teacher_block_* params
+    are accepted for backward compatibility but only affect seat claimed state.
+    """
+    claimed = teacher_block_claimed or create_claimed_teacher_block
+
     class_row = ClassEconomy(
         class_id=str(uuid4()),
         join_code=join_code,
@@ -63,24 +69,6 @@ def create_class_scope(
             role="student",
         ))
 
-    if create_claimed_teacher_block or teacher_block_teacher is not None:
-        roster_teacher = teacher_block_teacher or teacher
-        roster_student = teacher_block_student or student
-        db.session.add(TeacherBlock(
-            teacher_id=roster_teacher.id,
-            class_id=class_row.class_id,
-            block=block,
-            join_code=join_code,
-            is_claimed=teacher_block_claimed,
-            student_id=roster_student.id if roster_student is not None else None,
-            first_name=(roster_student.first_name if roster_student is not None else "Legacy"),
-            last_initial=(roster_student.last_initial if roster_student is not None else "X"),
-            last_name_hash_by_part=[],
-            dob_sum_hash=None,
-            salt=b"salt",
-            first_half_hash="hash",
-        ))
-
     if student is not None and create_seat:
         s_seat = Seat(
             student_id=student.id,
@@ -89,13 +77,13 @@ def create_class_scope(
             block=block,
             block_identifier=block,
             role="student",
-            claimed_at=datetime.now(timezone.utc) if teacher_block_claimed else None,
+            claimed_at=datetime.now(timezone.utc) if claimed else None,
         )
         db.session.add(s_seat)
         db.session.flush()
         db.session.add(IdentityProfile(
             seat_id=s_seat.id,
-            profile_type='student_claimed' if teacher_block_claimed else 'student_unclaimed',
+            profile_type='student_claimed' if claimed else 'student_unclaimed',
             first_name=student.first_name,
             last_initial=student.last_initial,
         ))

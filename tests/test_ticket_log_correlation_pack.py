@@ -1,17 +1,8 @@
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import (
-    Admin,
-    ActorRequestTrace,
-    ErrorEvent,
-    IssueCategory,
-    ClassEconomy,
-    Seat,
-    Student,
-    )
+from app.models import Seat, IdentityProfile, Admin, ActorRequestTrace, ErrorEvent, IssueCategory, ClassEconomy, Student
 from app.utils.issue_helpers import create_issue
 from app.utils.time import utc_now
 
@@ -37,18 +28,13 @@ def _create_student_issue_context():
     db.session.add(student)
     db.session.flush()
 
-    teacher_block = TeacherBlock(
-        teacher_id=admin.id,
-        block="A",
-        first_name="Student",
-        last_initial="S",
-        salt=b"1234567890123456",
-        first_half_hash="seat-hash",
-        join_code=join_code.join_code,
-        class_id=join_code.class_id,
-        student_id=student.id,
-        is_claimed=True,
-    )
+    teacher_block = Seat(student_id=student.id, class_id=join_code.class_id, join_code=join_code.join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+
+    db.session.add(teacher_block)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=teacher_block.id, profile_type='student_claimed', first_name="Student", last_initial="S"))
     db.session.add(teacher_block)
 
     seat = Seat(
