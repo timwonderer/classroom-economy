@@ -3,7 +3,7 @@ import pytest
 import pyotp
 import bcrypt
 from datetime import datetime, timezone, timedelta
-from app.models import Admin, IdentityProfile, Seat, Student, RecoveryRequest, StudentRecoveryCode, StudentTeacher, ClassEconomy, User, UserRole, Seat, IdentityProfile
+from app.models import Admin, IdentityProfile, Seat, Student, RecoveryRequest, StudentRecoveryCode, StudentTeacher, ClassEconomy, User, UserRole
 from app.extensions import db
 from app.hash_utils import hash_username_lookup, get_random_salt, hash_hmac
 

@@ -40,7 +40,7 @@ def _make_teacher_block(admin_id, block, join_code):
     )
     db.session.add(seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student_unclaimed", first_name="Teacher", last_initial="T"))
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="teacher_primary", first_name="Teacher", last_initial="T"))
     db.session.flush()
     return seat
 

@@ -229,7 +229,7 @@ def test_sysadmin_period_deletion_endpoint_is_disabled(client):
     )
     assert resp.status_code == 200
     assert b"System admins cannot delete classes" in resp.data
-    assert Seat.query.filter_by(teacher_id=teacher.id, block="Z").count() == 1
+    assert Seat.query.filter_by(join_code="SZJC1", block="Z").count() == 1
 
 
 def test_sysadmin_teacher_deletion_endpoint_is_disabled(client):

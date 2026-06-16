@@ -14,7 +14,7 @@ from the teacher-managed roster and is not editable by the student.
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import re
 import pytest
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from app import db
 from app.models import Seat, IdentityProfile, ClassEconomy, Student, Admin, StudentTeacher, Transaction, StudentBlock, User, UserRole
 from app.hash_utils import get_random_salt, hash_username, hash_username_lookup
@@ -321,9 +321,8 @@ def test_recovery_preserves_teacher_block_claimed(client, recovery_data):
 
     assert resp.status_code == 302
 
-    seat = Seat.query.filter_by(student_id=student.id, teacher_id=teacher.id, block='A').first()
+    seat = Seat.query.filter_by(student_id=student.id, join_code=join_code, block='A').first()
     assert seat is not None
-    assert seat.is_claimed is True
     assert seat.claimed_at is not None
 
 

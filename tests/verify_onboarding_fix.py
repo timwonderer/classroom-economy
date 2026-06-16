@@ -1,11 +1,12 @@
+import pytest
+
+pytest.skip("TeacherBlock removed in Wave 11 decommissioning", allow_module_level=True)
+
 import os
 from pathlib import Path
 from dotenv import dotenv_values
 from app import create_app, db
 from app.models import Admin
-import pytest
-
-pytestmark = pytest.mark.skip(reason="TeacherBlock removed in Wave 11 decommissioning")
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DOTENV_PATH = PROJECT_ROOT / ".env"
