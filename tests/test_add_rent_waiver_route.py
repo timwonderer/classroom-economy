@@ -45,7 +45,7 @@ def _make_teacher_block(admin_id, block, join_code):
     return seat
 
 
-def _make_rent_settings(admin_id, block, first_due, class_id=None, frequency_type="weekly"):
+def _make_rent_settings(block, first_due, class_id=None, frequency_type="weekly"):
     settings = RentSettings(
         class_id=class_id,
         block=block,
@@ -108,7 +108,7 @@ def test_past_due_scope_creates_one_waiver_per_date(client, app):
         join_code = "ARW_PD1"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("pd1_s")
         _link_student(student, admin)
         student_seat = _make_student_seat(student, tb.class_id, join_code)
@@ -148,7 +148,7 @@ def test_current_scope_creates_waiver_for_current_period(client, app):
         join_code = "ARW_CUR1"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("cur1_s")
         _link_student(student, admin)
         student_seat = _make_student_seat(student, tb.class_id, join_code)
@@ -182,7 +182,7 @@ def test_future_scope_creates_waiver_spanning_n_periods(client, app):
         join_code = "ARW_FUT1"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("fut1_s")
         _link_student(student, admin)
         student_seat = _make_student_seat(student, tb.class_id, join_code)
@@ -216,7 +216,7 @@ def test_invalid_future_periods_count_flashes_error(client, app):
         join_code = "ARW_FP1"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("fp1_s")
         _link_student(student, admin)
         _make_student_seat(student, tb.class_id, join_code)
@@ -244,7 +244,7 @@ def test_missing_join_code_flashes_error(client, app):
         admin = _make_admin("nojc1")
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", "ARW_NOJC")
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("nojc1_s")
         _link_student(student, admin)
         _make_student_seat(student, tb.class_id, "ARW_NOJC")
@@ -277,7 +277,7 @@ def test_invalid_past_due_dates_skipped_count_reflects_actual(client, app):
         join_code = "ARW_PD2"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("pd2_s")
         _link_student(student, admin)
         student_seat = _make_student_seat(student, tb.class_id, join_code)
@@ -308,13 +308,13 @@ def test_invalid_past_due_dates_skipped_count_reflects_actual(client, app):
         assert b'1 past-due period' in resp.data
 
 
-def test_add_rent_waiver_logs_analytics_event(client, app, monkeypatch):
+def test_add_rent_waiver_emits_no_analytics_event(client, app, monkeypatch):
     with app.app_context():
         admin = _make_admin("evt1")
         join_code = "ARW_EVT1"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("evt1_s")
         _link_student(student, admin)
         _make_student_seat(student, tb.class_id, join_code)
@@ -339,13 +339,13 @@ def test_add_rent_waiver_logs_analytics_event(client, app, monkeypatch):
         assert len(events) == 0
 
 
-def test_remove_rent_waiver_logs_analytics_event(client, app):
+def test_remove_rent_waiver_emits_no_analytics_event(client, app):
     with app.app_context():
         admin = _make_admin("rem1")
         join_code = "ARW_REM1"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("rem1_s")
         _link_student(student, admin)
         seat = _make_student_seat(student, tb.class_id, join_code)

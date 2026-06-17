@@ -7167,9 +7167,6 @@ def add_rent_waiver():
                 created_by_user_id=admin_id,
             )
         # TODO(v2): Re-add a canonical analytics event once analytics_events is seat-scoped.
-        description = f"Rent waiver added for {student.full_name} covering: {scope_str}."
-        if reason:
-            description = f"{description} Reason: {reason}"
         count += 1
 
     flash(f"Rent waiver added for {count} student(s) covering: {scope_str}.", "success")
