@@ -579,6 +579,7 @@ class Student(db.Model):
 
 
 class AdminInviteCode(db.Model):
+    # V1 LEGACY — replaced in v2 by open teacher signup (Turnstile-gated form → TOTP → passkey → done)
     __tablename__ = 'teacher_invite_codes'
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(255), unique=True, nullable=False)
