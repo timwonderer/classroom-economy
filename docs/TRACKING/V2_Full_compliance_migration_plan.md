@@ -100,7 +100,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [ ] Wave 11 backup/restore rehearsal evidence
 - [ ] Wave 11 operator sign-off flow completion (`user_invite_tokens`)
 - [ ] Wave 11 system-admin compliance audit completion
-- [/] Wave 11 admin route decomposition (`app/routes/admin.py`) — **TeacherBlock decommissioning actively in progress** (see Wave 11 status update 2026-06-07)
+- [/] Wave 11 admin route decomposition (`app/routes/admin.py`) — **TeacherBlock decommissioning actively in progress** (see Wave 11 status updates 2026-06-07, 2026-06-15)
 - [ ] Wave 11 invariant sweeps complete (INV-ARC-007, INV-ARC-014, INV-ARC-015 full repo pass)
 - [ ] Wave 11 `V2_CLASS_ID_INVARIANT_BACKLOG` closure
 - [ ] Complete single-context UI enforcement sweep: remove remaining page-level class selectors and request `join_code` context controls outside nav context switch
@@ -2172,7 +2172,16 @@ Constraint:
    - Test `pg_dump` + `pg_restore` against canonical 44-table schema
    - Document in `docs/operations/Deployment_Guide.md`
 
-2. **Operator sign-off flow** — teacher onboarding gate using `user_invite_tokens` (from Wave 3)
+2. **Teacher onboarding (replaces v1 invite codes)** — planned open self-signup flow:
+   - Turnstile-gated registration form: username → setup TOTP → optional passkey → done
+   - `AdminInviteCode` / `teacher_invite_codes` table to be dropped; `user_invite_tokens` no longer used for teacher gating
+   - On first sign-in, teacher to be routed to a **class-creation page** (the only page that does not require class context):
+     - Download CSV template → fill → upload to create new class
+     - This will be the **only** entry point for new class creation
+     - Creates a new `class_id` with user-supplied `display_name` and `section`
+     - `display_name` and `section` are display metadata only, never used as reference keys
+     - Duplicate `display_name` / `section` across classes is acceptable — each upload creates a distinct `class_id`
+   - **Status:** Not yet implemented. `AdminInviteCode` and related routes remain in codebase as v1 legacy.
 
 3. **Sysadmin audit** — system admin routes reviewed for DOM-IDEN/DOM-OPS compliance; phantom scope access (INV-ARC-011) eliminated
 
@@ -2375,6 +2384,46 @@ We successfully stabilized the `tests/test_admin_tenancy.py` suite. The legacy `
 
 **Wave Impact:**
 - This heavily reduces the Bucket 2 baseline failures related to legacy `TeacherBlock` dependency. We are one step closer to dropping the `teacher_blocks` table completely once all test files have their fixtures rewritten.
+
+### Status Update (2026-06-15): Wave 11 — Bulk Test Suite TeacherBlock→Seat Refactoring
+
+Completed a bulk refactoring pass across ~60 test files to replace `TeacherBlock` fixture usage with canonical `Seat` + `IdentityProfile` + `ClassEconomy` constructs. This is the largest single test modernization slice in Wave 11.
+
+**Completed in this slice:**
+
+- **Test helper modernization:**
+  - `tests/helpers/class_scope.py` — canonical `create_class_scope()` helper now creates `Seat` + `IdentityProfile` directly (no `TeacherBlock`)
+  - `tests/helpers/mock_teacher_block.py` — deleted entirely (legacy shim removed)
+
+- **~60 test files migrated** — all active test files that used `TeacherBlock` for fixture setup now use `Seat(role=..., join_code=..., block=..., claimed_at=...)` + `IdentityProfile(seat_id=..., profile_type=...)`. Key patterns replaced:
+  - `TeacherBlock(teacher_id=..., join_code=..., block=...)` → `Seat(...)` + `IdentityProfile(...)`
+  - `TeacherBlock.is_claimed` assertions → `Seat.claimed_at is not None`
+  - `Seat.query.filter_by(teacher_id=...)` (invalid column) → `Seat.query.filter_by(join_code=..., block=...)`
+
+- **Legacy test modules skipped** — 7 modules that exclusively test `TeacherBlock` behavior marked with `pytest.skip(allow_module_level=True)` for Wave 11 decommissioning:
+  - `test_teacher_block_cleanup.py`, `test_pending_student_deletion.py`, `test_link_student_to_admin.py`, `test_legacy_bulk_deletion.py`, `test_legacy_placeholder_badge.py`, `test_legacy_join_code_persistence.py`, `test_legacy_unclaimed_deletion.py`
+
+- **Documentation established:**
+  - `docs/REFERENCE/REF-TERM-001_DEVELOPER_VOCABULARY.md` — normative developer terminology (canonical v2 terms, deprecated v1 terms, migration guidance)
+  - `docs/REFERENCE/REF-TERM-002_USER_VOCABULARY.md` — normative user-facing vocabulary
+  - `docs/TRACKING/TERMINOLOGY_AUDIT_V1.md` — 177-term inventory of v1→v2 terminology with frequency analysis
+  - `README.md` — complete rewrite to reflect v2 architecture reality
+
+**Remaining TeacherBlock surface in tests (27 files):**
+- 7 are fully skipped legacy modules (listed above) — candidates for deletion
+- ~12 have residual string references (skip reasons, comments, variable names) but no active `TeacherBlock` model usage
+- ~8 have minor residual references in helper code or assertions that need targeted cleanup
+
+**Validation:**
+- All review feedback from PR #1220 addressed (28 comments resolved)
+- Missing `datetime`/`timezone` imports fixed
+- Invalid `Seat.teacher_id` / `Seat.is_claimed` references corrected
+- Teacher seat `profile_type` corrected to `teacher_primary`
+
+**Wave Impact:**
+- TeacherBlock test surface reduced from 71 files to 27 (62% reduction)
+- Of the remaining 27, only ~8 have active model usage requiring migration; the rest are skip markers or string references
+- `mock_teacher_block.py` shim deleted — no more indirect TeacherBlock fixture dependency
 
 ---
 

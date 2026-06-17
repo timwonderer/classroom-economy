@@ -15,20 +15,7 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import (
-    Admin,
-    ClassEconomy,
-    Student,
-    StudentTeacher,
-    BalanceCache,
-    PayrollSettings,
-    RentSettings,
-    SystemAdmin,
-    StudentBlock,
-    User,
-    UserRole,
-)
+from app.models import Seat, IdentityProfile, Admin, ClassEconomy, Student, StudentTeacher, BalanceCache, PayrollSettings, RentSettings, SystemAdmin, StudentBlock, User, UserRole
 from app.hash_utils import get_random_salt, hash_hmac
 from tests.helpers.class_scope import create_class_scope
 from app.utils.auth_username import build_hashed_username_fields
@@ -92,20 +79,10 @@ def _create_student(teacher: Admin, first_name: str, block: str, join_code: str)
         display_name=block,
     )
     db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        class_id=class_row.class_id,
-        block=block,
-        first_name=first_name,
-        last_initial=first_name[0].upper(),
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=salt,
-        first_half_hash=first_half_hash,
-        join_code=join_code,
-        is_claimed=True,
-        student_id=student.id,
-    ))
+    _tb_seat = Seat(student_id=student.id, class_id=class_row.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_initial=first_name[0].upper()))
     db.session.commit()
     return student
 
@@ -237,19 +214,10 @@ def test_sysadmin_period_deletion_endpoint_is_disabled(client):
     db.session.add(student)
     db.session.flush()
     db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        block="Z",
-        first_name="Zara",
-        last_initial="Z",
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=salt,
-        first_half_hash=fhh,
-        join_code="SZJC1",
-        is_claimed=True,
-        student_id=student.id,
-    ))
+    _tb_seat = Seat(student_id=student.id, join_code="SZJC1", block="Z", block_identifier="Z", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name="Zara", last_initial="Z"))
     db.session.commit()
     teacher.last_login = None
     db.session.commit()
@@ -261,7 +229,7 @@ def test_sysadmin_period_deletion_endpoint_is_disabled(client):
     )
     assert resp.status_code == 200
     assert b"System admins cannot delete classes" in resp.data
-    assert TeacherBlock.query.filter_by(teacher_id=teacher.id, block="Z").count() == 1
+    assert Seat.query.filter_by(join_code="SZJC1", block="Z").count() == 1
 
 
 def test_sysadmin_teacher_deletion_endpoint_is_disabled(client):

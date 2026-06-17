@@ -1,86 +1,76 @@
-# 🎓 Classroom Token Hub
+# Classroom Token Hub
 
-An interactive banking and classroom management platform for teaching students about money while tracking classroom participation.
+A classroom management platform that uses a simulated token economy to drive student engagement and participation.
 
-**Version:** 2.0.0 (live-test candidate)
+**Version:** 2.0.0 (live-test candidate)  
+**License:** [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) — Free for educational and nonprofit use.  
+**Development branch:** `codex/v2.0`
 
 ---
 
 ## Overview
 
-**Classroom Token Hub** is an educational banking simulation that helps students learn financial literacy through hands-on experience. Students earn tokens by attending class, which they can spend in a classroom store, use for hall passes, or manage through savings and checking accounts.
+Classroom Token Hub gives teachers a token-based economy to manage their classroom. Students earn tokens for attendance and participation, then spend them in a class store, use them for hall passes, or save them — creating a feedback loop that reinforces positive classroom behavior. Teachers configure pay rates, rent, store items, and feature toggles per class period.
 
-**License:** [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) - Free for educational and nonprofit use, not for commercial applications.
+The platform is multi-tenant: a single deployment serves many teachers, each with multiple class periods. Students can belong to multiple classes with different teachers. All data is isolated by class.
 
-**Project Status:** Version 2.0.0 is the current live-test candidate. Canonical identity/auth authority is `User + Seat + Class`: `users.id` authenticates, `seats.id` acts, `classes.class_id` scopes, and `seats.public_id` is the deidentified public actor reference. `join_code` remains a public class alias that resolves to `class_id`; legacy `admin_id`, `student_id`, `TeacherBlock`, and role-specific public IDs are compatibility shadows only. The v2 authority rewrite now funnels money-affecting behavior through FEAT/domain services into `ledger_service`, with transaction construction structurally restricted to that service. See [DEVELOPMENT.md](DEVELOPMENT.md) for current readiness status and [CHANGELOG.md](CHANGELOG.md) for ongoing changes.
+---
+
+## Architecture
+
+The v2 architecture is built on three layers:
+
+- **Identity:** `User` authenticates, `Seat` acts within a class, `ClassEconomy` (`class_id`) scopes all data. `join_code` is the public alias for `class_id`.
+- **Domains:** Bounded services (`app/services/`) own read and validation logic. Domains do not call each other directly.
+- **FEATs:** All state mutation flows through `app/feats/` — atomic execution units that resolve identity, validate across domains, and commit in a single transaction.
+
+```
+Routes → FEAT → Domain Services → Ledger
+```
+
+New code must route writes through FEATs; legacy routes that commit directly are being migrated. GET handlers must not trigger DB writes.
+
+### Key Models
+
+| Layer | Models | Purpose |
+|-------|--------|---------|
+| Identity | `User`, `Seat`, `IdentityProfile`, `ClassEconomy` | Auth, class-local actor, display name, class boundary |
+| Financial | `Transaction`, `BalanceCache` | Ledger entries and cached balances (seat + class scoped) |
+| Configuration | `PayrollSettings`, `RentSettings`, `BankingSettings`, `FeatureSettings` | Per-class economy settings |
+| Obligations | `ObligationAssessment`, `ObligationLifecycle` | Rent, insurance, and fee lifecycle |
+| Store | `StoreItem`, `StudentItem`, `RedemptionAuditLog` | Classroom store catalog and purchases |
+| Attendance | `TapEvent`, `HallPassLog` | Start Work / Break Done tracking, hall passes |
+
+55+ models total. Legacy tables (`Admin`, `Student`, `TeacherBlock`) still exist as compatibility shadows during the auth transition.
 
 ---
 
 ## Features
 
-### Core Features
-
-- **System Admin Portal** — Manage teachers, review error logs, and adjust student ownership
-- **Teacher Dashboard** — Manage students, run payroll, configure settings, and receive system announcements
-- **System Announcements** — Broadcast critical updates to all teachers or specific classes
-- **Analytics Dashboard** — System health metrics, CWI analysis, participation tracking, and trend monitoring
-- **Student Portal** — View balances, redeem store items, track attendance, and manage hall passes
-- **Seat-Claim Rosters** — Upload rosters to provision inactive user shells, class-local seats, display profiles, and seat-owned claim artifacts; students activate credentials only when they claim
-- **Shared Students** — Link multiple teachers to the same student via `student_teachers`
-- **Attendance Tracking** — Start Work/Break Done system with automatic time logging
+### For Teachers
+- **Dashboard** — Manage students, run payroll, configure class settings
+- **Seat-Claim Rosters** — Upload CSV rosters to provision seats; students claim and activate their own credentials
 - **Automated Payroll** — Configurable pay rates, schedules, and rewards/fines
-- **Transaction Logging** — Complete audit trail of financial activities scoped by class and join code
-- **Classroom Store** — Virtual/physical items with bundles, expirations, and redemption tracking
-- **Rent Itemization** — Specify what rent covers with store alternatives and privilege tracking
-- **Hall Pass System** — Time-limited passes with automatic tracking
-- **Insurance System** — Policies, enrollments, and claims managed in-app
-- **Rent & Fees** — Optional recurring rent with waivers and late-fee configuration
-- **TOTP Authentication** — Secure admin access with two-factor authentication
+- **Classroom Store** — Virtual and physical items with bundles, expirations, and redemption tracking
+- **Rent & Fees** — Recurring rent with waivers, late fees, and immutable policy versioning
+- **Insurance** — Policies, enrollments, and claims with canonical obligation lifecycle
+- **Analytics** — Aggregate class metrics: participation rate, money velocity, spending/hoarding behavior, budget survivability; weekly and monthly views
+- **Hall Passes** — Time-limited passes with automatic tracking
 
-### Performance
+### For Students
+- **Portal** — View balances, transaction history, store, and attendance
+- **Account Transfers** — Move funds between checking and savings accounts
+- **Account Recovery** — Student-assisted teacher recovery flow
 
-- **Optimized Student Roster** — N+1 query elimination reduces roster page queries from ~1225 to ~10 for a class of 60 students
-- **Read-Only Balance Properties** — Removed write-on-read side effects from balance calculations, eliminating race conditions
-- **Scoped Balance Calculations** — All balance aggregations correctly scoped to the current class period
-- **Batch Processing** — Daily limit enforcement and dashboard balance calculations use batched queries instead of per-student iteration
+### For System Admins
+- **Admin Portal** — Teacher overview, support tickets, error/event logs, broadcast announcements
+  > **v2 direction:** Invite-code gating replaced by open teacher self-signup; sysadmin role shifts to operational oversight.
 
-### Mobile & PWA Features
-
-- **Progressive Web App** — Install as mobile app on iOS and Android devices
-- **Offline Support** — Intelligent caching with offline fallback page
-- **Mobile-Optimized UI** — Responsive design with hamburger menu navigation
-- **Full Navigation Access** — Slide-out sidebar provides complete menu access on mobile
-- **Touch-Friendly** — Larger buttons and improved touch targets throughout
-- **Unified Templates** — Same responsive layout works for desktop, mobile, and PWA
-- **Fast Performance** — Aggressive caching for quick load times
-- **Home Screen Installation** — Add to home screen for app-like experience
-
-### Accessibility Features 
-
-- **Enhanced Accessibility** — Improvements following WCAG 2.1 AA guidelines
-- **Screen Reader Support** — Optimized for NVDA, JAWS, and VoiceOver
-- **Keyboard Navigation** — Full keyboard accessibility throughout
-- **ARIA Labels** — Comprehensive labeling for assistive technologies
-- **High Contrast** — Improved color contrast ratios for better readability
-- **Responsive Design** — Works seamlessly across all device sizes
-
-> [!IMPORTANT]
-> While the app is designed to be accessible and meet WCAG 2.1 guidelines, no claims of compliance of any kind is being made or implied. It is not recommended to deploy this app without external audits or validations if compliance is required by law.
-
-### Security Features
-
-- **PII Encryption** — All student names encrypted at rest
-- **Post-Claim PII Deletion** — DOB and name verification hashes automatically purged after account setup completes
-- **TOTP for Admins** — Time-based one-time passwords required
-- **Teacher Account Recovery Model** — Teachers recover access through student-assisted recovery, or create a new account; inactive legacy accounts self-delete after 6 months
-- **CSRF Protection** — Protection against cross-site request forgery
-- **Credential Hashing** — Salted and peppered password hashing
-- **Deletion Confirmation Gates** — Timed in-app confirmation dialogs for destructive operations (class/period deletion, account removal)
-- **Hall Pass & Admin Identity Boundaries** — Hardened authorization checks prevent cross-admin data access in hall pass flows
-- **Class Deletion Audit** — Audited and patched all deletion paths; fixed BalanceCache orphaning (P1), scoping bugs (P2), and orphaned settings cleanup (P3)
-- **Cloudflare Turnstile** — Bot protection on login forms
-- **Database Error Logging** — Automatic error tracking and monitoring
-- **Custom Error Pages** — User-friendly error handling (400, 401, 403, 404, 500, 503)
+### Platform
+- **Multi-Tenant** — Full class-period isolation; shared students across teachers
+- **Progressive Web App** — Installable on mobile with offline fallback
+- **Accessibility** — WCAG 2.1 AA design guidelines, keyboard navigation, ARIA labels, screen reader support. Automated testing uses axe-core; no formal certification.
+- **Security** — PII encryption at rest, TOTP 2FA for admins, CSRF protection, salted+peppered credential hashing, Cloudflare Turnstile bot protection, post-claim PII deletion
 
 ---
 
@@ -89,181 +79,87 @@ An interactive banking and classroom management platform for teaching students a
 ### Prerequisites
 
 - Python 3.10+
-- PostgreSQL database
-- Virtual environment (recommended)
+- PostgreSQL
+- A virtual environment (recommended)
 
 ### Installation
 
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd classroom-economy
-   ```
+```bash
+git clone <repository-url>
+cd classroom-token-hub
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
 
-2. **Set up virtual environment**
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
-   ```
+### Configuration
 
-3. **Configure environment variables**
+Create a `.env` file:
 
-   Create a `.env` file in the root directory:
-   ```bash
-   SECRET_KEY=<long-random-string>
-   DATABASE_URL=postgresql://user:password@host:port/dbname
-   FLASK_ENV=development
-   ENCRYPTION_KEY=<32-byte-base64-key>  # Generate with: openssl rand -base64 32
-   PEPPER_KEY=<secret-pepper-string>
-   CSRF_SECRET_KEY=<random-string>
+```bash
+SECRET_KEY=<64-char-random-string>
+DATABASE_URL=postgresql://user:password@host:port/dbname
+FLASK_ENV=development
+ENCRYPTION_KEY=<32-byte-base64-key>   # openssl rand -base64 32
+PEPPER_KEY=<secret-pepper-string>
+CSRF_SECRET_KEY=<random-string>
 
-   # Cloudflare Turnstile (CAPTCHA) - Optional for development/testing
-   # Leave unset to bypass Turnstile verification in testing environments
-   TURNSTILE_SITE_KEY=<your-turnstile-site-key>
-   TURNSTILE_SECRET_KEY=<your-turnstile-secret-key>
+# Optional — leave unset to bypass in development
+TURNSTILE_SITE_KEY=<cloudflare-turnstile-site-key>
+TURNSTILE_SECRET_KEY=<cloudflare-turnstile-secret-key>
 
-   # Optional maintenance mode banner (503 page)
-   MAINTENANCE_MODE=false
-   MAINTENANCE_MESSAGE="We're applying updates."
-   MAINTENANCE_EXPECTED_END="Back online by <time>"
-   MAINTENANCE_CONTACT="ops@example.com"
-   ```
+# Optional — maintenance mode
+MAINTENANCE_MODE=false
+```
 
-   **Getting Turnstile Keys (Optional):**
+### Database Setup
 
-   Turnstile keys are optional for development and testing. If not configured, CAPTCHA verification will be automatically bypassed.
+```bash
+flask db upgrade
+flask create-sysadmin   # Follow prompts, scan QR with authenticator app
+```
 
-   For production deployment:
-   1. Visit [Cloudflare Turnstile](https://dash.cloudflare.com/?to=/:account/turnstile)
-   2. Create a new site widget
-   3. Copy the Site Key and Secret Key
+### Run
 
-   For testing with CAPTCHA enabled, you can use Turnstile's test keys (always pass):
-   - Site Key: `1x00000000000000000000AA`
-   - Secret Key: `1x0000000000000000000000000000000AA`
+```bash
+flask run
+```
 
-4. **Initialize the database**
-   ```bash
-   flask db upgrade
-   ```
+Navigate to `http://localhost:5000`.
 
-5. **Create your first system admin**
-   ```bash
-   flask create-sysadmin
-   ```
-   Follow the prompts and scan the QR code with your authenticator app.
-
-6. **Run the application**
-   ```bash
-   flask run
-   ```
-   Navigate to `http://localhost:5000`
-
-### Git Hooks Setup
-
-After cloning, configure git to use the versioned `hooks/` directory:
+### Git Hooks
 
 ```bash
 ./scripts/setup-hooks.sh
 ```
 
-This enables:
-
-- `post-checkout`: branch-aware `DATABASE_URL` switching
-  - `main` / `codex/v2.0` -> the v2 database
-  - other branches -> `production_dev`
-- `pre-push`: migration-head safety checks
-
-### Testing with Sample Data
-
-- Use `app/data/student_upload_template.csv` as a reference for CSV roster uploads
-- Run `python scripts/seed_dummy_students.py` to seed the database with sample students
-
----
-
-## Documentation
-
-📚 **[Complete Documentation →](docs/README.md)**
-
-### For Users
-
-- **[Student Guide](docs/archive/v1-user-guides/student_guide.md)** — How students use the platform
-- **[Teacher Manual](docs/archive/v1-user-guides/teacher_manual.md)** — Comprehensive admin guide
-
-### For Developers
-
-- **[Architecture Guide](docs/ARCHITECTURE/ARC-CORE-000_Architecture_Foundation.md)** — System design and patterns
-- **[Authority Model](docs/INV-CORE-001_Authority_Model.md)** — Foundational documentation and enforcement hierarchy
-- **[V2 Authority Extraction](docs/SPECS/V2_AUTHORITY_EXTRACTION_PLAN.md)** — Current authority-closure state for FEAT, service, and ledger routing
-- **[API Reference](docs/ARCHITECTURE/OPERATIONS/ARC-OPS-005_Api_Reference.md)** — REST API documentation
-- **[Development Priorities](DEVELOPMENT.md)** — Current priorities, roadmap, and tasks
-- **[v2 Full Compliance Migration Plan](docs/TRACKING/V2_Full_compliance_migration_plan.md)** — 12-wave plan to reach DOM-CORE-002 compliance
-- **[v2 Compliance Validation Report](docs/TRACKING/V2_Compliance_Validation_Report.md)** — Current compliance validation status
-- **[v2 Live-Test Runbook](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-022_V2_Live_Test_Runbook.md)** — Operator workflow before live testing
-- **[Changelog](CHANGELOG.md)** — Version history and notable changes
-
-Schema note:
-- V2 does not treat a single monolithic schema document as canonical authority. Schema ownership belongs to the owning domain, and cross-domain data relationships belong in architecture docs.
-
-### Deployment & Operations
-
-- **[Deployment Guide](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-006_Deployment_Guide.md)** — Production deployment instructions
-- **[Operations Guides](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/)** — Operational procedures and troubleshooting
-- **[Contributing Guide](CONTRIBUTING.md)** — How to contribute to the project
-
----
-
-## Technology Stack
-
-**Backend:**
-- Flask with blueprint architecture and application factory
-- SQLAlchemy ORM with Alembic migrations
-- PostgreSQL database
-- Gunicorn WSGI server
-
-**Frontend:**
-- Jinja2 templates
-- Bootstrap 5 with Material Symbols icons
-- Minimal JavaScript for real-time attendance and admin UX
-
-**Security:**
-- Flask-WTF (CSRF protection)
-- pyotp (TOTP authentication)
-- cryptography (PII encryption)
-
-**Testing:**
-- pytest and pytest-flask
-
-**Deployment:**
-- Docker support with multi-stage builds
-- GitHub Actions CI/CD pipeline
-- Production-ready for Linux servers (tested on Ubuntu/Debian)
-- Compatible with major cloud providers
+Enables branch-aware database switching (`codex/v2.0` / `codex/v2-*` → `classroom_economy`, other branches → `production_dev`) and pre-push migration-head safety checks.
 
 ---
 
 ## Project Structure
 
 ```
-classroom-economy/
-├── app/                      # Application package
-│   ├── __init__.py           # Application factory and global filters
-│   ├── extensions.py         # Flask extensions
-│   ├── models.py             # Database models (students, tenancy, payroll, rent, insurance)
-│   ├── auth.py               # Authentication decorators and scoped queries
-│   ├── routes/               # Blueprint-based routes (admin, student, system_admin, api, main)
-│   └── utils/                # Utilities (encryption, helpers, constants)
-├── templates/                # Jinja2 templates
-├── static/                   # CSS, JS, images
-├── tests/                    # Test suite
-├── migrations/               # Database migrations
-├── docs/                     # Documentation
-├── scripts/                  # Utility scripts
-├── deploy/                   # Deployment configuration (nginx, etc.)
-├── tools/                    # Editor/tooling helpers
-├── wsgi.py                   # WSGI entry point
-└── requirements.txt          # Python dependencies
+app/
+├── __init__.py           # App factory
+├── models.py             # SQLAlchemy models (55+)
+├── auth.py               # Auth decorators and scoped access helpers
+├── feats/                # FEAT execution layer (all state mutation)
+├── services/             # Domain-bounded read/validation services
+├── routes/               # Blueprints: admin, student, system_admin, api, analytics, docs, main, recovery
+├── utils/                # Helpers (encryption, seat scope, economy policy, analytics engine)
+├── forms.py              # WTForms definitions
+├── payroll.py            # Payroll automation
+└── scheduled_tasks.py    # Background scheduler (APScheduler)
+
+templates/                # Jinja2 templates
+static/                   # CSS, JS, images, PWA assets
+tests/                    # pytest suite (55+ test files)
+migrations/               # Alembic migrations
+scripts/                  # Utility and seed scripts
+deploy/                   # Deployment config (nginx)
+docs/                     # v2 architecture, domain, and invariant specs
+wsgi.py                   # WSGI entry point (gunicorn wsgi:app)
 ```
 
 ---
@@ -273,42 +169,49 @@ classroom-economy/
 ### Running Tests
 
 ```bash
-pytest tests/                 # Run all tests
-pytest tests/test_payroll.py  # Run specific test
-pytest -v                     # Verbose output
+pytest                              # All tests
+pytest tests/test_payroll.py        # Specific file
+pytest -k "recovery"                # Pattern match
+pytest --cov=app tests/             # With coverage (requires pytest-cov)
 ```
 
 ### Database Migrations
 
 ```bash
-flask db migrate -m "Description"  # Create migration
-flask db upgrade                   # Apply migrations
-flask db downgrade                 # Rollback
+flask db heads                          # Verify single head
+flask db migrate -m "Description"       # Generate migration
+flask db upgrade                        # Apply
+flask db downgrade                      # Rollback
 ```
+
+All migrations must include idempotency helpers. See `.claude/rules/database-migrations.md` for the full workflow.
 
 ### Common Commands
 
 ```bash
-flask run                     # Run development server
-flask create-sysadmin         # Create system admin
-python scripts/create_admin.py        # Create teacher account
-python scripts/manage_invites.py      # Manage admin invites
-python scripts/seed_dummy_students.py # Seed test data
+flask run                               # Dev server
+flask create-sysadmin                   # Create system admin
+python scripts/seed_dummy_students.py   # Seed test data
 ```
 
 ---
 
-## Roadmap
+## Documentation
 
-Active development priorities and v2.0 launch readiness are tracked in [DEVELOPMENT.md](DEVELOPMENT.md).
-
-**Version 2.0 Status:** The v2.0 live-test candidate is feature-complete and undergoing operational readiness validation. See the [v2 Full Compliance Migration Plan](docs/TRACKING/V2_Full_compliance_migration_plan.md) for current status and the [v2 Live-Test Runbook](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-022_V2_Live_Test_Runbook.md) for the operator workflow.
+- **[Architecture Foundation](docs/ARCHITECTURE/ARC-CORE-000_Architecture_Foundation.md)** — System design and domain boundaries
+- **[Authority Model](docs/INVARIANT/CORE/INV-CORE-001_CAPABILITY_BASED_ARCHITECTURE_AND_AUTHORITY_MODEL.md)** — INV → DOM → FEAT enforcement hierarchy
+- **[Domain Specs](docs/DOMAIN/)** — Per-domain authority contracts
+- **[FEAT Contracts](docs/FEATURE-EXECUTION/)** — Execution layer specifications
+- **[API Reference](docs/ARCHITECTURE/OPERATIONS/ARC-OPS-005_Api_Reference.md)** — REST API documentation
+- **[Deployment Guide](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-006_Deployment_Guide.md)** — Production deployment
+- **[Development Priorities](DEVELOPMENT.md)** — Roadmap and v2 launch readiness
+- **[Changelog](CHANGELOG.md)** — Version history
 
 ---
 
 ## Monitoring
 
-Deploy behind a production web server (e.g., NGINX). The `/health` endpoint returns a 200 status when the database is reachable.
+The `/health` endpoint returns HTTP 200 when the database is reachable. Deploy behind a production web server (e.g., NGINX + Gunicorn).
 
 ```bash
 curl http://your-domain/health
@@ -318,54 +221,19 @@ curl http://your-domain/health
 
 ## Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-**Before contributing:**
-1. Review the [Architecture Guide](docs/ARCHITECTURE/ARC-CORE-000_Architecture_Foundation.md)
-2. Check [DEVELOPMENT.md](DEVELOPMENT.md) for current priorities
-3. Ensure all tests pass
-4. Follow the existing code style
+See [CONTRIBUTING.md](CONTRIBUTING.md). Review the [Architecture Foundation](docs/ARCHITECTURE/ARC-CORE-000_Architecture_Foundation.md) and [DEVELOPMENT.md](DEVELOPMENT.md) before starting.
 
 ---
 
 ## License
 
-This project is licensed under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/).
+[PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)
 
-### Permitted Uses:
-- Use in classrooms, clubs, and nonprofit educational settings
-- Modify for school use, assignments, or personal learning
-- Share with students or other educators
-- Use for research or academic presentations (non-commercial)
+**Permitted:** Classrooms, clubs, nonprofit educational settings, research, personal learning.  
+**Prohibited:** Commercial products, SaaS platforms, paid services, for-profit internal use.
 
-### Prohibited Uses:
-- Use as part of a commercial product or SaaS platform
-- Host a paid service or subscription
-- Incorporate into revenue-generating offerings
-- Use internally within for-profit businesses
-
-### Licensing & Attribution
-
-**Full License:** See [LICENSE](LICENSE) for complete terms
-
-**Commercial Use Policy:** See [docs/archive/v1-user-guides/legal/commercial.md](docs/archive/v1-user-guides/legal/commercial.md) for detailed guidance on permitted and prohibited commercial activities
-
-**Third-Party Attributions:** See [docs/archive/v1-user-guides/legal/third-party-notices.md](docs/archive/v1-user-guides/legal/third-party-notices.md) for open-source dependencies and services
-
-**Project Philosophy:** See [docs/archive/v1-user-guides/legal/attribution.md](docs/archive/v1-user-guides/legal/attribution.md) for the project's ethical foundations
+See [LICENSE](LICENSE) for complete terms. See [Third-Party Notices](docs/archive/v1-user-guides/legal/third-party-notices.md) for dependency attributions.
 
 ---
 
-## Support
-
-**Documentation:** [docs/README.md](docs/README.md)
-**Issues:** Use GitHub Issues for bug reports and feature requests
-**Security:** Report security issues privately to project maintainers
-
----
-
-## Acknowledgments
-
-Built for educators and students to make learning about finance engaging and practical.
-
-**Last Updated:** 2026-06-14
+Built for educators who want a practical, engaging way to manage their classrooms.

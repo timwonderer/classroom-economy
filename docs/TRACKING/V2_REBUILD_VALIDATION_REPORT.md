@@ -16,6 +16,20 @@
   - report/state consistency check -> pass
   - no completion claims advanced beyond current evidence -> pass
 
+### Post-Report Update (2026-06-15, `codex/v2.0`) — Wave 11 Bulk Test TeacherBlock→Seat Refactoring
+
+- Completed bulk migration of ~60 test files from `TeacherBlock` fixtures to canonical `Seat` + `IdentityProfile` + `ClassEconomy` constructs.
+- Deleted `tests/helpers/mock_teacher_block.py` shim entirely.
+- 7 legacy-only test modules marked `pytest.skip(allow_module_level=True)` for Wave 11 decommissioning.
+- `TeacherBlock` test surface reduced from 71 files to 27 (62% reduction). Of remaining 27, only ~8 have active model usage; rest are skip markers or string references.
+- Established normative vocabulary standards: `docs/REFERENCE/REF-TERM-001_DEVELOPER_VOCABULARY.md` and `REF-TERM-002_USER_VOCABULARY.md`.
+- README rewritten to reflect v2 architecture reality.
+- Validation:
+  - PR #1220 review feedback (28 comments) all addressed and resolved
+  - Missing `datetime`/`timezone` imports fixed
+  - Invalid `Seat.teacher_id` / `Seat.is_claimed` references corrected
+  - Teacher seat `profile_type` corrected to `teacher_primary`
+
 ### Post-Report Update (2026-06-09, `codex/v2.0`) — Wave 7 Insurance Claim Canonical Lifecycle Write
 
 - Completed the previously open Wave 7 write-path gap for insurance-claim resolution.

@@ -12,8 +12,7 @@ import os
 from datetime import datetime, timezone
 import pytest
 from flask import session
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Student, Admin, ClassEconomy, ClassMembership, Seat
+from app.models import Student, Admin, ClassEconomy, ClassMembership, Seat, IdentityProfile
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
 
@@ -77,48 +76,18 @@ def setup_multi_class_student(client):
     db.session.commit()
 
     # Create claimed roster blocks and runtime seats for the student in multiple classes
-    seat1 = TeacherBlock(
-        teacher_id=teacher1.id,
-        block="A",
-        first_name=b"MultiClass",
-        last_initial="S",
-        last_name_hash_by_part=['hash1'],
-        dob_sum_hash=None,
-        salt=os.urandom(16),
-        first_half_hash='test_hash_1',
-        class_id=class_1a.class_id,
-        join_code="TEACHER1A",
-        student_id=student.id,
-        is_claimed=True
-    )
-    seat2 = TeacherBlock(
-        teacher_id=teacher2.id,
-        block="B",
-        first_name=b"MultiClass",
-        last_initial="S",
-        last_name_hash_by_part=['hash2'],
-        dob_sum_hash=None,
-        salt=os.urandom(16),
-        first_half_hash='test_hash_2',
-        class_id=class_2b.class_id,
-        join_code="TEACHER2B",
-        student_id=student.id,
-        is_claimed=True
-    )
-    seat3 = TeacherBlock(
-        teacher_id=teacher3.id,
-        block="C",
-        first_name=b"MultiClass",
-        last_initial="S",
-        last_name_hash_by_part=['hash3'],
-        dob_sum_hash=None,
-        salt=os.urandom(16),
-        first_half_hash='test_hash_3',
-        class_id=class_3c.class_id,
-        join_code="TEACHER3C",
-        student_id=student.id,
-        is_claimed=True
-    )
+    seat1 = Seat(student_id=student.id, class_id=class_1a.class_id, join_code="TEACHER1A", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(seat1)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat1.id, profile_type='student_claimed', first_name=b"MultiClass", last_initial="S"))
+    seat2 = Seat(student_id=student.id, class_id=class_2b.class_id, join_code="TEACHER2B", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(seat2)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat2.id, profile_type='student_claimed', first_name=b"MultiClass", last_initial="S"))
+    seat3 = Seat(student_id=student.id, class_id=class_3c.class_id, join_code="TEACHER3C", block="C", block_identifier="C", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(seat3)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat3.id, profile_type='student_claimed', first_name=b"MultiClass", last_initial="S"))
     db.session.add_all([seat1, seat2, seat3])
     db.session.flush()
     db.session.add_all([
@@ -199,20 +168,13 @@ def setup_single_class_student(client):
     db.session.add(ClassMembership(class_id=class_single.class_id, join_code="SINGLED", student_id=student.id, role='student'))
     db.session.commit()
 
-    seat = TeacherBlock(
-        teacher_id=teacher.id,
-        block="D",
-        first_name=b"SingleClass",
-        last_initial="X",
-        last_name_hash_by_part=['hash_single'],
-        dob_sum_hash=None,
-        salt=os.urandom(16),
-        first_half_hash='test_hash_single',
-        class_id=class_single.class_id,
-        join_code="SINGLED",
-        student_id=student.id,
-        is_claimed=True
-    )
+    seat = Seat(student_id=student.id, class_id=class_single.class_id, join_code="SINGLED", block="D", block_identifier="D", role="student", claimed_at=datetime.now(timezone.utc))
+
+    db.session.add(seat)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name=b"SingleClass", last_initial="X"))
     db.session.add(seat)
     db.session.flush()
     db.session.add(Seat(
@@ -494,20 +456,10 @@ def test_switch_class_unclaimed_seat(client, setup_multi_class_student):
     teachers = data['teachers']
     
     # Create an unclaimed seat for this student
-    unclaimed_seat = TeacherBlock(
-        teacher_id=teachers[0].id,
-        block="Z",
-        first_name=b"MultiClass",
-        last_initial="S",
-        last_name_hash_by_part=['hash_unclaimed'],
-        dob_sum_hash=None,
-        salt=os.urandom(16),
-        first_half_hash='test_hash_unclaimed',
-        class_id=data['classes']["UNCLAIMEDZ"].class_id,
-        join_code="UNCLAIMEDZ",
-        student_id=student.id,
-        is_claimed=False  # Not claimed!
-    )
+    unclaimed_seat = Seat(student_id=student.id, class_id=data['classes']["UNCLAIMEDZ"].class_id, join_code="UNCLAIMEDZ", block="Z", block_identifier="Z", role="student")
+    db.session.add(unclaimed_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=unclaimed_seat.id, profile_type='student_unclaimed', first_name=b"MultiClass", last_initial="S"))
     db.session.add(unclaimed_seat)
     db.session.commit()
     

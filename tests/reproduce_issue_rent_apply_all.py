@@ -1,5 +1,5 @@
 import pytest
-from app.models import RentSettings, RentItem, TeacherBlock
+from app.models import RentSettings, RentItem, Seat, IdentityProfile
 
 @pytest.fixture
 def teacher_with_classes(client):
@@ -16,8 +16,14 @@ def teacher_with_classes(client):
     db.session.commit()
     
     # Create two classes (blocks)
-    block_a = TeacherBlock(teacher_id=teacher.id, block="BlockA", join_code="JOIN_A", first_name="P", last_initial="P", last_name_hash_by_part=None, dob_sum_hash=None, salt=b'0', first_half_hash="0")
-    block_b = TeacherBlock(teacher_id=teacher.id, block="BlockB", join_code="JOIN_B", first_name="P", last_initial="P", last_name_hash_by_part=None, dob_sum_hash=None, salt=b'0', first_half_hash="0")
+    block_a = Seat(join_code="JOIN_A", block="BlockA", block_identifier="BlockA", role="student")
+    db.session.add(block_a)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=block_a.id, profile_type='student_unclaimed', first_name="P", last_initial="P"))
+    block_b = Seat(join_code="JOIN_B", block="BlockB", block_identifier="BlockB", role="student")
+    db.session.add(block_b)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=block_b.id, profile_type='student_unclaimed', first_name="P", last_initial="P"))
     db.session.add_all([block_a, block_b])
     db.session.commit()
     
@@ -25,7 +31,7 @@ def teacher_with_classes(client):
 
 def test_rent_items_apply_to_all(client, teacher_with_classes):
     """Test that rent items are applied to all classes when 'apply_to_all' is checked."""
-    from app.models import RentSettings, RentItem
+    from app.models import RentSettings, RentItem, Seat, IdentityProfile
     from app import db
     
     # Log in as teacher

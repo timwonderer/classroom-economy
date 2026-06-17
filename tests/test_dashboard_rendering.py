@@ -1,8 +1,7 @@
 from datetime import datetime, timezone
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, Student, StudentTeacher, RentSettings, TeacherOnboarding, InsurancePolicy
+from app.models import Admin, Student, StudentTeacher, RentSettings, TeacherOnboarding, InsurancePolicy, Seat, IdentityProfile
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
 from tests.helpers.class_scope import create_class_scope
@@ -93,19 +92,13 @@ def test_student_dashboard_rendering(client):
     db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
     db.session.commit()
 
-    seat = TeacherBlock(
-        teacher_id=teacher.id,
-        block="A",
-        first_name="Render",
-        last_initial="S",
-        last_name_hash_by_part=["hash"],
-        dob_sum_hash=None,
-        salt=os.urandom(16),
-        first_half_hash="hash",
-        join_code="RENDER1",
-        student_id=student.id,
-        is_claimed=True,
-    )
+    seat = Seat(student_id=student.id, join_code="RENDER1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+
+    db.session.add(seat)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Render", last_initial="S"))
     db.session.add(seat)
     db.session.commit()
 

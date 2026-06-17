@@ -7,19 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.security import generate_password_hash
 
 from app.extensions import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import (
-    Admin,
-    ClassEconomy,
-    ClassMembership,
-    RedemptionAuditLog,
-    Seat,
-    StoreItem,
-    Student,
-    StudentItem,
-    StudentTeacher,
-    Transaction,
-)
+from app.models import Seat, IdentityProfile, Admin, ClassEconomy, ClassMembership, RedemptionAuditLog, StoreItem, Student, StudentItem, StudentTeacher, Transaction
 
 
 @pytest.fixture
@@ -57,19 +45,10 @@ def student_in_class(client, teacher_admin):
         role='student',
     ))
     db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher_admin.id))
-    db.session.add(TeacherBlock(
-        teacher_id=teacher_admin.id,
-        block='A',
-        join_code='AUDIT123',
-        student_id=student.id,
-        is_claimed=True,
-        first_name='Audit',
-        last_initial='S',
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b'salt',
-        first_half_hash='hash',
-    ))
+    _tb_seat = Seat(student_id=student.id, join_code='AUDIT123', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Audit', last_initial='S'))
     db.session.add(Seat(
         student_id=student.id,
         class_id=class_economy.class_id,

@@ -14,8 +14,7 @@ import os
 from werkzeug.security import generate_password_hash
 
 from app import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, Student, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus, Seat
+from app.models import Admin, Student, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus, Seat, IdentityProfile
 from app.hash_utils import get_random_salt, hash_username
 
 
@@ -55,19 +54,13 @@ def setup_rent_with_items(client):
     db.session.add(economy)
     db.session.flush()
 
-    seat = TeacherBlock(
-        teacher_id=teacher.id,
-        block="A",
-        first_name="Test",
-        last_initial="S",
-        last_name_hash_by_part=["hash_a"],
-        dob_sum_hash=None,
-        salt=os.urandom(16),
-        first_half_hash="hash_a",
-        join_code="TESTA",
-        student_id=student.id,
-        is_claimed=True,
-    )
+    seat = Seat(student_id=student.id, join_code="TESTA", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+
+    db.session.add(seat)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Test", last_initial="S"))
     db.session.add(seat)
     db.session.add(Seat(
         student_id=student.id,

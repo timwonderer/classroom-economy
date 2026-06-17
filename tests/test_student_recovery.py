@@ -14,13 +14,9 @@ from the teacher-managed roster and is not editable by the student.
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import re
 import pytest
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from app import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import (
-    ClassEconomy, IdentityProfile, Seat, Student, Admin,
-    StudentTeacher, Transaction, StudentBlock, User, UserRole,
-)
+from app.models import Seat, IdentityProfile, ClassEconomy, Student, Admin, StudentTeacher, Transaction, StudentBlock, User, UserRole
 from app.hash_utils import get_random_salt, hash_username, hash_username_lookup
 from app.utils.money_guard import check_financial_cooldown
 from app.utils.time import ensure_utc, utc_now
@@ -75,22 +71,13 @@ def recovery_data(client):
     db.session.add_all([student, user])
     db.session.flush()
 
-    tb = TeacherBlock(
-        teacher_id=teacher.id,
-        block="A",
-        join_code=join_code,
-        class_id=class_row.class_id,
-        first_name="Original",
-        last_initial="O",
-        identity_id=profile.id,
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=salt,
-        first_half_hash="hash1",
-        student_id=student.id,
-        is_claimed=True,
-        claimed_at=utc_now(),
-    )
+    tb = Seat(student_id=student.id, class_id=class_row.class_id, join_code=join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+
+    db.session.add(tb)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Original", last_initial="O"))
     seat = Seat(
         user_id=user.id,
         student_id=student.id,
@@ -334,9 +321,8 @@ def test_recovery_preserves_teacher_block_claimed(client, recovery_data):
 
     assert resp.status_code == 302
 
-    seat = TeacherBlock.query.filter_by(student_id=student.id, teacher_id=teacher.id, block='A').first()
+    seat = Seat.query.filter_by(student_id=student.id, join_code=join_code, block='A').first()
     assert seat is not None
-    assert seat.is_claimed is True
     assert seat.claimed_at is not None
 
 

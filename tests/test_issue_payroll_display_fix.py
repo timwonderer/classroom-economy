@@ -1,7 +1,6 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, Student, Transaction
+from app.models import Admin, Student, Transaction, Seat, IdentityProfile
 from app import db
 from datetime import datetime, timezone
 
@@ -28,32 +27,14 @@ def test_payroll_visibility_bug(client):
     db.session.commit()
 
     # 3. Setup TeacherBlocks (Class Rosters)
-    tb1 = TeacherBlock(
-        teacher_id=teacher1.id,
-        student_id=student.id,
-        block="A",
-        join_code="JOIN_A",
-        first_name="Timothy",
-        last_initial="C",
-        is_claimed=True,
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b'123',
-        first_half_hash="hash1"
-    )
-    tb2 = TeacherBlock(
-        teacher_id=teacher2.id,
-        student_id=student.id,
-        block="G",
-        join_code="JOIN_G",
-        first_name="Timothy",
-        last_initial="C",
-        is_claimed=True,
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b'123',
-        first_half_hash="hash1"
-    )
+    tb1 = Seat(student_id=student.id, join_code="JOIN_A", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(tb1)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=tb1.id, profile_type='student_claimed', first_name="Timothy", last_initial="C"))
+    tb2 = Seat(student_id=student.id, join_code="JOIN_G", block="G", block_identifier="G", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(tb2)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=tb2.id, profile_type='student_claimed', first_name="Timothy", last_initial="C"))
     db.session.add_all([tb1, tb2])
     db.session.commit()
 

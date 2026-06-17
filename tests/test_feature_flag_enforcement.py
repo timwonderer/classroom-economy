@@ -9,8 +9,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Student, Admin, Transaction, ClassEconomy, ClassFeature, ClassMembership, StoreItem, Seat, User, UserRole
+from app.models import Student, Admin, Transaction, ClassEconomy, ClassFeature, ClassMembership, StoreItem, Seat, User, UserRole, IdentityProfile
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
 from tests.helpers.admin_context import login_admin
@@ -94,21 +93,10 @@ def setup_student_with_disabled_banking(client):
     db.session.flush()
     
     # Create TeacherBlock entry (claimed seat)
-    seat = TeacherBlock(
-        teacher_id=teacher.id,
-        block="Period1",
-        first_name="Bob",
-        last_initial="B",
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=salt,
-        first_half_hash="hash1",
-        join_code=join_code,
-        class_id=economy.class_id,
-        student_id=student.id,
-        is_claimed=True,
-        claimed_at=datetime.now(timezone.utc)
-    )
+    seat = Seat(student_id=student.id, class_id=economy.class_id, join_code=join_code, block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Bob", last_initial="B"))
     db.session.add(seat)
     student_seat = Seat(
         class_id=economy.class_id,
@@ -241,21 +229,10 @@ def setup_student_with_enabled_banking(client):
     db.session.flush()
     
     # Create TeacherBlock entry (claimed seat)
-    seat = TeacherBlock(
-        teacher_id=teacher.id,
-        block="Period2",
-        first_name="Carol",
-        last_initial="C",
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=salt,
-        first_half_hash="hash2",
-        join_code=join_code,
-        class_id=economy.class_id,
-        student_id=student.id,
-        is_claimed=True,
-        claimed_at=datetime.now(timezone.utc)
-    )
+    seat = Seat(student_id=student.id, class_id=economy.class_id, join_code=join_code, block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Carol", last_initial="C"))
     db.session.add(seat)
     student_seat = Seat(
         class_id=economy.class_id,
@@ -355,18 +332,13 @@ def test_admin_banking_rejects_disabled_class_scope(client):
     )
     db.session.add(teacher_seat)
 
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        block="A",
-        first_name="Dana",
-        last_initial="D",
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b"saltbanking12345",
-        first_half_hash="hash-banking-admin",
-        join_code=join_code,
-        is_claimed=False,
-    ))
+    _tb_seat = Seat(join_code=join_code, block="A", block_identifier="A", role="student")
+
+    db.session.add(_tb_seat)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Dana", last_initial="D"))
 
     for row in ClassFeature.query.filter_by(class_id=economy.class_id, feature_name='banking').all():
         db.session.delete(row)
@@ -396,18 +368,13 @@ def _create_admin_feature_scope(teacher, *, join_code, block, feature_name, enab
     db.session.add(economy)
     db.session.flush()
 
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        block=block,
-        first_name=f"{feature_name.title()}Student",
-        last_initial="T",
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=f"salt-{feature_name}-{block}".encode("utf-8"),
-        first_half_hash=f"hash-{feature_name}-{block}",
-        join_code=join_code,
-        is_claimed=False,
-    ))
+    _tb_seat = Seat(join_code=join_code, block=block, block_identifier=block, role="student")
+
+    db.session.add(_tb_seat)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name=f"{feature_name.title()}Student", last_initial="T"))
     db.session.add(ClassMembership(
         class_id=economy.class_id,
         join_code=join_code,
@@ -578,20 +545,13 @@ def test_student_rent_rejects_disabled_feature_scope(client):
     db.session.add(economy)
     db.session.flush()
 
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        block="Period3",
-        first_name="Riley",
-        last_initial="R",
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=salt,
-        first_half_hash="hash-rent-student",
-        join_code=join_code,
-        student_id=student.id,
-        is_claimed=True,
-        claimed_at=datetime.now(timezone.utc)
-    ))
+    _tb_seat = Seat(student_id=student.id, join_code=join_code, block="Period3", block_identifier="Period3", role="student", claimed_at=datetime.now(timezone.utc))
+
+    db.session.add(_tb_seat)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name="Riley", last_initial="R"))
     student_seat = Seat(
         class_id=economy.class_id,
         join_code=join_code,

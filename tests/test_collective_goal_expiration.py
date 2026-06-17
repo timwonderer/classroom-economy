@@ -18,8 +18,7 @@ from werkzeug.security import generate_password_hash
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, ClassMembership, StoreItem, StudentItem, StudentTeacher, Transaction
+from app.models import Admin, ClassMembership, StoreItem, StudentItem, StudentTeacher, Transaction, Seat, IdentityProfile
 from app.utils.store import process_expired_collective_goals, refund_pending_collective_purchases
 from tests.helpers.admin_context import login_admin
 from tests.helpers.class_scope import create_class_scope
@@ -75,19 +74,10 @@ def _create_student(teacher, first_name, join_code, block='A'):
             role='student',
         ))
     db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        block=block,
-        join_code=join_code,
-        student_id=student.id,
-        is_claimed=True,
-        first_name=first_name,
-        last_initial='S',
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b'salt',
-        first_half_hash=f'hash_{first_name}_{join_code}_{block}',
-    ))
+    _tb_seat = Seat(student_id=student.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_initial='S'))
     # Give the student funds so purchases succeed
     db.session.add(Transaction(
         student_id=student.id,
