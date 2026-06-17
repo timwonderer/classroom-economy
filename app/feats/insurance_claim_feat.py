@@ -62,8 +62,8 @@ def execute_insurance_claim_resolution(
     teacher_notes: str | None,
     rejection_reason: str | None,
     processed_by_user_id: int | None,
-    processed_by_seat_id: int | None = None,
     approved_amount: Decimal | None,
+    processed_by_seat_id: int | None = None,
 ):
     """Obligations-led FEAT for insurance claim resolution and reimbursement."""
     access_policy_service.assert_can_process_claim(

@@ -2954,7 +2954,8 @@ def _expand_rent_waiver_history(settings, waivers, *, now=None):
         for coverage_due_date in _iter_rent_waiver_coverage_dates(settings, waiver):
             coverage_day = ensure_utc(coverage_due_date).date()
             current_day = ensure_utc(current_coverage_due_date).date() if current_coverage_due_date else None
-            student = waiver.seat.student if getattr(waiver, "seat", None) and waiver.seat.student_id else None
+            seat = getattr(waiver, "seat", None)
+            student = seat.student if seat and seat.student_id else None
 
             if current_day is None or coverage_day > current_day:
                 status = 'upcoming'

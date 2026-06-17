@@ -7147,13 +7147,14 @@ def add_rent_waiver():
         scope_labels.append(f"{future_periods_count} future period(s)")
     scope_str = ", ".join(scope_labels) or "selected periods"
 
+    teacher_seat = _get_teacher_seat_for_class(class_id or "")
+    if teacher_seat is None:
+        abort(404)
+
     count = 0
     for student_id in student_ids:
         student = _get_student_or_404(int(student_id))
         seat_id = get_seat_id_for_class(student.id, class_id) if class_id else None
-        teacher_seat = _get_teacher_seat_for_class(class_id or "")
-        if teacher_seat is None:
-            abort(404)
         for waiver_start, waiver_end, periods_count in waiver_windows:
             obligations_service.record_rent_waiver(
                 seat_id=seat_id or 0,
@@ -7162,7 +7163,7 @@ def add_rent_waiver():
                 waiver_end_date=waiver_end,
                 periods_count=periods_count,
                 reason=reason,
-                created_by_seat_id=teacher_seat.id if teacher_seat else None,
+                created_by_seat_id=teacher_seat.id,
                 created_by_user_id=admin_id,
             )
         # TODO(v2): Re-add a canonical analytics event once analytics_events is seat-scoped.

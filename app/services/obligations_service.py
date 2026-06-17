@@ -198,6 +198,10 @@ def record_rent_waiver(
             .with_entities(Seat.id)
             .scalar()
         )
+    if created_by_seat_id is None:
+        raise ValueError(
+            f"No teacher seat found for class {class_id}. A valid teacher seat is required to record a rent waiver."
+        )
 
     assessment = ObligationAssessment(
         seat_id=seat_id,
@@ -332,9 +336,9 @@ def apply_claim_resolution(
     teacher_notes: str | None,
     rejection_reason: str | None,
     processed_by_user_id: int | None,
-    processed_by_seat_id: int | None = None,
     processed_at,
     approved_amount=None,
+    processed_by_seat_id: int | None = None,
 ):
     """Advance claim state and its canonical lifecycle."""
     claim.status = status
@@ -363,6 +367,10 @@ def apply_claim_resolution(
                 .order_by(Seat.id.asc())
                 .with_entities(Seat.id)
                 .scalar()
+            )
+        if processed_by_seat_id is None:
+            raise ValueError(
+                f"No teacher seat found for class {claim.class_id}. A valid teacher seat is required to resolve claims."
             )
 
     if status in {"approved", "paid"}:
