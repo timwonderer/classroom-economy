@@ -11,7 +11,7 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 | Tier               | Authority                              | Namespaces / Locations                        |
 |--------------------|----------------------------------------|-----------------------------------------------|
 | **Constitutional** | Inviolable — cannot be overridden      | `INV-CORE-*`, `INV-ARC-*`                    |
-| **Normative**      | Binding — must be followed             | `ARC`, `DOM`, `FEAT`, `SOP`, `.claude/rules/`, `SEC-CONT-*` |
+| **Normative**      | Binding — must be followed             | `ARC`, `DOM`, `FEAT`, `REF`, `SOP`, `.claude/rules/`, `SEC-CONT-*` |
 | **Informative**    | Descriptive — no normative authority   | `LOG`, `SEC-AUD/INC/VUL/THR-*`, root files   |
 
 ---
@@ -32,6 +32,12 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 | **[TESTING/](TESTING/)** | Normative | Test creation, validation, and accessibility compliance |
 | **[STANDARD_OPERATING_PROCEDURES/](STANDARD_OPERATING_PROCEDURES/)** | Normative | SOPs for database, deployment, devops, documentation |
 | **[SECURITY/](SECURITY/)** | Normative (CONT) / Informative | Security controls, audits, incidents, threat models |
+
+### Reference
+
+| Directory | Tier | Purpose |
+|-----------|------|---------|
+| **[REFERENCE/](REFERENCE/)** | Normative | Authoritative vocabulary and terminology (`REF-TERM-*`) |
 
 ### Planning & Status
 

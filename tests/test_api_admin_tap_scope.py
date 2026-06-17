@@ -2,8 +2,7 @@ from datetime import datetime, timezone
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, ClassEconomy, ClassMembership, Seat, Student, StudentTeacher, TapEvent
+from app.models import Admin, ClassEconomy, ClassMembership, Seat, Student, StudentTeacher, TapEvent, IdentityProfile
 
 
 def _login_admin(client, admin_id, join_code):
@@ -43,27 +42,16 @@ def _setup_shared_student_with_split_membership():
         ClassMembership(join_code="TAPB01", class_id=class_b.class_id, student_id=student.id, role="student"),
     ])
     db.session.flush()
-    seat = TeacherBlock.query.filter_by(
+    seat = Seat.query.filter_by(
         teacher_id=admin_b.id,
         student_id=student.id,
         join_code="TAPB01",
     ).first()
     if not seat:
-        seat = TeacherBlock(
-            teacher_id=admin_b.id,
-            block="A",
-            class_label="A",
-            first_name=student.first_name,
-            last_initial=student.last_initial,
-            last_name_hash_by_part=None,
-            dob_sum_hash=None,
-            salt=b"seat-salt",
-            first_half_hash=f"hash-{admin_b.id}-{student.id}-TAPB01",
-            join_code="TAPB01",
-            class_id=class_b.class_id,
-            student_id=student.id,
-            is_claimed=True,
-        )
+        seat = Seat(student_id=student.id, class_id=class_b.class_id, join_code="TAPB01", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+        db.session.add(seat)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
         db.session.add(seat)
         db.session.flush()
 

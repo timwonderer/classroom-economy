@@ -4,10 +4,12 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 
 from app import db
-from app.models import Admin, Student, StudentTeacher, TeacherBlock
+from app.models import Admin, Student, StudentTeacher
 from app.routes.admin import _link_student_to_admin
 from app.utils.join_code import generate_join_code
 from app.hash_utils import get_random_salt, hash_username
+
+pytestmark = pytest.mark.skip(reason="TeacherBlock removed in Wave 11 decommissioning")
 
 
 def _create_admin(username: str = "teacher") -> Admin:

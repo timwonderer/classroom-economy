@@ -10,11 +10,11 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from werkzeug.security import generate_password_hash
 from app import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, Student, StudentBlock, Transaction
+from app.models import Admin, Student, StudentBlock, Transaction, Seat, IdentityProfile
 from app.hash_utils import hash_username, hash_username_lookup, get_random_salt
 from app.utils.name_utils import hash_last_name_parts
 from app.utils.claim_credentials import compute_primary_claim_hash
+from datetime import datetime, timezone
 
 
 @pytest.fixture
@@ -31,18 +31,13 @@ def test_data(app):
         last_name_hashes = hash_last_name_parts('TeacherLast', salt)
         first_half = compute_primary_claim_hash('F', dob_sum, salt)
 
-        tb = TeacherBlock(
-            teacher_id=admin.id,
-            block='A',
-            join_code='FLOW2A',
-            is_claimed=True,
-            first_name='Admin',
-            last_initial='F',
-            salt=salt,
-            dob_sum_hash=None,
-            last_name_hash_by_part=None,
-            first_half_hash=first_half,
-        )
+        tb = Seat(join_code='FLOW2A', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
+
+        db.session.add(tb)
+
+        db.session.flush()
+
+        db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name='Admin', last_initial='F'))
         db.session.add(tb)
         db.session.commit()
 

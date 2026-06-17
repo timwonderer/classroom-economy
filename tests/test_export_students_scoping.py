@@ -1,11 +1,11 @@
+from datetime import datetime, timezone
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import csv
 from io import StringIO
 
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, ClassMembership, Student, StudentTeacher, Transaction
+from app.models import Admin, ClassMembership, IdentityProfile, Seat, Student, StudentTeacher, Transaction
 from tests.helpers.class_scope import create_class_scope
 
 
@@ -58,21 +58,20 @@ def _add_claimed_seat(admin: Admin, student: Student, block: str, join_code: str
             role="student",
         ))
 
-    seat = TeacherBlock(
-        teacher_id=admin.id,
-        block=block,
-        class_label=block,
-        first_name=student.first_name,
-        last_initial=student.last_initial,
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b"seat-salt",
-        first_half_hash=f"seat-{admin.id}-{student.id}-{join_code}",
-        join_code=join_code,
+    from app.models import ClassEconomy
+    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+    seat = Seat(
         student_id=student.id,
-        is_claimed=True,
+        class_id=class_row.class_id if class_row else None,
+        join_code=join_code,
+        block=block,
+        block_identifier=block,
+        role="student",
+        claimed_at=datetime.now(timezone.utc),
     )
     db.session.add(seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student_claimed", first_name=student.first_name, last_initial=student.last_initial))
     db.session.commit()
     return seat
 

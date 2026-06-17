@@ -4,8 +4,7 @@ from datetime import datetime, timezone
 
 from app import db
 from app.auth import ensure_admin_join_code, get_current_admin
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, IdentityProfile, User, UserRole
+from app.models import Admin, IdentityProfile, User, UserRole, Seat
 
 
 def test_admin_login_sets_session_identity(client):
@@ -62,21 +61,13 @@ def test_ensure_admin_join_code_does_not_use_teacher_block_as_authority(client, 
     db.session.add(identity)
     db.session.flush()
 
-    db.session.add(
-        TeacherBlock(
-            teacher_id=admin.id,
-            block="A",
-            class_label="Algebra",
-            first_name="Policy",
-            last_initial="S",
-            identity_id=identity.id,
-            last_name_hash_by_part=["hash"],
-            dob_sum_hash=None,
-            salt=b"1234567890123456",
-            first_half_hash="fallback-seat",
-            join_code="LEGACY123",
-        )
-    )
+    _tb_seat = Seat(join_code="LEGACY123", block="A", block_identifier="A", role="student")
+
+    db.session.add(_tb_seat)
+
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Policy", last_initial="S"))
     db.session.commit()
 
     monkeypatch.setattr("app.auth._table_exists", lambda table_name: table_name != "class_memberships")

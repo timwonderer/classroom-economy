@@ -9,7 +9,6 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
-from tests.helpers.mock_teacher_block import TeacherBlock
 from app.models import (
     Admin, ClassEconomy, IdentityProfile, Seat, Student, StudentTeacher, Transaction, StudentBlock, RentSettings, RentPayment, BankingSettings, _quantize_currency
 )
@@ -67,17 +66,10 @@ class TestDecimalPrecision:
         db.session.flush()
 
         join_code = 'OVERDRAFT_TEST'
-        block = TeacherBlock(
-            teacher_id=teacher.id,
-            join_code=join_code,
-            block='A',
-            first_name='Test',
-            last_initial='S',
-            last_name_hash_by_part=None,
-            dob_sum_hash=None,
-            salt=b'test_salt_123456',
-            first_half_hash='test_hash'
-        )
+        block = Seat(join_code=join_code, block='A', block_identifier='A', role="student")
+        db.session.add(block)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Test', last_initial='S'))
         db.session.add(block)
 
         # Create student
@@ -202,17 +194,10 @@ class TestDecimalPrecision:
         db.session.flush()
 
         join_code = 'RENT_TEST'
-        block = TeacherBlock(
-            teacher_id=teacher.id,
-            join_code=join_code,
-            block='A',
-            first_name='Rent',
-            last_initial='T',
-            last_name_hash_by_part=None,
-            dob_sum_hash=None,
-            salt=b'test_salt_123456',
-            first_half_hash='test_hash'
-        )
+        block = Seat(join_code=join_code, block='A', block_identifier='A', role="student")
+        db.session.add(block)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Rent', last_initial='T'))
         db.session.add(block)
 
         # Create rent settings with incremental payments enabled
@@ -356,17 +341,10 @@ class TestDecimalPrecision:
         db.session.flush()
 
         join_code = 'ZERO_TEST'
-        block = TeacherBlock(
-            teacher_id=teacher.id,
-            join_code=join_code,
-            block='A',
-            first_name='Zero',
-            last_initial='T',
-            last_name_hash_by_part=None,
-            dob_sum_hash=None,
-            salt=b'test_salt_123456',
-            first_half_hash='test_hash'
-        )
+        block = Seat(join_code=join_code, block='A', block_identifier='A', role="student")
+        db.session.add(block)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Zero', last_initial='T'))
         db.session.add(block)
 
         # Create student
@@ -448,17 +426,10 @@ class TestDecimalPrecision:
         db.session.flush()
 
         join_code = 'NEG_TEST'
-        block = TeacherBlock(
-            teacher_id=teacher.id,
-            join_code=join_code,
-            block='A',
-            first_name='Negative',
-            last_initial='T',
-            last_name_hash_by_part=None,
-            dob_sum_hash=None,
-            salt=b'test_salt_123456',
-            first_half_hash='test_hash'
-        )
+        block = Seat(join_code=join_code, block='A', block_identifier='A', role="student")
+        db.session.add(block)
+        db.session.flush()
+        db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Negative', last_initial='T'))
         db.session.add(block)
 
         # Create student
@@ -554,21 +525,13 @@ class TestDecimalPrecision:
         db.session.add(economy)
         db.session.flush()
 
-        db.session.add(TeacherBlock(
-            teacher_id=teacher.id,
-            join_code=join_code,
-            block='A',
-            student_id=student.id,
-            is_claimed=True,
-            first_name='Late',
-            last_initial='F',
-            identity_id=identity.id,
-            last_name_hash_by_part=['hash1'],
-            dob_sum_hash='hash',
-            salt=b'test_salt_123456',
-            first_half_hash='test_hash',
-            class_id=economy.class_id,
-        ))
+        _tb_seat = Seat(student_id=student.id, class_id=economy.class_id, join_code=join_code, block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
+
+        db.session.add(_tb_seat)
+
+        db.session.flush()
+
+        db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Late', last_initial='F'))
 
         db.session.add(RentSettings(
             teacher_id=teacher.id,

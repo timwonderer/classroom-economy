@@ -5,18 +5,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 
 from app.extensions import db
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import (
-    Admin,
-    BankingSettings,
-    ClassFeature,
-    ClassEconomy,
-    ClassMembership,
-    FeatureSettings,
-    RentSettings,
-    Student,
-    StudentTeacher,
-    )
+from app.models import Seat, IdentityProfile, Admin, BankingSettings, ClassFeature, ClassEconomy, ClassMembership, FeatureSettings, RentSettings, Student, StudentTeacher
 from app.routes.student import (
     get_banking_settings_for_context,
     get_feature_settings_for_student,
@@ -49,19 +38,10 @@ def teacher_with_legacy_and_scoped_settings(client):
     db.session.flush()
     db.session.add(ClassMembership(join_code=join_code, admin_id=teacher.id, role="admin"))
     db.session.add(ClassMembership(join_code="FALL02", admin_id=teacher.id, role="admin"))
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        block="A",
-        join_code=join_code,
-        is_claimed=True,
-        student_id=student.id,
-        first_name="Fallback",
-        last_initial="T",
-        last_name_hash_by_part=[],
-        dob_sum_hash=None,
-        salt=b"salt",
-        first_half_hash="hash",
-    ))
+    _tb_seat = Seat(student_id=student.id, join_code=join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name="Fallback", last_initial="T"))
 
     # Banking is now strictly class-scoped; keep only an unrelated-class row.
     db.session.add(BankingSettings(

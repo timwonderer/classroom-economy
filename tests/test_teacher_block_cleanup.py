@@ -12,9 +12,11 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.models import Admin, Student, StudentTeacher, TeacherBlock, SystemAdmin
+from app.models import Admin, Student, StudentTeacher, SystemAdmin
 from app.hash_utils import get_random_salt, hash_hmac
 from tests.helpers.class_scope import create_class_scope
+
+pytestmark = pytest.mark.skip(reason="TeacherBlock removed in Wave 11 decommissioning")
 
 
 def _create_admin(username: str) -> tuple[Admin, str]:

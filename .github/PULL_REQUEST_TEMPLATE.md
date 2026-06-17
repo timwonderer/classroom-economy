@@ -23,6 +23,7 @@
 - [ ] **EXPAND** – Additive, backward-compatible (no removals)
 - [ ] **CONTRACT (CODE ONLY)** – Model attribute removal, DB schema unchanged
 - [ ] **CONTRACT (DATABASE)** – Destructive migration only
+- [ ] **NON-MODEL CHANGE** – Comments, TODOs, or docstrings only; no structural model changes
 
 ## Description
 

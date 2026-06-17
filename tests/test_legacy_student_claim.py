@@ -16,7 +16,7 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.models import Admin, Student, StudentTeacher, TeacherBlock
+from app.models import Admin, Student, StudentTeacher
 from app.hash_utils import get_random_salt, hash_username, hash_hmac
 from app.utils.name_utils import hash_last_name_parts
 from app.utils.claim_credentials import compute_primary_claim_hash

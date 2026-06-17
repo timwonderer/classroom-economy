@@ -7,8 +7,7 @@ from decimal import Decimal
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import Admin, ClassEconomy, ClassMembership, IdentityProfile, RentPayment, RentSettings, RentWaiver, Student, Transaction
+from app.models import Admin, ClassEconomy, ClassMembership, IdentityProfile, RentPayment, RentSettings, RentWaiver, Seat, Student, Transaction
 from app.routes.student import (
     RENT_PAYMENT_MATCH_TOLERANCE_SECONDS,
     _get_locked_rent_amount_for_join_code_cycle,
@@ -63,19 +62,17 @@ def _make_admin_with_block(join_code="LOCKA1", block="A", suffix="rv"):
     ))
     db.session.flush()
     db.session.add(ClassMembership(join_code=join_code, admin_id=admin.id, role="admin"))
-    db.session.add(TeacherBlock(
-        teacher_id=admin.id,
-        block=block,
-        first_name='Teacher',
-        last_initial='T',
-        identity_id=identity.id,
-        last_name_hash_by_part=['hash'],
-        dob_sum_hash=None,
-        salt=b'1234567890123456',
-        first_half_hash='hashvalue',
+    class_id = db.session.query(ClassEconomy.class_id).filter_by(join_code=join_code).scalar()
+    seat = Seat(
+        class_id=class_id,
         join_code=join_code,
-        class_id=db.session.query(ClassEconomy.class_id).filter_by(join_code=join_code).scalar(),
-    ))
+        block=block,
+        block_identifier=block,
+        role="teacher",
+    )
+    db.session.add(seat)
+    db.session.flush()
+    identity.seat_id = seat.id
     settings = RentSettings(
         teacher_id=admin.id,
         join_code=join_code,

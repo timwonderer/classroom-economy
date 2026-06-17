@@ -19,9 +19,12 @@ from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash
 
 from app.extensions import db
-from tests.helpers.mock_teacher_block import TeacherBlock
 from app.models import (
     Admin,
+    ClassEconomy,
+    ClassMembership,
+    IdentityProfile,
+    Seat,
     Student,
     StudentTeacher,
     Transaction,
@@ -60,22 +63,12 @@ def _make_student(block: str = "A", first_name: str = "Alice", last_initial: str
     return student
 
 
-def _make_teacher_block(admin_id: int, block: str, join_code: str, student: Student | None = None) -> TeacherBlock:
+def _make_teacher_block(admin_id: int, block: str, join_code: str, student: Student | None = None) -> Seat:
     salt = get_random_salt()
-    tb = TeacherBlock(
-        teacher_id=admin_id,
-        block=block,
-        join_code=join_code,
-        is_claimed=True,
-        claimed_at=datetime.now(timezone.utc),
-        student_id=student.id if student else None,
-        first_name=student.first_name if student else "Placeholder",
-        last_initial=student.last_initial if student else "P",
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=student.salt if student else salt,
-        first_half_hash=student.first_half_hash if student else "P0",
-    )
+    tb = Seat(student_id=student.id if student else None, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(tb)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name=student.first_name if student else "Placeholder", last_initial=student.last_initial if student else "P"))
     db.session.add(tb)
     db.session.commit()
     return tb
@@ -157,7 +150,7 @@ def test_dashboard_warns_when_orphaned_txs_exist_but_no_blocks(client):
     _complete_onboarding(admin)
     student = _make_student("A", "Carol", "C")
     _link(student, admin)
-    # No TeacherBlock → teacher cannot backfill; should see warning on dashboard
+    # No Seat → teacher cannot backfill; should see warning on dashboard
     _orphaned_tx(student, admin)
 
     _login_admin(client, admin)
@@ -370,24 +363,14 @@ def test_backfill_multiple_join_codes_per_block_uses_most_frequent(client):
     student = _make_student("A", "Leo", "L")
     _link(student, admin)
 
-    # Create two TeacherBlocks for block "A" with different join_codes
+    # Create two Seats for block "A" with different join_codes
     salt = get_random_salt()
     for jc, count in [("JC_COMMON", 2), ("JC_RARE", 1)]:
         for _ in range(count):
-            tb = TeacherBlock(
-                teacher_id=admin.id,
-                block="A",
-                join_code=jc,
-                is_claimed=True,
-                claimed_at=datetime.now(timezone.utc),
-                student_id=student.id,
-                first_name=student.first_name,
-                last_initial=student.last_initial,
-                last_name_hash_by_part=None,
-                dob_sum_hash=None,
-                salt=salt,
-                first_half_hash="L0",
-            )
+            tb = Seat(student_id=student.id, join_code=jc, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+            db.session.add(tb)
+            db.session.flush()
+            db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
             db.session.add(tb)
     db.session.commit()
 

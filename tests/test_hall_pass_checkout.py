@@ -8,11 +8,7 @@ without using the terminal, with proper limit enforcement.
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone, timedelta
-from tests.helpers.mock_teacher_block import TeacherBlock
-from app.models import (
-    Student, Admin, HallPassLog, StudentTeacher, HallPassSettings, ClassEconomy, Seat,
-    AttendanceSession, SeatAttendanceState, User, UserRole
-)
+from app.models import Seat, IdentityProfile, Student, Admin, HallPassLog, StudentTeacher, HallPassSettings, ClassEconomy, AttendanceSession, SeatAttendanceState, User, UserRole
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
 from app.utils.auth_username import build_hashed_username_fields
@@ -133,21 +129,10 @@ def setup_hall_pass_checkout_test(client):
     db.session.add(hall_pass)
 
     # Create claimed seat so current class context can be resolved in student routes.
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        class_id=economy.class_id,
-        block="Period1",
-        class_label="Period1",
-        first_name=student.first_name,
-        last_initial=student.last_initial,
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b"seat-salt",
-        first_half_hash="seat-hash-1",
-        join_code="TEST123",
-        student_id=student.id,
-        is_claimed=True,
-    ))
+    _tb_seat = Seat(student_id=student.id, class_id=economy.class_id, join_code="TEST123", block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
     db.session.commit()
 
     return {
@@ -390,21 +375,10 @@ def test_checkout_rejects_wrong_student(client, setup_hall_pass_checkout_test):
         claimed_at=datetime.now(timezone.utc) - timedelta(days=1),
     )
     db.session.add(other_seat)
-    db.session.add(TeacherBlock(
-        teacher_id=data['teacher'].id,
-        class_id=economy.class_id,
-        block="Period1",
-        class_label="Period1",
-        first_name=other_student.first_name,
-        last_initial=other_student.last_initial,
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b"seat-salt-bob",
-        first_half_hash="seat-hash-bob",
-        join_code=economy.join_code,
-        student_id=other_student.id,
-        is_claimed=True,
-    ))
+    _tb_seat = Seat(student_id=other_student.id, class_id=economy.class_id, join_code=economy.join_code, block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=other_student.first_name, last_initial=other_student.last_initial))
     db.session.commit()
 
     _login_student_context(client, student=other_student, user=other_user, seat=other_seat)
@@ -500,21 +474,10 @@ def test_checkout_rejects_mismatched_class_context(client, setup_hall_pass_check
         claimed_at=datetime.now(timezone.utc) - timedelta(days=1),
     )
     db.session.add(other_seat)
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        class_id=other_economy.class_id,
-        block="Period2",
-        class_label="Period2",
-        first_name=student.first_name,
-        last_initial=student.last_initial,
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b"seat-salt-2",
-        first_half_hash="seat-hash-2",
-        join_code="OTHER123",
-        student_id=student.id,
-        is_claimed=True,
-    ))
+    _tb_seat = Seat(student_id=student.id, class_id=other_economy.class_id, join_code="OTHER123", block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
     db.session.commit()
 
     _login_student_context(client, student=student, user=user, seat=other_seat)
@@ -561,21 +524,10 @@ def test_cancel_rejects_mismatched_class_context(client, setup_hall_pass_checkou
         claimed_at=datetime.now(timezone.utc) - timedelta(days=1),
     )
     db.session.add(other_seat)
-    db.session.add(TeacherBlock(
-        teacher_id=teacher.id,
-        class_id=other_economy.class_id,
-        block="Period2",
-        class_label="Period2",
-        first_name=student.first_name,
-        last_initial=student.last_initial,
-        last_name_hash_by_part=None,
-        dob_sum_hash=None,
-        salt=b"seat-salt-3",
-        first_half_hash="seat-hash-3",
-        join_code="OTHER123",
-        student_id=student.id,
-        is_claimed=True,
-    ))
+    _tb_seat = Seat(student_id=student.id, class_id=other_economy.class_id, join_code="OTHER123", block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(_tb_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
     db.session.commit()
 
     _login_student_context(client, student=student, user=user, seat=other_seat)

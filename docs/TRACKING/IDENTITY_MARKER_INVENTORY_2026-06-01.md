@@ -353,7 +353,7 @@ the Passwordless external identity and reject legacy `admin_<id>` /
 - `Seat.join_code`
 - `Seat.block`
 - `StudentTeacher.*`
-- `TeacherBlock.*`
+- `TeacherBlock.*` — **runtime cleared 2026-06-07; test surface 62% reduced 2026-06-15 (27 files remain, ~8 with active model usage)**
 - `ClassMembership.admin_id`
 - `ClassMembership.student_id`
 - `seat_id` session alias

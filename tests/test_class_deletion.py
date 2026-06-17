@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 
 from app.extensions import db
 from app.feats.base import InvariantViolation
-from tests.helpers.mock_teacher_block import TeacherBlock
 from app.models import (
     Admin, ClassEconomy, ClassMembership, Transaction, StudentBlock,
     TapEvent, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
@@ -114,7 +113,7 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     assert ClassEconomy.query.filter_by(join_code=join_code).first() is None
     assert db.session.query(ClassMembership).filter_by(join_code=join_code).count() == 0
     assert db.session.query(Transaction).filter_by(join_code=join_code).count() == 0
-    assert db.session.query(TeacherBlock).filter_by(join_code=join_code).count() == 0
+    assert db.session.query(Seat).filter_by(join_code=join_code).count() == 0
     assert db.session.query(Issue).filter_by(join_code=join_code).count() == 0
     
     # Store settings cleanup
