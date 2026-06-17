@@ -13,6 +13,7 @@ from app.models import (
     ObligationSatisfaction,
     RentPolicyVersion,
     RentSettings,
+    Seat,
 )
 from app.utils.time import utc_now
 
@@ -178,10 +179,25 @@ def record_rent_waiver(
     waiver_end_date,
     periods_count: int,
     reason: str | None = None,
+    created_by_seat_id: int | None = None,
     created_by_user_id: int | None = None,
 ) -> ObligationAssessment:
     """Record a rent waiver as a canonical assessment + reversal."""
     now = utc_now()
+    if created_by_seat_id is None and created_by_user_id is not None:
+        created_by_seat_id = (
+            Seat.query.filter_by(class_id=class_id, role="teacher", user_id=created_by_user_id)
+            .order_by(Seat.id.asc())
+            .with_entities(Seat.id)
+            .scalar()
+        )
+    if created_by_seat_id is None:
+        created_by_seat_id = (
+            Seat.query.filter_by(class_id=class_id, role="teacher")
+            .order_by(Seat.id.asc())
+            .with_entities(Seat.id)
+            .scalar()
+        )
 
     assessment = ObligationAssessment(
         seat_id=seat_id,
@@ -209,7 +225,7 @@ def record_rent_waiver(
             assessment_id=assessment.id,
             reason=reason,
             reversed_at=now,
-            reversed_by_user_id=created_by_user_id,
+            reversed_by_seat_id=created_by_seat_id,
         )
     )
     return assessment
@@ -316,6 +332,7 @@ def apply_claim_resolution(
     teacher_notes: str | None,
     rejection_reason: str | None,
     processed_by_user_id: int | None,
+    processed_by_seat_id: int | None = None,
     processed_at,
     approved_amount=None,
 ):
@@ -328,6 +345,25 @@ def apply_claim_resolution(
     claim.approved_amount = approved_amount
 
     assessment = _require_claim_assessment(claim.id, claim.seat_id, claim.class_id)
+    if processed_by_seat_id is None:
+        if processed_by_user_id is not None:
+            processed_by_seat_id = (
+                Seat.query.filter_by(
+                    class_id=claim.class_id,
+                    role="teacher",
+                    user_id=processed_by_user_id,
+                )
+                .order_by(Seat.id.asc())
+                .with_entities(Seat.id)
+                .scalar()
+            )
+        if processed_by_seat_id is None:
+            processed_by_seat_id = (
+                Seat.query.filter_by(class_id=claim.class_id, role="teacher")
+                .order_by(Seat.id.asc())
+                .with_entities(Seat.id)
+                .scalar()
+            )
 
     if status in {"approved", "paid"}:
         _set_assessment_lifecycle(assessment, status="PAID", updated_at=processed_at)
@@ -351,13 +387,13 @@ def apply_claim_resolution(
                     assessment_id=assessment.id,
                     reason=rejection_reason or teacher_notes,
                     reversed_at=processed_at,
-                    reversed_by_user_id=processed_by_user_id,
+                    reversed_by_seat_id=processed_by_seat_id,
                 )
             )
         else:
             assessment.reversal.reason = rejection_reason or teacher_notes
             assessment.reversal.reversed_at = processed_at
-            assessment.reversal.reversed_by_user_id = processed_by_user_id
+            assessment.reversal.reversed_by_seat_id = processed_by_seat_id
     return claim
 
 
@@ -566,6 +602,46 @@ def get_rent_waivers_for_seat(
         .order_by(ObligationAssessment.assessed_at.desc())
         .all()
     )
+
+
+def get_active_rent_waivers_for_class(
+    class_id: str,
+    *,
+    coverage_date=None,
+    seat_ids: list[int] | None = None,
+) -> list[ObligationAssessment]:
+    """Return active rent-waiver assessments for a class at a point in time."""
+    if coverage_date is None:
+        coverage_date = utc_now()
+    q = (
+        ObligationAssessment.query
+        .join(ObligationReversal, ObligationReversal.assessment_id == ObligationAssessment.id)
+        .filter(
+            ObligationAssessment.class_id == class_id,
+            ObligationAssessment.obligation_type == "RENT_WAIVER",
+            ObligationAssessment.coverage_start_time <= coverage_date,
+            ObligationAssessment.coverage_end_time >= coverage_date,
+        )
+    )
+    if seat_ids is not None:
+        q = q.filter(ObligationAssessment.seat_id.in_(seat_ids))
+    return q.order_by(ObligationAssessment.assessed_at.desc()).all()
+
+
+def remove_rent_waiver_assessment(assessment_id: int) -> ObligationAssessment | None:
+    """Delete a canonical rent-waiver assessment and its derived rows."""
+    assessment = db.session.get(ObligationAssessment, assessment_id)
+    if assessment is None or assessment.obligation_type != "RENT_WAIVER":
+        return None
+
+    if assessment.reversal is not None:
+        db.session.delete(assessment.reversal)
+    if assessment.satisfaction is not None:
+        db.session.delete(assessment.satisfaction)
+    if assessment.lifecycle is not None:
+        db.session.delete(assessment.lifecycle)
+    db.session.delete(assessment)
+    return assessment
 
 
 def get_cycle_rent_amount(

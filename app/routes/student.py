@@ -25,7 +25,7 @@ from dateutil.relativedelta import relativedelta
 from app.extensions import db, limiter
 from app.models import (
     Student, Transaction, TransactionStatus, TapEvent, StoreItem, StoreItemBlock, StudentItem,
-    RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
+    RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
     BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole, StudentTeacher,
     ClassMembership, ClassEconomy, _quantize_currency
 )
@@ -2925,8 +2925,8 @@ def _iter_rent_waiver_coverage_dates(settings, waiver):
 
     delta = _get_rent_period_delta(settings)
     dates = []
-    current = ensure_utc(waiver.waiver_start_date)
-    end = ensure_utc(waiver.waiver_end_date)
+    current = ensure_utc(getattr(waiver, "coverage_start_time", None))
+    end = ensure_utc(getattr(waiver, "coverage_end_time", None))
 
     while current and end and current <= end:
         dates.append(current)
@@ -2954,6 +2954,7 @@ def _expand_rent_waiver_history(settings, waivers, *, now=None):
         for coverage_due_date in _iter_rent_waiver_coverage_dates(settings, waiver):
             coverage_day = ensure_utc(coverage_due_date).date()
             current_day = ensure_utc(current_coverage_due_date).date() if current_coverage_due_date else None
+            student = waiver.seat.student if getattr(waiver, "seat", None) and waiver.seat.student_id else None
 
             if current_day is None or coverage_day > current_day:
                 status = 'upcoming'
@@ -2970,15 +2971,14 @@ def _expand_rent_waiver_history(settings, waivers, *, now=None):
 
             entries.append({
                 'waiver': waiver,
-                'student': waiver.student,
-                'join_code': waiver.join_code,
+                'student': student,
                 'coverage_due_date': coverage_due_date,
                 'coverage_label': _get_rent_coverage_label(coverage_due_date),
                 'status': status,
                 'status_label': status_label,
                 'is_cancellable': cancellable,
-                'created_at': ensure_utc(waiver.created_at) if waiver.created_at else None,
-                'reason': waiver.reason,
+                'created_at': ensure_utc(getattr(waiver, "assessed_at", None)) if getattr(waiver, "assessed_at", None) else None,
+                'reason': waiver.reversal.reason if getattr(waiver, "reversal", None) else None,
             })
 
     status_rank = {'current': 0, 'upcoming': 1, 'used': 2}
@@ -3308,10 +3308,9 @@ def rent():
 
     waiver_history = []
     if settings:
-        waiver_rows = RentWaiver.query.filter(
-            RentWaiver.seat_id == seat_id,
-            RentWaiver.class_id == class_id,
-        ).all()
+        from app.services.obligations_service import get_rent_waivers_for_seat
+
+        waiver_rows = get_rent_waivers_for_seat(seat_id, class_id)
         waiver_history = _expand_rent_waiver_history(settings, waiver_rows, now=now)
 
     payment_history_rows = []

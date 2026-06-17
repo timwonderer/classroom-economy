@@ -2462,7 +2462,7 @@ class ObligationReversal(db.Model):
     assessment_id = db.Column(db.Integer, db.ForeignKey('assessment_events.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
     reason = db.Column(db.Text, nullable=True)
     reversed_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
-    reversed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    reversed_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
 
 
 class InsuranceEnrollment(db.Model):

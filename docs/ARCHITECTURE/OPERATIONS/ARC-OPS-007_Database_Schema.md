@@ -208,6 +208,8 @@ Analytics storage models backing the teacher analytics surface.
 - `analytics_alerts` tracks alert state and acknowledgement lifecycle
 - `analytics_snapshots` stores precomputed metrics per class/window
 - `analytics_events` stores contextual events rendered alongside analytics data
+- rent-waiver add/remove flows no longer write `analytics_events`; that path
+  is reserved for future seat-scoped analytics annotations
 
 ### Issue and observability tables
 
