@@ -113,7 +113,7 @@ NIST CSF 2.0's `PR.AA` (Identity Management, Authentication, and Access Control)
 CTH's non-implementation of SSO is a deliberate, documented architectural decision, not an oversight. The `class_id`/`seats`-centric, no-DOB, minimal-PII model defined in `INV-CORE-000` and `INV-ARC-019` achieves the access-control and identity-management intent behind CSF 2.0's `PR.AA` category through mechanisms better suited to this product's actual risk profile than federated SSO would be. Because CTH's worst-case breach exposure currently contains no resolvable real-world identity, federating identity through an institutional IdP would convert a low-severity, deidentified exposure into a high-severity, attributable one, while also concentrating breach impact across every classroom rather than containing it to one, and reintroducing the class of cross-tenant identity bleed that CTH's prior incident response (`SEC-INC-013`) was specifically architected to eliminate. 
 
 > [!IMPORTANT]
-> If SSO is required as a matter of institutional policy, local educational agencies are encouraged to fork this project and implement SSO in their own instances. In that case, Classroom Token Hub no longer retains any responsibility for the security and privacy of that instance nor does the instance represents Classroom Token Hub in any way.
+In that case, Classroom Token Hub no longer retains any responsibility for the security and privacy of that instance nor does the instance represent Classroom Token Hub in any way.
 
 ## 7. References
 
