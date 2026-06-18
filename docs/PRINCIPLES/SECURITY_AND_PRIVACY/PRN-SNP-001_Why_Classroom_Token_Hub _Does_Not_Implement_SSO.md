@@ -24,7 +24,7 @@ This document outlines a risk-based engineering decision. SSO would not merely f
 
 This document covers the authentication and identity architecture for all three CTH principals (Student, Teacher, System Administrator).
 
-This document is not a normative documentation within the CTH documentation namespace system and thus shall not modify or supersede CTH's official policies, standards, or requirements unless explicitly incorporated by reference. Please consult the following documentation for specification and invariants:
+This document is not normative documentation within the CTH documentation namespace system and thus shall not modify or supersede CTH's official policies, standards, or requirements unless explicitly incorporated by reference. Please consult the following documentation for specification and invariants:
 
 - `INV-CORE-000` (Core Invariants)
 - `INV-ARC-019` (Identity and Ownership Model)
