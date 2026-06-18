@@ -308,7 +308,7 @@ def test_invalid_past_due_dates_skipped_count_reflects_actual(client, app):
         assert b'1 past-due period' in resp.data
 
 
-def test_add_rent_waiver_writes_canonical_waiver_rows(client, app, monkeypatch):
+def test_add_rent_waiver_logs_analytics_event(client, app, monkeypatch):
     with app.app_context():
         admin = _make_admin("evt1")
         join_code = "ARW_EVT1"
@@ -339,7 +339,7 @@ def test_add_rent_waiver_writes_canonical_waiver_rows(client, app, monkeypatch):
         assert len(events) == 0
 
 
-def test_remove_rent_waiver_deletes_canonical_waiver_rows(client, app):
+def test_remove_rent_waiver_logs_analytics_event(client, app):
     with app.app_context():
         admin = _make_admin("rem1")
         join_code = "ARW_REM1"
