@@ -41,7 +41,7 @@ Werkzeug==3.1.8
 # TODO: [DEPENDABOT PR #847] zope.event 6.x is a major version change. Review for
 # breaking changes (transitive dep for gevent) before upgrading from 5.0 to 6.1
 zope.event==5.0
-# Upgraded to 8.4 in PR #1203 after comprehensive v2.0 compatibility testing
+# Upgraded to 8.5 after comprehensive v2.0 compatibility testing
 zope.interface==8.5
 python-dateutil==2.9.0.post0
 cryptography==49.0.0
