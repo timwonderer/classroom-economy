@@ -45,14 +45,14 @@ CTH separates identity into three layers, per `INV-ARC-019`:
 - **`seats`** is the operational actor inside exactly one class. Owns attendance, economy operations, claim verification artifacts, and all class-local state. A user may own multiple seats across multiple classes, but no seat spans more than one class.
 - **`classes`** is the isolation boundary, identified by `class_id`. Per `INV-CORE-000` §1, all data access and mutation must resolve to a single `class_id`; `join_code` is only a human-facing alias that must resolve to `class_id` before any authority-sensitive operation. There is no global student directory, no institution-wide account, and no shared identity broker.
 
-Students claim seats with a `join_code` (resolved to `class_id`) plus first name and last name. Student create username + PIN + passphrase, after account is claimed. Teachers and System Administrators authenticate with locally hashed username and forced TOTP at signup, optional passkeys.
+Students claim seats with a `join_code` (resolved to `class_id`) plus first name and last name. Students create a username, PIN, and passphrase after the account is claimed. Teachers and System Administrators authenticate with locally hashed username and forced TOTP at signup, optional passkeys.
 
 ### 3.2 PII minimization
 
 Per `INV-CORE-000` §2 ("Minimal Use and Storage of PII"):
 
 - **No PII other than first name and last name is collected, used, or stored for student users:** Student `seats` are pre-created by teachers and never exposed outside the class. Student claims seat via a `join_code`, `first_name`, and `last_name`. Backend normalizes and hashes to compare against existing seat fingerprints. Duplicate-name students within one class roster are disambiguated by a teacher-issued `dedupe_code`, which are two-digit numbers between 01-99 scoped to the class roster. 
-- **Teachers accounts are created without any PII:** Teacher account is created with a username and forced TOTP at signup, optional passkeys. No name, email, phone, or other identifying information is collected, used, or stored.
+- **Teacher accounts are created without any PII:** Teacher account is created with a username and forced TOTP at signup, optional passkeys. No name, email, phone, or other identifying information is collected, used, or stored.
 - **No PII in plaintext:** PII stored for display (e.g., first name and last name in `identity_profiles`) must be symmetrically encrypted at rest; PII stored for lookup/matching (e.g., roster claim hashes on `seats`) must be one-way HMAC-hashed and not recoverable.
 Any account that is inactive for 180 days (close to the length of an academic semester, which is 4.5 months) will be deleted.
 
