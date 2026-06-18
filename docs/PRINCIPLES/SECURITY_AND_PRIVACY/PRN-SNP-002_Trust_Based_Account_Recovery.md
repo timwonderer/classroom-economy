@@ -14,7 +14,7 @@ This document outlines the two main account recovery mechanisms for teachers and
 ## 2. Scope
 This document covers the **Student-Assisted Teacher Account Recovery** (SATAR) and **Teacher-Initiated Student Account Recovery** (TISAR). These two mechanisms are the only two canonical methods of account recovery for students and teachers in Classroom Token Hub. 
 
-This document is not a normative documentation within the CTH documentation namespace system and thus shall not modify or supersede CTH's official policies, standards, or requirements unless explicitly incorporated by reference. Please consult the following documentation for specification and invariants:
+This document is not normative documentation within the CTH documentation namespace system and thus shall not modify or supersede CTH's official policies, standards, or requirements unless explicitly incorporated by reference. Please consult the following documentation for specification and invariants:
 
 - `INV-CORE-000` (Core Invariants)
 - `INV-ARC-019` (Identity and Ownership Model)
