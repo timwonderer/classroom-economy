@@ -107,10 +107,11 @@ def downgrade():
             unique=False,
         )
 
-    op.create_foreign_key(
-        op.f("fk_banking_settings_teacher_id_teachers"),
-        "banking_settings",
-        "teachers",
-        ["teacher_id"],
-        ["id"],
-    )
+    if not get_foreign_keys_by_column("banking_settings", "teacher_id"):
+        op.create_foreign_key(
+            op.f("fk_banking_settings_teacher_id_teachers"),
+            "banking_settings",
+            "teachers",
+            ["teacher_id"],
+            ["id"],
+        )

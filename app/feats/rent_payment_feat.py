@@ -44,7 +44,7 @@ def execute_rent_payment(
 ) -> RentPaymentResult:
     """Obligations-led FEAT for rent payment orchestration."""
     now = now or utc_now()
-    user_id = context.get("user_id")
+    user_id = getattr(context, "user_id", None)
     join_code = seat.join_code
     class_id = seat.class_id
 
@@ -58,7 +58,7 @@ def execute_rent_payment(
         class_id=class_id,
         teacher_id=user_id,  # access_policy API still uses teacher_id; canonicalization pending
     )
-    current_block = (context.get("block") or period or "").strip().upper()
+    current_block = (getattr(seat, "block", None) or period or "").strip().upper()
     is_partial = payment_amount < remaining_amount
 
     billed_period_date = payment_due_date or now

@@ -53,6 +53,7 @@ This sets `core.hooksPath=hooks` and enables shared repo hooks, including branch
 - Migration heads are resolved in repo with `e8f1a2b3c4d5_merge_remaining_v2_heads.py`.
 - Full-suite validation succeeded on the PostgreSQL test database.
 - Economy policy scheduling, rebalance timing, rent-cycle locking, penalty-reversal corrections, transaction idempotency, frozen economy snapshots, waiver scope, settlement safety, and related sysadmin auth/logging fixes have landed on `codex/v2.0`.
+- Wave 7 rent-waiver actor attribution is now seat-scoped, and rent-waiver add/remove flows no longer emit legacy analytics rows; the analytics schema still needs its own seat-scoped cutover before those annotations return.
 - Pricing recommendation logic is now centralized in `app/utils/economy_policy.py`, with the checker, rebalance preview, economy APIs, and insurance setup/edit pages consuming that shared source instead of duplicating pricing math.
 - Main-branch feature divergence is now tracked in `docs/archive/v1-development/tracking/V2_MAIN_RECONCILIATION_TRACKER.md`.
 

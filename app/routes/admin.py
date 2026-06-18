@@ -56,13 +56,14 @@ from app.feats.base import feat_shell, FEATContext, InvariantViolation
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
     Student, Admin, ClassEconomy, StudentTeacher, Transaction, TransactionStatus, TapEvent, StoreItem, StudentItem,
-    InsurancePolicy, InsurancePolicyBlock, RentItem, RentPayment, RentSettings, RentWaiver, StoreItemBlock,
+    InsurancePolicy, InsurancePolicyBlock, RentItem, RentPayment, RentSettings, StoreItemBlock,
     InsuranceEnrollment, StudentInsurance, InsuranceClaim, HallPassLog, HallPassSettings, PayrollSettings, SavedAdjustment,
     BankingSettings,
     UserReport, FeatureSettings, StudentBlock,
     Announcement, RedemptionAuditLog, RedemptionAuditAction,
     RedemptionAuditSource, Issue, IssueStatusHistory, IssueResolutionAction, AnalyticsSnapshot, AnalyticsEvent, Seat,
     BalanceCache, ClassMembership, ClassEconomy, EconomySnapshot, User, UserRole, _quantize_currency,
+    ObligationAssessment,
     SeatAttendanceState, TapEventReasonCode, IdentityProfile,
 )
 from app.auth import (
@@ -889,6 +890,33 @@ def _get_teacher_blocks():
     return sorted({(section or "").strip().upper() for (section,) in rows if (section or "").strip()})
 
 
+def _get_teacher_seat_for_class(class_id: str):
+    """Return the teacher seat for a class, if present."""
+    if not class_id:
+        return None
+    return Seat.query.filter_by(class_id=class_id, role="teacher").order_by(Seat.id.asc()).first()
+
+
+def _count_rent_waiver_periods(settings, waiver) -> int:
+    """Return how many rent periods a canonical waiver covers."""
+    from app.routes.student import _add_rent_period, _get_rent_period_delta
+
+    if not settings or not waiver or not waiver.coverage_start_time or not waiver.coverage_end_time:
+        return 0
+
+    delta = _get_rent_period_delta(settings)
+    current = ensure_utc(waiver.coverage_start_time)
+    end = ensure_utc(waiver.coverage_end_time)
+    count = 0
+
+    while current and end and current <= end:
+        count += 1
+        next_date = _add_rent_period(current, delta)
+        if next_date <= current:
+            break
+        current = next_date
+
+    return count
 
 
 def _populate_policy_from_form(policy, form, *, next_tier_category_id=None):
@@ -6397,8 +6425,9 @@ def rent_settings():
         admin_id=admin_id,
         requested_block=request.values.get('settings_block'),
     )
+    class_id = selected_scope['class_id']
     payroll_settings = PayrollSettings.query.filter_by(
-        class_id=selected_scope['class_id'],
+        class_id=class_id,
         is_active=True,
     ).first()
     teacher_blocks = [option['block'] for option in feature_options]
@@ -6692,13 +6721,21 @@ def rent_settings():
 
     # Get active waivers
     now = utc_now()
-    active_waivers = (
-        RentWaiver.query
-        .join(Student, RentWaiver.student_id == Student.id)
-        .filter(Student.id.in_(sa.select(student_ids_subq)))
-        .filter(RentWaiver.waiver_end_date >= now)
-        .all()
-    )
+    active_waivers = [
+        SimpleNamespace(
+            id=waiver.id,
+            student=waiver.seat.student if waiver.seat and waiver.seat.student_id else None,
+            waiver_start_date=waiver.coverage_start_time,
+            waiver_end_date=waiver.coverage_end_time,
+            periods_count=_count_rent_waiver_periods(rent_settings, waiver),
+            reason=waiver.reversal.reason if waiver.reversal else None,
+            created_at=waiver.assessed_at,
+        )
+        for waiver in obligations_service.get_active_rent_waivers_for_class(
+            class_id,
+            coverage_date=now,
+        )
+    ]
 
     # Get all students for waiver form
     all_students = _scoped_students().order_by(Student.first_name).all()
@@ -7111,6 +7148,10 @@ def add_rent_waiver():
         scope_labels.append(f"{future_periods_count} future period(s)")
     scope_str = ", ".join(scope_labels) or "selected periods"
 
+    teacher_seat = _get_teacher_seat_for_class(class_id or "")
+    if teacher_seat is None:
+        abort(404)
+
     count = 0
     for student_id in student_ids:
         student = _get_student_or_404(int(student_id))
@@ -7123,19 +7164,10 @@ def add_rent_waiver():
                 waiver_end_date=waiver_end,
                 periods_count=periods_count,
                 reason=reason,
+                created_by_seat_id=teacher_seat.id,
                 created_by_user_id=admin_id,
             )
-        description = f"Rent waiver added for {student.full_name} covering: {scope_str}."
-        if reason:
-            description = f"{description} Reason: {reason}"
-        db.session.add(AnalyticsEvent(
-            teacher_id=admin_id,
-            join_code=join_code,
-            event_type='rent_waiver',
-            event_date=now,
-            description=description[:255],
-            created_by_admin=True,
-        ))
+        # TODO(v2): Re-add a canonical analytics event once analytics_events is seat-scoped.
         count += 1
 
     flash(f"Rent waiver added for {count} student(s) covering: {scope_str}.", "success")
@@ -7147,22 +7179,15 @@ def add_rent_waiver():
 @feat_shell("FEAT-ADMN-001")
 def remove_rent_waiver(waiver_id):
     """Remove a rent waiver."""
-    waiver = db.get_or_404(RentWaiver, waiver_id)
-    _get_student_or_404(waiver.student_id)
-    student_name = waiver.student.full_name
-    admin_id = session.get("admin_id")
-    join_code = waiver.join_code or session.get('current_join_code')
-    db.session.delete(waiver)
-    if admin_id and join_code:
-        removal_description = (f"Rent waiver removed for {student_name}.")[:255]
-        db.session.add(AnalyticsEvent(
-            teacher_id=admin_id,
-            join_code=join_code,
-            event_type='rent_waiver',
-            event_date=utc_now(),
-            description=removal_description,
-            created_by_admin=True,
-        ))
+    waiver = db.session.get(ObligationAssessment, waiver_id)
+    if waiver is None or waiver.obligation_type != "RENT_WAIVER":
+        abort(404)
+    student = waiver.seat.student if waiver.seat and waiver.seat.student_id else None
+    if student is None:
+        abort(404)
+    student_name = student.full_name
+    obligations_service.remove_rent_waiver_assessment(waiver.id)
+    # TODO(v2): Re-add a canonical analytics event once analytics_events is seat-scoped.
     flash(f"Rent waiver removed for {student_name}.", "success")
     return redirect(url_for('admin.rent_settings'))
 
@@ -7972,6 +7997,7 @@ def process_claim(claim_id):
                 teacher_notes=form.teacher_notes.data,
                 rejection_reason=form.rejection_reason.data,
                 processed_by_user_id=session.get('admin_id'),
+                processed_by_seat_id=scope.seat_id,
                 approved_amount=approved_amount,
             )
             if requires_payout:
@@ -8271,10 +8297,7 @@ def apply_economy_rebalance():
         payroll_settings=payroll_settings,
         rent_settings=rent_settings,
         insurance_policies=insurance_policies,
-        fines=(
-            PayrollFine.query.filter_by(class_id=effective_class.class_id, is_active=True).all()
-            if effective_class else []
-        ),
+        fines=[],
         store_items=scoped_store_items,
         expected_weekly_hours=payroll_settings.expected_weekly_hours if payroll_settings.expected_weekly_hours is not None else 5.0,
     )
@@ -8358,10 +8381,7 @@ def economy_health():
     has_payroll_settings = len(all_payroll_settings) > 0
 
     selected_class_id = selected_scope['class_id']
-    fines = (
-        PayrollFine.query.filter_by(class_id=selected_class_id, is_active=True).all()
-        if selected_class_id else []
-    )
+    fines = []
     store_items = (
         StoreItem.query.filter_by(class_id=selected_class_id, is_active=True).all()
         if selected_class_id else []
@@ -11882,15 +11902,6 @@ def api_economy_analyze():
         checker = EconomyBalanceChecker(admin_id, block, class_id=getattr(payroll_settings, "class_id", None))
 
         # Get other economy features
-        rent_settings = RentSettings.query.filter_by(
-            teacher_id=admin_id,
-            is_enabled=True
-        ).first() if block is None else RentSettings.query.filter_by(
-            teacher_id=admin_id,
-            block=block,
-            is_enabled=True
-        ).first()
-
         class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=admin_id)
         scoped_class_id = None
         if block:
@@ -11907,14 +11918,29 @@ def api_economy_analyze():
             if not scoped_class_id:
                 return jsonify({'status': 'error', 'message': 'Class scope is unavailable for the selected block.'}), 404
 
+        if scoped_class_id:
+            rent_settings = (
+                RentSettings.query.filter_by(
+                    class_id=scoped_class_id,
+                    block=block,
+                    is_enabled=True,
+                ).first()
+            )
+        else:
+            rent_settings = (
+                RentSettings.query.filter(
+                    RentSettings.class_id.in_(sa.select(class_ids_query.subquery())),
+                    RentSettings.is_enabled.is_(True),
+                )
+                .order_by(desc(RentSettings.block.isnot(None)))
+                .first()
+            )
+
         insurance_policies_query = InsurancePolicy.query.filter(
             InsurancePolicy.class_id.in_(sa.select(class_ids_query.subquery())),
             InsurancePolicy.is_active.is_(True),
         )
-        fines_query = PayrollFine.query.filter(
-            PayrollFine.class_id.in_(sa.select(class_ids_query.subquery())),
-            PayrollFine.is_active.is_(True),
-        )
+        fines_query = []
         store_items_query = StoreItem.query.filter(
             StoreItem.class_id.in_(sa.select(class_ids_query.subquery())),
             StoreItem.is_active.is_(True),
@@ -11922,11 +11948,10 @@ def api_economy_analyze():
 
         if scoped_class_id:
             insurance_policies_query = insurance_policies_query.filter(InsurancePolicy.class_id == scoped_class_id)
-            fines_query = fines_query.filter(PayrollFine.class_id == scoped_class_id)
             store_items_query = store_items_query.filter(StoreItem.class_id == scoped_class_id)
 
         insurance_policies = insurance_policies_query.all()
-        fines = fines_query.all()
+        fines = fines_query
         store_items = store_items_query.all()
 
         # Perform analysis
