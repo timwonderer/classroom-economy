@@ -75,6 +75,7 @@ from app.feats.redemption_disposition_feat import (
 )
 from app.services import store_service
 from app.utils.economy_policy import resolve_class_scope, resolve_feature_class, resolve_feature_class_for_class
+from app.utils.join_code import get_display_join_code
 from app.utils.overdraft import charge_overdraft_fee_if_needed
 from app.utils.seat_scope import get_seat_id_for_class
 from app.utils.transaction_idempotency import (
@@ -446,15 +447,13 @@ def purchase_item():
 
     class_id = context.class_id
     join_code = get_display_join_code(context.class_id)
-    teacher_id = context['teacher_id']
-    current_block = context.get('block', '').strip().upper()
     seat_id = get_seat_id_for_class(student.id, class_id)
     if not seat_id:
          return jsonify({"status": "error", "message": "No seat assigned in this class."}), 403
     
     # Authoritative seat object
-    from app.models import Seat
     seat = db.session.get(Seat, seat_id)
+    current_block = (seat.block or "").strip().upper() if seat and seat.block else ""
 
     purchase_idempotency_key = None
     if client_purchase_id:

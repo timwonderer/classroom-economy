@@ -115,11 +115,15 @@ def test_obligation_satisfaction_assessment_id_is_unique():
 def test_obligation_reversal_has_required_columns():
     """DOM-OBL-001 §VIII.3: reversal must link to assessment with reason and timestamp."""
     cols = _column_names(ObligationReversal)
-    assert {"assessment_id", "reason", "reversed_at"} <= cols
+    assert {"assessment_id", "reason", "reversed_at", "reversed_by_seat_id"} <= cols
 
 
 def test_obligation_reversal_assessment_fk_targets_assessment():
     assert _fk_targets(ObligationReversal, "assessment_id") == {"assessment_events.id"}
+
+
+def test_obligation_reversal_actor_fk_targets_seats():
+    assert _fk_targets(ObligationReversal, "reversed_by_seat_id") == {"seats.id"}
 
 
 def test_obligation_reversal_assessment_id_is_unique():

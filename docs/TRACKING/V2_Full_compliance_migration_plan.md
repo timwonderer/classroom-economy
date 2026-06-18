@@ -38,6 +38,7 @@ Target state:
 - Tracker reconciliation refreshed against the current `codex/v2.0` state.
 - Waves 3-6 remain the last fully evidenced landed cluster in the active tracker.
 - Wave 7 schema contract is installed; insurance-claim filing and resolution now emit canonical `assessment_events` + `obligation_lifecycle` state under a clean-cutover model, while legacy-read cutover and table drops remain open.
+- Wave 7 rent-waiver actor cutover is now also landed: `ObligationReversal` uses seat-scoped actor attribution and rent-waiver add/remove paths no longer emit legacy `AnalyticsEvent` compatibility rows.
 - Waves 8-12 remain open and continue to require per-wave verification gates before they can be marked complete.
 - No tracker entry was promoted to complete status without direct evidence in the current pass.
 - **2026-06-07**: `TeacherBlock` identity model decommissioning is in active execution under Wave 11 admin route decomposition scope (see Wave 11 status update below).
@@ -1930,6 +1931,21 @@ Constraint:
      state
    - insurance claim resolution and remaining reads still require canonical
      cutover
+   - rent-waiver actor attribution is seat-scoped; legacy analytics writes are
+     deferred until analytics schema cutover
+
+### Status Update (2026-06-16): Wave 7-C Rent Waiver Actor Cutover
+
+- `ObligationReversal` now stores canonical actor attribution in
+  `reversed_by_seat_id` with a non-null `seats.id` foreign key.
+- Rent-waiver add/remove flows no longer emit legacy `AnalyticsEvent`
+  compatibility rows.
+- `join_code` remains an ingress/display alias only; canonical obligation
+  actor context is seat-scoped.
+- `student_id` and `admin_id` remain legacy references in non-authoritative
+  surfaces only, with waiver authority resolved through teacher seats.
+- Wave 7 remains open for remaining legacy-read cutover and the eventual
+  `analytics_events` schema refactor/drop path.
 
 3. **FEATs updated:**
    - `rent_payment_feat.py` → canonical assessment/lifecycle write is landed

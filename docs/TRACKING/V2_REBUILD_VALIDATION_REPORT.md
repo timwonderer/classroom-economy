@@ -766,6 +766,10 @@ These serve legitimate purposes and are class_id-scoped, but they are additions 
 | Wave 9 interpretation migration (`0009_interpretation_domain.py`) | ❌ DOES NOT EXIST |
 | `analytics_snapshots`, `analytics_events` (legacy) dropped | ❌ STILL IN SCHEMA |
 
+Runtime note: rent-waiver add/remove flows no longer emit `analytics_events`
+compatibility rows. The table remains only as the broader legacy analytics
+surface until a seat-scoped analytics schema replaces it.
+
 ---
 
 ## Wave 10 — Support Domain
@@ -892,6 +896,9 @@ legacy reads remain
 
 **Legacy observability tables (targeted for drop in Wave 9):**  
 `analytics_alerts`, `analytics_snapshots`, `analytics_events`, `actor_request_trace`, `error_logs`, `error_events`, `user_reports`
+
+`analytics_events` no longer receives rent-waiver writes; it remains only for
+other legacy analytics annotations pending the seat-scoped analytics cutover.
 
 **Non-canonical additions with legitimate operational purpose (not in DOM-CORE-002 44-table target):**  
 `audit_events` — cryptographic HMAC-chained audit lineage (live, actively written)  
