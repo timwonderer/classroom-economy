@@ -9,7 +9,7 @@ searchable: false
 | PRN-SNP-002      | 1.0     | 2026-06-16     | N/A        | Informative      |
 
 ## 1. Purpose
-This document outlines the two main account recovery mechanisms for teachers and students in Classroom Token Hub. It explains the architectural trade-offs and benefits of our design. These mechanisms are designed to allow account recovery without the need of external identity providers or additional PII collection. In addition, it allows classroom data to remain in the custody of the teacher who owns the class and further reduces the reliance on system administrators to intervene.
+This document outlines the two main account recovery mechanisms for teachers and students in Classroom Token Hub. It explains the architectural trade-offs and benefits of our design. These mechanisms are designed to allow account recovery without the need for external identity providers or additional PII collection. In addition, they allow classroom data to remain in the custody of the teacher who owns the class and further reduce the reliance on system administrators to intervene.
 
 ## 2. Scope
 This document covers the **Student-Assisted Teacher Account Recovery** (SATAR) and **Teacher-Initiated Student Account Recovery** (TISAR). These two mechanisms are the only two canonical methods of account recovery for students and teachers in Classroom Token Hub. 
