@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **Wave 7 rent-waiver actor cutover completed** — `ObligationReversal` now uses seat-scoped actor attribution (`reversed_by_seat_id`) instead of the legacy nullable user FK. Rent-waiver add/remove flows no longer emit legacy `AnalyticsEvent` compatibility rows; the follow-up analytics event will return only after the analytics schema is seat-scoped.
 - **README rewritten for v2 architecture** — Corrected platform framing (classroom management tool, not financial literacy), updated key models table to reflect `Seat`/`IdentityProfile`/`ClassEconomy`, removed stale v1 references
 - **Wave 11 bulk test refactoring: TeacherBlock→Seat** — ~60 test files migrated from `TeacherBlock` fixtures to canonical `Seat` + `IdentityProfile` + `ClassEconomy` constructs. Deleted `tests/helpers/mock_teacher_block.py` shim. 7 legacy-only test modules marked skipped for decommissioning. TeacherBlock test surface reduced from 71 to 27 files (62% reduction). (#1220)
 - **Default branch switched to `codex/v2.0`** — CI workflows (actionlint, check-migrations, policy-guardrails) now trigger on `codex/v2.0` instead of `main`. Deploy to DigitalOcean workflow intentionally remains on `main` only.
@@ -88,6 +89,7 @@ and this project follows semantic versioning principles.
   (`insurance-claim:{claim_id}`), advances `obligation_lifecycle` to `PAID`
   or `REVERSED` on claim resolution, and records `obligation_satisfaction`
   or `obligation_reversal` rows under the clean-cutover model.
+- **Wave 7 rent-waiver analytics compatibility write removed** — `admin.add_rent_waiver` and `admin.remove_rent_waiver` no longer emit legacy `AnalyticsEvent` rows for waiver actions. The route now keeps waiver state canonical and leaves analytics reintroduction for a later seat-scoped schema pass.
 - **`/api/approve-redemption` and `/api/reject-redemption` now route through
   `FEAT-STOR-006`** — both routes were dead in production runtime prior to
   this change: they performed `db.session.add(RedemptionAuditLog(...))` and

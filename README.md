@@ -52,7 +52,7 @@ New code must route writes through FEATs; legacy routes that commit directly are
 - **Seat-Claim Rosters** — Upload CSV rosters to provision seats; students claim and activate their own credentials
 - **Automated Payroll** — Configurable pay rates, schedules, and rewards/fines
 - **Classroom Store** — Virtual and physical items with bundles, expirations, and redemption tracking
-- **Rent & Fees** — Recurring rent with waivers, late fees, and immutable policy versioning
+- **Rent & Fees** — Recurring rent with waivers, late fees, seat-scoped reversals, and immutable policy versioning
 - **Insurance** — Policies, enrollments, and claims with canonical obligation lifecycle
 - **Analytics** — Aggregate class metrics: participation rate, money velocity, spending/hoarding behavior, budget survivability; weekly and monthly views
 - **Hall Passes** — Time-limited passes with automatic tracking
@@ -205,6 +205,7 @@ python scripts/seed_dummy_students.py   # Seed test data
 - **[API Reference](docs/ARCHITECTURE/OPERATIONS/ARC-OPS-005_Api_Reference.md)** — REST API documentation
 - **[Deployment Guide](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-006_Deployment_Guide.md)** — Production deployment
 - **[Development Priorities](DEVELOPMENT.md)** — Roadmap and v2 launch readiness
+- **[V2 Migration Tracker](docs/TRACKING/V2_Full_compliance_migration_plan.md)** — Active wave-by-wave execution status
 - **[Changelog](CHANGELOG.md)** — Version history
 
 ---

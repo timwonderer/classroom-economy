@@ -93,7 +93,7 @@ def _attach_join_code(admin, block='A', token='JOIN-A'):
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name='Test', last_initial='A'))
 
-    payroll_settings = PayrollSettings.query.filter_by(teacher_id=admin.id, block=block).first()
+    payroll_settings = PayrollSettings.query.filter_by(class_id=economy.class_id, block=block).first()
     if payroll_settings:
         payroll_settings.join_code = token
 
