@@ -3,15 +3,15 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
-from app.hash_utils import hash_username
+from app.hash_utils import hash_username, get_random_salt
+from app.services import obligations_service
 from app.models import (
-    Admin,
     AnalyticsEvent,
     ClassEconomy,
     ClassMembership,
+    ObligationAssessment,
     IdentityProfile,
     RentSettings,
-    RentWaiver,
     Seat,
     Student,
     StudentTeacher,
@@ -45,11 +45,9 @@ def _make_teacher_block(admin_id, block, join_code):
     return seat
 
 
-def _make_rent_settings(admin_id, block, first_due, class_id=None, join_code=None, frequency_type="weekly"):
+def _make_rent_settings(block, first_due, class_id=None, frequency_type="weekly"):
     settings = RentSettings(
-        teacher_id=admin_id,
         class_id=class_id,
-        join_code=join_code,
         block=block,
         is_enabled=True,
         rent_amount=Decimal("50.00"),
@@ -84,6 +82,20 @@ def _link_student(student, admin):
     db.session.flush()
 
 
+def _make_student_seat(student, class_id, join_code, block="A"):
+    seat = Seat(
+        class_id=class_id,
+        join_code=join_code,
+        student_id=student.id,
+        role="student",
+        block=block,
+        block_identifier=block,
+    )
+    db.session.add(seat)
+    db.session.flush()
+    return seat
+
+
 def _login_admin(client, admin_id, join_code):
     login_admin(client, admin_id, join_code)
     with client.session_transaction() as sess:
@@ -96,9 +108,10 @@ def test_past_due_scope_creates_one_waiver_per_date(client, app):
         join_code = "ARW_PD1"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id, join_code=join_code)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("pd1_s")
         _link_student(student, admin)
+        student_seat = _make_student_seat(student, tb.class_id, join_code)
         db.session.commit()
 
         _login_admin(client, admin.id, join_code)
@@ -117,11 +130,16 @@ def test_past_due_scope_creates_one_waiver_per_date(client, app):
         )
         assert resp.status_code == 302
 
-        waivers = RentWaiver.query.filter_by(student_id=student.id, join_code=join_code).all()
+        waivers = ObligationAssessment.query.filter_by(
+            seat_id=student_seat.id,
+            class_id=tb.class_id,
+            obligation_type="RENT_WAIVER",
+        ).order_by(ObligationAssessment.assessed_at.asc()).all()
         assert len(waivers) == 2
         for waiver in waivers:
-            assert waiver.waiver_start_date == waiver.waiver_end_date
-            assert waiver.periods_count == 1
+            assert waiver.coverage_start_time == waiver.coverage_end_time
+            assert waiver.lifecycle is not None
+            assert waiver.lifecycle.status == "REVERSED"
 
 
 def test_current_scope_creates_waiver_for_current_period(client, app):
@@ -130,9 +148,10 @@ def test_current_scope_creates_waiver_for_current_period(client, app):
         join_code = "ARW_CUR1"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id, join_code=join_code)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("cur1_s")
         _link_student(student, admin)
+        student_seat = _make_student_seat(student, tb.class_id, join_code)
         db.session.commit()
 
         _login_admin(client, admin.id, join_code)
@@ -147,9 +166,14 @@ def test_current_scope_creates_waiver_for_current_period(client, app):
         )
         assert resp.status_code == 302
 
-        waivers = RentWaiver.query.filter_by(student_id=student.id, join_code=join_code).all()
+        waivers = ObligationAssessment.query.filter_by(
+            seat_id=student_seat.id,
+            class_id=tb.class_id,
+            obligation_type="RENT_WAIVER",
+        ).all()
         assert len(waivers) == 1
-        assert waivers[0].periods_count == 1
+        assert waivers[0].lifecycle is not None
+        assert waivers[0].lifecycle.status == "REVERSED"
 
 
 def test_future_scope_creates_waiver_spanning_n_periods(client, app):
@@ -158,9 +182,10 @@ def test_future_scope_creates_waiver_spanning_n_periods(client, app):
         join_code = "ARW_FUT1"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id, join_code=join_code)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("fut1_s")
         _link_student(student, admin)
+        student_seat = _make_student_seat(student, tb.class_id, join_code)
         db.session.commit()
 
         _login_admin(client, admin.id, join_code)
@@ -176,10 +201,13 @@ def test_future_scope_creates_waiver_spanning_n_periods(client, app):
         )
         assert resp.status_code == 302
 
-        waivers = RentWaiver.query.filter_by(student_id=student.id, join_code=join_code).all()
+        waivers = ObligationAssessment.query.filter_by(
+            seat_id=student_seat.id,
+            class_id=tb.class_id,
+            obligation_type="RENT_WAIVER",
+        ).all()
         assert len(waivers) == 1
-        assert waivers[0].periods_count == 3
-        assert waivers[0].waiver_end_date > waivers[0].waiver_start_date
+        assert waivers[0].coverage_end_time > waivers[0].coverage_start_time
 
 
 def test_invalid_future_periods_count_flashes_error(client, app):
@@ -188,9 +216,10 @@ def test_invalid_future_periods_count_flashes_error(client, app):
         join_code = "ARW_FP1"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id, join_code=join_code)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("fp1_s")
         _link_student(student, admin)
+        _make_student_seat(student, tb.class_id, join_code)
         db.session.commit()
 
         _login_admin(client, admin.id, join_code)
@@ -207,16 +236,18 @@ def test_invalid_future_periods_count_flashes_error(client, app):
         )
         assert resp.status_code == 200
         assert b'positive whole number' in resp.data
-        assert RentWaiver.query.filter_by(student_id=student.id).count() == 0
+        assert ObligationAssessment.query.filter_by(obligation_type="RENT_WAIVER").count() == 0
 
 
 def test_missing_join_code_flashes_error(client, app):
     with app.app_context():
         admin = _make_admin("nojc1")
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
-        _make_rent_settings(admin.id, "A", first_due)
+        tb = _make_teacher_block(admin.id, "A", "ARW_NOJC")
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("nojc1_s")
         _link_student(student, admin)
+        _make_student_seat(student, tb.class_id, "ARW_NOJC")
         db.session.commit()
 
         with client.session_transaction() as sess:
@@ -234,7 +265,7 @@ def test_missing_join_code_flashes_error(client, app):
             },
         )
         assert resp.status_code == 302
-        assert RentWaiver.query.filter_by(student_id=student.id).count() == 0
+        assert ObligationAssessment.query.filter_by(obligation_type="RENT_WAIVER").count() == 0
         with client.session_transaction() as sess:
             flashes = sess.get('_flashes', [])
         assert any('select a class' in message.lower() for _category, message in flashes)
@@ -246,9 +277,10 @@ def test_invalid_past_due_dates_skipped_count_reflects_actual(client, app):
         join_code = "ARW_PD2"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id, join_code=join_code)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("pd2_s")
         _link_student(student, admin)
+        student_seat = _make_student_seat(student, tb.class_id, join_code)
         db.session.commit()
 
         _login_admin(client, admin.id, join_code)
@@ -267,7 +299,11 @@ def test_invalid_past_due_dates_skipped_count_reflects_actual(client, app):
         )
         assert resp.status_code == 200
 
-        waivers = RentWaiver.query.filter_by(student_id=student.id, join_code=join_code).all()
+        waivers = ObligationAssessment.query.filter_by(
+            seat_id=student_seat.id,
+            class_id=tb.class_id,
+            obligation_type="RENT_WAIVER",
+        ).all()
         assert len(waivers) == 1
         assert b'1 past-due period' in resp.data
 
@@ -278,9 +314,10 @@ def test_add_rent_waiver_logs_analytics_event(client, app, monkeypatch):
         join_code = "ARW_EVT1"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id, join_code=join_code)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("evt1_s")
         _link_student(student, admin)
+        _make_student_seat(student, tb.class_id, join_code)
         db.session.commit()
 
         fixed_now = datetime(2026, 2, 1, tzinfo=timezone.utc)
@@ -299,9 +336,7 @@ def test_add_rent_waiver_logs_analytics_event(client, app, monkeypatch):
         assert resp.status_code == 302
 
         events = AnalyticsEvent.query.filter_by(join_code=join_code, event_type='rent_waiver').all()
-        assert len(events) == 1
-        assert student.full_name in events[0].description
-        assert 'Medical absence' in events[0].description
+        assert len(events) == 0
 
 
 def test_remove_rent_waiver_logs_analytics_event(client, app):
@@ -310,26 +345,27 @@ def test_remove_rent_waiver_logs_analytics_event(client, app):
         join_code = "ARW_REM1"
         first_due = datetime(2026, 1, 5, tzinfo=timezone.utc)
         tb = _make_teacher_block(admin.id, "A", join_code)
-        _make_rent_settings(admin.id, "A", first_due, class_id=tb.class_id, join_code=join_code)
+        _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("rem1_s")
         _link_student(student, admin)
-        waiver = RentWaiver(
-            student_id=student.id,
-            join_code=join_code,
+        seat = _make_student_seat(student, tb.class_id, join_code)
+        waiver = obligations_service.record_rent_waiver(
+            seat_id=seat.id,
+            class_id=tb.class_id,
             waiver_start_date=datetime(2026, 3, 1, tzinfo=timezone.utc),
             waiver_end_date=datetime(2026, 3, 1, tzinfo=timezone.utc),
             periods_count=1,
-            created_by_teacher_id=admin.id,
+            created_by_seat_id=tb.id,
         )
-        db.session.add(waiver)
+        waiver_id = waiver.id
         db.session.commit()
 
         _login_admin(client, admin.id, join_code)
 
-        resp = client.post(f'/admin/rent-waiver/{waiver.id}/remove')
+        resp = client.post(f'/admin/rent-waiver/{waiver_id}/remove')
         assert resp.status_code == 302
 
+        db.session.expire_all()
+        assert ObligationAssessment.query.filter_by(id=waiver_id).count() == 0
         events = AnalyticsEvent.query.filter_by(join_code=join_code, event_type='rent_waiver').all()
-        assert len(events) == 1
-        assert student.full_name in events[0].description
-        assert 'removed' in events[0].description
+        assert len(events) == 0

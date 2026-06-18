@@ -25,7 +25,7 @@ from dateutil.relativedelta import relativedelta
 from app.extensions import db, limiter
 from app.models import (
     Student, Transaction, TransactionStatus, TapEvent, StoreItem, StoreItemBlock, StudentItem,
-    RentSettings, RentPayment, RentWaiver, InsurancePolicy, StudentInsurance, InsuranceClaim,
+    RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
     BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole, StudentTeacher,
     ClassMembership, ClassEconomy, _quantize_currency
 )
@@ -1588,12 +1588,10 @@ def apply_savings_interest(student, annual_rate=Decimal('0.045')):
     context = resolve_canonical_context()
     if not context:
         return None
-    interest_tx = post_monthly_savings_interest(
-        student,
-        teacher_id=None,
-        join_code=get_display_join_code(context.class_id),
-        annual_rate=annual_rate,
-    )
+    seat = get_current_seat()
+    if not seat:
+        return None
+    interest_tx = post_monthly_savings_interest(seat, annual_rate=annual_rate)
     return interest_tx
 
 
@@ -2925,8 +2923,8 @@ def _iter_rent_waiver_coverage_dates(settings, waiver):
 
     delta = _get_rent_period_delta(settings)
     dates = []
-    current = ensure_utc(waiver.waiver_start_date)
-    end = ensure_utc(waiver.waiver_end_date)
+    current = ensure_utc(getattr(waiver, "coverage_start_time", None))
+    end = ensure_utc(getattr(waiver, "coverage_end_time", None))
 
     while current and end and current <= end:
         dates.append(current)
@@ -2954,6 +2952,8 @@ def _expand_rent_waiver_history(settings, waivers, *, now=None):
         for coverage_due_date in _iter_rent_waiver_coverage_dates(settings, waiver):
             coverage_day = ensure_utc(coverage_due_date).date()
             current_day = ensure_utc(current_coverage_due_date).date() if current_coverage_due_date else None
+            seat = getattr(waiver, "seat", None)
+            student = seat.student if seat and seat.student_id else None
 
             if current_day is None or coverage_day > current_day:
                 status = 'upcoming'
@@ -2970,15 +2970,14 @@ def _expand_rent_waiver_history(settings, waivers, *, now=None):
 
             entries.append({
                 'waiver': waiver,
-                'student': waiver.student,
-                'join_code': waiver.join_code,
+                'student': student,
                 'coverage_due_date': coverage_due_date,
                 'coverage_label': _get_rent_coverage_label(coverage_due_date),
                 'status': status,
                 'status_label': status_label,
                 'is_cancellable': cancellable,
-                'created_at': ensure_utc(waiver.created_at) if waiver.created_at else None,
-                'reason': waiver.reason,
+                'created_at': ensure_utc(getattr(waiver, "assessed_at", None)) if getattr(waiver, "assessed_at", None) else None,
+                'reason': waiver.reversal.reason if getattr(waiver, "reversal", None) else None,
             })
 
     status_rank = {'current': 0, 'upcoming': 1, 'used': 2}
@@ -3308,10 +3307,9 @@ def rent():
 
     waiver_history = []
     if settings:
-        waiver_rows = RentWaiver.query.filter(
-            RentWaiver.seat_id == seat_id,
-            RentWaiver.class_id == class_id,
-        ).all()
+        from app.services.obligations_service import get_rent_waivers_for_seat
+
+        waiver_rows = get_rent_waivers_for_seat(seat_id, class_id)
         waiver_history = _expand_rent_waiver_history(settings, waiver_rows, now=now)
 
     payment_history_rows = []
@@ -3393,18 +3391,19 @@ def rent_pay(period):
     if not context:
         flash("No class selected. Please choose a class to continue.", "error")
         return redirect(url_for('student.dashboard'))
+    seat = get_current_seat()
 
     class_id = context.class_id
     if not class_id:
         from app.models import ClassEconomy
-        ce = ClassEconomy.query.filter_by(join_code=join_code).first()
+        ce = ClassEconomy.query.filter_by(join_code=session.get('current_join_code')).first()
         class_id = ce.class_id if ce else None
 
     if not class_id:
         flash("No class context available.", "error")
         return redirect(url_for('student.dashboard'))
 
-    seat_id = get_seat_id_for_class(student.id, class_id)
+    seat_id = seat.id if seat and seat.class_id == class_id else get_seat_id_for_class(student.id, class_id)
     if not seat_id:
         flash("No seat assigned in this class.", "error")
         return redirect(url_for('student.dashboard'))
@@ -3421,7 +3420,7 @@ def rent_pay(period):
 
     # Validate period for the current class context only
     period = (period or '').strip().upper()
-    current_block = context.get('block', '').strip().upper()
+    current_block = (seat.block or '').strip().upper() if seat and seat.block else ''
     if period != current_block:
         flash("Invalid period.", "error")
         return redirect(url_for('student.rent'))
