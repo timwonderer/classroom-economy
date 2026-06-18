@@ -6425,8 +6425,9 @@ def rent_settings():
         admin_id=admin_id,
         requested_block=request.values.get('settings_block'),
     )
+    class_id = selected_scope['class_id']
     payroll_settings = PayrollSettings.query.filter_by(
-        class_id=selected_scope['class_id'],
+        class_id=class_id,
         is_active=True,
     ).first()
     teacher_blocks = [option['block'] for option in feature_options]
@@ -7166,10 +7167,6 @@ def add_rent_waiver():
                 created_by_seat_id=teacher_seat.id,
                 created_by_user_id=admin_id,
             )
-        # TODO(v2): Re-add a canonical analytics event once analytics_events is seat-scoped.
-        description = f"Rent waiver added for {student.full_name} covering: {scope_str}."
-        if reason:
-            description = f"{description} Reason: {reason}"
         count += 1
 
     flash(f"Rent waiver added for {count} student(s) covering: {scope_str}.", "success")
@@ -8299,10 +8296,7 @@ def apply_economy_rebalance():
         payroll_settings=payroll_settings,
         rent_settings=rent_settings,
         insurance_policies=insurance_policies,
-        fines=(
-            PayrollFine.query.filter_by(class_id=effective_class.class_id, is_active=True).all()
-            if effective_class else []
-        ),
+        fines=[],
         store_items=scoped_store_items,
         expected_weekly_hours=payroll_settings.expected_weekly_hours if payroll_settings.expected_weekly_hours is not None else 5.0,
     )
@@ -8386,10 +8380,7 @@ def economy_health():
     has_payroll_settings = len(all_payroll_settings) > 0
 
     selected_class_id = selected_scope['class_id']
-    fines = (
-        PayrollFine.query.filter_by(class_id=selected_class_id, is_active=True).all()
-        if selected_class_id else []
-    )
+    fines = []
     store_items = (
         StoreItem.query.filter_by(class_id=selected_class_id, is_active=True).all()
         if selected_class_id else []
@@ -11910,15 +11901,6 @@ def api_economy_analyze():
         checker = EconomyBalanceChecker(admin_id, block, class_id=getattr(payroll_settings, "class_id", None))
 
         # Get other economy features
-        rent_settings = RentSettings.query.filter_by(
-            teacher_id=admin_id,
-            is_enabled=True
-        ).first() if block is None else RentSettings.query.filter_by(
-            teacher_id=admin_id,
-            block=block,
-            is_enabled=True
-        ).first()
-
         class_ids_query = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=admin_id)
         scoped_class_id = None
         if block:
@@ -11935,14 +11917,29 @@ def api_economy_analyze():
             if not scoped_class_id:
                 return jsonify({'status': 'error', 'message': 'Class scope is unavailable for the selected block.'}), 404
 
+        if scoped_class_id:
+            rent_settings = (
+                RentSettings.query.filter_by(
+                    class_id=scoped_class_id,
+                    block=block,
+                    is_enabled=True,
+                ).first()
+            )
+        else:
+            rent_settings = (
+                RentSettings.query.filter(
+                    RentSettings.class_id.in_(sa.select(class_ids_query.subquery())),
+                    RentSettings.is_enabled.is_(True),
+                )
+                .order_by(desc(RentSettings.block.isnot(None)))
+                .first()
+            )
+
         insurance_policies_query = InsurancePolicy.query.filter(
             InsurancePolicy.class_id.in_(sa.select(class_ids_query.subquery())),
             InsurancePolicy.is_active.is_(True),
         )
-        fines_query = PayrollFine.query.filter(
-            PayrollFine.class_id.in_(sa.select(class_ids_query.subquery())),
-            PayrollFine.is_active.is_(True),
-        )
+        fines_query = []
         store_items_query = StoreItem.query.filter(
             StoreItem.class_id.in_(sa.select(class_ids_query.subquery())),
             StoreItem.is_active.is_(True),
@@ -11950,11 +11947,10 @@ def api_economy_analyze():
 
         if scoped_class_id:
             insurance_policies_query = insurance_policies_query.filter(InsurancePolicy.class_id == scoped_class_id)
-            fines_query = fines_query.filter(PayrollFine.class_id == scoped_class_id)
             store_items_query = store_items_query.filter(StoreItem.class_id == scoped_class_id)
 
         insurance_policies = insurance_policies_query.all()
-        fines = fines_query.all()
+        fines = fines_query
         store_items = store_items_query.all()
 
         # Perform analysis

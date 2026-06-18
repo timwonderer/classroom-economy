@@ -1588,12 +1588,10 @@ def apply_savings_interest(student, annual_rate=Decimal('0.045')):
     context = resolve_canonical_context()
     if not context:
         return None
-    interest_tx = post_monthly_savings_interest(
-        student,
-        teacher_id=None,
-        join_code=get_display_join_code(context.class_id),
-        annual_rate=annual_rate,
-    )
+    seat = get_current_seat()
+    if not seat:
+        return None
+    interest_tx = post_monthly_savings_interest(seat, annual_rate=annual_rate)
     return interest_tx
 
 
@@ -3393,18 +3391,19 @@ def rent_pay(period):
     if not context:
         flash("No class selected. Please choose a class to continue.", "error")
         return redirect(url_for('student.dashboard'))
+    seat = get_current_seat()
 
     class_id = context.class_id
     if not class_id:
         from app.models import ClassEconomy
-        ce = ClassEconomy.query.filter_by(join_code=join_code).first()
+        ce = ClassEconomy.query.filter_by(join_code=session.get('current_join_code')).first()
         class_id = ce.class_id if ce else None
 
     if not class_id:
         flash("No class context available.", "error")
         return redirect(url_for('student.dashboard'))
 
-    seat_id = get_seat_id_for_class(student.id, class_id)
+    seat_id = seat.id if seat and seat.class_id == class_id else get_seat_id_for_class(student.id, class_id)
     if not seat_id:
         flash("No seat assigned in this class.", "error")
         return redirect(url_for('student.dashboard'))
@@ -3421,7 +3420,7 @@ def rent_pay(period):
 
     # Validate period for the current class context only
     period = (period or '').strip().upper()
-    current_block = context.get('block', '').strip().upper()
+    current_block = (seat.block or '').strip().upper() if seat and seat.block else ''
     if period != current_block:
         flash("Invalid period.", "error")
         return redirect(url_for('student.rent'))
