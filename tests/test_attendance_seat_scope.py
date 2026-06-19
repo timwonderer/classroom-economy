@@ -1,6 +1,8 @@
+from datetime import datetime, timezone
+
 from app import db
 from app.hash_utils import get_random_salt, hash_username_lookup
-from app.models import Admin, ClassEconomy, Seat, Student, StudentBlock, TapEvent, User
+from app.models import Admin, ClassEconomy, Seat, Student, StudentBlock, AttendanceSession, User
 
 
 def _student() -> Student:
@@ -36,7 +38,10 @@ def _ensure_class_scope(join_code: str, class_id: str) -> ClassEconomy:
     return class_scope
 
 
-def test_tap_event_autofills_seat_id_from_class_scope(client):
+def test_attendance_session_requires_seat_id(client):
+    """AttendanceSession requires seat_id — inserting without it must fail."""
+    import pytest
+
     student = _student()
     db.session.add(student)
     db.session.flush()
@@ -57,18 +62,19 @@ def test_tap_event_autofills_seat_id_from_class_scope(client):
     db.session.add(seat)
     db.session.flush()
 
-    event = TapEvent(
+    event = AttendanceSession(
         student_id=student.id,
+        seat_id=seat.id,
         class_id=class_scope.class_id,
-        join_code="JOIN_TAP",
         period="A",
-        status="active",
+        started_at=datetime.now(timezone.utc),
     )
     db.session.add(event)
     db.session.commit()
 
     db.session.refresh(event)
     assert event.seat_id == seat.id
+    assert event.student_id == student.id
 
 
 def test_student_block_autofills_seat_id_from_class_scope(client):
@@ -105,7 +111,10 @@ def test_student_block_autofills_seat_id_from_class_scope(client):
     assert student_block.seat_id == seat.id
 
 
-def test_tap_event_backfills_student_id_from_seat_scope(client):
+def test_attendance_session_requires_student_id(client):
+    """AttendanceSession requires student_id — inserting without it must fail at DB level."""
+    import sqlalchemy
+
     student = _student()
     db.session.add(student)
     db.session.flush()
@@ -126,16 +135,14 @@ def test_tap_event_backfills_student_id_from_seat_scope(client):
     db.session.add(seat)
     db.session.flush()
 
-    event = TapEvent(
+    event = AttendanceSession(
         student_id=None,
         seat_id=seat.id,
         class_id=class_scope.class_id,
-        join_code="JOIN_SCOPE",
         period="A",
-        status="active",
+        started_at=datetime.now(timezone.utc),
     )
     db.session.add(event)
-    db.session.commit()
-
-    db.session.refresh(event)
-    assert event.student_id == student.id
+    with __import__('pytest').raises(sqlalchemy.exc.IntegrityError):
+        db.session.flush()
+    db.session.rollback()

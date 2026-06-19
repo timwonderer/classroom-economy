@@ -1,15 +1,23 @@
 from datetime import datetime, timezone
 
+from flask import g
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, ClassEconomy, ClassMembership, Seat, Student, StudentTeacher, TapEvent, IdentityProfile
+from app.models import Admin, ClassEconomy, ClassMembership, Seat, Student, StudentTeacher, AttendanceSession, IdentityProfile, User
 
 
 def _login_admin(client, admin_id, join_code):
+    # Clear cached auth state from previous requests in the same test
+    for attr in ('_auth_current_user_cache', '_auth_current_seat_cache', '_auth_current_system_admin_cache'):
+        g.pop(attr, None)
+    admin = db.session.get(Admin, admin_id)
+    user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first() if admin else None
     economy = ClassEconomy.query.filter_by(join_code=join_code, teacher_id=admin_id).first()
     with client.session_transaction() as sess:
         sess["is_admin"] = True
         sess["admin_id"] = admin_id
+        if user:
+            sess["user_id"] = user.id
         sess["current_join_code"] = join_code
         if economy and economy.class_id:
             sess["current_class_id"] = economy.class_id
@@ -22,6 +30,12 @@ def _setup_shared_student_with_split_membership():
     admin_a = make_admin("tap_scope_admin_a", "secret-a")
     admin_b = make_admin("tap_scope_admin_b", "secret-b")
     db.session.add_all([admin_a, admin_b])
+    db.session.flush()
+
+    # Create User records for both admins (required for auth)
+    user_a = User(user_role="teacher", username_hash=admin_a.username_hash, username_lookup_hash=admin_a.username_lookup_hash)
+    user_b = User(user_role="teacher", username_hash=admin_b.username_hash, username_lookup_hash=admin_b.username_lookup_hash)
+    db.session.add_all([user_a, user_b])
     db.session.flush()
 
     student = Student(first_name="Tap", last_initial="S", block="A", salt=b"salt")
@@ -43,7 +57,6 @@ def _setup_shared_student_with_split_membership():
     ])
     db.session.flush()
     seat = Seat.query.filter_by(
-        teacher_id=admin_b.id,
         student_id=student.id,
         join_code="TAPB01",
     ).first()
@@ -68,14 +81,12 @@ def _setup_shared_student_with_split_membership():
         db.session.add(seat_row)
         db.session.flush()
 
-    tap_event = TapEvent(
+    tap_event = AttendanceSession(
         student_id=student.id,
         seat_id=seat_row.id,
         class_id=seat.class_id,
         period="A",
-        status="active",
-        join_code="TAPB01",
-        timestamp=datetime.now(timezone.utc),
+        started_at=datetime.now(timezone.utc),
     )
     db.session.add(tap_event)
     db.session.commit()
@@ -102,7 +113,7 @@ def test_delete_tap_entry_rejects_cross_join_code_context(client):
 
     _login_admin(client, admin_a.id, "TAPA01")
     denied = client.delete(f"/api/admin/tap-entries/{event.id}")
-    assert denied.status_code == 403
+    assert denied.status_code == 404
     db.session.refresh(event)
     assert event.is_deleted is False
 

@@ -14,14 +14,15 @@ from dateutil.relativedelta import relativedelta
 from flask import Blueprint, request, jsonify, session, current_app
 from sqlalchemy import func, or_
 import sqlalchemy as sa
-from sqlalchemy.orm import aliased
+
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.security import check_password_hash
 
 from app.extensions import db, limiter
 from app.models import (
-    Admin, Student, StoreItem, StudentItem, Transaction, TransactionStatus, TapEvent,
-    TapEventReasonCode, HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
+    Admin, Student, StoreItem, StudentItem, Transaction, TransactionStatus,
+    AttendanceSession, AttendanceReasonCode, HallPassLog, HallPassSettings,
+    InsuranceClaim, BankingSettings,
     StudentTeacher, StudentBlock, StoreItemBlock,
     RedemptionAuditLog, RedemptionAuditAction, RedemptionAuditSource, _quantize_currency,
     ClassEconomy, ClassMembership, Seat, SeatAttendanceState,
@@ -55,7 +56,7 @@ from app.feats.attendance import (
     rotate_teacher_hall_pass_verify_token as feat_rotate_teacher_hall_pass_verify_token,
     save_hall_pass_setup_config as feat_save_hall_pass_setup_config,
     set_student_block_tap_enabled as feat_set_student_block_tap_enabled,
-    soft_delete_tap_entry as feat_soft_delete_tap_entry,
+    soft_delete_session as feat_soft_delete_session,
     update_hall_pass_queue_settings as feat_update_hall_pass_queue_settings,
     return_hall_pass as feat_return_hall_pass,
 )
@@ -1824,57 +1825,29 @@ def attendance_history():
 
         # Get student IDs that the current admin can access (tenant-scoped)
         accessible_student_ids_query = get_admin_student_query(include_unassigned=False).with_entities(Student.id)
-        # Build query scoped to admin's students and exclude deleted records
         query = _apply_admin_class_scope(
-            TapEvent.query.filter(TapEvent.is_deleted.is_(False)),
-            TapEvent,
+            AttendanceSession.query.filter(AttendanceSession.is_deleted.is_(False)),
+            AttendanceSession,
             scoped_admin_id,
             accessible_student_ids_query,
         )
         current_class_id = (session.get("current_class_id") or "").strip()
         if current_class_id:
-            query = query.filter(TapEvent.class_id == current_class_id)
+            query = query.filter(AttendanceSession.class_id == current_class_id)
 
-        # Suppress duplicate auto tap-outs from known race conditions.
-        # Keep only the earliest row when daily-limit inactive events are otherwise identical.
-        duplicate_tap = aliased(TapEvent)
-        query = query.filter(~sa.and_(
-            TapEvent.status == 'inactive',
-            or_(
-                TapEvent.reason_code == TapEventReasonCode.DAILY_LIMIT,
-                sa.and_(
-                    TapEvent.reason_code.is_(None),
-                    TapEvent.reason.like('Daily limit%')
-                )
-            ),
-            sa.exists(
-                sa.select(1).where(
-                    sa.and_(
-                        duplicate_tap.seat_id == TapEvent.seat_id,
-                        duplicate_tap.class_id == TapEvent.class_id,
-                        duplicate_tap.period == TapEvent.period,
-                        duplicate_tap.status == TapEvent.status,
-                        duplicate_tap.reason == TapEvent.reason,
-                        duplicate_tap.timestamp == TapEvent.timestamp,
-                        duplicate_tap.is_deleted.is_(False),
-                        duplicate_tap.id < TapEvent.id
-                    )
-                )
-            )
-        ))
-
-        # Apply filters
         if period:
-            query = query.filter(TapEvent.period == period)
+            query = query.filter(AttendanceSession.period == period)
 
-        if status:
-            query = query.filter(TapEvent.status == status)
+        if status == "active":
+            query = query.filter(AttendanceSession.ended_at.is_(None))
+        elif status == "inactive":
+            query = query.filter(AttendanceSession.ended_at.isnot(None))
 
         if start_date:
             try:
                 start_day = datetime.strptime(start_date, '%Y-%m-%d').date()
                 start_datetime, _ = local_date_bounds_utc(start_day, timezone_name='UTC')
-                query = query.filter(TapEvent.timestamp >= normalize_for_db(start_datetime))
+                query = query.filter(AttendanceSession.started_at >= normalize_for_db(start_datetime))
             except ValueError:
                 return jsonify({"status": "error", "message": "Invalid start date format"}), 400
 
@@ -1882,36 +1855,28 @@ def attendance_history():
             try:
                 end_day = datetime.strptime(end_date, '%Y-%m-%d').date()
                 _, end_datetime = local_date_bounds_utc(end_day, timezone_name='UTC')
-                query = query.filter(TapEvent.timestamp <= normalize_for_db(end_datetime))
+                query = query.filter(AttendanceSession.started_at <= normalize_for_db(end_datetime))
             except ValueError:
                 return jsonify({"status": "error", "message": "Invalid end date format"}), 400
 
-        from app.models import Seat
-        # Filter by block (need to join with Seat)
         if block:
-            query = query.join(Seat, TapEvent.seat_id == Seat.id)
-            query = query.filter(TapEvent.period == block)
+            query = query.filter(AttendanceSession.period == block)
 
-        # Order by most recent first
-        query = query.order_by(TapEvent.timestamp.desc())
+        query = query.order_by(AttendanceSession.started_at.desc())
 
-        # Get total count for pagination
         total = query.count()
-
-        # Apply pagination
         offset = (page - 1) * page_size
         records = query.offset(offset).limit(page_size).all()
 
-        # Build seat lookup for names and blocks without loading full Seat entities.
         seat_ids = [r.seat_id for r in records if r.seat_id]
-        seats = {}
+        seats_lookup = {}
         if seat_ids:
             seat_rows = db.session.query(Seat.id, Seat.student_id, Seat.block).filter(Seat.id.in_(seat_ids)).all()
             student_ids = list({row.student_id for row in seat_rows if row.student_id})
             students_by_id = {}
             if student_ids:
                 student_rows = Student.query.filter(Student.id.in_(student_ids)).all()
-                students_by_id = {student.id: student for student in student_rows}
+                students_by_id = {s.id: s for s in student_rows}
 
             period_by_seat_id = {}
             for record in records:
@@ -1919,33 +1884,31 @@ def attendance_history():
                     period_by_seat_id[record.seat_id] = record.period
 
             for row in seat_rows:
-                student = students_by_id.get(row.student_id)
-                student_name = student.full_name if student else "Unknown"
+                student_obj = students_by_id.get(row.student_id)
+                student_name = student_obj.full_name if student_obj else "Unknown"
                 student_block = period_by_seat_id.get(row.id) or row.block or "Unknown"
-                seats[row.id] = {"name": student_name, "block": student_block}
+                seats_lookup[row.id] = {"name": student_name, "block": student_block}
 
-        # Get class labels for blocks
-        blocks_in_records = set(seats[sid]['block'] for sid in seats if seats[sid]['block'])
+        blocks_in_records = set(seats_lookup[sid]['block'] for sid in seats_lookup if seats_lookup[sid]['block'])
         class_labels = {}
         if blocks_in_records:
-            classes = ClassEconomy.query.filter(
-                ClassEconomy.teacher_id == scoped_admin_id
-            ).all()
+            classes = ClassEconomy.query.filter(ClassEconomy.teacher_id == scoped_admin_id).all()
             for c in classes:
                 block_name = (c.display_name or '').strip().upper()
                 class_labels[block_name] = c.display_name or c.join_code
 
-        # Format records for response
         records_data = []
         for record in records:
-            seat_info = seats.get(record.seat_id, {'name': 'Unknown', 'block': 'Unknown'})
+            seat_info = seats_lookup.get(record.seat_id, {'name': 'Unknown', 'block': 'Unknown'})
             student_block = seat_info['block']
             student_class_label = class_labels.get(student_block, student_block) if student_block != 'Unknown' else 'Unknown'
 
-            # Format timestamp as UTC with 'Z' suffix
-            timestamp_str = None
-            if record.timestamp:
-                timestamp_str = ensure_utc(record.timestamp).isoformat().replace('+00:00', 'Z')
+            started_str = None
+            if record.started_at:
+                started_str = ensure_utc(record.started_at).isoformat().replace('+00:00', 'Z')
+            ended_str = None
+            if record.ended_at:
+                ended_str = ensure_utc(record.ended_at).isoformat().replace('+00:00', 'Z')
 
             records_data.append({
                 "id": record.id,
@@ -1954,9 +1917,12 @@ def attendance_history():
                 "student_block": student_block,
                 "student_class_label": student_class_label,
                 "period": record.period,
-                "status": record.status,
-                "reason": record.reason if record.reason else None,
-                "timestamp": timestamp_str
+                "status": "active" if record.ended_at is None else "inactive",
+                "reason": record.end_reason or record.start_reason,
+                "timestamp": started_str,
+                "started_at": started_str,
+                "ended_at": ended_str,
+                "duration_seconds": record.duration_seconds,
             })
 
         return jsonify({
@@ -2086,7 +2052,7 @@ def handle_tap():
 
         # Special case for "Done for the day" - this is the old "tap out" behavior
         if reason.lower() in ['done', 'done for the day']:
-            # Fall through to the standard TapEvent creation logic below
+            # Fall through to the standard attendance session creation logic below
             pass
         else:
             policy_guard = feat_check_hall_pass_request_policy(
@@ -2232,10 +2198,8 @@ def get_tap_entries(student_id):
     if not admin:
         return jsonify({"error": "Unauthorized"}), 401
 
-    from app.models import TapEvent
     from app.auth import get_student_for_admin, get_admin_student_query
 
-    # SECURITY FIX: Use scoped helper to verify admin owns this student
     student = get_student_for_admin(student_id)
     if not student:
         return jsonify({"error": "Student not found or access denied"}), 404
@@ -2262,60 +2226,44 @@ def get_tap_entries(student_id):
 
     accessible_student_ids_query = get_admin_student_query(include_unassigned=False).with_entities(Student.id)
 
-    # Get all tap events for this student in active class scope.
-    query = TapEvent.query
-    query = query.filter(TapEvent.student_id == student_id, TapEvent.class_id == active_class_id)
-
-    events = (
-        _apply_admin_class_scope(
-            query,
-            TapEvent,
-            admin.id,
-            accessible_student_ids_query,
-        )
-        .order_by(TapEvent.period, TapEvent.timestamp.asc())
+    query = AttendanceSession.query.filter(
+        AttendanceSession.student_id == student_id,
+        AttendanceSession.class_id == active_class_id,
+        AttendanceSession.is_deleted.is_(False),
+    )
+    sessions = (
+        _apply_admin_class_scope(query, AttendanceSession, admin.id, accessible_student_ids_query)
+        .order_by(AttendanceSession.period, AttendanceSession.started_at.asc())
         .all()
     )
 
-    # Group by period and validate pairing
     periods = {}
-    for event in events:
-        if event.period not in periods:
-            periods[event.period] = []
-        periods[event.period].append({
-            'id': event.id,
-            'status': event.status,
-            'timestamp': event.timestamp.isoformat() if event.timestamp else None,
-            'reason': event.reason,
-            'is_deleted': event.is_deleted,
-            'deleted_at': event.deleted_at.isoformat() if event.deleted_at else None
+    for sess_row in sessions:
+        if sess_row.period not in periods:
+            periods[sess_row.period] = []
+        periods[sess_row.period].append({
+            'id': sess_row.id,
+            'started_at': sess_row.started_at.isoformat() if sess_row.started_at else None,
+            'ended_at': sess_row.ended_at.isoformat() if sess_row.ended_at else None,
+            'duration_seconds': sess_row.duration_seconds,
+            'start_reason': sess_row.start_reason,
+            'end_reason': sess_row.end_reason,
         })
 
-    # Validate pairing for each period
     period_data = {}
-    for period, events_list in periods.items():
-        # Filter out deleted events for pairing validation
-        active_events = [e for e in events_list if not e['is_deleted']]
-
-        # Check for unpaired entries
-        unpaired = []
-        expected_status = 'active'
-        for event in active_events:
-            if event['status'] == expected_status:
-                expected_status = 'inactive' if expected_status == 'active' else 'active'
-            else:
-                unpaired.append(event['id'])
-
-        # If we end on 'active', the last event is unpaired (student still tapped in)
-        if active_events and active_events[-1]['status'] == 'active':
-            # This is actually valid (student is currently working), remove from unpaired
-            if active_events[-1]['id'] in unpaired:
-                unpaired.remove(active_events[-1]['id'])
-
-        period_data[period] = {
-            'events': events_list,
-            'unpaired_event_ids': unpaired,
-            'is_valid': len(unpaired) == 0
+    for period_key, sessions_list in periods.items():
+        unclosed = [s for s in sessions_list if s['ended_at'] is None]
+        state = SeatAttendanceState.query.filter_by(
+            student_id=student_id, class_id=active_class_id, period=period_key
+        ).first()
+        stale_unclosed = [
+            s['id'] for s in unclosed
+            if not (state and state.is_active and state.open_session_id == s['id'])
+        ]
+        period_data[period_key] = {
+            'sessions': sessions_list,
+            'stale_unclosed_ids': stale_unclosed,
+            'is_valid': len(stale_unclosed) == 0,
         }
 
     return jsonify({
@@ -2336,37 +2284,37 @@ def delete_tap_entry(event_id):
     if not admin:
         return jsonify({"error": "Unauthorized"}), 401
 
-    from app.models import TapEvent
-    from app.auth import get_student_for_admin, get_admin_student_query
+    from app.auth import get_student_for_admin
+    from app.feats.attendance import soft_delete_session
 
-    event = TapEvent.query.filter(TapEvent.id == event_id).first()
-    if not event:
-        return jsonify({"error": "Tap entry not found"}), 404
+    att_session = AttendanceSession.query.filter(AttendanceSession.id == event_id).first()
+    if not att_session:
+        return jsonify({"error": "Attendance session not found"}), 404
 
     active_class_id = get_current_class_id()
     if not active_class_id:
         return jsonify({"error": "Class context unavailable"}), 404
 
-    if not event.class_id:
-        return jsonify({"error": "Tap entry not found"}), 404
-    if event.class_id != active_class_id:
-        return jsonify({"error": "Access denied"}), 403
+    if not att_session.class_id or att_session.class_id != active_class_id:
+        return jsonify({"error": "Attendance session not found"}), 404
 
-    if not _admin_has_class_scope(admin.id, event.class_id):
-        return jsonify({"error": "Tap entry not found"}), 404
+    if not _admin_has_class_scope(admin.id, att_session.class_id):
+        return jsonify({"error": "Attendance session not found"}), 404
 
-    # SECURITY FIX: Use scoped helper to verify admin owns this student
-    student = get_student_for_admin(event.student_id)
+    student = get_student_for_admin(att_session.student_id)
     if not student:
         return jsonify({"error": "Student not found or access denied"}), 404
 
-    feat_soft_delete_tap_entry(event=event, admin_id=admin.id, deleted_at=utc_now())
+    admin_seat = Seat.query.filter_by(user_id=admin.user_id, class_id=active_class_id).first() if hasattr(admin, 'user_id') and admin.user_id else None
+    admin_seat_id = admin_seat.id if admin_seat else att_session.seat_id
 
-    current_app.logger.info(f"Admin {admin.id} deleted tap entry {event_id} for student {event.student_id}")
+    soft_delete_session(session=att_session, admin_seat_id=admin_seat_id, deleted_at=utc_now())
+
+    current_app.logger.info(f"Admin {admin.id} deleted attendance session {event_id} for student {att_session.student_id}")
 
     return jsonify({
         "status": "ok",
-        "message": "Tap entry deleted successfully"
+        "message": "Attendance session deleted successfully"
     })
 
 

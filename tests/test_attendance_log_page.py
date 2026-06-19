@@ -5,8 +5,21 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone
 from app import db
-from app.models import Admin, Student, TapEvent, StudentTeacher
+from app.models import Admin, Student, AttendanceSession, StudentTeacher, ClassEconomy, ClassMembership, Seat, User
 from app.hash_utils import hash_username, get_random_salt
+
+
+def _create_user_for_admin(admin):
+    """Create a User record linked to an admin."""
+    user = User(
+        user_role="teacher",
+        username_hash=admin.username_hash,
+        username_lookup_hash=admin.username_lookup_hash,
+    )
+    db.session.add(user)
+    db.session.flush()
+    admin.user_id = user.id
+    return user
 
 @pytest.fixture
 def admin_with_data(client):
@@ -15,7 +28,19 @@ def admin_with_data(client):
     admin = make_admin('testadmin', 'TESTSECRET123456')
     db.session.add(admin)
     db.session.flush()
-    
+    user = _create_user_for_admin(admin)
+
+    # Create class economy
+    class_row = ClassEconomy(
+        join_code="ATTLOG1",
+        teacher_id=admin.id,
+        status="active",
+        created_by_admin_id=admin.id,
+    )
+    db.session.add(class_row)
+    db.session.flush()
+    db.session.add(ClassMembership(class_id=class_row.class_id, join_code="ATTLOG1", admin_id=admin.id, role="admin"))
+
     # Create students with blocks
     salt1 = get_random_salt()
     student1 = Student(
@@ -37,68 +62,80 @@ def admin_with_data(client):
     )
     db.session.add_all([student1, student2])
     db.session.flush()
-    
+
     # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
     db.session.add(StudentTeacher(student_id=student1.id, teacher_id=admin.id))
     db.session.add(StudentTeacher(student_id=student2.id, teacher_id=admin.id))
     db.session.flush()
-    
-    # Create tap events with different periods
-    tap1 = TapEvent(
+
+    # Create seats
+    seat1 = Seat(student_id=student1.id, class_id=class_row.class_id, join_code="ATTLOG1", block="PERIOD1", role="student")
+    seat2 = Seat(student_id=student2.id, class_id=class_row.class_id, join_code="ATTLOG1", block="PERIOD3", role="student")
+    db.session.add_all([seat1, seat2])
+    db.session.flush()
+
+    # Create attendance sessions with different periods
+    tap1 = AttendanceSession(
         student_id=student1.id,
+        seat_id=seat1.id,
+        class_id=class_row.class_id,
         period='PERIOD1',
-        status='active',
-        timestamp=datetime.now(timezone.utc)
+        started_at=datetime.now(timezone.utc),
     )
-    tap2 = TapEvent(
+    tap2 = AttendanceSession(
         student_id=student1.id,
+        seat_id=seat1.id,
+        class_id=class_row.class_id,
         period='PERIOD2',
-        status='inactive',
-        timestamp=datetime.now(timezone.utc)
+        started_at=datetime.now(timezone.utc),
+        ended_at=datetime.now(timezone.utc),
+        duration_seconds=0,
     )
-    tap3 = TapEvent(
+    tap3 = AttendanceSession(
         student_id=student2.id,
+        seat_id=seat2.id,
+        class_id=class_row.class_id,
         period='PERIOD3',
-        status='active',
-        timestamp=datetime.now(timezone.utc)
+        started_at=datetime.now(timezone.utc),
     )
     db.session.add_all([tap1, tap2, tap3])
     db.session.commit()
-    
+
     return {
         'admin': admin,
+        'user': user,
         'students': [student1, student2],
-        'tap_events': [tap1, tap2, tap3]
+        'tap_events': [tap1, tap2, tap3],
+        'class_id': class_row.class_id,
+        'join_code': class_row.join_code,
     }
 
 
 def test_attendance_log_page_renders_with_periods_and_blocks(client, admin_with_data):
     """Test that the attendance log page renders with periods and blocks context."""
     admin = admin_with_data['admin']
-    
+
     # Log in as the admin
     with client.session_transaction() as sess:
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
+        sess['user_id'] = admin_with_data['user'].id
+        sess['current_class_id'] = admin_with_data['class_id']
+        sess['current_join_code'] = admin_with_data['join_code']
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
-    
+
     # Access the attendance log page
     response = client.get('/admin/attendance-log')
-    
+
     assert response.status_code == 200
     html = response.data.decode('utf-8')
-    
-    # Verify the page contains the periods from tap events
-    assert 'PERIOD1' in html, "Expected PERIOD1 to be in the page"
-    assert 'PERIOD2' in html, "Expected PERIOD2 to be in the page"
-    assert 'PERIOD3' in html, "Expected PERIOD3 to be in the page"
-    
-    # Verify the page contains the filter dropdowns
-    assert 'filterPeriod' in html, "Expected period filter dropdown"
-    assert 'filterBlock' in html, "Expected block filter dropdown"
-    
+
     # Verify page structure
     assert 'Attendance Log' in html or 'Attendance History' in html
+
+    # Verify the page contains the filter elements
+    assert 'filterStatus' in html, "Expected status filter"
+    assert 'filterStartDate' in html, "Expected start date filter"
 
 
 def test_attendance_log_page_with_no_data(client):
@@ -106,23 +143,26 @@ def test_attendance_log_page_with_no_data(client):
     # Create admin with no students
     admin = make_admin('testadmin2', 'TESTSECRET789')
     db.session.add(admin)
+    db.session.flush()
+    user = _create_user_for_admin(admin)
     db.session.commit()
-    
+
     # Log in as the admin
     with client.session_transaction() as sess:
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
+        sess['user_id'] = user.id
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
-    
+
     # Access the attendance log page
     response = client.get('/admin/attendance-log')
-    
+
     assert response.status_code == 200
     html = response.data.decode('utf-8')
-    
+
     # Page should render even with empty data
-    assert 'filterPeriod' in html
-    assert 'filterBlock' in html
+    assert 'Attendance Log' in html or 'Attendance History' in html
+    assert 'filterStatus' in html
 
 
 def test_attendance_log_tenant_scoping(client):
@@ -132,7 +172,17 @@ def test_attendance_log_tenant_scoping(client):
     admin2 = make_admin('admin2', 'SECRET2')
     db.session.add_all([admin1, admin2])
     db.session.flush()
-    
+    user1 = _create_user_for_admin(admin1)
+    _create_user_for_admin(admin2)
+
+    # Create class economies
+    class1 = ClassEconomy(join_code="ADM1CLS", teacher_id=admin1.id, status="active", created_by_admin_id=admin1.id)
+    class2 = ClassEconomy(join_code="ADM2CLS", teacher_id=admin2.id, status="active", created_by_admin_id=admin2.id)
+    db.session.add_all([class1, class2])
+    db.session.flush()
+    db.session.add(ClassMembership(class_id=class1.class_id, join_code="ADM1CLS", admin_id=admin1.id, role="admin"))
+    db.session.add(ClassMembership(class_id=class2.class_id, join_code="ADM2CLS", admin_id=admin2.id, role="admin"))
+
     # Create students for each admin
     salt1 = get_random_salt()
     student1 = Student(
@@ -154,40 +204,59 @@ def test_attendance_log_tenant_scoping(client):
     )
     db.session.add_all([student1, student2])
     db.session.flush()
-    
+
     # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
     db.session.add(StudentTeacher(student_id=student1.id, teacher_id=admin1.id))
     db.session.add(StudentTeacher(student_id=student2.id, teacher_id=admin2.id))
     db.session.flush()
-    
-    # Create tap events
-    tap1 = TapEvent(
+
+    # Create seats
+    seat1 = Seat(student_id=student1.id, class_id=class1.class_id, join_code="ADM1CLS", block="ADM1PER", role="student")
+    seat2 = Seat(student_id=student2.id, class_id=class2.class_id, join_code="ADM2CLS", block="ADM2PER", role="student")
+    db.session.add_all([seat1, seat2])
+    db.session.flush()
+
+    # Create attendance sessions
+    tap1 = AttendanceSession(
         student_id=student1.id,
+        seat_id=seat1.id,
+        class_id=class1.class_id,
         period='ADM1PER',
-        status='active',
-        timestamp=datetime.now(timezone.utc)
+        started_at=datetime.now(timezone.utc),
     )
-    tap2 = TapEvent(
+    tap2 = AttendanceSession(
         student_id=student2.id,
+        seat_id=seat2.id,
+        class_id=class2.class_id,
         period='ADM2PER',
-        status='active',
-        timestamp=datetime.now(timezone.utc)
+        started_at=datetime.now(timezone.utc),
     )
     db.session.add_all([tap1, tap2])
     db.session.commit()
-    
+
     # Log in as admin1
     with client.session_transaction() as sess:
         sess['is_admin'] = True
         sess['admin_id'] = admin1.id
+        sess['user_id'] = user1.id
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
-    
+
     # Access the attendance log page
     response = client.get('/admin/attendance-log')
-    
+
     assert response.status_code == 200
     html = response.data.decode('utf-8')
-    
-    # Admin1 should see their period but not admin2's period
-    assert 'ADM1PER' in html, "Admin1 should see their own period"
-    assert 'ADM2PER' not in html, "Admin1 should not see admin2's period"
+
+    # Verify the page renders successfully
+    assert 'Attendance Log' in html or 'Attendance History' in html
+
+    # Verify tenant isolation via the attendance history API
+    with client.session_transaction() as sess:
+        sess['current_class_id'] = class1.class_id
+        sess['current_join_code'] = "ADM1CLS"
+    api_response = client.get('/api/attendance/history')
+    assert api_response.status_code == 200
+    data = api_response.get_json()
+    returned_periods = {r['period'] for r in data['records']}
+    assert 'ADM1PER' in returned_periods, "Admin1 should see their own period"
+    assert 'ADM2PER' not in returned_periods, "Admin1 should not see admin2's period"

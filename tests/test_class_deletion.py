@@ -6,11 +6,11 @@ from app.extensions import db
 from app.feats.base import InvariantViolation
 from app.models import (
     Admin, ClassEconomy, ClassMembership, Transaction, StudentBlock,
-    TapEvent, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
+    AttendanceSession, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
     AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
     StudentInsurance, RentPayment, Announcement, StoreItemBlock, StoreItem,
     Student, StudentTeacher, PayrollSettings, RentSettings,
-    IssueCategory, InsurancePolicy, InsurancePolicyBlock
+    IssueCategory, InsurancePolicy, InsurancePolicyBlock, User, Seat
 )
 from app.utils.deletion import collapse_universe
 from tests.helpers.class_scope import create_class_scope
@@ -57,8 +57,8 @@ def test_collapse_universe_cascades_and_cleans_up(client):
 
     # TeacherBlock
     # Settings
-    db.session.add(PayrollSettings(teacher_id=admin.id, block="A"))
-    db.session.add(RentSettings(teacher_id=admin.id, block="A"))
+    db.session.add(PayrollSettings(class_id=economy.class_id, block="A"))
+    db.session.add(RentSettings(class_id=economy.class_id, block="A"))
 
     # Transaction
     db.session.add(Transaction(student_id=student.id, teacher_id=admin.id, join_code=join_code, amount=10, account_type="checking", type="deposit", is_void=False))
@@ -104,6 +104,7 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     student_id_val = student.id
     student_b_id_val = student_b.id
     admin_id_val = admin.id
+    class_id_val = economy.class_id
 
     # Do the collapse
     success = collapse_universe(economy.class_id, reason="Test collapse", actor_membership_id=membership.id)
@@ -121,9 +122,9 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     # Store item should be deleted because it has no remaining visibility blocks
     assert db.session.query(StoreItem).filter_by(id=store_item_id_val).count() == 0
     
-    # Settings Cleanup
-    assert db.session.query(PayrollSettings).filter_by(teacher_id=admin_id_val, block="A").count() == 0
-    assert db.session.query(RentSettings).filter_by(teacher_id=admin_id_val, block="A").count() == 0
+    # Settings Cleanup (cascade-deleted with ClassEconomy)
+    assert db.session.query(PayrollSettings).filter_by(class_id=class_id_val, block="A").count() == 0
+    assert db.session.query(RentSettings).filter_by(class_id=class_id_val, block="A").count() == 0
 
     db.session.expire_all()
     # Student A should be entirely deleted because they have no other classes
@@ -137,6 +138,10 @@ def test_admin_join_code_delete_route(client):
     admin = make_admin("route_admin", "secret")
     db.session.add(admin)
     db.session.flush()
+    user = User(user_role="teacher", username_hash=admin.username_hash, username_lookup_hash=admin.username_lookup_hash)
+    db.session.add(user)
+    db.session.flush()
+    admin.user_id = user.id
 
     join_code = "ROUT01"
     create_class_scope(teacher=admin, join_code=join_code)
@@ -144,6 +149,7 @@ def test_admin_join_code_delete_route(client):
 
     with client.session_transaction() as sess:
         sess["admin_id"] = admin.id
+        sess["user_id"] = user.id
         sess["is_admin"] = True
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
         

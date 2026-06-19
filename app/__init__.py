@@ -1052,7 +1052,7 @@ app = create_app()
 
 # Re-export commonly used objects for convenience/legacy support
 from app.extensions import db  # noqa: E402
-from app.models import Student, TapEvent, Transaction  # noqa: E402
+from app.models import Student, AttendanceSession, Transaction  # noqa: E402
 from app.routes.student import apply_savings_interest  # noqa: E402
 
 __all__ = [
@@ -1060,7 +1060,7 @@ __all__ = [
     "create_app",
     "db",
     "Student",
-    "TapEvent",
+    "AttendanceSession",
     "Transaction",
     "apply_savings_interest",
 ]

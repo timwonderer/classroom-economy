@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.extensions import db
-from app.models import ClassEconomy, ClassMembership, Seat, Student, StudentTeacher, TapEvent
+from app.models import ClassEconomy, ClassMembership, Seat, Student, StudentTeacher, AttendanceSession
 from tests.helpers.v2_fixtures import make_admin
 
 
@@ -61,38 +61,42 @@ def _setup_scoped_student(with_seat: bool = True):
     return student_id, seat.id if seat else None, class_id
 
 
-def test_tap_event_rejects_missing_class_id_and_seat_id():
+def test_attendance_session_rejects_missing_class_id_and_seat_id():
+    """AttendanceSession without class_id and seat_id fails at DB level (NOT NULL)."""
+    import sqlalchemy
+
     student_id, _seat_id, _class_id = _setup_scoped_student(with_seat=False)
 
     db.session.add(
-        TapEvent(
+        AttendanceSession(
             student_id=student_id,
             period="A",
-            status="active",
-            timestamp=datetime.now(timezone.utc),
+            started_at=datetime.now(timezone.utc),
         )
     )
 
-    with pytest.raises(ValueError, match="class_id is required"):
+    with pytest.raises(sqlalchemy.exc.IntegrityError):
         db.session.flush()
 
     db.session.rollback()
 
 
-def test_tap_event_requires_seat_even_when_class_is_present():
+def test_attendance_session_requires_seat_even_when_class_is_present():
+    """AttendanceSession with class_id but without seat_id fails at DB level (NOT NULL)."""
+    import sqlalchemy
+
     student_id, _seat_id, class_id = _setup_scoped_student(with_seat=False)
 
     db.session.add(
-        TapEvent(
+        AttendanceSession(
             student_id=student_id,
             class_id=class_id,
             period="A",
-            status="active",
-            timestamp=datetime.now(timezone.utc),
+            started_at=datetime.now(timezone.utc),
         )
     )
 
-    with pytest.raises(ValueError, match="seat_id is required"):
+    with pytest.raises(sqlalchemy.exc.IntegrityError):
         db.session.flush()
 
     db.session.rollback()

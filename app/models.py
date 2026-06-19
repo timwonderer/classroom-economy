@@ -69,10 +69,12 @@ def _current_utc_year():
 
 # -------------------- ENUMS --------------------
 
-class TapEventReasonCode(str, enum.Enum):
-    """Reason codes for TapEvent records, enabling programmatic identification without string matching."""
+class AttendanceReasonCode(str, enum.Enum):
+    """Reason codes for attendance session boundaries."""
     DAILY_LIMIT = 'daily_limit'
     AUTO_SWITCH = 'auto_switch'
+
+
 
 
 class TransactionStatus(str, enum.Enum):
@@ -1069,7 +1071,6 @@ class BalanceCache(db.Model):
     )
 
 
-# ---- TapEvent Model (append-only) ----
 class StudentBlock(db.Model):
     """
     Stores per-student, per-period settings and state.
@@ -1125,14 +1126,29 @@ class AttendanceSession(db.Model):
 
     start_reason = db.Column(db.String(50), nullable=True)
     end_reason = db.Column(db.String(50), nullable=True)
-    end_reason_code = db.Column(db.Enum(TapEventReasonCode, values_callable=lambda x: [e.value for e in x]), nullable=True, index=True)
+    end_reason_code = db.Column(db.Enum(AttendanceReasonCode, values_callable=lambda x: [e.value for e in x]), nullable=True, index=True)
 
-    source_tap_event_id = db.Column(db.Integer, db.ForeignKey('tap_events.id', ondelete='SET NULL'), nullable=True, index=True)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
+    is_deleted = db.Column(db.Boolean, default=False, nullable=False, index=True)
+    deleted_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    deleted_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True)
+
     student = db.relationship("Student", backref=db.backref("attendance_sessions", passive_deletes=True))
-    seat = db.relationship("Seat", backref=db.backref("attendance_sessions", passive_deletes=True))
+    seat = db.relationship("Seat", foreign_keys=[seat_id], backref=db.backref("attendance_sessions", passive_deletes=True))
+
+    @property
+    def timestamp(self):
+        return self.started_at
+
+    @property
+    def status(self):
+        return "active" if self.ended_at is None else "inactive"
+
+    @property
+    def reason(self):
+        return self.end_reason or self.start_reason
 
     __table_args__ = (
         db.Index('ix_attendance_sessions_seat_class_period_start', 'seat_id', 'class_id', 'period', 'started_at'),
@@ -1166,37 +1182,6 @@ class SeatAttendanceState(db.Model):
     )
 
 
-class TapEvent(db.Model):
-    __tablename__ = 'tap_events'
-
-    id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
-    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
-    period = db.Column(db.String(10), nullable=False)
-    # CRITICAL: class_id scopes attendance to a specific class economy
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
-    status = db.Column(db.String(10), nullable=False)  # 'active' or 'inactive'
-    # All times stored as UTC (see header note)
-    timestamp = db.Column(db.DateTime(timezone=True), default=utc_now)
-    reason = db.Column(db.String(50), nullable=True)
-    reason_code = db.Column(db.Enum(TapEventReasonCode, values_callable=lambda x: [e.value for e in x]), nullable=True, index=True)
-
-    # Flag to indicate if this event was deleted by a teacher
-    is_deleted = db.Column(db.Boolean, default=False, nullable=False, index=True)
-    deleted_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    deleted_by = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='SET NULL'), nullable=True)
-
-    student = db.relationship("Student", backref="tap_events")
-    seat = db.relationship("Seat", backref="tap_events")
-    deleted_by_admin = db.relationship("Admin", foreign_keys=[deleted_by])
-
-    __table_args__ = (
-        db.Index('ix_tap_event_student_period_timestamp', 'student_id', 'period', 'timestamp'),
-        db.Index('ix_tap_event_seat_period_timestamp', 'seat_id', 'period', 'timestamp'),
-    )
-
-
 @sa.event.listens_for(StudentBlock, "before_insert")
 @sa.event.listens_for(StudentBlock, "before_update")
 def _sync_student_block_seat(_mapper, connection, target):
@@ -1211,41 +1196,6 @@ def _sync_student_block_seat(_mapper, connection, target):
         if seat_id:
             target.seat_id = seat_id
 
-
-@sa.event.listens_for(TapEvent, "before_insert")
-@sa.event.listens_for(TapEvent, "before_update")
-def _sync_tap_event_seat(_mapper, connection, target):
-    """Dual-write bridge for tap_events.seat_id."""
-    class_id = getattr(target, "class_id", None)
-    student_id = getattr(target, "student_id", None)
-    seat_id = getattr(target, "seat_id", None)
-
-    if not seat_id and student_id:
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id)
-        if seat_id:
-            target.seat_id = seat_id
-
-    if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
-        seat_class_id = connection.execute(
-            sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_class_id:
-            target.class_id = str(seat_class_id)
-
-    if not getattr(target, "student_id", None) and getattr(target, "seat_id", None):
-        seat_student_id = connection.execute(
-            sa.text("SELECT student_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_student_id:
-            target.student_id = int(seat_student_id)
-
-    # V2 hard invariant: tap events cannot exist outside class/seat scope.
-    if not getattr(target, "class_id", None):
-        raise ValueError("TapEvent invariant violation: class_id is required.")
-    if not getattr(target, "seat_id", None):
-        raise ValueError("TapEvent invariant violation: seat_id is required.")
 
 
 # ---- Hall Pass Log Model ----

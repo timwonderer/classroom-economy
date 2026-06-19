@@ -7,7 +7,7 @@ from sqlalchemy import func, or_, case, select
 from app.extensions import db
 from app.models import (
     ClassEconomy, ClassMembership, Seat, Transaction, StudentBlock,
-    TapEvent, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
+    AttendanceSession, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
     AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
     StudentInsurance, RentPayment, Announcement, StoreItemBlock, StoreItem,
     Student, StudentTeacher, PayrollSettings, RentSettings,
@@ -27,7 +27,6 @@ def _assert_class_scope_integrity(class_id: str, join_code: str) -> None:
     scoped_models = (
         ("ledger_transaction", Transaction),
         ("student_blocks", StudentBlock),
-        ("tap_events", TapEvent),
         ("hall_pass_logs", HallPassLog),
         ("student_items", StudentItem),
         ("analytics_events", AnalyticsEvent),
@@ -133,7 +132,7 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         affected_student_ids = list(set(affected_student_ids_seat + affected_student_ids_sb))
 
         # Many tables are handled by ON DELETE CASCADE from ClassEconomy
-        # (e.g. BalanceCache, Transaction, StudentBlock, TapEvent, RentPayment, ClassMembership, ClassJoinCodeAlias)
+        # (e.g. BalanceCache, Transaction, StudentBlock, AttendanceSession, RentPayment, ClassMembership, ClassJoinCodeAlias)
         # We explicitly delete the others or things that require manual cleanup first
 
         # 2. Activity / State Logs & Records (Not all have ON DELETE CASCADE yet)
