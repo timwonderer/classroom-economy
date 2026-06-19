@@ -39,7 +39,7 @@ New code must route writes through FEATs; legacy routes that commit directly are
 | Configuration | `PayrollSettings`, `RentSettings`, `BankingSettings`, `FeatureSettings` | Per-class economy settings |
 | Obligations | `ObligationAssessment`, `ObligationLifecycle` | Rent, insurance, and fee lifecycle |
 | Store | `StoreItem`, `StudentItem`, `RedemptionAuditLog` | Classroom store catalog and purchases |
-| Attendance | `TapEvent`, `HallPassLog` | Start Work / Break Done tracking, hall passes |
+| Attendance | `AttendanceSession`, `SeatAttendanceState`, `HallPassLog` | Start Work / Break Done tracking, current attendance gate state, hall passes |
 
 55+ models total. Legacy tables (`Admin`, `Student`, `TeacherBlock`) still exist as compatibility shadows during the auth transition.
 
