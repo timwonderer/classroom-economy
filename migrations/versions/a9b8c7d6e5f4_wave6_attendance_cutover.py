@@ -93,18 +93,31 @@ def downgrade():
         op.create_table(
             'tap_events',
             sa.Column('id', sa.Integer(), primary_key=True),
-            sa.Column('student_id', sa.Integer(), sa.ForeignKey('students.id'), nullable=False),
+            sa.Column('student_id', sa.Integer(), sa.ForeignKey('students.id'), nullable=True),
             sa.Column('seat_id', sa.Integer(), sa.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True),
-            sa.Column('join_code', sa.String(20), nullable=True),
+            sa.Column('period', sa.String(10), nullable=False),
             sa.Column('class_id', sa.String(36), sa.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True),
-            sa.Column('timestamp', sa.DateTime(timezone=True), nullable=False),
-            sa.Column('status', sa.String(20), nullable=False),
-            sa.Column('reason', sa.Text(), nullable=True),
-            sa.Column('reason_code', sa.String(30), nullable=True),
+            sa.Column('join_code', sa.String(20), nullable=True),
+            sa.Column('status', sa.String(10), nullable=False),
+            sa.Column('timestamp', sa.DateTime(timezone=True), nullable=True),
+            sa.Column('reason', sa.String(50), nullable=True),
+            sa.Column(
+                'reason_code',
+                sa.Enum('daily_limit', 'auto_switch', name='attendancereasoncode'),
+                nullable=True,
+            ),
+            sa.Column('is_deleted', sa.Boolean(), nullable=False, server_default='false'),
+            sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True),
+            sa.Column('deleted_by', sa.Integer(), sa.ForeignKey('teachers.id', ondelete='SET NULL'), nullable=True),
         )
         op.create_index('ix_tap_events_student_id', 'tap_events', ['student_id'])
         op.create_index('ix_tap_events_seat_id', 'tap_events', ['seat_id'])
         op.create_index('ix_tap_events_class_id', 'tap_events', ['class_id'])
+        op.create_index('ix_tap_events_join_code', 'tap_events', ['join_code'])
+        op.create_index('ix_tap_events_reason_code', 'tap_events', ['reason_code'])
+        op.create_index('ix_tap_events_is_deleted', 'tap_events', ['is_deleted'])
+        op.create_index('ix_tap_event_student_period_timestamp', 'tap_events', ['student_id', 'period', 'timestamp'])
+        op.create_index('ix_tap_event_seat_period_timestamp', 'tap_events', ['seat_id', 'period', 'timestamp'])
 
     # 2. Re-add source_tap_event_id
     if not column_exists('attendance_sessions', 'source_tap_event_id'):

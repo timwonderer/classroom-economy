@@ -1346,8 +1346,8 @@ def _hard_delete_class_scope(class_id, teacher_id):
         RedemptionAuditLog.student_item_id.in_(sa.select(student_item_ids_subq))
     ).delete(synchronize_session=False)
     StudentItem.query.filter(StudentItem.class_id == class_id).delete(synchronize_session=False)
-    AttendanceSession.query.filter(AttendanceSession.class_id == class_id).delete(synchronize_session=False)
     SeatAttendanceState.query.filter(SeatAttendanceState.class_id == class_id).delete(synchronize_session=False)
+    AttendanceSession.query.filter(AttendanceSession.class_id == class_id).delete(synchronize_session=False)
     HallPassLog.query.filter(HallPassLog.class_id == class_id).delete(synchronize_session=False)
     RentPayment.query.filter(RentPayment.class_id == class_id).delete(synchronize_session=False)
     StudentBlock.query.filter(StudentBlock.class_id == class_id).delete(synchronize_session=False)
@@ -2990,9 +2990,9 @@ def dashboard():
             'student_id': log.student_id,
             'student_name': student.full_name if student else 'Unknown',
             'period': log.period,
-            'timestamp': log.started_at,
-            'reason': log.end_reason or log.start_reason,
-            'status': 'active' if log.ended_at is None else 'inactive',
+            'timestamp': log.timestamp,
+            'reason': log.reason,
+            'status': log.status,
         })
 
     # --- Payroll Info ---

@@ -122,3 +122,4 @@ def test_delete_tap_entry_rejects_cross_join_code_context(client):
     assert allowed.status_code == 200
     db.session.refresh(event)
     assert event.is_deleted is True
+    assert event.deleted_by_seat_id is None

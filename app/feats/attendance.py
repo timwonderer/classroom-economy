@@ -774,7 +774,7 @@ def enforce_daily_limits(*, student, commit: bool = True, logger=None):
         db.session.flush()
 
 
-def soft_delete_session(*, session: AttendanceSession, admin_seat_id: int, deleted_at=None) -> None:
+def soft_delete_session(*, session: AttendanceSession, admin_seat_id: int | None, deleted_at=None) -> None:
     """Soft-delete one attendance session with audit fields."""
     session.is_deleted = True
     session.deleted_at = deleted_at or utc_now()

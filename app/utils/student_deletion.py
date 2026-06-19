@@ -128,8 +128,8 @@ def _delete_student_scoped_rows(student_id, student_item_ids, issue_ids, insuran
     delete_recovery_codes_for_student(student_id)
     if tx_ids:
         Transaction.query.filter(Transaction.id.in_(tx_ids)).delete(synchronize_session=False)
-    AttendanceSession.query.filter(AttendanceSession.student_id == student_id).delete(synchronize_session=False)
     SeatAttendanceState.query.filter(SeatAttendanceState.student_id == student_id).delete(synchronize_session=False)
+    AttendanceSession.query.filter(AttendanceSession.student_id == student_id).delete(synchronize_session=False)
     HallPassLog.query.filter(HallPassLog.student_id == student_id).delete(synchronize_session=False)
     StudentItem.query.filter(StudentItem.student_id == student_id).delete(synchronize_session=False)
     RentPayment.query.filter(RentPayment.student_id == student_id).delete(synchronize_session=False)

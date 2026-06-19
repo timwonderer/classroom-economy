@@ -953,8 +953,8 @@ def delete_admin(admin_id):
             ]
             if exclusive_seat_ids:
                 Transaction.query.filter(Transaction.seat_id.in_(exclusive_seat_ids)).delete(synchronize_session=False)
-            AttendanceSession.query.filter(AttendanceSession.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
             SeatAttendanceState.query.filter(SeatAttendanceState.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
+            AttendanceSession.query.filter(AttendanceSession.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
             HallPassLog.query.filter(HallPassLog.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
             StudentItem.query.filter(StudentItem.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
             RentPayment.query.filter(RentPayment.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)

@@ -1917,8 +1917,8 @@ def attendance_history():
                 "student_block": student_block,
                 "student_class_label": student_class_label,
                 "period": record.period,
-                "status": "active" if record.ended_at is None else "inactive",
-                "reason": record.end_reason or record.start_reason,
+                "status": record.status,
+                "reason": record.reason,
                 "timestamp": started_str,
                 "started_at": started_str,
                 "ended_at": ended_str,
@@ -2306,7 +2306,7 @@ def delete_tap_entry(event_id):
         return jsonify({"error": "Student not found or access denied"}), 404
 
     admin_seat = Seat.query.filter_by(user_id=admin.user_id, class_id=active_class_id).first() if hasattr(admin, 'user_id') and admin.user_id else None
-    admin_seat_id = admin_seat.id if admin_seat else att_session.seat_id
+    admin_seat_id = admin_seat.id if admin_seat else None
 
     soft_delete_session(session=att_session, admin_seat_id=admin_seat_id, deleted_at=utc_now())
 
