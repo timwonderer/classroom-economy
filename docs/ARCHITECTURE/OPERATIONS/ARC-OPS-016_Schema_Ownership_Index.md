@@ -28,8 +28,9 @@ Constitutional as an index only. It may point to authority; it does not replace 
 | `transaction` | `DOM-LED-001` |
 | `balance_cache` | `DOM-LED-001` |
 | `payroll_cache` | `DOM-LED-001` |
-| `tap_events` | `DOM-ATT-001` |
+| `attendance_sessions` | `DOM-ATT-001` |
 | `hall_pass_logs` | `DOM-ATT-001` |
+| `seat_attendance_state` | `DOM-ATT-001` |
 | `students` | `DOM-IDEN-001` |
 | `student_teachers` | `DOM-IDEN-001` |
 | `seats` | `DOM-IDEN-001` |

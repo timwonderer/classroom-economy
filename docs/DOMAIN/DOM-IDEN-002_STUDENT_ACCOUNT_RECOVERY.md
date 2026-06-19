@@ -70,7 +70,7 @@ Credentials that are fully replaced during recovery:
 Records that are NOT touched during recovery:
 - Economic records (`transaction`, `balance_cache`, etc.)
 - Entitlement records (`student_items`, `student_insurance`, etc.)
-- Attendance records (`tap_events`, `hall_pass_logs`)
+- Attendance records (`attendance_sessions`, `hall_pass_logs`, `seat_attendance_state`)
 - Obligation records (`rent_payments`, `insurance_claims`)
 
 ---

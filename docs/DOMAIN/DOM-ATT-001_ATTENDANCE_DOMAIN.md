@@ -43,10 +43,9 @@ own payroll, balances, or eligibility policy.
 
 ### Legacy Table Note
 
-The runtime table `tap_events` is the v1 predecessor of `attendance_sessions`.
-`DOM-CORE-002` defines `attendance_sessions` as the canonical v2 table name.
-Until the physical rename migration is complete, implementation code may still
-reference `tap_events`, but this domain document uses the canonical name.
+The legacy v1 runtime table `tap_events` has been retired. `attendance_sessions`
+is the canonical and physical attendance fact table in the active v2 runtime and
+migration chain.
 
 ## VI. Owned Tables
 
