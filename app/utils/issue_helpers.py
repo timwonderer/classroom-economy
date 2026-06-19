@@ -152,10 +152,10 @@ def create_issue(student, teacher_id, join_code, category_id, explanation, expec
     # Create the issue
     issue = Issue(
         student_id=student.id,
-        student_first_name=student.first_name,
-        student_last_initial=student.last_initial,
         actor_public_id=actor_public_id,
         teacher_id=teacher_id,
+        class_id=class_id,
+        seat_id=canonical_seat.id,
         join_code=join_code,
         class_label=class_label,
         category_id=category_id,

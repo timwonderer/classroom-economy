@@ -208,14 +208,11 @@ def _normalize_first_name(value):
     return unicodedata.normalize('NFKC', value.strip().lower())
 
 
-def _normalize_last_initial(value):
-    """Normalize last initial: strip, uppercase, single alpha char."""
+def _normalize_last_name(value):
+    """Normalize last name: strip, NFKC, lowercase."""
     if not value:
         return ''
-    v = value.strip().upper()
-    if len(v) == 1 and v.isalpha():
-        return v
-    return ''
+    return unicodedata.normalize('NFKC', value.strip().lower())
 
 
 @main_bp.route('/verify/hallpass/<teacher_public_token>', methods=['GET', 'POST'])
@@ -224,7 +221,7 @@ def verify_hall_pass(teacher_public_token):
     """
     Public hall pass verification for office staff.
 
-    GET:  Show a form with class dropdown, first name, last initial fields.
+    GET:  Show a form with class dropdown, first name, last name fields.
     POST: Verify whether a specific student has a valid hall pass for today.
 
     Designed per Hall Pass Public Verification Spec v1.0:
@@ -274,14 +271,14 @@ def verify_hall_pass(teacher_public_token):
 
     # ---- POST: verification attempt ----
     raw_first_name = request.form.get('first_name', '')
-    raw_last_initial = request.form.get('last_initial', '')
+    raw_last_name = request.form.get('last_name', '')
     selected_join_code = request.form.get('join_code', '')
 
     first_name_norm = _normalize_first_name(raw_first_name)
-    last_initial_norm = _normalize_last_initial(raw_last_initial)
+    last_name_norm = _normalize_last_name(raw_last_name)
 
     # Reject malformed input uniformly
-    if not first_name_norm or not last_initial_norm or not selected_join_code:
+    if not first_name_norm or not last_name_norm or not selected_join_code:
         return render_template(
             'hall_pass_verify.html',
             unavailable=False,
@@ -333,9 +330,9 @@ def verify_hall_pass(teacher_public_token):
         student = entry.student
         if not student:
             continue
-        stored_norm = _normalize_first_name(student.first_name)
-        stored_initial = (student.last_initial or '').strip().upper()
-        if stored_norm == first_name_norm and stored_initial == last_initial_norm:
+        stored_norm = _normalize_first_name(student.display_first_name)
+        stored_last_name = _normalize_last_name(student.display_last_name)
+        if stored_norm == first_name_norm and stored_last_name == last_name_norm:
             matched.append(entry)
         if len(matched) >= 2:
             # Ambiguous — stop early
@@ -370,7 +367,7 @@ def verify_hall_pass(teacher_public_token):
 
         result = {
             'outcome': 'match',
-            'student_display': f"{student.first_name} {student.last_initial}.",
+            'student_display': student.full_name,
             'class_label': class_label,
             'destination': entry.reason,
             'time_out': time_out_str,

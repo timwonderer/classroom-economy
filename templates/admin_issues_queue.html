@@ -182,7 +182,7 @@
                                 <div class="d-flex align-items-center mb-2">
                                     <h6 class="mb-0 me-2">
                                         <span class="material-symbols-outlined me-1">person</span>
-                                        {{ issue.student_first_name }} {{ issue.student_last_initial }}.
+                                        {{ issue.student_display_name }}
                                     </h6>
                                     <span class="badge bg-secondary">{{ issue.category.name }}</span>
                                     {% if issue.related_transaction_id %}
@@ -233,7 +233,7 @@
                                 <div class="d-flex align-items-center mb-2">
                                     <h6 class="mb-0 me-2">
                                         <span class="material-symbols-outlined me-1">person</span>
-                                        {{ issue.student_first_name }} {{ issue.student_last_initial }}.
+                                        {{ issue.student_display_name }}
                                     </h6>
                                     <span class="badge bg-secondary">{{ issue.category.name }}</span>
                                     {% if issue.status in ['DEV_RESOLVED', 'developer_resolved'] %}
@@ -283,7 +283,7 @@
                                 <div class="d-flex align-items-center mb-2">
                                     <h6 class="mb-0 me-2">
                                         <span class="material-symbols-outlined me-1">person</span>
-                                        {{ issue.student_first_name }} {{ issue.student_last_initial }}.
+                                        {{ issue.student_display_name }}
                                     </h6>
                                     <span class="badge bg-secondary">{{ issue.category.name }}</span>
                                 </div>

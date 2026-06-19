@@ -85,7 +85,8 @@ class IdentityProfile(Base, TimestampMixin):
     id = sa.Column(sa.Integer, primary_key=True)
     seat_id = sa.Column(sa.Integer, sa.ForeignKey("seats.id", ondelete="CASCADE"), unique=True, nullable=True, index=True)
     first_name = sa.Column(sa.LargeBinary, nullable=False)
-    last_initial = sa.Column(sa.String(1), nullable=False)
+    last_name = sa.Column(sa.LargeBinary, nullable=False)
+    notes = sa.Column(sa.LargeBinary, nullable=True)
 
 
 class UserInviteToken(Base, TimestampMixin):

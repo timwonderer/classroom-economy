@@ -229,19 +229,18 @@ def _append_redemption_audit_log(*, student_item, student, teacher_id, action, n
     if action not in action_map:
         raise ValueError(f"Unsupported redemption audit action: {action}")
 
-    student_name = student.full_name if student else "Unknown Student"
     class_id = getattr(student_item, 'class_id', None)
     join_code = getattr(student_item, 'join_code', None)
     class_label = _resolve_class_display_label(teacher_id, class_id, join_code=join_code, fallback_block=fallback_block)
 
     db.session.add(RedemptionAuditLog(
         student_item_id=student_item.id if student_item else None,
-        student_display_name=student_name,
         class_display_label=class_label,
         action=action_map[action],
         notes=notes if notes else None,
         teacher_id=teacher_id,
         class_id=class_id,
+        seat_id=getattr(student_item, 'seat_id', None),
         timestamp=utc_now(),
         source=RedemptionAuditSource.LIVE,
     ))

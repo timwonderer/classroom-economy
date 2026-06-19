@@ -90,7 +90,6 @@ def _write_audit_row(*, student_item, student, teacher_id, action, notes):
     if action not in action_map:
         raise RedemptionDispositionError(f"Unsupported disposition action: {action}")
 
-    student_name = student.full_name if student else "Unknown Student"
     class_id = getattr(student_item, "class_id", None)
     join_code = getattr(student_item, "join_code", None)
     fallback_block = student.block if student else None
@@ -98,12 +97,12 @@ def _write_audit_row(*, student_item, student, teacher_id, action, notes):
 
     audit_row = RedemptionAuditLog(
         student_item_id=student_item.id,
-        student_display_name=student_name,
         class_display_label=class_label,
         action=action_map[action],
         notes=notes if notes else None,
         teacher_id=teacher_id,
         class_id=class_id,
+        seat_id=student_item.seat_id,
         timestamp=utc_now(),
         source=RedemptionAuditSource.LIVE,
     )

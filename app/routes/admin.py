@@ -1815,7 +1815,7 @@ def _ensure_teacher_student_seat(teacher_id, join_code, block):
         return
 
     first_name = "Teacher"
-    last_initial = "S"
+    last_name = "Student"
 
     # Roster fingerprint is class-scoped to prevent cross-class correlation (INV-CORE).
     claim_first_name_hash = hash_username_lookup(first_name.lower())
@@ -1840,7 +1840,7 @@ def _ensure_teacher_student_seat(teacher_id, join_code, block):
         seat_id=teacher_seat.id,
         profile_type='teacher_shadow_student',
         first_name=first_name,
-        last_initial=last_initial
+        last_name=last_name,
     )
     db.session.add(profile)
     current_app.logger.info(f"Created teacher shadow student seat for teacher {teacher_id}, join_code {join_code}")
@@ -2112,6 +2112,8 @@ def _link_student_to_admin(
 
     if not existing_seat:
         from app.hash_utils import hash_username_lookup as _h
+        seat_first_name = student.display_first_name or ""
+        seat_last_name = student.display_last_name or ""
         new_seat = Seat(
             class_id=target_class_id,
             student_id=student.id,
@@ -2119,10 +2121,10 @@ def _link_student_to_admin(
             block_identifier=target_block,
             block=target_block,
             join_code=target_join_code,
-            claim_first_name_hash=_h(student.first_name.lower()) if student.first_name else None,
-            claim_last_name_hash=_h(student.last_initial.lower()) if student.last_initial else None,
+            claim_first_name_hash=_h(seat_first_name.lower()) if seat_first_name else None,
+            claim_last_name_hash=_h(seat_last_name.lower()) if seat_last_name else None,
             roster_fingerprint=_h(
-                f"{target_class_id}|{(student.first_name or '').lower()}|{(student.last_initial or '').lower()}"
+                f"{target_class_id}|{seat_first_name.lower()}|{seat_last_name.lower()}"
             ),
             claimed_at=utc_now(),
         )
@@ -2131,8 +2133,8 @@ def _link_student_to_admin(
         profile = IdentityProfile(
             seat_id=new_seat.id,
             profile_type='student',
-            first_name=student.first_name,
-            last_initial=student.last_initial,
+            first_name=seat_first_name,
+            last_name=student.display_last_name,
         )
         db.session.add(profile)
         current_app.logger.info(
@@ -2866,7 +2868,10 @@ def dashboard():
     # trigger (`/admin/enforce-daily-limits`).
 
     # Get all students for calculations
-    students = _scoped_students().order_by(Student.first_name).all()
+    students = sorted(
+        _scoped_students().all(),
+        key=lambda student: ((student.display_first_name or "").lower(), student.id),
+    )
     student_lookup = {s.id: s for s in students}
 
     # Quick Stats
@@ -3800,10 +3805,10 @@ def confirm_reset():
     teacher.username = None
     teacher.username_hash = username_hash
     teacher.username_lookup_hash = username_lookup_hash
-    teacher.totp_secret = encrypt_totp(totp_secret)  # Encrypt before storing
+    encrypted_totp_secret = encrypt_totp(totp_secret)
     user.username_hash = username_hash
     user.username_lookup_hash = username_lookup_hash
-    user.totp_secret_encrypted = teacher.totp_secret
+    user.totp_secret_encrypted = encrypted_totp_secret
 
     # Mark recovery request as completed
     mark_recovery_request_verified(recovery_request.id, utc_now())
@@ -4340,7 +4345,13 @@ def students():
         s.student_id for s in class_seats
         if s.student_id is not None and s.claimed_at is not None
     })
-    all_students = _scoped_students().filter(Student.id.in_(claimed_student_ids)).order_by(Student.block, Student.first_name).all() if claimed_student_ids else []
+    all_students = (
+        sorted(
+            _scoped_students().filter(Student.id.in_(claimed_student_ids)).all(),
+            key=lambda student: (((student.block or "").lower()), (student.display_first_name or "").lower(), student.id),
+        )
+        if claimed_student_ids else []
+    )
 
     # Group students by block within this class only.
     for block in blocks:
@@ -4758,7 +4769,10 @@ def edit_student():
     # Get form data
     new_first_name = request.form.get('first_name', '').strip()
     last_name_input = request.form.get('last_name', '').strip()
-    new_last_initial = last_name_input[0].upper() if last_name_input else student.last_initial
+    if not new_first_name or not last_name_input:
+        flash("First name and last name are required.", "error")
+        return _redirect_to_student_detail(student_id)
+    new_last_initial = last_name_input[0].upper()
 
     # Get selected blocks (multiple checkboxes)
     selected_blocks = request.form.getlist('blocks')
@@ -4863,12 +4877,20 @@ def edit_student():
             # If 'start_fresh', do nothing - student starts with $0 in that period
 
     # Check if name changed (keep seat identity fields in sync).
-    name_changed = (new_first_name != student.first_name or new_last_initial != student.last_initial)
+    current_first_name = student.display_first_name or ""
+    current_last_name = student.display_last_name or ""
+    name_changed = (
+        new_first_name != current_first_name
+        or last_name_input != current_last_name
+    )
 
     # Update basic fields
     student.first_name = new_first_name
     student.last_initial = new_last_initial
     student.block = new_blocks
+    if student.identity_profile:
+        student.identity_profile.first_name = new_first_name
+        student.identity_profile.last_name = last_name_input or None
 
     # Handle account reset — generate recovery code per recovery spec
     reset_login = request.form.get('reset_login') == 'on'
@@ -4899,8 +4921,8 @@ def edit_student():
         )
         for seat in seats_to_update:
             if seat.identity_profile:
-                seat.identity_profile.first_name = student.first_name
-                seat.identity_profile.last_initial = student.last_initial
+                seat.identity_profile.first_name = new_first_name
+                seat.identity_profile.last_name = last_name_input or None
 
     # Handle block changes - update Seat entries
     print(f"DEBUG_TRANSFER: old_blocks={old_blocks} new_blocks_set={new_blocks_set}")
@@ -5245,7 +5267,11 @@ def delete_pending_student():
                 "message": "This seat has already been claimed. Use the regular student deletion route instead."
             }), 400
 
-        student_name = f"{seat_entry.display_first_name or 'Unknown'} {seat_entry.display_last_initial or ''}."
+        student_name = (
+            seat_entry.identity_profile.full_name
+            if seat_entry.identity_profile
+            else (seat_entry.display_first_name or 'Unknown')
+        )
 
         # Delete the Seat entry (this is the only record for unclaimed seats)
         db.session.delete(seat_entry)
@@ -5436,18 +5462,18 @@ def add_individual_student():
             flash(f"Student {first_name} {last_name} is already in your class.", "info")
             return redirect(url_for('admin.students'))
 
-        if additional_notes:
-            current_app.logger.info(
-                "Student add additional notes provided (not persisted): class_id=%s block=%s length=%s",
-                class_id,
-                block,
-                len(additional_notes),
-            )
+        profile = IdentityProfile(
+            profile_type='student',
+            first_name=first_name,
+            last_name=last_name,
+            notes=additional_notes or None,
+        )
 
         # Create student
         new_student = Student(
             first_name=first_name,
             last_initial=last_initial,
+            identity_profile=profile,
             block=block,
             join_code=join_code,
             class_id=class_id,
@@ -5473,6 +5499,9 @@ def add_individual_student():
             claimed_at=None,  # Student hasn't set up username yet
         )
         db.session.add(new_seat)
+        db.session.flush()
+
+        profile.seat_id = new_seat.id
 
         if class_context.get('class_created'):
             _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
@@ -5588,10 +5617,17 @@ def add_manual_student():
                         _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
                 return redirect(url_for('admin.students'))
 
+        profile = IdentityProfile(
+            profile_type='student',
+            first_name=first_name,
+            last_name=last_name,
+        )
+
         # Create student
         new_student = Student(
             first_name=first_name,
             last_initial=last_initial,
+            identity_profile=profile,
             block=block,
             join_code=join_code,
             class_id=class_id,
@@ -5635,6 +5671,9 @@ def add_manual_student():
             claimed_at=utc_now() if is_claimed else None,
         )
         db.session.add(new_seat)
+        db.session.flush()
+
+        profile.seat_id = new_seat.id
 
         if class_context.get('class_created'):
             _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
@@ -5909,8 +5948,6 @@ def store_management():
         RedemptionAuditLog.source == RedemptionAuditSource.LIVE,
         RedemptionAuditLog.join_code == selected_join_code,
     )
-    if audit_student:
-        live_query = live_query.filter(RedemptionAuditLog.student_display_name.ilike(f"%{audit_student}%"))
     if audit_class:
         live_query = live_query.filter(RedemptionAuditLog.class_display_label == audit_class)
     if parsed_audit_action:
@@ -5932,6 +5969,12 @@ def store_management():
             flash("Invalid audit end date format. Please use YYYY-MM-DD.", "warning")
 
     live_rows = live_query.order_by(RedemptionAuditLog.timestamp.desc()).limit(5000).all()
+    if audit_student:
+        audit_student_lower = audit_student.lower()
+        live_rows = [
+            row for row in live_rows
+            if audit_student_lower in row.resolved_student_display_name.lower()
+        ]
     live_keys = {
         (row.student_item_id, row.action.value if hasattr(row.action, 'value') else row.action)
         for row in live_rows
@@ -6010,7 +6053,7 @@ def store_management():
 
     live_serialized = [{
         'student_item_id': row.student_item_id,
-        'student_display_name': row.student_display_name,
+        'student_display_name': row.resolved_student_display_name,
         'class_display_label': row.class_display_label,
         'action': row.action.value if hasattr(row.action, 'value') else row.action,
         'notes': row.notes,
@@ -6738,7 +6781,10 @@ def rent_settings():
     ]
 
     # Get all students for waiver form
-    all_students = _scoped_students().order_by(Student.first_name).all()
+    all_students = sorted(
+        _scoped_students().all(),
+        key=lambda student: ((student.display_first_name or "").lower(), student.id),
+    )
 
     # Build class_labels_by_block dictionary
     class_labels_by_block = _get_class_labels_for_blocks(admin_id, teacher_blocks)
@@ -6866,7 +6912,8 @@ def rent_settings():
             class_students = Student.query.filter(
                 Student.id.in_(student_ids),
                 Student.is_rent_enabled == True
-            ).order_by(Student.first_name).all()
+            ).all()
+            class_students.sort(key=lambda student: ((student.display_first_name or "").lower(), student.id))
             class_student_ids = [student.id for student in class_students]
             class_seat_rows = (
                 db.session.query(Seat.id, Seat.student_id)
@@ -9862,17 +9909,10 @@ def upload_students():
                     seat_id=seat.id,
                     profile_type='student',
                     first_name=first_name,
-                    last_initial=last_initial
+                    last_name=last_name,
+                    notes=additional_notes or None,
                 )
                 db.session.add(profile)
-
-                if additional_notes:
-                    current_app.logger.info(
-                        "Bulk upload additional notes provided (not persisted): class_id=%s block=%s length=%s",
-                        class_id,
-                        block,
-                        len(additional_notes),
-                    )
                 added_count += 1
             except Exception as e:
                 current_app.logger.error(f"Error processing row {row}: {e}", exc_info=True)
@@ -9932,13 +9972,13 @@ def export_students():
 
     # Write header
     writer.writerow([
-        'First Name', 'Last Initial', 'Block', 'Checking Balance',
+        'First Name', 'Last Name', 'Block', 'Checking Balance',
         'Savings Balance', 'Total Earnings', 'Insurance Plan',
         'Rent Enabled', 'Has Completed Setup'
     ])
 
     # Write student data
-    students_query = _scoped_students().order_by(Student.first_name, Student.last_initial)
+    students_query = _scoped_students()
     if selected_join_code:
         students_query = students_query.filter(
             Student.id.in_(
@@ -9951,6 +9991,7 @@ def export_students():
         )
 
     students = students_query.all()
+    students.sort(key=lambda student: ((student.display_first_name or "").lower(), (student.display_last_name or "").lower(), student.id))
     teacher_id = admin_id
     student_ids = [s.id for s in students]
     scoped_class_ids = []
@@ -10039,8 +10080,8 @@ def export_students():
             total_earnings = scoped_balances.get('earnings', Decimal('0.00'))
 
         writer.writerow([
-            _sanitize_csv_field(student.first_name),
-            _sanitize_csv_field(student.last_initial),
+            _sanitize_csv_field(student.display_first_name),
+            _sanitize_csv_field(student.display_last_name or ''),
             _sanitize_csv_field(export_block),
             f"{checking_balance:.2f}",
             f"{savings_balance:.2f}",

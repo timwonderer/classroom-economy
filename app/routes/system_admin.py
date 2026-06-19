@@ -875,10 +875,10 @@ def reset_teacher_totp(admin_id):
         user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
         if not user:
             return jsonify({"status": "error", "message": "Canonical teacher identity is missing."}), 409
-        admin.totp_secret = encrypt_totp(new_secret)  # Encrypt before storing
-        user.totp_secret_encrypted = admin.totp_secret
+        encrypted_totp_secret = encrypt_totp(new_secret)
+        user.totp_secret_encrypted = encrypted_totp_secret
         db.session.flush()
-        stored_secret = admin.totp_secret
+        stored_secret = user.totp_secret_encrypted
 
         # Generate QR code
         totp_uri = pyotp.totp.TOTP(new_secret).provisioning_uri(

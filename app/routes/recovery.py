@@ -80,7 +80,7 @@ def _generate_reset_code_legacy(student_id):
         f"Reset code generated for student {student.id} by admin {session.get('admin_id')}"
     )
  
-    flash(f"Reset code generated for {student.first_name} {student.last_initial}. "
+    flash(f"Reset code generated for {student.full_name} "
           f"Code: {code} — Expires in 10 minutes.", "success")
     from app.routes.admin import _build_student_detail_url
     detail_url = _build_student_detail_url(student.id, teacher_id=session.get("admin_id"))

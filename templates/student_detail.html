@@ -814,8 +814,8 @@
                                 <div class="col-md-6 mb-3">
                                     <label for="edit_last_name" class="form-label fw-bold">Last Name</label>
                                     <input type="text" class="form-control" id="edit_last_name" name="last_name"
-                                        value="{{ student.last_initial }}" required>
-                                    <div class="form-text">First letter will become last initial</div>
+                                        value="{{ student.display_last_name or '' }}" required>
+                                    <div class="form-text">Stored as the student's encrypted full last name</div>
                                 </div>
                             </div>
                         </div>

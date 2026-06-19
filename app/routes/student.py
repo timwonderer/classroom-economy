@@ -63,7 +63,7 @@ from app.utils.economy_policy import (
     resolve_feature_class,
     resolve_feature_class_for_class,
 )
-from app.hash_utils import hash_hmac, hash_username, hash_username_lookup
+from app.hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from app.access import (
     AccessScopeDenied,
     resolve_scope,
@@ -573,7 +573,11 @@ def claim_account():
 
         new_student = Student(
             first_name=first_name,
-            last_initial=last_name[0].upper() if last_name else "?",
+            last_initial=(
+                matched_seat.identity_profile.display_last_initial
+                if matched_seat.identity_profile else
+                (last_name[0].upper() if last_name else "?")
+            ),
             identity_profile=matched_seat.identity_profile,
             block=matched_seat.block or "",
             salt=salt,
@@ -648,7 +652,8 @@ def create_username():
         # Username generation uses a transient backend-generated 4-digit
         # segment so setup never derives usernames from DOB or stable IDs.
         numeric_segment = random.randint(1000, 9999)
-        initials = f"{student.first_name[0].upper()}{student.last_initial.upper()}"
+        last_name_initial = (student.display_last_name or "")[:1].upper()
+        initials = f"{student.display_first_name[0].upper()}{last_name_initial}"
         username = f"{adjective}{write_in_word}{numeric_segment}{initials}"
         # Save username plaintext in session for display
         session['generated_username'] = username
@@ -3920,7 +3925,7 @@ def switch_teacher(teacher_public_id):
 def setup_complete():
     """Setup completion confirmation page."""
     student = get_logged_in_student()
-    return render_template('student_setup_complete.html', student_name=student.first_name)
+    return render_template('student_setup_complete.html', student_name=student.display_first_name)
 
 
 # -------------------- HELP AND SUPPORT - ISSUE RESOLUTION SYSTEM --------------------

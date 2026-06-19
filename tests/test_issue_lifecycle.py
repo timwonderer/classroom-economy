@@ -2,27 +2,44 @@ from datetime import datetime, timezone
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, Issue, IssueCategory, Student
+from app.models import Admin, Issue, IssueCategory, Student, Seat, IdentityProfile, ClassEconomy, StudentTeacher
 from app.utils.opaque_refs import make_opaque_ref
 
 
 def test_teacher_must_close_issue_after_final_review(client):
     teacher = make_admin("teacher_issue_lifecycle", "secret")
-    student = Student(first_name="Casey", last_initial="L", block="A", salt=b"salt")
+    db.session.add(teacher)
+    db.session.flush()
+    class_row = ClassEconomy(
+        join_code="JOINLIFE1",
+        teacher_id=teacher.id,
+        created_by_admin_id=teacher.id,
+        section="A",
+        display_name="A",
+    )
+    db.session.add(class_row)
+    db.session.flush()
+    profile = IdentityProfile(profile_type="student", first_name="Casey", last_name="Lopez")
+    student = Student(first_name="Casey", last_initial="L", identity_profile=profile, block="A", join_code="JOINLIFE1", class_id=class_row.class_id, salt=b"salt")
     category = IssueCategory(
         name="Lifecycle Category",
         category_type="general",
         is_active=True,
     )
-    db.session.add_all([teacher, student, category])
+    db.session.add_all([student, category])
     db.session.flush()
+    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id, class_id=class_row.class_id, join_code="JOINLIFE1"))
+    seat = Seat(student_id=student.id, class_id=class_row.class_id, join_code="JOINLIFE1", block="A", block_identifier="A", role="student")
+    db.session.add(seat)
+    db.session.flush()
+    profile.seat_id = seat.id
 
     issue = Issue(
         student_id=student.id,
-        student_first_name=student.first_name,
-        student_last_initial=student.last_initial,
         actor_public_id="seat-public-issue-1",
         teacher_id=teacher.id,
+        class_id=class_row.class_id,
+        seat_id=seat.id,
         join_code="JOINLIFE1",
         class_label="Block A",
         category_id=category.id,

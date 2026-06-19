@@ -50,10 +50,10 @@ def test_teacher_student_lifecycle(client, teacher, app):
         _ensure_teacher_student_seat(teacher.id, join_code, block)
 
         # Verify Seat created
-        tb = Seat.query.filter_by(join_code=join_code, role='teacher').first()
+        tb = Seat.query.filter_by(join_code=join_code, role='student').first()
         assert tb is not None
         assert tb.identity_profile.first_name == "Teacher"
-        assert tb.identity_profile.last_initial == "S"
+        assert tb.identity_profile.last_name == "Student"
 
         # 2. Claim the account (Step 1)
         response = client.post('/student/claim-account', data={
@@ -144,6 +144,7 @@ def test_teacher_student_lifecycle(client, teacher, app):
         regular_student = Student(
             first_name="Regular",
             last_initial="R",
+            identity_profile=IdentityProfile(profile_type="student", first_name="Regular", last_name="Reed"),
             block="Z",
             is_teacher=False,
             salt=get_random_salt(),
@@ -165,7 +166,7 @@ def test_teacher_student_lifecycle(client, teacher, app):
         )
         db.session.add(regular_seat)
         db.session.flush()
-        db.session.add(IdentityProfile(seat_id=regular_seat.id, profile_type="student_claimed", first_name="Regular", last_initial="R"))
+        db.session.add(IdentityProfile(seat_id=regular_seat.id, profile_type="student_claimed", first_name="Regular", last_name="Reed"))
 
         # Add StudentTeacher link
         from app.models import StudentTeacher
@@ -201,6 +202,7 @@ def test_teacher_student_lifecycle(client, teacher, app):
         lazy_student = Student(
             first_name="Lazy",
             last_initial="L",
+            identity_profile=IdentityProfile(profile_type="student", first_name="Lazy", last_name="Lane"),
             block="Z",
             is_teacher=False,
             salt=get_random_salt(),
@@ -220,7 +222,7 @@ def test_teacher_student_lifecycle(client, teacher, app):
         )
         db.session.add(lazy_seat)
         db.session.flush()
-        db.session.add(IdentityProfile(seat_id=lazy_seat.id, profile_type="student_claimed", first_name="Lazy", last_initial="L"))
+        db.session.add(IdentityProfile(seat_id=lazy_seat.id, profile_type="student_claimed", first_name="Lazy", last_name="Lane"))
 
         # Add StudentTeacher link
         st2 = StudentTeacher(student_id=lazy_student.id, teacher_id=teacher.id)

@@ -246,17 +246,22 @@ class IdentityProfile(db.Model):
     # Transitional discriminator until every profile is bound to a seat.
     profile_type = db.Column(db.String(32), nullable=False, index=True)
     first_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
-    last_initial = db.Column(db.String(1), nullable=False)
+    last_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
+    notes = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
     __table_args__ = (
-        db.Index('ix_identity_profiles_type_name', 'profile_type', 'last_initial'),
+        db.Index('ix_identity_profiles_type', 'profile_type'),
     )
 
     @property
+    def display_last_initial(self):
+        return self.last_name[0].upper() if self.last_name else ""
+
+    @property
     def full_name(self):
-        return f"{self.first_name} {self.last_initial}."
+        return f"{self.first_name} {self.last_name}".strip()
 
 
 class UserInviteToken(db.Model):
@@ -347,8 +352,18 @@ class Seat(db.Model):
         return self.identity_profile.first_name if self.identity_profile else ""
 
     @property
+    def identity_id(self):
+        return self.identity_profile.id if self.identity_profile else None
+
+    @property
+    def display_last_name(self):
+        return self.identity_profile.last_name if self.identity_profile else None
+
+    @property
     def display_last_initial(self):
-        return self.identity_profile.last_initial if self.identity_profile else ""
+        if self.identity_profile:
+            return self.identity_profile.display_last_initial
+        return ""
 
 
 @event.listens_for(Seat, "before_insert")
@@ -439,7 +454,9 @@ class Student(db.Model):
 
     @property
     def full_name(self):
-        return f"{self.display_first_name} {self.display_last_initial}."
+        if self.display_first_name and self.display_last_name:
+            return f"{self.display_first_name} {self.display_last_name}"
+        return self.display_first_name or ""
 
     @property
     def name_identity_id(self):
@@ -464,8 +481,12 @@ class Student(db.Model):
         return self.identity_profile.first_name if self.identity_profile else ""
 
     @property
+    def display_last_name(self):
+        return self.identity_profile.last_name if self.identity_profile else ""
+
+    @property
     def display_last_initial(self):
-        return self.identity_profile.last_initial if self.identity_profile else ""
+        return self.display_last_name[:1].upper() if self.display_last_name else ""
 
     # Student transactions relationship severed in V2.
     # checking_balance and savings_balance properties severed in V2.
@@ -1505,7 +1526,6 @@ class RedemptionAuditLog(db.Model):
 
     id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     student_item_id = db.Column(db.Integer, db.ForeignKey('student_items.id'), nullable=True, index=True)
-    student_display_name = db.Column(db.String(120), nullable=False)
     class_display_label = db.Column(db.String(120), nullable=False)
     action = db.Column(
         db.Enum(
@@ -1535,10 +1555,17 @@ class RedemptionAuditLog(db.Model):
 
     student_item = db.relationship('StudentItem', backref=db.backref('redemption_audit_logs', lazy='dynamic'))
     teacher = db.relationship('Admin', backref=db.backref('redemption_audit_logs', lazy='dynamic'))
+    seat = db.relationship('Seat', foreign_keys=[seat_id])
 
     __table_args__ = (
         db.Index('ix_redemption_audit_logs_teacher_timestamp', 'teacher_id', 'timestamp'),
     )
+
+    @property
+    def resolved_student_display_name(self):
+        if self.seat and self.seat.identity_profile:
+            return self.seat.identity_profile.full_name
+        return "Unknown Student"
 
 
 # -------------------- RENT SETTINGS MODEL --------------------
@@ -2735,10 +2762,8 @@ class Issue(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # Student display cache and actor reference
+    # Student actor reference
     student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
-    student_first_name = db.Column(db.String(100), nullable=False)  # Cached for display
-    student_last_initial = db.Column(db.String(1), nullable=False)
 
     # Public actor identifier for sysadmin investigations
     actor_public_id = db.Column(db.String(64), nullable=False, index=True)
@@ -2802,6 +2827,7 @@ class Issue(db.Model):
 
     # Relationships
     student = db.relationship('Student', backref=db.backref('issues', lazy='dynamic'))
+    seat = db.relationship('Seat', foreign_keys=[seat_id])
     teacher = db.relationship('Admin', backref=db.backref('class_issues', lazy='dynamic'))
     sysadmin = db.relationship('SystemAdmin', backref=db.backref('reviewed_issues', lazy='dynamic'))
     related_transaction = db.relationship('Transaction', backref='related_issues')
@@ -2857,8 +2883,14 @@ class Issue(db.Model):
         canonical_status = self.LEGACY_TO_CANONICAL_STATUS.get(self.status, self.status)
         return canonical_status in [self.STATUS_ESCALATED_TO_DEV, self.STATUS_DEV_RESOLVED, self.STATUS_CLOSED]
 
+    @property
+    def student_display_name(self):
+        if self.seat and self.seat.identity_profile:
+            return self.seat.identity_profile.full_name
+        return "Unknown Student"
+
     def __repr__(self):
-        return f'<Issue #{self.id} ({self.status}) - Student {self.student_first_name} {self.student_last_initial}.>'
+        return f'<Issue #{self.id} ({self.status}) - Student {self.student_display_name}>'
 
 
 class TicketCorrelationPack(db.Model):
@@ -3773,23 +3805,8 @@ class IntegrityStatus(db.Model):
         return f'<IntegrityStatus {state} checked={self.last_checked_utc}>'
 
 
-def _normalize_initial(value):
-    if not value:
-        return None
-    return str(value).strip().upper()[:1]
-
-
 def _sync_identity_profile(session, entity, profile_type):
     first_name = (entity.first_name or "").strip() if entity.first_name else None
-    last_initial = _normalize_initial(entity.last_initial)
-    
-    # Use placeholder values if first_name or last_initial is missing
-    # This prevents constraint violations when IdentityProfile can't sync
-    if not first_name:
-        first_name = "[Unknown]"
-    if not last_initial:
-        last_initial = "?"
-
     profile = entity.identity_profile
     if profile is None and getattr(entity, "identity_id", None):
         profile = session.get(IdentityProfile, entity.identity_id)
@@ -3797,18 +3814,16 @@ def _sync_identity_profile(session, entity, profile_type):
             entity.identity_profile = profile
 
     if profile is None:
-        profile = IdentityProfile(
-            profile_type=profile_type,
-            first_name=first_name,
-            last_initial=last_initial,
-        )
-        session.add(profile)
-        entity.identity_profile = profile
-    else:
-        profile.first_name = first_name
-        profile.last_initial = last_initial
-        if not profile.profile_type:
-            profile.profile_type = profile_type
+        raise ValueError("Student flush requires an explicit canonical IdentityProfile with full last_name.")
+
+    if not first_name:
+        raise ValueError("IdentityProfile sync requires student.first_name.")
+    if not profile.last_name:
+        raise ValueError("IdentityProfile.last_name is required; legacy initial fallback is not allowed.")
+
+    profile.first_name = first_name
+    if not profile.profile_type:
+        profile.profile_type = profile_type
 
 
 @event.listens_for(Session, "before_flush")
