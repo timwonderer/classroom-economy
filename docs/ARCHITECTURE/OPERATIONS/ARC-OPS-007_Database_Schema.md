@@ -230,7 +230,8 @@ Support and monitoring infrastructure includes:
 These tables rely on `join_code` as their class boundary and must not be treated as teacher-global in v2 flows:
 
 - `transactions`
-- `tap_events`
+- `attendance_sessions`
+- `seat_attendance_state`
 - `student_blocks`
 - `hall_pass_logs`
 - `rent_payments`
@@ -239,7 +240,7 @@ These tables rely on `join_code` as their class boundary and must not be treated
 - `student_insurance`
 - `insurance_claims`
 
-Many of these tables also carry transitional fields such as `teacher_id`, `seat_id`, or historical block references. Those fields may remain useful for migration or reporting, but `join_code` is the class-isolation authority for current v2 runtime behavior.
+Many of these tables also carry transitional fields such as `teacher_id`, `seat_id`, or historical block references. Those fields may remain useful for migration or reporting, but `join_code` is the class-isolation authority for current v2 runtime behavior where present; canonical attendance runtime ownership now lives on `attendance_sessions` and `seat_attendance_state`.
 
 ## V. Migration Notes
 

@@ -55,7 +55,7 @@ from app.extensions import db, limiter
 from app.feats.base import feat_shell, FEATContext, InvariantViolation
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    Student, Admin, ClassEconomy, StudentTeacher, Transaction, TransactionStatus, TapEvent, StoreItem, StudentItem,
+    Student, Admin, ClassEconomy, StudentTeacher, Transaction, TransactionStatus, AttendanceSession, StoreItem, StudentItem,
     InsurancePolicy, InsurancePolicyBlock, RentItem, RentPayment, RentSettings, StoreItemBlock,
     InsuranceEnrollment, StudentInsurance, InsuranceClaim, HallPassLog, HallPassSettings, PayrollSettings, SavedAdjustment,
     BankingSettings,
@@ -64,7 +64,7 @@ from app.models import (
     RedemptionAuditSource, Issue, IssueStatusHistory, IssueResolutionAction, AnalyticsSnapshot, AnalyticsEvent, Seat,
     BalanceCache, ClassMembership, ClassEconomy, EconomySnapshot, User, UserRole, _quantize_currency,
     ObligationAssessment,
-    SeatAttendanceState, TapEventReasonCode, IdentityProfile,
+    SeatAttendanceState, AttendanceReasonCode, IdentityProfile,
 )
 from app.auth import (
     admin_required,
@@ -1268,7 +1268,6 @@ def _hard_delete_class_scope(class_id, teacher_id):
     scoped_models = (
         ("ledger_transaction", Transaction),
         ("student_blocks", StudentBlock),
-        ("tap_events", TapEvent),
         ("hall_pass_logs", HallPassLog),
         ("student_items", StudentItem),
         ("analytics_events", AnalyticsEvent),
@@ -1347,7 +1346,8 @@ def _hard_delete_class_scope(class_id, teacher_id):
         RedemptionAuditLog.student_item_id.in_(sa.select(student_item_ids_subq))
     ).delete(synchronize_session=False)
     StudentItem.query.filter(StudentItem.class_id == class_id).delete(synchronize_session=False)
-    TapEvent.query.filter(TapEvent.class_id == class_id).delete(synchronize_session=False)
+    SeatAttendanceState.query.filter(SeatAttendanceState.class_id == class_id).delete(synchronize_session=False)
+    AttendanceSession.query.filter(AttendanceSession.class_id == class_id).delete(synchronize_session=False)
     HallPassLog.query.filter(HallPassLog.class_id == class_id).delete(synchronize_session=False)
     RentPayment.query.filter(RentPayment.class_id == class_id).delete(synchronize_session=False)
     StudentBlock.query.filter(StudentBlock.class_id == class_id).delete(synchronize_session=False)
@@ -2976,10 +2976,11 @@ def dashboard():
 
     # Recent attendance logs (limited to 5 for display)
     raw_logs = (
-        db.session.query(TapEvent, Student)
-        .join(Student, TapEvent.student_id == Student.id)
+        db.session.query(AttendanceSession, Student)
+        .join(Student, AttendanceSession.student_id == Student.id)
         .filter(Student.id.in_(sa.select(student_ids_subq)))
-        .order_by(TapEvent.timestamp.desc())
+        .filter(AttendanceSession.is_deleted.is_(False))
+        .order_by(AttendanceSession.started_at.desc())
         .limit(5)
         .all()
     )
@@ -2991,7 +2992,7 @@ def dashboard():
             'period': log.period,
             'timestamp': log.timestamp,
             'reason': log.reason,
-            'status': log.status
+            'status': log.status,
         })
 
     # --- Payroll Info ---
@@ -4588,9 +4589,7 @@ def student_detail_public(student_public_id):
         session['current_class_id'] = class_id
 
     tx_scope = sa.and_(Transaction.seat_id == seat_id, Transaction.class_id == class_id)
-    tap_scope = sa.and_(TapEvent.seat_id == seat_id, TapEvent.class_id == class_id)
-
-    # Remove deprecated last_tap_in/last_tap_out logic; rely on TapEvent backend.
+    att_scope = sa.and_(AttendanceSession.seat_id == seat_id, AttendanceSession.class_id == class_id)
     # Fetch last rent payment
     rent_query = Transaction.query.filter(tx_scope, Transaction.type == "rent")
     if join_code:
@@ -4625,16 +4624,14 @@ def student_detail_public(student_public_id):
 
     transactions_query = Transaction.query.filter(tx_scope)
     student_items_query = student.items
-    latest_tap_event_query = TapEvent.query.filter(tap_scope)
+    latest_att_query = AttendanceSession.query.filter(att_scope, AttendanceSession.is_deleted.is_(False))
     if join_code:
         transactions_query = transactions_query.filter(Transaction.join_code == join_code)
         student_items_query = student_items_query.filter(StudentItem.join_code == join_code)
-        latest_tap_event_query = latest_tap_event_query.filter(TapEvent.join_code == join_code)
 
     transactions = transactions_query.order_by(Transaction.timestamp.desc()).all()
     student_items = student_items_query.order_by(StudentItem.purchase_date.desc()).all()
-    # Fetch most recent TapEvent for this student
-    latest_tap_event = latest_tap_event_query.order_by(TapEvent.timestamp.desc()).first()
+    latest_tap_event = latest_att_query.order_by(AttendanceSession.started_at.desc()).first()
 
     class_row = ClassEconomy.query.filter_by(join_code=join_code).first() if join_code else None
     class_id = class_row.class_id if class_row else class_id
@@ -8630,7 +8627,7 @@ def run_payroll(*args, **kwargs):
 
 def _run_payroll_legacy():
     """
-    Run payroll by computing earned seconds from TapEvent append-only log (LEGACY).
+    Run payroll by computing earned seconds from attendance sessions.
     For each student, for each block, match active/inactive pairs since last payroll,
     sum total seconds, and post ledger payroll entries.
 
@@ -9633,13 +9630,12 @@ def attendance_log():
     # Get accessible student IDs for tenant scoping
     student_ids_subq = _student_scope_subquery(include_unassigned=False)
 
-    # Get distinct periods from TapEvents for this admin's students
     periods_query = (
-        db.session.query(TapEvent.period)
-        .filter(TapEvent.student_id.in_(sa.select(student_ids_subq)))
-        .filter(TapEvent.is_deleted.is_not(True))
+        db.session.query(AttendanceSession.period)
+        .filter(AttendanceSession.student_id.in_(sa.select(student_ids_subq)))
+        .filter(AttendanceSession.is_deleted.is_(False))
         .distinct()
-        .order_by(TapEvent.period)
+        .order_by(AttendanceSession.period)
     )
     periods = [p[0] for p in periods_query.all() if p[0]]
 
@@ -10132,11 +10128,10 @@ def enforce_daily_limits():
                     student_id=student.id,
                     seat_id=seat_id,
                     class_id=class_id,
-                    join_code=join_code,
                     period=period_upper,
                     status="inactive",
                     reason=f"Daily limit reached ({daily_limit / 3600:.1f}h)",
-                    reason_code=TapEventReasonCode.DAILY_LIMIT,
+                    reason_code=AttendanceReasonCode.DAILY_LIMIT,
                     timestamp_utc=now_utc,
                 )
                 att_state.done_for_day_date = today_local
