@@ -71,6 +71,14 @@ New code must route writes through FEATs; legacy routes that commit directly are
 - **Accessibility** — WCAG 2.1 AA design guidelines, keyboard navigation, ARIA labels, screen reader support. Automated testing uses axe-core; no formal certification.
 - **Security** — PII encryption at rest, TOTP 2FA for admins, CSRF protection, salted+peppered credential hashing, Cloudflare Turnstile bot protection, post-claim PII deletion
 
+> [!IMPORTANT]
+> Classroom Token Hub is designed to be privacy first. Our privcy stance is 
+> - I don't know you
+> - I don't need to know you
+> - I don't want to know you
+>
+> Because of that, we do not support SSO integration. Learn more about why we made that choice at [PRN-SNP-001 Why Classroom Token Hub Does Not Implement SSO](docs/PRINCIPLES/SECURITY_AND_PRIVACY/PRN-SNP-001_Why_Classroom_Token_Hub_Does_Not_Implement_SSO.md)
+
 ---
 
 ## Quick Start
