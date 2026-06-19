@@ -103,10 +103,11 @@ def downgrade():
     if not index_exists("rent_settings", "ix_rent_settings_join_code"):
         op.create_index(op.f("ix_rent_settings_join_code"), "rent_settings", ["join_code"], unique=False)
 
-    op.create_foreign_key(
-        op.f("fk_rent_settings_teacher_id_teachers"),
-        "rent_settings",
-        "teachers",
-        ["teacher_id"],
-        ["id"],
-    )
+    if not get_foreign_keys_by_column("rent_settings", "teacher_id"):
+        op.create_foreign_key(
+            op.f("fk_rent_settings_teacher_id_teachers"),
+            "rent_settings",
+            "teachers",
+            ["teacher_id"],
+            ["id"],
+        )

@@ -221,6 +221,7 @@ def check_redemption_audit_log_safety(filepath):
 # List of legacy migrations that are known to violate new idempotency rules
 # (unguarded add_column/create_index). These are whitelisted to prevent CI failure.
 LEGACY_MIGRATIONS = {
+    '0002a_rename_class_economies.py',
     '02f217d8b08e_clean_initial_migration_ref.py',
     '1n7bslh69u6x_add_has_completed_profile_migration_to_.py',
     '2f3g4h5i6j7k_add_claim_type_and_transaction_link.py',

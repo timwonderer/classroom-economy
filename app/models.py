@@ -505,22 +505,33 @@ class Student(db.Model):
             raise ValueError("get_savings_balance requires class_id and seat_id.")
         return get_available_balance(seat_id, class_id, 'savings')
 
-    def get_total_earnings(self, join_code=None, teacher_id=None):
+    def get_total_earnings(self, class_id=None, join_code=None, teacher_id=None):
         """
         Get total earnings scoped to a specific class economy.
 
-        CRITICAL: For proper period isolation, callers should pass join_code.
+        CRITICAL: For proper period isolation, callers should pass class_id when available.
+        join_code remains supported for legacy callers that still scope by join code.
 
         Args:
-            join_code: The unique class identifier for period-level isolation
+            class_id: Canonical class scope identifier
+            join_code: Legacy class identifier for period-level isolation
             teacher_id: Deprecated — accepted but ignored for backward compatibility
 
         Returns:
             float: The total earnings rounded to 2 decimal places
         """
+        if class_id:
+            total = db.session.query(db.func.sum(Transaction.amount)).join(Seat, Transaction.seat_id == Seat.id).filter(
+                Seat.student_id == self.id,
+                Transaction.class_id == class_id,
+                Transaction.amount > 0,
+                Transaction.is_void == False,
+                ~Transaction.description.startswith("Transfer")
+            ).scalar()
+            return float(round(_quantize_currency(total), 2)) if total else 0.0
+
         if join_code:
-            # Proper scoping by join_code (period-level isolation)
-            from app.models import Transaction, Seat
+            # Legacy scoping by join_code (period-level isolation)
             total = db.session.query(db.func.sum(Transaction.amount)).join(Seat, Transaction.seat_id == Seat.id).filter(
                 Seat.student_id == self.id,
                 Transaction.join_code == join_code,
@@ -530,10 +541,9 @@ class Student(db.Model):
             ).scalar()
             return float(round(_quantize_currency(total), 2)) if total else 0.0
 
-        else:
-            # Unscoped totals are disabled under join-code scoping to avoid
-            # leaking or conflating balances across distinct class economies.
-            return 0.0
+        # Unscoped totals are disabled under class/join-code scoping to avoid
+        # leaking or conflating balances across distinct class economies.
+        return 0.0
 
     def get_all_teachers(self):
         """
@@ -2463,7 +2473,7 @@ class ObligationReversal(db.Model):
     assessment_id = db.Column(db.Integer, db.ForeignKey('assessment_events.id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
     reason = db.Column(db.Text, nullable=True)
     reversed_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
-    reversed_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
+    reversed_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
 
 
 class InsuranceEnrollment(db.Model):

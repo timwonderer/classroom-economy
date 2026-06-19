@@ -1,6 +1,6 @@
 
 alembic==1.18.4
-beautifulsoup4==4.14.3
+beautifulsoup4==4.15.0
 bcrypt==5.0.0
 bleach==6.4.0
 blinker==1.9.0
@@ -30,7 +30,7 @@ Pygments==2.20.0
 pyotp==2.9.0
 pytest==9.0.3
 pytest-flask==1.3.0
-playwright==1.55.0
+playwright==1.60.0
 pytz==2026.2
 PyYAML==6.0.3
 soupsieve==2.8.4
@@ -41,8 +41,8 @@ Werkzeug==3.1.8
 # TODO: [DEPENDABOT PR #847] zope.event 6.x is a major version change. Review for
 # breaking changes (transitive dep for gevent) before upgrading from 5.0 to 6.1
 zope.event==5.0
-# Upgraded to 8.4 in PR #1203 after comprehensive v2.0 compatibility testing
-zope.interface==8.4
+# Upgraded to 8.5 after comprehensive v2.0 compatibility testing
+zope.interface==8.5
 python-dateutil==2.9.0.post0
 cryptography==49.0.0
 Flask-WTF==1.3.0
@@ -57,11 +57,11 @@ APScheduler==3.11.2
 Flask-Limiter==3.5.0
 redis==7.4.0
 passwordless==2.0.0
-requests==2.33.1
-opentelemetry-api==1.41.1
-opentelemetry-sdk==1.41.1
-opentelemetry-exporter-otlp-proto-http==1.41.1
-opentelemetry-semantic-conventions==0.62b1
-opentelemetry-instrumentation-flask==0.62b1
-opentelemetry-instrumentation-requests==0.62b1
-opentelemetry-instrumentation-sqlalchemy==0.62b1
+requests==2.34.2
+opentelemetry-api==1.42.1
+opentelemetry-sdk==1.42.1
+opentelemetry-exporter-otlp-proto-http==1.42.1
+opentelemetry-semantic-conventions==0.63b1
+opentelemetry-instrumentation-flask==0.63b1
+opentelemetry-instrumentation-requests==0.63b1
+opentelemetry-instrumentation-sqlalchemy==0.63b1

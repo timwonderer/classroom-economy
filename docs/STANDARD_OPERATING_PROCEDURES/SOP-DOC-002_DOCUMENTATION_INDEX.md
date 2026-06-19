@@ -116,6 +116,10 @@ These documents conform to the V2 capability-based architecture and domain autho
 - [REFERENCE/REF-TERM-001_DEVELOPER_VOCABULARY.md](REFERENCE/REF-TERM-001_DEVELOPER_VOCABULARY.md) — Authoritative developer-facing vocabulary
 - [REFERENCE/REF-TERM-002_USER_VOCABULARY.md](REFERENCE/REF-TERM-002_USER_VOCABULARY.md) — Authoritative user-facing vocabulary
 
+### Principles — Security and Privacy (PRN-SNP)
+- [PRINCIPLES/SECURITY_AND_PRIVACY/PRN-SNP-001_Why_Classroom_Token_Hub_Does_Not_Implement_SSO.md](../../PRINCIPLES/SECURITY_AND_PRIVACY/PRN-SNP-001_Why_Classroom_Token_Hub_Does_Not_Implement_SSO.md) — Why CTH does not federate identity through institutional SSO
+- [PRINCIPLES/SECURITY_AND_PRIVACY/PRN-SNP-002_Trust_Based_Account_Recovery.md](../../PRINCIPLES/SECURITY_AND_PRIVACY/PRN-SNP-002_Trust_Based_Account_Recovery.md) — SATAR and TISAR trust-based account recovery flows
+
 ---
 
 ## VI. Legacy Specifications (Deprecated/Transitional)
