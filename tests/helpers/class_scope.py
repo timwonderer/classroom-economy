@@ -70,7 +70,7 @@ def create_class_scope(
         db.session.add(ClassMembership(
             class_id=class_row.class_id,
             join_code=join_code,
-            admin_id=teacher.id,
+            admin_id=resolved_teacher_user_id,
             role="admin",
         ))
         t_seat = Seat(
