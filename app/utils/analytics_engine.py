@@ -28,7 +28,7 @@ from app.extensions import db
 from app.models import (
     Student, Transaction, TapEvent, PayrollSettings,
     RentSettings, AnalyticsSnapshot, AnalyticsAlert, ClassEconomy,
-    ClassMembership, ClassMembershipRole, Seat
+    ClassMembership, ClassMembershipRole, Seat, IdentityProfile
 )
 from app.utils.economy_balance import EconomyBalanceChecker
 from app.utils.economy_policy import (
@@ -121,14 +121,17 @@ class AnalyticsEngine:
         if not self.class_id or not student_ids:
             return {}
         rows = (
-            Seat.query.with_entities(Seat.student_id, Seat.id)
+            Seat.query.with_entities(Seat.id, Student.id)
+            .join(ClassMembership, ClassMembership.student_id == Student.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
             .filter(
                 Seat.class_id == self.class_id,
-                Seat.student_id.in_(student_ids),
+                Student.id.in_(student_ids),
             )
             .all()
         )
-        return {student_id: seat_id for student_id, seat_id in rows if student_id and seat_id}
+        return {student_id: seat_id for seat_id, student_id in rows if student_id and seat_id}
     
     def _get_cwi(self) -> float:
         """Calculate current CWI for this class."""

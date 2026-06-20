@@ -10,7 +10,7 @@ from app.models import (
     TapEvent, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
     AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
     StudentInsurance, RentPayment, Announcement, StoreItemBlock, StoreItem,
-    Student, StudentTeacher, PayrollSettings, RentSettings,
+    Student, PayrollSettings, RentSettings, IdentityProfile,
     InsurancePolicyBlock,
 )
 from app.feats.base import feat_shell, InvariantViolation
@@ -48,10 +48,11 @@ def _assert_class_scope_integrity(class_id: str, join_code: str) -> None:
 
     # Check for StudentBlock rows with null class_id inferred from active seats in this class
     seat_student_ids = [
-        s_id for (s_id,) in db.session.query(Seat.student_id).filter(
-            Seat.class_id == class_id,
-            Seat.student_id.isnot(None),
-        ).distinct().all()
+        s_id for (s_id,) in db.session.query(Student.id)
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .join(Seat, Seat.id == IdentityProfile.seat_id)
+        .filter(Seat.class_id == class_id)
+        .distinct().all()
     ]
     seat_blocks = [
         b for (b,) in db.session.query(Seat.block).filter(
@@ -119,10 +120,11 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
             ).distinct().all()
         ]
         affected_student_ids_seat = [
-            s_id for (s_id,) in db.session.query(Seat.student_id).filter(
-                Seat.class_id == class_id,
-                Seat.student_id.isnot(None),
-            ).distinct().all()
+            s_id for (s_id,) in db.session.query(Student.id)
+            .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+            .join(Seat, Seat.id == IdentityProfile.seat_id)
+            .filter(Seat.class_id == class_id)
+            .distinct().all()
         ]
         affected_student_ids_sb = [
             s_id for (s_id,) in db.session.query(StudentBlock.student_id).filter(
@@ -188,29 +190,34 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         db.session.delete(economy)
 
         # 7. Post-collapse: Student Erasure and Link Cleanup
-        # If a student has zero remaining Seats under this teacher's classes, remove the StudentTeacher link.
+        # If a student has zero remaining Seats under this teacher's classes, continue erasure checks.
         # If they have zero across ALL teachers, fully delete the student record.
         if affected_student_ids:
             for s_id in affected_student_ids:
                 # Does student have any remaining seats in this teacher's other classes?
                 remaining_with_teacher = (
                     db.session.query(Seat.id)
+                    .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+                    .join(Student, Student.identity_id == IdentityProfile.id)
                     .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
                     .filter(
-                        Seat.student_id == s_id,
+                        Student.id == s_id,
                         ClassEconomy.teacher_id == teacher_id,
                     )
                     .count()
                 )
-                if remaining_with_teacher == 0:
-                    StudentTeacher.query.filter_by(student_id=s_id, teacher_id=teacher_id).delete(synchronize_session=False)
 
                 # Full erasure if totally orphaned across all teachers
                 remaining_memberships = db.session.query(ClassMembership.id).filter_by(student_id=s_id).count()
-                remaining_seats = db.session.query(Seat.id).filter_by(student_id=s_id).count()
+                remaining_seats = (
+                    db.session.query(Seat.id)
+                    .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+                    .join(Student, Student.identity_id == IdentityProfile.id)
+                    .filter(Student.id == s_id)
+                    .count()
+                )
                 if remaining_memberships == 0 and remaining_seats == 0:
                     logger.info(f"Student Erasure Rule triggered for student_id={s_id}")
-                    StudentTeacher.query.filter_by(student_id=s_id).delete(synchronize_session=False)
                     Student.query.filter_by(id=s_id).delete(synchronize_session=False)
 
         # 8. Post-collapse: Settings Cleanup

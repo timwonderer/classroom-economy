@@ -490,7 +490,7 @@ def claim_account():
     4. System finds matching unclaimed seat in Seat
     5. Creates Student record (or finds existing if teacher shadow student)
     6. Links Seat to Student
-    7. Creates StudentTeacher link
+    7. Creates the canonical student-seat linkage
     """
     from app.models import ClassEconomy, Seat, IdentityProfile, Student
     from app.hash_utils import hash_username_lookup

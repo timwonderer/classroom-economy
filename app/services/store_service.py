@@ -294,7 +294,9 @@ def unlock_collective_goal_if_ready(*, item, class_id: str, join_code: str | Non
     if not class_id:
         raise ValueError("class_id is required for collective goal unlock")
     class_size = db.session.query(db.func.count(db.func.distinct(Student.id))).join(
-        Seat, Seat.student_id == Student.id,
+        IdentityProfile, IdentityProfile.id == Student.identity_id
+    ).join(
+        Seat, Seat.id == IdentityProfile.seat_id,
     ).filter(
         Seat.class_id == class_id,
         Seat.claimed_at.isnot(None),

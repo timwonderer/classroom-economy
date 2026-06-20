@@ -132,7 +132,8 @@ def _account_lookup_legacy():
         # Find candidate row by both reset_code and join_code to avoid collisions.
         seat = (
             Seat.query
-            .join(Student, Student.id == Seat.student_id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
             .filter(
                 Seat.join_code == join_code,
                 Student.reset_code == reset_code,
