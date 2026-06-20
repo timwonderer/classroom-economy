@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from app.extensions import db
-from app.models import RentItem, RentPolicyVersion, Student, StudentItem, Seat
+from app.models import RentItem, RentPolicyVersion, StudentItem, Seat
 from app.utils.time import utc_now
 
 
@@ -82,7 +82,6 @@ def grant_rent_per_use_items_from_version(
                 expiry_date = next_due
 
         db.session.add(StudentItem(
-            student_id=seat.student_id,
             seat_id=seat.id,
             class_id=seat.class_id,
             store_item_id=store_item_id,
@@ -143,7 +142,6 @@ def grant_rent_per_use_items(*, seat, settings, calculate_due_dates_fn) -> int:
                 expiry_date = next_due
 
         db.session.add(StudentItem(
-            student_id=seat.student_id,
             seat_id=seat.id,
             class_id=seat.class_id,
             store_item_id=pu_item.store_item_id,
@@ -180,7 +178,6 @@ def ensure_active_rent_per_use_grant(
 
     granted_item = StudentItem(
         seat_id=seat.id,
-        student_id=seat.student_id,
         class_id=seat.class_id,
         store_item_id=store_item_id,
         purchase_date=now,
@@ -212,7 +209,6 @@ def record_rent_perk_purchase(
 
     student_item = StudentItem(
         seat_id=seat.id,
-        student_id=seat.student_id,
         class_id=seat.class_id,
         store_item_id=item.id,
         purchase_date=now,

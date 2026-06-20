@@ -3,7 +3,7 @@ from datetime import timedelta
 import secrets
 
 from app.extensions import db, limiter
-from app.models import Seat, Student, User
+from app.models import IdentityProfile, Seat, Student, User
 from app.auth import admin_required, get_student_for_admin
 from app.utils.time import utc_now, ensure_utc
 
@@ -17,8 +17,10 @@ def _find_linked_user_for_student(student_id: int | None) -> User | None:
     return (
         User.query
         .join(Seat, Seat.user_id == User.id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .filter(
-            Seat.student_id == student_id,
+            Student.id == student_id,
             Seat.user_id.isnot(None),
         )
         .order_by(Seat.id.asc())
@@ -137,7 +139,13 @@ def _account_lookup_legacy():
             )
             .first()
         )
-        student = db.session.get(Student, seat.student_id) if seat else None
+        student = (
+            db.session.query(Student)
+            .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+            .join(Seat, Seat.id == IdentityProfile.seat_id)
+            .filter(Seat.id == seat.id)
+            .first()
+        ) if seat else None
  
         # Validate all conditions — use a single generic error for security
         valid = True

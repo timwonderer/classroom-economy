@@ -18,7 +18,7 @@ from app.services.attendance_service import (
     get_all_block_statuses as _get_all_block_statuses,
 )
 from app.services.ledger_service import get_last_payroll_time as _get_last_payroll_time
-from app.models import AttendanceSession
+from app.models import AttendanceSession, IdentityProfile, Student
 from app.feats.base import feat_shell
 
 def get_last_payroll_time(*, seat_id: int, class_id: str):
@@ -330,9 +330,11 @@ def batch_auto_tapout_students(admin_id):
 
     claimed_seats = (
         Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .filter(
             Seat.class_id.in_(admin_class_ids),
-            Seat.student_id.in_(student_ids),
+            Student.id.in_(student_ids),
             Seat.claimed_at.isnot(None),
         )
         .all()
@@ -351,7 +353,9 @@ def batch_auto_tapout_students(admin_id):
         blk = (seat.block or "").strip().upper()
         if not blk:
             continue
-        seats_by_student_period.setdefault(seat.student_id, {}).setdefault(blk, []).append(seat)
+        student_id = seat.identity_profile.student.id if getattr(seat, "identity_profile", None) and getattr(seat.identity_profile, "student", None) else None
+        if student_id is not None:
+            seats_by_student_period.setdefault(student_id, {}).setdefault(blk, []).append(seat)
 
     # 4. Batch fetch PayrollSettings
     payroll_settings = PayrollSettings.query.filter(

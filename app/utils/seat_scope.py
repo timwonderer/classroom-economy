@@ -5,7 +5,7 @@ import sqlalchemy as sa
 
 def get_seat_ids_for_student_join(student_id: int, join_code: str) -> list[int]:
     """Legacy compatibility shim while callers migrate from join_code to class_id."""
-    from app.models import ClassEconomy, Seat
+    from app.models import ClassEconomy, IdentityProfile, Seat, Student
 
     if not student_id or not join_code:
         return []
@@ -16,17 +16,22 @@ def get_seat_ids_for_student_join(student_id: int, join_code: str) -> list[int]:
         query = query.filter(Seat.class_id == class_row.class_id)
     else:
         query = query.filter(Seat.join_code == join_code)
-    return [row[0] for row in query.all()]
+    query = query.join(IdentityProfile, IdentityProfile.seat_id == Seat.id).join(Student, Student.identity_id == IdentityProfile.id)
+    return [row[0] for row in query.filter(Student.id == student_id).all()]
 
 
 def get_seat_ids_for_student_class(student_id: int, class_id: str) -> list[int]:
     """Return seat IDs bound to a student and class ID."""
-    from app.models import Seat
+    from app.models import IdentityProfile, Seat, Student
 
     return [
         row[0]
-        for row in Seat.query.with_entities(Seat.id).filter(
-            Seat.student_id == student_id,
+        for row in Seat.query.with_entities(Seat.id).join(
+            IdentityProfile, IdentityProfile.seat_id == Seat.id
+        ).join(
+            Student, Student.identity_id == IdentityProfile.id
+        ).filter(
+            Student.id == student_id,
             Seat.class_id == class_id,
         ).all()
     ]
@@ -34,8 +39,14 @@ def get_seat_ids_for_student_class(student_id: int, class_id: str) -> list[int]:
 
 def get_seat_id_for_class(student_id: int, class_id: str) -> int | None:
     """Return the primary seat ID bound to a student and class ID."""
-    from app.models import Seat
-    seat = Seat.query.filter_by(student_id=student_id, class_id=class_id).first()
+    from app.models import IdentityProfile, Seat, Student
+    seat = (
+        Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
+        .filter(Student.id == student_id, Seat.class_id == class_id)
+        .first()
+    )
     return seat.id if seat else None
 
 
