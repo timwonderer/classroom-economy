@@ -7,7 +7,7 @@ from werkzeug.security import generate_password_hash
 
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from app.models import Seat, IdentityProfile, Admin, ClassMembership, ClassFeature, InsuranceClaim, InsuranceEnrollment, InsurancePolicy, RentPayment, RentSettings, StoreItem, Student, StudentInsurance, StudentTeacher, TapEvent, Transaction, TransactionStatus, ClassEconomy, User, UserRole
+from app.models import Seat, IdentityProfile, Admin, ClassMembership, ClassFeature, InsuranceClaim, InsuranceEnrollment, InsurancePolicy, RentPayment, RentSettings, StoreItem, Student, StudentInsurance, StudentTeacher, AttendanceSession, Transaction, TransactionStatus, ClassEconomy, User, UserRole
 from app.services import ledger_service, obligations_service
 from tests.helpers.admin_context import login_admin
 from tests.helpers.class_scope import create_class_scope
@@ -147,20 +147,20 @@ def test_tenant_isolation_attendance_history(client):
 
     economy_a = ClassEconomy.query.filter_by(join_code="JOIN-A").first()
     economy_b = ClassEconomy.query.filter_by(join_code="JOIN-B").first()
-    tap_a = TapEvent(
+    seat_a = Seat.query.filter_by(student_id=student_a.id, join_code="JOIN-A").first()
+    seat_b = Seat.query.filter_by(student_id=student_b.id, join_code="JOIN-B").first()
+    tap_a = AttendanceSession(
         student_id=student_a.id,
+        seat_id=seat_a.id,
         period="A",
-        status="active",
-        timestamp=datetime.now(timezone.utc),
-        join_code="JOIN-A",
+        started_at=datetime.now(timezone.utc),
         class_id=economy_a.class_id if economy_a else None,
     )
-    tap_b = TapEvent(
+    tap_b = AttendanceSession(
         student_id=student_b.id,
+        seat_id=seat_b.id,
         period="A",
-        status="active",
-        timestamp=datetime.now(timezone.utc),
-        join_code="JOIN-B",
+        started_at=datetime.now(timezone.utc),
         class_id=economy_b.class_id if economy_b else None,
     )
     db.session.add_all([tap_a, tap_b])

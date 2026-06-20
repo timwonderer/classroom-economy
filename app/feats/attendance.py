@@ -16,8 +16,7 @@ from app.models import (
     Seat,
     SeatAttendanceState,
     StudentBlock,
-    TapEvent,
-    TapEventReasonCode,
+    AttendanceReasonCode,
 )
 from app.payroll import get_daily_limit_seconds
 from app.utils.economy_policy import resolve_feature_class_for_class
@@ -75,7 +74,7 @@ def student_tap(
     period: str,
     status: str,
     reason: str | None = None,
-    reason_code: TapEventReasonCode | None = None,
+    reason_code: AttendanceReasonCode | None = None,
     timestamp_utc=None,
 ) -> AttendanceSession:
     """Create or close canonical attendance sessions and update live state."""
@@ -718,7 +717,7 @@ def enforce_daily_limits(*, student, commit: bool = True, logger=None):
             AttendanceSession.period == period_upper,
             AttendanceSession.ended_at >= start_of_day_utc,
             AttendanceSession.ended_at < end_of_day_utc,
-            AttendanceSession.end_reason_code == TapEventReasonCode.DAILY_LIMIT,
+            AttendanceSession.end_reason_code == AttendanceReasonCode.DAILY_LIMIT,
         ).first()
         if existing_limit_tapout:
             if log:
@@ -752,7 +751,7 @@ def enforce_daily_limits(*, student, commit: bool = True, logger=None):
             status="inactive",
             reason=f"Daily limit ({hours_limit:.1f}h) reached",
             timestamp_utc=tapout_timestamp,
-            reason_code=TapEventReasonCode.DAILY_LIMIT,
+            reason_code=AttendanceReasonCode.DAILY_LIMIT,
         )
 
         student_block = StudentBlock.query.filter_by(
@@ -775,12 +774,14 @@ def enforce_daily_limits(*, student, commit: bool = True, logger=None):
         db.session.flush()
 
 
-def soft_delete_tap_entry(*, event: TapEvent, admin_id: int, deleted_at=None) -> None:
-    """Soft-delete one tap entry with admin audit fields."""
-    event.is_deleted = True
-    event.deleted_at = deleted_at or utc_now()
-    event.deleted_by = admin_id
+def soft_delete_session(*, session: AttendanceSession, admin_seat_id: int | None, deleted_at=None) -> None:
+    """Soft-delete one attendance session with audit fields."""
+    session.is_deleted = True
+    session.deleted_at = deleted_at or utc_now()
+    session.deleted_by_seat_id = admin_seat_id
     db.session.flush()
+
+
 
 
 def set_student_block_tap_enabled(

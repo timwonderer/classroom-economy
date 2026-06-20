@@ -18,7 +18,7 @@ from app.services.attendance_service import (
     get_all_block_statuses as _get_all_block_statuses,
 )
 from app.services.ledger_service import get_last_payroll_time as _get_last_payroll_time
-from app.models import AttendanceSession, IdentityProfile, Student
+from app.models import AttendanceSession
 from app.feats.base import feat_shell
 
 def get_last_payroll_time(*, seat_id: int, class_id: str):
@@ -283,10 +283,10 @@ def batch_auto_tapout_students(admin_id):
     Optimized version of auto-tapout that processes all students for an admin in batch.
     Returns the count of students tapped out.
     """
-    from app.models import Student, TapEventReasonCode, StudentBlock, PayrollSettings, Seat, ClassEconomy, IdentityProfile
+    from app.models import Student, AttendanceReasonCode, StudentBlock, PayrollSettings, Seat, ClassEconomy, IdentityProfile
     from app.extensions import db
 
-    # 1. Get all students for this admin via Seat → ClassEconomy ownership
+    # 1. Get all students for this admin via canonical class seats
     student_ids = [
         row[0] for row in db.session.query(Student.id)
         .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
@@ -332,11 +332,7 @@ def batch_auto_tapout_students(admin_id):
         Seat.query
         .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
         .join(Student, Student.identity_id == IdentityProfile.id)
-        .filter(
-            Seat.class_id.in_(admin_class_ids),
-            Student.id.in_(student_ids),
-            Seat.claimed_at.isnot(None),
-        )
+        .filter(Seat.class_id.in_(admin_class_ids), Student.id.in_(student_ids), Seat.claimed_at.isnot(None))
         .all()
     )
     if not claimed_seats:
@@ -353,9 +349,7 @@ def batch_auto_tapout_students(admin_id):
         blk = (seat.block or "").strip().upper()
         if not blk:
             continue
-        student_id = seat.identity_profile.student.id if getattr(seat, "identity_profile", None) and getattr(seat.identity_profile, "student", None) else None
-        if student_id is not None:
-            seats_by_student_period.setdefault(student_id, {}).setdefault(blk, []).append(seat)
+        seats_by_student_period.setdefault(seat.student_id, {}).setdefault(blk, []).append(seat)
 
     # 4. Batch fetch PayrollSettings
     payroll_settings = PayrollSettings.query.filter(
@@ -429,7 +423,7 @@ def batch_auto_tapout_students(admin_id):
                         period=period,
                         status="inactive",
                         reason=f"Daily limit ({hours_limit:.1f}h) reached",
-                        reason_code=TapEventReasonCode.DAILY_LIMIT,
+                        reason_code=AttendanceReasonCode.DAILY_LIMIT,
                         timestamp_utc=tapout_ts,
                     )
                     tapped_out_count += 1

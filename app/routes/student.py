@@ -24,7 +24,7 @@ from dateutil.relativedelta import relativedelta
 
 from app.extensions import db, limiter
 from app.models import (
-    Student, Transaction, TransactionStatus, TapEvent, StoreItem, StoreItemBlock, StudentItem,
+    Student, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StudentItem,
     RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
     BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole,
     ClassMembership, ClassEconomy, IdentityProfile, _quantize_currency
@@ -1116,7 +1116,7 @@ def dashboard():
     pending_recovery_code = get_pending_recovery_code_for_student(student.id, utc_now())
 
     # --- Calculate weekly/monthly analytics ---
-    from app.models import TapEvent
+    from app.models import AttendanceSession as _AttSession
     now_utc = utc_now()
     if class_id:
         class_now_utc = get_class_now(class_id, reference_time_utc=now_utc).astimezone(timezone.utc)
@@ -1132,44 +1132,25 @@ def dashboard():
             reference_time=now_utc,
         ) if context.class_id else now_utc
 
-
-
-    # Days tapped in this week
-    tap_events_this_week = TapEvent.query.filter(
-        TapEvent.student_id == student.id,
-        TapEvent.join_code == join_code,
-        TapEvent.timestamp >= week_start,
-        TapEvent.timestamp < week_end,
-        TapEvent.is_deleted == False
+    effective_class_id = class_id or context.class_id
+    sessions_this_week = _AttSession.query.filter(
+        _AttSession.student_id == student.id,
+        _AttSession.class_id == effective_class_id,
+        _AttSession.started_at >= week_start,
+        _AttSession.started_at < week_end,
+        _AttSession.is_deleted.is_(False),
     ).all()
 
-    # Calculate unique days and total minutes
     unique_days_tapped = len(
-        {
-            ensure_utc(event.timestamp).astimezone(tz).date()
-            for event in tap_events_this_week
-            if event.status == 'active'
-        }
+        {ensure_utc(s.started_at).astimezone(tz).date() for s in sessions_this_week}
     )
 
-    # Calculate total minutes this week
     total_minutes_this_week = 0
-    active_sessions = {}  # Track active tap-in per period
-
-    for event in sorted(tap_events_this_week, key=lambda e: e.timestamp):
-        period = event.period
-        event_ts = ensure_utc(event.timestamp)
-        if event.status == 'active':
-            active_sessions[period] = event_ts
-        elif event.status == 'inactive' and period in active_sessions:
-            duration = (event_ts - active_sessions[period]).total_seconds() / 60
-            total_minutes_this_week += duration
-            del active_sessions[period]
-
-    # Add ongoing sessions (still active)
-    for start_time in active_sessions.values():
-        duration = (now_utc - start_time).total_seconds() / 60
-        total_minutes_this_week += duration
+    for s in sessions_this_week:
+        if s.duration_seconds is not None:
+            total_minutes_this_week += s.duration_seconds / 60
+        elif s.ended_at is None:
+            total_minutes_this_week += (now_utc - ensure_utc(s.started_at)).total_seconds() / 60
 
     def _occurred_after(ts, start):
         ts_utc = ensure_utc(ts)
@@ -1311,22 +1292,20 @@ def payroll():
         for blk, state in period_states.items()
     }
 
-    # Get all tap events grouped by block (scoped to the current class when available)
-    # Limit to 20 most recent events to improve performance (template only displays 20)
-    tap_query = TapEvent.query.filter_by(
-        student_id=student.id,
-        period=current_block,
-        join_code=join_code
+    att_query = _AttSession.query.filter(
+        _AttSession.student_id == student.id,
+        _AttSession.class_id == effective_class_id,
+        _AttSession.period == current_block,
+        _AttSession.is_deleted.is_(False),
     )
-
-    all_tap_events = tap_query.order_by(TapEvent.timestamp.desc()).limit(20).all()
+    recent_sessions = att_query.order_by(_AttSession.started_at.desc()).limit(20).all()
+    all_tap_events = recent_sessions
     tap_events_by_block = {}
-    for event in all_tap_events:
-        # Normalize to the action labels used by the template
-        event.action = 'start_work' if event.status == 'active' else 'stop_work'
-        if event.period not in tap_events_by_block:
-            tap_events_by_block[event.period] = []
-        tap_events_by_block[event.period].append(event)
+    for sess in recent_sessions:
+        sess.action = 'start_work' if sess.ended_at is None else 'stop_work'
+        if sess.period not in tap_events_by_block:
+            tap_events_by_block[sess.period] = []
+        tap_events_by_block[sess.period].append(sess)
 
     return render_template(
         'student_payroll.html',
@@ -4061,10 +4040,10 @@ def report_tap_event_issue(tap_event_id):
         return redirect(url_for('student.dashboard'))
 
     # Get the tap event and verify it belongs to this student and class
-    tap_event = TapEvent.query.filter_by(
+    tap_event = AttendanceSession.query.filter_by(
         id=tap_event_id,
         student_id=student.id,
-        join_code=get_display_join_code(class_context.class_id)
+        class_id=class_context.class_id,
     ).first_or_404()
 
     form = StudentIssueSubmissionForm()

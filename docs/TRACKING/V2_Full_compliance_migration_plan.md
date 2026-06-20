@@ -70,7 +70,7 @@ Target state:
 | 3 | Identity Domain | Unified User/Seat auth live; legacy auth tables dropped |
 | 4 | Class Configuration | Settings tables ported to canonical; legacy settings columns dropped |
 | 5 | Ledger Domain | `transaction` → `ledger_transaction`; old ledger tables dropped |
-| 6 | Attendance Domain | `tap_events` → `attendance_sessions`; old attendance tables dropped |
+| 6 | Attendance Domain | `attendance_sessions` + `seat_attendance_state` canonicalized; legacy `tap_events` dropped |
 | 7 | Obligations Domain | Rent + insurance → canonical obligation hierarchy; old obligation tables dropped |
 | 8 | Store Domain | `student_items` → `store_purchases` + `redemption_events`; old store tables dropped |
 | 9 | Operations + Interpretation | Observability and analytics ported; old event/analytics tables dropped |
@@ -90,7 +90,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [x] Complete Wave 3 identity migration sequence through remaining scoped domains (strict exit criteria below; no legacy fallback permitted)
 - [x] Complete Wave 4 class-configuration canonicalization and drop legacy settings columns
 - [x] Complete Wave 5 ledger table migration and FEAT hook reassignment
-- [ ] Complete Wave 6 attendance table migration (`tap_events` lineage removal; canonical admin routes landed, legacy reads/table remain)
+- [x] Complete Wave 6 attendance table migration (`tap_events` lineage removed; canonical reads/writes and legacy table drop landed)
 - [ ] Complete Wave 7 obligations schema migration while preserving already-landed prepay/temporal behavior
 - [ ] Complete Wave 8 store schema migration and remove remaining teacher-scoped enforcement remnants
 - [ ] Complete Wave 9 operations + interpretation canonical migration
@@ -1863,25 +1863,23 @@ Focused validation:
 
 ### Deliverables
 
-1. **Migration `0005_attendance_domain.py`:**
-   - Creates `attendance_sessions` (tap-in/tap-out pairs as session records)
-   - Creates `seat_attendance_state` (current state per seat: in/out/done-for-day)
-   - `hall_pass_logs`: drops `join_code`/`teacher_id` columns; keeps `class_id`/`seat_id`
-   - Drops: `tap_events`
+1. **Canonical attendance tables landed and are runtime-authoritative:**
+   - `attendance_sessions` stores canonical attendance session history
+   - `seat_attendance_state` stores canonical mutable per-seat attendance state
+   - legacy `tap_events` has been dropped by Wave 6 contract migration
 
-2. **`app/services/attendance_service.py`** updated to write/read canonical attendance tables
+2. **Runtime cutover completed:**
+   - attendance/admin/student/deletion code paths read and write canonical attendance tables
+   - payroll/admin batch attendance reads use canonical sessions instead of legacy tap rows
+   - daily-limit helper flows no longer create legacy tap rows
 
-3. **New FEAT: `app/feats/tap_feat.py`** — tap-in and tap-out as atomic, idempotent operations (fixes INV-ARC-007: no more write-on-GET)
+3. **Attendance mutation FEAT path is canonical:**
+   - tap-in and tap-out run through canonical attendance/session-state mutation flow
+   - GET attendance handlers are kept write-free
 
-4. **Route audit:** all GET handlers in attendance sections made pure (no DB writes)
-
-5. **`tests/domain/test_attendance.py`:**
-   - Tap in → `attendance_sessions` record + `seat_attendance_state` updated
-   - Tap out → session closed, duration recorded
-   - Hall pass request → issued state
-   - Hall pass return → session closed
-   - Done-for-day lock respected
-   - GET routes confirmed write-free
+4. **Validation coverage updated:**
+   - tenancy, attendance history, attendance log, class deletion, and invariant tests assert canonical session/state behavior
+   - migration downgrade/re-upgrade path covers Wave 6 table drop/recreation chain
 
 ### Critical Files
 
@@ -2035,11 +2033,10 @@ Constraint:
   4. remove transitional `obligation_assessment`, `insurance_enrollments`, and
      legacy rent/insurance tables only after those checks pass
 - Wave ordering:
-  - Wave 6 remains open because `TapEvent`/`tap_events` and attendance-owned
-    `StudentBlock` reads still exist
-  - the forward schema correction is landed, but no legacy obligation-table
-    drop should proceed until Wave 6 exit status and Wave 7 read-cutover
-    validation are explicitly resolved
+  - Wave 6 is complete: `TapEvent`/`tap_events` runtime usage has been removed and
+    the legacy table drop is part of the current migration chain
+  - Wave 7 obligation-table removal can proceed independently, subject to its own
+    read-cutover and migration validation gates
 
 ### Status Update (2026-06-09): Wave 7-B Insurance Claim Resolution Canonical Write Cutover
 

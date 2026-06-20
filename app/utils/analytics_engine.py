@@ -26,7 +26,7 @@ import sqlalchemy as sa
 
 from app.extensions import db
 from app.models import (
-    Student, Transaction, TapEvent, PayrollSettings,
+    Student, Transaction, AttendanceSession, PayrollSettings,
     RentSettings, AnalyticsSnapshot, AnalyticsAlert, ClassEconomy,
     ClassMembership, ClassMembershipRole, Seat, IdentityProfile
 )
@@ -194,18 +194,18 @@ class AnalyticsEngine:
             if student_id:
                 active_student_ids.add(student_id)
         
-        # Check for attendance in window (distinct student IDs)
-        tap_event_student_rows = (
-            TapEvent.query.with_entities(TapEvent.student_id)
+        att_student_rows = (
+            AttendanceSession.query.with_entities(AttendanceSession.student_id)
             .filter(
-                TapEvent.class_id == self.class_id,
-                TapEvent.timestamp >= window_start,
-                TapEvent.timestamp < window_end,
+                AttendanceSession.class_id == self.class_id,
+                AttendanceSession.started_at >= window_start,
+                AttendanceSession.started_at < window_end,
+                AttendanceSession.is_deleted.is_(False),
             )
             .distinct()
             .all()
         )
-        for (student_id,) in tap_event_student_rows:
+        for (student_id,) in att_student_rows:
             active_student_ids.add(student_id)
         
         # Filter active IDs to only include enrolled students (excludes teachers/demos)

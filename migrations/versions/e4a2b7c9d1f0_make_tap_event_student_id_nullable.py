@@ -19,9 +19,12 @@ depends_on = None
 def column_nullable(table_name, column_name):
     conn = op.get_bind()
     inspector = sa.inspect(conn)
-    for column in inspector.get_columns(table_name):
-        if column.get("name") == column_name:
-            return bool(column.get("nullable"))
+    try:
+        for column in inspector.get_columns(table_name):
+            if column.get("name") == column_name:
+                return bool(column.get("nullable"))
+    except sa.exc.NoSuchTableError:
+        return None
     return None
 
 

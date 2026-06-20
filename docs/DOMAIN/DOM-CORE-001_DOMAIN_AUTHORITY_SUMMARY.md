@@ -65,9 +65,9 @@ All domains listed below are bound by the following structural rules:
 - **Authority**: Sovereign over time-tracking facts and mobility execution.
 - **State Classification**:
   - `attendance_sessions`: Authoritative Fact (Tap Log).
-  - `active_sessions`: Operational State (Single-active guard).
+  - `seat_attendance_state`: Operational State (Single-active guard and done-for-day gate).
 - **Key Transitions**: `Tap In/Out`, `Request Pass` (Trigger).
-- **Primary Schema**: `attendance_sessions`, `hall_pass_logs`.
+- **Primary Schema**: `attendance_sessions`, `hall_pass_logs`, `seat_attendance_state`.
 
 ### 4. Obligations & Assessments (`DOM-OBL-001`)
 - **Authority**: Sovereign over seat-scoped debt lifecycles and linked entitlements.

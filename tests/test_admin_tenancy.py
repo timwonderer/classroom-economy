@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from itsdangerous import URLSafeTimedSerializer
 
 from app import db
-from app.models import Admin, Student, StudentTeacher, Transaction, TapEvent, StudentBlock, PayrollSettings, Seat, ClassEconomy, SeatAttendanceState
+from app.models import Admin, Student, StudentTeacher, Transaction, AttendanceSession, StudentBlock, PayrollSettings, Seat, ClassEconomy, SeatAttendanceState
 from app.hash_utils import get_random_salt, hash_username
 from tests.helpers.class_scope import create_class_scope
 
@@ -286,14 +286,13 @@ def test_enforce_daily_limits_ignores_other_join_code_activity(client):
             pay_rate=0.25,
             payroll_frequency_days=14,
         ),
-        TapEvent(
+        AttendanceSession(
             student_id=shared_student.id,
-            period="A",
-            status="active",
-            join_code="JOINB",
+            seat_id=Seat.query.filter_by(student_id=shared_student.id, class_id=class_scope_b.class_id).first().id,
             class_id=class_scope_b.class_id,
-            reason="Start work",
-            timestamp=datetime.now(timezone.utc) - timedelta(hours=2),
+            period="A",
+            started_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            start_reason="Start work",
         ),
         SeatAttendanceState(
             student_id=shared_student.id,
@@ -327,11 +326,11 @@ def test_enforce_daily_limits_ignores_other_join_code_activity(client):
     assert payload["checked"] == 0
     assert payload["tapped_out"] == []
 
-    inactive_count = TapEvent.query.filter_by(
-        student_id=shared_student.id,
-        period="A",
-        status="inactive",
-        join_code="JOINA",
+    inactive_count = AttendanceSession.query.filter(
+        AttendanceSession.student_id == shared_student.id,
+        AttendanceSession.period == "A",
+        AttendanceSession.ended_at.isnot(None),
+        AttendanceSession.class_id == class_scope_a.class_id,
     ).count()
     assert inactive_count == 0
 
@@ -365,14 +364,13 @@ def test_enforce_daily_limits_taps_out_when_limit_reached_in_scope(client):
             pay_rate=0.25,
             payroll_frequency_days=14,
         ),
-        TapEvent(
+        AttendanceSession(
             student_id=student.id,
             seat_id=seat.id,
+            class_id=class_scope.class_id,
             period="A",
-            status="active",
-            join_code="JOINA",
-            reason="Start work",
-            timestamp=datetime.now(timezone.utc) - timedelta(hours=2),
+            started_at=datetime.now(timezone.utc) - timedelta(hours=2),
+            start_reason="Start work",
         ),
         SeatAttendanceState(
             student_id=student.id,
@@ -410,7 +408,6 @@ def test_enforce_daily_limits_taps_out_when_limit_reached_in_scope(client):
     assert att_state is not None
     assert att_state.done_for_day_date is not None
 
-    from app.models import AttendanceSession
     inactive_count = AttendanceSession.query.filter(
         AttendanceSession.student_id == student.id,
         AttendanceSession.period == "A",

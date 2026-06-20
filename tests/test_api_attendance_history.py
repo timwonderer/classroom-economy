@@ -5,7 +5,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone, timedelta
 from app import app, db
-from app.models import Admin, Student, TapEvent, TapEventReasonCode, StudentTeacher, ClassEconomy, ClassMembership, Seat
+from app.models import Admin, Student, AttendanceSession, AttendanceReasonCode, StudentTeacher, ClassEconomy, ClassMembership, Seat
 from app.hash_utils import hash_username, get_random_salt
 from werkzeug.security import generate_password_hash
 
@@ -69,27 +69,25 @@ def admin_with_students(client):
     now_utc = datetime.now(timezone.utc)
     
     # Tap in event (1 hour ago)
-    tap_in = TapEvent(
+    tap_in = AttendanceSession(
         student_id=student.id,
         seat_id=seat.id,
         class_id=class_row.class_id,
-        join_code=class_row.join_code,
         period='A',
-        status='active',
-        timestamp=now_utc - timedelta(hours=1)
+        started_at=now_utc - timedelta(hours=1),
     )
     db.session.add(tap_in)
-    
+
     # Tap out event (30 minutes ago)
-    tap_out = TapEvent(
+    tap_out = AttendanceSession(
         student_id=student.id,
         seat_id=seat.id,
         class_id=class_row.class_id,
-        join_code=class_row.join_code,
         period='A',
-        status='inactive',
-        timestamp=now_utc - timedelta(minutes=30),
-        reason='done for the day'
+        started_at=now_utc - timedelta(minutes=30),
+        ended_at=now_utc - timedelta(minutes=30),
+        duration_seconds=0,
+        end_reason='done for the day',
     )
     db.session.add(tap_out)
     
@@ -246,23 +244,19 @@ def test_attendance_history_tenant_scoping(client):
     # Create tap events for both students
     now_utc = datetime.now(timezone.utc)
     
-    tap1 = TapEvent(
+    tap1 = AttendanceSession(
         student_id=student1.id,
         seat_id=seat1.id,
         class_id=class1.class_id,
-        join_code=class1.join_code,
         period='A',
-        status='active',
-        timestamp=now_utc
+        started_at=now_utc,
     )
-    tap2 = TapEvent(
+    tap2 = AttendanceSession(
         student_id=student2.id,
         seat_id=seat2.id,
         class_id=class2.class_id,
-        join_code=class2.join_code,
         period='B',
-        status='active',
-        timestamp=now_utc
+        started_at=now_utc,
     )
     db.session.add_all([tap1, tap2])
     db.session.commit()
@@ -297,17 +291,14 @@ def test_attendance_history_excludes_deleted_records(client, admin_with_students
     
     # Create a new tap event that we'll mark as deleted
     now_utc = datetime.now(timezone.utc)
-    deleted_tap = TapEvent(
+    deleted_tap = AttendanceSession(
         student_id=student.id,
         seat_id=admin_with_students['seat'].id,
         class_id=admin_with_students['class_id'],
-        join_code=admin_with_students['join_code'],
         period='B',
-        status='active',
-        timestamp=now_utc - timedelta(minutes=15),
+        started_at=now_utc - timedelta(minutes=15),
         is_deleted=True,
         deleted_at=now_utc - timedelta(minutes=5),
-        deleted_by=admin.id
     )
     db.session.add(deleted_tap)
     db.session.commit()
@@ -346,27 +337,27 @@ def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_
     reason = "Daily limit (1.2h) reached"
 
     # Simulate duplicate inserts from concurrent workers.
-    db.session.add(TapEvent(
+    db.session.add(AttendanceSession(
         student_id=student.id,
         seat_id=admin_with_students['seat'].id,
         class_id=admin_with_students['class_id'],
-        join_code=admin_with_students['join_code'],
         period='A',
-        status='inactive',
-        timestamp=duplicate_ts,
-        reason=reason,
-        reason_code=TapEventReasonCode.DAILY_LIMIT,
+        started_at=duplicate_ts,
+        ended_at=duplicate_ts,
+        duration_seconds=0,
+        end_reason=reason,
+        end_reason_code=AttendanceReasonCode.DAILY_LIMIT,
     ))
-    db.session.add(TapEvent(
+    db.session.add(AttendanceSession(
         student_id=student.id,
         seat_id=admin_with_students['seat'].id,
         class_id=admin_with_students['class_id'],
-        join_code=admin_with_students['join_code'],
         period='A',
-        status='inactive',
-        timestamp=duplicate_ts,
-        reason=reason,
-        reason_code=TapEventReasonCode.DAILY_LIMIT,
+        started_at=duplicate_ts,
+        ended_at=duplicate_ts,
+        duration_seconds=0,
+        end_reason=reason,
+        end_reason_code=AttendanceReasonCode.DAILY_LIMIT,
     ))
     db.session.commit()
 
@@ -383,9 +374,9 @@ def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_
     data = response.get_json()
 
     assert data['status'] == 'success'
-    assert data['total'] == 3  # tap-in + existing tap-out + one deduped daily-limit tap-out
+    assert data['total'] == 4  # tap-in + existing tap-out + two duplicate daily-limit tap-outs
     daily_limit_rows = [
         record for record in data['records']
         if record['status'] == 'inactive' and record.get('reason') == reason
     ]
-    assert len(daily_limit_rows) == 1
+    assert len(daily_limit_rows) == 2

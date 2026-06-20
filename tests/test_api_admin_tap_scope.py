@@ -1,15 +1,23 @@
 from datetime import datetime, timezone
 
+from flask import g
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, ClassEconomy, ClassMembership, Seat, Student, StudentTeacher, TapEvent, IdentityProfile
+from app.models import Admin, ClassEconomy, ClassMembership, Seat, Student, StudentTeacher, AttendanceSession, IdentityProfile, User
 
 
 def _login_admin(client, admin_id, join_code):
+    # Clear cached auth state from previous requests in the same test
+    for attr in ('_auth_current_user_cache', '_auth_current_seat_cache', '_auth_current_system_admin_cache'):
+        g.pop(attr, None)
+    admin = db.session.get(Admin, admin_id)
+    user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first() if admin else None
     economy = ClassEconomy.query.filter_by(join_code=join_code, teacher_id=admin_id).first()
     with client.session_transaction() as sess:
         sess["is_admin"] = True
         sess["admin_id"] = admin_id
+        if user:
+            sess["user_id"] = user.id
         sess["current_join_code"] = join_code
         if economy and economy.class_id:
             sess["current_class_id"] = economy.class_id
@@ -24,10 +32,13 @@ def _setup_shared_student_with_split_membership():
     db.session.add_all([admin_a, admin_b])
     db.session.flush()
 
-    profile = IdentityProfile(profile_type="student", first_name="Tap", last_name="S")
-    db.session.add(profile)
+    # Create User records for both admins (required for auth)
+    user_a = User(user_role="teacher", username_hash=admin_a.username_hash, username_lookup_hash=admin_a.username_lookup_hash)
+    user_b = User(user_role="teacher", username_hash=admin_b.username_hash, username_lookup_hash=admin_b.username_lookup_hash)
+    db.session.add_all([user_a, user_b])
     db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b"salt")
+
+    student = Student(first_name="Tap", last_initial="S", block="A", salt=b"salt")
     db.session.add(student)
     db.session.flush()
 
@@ -46,7 +57,6 @@ def _setup_shared_student_with_split_membership():
     ])
     db.session.flush()
     seat = Seat.query.filter_by(
-        teacher_id=admin_b.id,
         student_id=student.id,
         join_code="TAPB01",
     ).first()
@@ -54,7 +64,7 @@ def _setup_shared_student_with_split_membership():
         seat = Seat(student_id=student.id, class_id=class_b.class_id, join_code="TAPB01", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
         db.session.add(seat)
         db.session.flush()
-        db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
+        db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
         db.session.add(seat)
         db.session.flush()
 
@@ -71,14 +81,12 @@ def _setup_shared_student_with_split_membership():
         db.session.add(seat_row)
         db.session.flush()
 
-    tap_event = TapEvent(
+    tap_event = AttendanceSession(
         student_id=student.id,
         seat_id=seat_row.id,
         class_id=seat.class_id,
         period="A",
-        status="active",
-        join_code="TAPB01",
-        timestamp=datetime.now(timezone.utc),
+        started_at=datetime.now(timezone.utc),
     )
     db.session.add(tap_event)
     db.session.commit()
@@ -105,7 +113,7 @@ def test_delete_tap_entry_rejects_cross_join_code_context(client):
 
     _login_admin(client, admin_a.id, "TAPA01")
     denied = client.delete(f"/api/admin/tap-entries/{event.id}")
-    assert denied.status_code == 403
+    assert denied.status_code == 404
     db.session.refresh(event)
     assert event.is_deleted is False
 
@@ -114,3 +122,4 @@ def test_delete_tap_entry_rejects_cross_join_code_context(client):
     assert allowed.status_code == 200
     db.session.refresh(event)
     assert event.is_deleted is True
+    assert event.deleted_by_seat_id is None

@@ -40,7 +40,7 @@ The abstract timing mode attached to a policy transition: immediate, next-bounda
 Core economic governance rule that policy changes are represented as new transition lineage (`policy_transitions` → `policy_versions`), never as in-place mutation of the active record. The inverse of the forbidden Hidden Deferred Mutation pattern (formerly operationalized as `economy_pending_rebalance_json`).
 
 **Attendance Sessions** (`attendance_sessions`)
-Canonical v2 table for tap-in/tap-out attendance facts. Coexists with legacy `tap_events` during the dual-write transition. New attendance writes target this table; it is the authoritative attendance fact source for v2.
+Canonical v2 table for tap-in/tap-out attendance facts. It is the authoritative attendance fact source for the active runtime and replaces legacy `tap_events`.
 
 **Audit Event**
 High-integrity append-only record for security-sensitive, identity-sensitive, and money-moving side effects. Stored in `audit_log`. Distinguished from general `operational_events` by its compliance and traceability guarantees.
@@ -309,7 +309,7 @@ Feature-specific behavioral rules: Mid-Period Lock, Rent Late Fee Reversal, rent
 
 ### Removed (Replaced or Premature)
 
-Legacy terms being replaced by canonical vocabulary: `block` (→ section), `StudentBlock` (→ seat_attendance_state), `tap_events` (→ attendance_sessions), `teacher_blocks` (model removed from `models.py`; legacy references remain in a few admin routes and CLI commands). Premature terms: `TemporalContext` (no code yet). Derivable model names: `AnalyticsAlert`, `AnalyticsSnapshot`.
+Legacy terms being replaced by canonical vocabulary: `block` (→ section), `StudentBlock` (→ seat_attendance_state), `tap_events` (→ attendance_sessions; legacy table dropped), `teacher_blocks` (model removed from `models.py`; legacy references remain in a few admin routes and CLI commands). Premature terms: `TemporalContext` (no code yet). Derivable model names: `AnalyticsAlert`, `AnalyticsSnapshot`.
 
 ---
 

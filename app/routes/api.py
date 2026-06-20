@@ -21,7 +21,7 @@ from werkzeug.security import check_password_hash
 from app.extensions import db, limiter
 from app.models import (
     Admin, Student, StoreItem, StudentItem, Transaction, TransactionStatus, TapEvent,
-    TapEventReasonCode, HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
+    AttendanceReasonCode, HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
     StudentBlock, StoreItemBlock,
     RedemptionAuditLog, RedemptionAuditAction, RedemptionAuditSource, _quantize_currency,
     ClassEconomy, ClassMembership, Seat, SeatAttendanceState, IdentityProfile,
@@ -55,7 +55,7 @@ from app.feats.attendance import (
     rotate_teacher_hall_pass_verify_token as feat_rotate_teacher_hall_pass_verify_token,
     save_hall_pass_setup_config as feat_save_hall_pass_setup_config,
     set_student_block_tap_enabled as feat_set_student_block_tap_enabled,
-    soft_delete_tap_entry as feat_soft_delete_tap_entry,
+    soft_delete_session as feat_soft_delete_session,
     update_hall_pass_queue_settings as feat_update_hall_pass_queue_settings,
     return_hall_pass as feat_return_hall_pass,
 )
@@ -2358,7 +2358,10 @@ def delete_tap_entry(event_id):
     if not student:
         return jsonify({"error": "Student not found or access denied"}), 404
 
-    feat_soft_delete_tap_entry(event=event, admin_id=admin.id, deleted_at=utc_now())
+    event.is_deleted = True
+    event.deleted_at = utc_now()
+    event.deleted_by = admin.user_id
+    db.session.flush()
 
     current_app.logger.info(f"Admin {admin.id} deleted tap entry {event_id} for student {event.student_id}")
 
