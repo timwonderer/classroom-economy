@@ -35,7 +35,7 @@ def create_class_scope(
         display_name=display_name,
         section=block,
         status=class_status,
-        created_by_admin_id=teacher.id,
+        created_by_user_id=teacher.id,
     )
     db.session.add(class_row)
     db.session.flush()
@@ -48,6 +48,7 @@ def create_class_scope(
             role="admin",
         ))
         t_seat = Seat(
+            user_id=teacher.id,
             class_id=class_row.class_id,
             join_code=join_code,
             role="teacher",
@@ -71,7 +72,7 @@ def create_class_scope(
 
     if student is not None and create_seat:
         s_seat = Seat(
-            student_id=student.id,
+            user_id=getattr(student, "user_id", None),
             class_id=class_row.class_id,
             join_code=join_code,
             block=block,

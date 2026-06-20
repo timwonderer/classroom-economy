@@ -283,13 +283,16 @@ def batch_auto_tapout_students(admin_id):
     Optimized version of auto-tapout that processes all students for an admin in batch.
     Returns the count of students tapped out.
     """
-    from app.models import Student, TapEventReasonCode, StudentBlock, PayrollSettings, StudentTeacher, Seat, ClassEconomy
+    from app.models import Student, TapEventReasonCode, StudentBlock, PayrollSettings, Seat, ClassEconomy, IdentityProfile
     from app.extensions import db
 
-    # 1. Get all students for this admin via StudentTeacher
+    # 1. Get all students for this admin via Seat → ClassEconomy ownership
     student_ids = [
-        row[0] for row in db.session.query(StudentTeacher.student_id)
-        .filter(StudentTeacher.teacher_id == admin_id)
+        row[0] for row in db.session.query(Student.id)
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .join(Seat, Seat.id == IdentityProfile.seat_id)
+        .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
+        .filter(ClassEconomy.teacher_id == admin_id)
         .distinct()
         .all()
     ]

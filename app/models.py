@@ -331,14 +331,10 @@ class Seat(db.Model):
     # Transitional public-token bridge until seat/class rewiring is complete.
     join_code = db.Column(db.String(20), nullable=False, index=True)
 
-    # Transitional bridge to existing student-backed tables.
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='SET NULL'), nullable=True, index=True)
     block = db.Column(db.String(10), nullable=True)
 
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
-
-    student = db.relationship('Student', backref=db.backref('seats', lazy='dynamic'))
     identity_profile = db.relationship(
         'IdentityProfile',
         backref=db.backref('seat', uselist=False),
@@ -405,16 +401,7 @@ class Student(db.Model):
     username_hash = db.Column(db.String(64), unique=True, nullable=True)
     username_lookup_hash = db.Column(db.String(64), unique=True, nullable=True)
 
-    # Ownership / tenancy
-    # Students are linked to teachers via student_teachers table (many-to-many)
-
-    # Teachers associated with this student (many-to-many)
-    teachers = db.relationship(
-        'Admin',
-        secondary='student_teachers',
-        backref=db.backref('linked_students', lazy='dynamic'),
-        lazy='dynamic',
-    )
+    # Ownership / tenancy — teacher linkage is via ClassEconomy.teacher_id (users.id)
 
     pin_hash = db.Column(db.Text, nullable=True)
     passphrase_hash = db.Column(db.Text, nullable=True)
@@ -569,15 +556,6 @@ class Student(db.Model):
         # leaking or conflating balances across distinct class economies.
         return 0.0
 
-    def get_all_teachers(self):
-        """
-        Get list of all teachers this student is associated with.
-
-        Uses the student_teachers many-to-many relationship.
-        DEPRECATED teacher_id is ignored in favor of explicit links only.
-        """
-        return list(self.teachers.all())
-
     @property
     def total_earnings(self):
         # Deprecated: Use get_total_earnings(join_code=...) instead for class-scoped aggregation.
@@ -623,20 +601,7 @@ class AdminInviteCode(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
 
 
-class StudentTeacher(db.Model):
-    __tablename__ = 'student_teachers'
-    id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=False)
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
-    created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=True)
-
-    __table_args__ = (
-        db.UniqueConstraint('student_id', 'teacher_id', name='uq_student_teachers_student_teacher'),
-        db.Index('ix_student_teachers_student_id', 'student_id'),
-        db.Index('ix_student_teachers_teacher_id', 'teacher_id'),
-    )
+# StudentTeacher model REMOVED — class ownership is via ClassEconomy.teacher_id (→ user_id)
 
 class ClassMembershipRole(enum.Enum):
     """Enum for class membership roles."""
@@ -654,7 +619,7 @@ class ClassEconomy(db.Model):
     section = db.Column(db.String(50), nullable=True)
     teacher_id = db.Column(
         db.Integer,
-        db.ForeignKey('teachers.id', ondelete='CASCADE'),
+        db.ForeignKey('users.id', ondelete='CASCADE'),
         nullable=False,
         index=True,
     )
@@ -662,9 +627,9 @@ class ClassEconomy(db.Model):
     class_timezone = db.Column(db.String(64), nullable=False, default='UTC', server_default='UTC')
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
-    created_by_admin_id = db.Column(
+    created_by_user_id = db.Column(
         db.Integer,
-        db.ForeignKey('teachers.id', ondelete='SET NULL'),
+        db.ForeignKey('users.id', ondelete='SET NULL'),
         nullable=True,
         index=True,
     )
@@ -672,11 +637,11 @@ class ClassEconomy(db.Model):
     memberships = db.relationship('ClassMembership', backref='economy', cascade='all, delete-orphan', lazy='dynamic')
     features = db.relationship('ClassFeature', backref='class_economy', cascade='all, delete-orphan', lazy='dynamic')
     teacher = db.relationship(
-        'Admin',
+        'User',
         foreign_keys=[teacher_id],
         backref=db.backref('classes', lazy='dynamic', passive_deletes=True),
     )
-    created_by_admin = db.relationship('Admin', foreign_keys=[created_by_admin_id])
+    created_by_user = db.relationship('User', foreign_keys=[created_by_user_id])
 
     @property
     def status(self):
@@ -755,8 +720,7 @@ class ClassMembership(db.Model):
         index=True,
     )
     join_code = db.Column(db.String(20), nullable=True, index=True)
-    admin_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=True, index=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
     role = db.Column(
         db.Enum(ClassMembershipRole, values_callable=lambda x: [e.value for e in x]),
         nullable=False
@@ -765,12 +729,7 @@ class ClassMembership(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
     __table_args__ = (
-        db.UniqueConstraint('class_id', 'admin_id', name='uq_class_membership_admin'),
-        db.UniqueConstraint('class_id', 'student_id', name='uq_class_membership_student'),
-        db.CheckConstraint(
-            '(admin_id IS NOT NULL AND student_id IS NULL) OR (admin_id IS NULL AND student_id IS NOT NULL)',
-            name='ck_membership_xor'
-        ),
+        db.UniqueConstraint('class_id', 'user_id', name='uq_class_membership_user'),
     )
 
 
@@ -853,7 +812,7 @@ class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     # student_id has been formally severed in favor of seat_id. 
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
     # CRITICAL: join_code is the source of truth for class isolation
     # Each join code represents a distinct class economy, even if same teacher
@@ -904,7 +863,7 @@ class Transaction(db.Model):
     lineage_version  = db.Column(db.Integer, nullable=True, default=1)
 
     # Relationship to track which teacher created this transaction
-    teacher = db.relationship('Admin', backref=db.backref('transactions', lazy='dynamic'))
+    teacher = db.relationship('User', backref=db.backref('transactions', lazy='dynamic'))
     seat = db.relationship('Seat', backref=db.backref('transactions', lazy='dynamic'))
 
     __table_args__ = (
@@ -1054,19 +1013,6 @@ def _enforce_transaction_integrity(_mapper, _connection, target):
          if not target.seat_id:
               raise ValueError(f"FATAL: Ledger mutation in {feat_name} missing seat_id. Must be provided by service.")
 
-    # 4. Identity synchronization (pure assignment only)
-    # seat_id is optional but student_id is the primary anchor
-
-def _resolve_seat_id(connection, student_id, *, class_id=None, join_code=None):
-    """Lookup seat ID for a student in a class universe."""
-    if not student_id or not class_id:
-        return None
-
-    seat_id = connection.execute(
-        sa.text("SELECT id FROM seats WHERE student_id = :student_id AND class_id = :class_id LIMIT 1"),
-        {"student_id": student_id, "class_id": class_id},
-    ).scalar()
-    return int(seat_id) if seat_id else None
 
 
 class BalanceCache(db.Model):
@@ -1101,8 +1047,7 @@ class StudentBlock(db.Model):
     __tablename__ = 'student_blocks'
 
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False)
-    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
+    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     period = db.Column(db.String(10), nullable=False)
 
     # CRITICAL: class_id is the source of truth for class isolation
@@ -1122,13 +1067,10 @@ class StudentBlock(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
-    student = db.relationship("Student", backref=db.backref("student_blocks", passive_deletes=True))
     seat = db.relationship("Seat", backref=db.backref("student_blocks", passive_deletes=True))
 
     __table_args__ = (
-        db.UniqueConstraint('student_id', 'period', name='uq_student_blocks_student_period'),
         db.UniqueConstraint('seat_id', 'period', name='uq_student_blocks_seat_period'),
-        db.Index('ix_student_blocks_student_id', 'student_id'),
         db.Index('ix_student_blocks_period', 'period'),
     )
 
@@ -1138,7 +1080,6 @@ class AttendanceSession(db.Model):
     __tablename__ = 'attendance_sessions'
 
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
     period = db.Column(db.String(10), nullable=False, index=True)
@@ -1155,7 +1096,6 @@ class AttendanceSession(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
-    student = db.relationship("Student", backref=db.backref("attendance_sessions", passive_deletes=True))
     seat = db.relationship("Seat", backref=db.backref("attendance_sessions", passive_deletes=True))
 
     __table_args__ = (
@@ -1168,7 +1108,6 @@ class SeatAttendanceState(db.Model):
     __tablename__ = 'seat_attendance_state'
 
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
     period = db.Column(db.String(10), nullable=False, index=True)
@@ -1181,12 +1120,10 @@ class SeatAttendanceState(db.Model):
     last_reason = db.Column(db.String(50), nullable=True)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
-    student = db.relationship("Student", backref=db.backref("attendance_states", passive_deletes=True))
     seat = db.relationship("Seat", backref=db.backref("attendance_states", passive_deletes=True))
 
     __table_args__ = (
         db.UniqueConstraint('seat_id', 'class_id', 'period', name='uq_attendance_state_scope'),
-        db.Index('ix_attendance_state_student_period', 'student_id', 'period'),
     )
 
 
@@ -1194,7 +1131,6 @@ class TapEvent(db.Model):
     __tablename__ = 'tap_events'
 
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     period = db.Column(db.String(10), nullable=False)
     # CRITICAL: class_id scopes attendance to a specific class economy
@@ -1209,46 +1145,21 @@ class TapEvent(db.Model):
     # Flag to indicate if this event was deleted by a teacher
     is_deleted = db.Column(db.Boolean, default=False, nullable=False, index=True)
     deleted_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    deleted_by = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='SET NULL'), nullable=True)
+    deleted_by = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='SET NULL'), nullable=True)
 
-    student = db.relationship("Student", backref="tap_events")
     seat = db.relationship("Seat", backref="tap_events")
-    deleted_by_admin = db.relationship("Admin", foreign_keys=[deleted_by])
+    deleted_by_user = db.relationship("User", foreign_keys=[deleted_by])
 
     __table_args__ = (
-        db.Index('ix_tap_event_student_period_timestamp', 'student_id', 'period', 'timestamp'),
         db.Index('ix_tap_event_seat_period_timestamp', 'seat_id', 'period', 'timestamp'),
     )
 
 
-@sa.event.listens_for(StudentBlock, "before_insert")
-@sa.event.listens_for(StudentBlock, "before_update")
-def _sync_student_block_seat(_mapper, connection, target):
-    """Dual-write bridge for student_blocks.seat_id."""
-    if not getattr(target, "student_id", None):
-        return
-    
-    class_id = getattr(target, "class_id", None)
-    
-    if not getattr(target, "seat_id", None):
-        seat_id = _resolve_seat_id(connection, target.student_id, class_id=class_id)
-        if seat_id:
-            target.seat_id = seat_id
-
-
 @sa.event.listens_for(TapEvent, "before_insert")
 @sa.event.listens_for(TapEvent, "before_update")
-def _sync_tap_event_seat(_mapper, connection, target):
-    """Dual-write bridge for tap_events.seat_id."""
-    class_id = getattr(target, "class_id", None)
-    student_id = getattr(target, "student_id", None)
-    seat_id = getattr(target, "seat_id", None)
-
-    if not seat_id and student_id:
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id)
-        if seat_id:
-            target.seat_id = seat_id
-
+def _validate_tap_event_scope(_mapper, connection, target):
+    """V2 hard invariant: tap events cannot exist outside class/seat scope."""
+    # Backfill class_id from seat if missing
     if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
         seat_class_id = connection.execute(
             sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
@@ -1257,15 +1168,6 @@ def _sync_tap_event_seat(_mapper, connection, target):
         if seat_class_id:
             target.class_id = str(seat_class_id)
 
-    if not getattr(target, "student_id", None) and getattr(target, "seat_id", None):
-        seat_student_id = connection.execute(
-            sa.text("SELECT student_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_student_id:
-            target.student_id = int(seat_student_id)
-
-    # V2 hard invariant: tap events cannot exist outside class/seat scope.
     if not getattr(target, "class_id", None):
         raise ValueError("TapEvent invariant violation: class_id is required.")
     if not getattr(target, "seat_id", None):
@@ -1276,7 +1178,6 @@ def _sync_tap_event_seat(_mapper, connection, target):
 class HallPassLog(db.Model):
     __tablename__ = 'hall_pass_logs'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     reason = db.Column(db.String(50), nullable=False)
     status = db.Column(db.String(20), default='pending', nullable=False) # pending, approved, rejected, left, returned
@@ -1291,7 +1192,6 @@ class HallPassLog(db.Model):
     left_time = db.Column(db.DateTime(timezone=True), nullable=True)
     return_time = db.Column(db.DateTime(timezone=True), nullable=True)
 
-    student = db.relationship('Student', backref='hall_pass_logs')
     seat = db.relationship('Seat', backref='hall_pass_logs')
 
 
@@ -1354,7 +1254,7 @@ class PayrollCache(db.Model):
 class StoreItem(db.Model):
     __tablename__ = 'store_items'
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     join_code = db.Column(db.String(20), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     name = db.Column(db.String(100), nullable=False)
@@ -1392,7 +1292,7 @@ class StoreItem(db.Model):
     is_rent_linked = db.Column(db.Boolean, default=False, nullable=False)
 
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('store_items', lazy='dynamic'))
+    teacher = db.relationship('User', backref=db.backref('store_items', lazy='dynamic'))
     student_items = db.relationship('StudentItem', backref='store_item', lazy=True)
 
     # Many-to-many relationship for block visibility
@@ -1453,12 +1353,11 @@ class StoreItemBlock(db.Model):
 class StudentItem(db.Model):
     __tablename__ = 'student_items'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     store_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id'), nullable=False)
 
     # CRITICAL: class_id is the source of truth for class isolation
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
+    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     join_code = db.Column(db.String(20), nullable=True, index=True)
     correlation_id = db.Column(db.String(100), nullable=False, index=True)
 
@@ -1480,30 +1379,20 @@ class StudentItem(db.Model):
     uses_remaining = db.Column(db.Integer, nullable=True) # For per-use items with > 1 use limit
 
     # Relationships
-    student = db.relationship('Student', backref=db.backref('items', lazy='dynamic'))
     collective_goal_instance_code = db.Column(db.String(36), nullable=True, index=True)
 
 
 @sa.event.listens_for(StudentItem, "before_insert")
 @sa.event.listens_for(StudentItem, "before_update")
 def _sync_student_item_scope(_mapper, connection, target):
-    """Dual-write bridge for student_items seat/class scope."""
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-    student_id = getattr(target, "student_id", None)
-
-    if not class_id and join_code:
+    """Backfill class_id from seat or join_code if missing."""
+    if not getattr(target, "class_id", None) and getattr(target, "join_code", None):
         class_id = connection.execute(
             sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-            {"join_code": join_code},
+            {"join_code": target.join_code},
         ).scalar()
         if class_id:
             target.class_id = str(class_id)
-
-    if not getattr(target, "seat_id", None) and student_id:
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-        if seat_id:
-            target.seat_id = seat_id
 
     if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
         seat_class_id = connection.execute(
@@ -1540,7 +1429,7 @@ class RedemptionAuditLog(db.Model):
         index=True,
     )
     notes = db.Column(db.Text, nullable=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=True, index=True)
@@ -1557,7 +1446,7 @@ class RedemptionAuditLog(db.Model):
     )
 
     student_item = db.relationship('StudentItem', backref=db.backref('redemption_audit_logs', lazy='dynamic'))
-    teacher = db.relationship('Admin', backref=db.backref('redemption_audit_logs', lazy='dynamic'))
+    teacher = db.relationship('User', backref=db.backref('redemption_audit_logs', lazy='dynamic'))
     seat = db.relationship('Seat', foreign_keys=[seat_id])
 
     __table_args__ = (
@@ -1762,8 +1651,6 @@ class RentPolicyVersion(db.Model):
 class RentPayment(db.Model):
     __tablename__ = 'rent_payments'
     id = db.Column(db.Integer, primary_key=True)
-    # student_id is DEPRECATED in favor of seat_id.
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
     period = db.Column(db.String(10), nullable=False)  # Block/Period (e.g., 'A', 'B', 'C')
@@ -1789,7 +1676,6 @@ class RentPayment(db.Model):
     was_late = db.Column(db.Boolean, default=False)
     late_fee_charged = db.Column(db.Numeric(precision=12, scale=2), default=Decimal('0.00'))
 
-    student = db.relationship('Student', backref='rent_payments')
     seat = db.relationship('Seat', backref='rent_payments')
 
     __table_args__ = (
@@ -1805,51 +1691,32 @@ class RentPayment(db.Model):
 class RentWaiver(db.Model):
     __tablename__ = 'rent_waivers'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
-    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
+    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=True, index=True)
     waiver_start_date = db.Column(db.DateTime(timezone=True), nullable=False)
     waiver_end_date = db.Column(db.DateTime(timezone=True), nullable=False)
     periods_count = db.Column(db.Integer, nullable=False)  # Number of rent periods to skip
     reason = db.Column(db.Text, nullable=True)
-    created_by_teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
 
-    student = db.relationship('Student', backref='rent_waivers')
     seat = db.relationship('Seat', backref='rent_waivers')
-    created_by = db.relationship('Admin', backref='rent_waivers_created')
-
-    @property
-    def created_by_admin_id(self):
-        return self.created_by_teacher_id
-
-    @created_by_admin_id.setter
-    def created_by_admin_id(self, value):
-        self.created_by_teacher_id = value
+    created_by = db.relationship('User', backref='rent_waivers_created')
 
 
 
 @sa.event.listens_for(RentWaiver, "before_insert")
 @sa.event.listens_for(RentWaiver, "before_update")
-def _sync_rent_waiver_scope(_mapper, connection, target):
-    """Dual-write bridge for rent_waivers.seat_id and class_id."""
-    student_id = getattr(target, "student_id", None)
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-
-    if not class_id and join_code:
+def _backfill_rent_waiver_class_id(_mapper, connection, target):
+    """Backfill class_id from seat or join_code if missing."""
+    if not getattr(target, "class_id", None) and getattr(target, "join_code", None):
         class_id = connection.execute(
             sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-            {"join_code": join_code},
+            {"join_code": target.join_code},
         ).scalar()
         if class_id:
             target.class_id = str(class_id)
-
-    if not getattr(target, "seat_id", None) and student_id:
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-        if seat_id:
-            target.seat_id = seat_id
 
     if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
         seat_class_id = connection.execute(
@@ -1859,18 +1726,11 @@ def _sync_rent_waiver_scope(_mapper, connection, target):
         if seat_class_id:
             target.class_id = str(seat_class_id)
 
+
 @sa.event.listens_for(HallPassLog, "before_insert")
 @sa.event.listens_for(HallPassLog, "before_update")
-def _sync_hall_pass_seat(_mapper, connection, target):
-    """Dual-write bridge for hall_pass_logs.seat_id."""
-    student_id = getattr(target, "student_id", None)
-    class_id = getattr(target, "class_id", None)
-
-    if not getattr(target, "seat_id", None):
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id)
-        if seat_id:
-            target.seat_id = seat_id
-
+def _backfill_hall_pass_class_id(_mapper, connection, target):
+    """Backfill class_id from seat if missing."""
     if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
         seat_class_id = connection.execute(
             sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
@@ -1882,52 +1742,15 @@ def _sync_hall_pass_seat(_mapper, connection, target):
 
 @sa.event.listens_for(RentPayment, "before_insert")
 @sa.event.listens_for(RentPayment, "before_update")
-def _sync_rent_payment_seat(_mapper, connection, target):
-    """Dual-write bridge for rent_payments.seat_id and rent_payments.class_id."""
-    student_id = getattr(target, "student_id", None)
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-
-    if not class_id and join_code:
+def _backfill_rent_payment_class_id(_mapper, connection, target):
+    """Backfill class_id from seat or join_code if missing."""
+    if not getattr(target, "class_id", None) and getattr(target, "join_code", None):
         class_id = connection.execute(
             sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-            {"join_code": join_code},
+            {"join_code": target.join_code},
         ).scalar()
         if class_id:
             target.class_id = str(class_id)
-
-    if not getattr(target, "seat_id", None) and student_id:
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-        if seat_id:
-            target.seat_id = seat_id
-
-    if not getattr(target, "seat_id", None) and student_id:
-        legacy_join_code = join_code or f"LEGACY_{student_id}"
-        legacy_block = connection.execute(
-            sa.text("SELECT COALESCE(block, 'A') FROM students WHERE id = :student_id LIMIT 1"),
-            {"student_id": student_id},
-        ).scalar() or "A"
-        legacy_seat_id = connection.execute(
-            sa.text(
-                "INSERT INTO seats (public_id, user_id, class_id, role, block_identifier, roster_fingerprint, dedupe_code, claimed_at, has_received_rent_exemption, join_code, student_id, block, created_at, updated_at) "
-                "VALUES (:public_id, NULL, :class_id, :role, :block_identifier, NULL, NULL, NULL, :has_received_rent_exemption, :join_code, :student_id, :block, :created_at, :updated_at) "
-                "RETURNING id"
-            ),
-            {
-                "public_id": str(uuid.uuid4()),
-                "class_id": str(class_id) if class_id else None,
-                "role": "student",
-                "block_identifier": legacy_block,
-                "has_received_rent_exemption": False,
-                "join_code": legacy_join_code,
-                "student_id": student_id,
-                "block": legacy_block,
-                "created_at": utc_now(),
-                "updated_at": utc_now(),
-            },
-        ).scalar()
-        if legacy_seat_id:
-            target.seat_id = int(legacy_seat_id)
 
     if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
         seat_class_id = connection.execute(
@@ -1936,31 +1759,6 @@ def _sync_rent_payment_seat(_mapper, connection, target):
         ).scalar()
         if seat_class_id:
             target.class_id = str(seat_class_id)
-
-    # Backfill student_id from seat_id if missing (for legacy compatibility)
-    if not getattr(target, "student_id", None) and getattr(target, "seat_id", None):
-        seat_student_id = connection.execute(
-            sa.text("SELECT student_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_student_id:
-            target.student_id = seat_student_id
-
-
-@sa.event.listens_for(RentWaiver, "before_insert")
-@sa.event.listens_for(RentWaiver, "before_update")
-def _sync_rent_waiver_seat(_mapper, connection, target):
-    """Dual-write bridge for rent_waivers.seat_id."""
-    if getattr(target, "seat_id", None):
-        return
-    
-    student_id = getattr(target, "student_id", None)
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-    
-    seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-    if seat_id:
-        target.seat_id = seat_id
 
 
 class RentItem(db.Model):
@@ -2008,7 +1806,7 @@ class InsurancePolicy(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     policy_code = db.Column(db.String(16), unique=True, nullable=False, index=True)  # Unique code per teacher's policy
     version_number = db.Column(db.Integer, nullable=False, default=1)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True)  # Owner teacher
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # Owner teacher
     join_code = db.Column(db.String(20), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     title = db.Column(db.String(100), nullable=False)
@@ -2056,7 +1854,7 @@ class InsurancePolicy(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     # Relationships
-    teacher = db.relationship('Admin', foreign_keys=[teacher_id], backref='insurance_policies_owned')
+    teacher = db.relationship('User', foreign_keys=[teacher_id], backref='insurance_policies_owned')
     student_policies = db.relationship('StudentInsurance', backref='policy', lazy='dynamic')
     claims = db.relationship('InsuranceClaim', backref='policy', lazy='dynamic')
 
@@ -2118,8 +1916,6 @@ class InsurancePolicyBlock(db.Model):
 class StudentInsurance(db.Model):
     __tablename__ = 'student_insurance'
     id = db.Column(db.Integer, primary_key=True)
-    # student_id is DEPRECATED in favor of seat_id.
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
     policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id'), nullable=False)
@@ -2147,9 +1943,6 @@ class StudentInsurance(db.Model):
     frozen_max_claims_period = db.Column(db.String(20), nullable=True)
     frozen_claim_time_limit_days = db.Column(db.Integer, nullable=True)
     policy_version = db.Column(db.Integer, nullable=True)
-
-    # Relationships
-    student = db.relationship('Student', backref='insurance_policies')
 
     def freeze_policy_snapshot(self, policy):
         """Copy mutable template values into this enrollment's immutable contract snapshot."""
@@ -2232,138 +2025,8 @@ class StudentInsurance(db.Model):
 
 @sa.event.listens_for(StudentInsurance, "before_insert")
 @sa.event.listens_for(StudentInsurance, "before_update")
-def _sync_student_insurance_scope(_mapper, connection, target):
-    """Dual-write bridge for student_insurance seat/class scope."""
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-    student_id = getattr(target, "student_id", None)
-    policy_id = getattr(target, "policy_id", None)
-    policy_teacher_id = None
-
-    if policy_id:
-        policy_teacher_id = connection.execute(
-            sa.text("SELECT teacher_id FROM insurance_policies WHERE id = :policy_id LIMIT 1"),
-            {"policy_id": policy_id},
-        ).scalar()
-
-    if not class_id and join_code:
-        class_id = connection.execute(
-            sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-            {"join_code": join_code},
-        ).scalar()
-        if not class_id and policy_teacher_id:
-                proposed_class_id = str(uuid.uuid4())
-                connection.execute(
-                    sa.text(
-                        "INSERT INTO classes "
-                        "(class_id, join_code, teacher_id, display_name, class_timezone, created_at, updated_at, created_by_admin_id) "
-                        "VALUES (:class_id, :join_code, :teacher_id, NULL, 'UTC', :created_at, :updated_at, :created_by_admin_id) "
-                        "ON CONFLICT (join_code) DO NOTHING"
-                    ),
-                    {
-                        "class_id": proposed_class_id,
-                        "join_code": join_code,
-                        "teacher_id": policy_teacher_id,
-                        "created_at": utc_now(),
-                        "updated_at": utc_now(),
-                        "created_by_admin_id": policy_teacher_id,
-                    },
-                )
-                class_id = connection.execute(
-                    sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-                    {"join_code": join_code},
-                ).scalar()
-        if class_id:
-            target.class_id = str(class_id)
-
-    if not class_id and student_id and policy_teacher_id:
-        membership_row = connection.execute(
-            sa.text(
-                "SELECT cm.class_id, ce.join_code "
-                "FROM class_memberships cm "
-                "JOIN classes ce ON ce.class_id = cm.class_id "
-                "WHERE cm.student_id = :student_id AND ce.teacher_id = :teacher_id "
-                "ORDER BY cm.id ASC LIMIT 1"
-            ),
-            {"student_id": student_id, "teacher_id": policy_teacher_id},
-        ).fetchone()
-        if membership_row:
-            class_id = membership_row[0]
-            target.class_id = str(class_id)
-            if not join_code and membership_row[1]:
-                join_code = membership_row[1]
-                target.join_code = str(join_code)
-
-    if not class_id and policy_teacher_id:
-        teacher_class = connection.execute(
-            sa.text(
-                "SELECT class_id, join_code FROM classes "
-                "WHERE teacher_id = :teacher_id ORDER BY created_at ASC LIMIT 1"
-            ),
-            {"teacher_id": policy_teacher_id},
-        ).fetchone()
-        if teacher_class:
-            class_id = teacher_class[0]
-            target.class_id = str(class_id)
-            if not join_code and teacher_class[1]:
-                join_code = teacher_class[1]
-                target.join_code = str(join_code)
-        else:
-            synthetic_join_code = f"INS{policy_teacher_id}_{uuid.uuid4().hex[:8]}".upper()[:20]
-            synthetic_class_id = str(uuid.uuid4())
-            connection.execute(
-                sa.text(
-                    "INSERT INTO classes "
-                    "(class_id, join_code, teacher_id, display_name, class_timezone, created_at, updated_at, created_by_admin_id) "
-                    "VALUES (:class_id, :join_code, :teacher_id, NULL, 'UTC', :created_at, :updated_at, :created_by_admin_id)"
-                ),
-                {
-                    "class_id": synthetic_class_id,
-                    "join_code": synthetic_join_code,
-                    "teacher_id": policy_teacher_id,
-                    "created_at": utc_now(),
-                    "updated_at": utc_now(),
-                    "created_by_admin_id": policy_teacher_id,
-                },
-            )
-            class_id = synthetic_class_id
-            join_code = synthetic_join_code
-            target.class_id = class_id
-            target.join_code = join_code
-
-    if not getattr(target, "seat_id", None) and student_id:
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-        if seat_id:
-            target.seat_id = seat_id
-
-    if not getattr(target, "seat_id", None) and student_id:
-        legacy_join_code = join_code or f"LEGACY_{student_id}"
-        legacy_block = connection.execute(
-            sa.text("SELECT COALESCE(block, 'A') FROM students WHERE id = :student_id LIMIT 1"),
-            {"student_id": student_id},
-        ).scalar() or "A"
-        legacy_seat_id = connection.execute(
-            sa.text(
-                "INSERT INTO seats (public_id, user_id, class_id, role, block_identifier, roster_fingerprint, dedupe_code, claimed_at, has_received_rent_exemption, join_code, student_id, block, created_at, updated_at) "
-                "VALUES (:public_id, NULL, :class_id, :role, :block_identifier, NULL, NULL, NULL, :has_received_rent_exemption, :join_code, :student_id, :block, :created_at, :updated_at) "
-                "RETURNING id"
-            ),
-            {
-                "public_id": str(uuid.uuid4()),
-                "class_id": str(class_id) if class_id else None,
-                "role": "student",
-                "block_identifier": legacy_block,
-                "has_received_rent_exemption": False,
-                "join_code": legacy_join_code,
-                "student_id": student_id,
-                "block": legacy_block,
-                "created_at": utc_now(),
-                "updated_at": utc_now(),
-            },
-        ).scalar()
-        if legacy_seat_id:
-            target.seat_id = int(legacy_seat_id)
-
+def _backfill_student_insurance_scope(_mapper, connection, target):
+    """Backfill class_id and join_code from seat if missing."""
     if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
         seat_class_id = connection.execute(
             sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
@@ -2371,11 +2034,6 @@ def _sync_student_insurance_scope(_mapper, connection, target):
         ).scalar()
         if seat_class_id:
             target.class_id = str(seat_class_id)
-    elif getattr(target, "class_id", None) and getattr(target, "seat_id", None):
-        connection.execute(
-            sa.text("UPDATE seats SET class_id = :class_id WHERE id = :seat_id AND class_id IS NULL"),
-            {"class_id": str(target.class_id), "seat_id": target.seat_id},
-        )
 
     if not getattr(target, "join_code", None) and getattr(target, "class_id", None):
         resolved_join_code = connection.execute(
@@ -2384,6 +2042,7 @@ def _sync_student_insurance_scope(_mapper, connection, target):
         ).scalar()
         if resolved_join_code:
             target.join_code = str(resolved_join_code)
+
 
 class InsuranceClaim(db.Model):
     __tablename__ = 'insurance_claims'
@@ -2711,12 +2370,12 @@ class UserReport(db.Model):
     reward_amount = db.Column(db.Float, nullable=True, default=0.0)
     reward_sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
-    # Internal student ID (hidden from sysadmin, used only for reward routing)
-    _student_id = db.Column('student_id', db.Integer, db.ForeignKey('students.id'), nullable=True)
-    student = db.relationship(
-        'Student',
+    # Seat that filed this report (classroom context)
+    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
+    seat = db.relationship(
+        'Seat',
         backref=db.backref('reports', cascade='all, delete-orphan'),
-        foreign_keys=[_student_id],
+        foreign_keys=[seat_id],
     )
 
     reviewed_by = db.relationship('SystemAdmin', backref='reviewed_reports', foreign_keys=[reviewed_by_sysadmin_id])
@@ -2765,16 +2424,13 @@ class Issue(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # Student actor reference
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
-
     # Public actor identifier for sysadmin investigations
     actor_public_id = db.Column(db.String(64), nullable=False, index=True)
 
     # Class context
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
+    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     join_code = db.Column(db.String(20), nullable=False, index=True)
     class_label = db.Column(db.String(50), nullable=True)  # Cached class name
 
@@ -2829,9 +2485,8 @@ class Issue(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     # Relationships
-    student = db.relationship('Student', backref=db.backref('issues', lazy='dynamic'))
     seat = db.relationship('Seat', foreign_keys=[seat_id])
-    teacher = db.relationship('Admin', backref=db.backref('class_issues', lazy='dynamic'))
+    teacher = db.relationship('User', backref=db.backref('class_issues', lazy='dynamic'))
     sysadmin = db.relationship('SystemAdmin', backref=db.backref('reviewed_issues', lazy='dynamic'))
     related_transaction = db.relationship('Transaction', backref='related_issues')
     status_history = db.relationship('IssueStatusHistory', backref='issue', lazy='dynamic', cascade='all, delete-orphan', order_by='IssueStatusHistory.changed_at.desc()')
@@ -2846,7 +2501,7 @@ class Issue(db.Model):
     # Indexes
     __table_args__ = (
         db.Index('ix_issues_teacher_status', 'teacher_id', 'status'),
-        db.Index('ix_issues_student_status', 'student_id', 'status'),
+        db.Index('ix_issues_seat_status', 'seat_id', 'status'),
         db.Index('ix_issues_join_code_status', 'join_code', 'status'),
     )
 
@@ -3067,8 +2722,7 @@ class AdminCredential(db.Model):
     __tablename__ = 'teacher_credentials'
 
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
 
     # Credential metadata
     credential_id = db.Column(db.Text, unique=False, nullable=True, index=False)  # Optional: not needed for passwordless.dev SaaS
@@ -3079,11 +2733,10 @@ class AdminCredential(db.Model):
     last_used = db.Column(db.DateTime(timezone=True))
 
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('credentials', lazy='dynamic', cascade='all, delete-orphan'))
     user = db.relationship('User', backref=db.backref('teacher_credentials', lazy='dynamic', cascade='all, delete-orphan'))
 
     def __repr__(self):
-        return f'<AdminCredential {self.authenticator_name or "Unnamed"} for Teacher {self.teacher_id}>'
+        return f'<AdminCredential {self.authenticator_name or "Unnamed"} for User {self.user_id}>'
 
 
 # ---- Account Recovery Models ----
@@ -3092,7 +2745,7 @@ class RecoveryRequest(db.Model):
     __tablename__ = 'recovery_requests'
 
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     join_code = db.Column(db.String(20), nullable=True, index=True)
     dob_sum_hash = db.Column(db.String(64), nullable=True)  # Hashed input for verification trail
 
@@ -3112,7 +2765,7 @@ class RecoveryRequest(db.Model):
     resume_new_username = db.Column(db.String(100), nullable=True)  # Temporary storage for new username
 
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('recovery_requests', lazy='dynamic'))
+    teacher = db.relationship('User', backref=db.backref('recovery_requests', lazy='dynamic'))
     verification_codes = db.relationship('StudentRecoveryCode', backref='recovery_request', lazy='dynamic', cascade='all, delete-orphan')
 
 
@@ -3122,7 +2775,7 @@ class StudentRecoveryCode(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     recovery_request_id = db.Column(db.Integer, db.ForeignKey('recovery_requests.id'), nullable=False, index=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     join_code = db.Column(db.String(20), nullable=True, index=True)
 
     # Verification code (6-digit, hashed)
@@ -3134,7 +2787,7 @@ class StudentRecoveryCode(db.Model):
     dismissed = db.Column(db.Boolean, default=False, nullable=False)  # Student dismissed notification
 
     # Relationships
-    student = db.relationship('Student', backref=db.backref('recovery_codes', lazy='dynamic'))
+    user = db.relationship('User', backref=db.backref('recovery_codes', lazy='dynamic'))
 
 
 # ---- Payroll Settings Model ----
@@ -3423,7 +3076,7 @@ class TeacherOnboarding(db.Model):
     """
     __tablename__ = 'teacher_onboarding'
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=False, unique=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, unique=True)
 
     # Onboarding status
     is_completed = db.Column(db.Boolean, default=False, nullable=False)
@@ -3450,7 +3103,7 @@ class TeacherOnboarding(db.Model):
     last_activity_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('onboarding', uselist=False, passive_deletes=True))
+    teacher = db.relationship('User', backref=db.backref('onboarding', uselist=False, passive_deletes=True))
 
     def __repr__(self):
         status = 'completed' if self.is_completed else ('skipped' if self.is_skipped else 'in_progress')
@@ -3530,14 +3183,14 @@ class Announcement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     # Author (one of these will be set)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
     system_admin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id', ondelete='CASCADE'), nullable=True)
 
     # Audience targeting
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=True, index=True)  # For teacher/sysadmin specific class announcements
     audience_type = db.Column(db.String(30), default='class', nullable=False)  # 'class', 'system_wide', 'all_teachers', 'all_students', 'teacher_all_classes', 'specific_class'
-    target_teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=True)  # For 'teacher_all_classes' audience type
+    target_teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True)  # For 'teacher_all_classes' audience type
 
     # Announcement content
     title = db.Column(db.String(200), nullable=False)
@@ -3553,9 +3206,9 @@ class Announcement(db.Model):
     expires_at = db.Column(db.DateTime(timezone=True), nullable=True)  # Optional expiration
 
     # Relationships
-    teacher = db.relationship('Admin', foreign_keys=[teacher_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
+    teacher = db.relationship('User', foreign_keys=[teacher_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
     system_admin = db.relationship('SystemAdmin', foreign_keys=[system_admin_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
-    target_teacher = db.relationship('Admin', foreign_keys=[target_teacher_id], backref=db.backref('targeted_announcements', lazy='dynamic', passive_deletes=True))
+    target_teacher = db.relationship('User', foreign_keys=[target_teacher_id], backref=db.backref('targeted_announcements', lazy='dynamic', passive_deletes=True))
 
     # Indexes
     __table_args__ = (
@@ -3640,41 +3293,41 @@ class AnalyticsSnapshot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     
     # Scoping (CRITICAL: join_code is source of truth for multi-tenancy)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=False, index=True)
-    
+
     # Time window
     window_type = db.Column(db.String(20), nullable=False)  # 'week', 'month', 'pay_cycle', 'rent_cycle' (see analytics.ALLOWED_WINDOW_TYPES)
     window_start = db.Column(db.DateTime(timezone=True), nullable=False)
     window_end = db.Column(db.DateTime(timezone=True), nullable=False)
-    
+
     # System Health Metrics (Always Visible)
     participation_rate = db.Column(db.Float, nullable=True)  # % of students who were active
     money_velocity = db.Column(db.Float, nullable=True)  # Transactions per student per day
     cwi_deviation_within_20pct = db.Column(db.Float, nullable=True)  # % of students within ±20% of expected CWI
     budget_survival_pass_rate = db.Column(db.Float, nullable=True)  # % of students passing budget survival test
-    
+
     # CWI Context
     cwi_value = db.Column(db.Float, nullable=False)  # Calculated CWI for this period
     avg_student_balance = db.Column(db.Float, nullable=True)  # Average balance (for CWI comparison only)
-    
+
     # Drift & Anomaly Indicators (Trend-based)
     balance_trend = db.Column(db.String(20), nullable=True)  # 'increasing', 'stable', 'decreasing'
     velocity_trend = db.Column(db.String(20), nullable=True)  # 'increasing', 'stable', 'decreasing'
     participation_trend = db.Column(db.String(20), nullable=True)  # 'increasing', 'stable', 'decreasing'
-    
+
     # Additional context (non-student-identifying)
     total_students = db.Column(db.Integer, nullable=False)  # Total enrolled students
     active_students = db.Column(db.Integer, nullable=True)  # Students with activity in window
     total_transactions = db.Column(db.Integer, nullable=True)  # Total transaction count
-    
+
     # Metadata
     computed_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     is_complete = db.Column(db.Boolean, default=True, nullable=False)  # False if window is ongoing
-    
+
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('analytics_snapshots', lazy='dynamic', passive_deletes=True))
+    teacher = db.relationship('User', backref=db.backref('analytics_snapshots', lazy='dynamic', passive_deletes=True))
     
     # Indexes for efficient queries
     __table_args__ = (
@@ -3705,25 +3358,25 @@ class AnalyticsEvent(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     
     # Scoping
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=False, index=True)
-    
+
     # Event details
     event_type = db.Column(db.String(50), nullable=False)  # 'rent_change', 'wage_change', 'inflation', 'holiday', 'wildcard', 'custom'
     event_date = db.Column(db.DateTime(timezone=True), nullable=False)
     description = db.Column(db.String(255), nullable=False)
-    
+
     # Impact metadata (for understanding effect on metrics)
     old_value = db.Column(db.Float, nullable=True)  # Old value if applicable (e.g., old rent amount)
     new_value = db.Column(db.Float, nullable=True)  # New value if applicable
-    
+
     # Metadata
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     created_by_admin = db.Column(db.Boolean, default=True, nullable=False)  # True if manually created, False if auto-detected
-    
+
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('analytics_events', lazy='dynamic', passive_deletes=True))
+    teacher = db.relationship('User', backref=db.backref('analytics_events', lazy='dynamic', passive_deletes=True))
     
     # Indexes
     __table_args__ = (

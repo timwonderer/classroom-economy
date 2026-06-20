@@ -1,12 +1,11 @@
-"""ClassroomContextFactory — canonical v2 test fixture builder.
+"""canonicalContextFactory — canonical v2 test fixture builder.
 
 Builds the full v2 identity chain: User → Seat → IdentityProfile.
-Legacy Admin/Student rows are created as hidden infrastructure where
-FK constraints or auth decorators still require them, but the factory
-API exposes only v2 objects.
+Legacy Admin/Student rows are still created as shadows where auth and
+compatibility routes require them, but seat ownership stays canonical.
 
 Usage:
-    ctx = ClassroomContextFactory(db).build()
+    ctx = canonicalContextFactory(db).build()
     # ctx.teacher_user    — User instance (v2 canonical principal)
     # ctx.class_id        — UUID string
     # ctx.join_code       — public alias
@@ -20,7 +19,7 @@ Usage:
     # student.profile     — IdentityProfile instance
 
     # Or bulk:
-    ctx = ClassroomContextFactory(db).with_students(3).build()
+    ctx = canonicalContextFactory(db).with_students(3).build()
     ctx.students[0].seat  # first student's seat
 
     # Login helpers (set correct session keys for current auth):
@@ -134,7 +133,7 @@ class ClassroomContext:
         self.db.session.add(profile)
         self.db.session.flush()
 
-        # 4. Legacy Student shadow (auth decorators still check student_id)
+        # 4. Legacy Student shadow (auth decorators still expect a Student row)
         salt = get_random_salt()
         legacy_student = Student(
             identity_profile=profile,
@@ -144,10 +143,6 @@ class ClassroomContext:
             pin_hash="fake-hash",
         )
         self.db.session.add(legacy_student)
-        self.db.session.flush()
-
-        # Wire seat to legacy student
-        seat.student_id = legacy_student.id
         self.db.session.flush()
 
         sc = StudentContext(
@@ -228,7 +223,7 @@ class ClassroomContextFactory:
         self._db.session.add(teacher_user)
         self._db.session.flush()
 
-        # Legacy Admin shadow (ClassEconomy FK + auth decorator compatibility)
+        # Legacy Admin shadow (auth compatibility only)
         legacy_admin = make_admin(
             username=uname,
             totp_secret="JBSWY3DPEHPK3PXP",
@@ -243,8 +238,8 @@ class ClassroomContextFactory:
         economy = ClassEconomy(
             class_id=class_id,
             join_code=join_code,
-            teacher_id=legacy_admin.id,
-            created_by_admin_id=legacy_admin.id,
+            teacher_id=teacher_user.id,
+            created_by_user_id=teacher_user.id,
             display_name=f"Test Class {join_code}",
         )
         self._db.session.add(economy)
@@ -303,3 +298,6 @@ class ClassroomContextFactory:
 
         self._db.session.flush()
         return ctx
+
+
+canonicalContextFactory = ClassroomContextFactory

@@ -296,7 +296,17 @@ def _auto_bypass_feat(request, app):
 def test_student():
     from app.hash_utils import hash_username, get_random_salt
     from app.feats.base import FEATBypass
+    from app.models import User, UserRole, Seat
+    from app.utils.auth_username import build_hashed_username_fields
     salt = get_random_salt()
+    _, username_hash, username_lookup_hash = build_hashed_username_fields("test_student")
+    user = User(
+        user_role=UserRole.STUDENT,
+        username_hash=username_hash,
+        username_lookup_hash=username_lookup_hash,
+    )
+    db.session.add(user)
+    db.session.flush()
     profile = IdentityProfile(
         profile_type='student',
         first_name='Test',
@@ -312,6 +322,15 @@ def test_student():
         pin_hash="fake-hash",
     )
     db.session.add(stu)
+    seat = Seat(
+        user_id=user.id,
+        class_id=stu.class_id,
+        join_code=stu.join_code or "TESTSTUDENT",
+        role="student",
+    )
+    db.session.add(seat)
+    db.session.flush()
+    profile.seat_id = seat.id
     with FEATBypass():
         db.session.commit()
     return stu
@@ -339,10 +358,10 @@ def classroom_context():
             student.seat          # Seat instance
             student.profile       # IdentityProfile instance
     """
-    from tests.helpers.context_factory import ClassroomContextFactory
+    from tests.helpers.context_factory import canonicalContextFactory
 
     def _factory(**kwargs):
-        return ClassroomContextFactory(db, **kwargs).build()
+        return canonicalContextFactory(db, **kwargs).build()
 
     return _factory
 
@@ -356,11 +375,11 @@ def classroom_with_students():
             ctx = classroom_with_students(3)
             ctx.students[0].login(client)
     """
-    from tests.helpers.context_factory import ClassroomContextFactory
+    from tests.helpers.context_factory import canonicalContextFactory
     from app.feats.base import FEATBypass
 
     def _factory(n=1, **kwargs):
-        ctx = ClassroomContextFactory(db, **kwargs).with_students(n).build()
+        ctx = canonicalContextFactory(db, **kwargs).with_students(n).build()
         with FEATBypass():
             db.session.commit()
         return ctx

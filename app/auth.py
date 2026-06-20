@@ -343,14 +343,15 @@ def resolve_system_admin_shadow_for_user(user):
 
 def resolve_student_shadow_for_user(user):
     """Resolve one legacy student shadow through the canonical user's owned seats."""
-    from app.models import Seat, Student
+    from app.models import Seat, Student, IdentityProfile
 
     if not user:
         return None
 
     students = (
         Student.query
-        .join(Seat, Seat.student_id == Student.id)
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .join(Seat, Seat.id == IdentityProfile.seat_id)
         .filter(
             Seat.user_id == user.id,
             Seat.role == "student",
@@ -376,10 +377,6 @@ def get_current_student_seat():
 
     user = get_current_user()
     if user and seat.user_id != user.id:
-        return None
-
-    student_id = _safe_int_id(session.get('student_id'))
-    if student_id and seat.student_id != student_id:
         return None
 
     if not getattr(seat, "claimed_at", None):
@@ -416,7 +413,7 @@ def get_current_seat():
     2) student_id + class_id/current_class_id exact match
     Returns None when context cannot be resolved safely.
     """
-    from app.models import Seat
+    from app.models import Seat, Student, IdentityProfile
 
     if hasattr(g, "_auth_current_seat_cache"):
         return g._auth_current_seat_cache
@@ -425,7 +422,7 @@ def get_current_seat():
     seat_id = _safe_int_id(_first_present_session_value('seat_id', 'current_seat_id'))
     if seat_id:
         seat = db.session.get(Seat, seat_id)
-        if seat and (not student_id or seat.student_id == student_id) and getattr(seat, "claimed_at", None):
+        if seat and getattr(seat, "claimed_at", None):
             g._auth_current_seat_cache = seat
             return seat
 
@@ -436,7 +433,9 @@ def get_current_seat():
     if target_class_id:
         seat = (
             Seat.query
-            .filter_by(student_id=student_id, class_id=target_class_id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(Student.id == student_id, Seat.class_id == target_class_id)
             .order_by(Seat.id.asc())
             .first()
         )
@@ -540,7 +539,7 @@ def sync_student_session_context(
     allow_writes: bool = False,
 ):
     """Backfill user/seat session keys for the current class context."""
-    from app.models import User, Seat
+    from app.models import User, Seat, IdentityProfile
 
     if student is None and 'student_id' in session:
         student = get_logged_in_student()
@@ -562,14 +561,22 @@ def sync_student_session_context(
         seat = db.session.get(Seat, target_seat_id)
     
     if not seat and target_class_id:
-        seat = Seat.query.filter_by(student_id=student.id, class_id=target_class_id).first()
+        seat = (
+            Seat.query
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .filter(
+                IdentityProfile.id == student.identity_id,
+                Seat.class_id == target_class_id,
+            )
+            .first()
+        )
 
-    if seat and seat.student_id != student.id:
+    if seat and seat.identity_profile and seat.identity_profile.id != student.identity_id:
         current_app.logger.warning(
-            "STUDENT-SCOPE-INCIDENT: rejecting seat_id=%s for student_id=%s (seat belongs to student_id=%s)",
+            "STUDENT-SCOPE-INCIDENT: rejecting seat_id=%s for student_id=%s (seat identity_id=%s)",
             getattr(seat, "id", None),
             student.id,
-            seat.student_id,
+            getattr(seat.identity_profile, "id", None),
         )
         seat = None
 
@@ -594,7 +601,7 @@ def sync_student_session_context(
             User.query
             .join(Seat, Seat.user_id == User.id)
             .filter(
-                Seat.student_id == student.id,
+                Seat.id == student.identity_profile.seat_id,
                 Seat.user_id.isnot(None),
             )
             .order_by(Seat.id.asc())
@@ -604,7 +611,6 @@ def sync_student_session_context(
     # Durable identity-scoped class preference: resolve class first, then owned seat.
     if not seat and linked_user and linked_user.last_active_class_id:
         candidate_seat = Seat.query.filter_by(
-            student_id=student.id,
             user_id=linked_user.id,
             class_id=linked_user.last_active_class_id,
         ).first()
@@ -754,16 +760,13 @@ def get_admin_student_query(include_unassigned=True):
     """Return a Student query scoped to the current admin's ownership.
 
     System admins are allowed to see all students. Regular admins only see
-    students linked to them via the StudentTeacher association table.
-    
-    CRITICAL SECURITY NOTE: We ONLY use the StudentTeacher table as the source of truth.
-    The teacher_id column on Student is DEPRECATED and should NOT be used for scoping
-    because it can contain stale data from deleted teachers or data migration issues.
-    
+    students whose identity profile is linked to a seat in a class owned by
+    this teacher (via Seat → ClassEconomy).
+
     Args:
         include_unassigned (bool): [DEPRECATED] No longer used. Kept for backward compatibility.
     """
-    from app.models import Student, StudentTeacher  # Imported lazily to avoid circular import
+    from app.models import Student, Seat, IdentityProfile, ClassEconomy
 
     if session.get("is_system_admin"):
         return Student.query
@@ -772,19 +775,18 @@ def get_admin_student_query(include_unassigned=True):
     if not admin:
         return Student.query.filter(sa.text("0=1"))
 
-    # Get student IDs that are explicitly linked to this admin via StudentTeacher table
-    # This is the ONLY source of truth for student-teacher associations
-    shared_student_ids = (
-        StudentTeacher.query.with_entities(StudentTeacher.student_id)
-        .filter(StudentTeacher.teacher_id == admin.id)
+    # Students linked to this teacher via Seat → ClassEconomy ownership
+    teacher_student_ids = (
+        db.session.query(Student.id)
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .join(Seat, Seat.id == IdentityProfile.seat_id)
+        .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
+        .filter(ClassEconomy.teacher_id == admin.id)
         .subquery()
     )
 
-    # SECURITY FIX: Only use StudentTeacher associations, NOT the deprecated teacher_id column
-    # The old code used: sa.or_(Student.teacher_id == admin.id, Student.id.in_(shared_student_ids))
-    # This caused multi-tenancy leaks when teacher_id had stale data
     return Student.query.filter(
-        Student.id.in_(sa.select(shared_student_ids)),
+        Student.id.in_(sa.select(teacher_student_ids)),
     )
 
 
