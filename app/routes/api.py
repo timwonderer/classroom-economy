@@ -446,7 +446,7 @@ def purchase_item():
 
     class_id = context.class_id
     join_code = get_display_join_code(context.class_id)
-    seat_id = get_seat_id_for_class(student.id, class_id)
+    seat_id = context.seat_id
     if not seat_id:
          return jsonify({"status": "error", "message": "No seat assigned in this class."}), 403
     
@@ -759,7 +759,8 @@ def purchase_item():
         result = execute_store_purchase(
             scope=scope,
             seat=seat,
-            teacher_id=teacher_id,
+            teacher_id=scope.teacher_id,
+            student_id=student.id,
             item=item,
             quantity=quantity,
             total_price=total_price,

@@ -48,7 +48,7 @@ def test_widget_task_completed_methods(client):
     admin = login_admin(client)
     
     # Create onboarding record
-    onboarding = TeacherOnboarding(teacher_id=admin.id)
+    onboarding = TeacherOnboarding(user_id=admin.id)
     db.session.add(onboarding)
     db.session.commit()
     
@@ -81,7 +81,7 @@ def test_widget_task_completed_with_null_dict(client):
     admin = login_admin(client)
     
     # Create onboarding record with null widget_tasks_completed
-    onboarding = TeacherOnboarding(teacher_id=admin.id)
+    onboarding = TeacherOnboarding(user_id=admin.id)
     onboarding.widget_tasks_completed = None
     db.session.add(onboarding)
     db.session.commit()
@@ -104,7 +104,7 @@ def test_dismiss_widget_method(client):
     admin = login_admin(client)
     
     # Create onboarding record
-    onboarding = TeacherOnboarding(teacher_id=admin.id)
+    onboarding = TeacherOnboarding(user_id=admin.id)
     db.session.add(onboarding)
     db.session.commit()
     
@@ -138,7 +138,7 @@ def test_onboarding_dismiss_widget_endpoint(client):
     assert 'message' in data
     
     # Verify database was updated
-    onboarding = TeacherOnboarding.query.filter_by(teacher_id=admin.id).first()
+    onboarding = TeacherOnboarding.query.filter_by(user_id=admin.id).first()
     assert onboarding is not None
     assert onboarding.widget_dismissed is True
     assert onboarding.widget_dismissed_at is not None
@@ -149,7 +149,7 @@ def test_onboarding_dismiss_widget_endpoint_creates_record(client):
     admin = login_admin(client)
     
     # Ensure no onboarding record exists
-    assert TeacherOnboarding.query.filter_by(teacher_id=admin.id).first() is None
+    assert TeacherOnboarding.query.filter_by(user_id=admin.id).first() is None
     
     # Call the endpoint
     response = client.post('/admin/onboarding/dismiss-widget',
@@ -161,7 +161,7 @@ def test_onboarding_dismiss_widget_endpoint_creates_record(client):
     assert data['status'] == 'success'
     
     # Verify record was created and dismissed
-    onboarding = TeacherOnboarding.query.filter_by(teacher_id=admin.id).first()
+    onboarding = TeacherOnboarding.query.filter_by(user_id=admin.id).first()
     assert onboarding is not None
     assert onboarding.widget_dismissed is True
 
@@ -181,7 +181,7 @@ def test_onboarding_skip_task_endpoint(client):
     assert 'store' in data['message']
     
     # Verify task was marked as completed (skipped)
-    onboarding = TeacherOnboarding.query.filter_by(teacher_id=admin.id).first()
+    onboarding = TeacherOnboarding.query.filter_by(user_id=admin.id).first()
     assert onboarding is not None
     assert onboarding.is_widget_task_completed('store') is True
 
@@ -205,7 +205,7 @@ def test_onboarding_status_endpoint_dismissed(client):
     admin = login_admin(client)
     
     # Create and dismiss widget
-    onboarding = TeacherOnboarding(teacher_id=admin.id)
+    onboarding = TeacherOnboarding(user_id=admin.id)
     onboarding.dismiss_widget()
     db.session.add(onboarding)
     db.session.commit()

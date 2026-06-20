@@ -100,6 +100,7 @@ def execute_store_purchase(
     scope,
     seat,
     teacher_id: int,
+    student_id: int | None,
     item,
     quantity: int,
     total_price: Decimal,
@@ -156,6 +157,7 @@ def execute_store_purchase(
     else:
         created_item_ids = store_service.record_standard_purchase_items(
             seat=seat,
+            student_id=student_id,
             item=item,
             quantity=quantity,
             purchase_tx_id=purchase_tx.id,

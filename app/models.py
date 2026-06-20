@@ -2382,7 +2382,11 @@ class InsuranceClaim(db.Model):
     @property
     def student(self):
         """Resolve student through seat for template compatibility."""
-        return self.seat.student if self.seat and self.seat.student_id else None
+        if not self.seat or not self.seat.user_id:
+            return None
+        if self.seat.identity_profile:
+            return Student.query.filter_by(identity_id=self.seat.identity_profile.id).first()
+        return None
 
 
 
@@ -2557,7 +2561,11 @@ class InsuranceEnrollment(db.Model):
     @property
     def student(self):
         """Resolve student through seat for template compatibility."""
-        return self.seat.student if self.seat and self.seat.student_id else None
+        if not self.seat or not self.seat.user_id:
+            return None
+        if self.seat.identity_profile:
+            return Student.query.filter_by(identity_id=self.seat.identity_profile.id).first()
+        return None
 
 
 class EntitlementEvent(db.Model):

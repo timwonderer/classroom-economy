@@ -99,7 +99,7 @@ def _attach_join_code(admin, block='A', token='JOIN-A'):
     _tb_seat = Seat(join_code=token, block=block, block_identifier=block, class_id=economy.class_id, role="student")
     db.session.add(_tb_seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name='Test', last_initial='A'))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name='Test', last_name='Anderson'))
 
     payroll_settings = PayrollSettings.query.filter_by(class_id=economy.class_id, block=block).first()
     if payroll_settings:
@@ -961,7 +961,7 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client, caplog):
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_initial="T"))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Taylor"))
     db.session.commit()
 
     from app.models import User, UserRole
@@ -1005,7 +1005,7 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client, caplog):
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_initial="V"))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Vega"))
     db.session.commit()
 
     from app.models import User, UserRole
@@ -1063,7 +1063,7 @@ def test_analyze_block_prefers_join_code_scoped_payroll_settings(client):
     _tb_seat = Seat(join_code="JOINA123", block="A", block_identifier="A", role="student")
     db.session.add(_tb_seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_initial="J"))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Jones"))
     # Join-code scoped row: should win.
     db.session.add(PayrollSettings(
         class_id=class_scope.class_id,

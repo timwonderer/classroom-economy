@@ -8070,7 +8070,10 @@ def process_claim(claim_id):
                 approved_amount=approved_amount,
             )
             if requires_payout:
-                flash(f"Monetary claim approved! ${approved_amount:.2f} deposited to {enrollment.student.full_name}'s checking account.", "success")
+                student_name = enrollment.seat.display_first_name if enrollment.seat else "the student"
+                student_initial = enrollment.seat.display_last_initial if enrollment.seat else ""
+                student_display = f"{student_name} {student_initial}.".strip()
+                flash(f"Monetary claim approved! ${approved_amount:.2f} deposited to {student_display}'s checking account.", "success")
         except IntegrityError as exc:
             db.session.rollback()
             if 'uq_insurance_reimbursement_source_policy' in str(exc.orig):
@@ -8955,7 +8958,6 @@ def payroll():
     # Pre-fetch payroll earnings and last payroll dates in batch
     class_seat_pairs = [(seat.class_id, seat.id) for seat in seats]
     raw_balances = get_batch_balances_by_class_seat(class_seat_pairs)
-    seat_map = {(seat.student_id, seat.class_id): seat for seat in seats}
     seat_map = {(seat.id, seat.class_id): seat for seat in seats}
 
     scoped_balances_by_student = {}
@@ -8973,7 +8975,7 @@ def payroll():
         }
 
     seat_ids = [s.id for s in seats]
-    student_id_by_seat = {seat.id: seat.student_id for seat in seats}
+    student_id_by_seat = {seat.id: seat.user_id for seat in seats}
 
     # Batch: Total Earned
     earnings_rows = db.session.query(
@@ -9099,7 +9101,7 @@ def payroll():
     payroll_history = []
     for tx in payroll_history_transactions:
         seat = seat_lookup.get(tx.seat_id)
-        student = student_lookup.get(seat.student_id) if seat else None
+        student = student_lookup.get(seat.user_id) if seat else None
         student_block = student.block if student else 'Unknown'
         payroll_history.append({
             'transaction_id': tx.id,
@@ -9107,7 +9109,7 @@ def payroll():
             'type': tx.type or 'manual_payment',
             'block': student_block,
             'class_label': class_labels_by_block.get(student_block, student_block) if student_block != 'Unknown' else 'Unknown',
-            'student_id': seat.student_id if seat else tx.student_id,
+            'student_id': seat.user_id if seat else tx.student_id,
             'student': student,
             'student_name': student.full_name if student else 'Unknown',
             'join_code': join_codes_by_block.get(student_block, ''),
@@ -10032,7 +10034,7 @@ def export_students():
     seats = Seat.query.filter(Seat.class_id.in_(scoped_class_ids), Seat.role == 'student').all()
     class_seat_pairs = [(seat.class_id, seat.id) for seat in seats]
     raw_balances = get_batch_balances_by_class_seat(class_seat_pairs)
-    seat_map = {(seat.student_id, seat.class_id): seat for seat in seats}
+    seat_map = {(seat.user_id, seat.class_id): seat for seat in seats}
 
     scoped_balances_by_student = {}
     for student in students:

@@ -247,8 +247,8 @@ def test_insurance_approval_creates_reimbursement_transaction(client):
     student = _create_student("Insured")
     _link_student_to_teacher(student, admin, "JOIN-INS", block="A")
     db.session.commit()
-    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-INS", role="student").first()
     economy = ClassEconomy.query.filter_by(join_code="JOIN-INS").first()
+    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-INS", role="student").first()
     assert seat is not None and seat.class_id is not None
     assert economy is not None
 
@@ -335,8 +335,8 @@ def test_store_purchase_deducts_balance_and_records_transaction(client):
     student = _create_student("Shopper")
     _link_student_to_teacher(student, admin, "JOIN-STORE", block="A")
     db.session.commit()
-    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-STORE", role="student").first()
     economy = ClassEconomy.query.filter_by(join_code="JOIN-STORE").first()
+    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-STORE", role="student").first()
     assert seat is not None and seat.class_id is not None
     assert economy is not None
     from app.models import BalanceCache
@@ -401,10 +401,10 @@ def test_transfer_pairs_are_zero_sum_within_class_scope(client):
     _link_student_to_teacher(other_student, admin, "JOIN-OTHER", block="B")
     db.session.commit()
 
-    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-XFER", role="student").first()
-    other_seat = Seat.query.filter_by(class_id=other_economy.class_id, join_code="JOIN-OTHER", role="student").first()
     economy = ClassEconomy.query.filter_by(join_code="JOIN-XFER").first()
     other_economy = ClassEconomy.query.filter_by(join_code="JOIN-OTHER").first()
+    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-XFER", role="student").first()
+    other_seat = Seat.query.filter_by(class_id=other_economy.class_id, join_code="JOIN-OTHER", role="student").first()
 
     withdraw_tx, deposit_tx = ledger_service.create_transfer_pair(
         seat_id=seat.id,
@@ -461,8 +461,8 @@ def test_store_purchase_bulk_discount_uses_quantized_total_for_funds_check(clien
     student = _create_student("Discount")
     _link_student_to_teacher(student, admin, "JOIN-DISC", block="A")
     db.session.commit()
-    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-DISC", role="student").first()
     economy = ClassEconomy.query.filter_by(join_code="JOIN-DISC").first()
+    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-DISC", role="student").first()
     assert seat is not None and seat.class_id is not None
     assert economy is not None
     from app.models import BalanceCache

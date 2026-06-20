@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from app.extensions import db
-from app.models import RentItem, RentPolicyVersion, StudentItem, Seat
+from app.models import RentItem, RentPolicyVersion, Seat, Student, StudentItem
 from app.utils.time import utc_now
 
 
@@ -226,6 +226,7 @@ def record_rent_perk_purchase(
 def record_standard_purchase_items(
     *,
     seat,
+    student_id: int | None,
     item,
     quantity: int,
     purchase_tx_id: int,
@@ -238,11 +239,10 @@ def record_standard_purchase_items(
 
     from app.feats.base import get_correlation_id
     corr_id = get_correlation_id()
-    
     if item.is_bundle and item.bundle_quantity is not None:
         new_student_item = StudentItem(
             seat_id=seat.id,
-            student_id=seat.student_id,
+            student_id=student_id,
             class_id=seat.class_id,
             store_item_id=item.id,
             correlation_id=corr_id,
@@ -264,7 +264,7 @@ def record_standard_purchase_items(
     for _ in range(quantity):
         new_student_item = StudentItem(
             seat_id=seat.id,
-            student_id=seat.student_id,
+            student_id=student_id,
             class_id=seat.class_id,
             store_item_id=item.id,
             correlation_id=corr_id,

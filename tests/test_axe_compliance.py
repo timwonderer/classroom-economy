@@ -264,7 +264,7 @@ def teacher_page(app, client, axe_live_server, browser, axe_script):
         user.last_active_class_id = class_row.class_id
 
         onboarding = TeacherOnboarding(
-            teacher_id=teacher.id,
+            user_id=user.id,
             is_completed=True,
             completed_at=datetime.now(timezone.utc),
         )
