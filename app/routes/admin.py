@@ -55,7 +55,7 @@ from app.extensions import db, limiter
 from app.feats.base import feat_shell, FEATContext, InvariantViolation
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    Student, Admin, ClassEconomy, Transaction, TransactionStatus, TapEvent, StoreItem, StudentItem,
+    Student, Admin, ClassEconomy, Transaction, TransactionStatus, TapEvent, AttendanceSession, StoreItem, StudentItem,
     InsurancePolicy, InsurancePolicyBlock, RentItem, RentPayment, RentSettings, StoreItemBlock,
     InsuranceEnrollment, StudentInsurance, InsuranceClaim, HallPassLog, HallPassSettings, PayrollSettings, SavedAdjustment,
     BankingSettings,
@@ -9701,16 +9701,15 @@ def payroll_manual_payment():
 @admin_required
 def attendance_log():
     """View complete attendance log."""
-    # Get accessible student IDs for tenant scoping
-    student_ids_subq = _student_scope_subquery(include_unassigned=False)
-
-    # Get distinct periods from TapEvents for this admin's students
+    # Attendance history is now seat-scoped; derive periods from canonical session rows.
+    class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=session.get("admin_id")).subquery()
     periods_query = (
-        db.session.query(TapEvent.period)
-        .filter(TapEvent.student_id.in_(sa.select(student_ids_subq)))
-        .filter(TapEvent.is_deleted.is_not(True))
+        db.session.query(AttendanceSession.period)
+        .join(Seat, Seat.id == AttendanceSession.seat_id)
+        .filter(Seat.class_id.in_(sa.select(class_ids_subq)))
+        .filter(AttendanceSession.is_deleted.is_not(True))
         .distinct()
-        .order_by(TapEvent.period)
+        .order_by(AttendanceSession.period)
     )
     periods = [p[0] for p in periods_query.all() if p[0]]
 

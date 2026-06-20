@@ -20,8 +20,8 @@ from werkzeug.security import check_password_hash
 
 from app.extensions import db, limiter
 from app.models import (
-    Admin, Student, StoreItem, StudentItem, Transaction, TransactionStatus, TapEvent,
-    AttendanceReasonCode, HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
+    Admin, Student, StoreItem, StudentItem, Transaction, TransactionStatus, TapEvent, AttendanceSession,
+    AttendanceReasonCode, TapEventReasonCode, HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
     StudentBlock, StoreItemBlock,
     RedemptionAuditLog, RedemptionAuditAction, RedemptionAuditSource, _quantize_currency,
     ClassEconomy, ClassMembership, Seat, SeatAttendanceState, IdentityProfile,
@@ -1821,42 +1821,39 @@ def attendance_history():
             return jsonify({"status": "error", "message": "Unauthorized"}), 401
         scoped_admin_id = current_admin.id
 
-        # Get student IDs that the current admin can access (tenant-scoped)
-        accessible_student_ids_query = get_admin_student_query(include_unassigned=False).with_entities(Student.id)
-        # Build query scoped to admin's students and exclude deleted records
+        # Attendance history is seat/class scoped; query canonical session rows directly.
         query = _apply_admin_class_scope(
-            TapEvent.query.filter(TapEvent.is_deleted.is_(False)),
-            TapEvent,
+            AttendanceSession.query.filter(AttendanceSession.is_deleted.is_(False)),
+            AttendanceSession,
             scoped_admin_id,
-            accessible_student_ids_query,
+            None,
         )
         current_class_id = (session.get("current_class_id") or "").strip()
         if current_class_id:
-            query = query.filter(TapEvent.class_id == current_class_id)
+            query = query.filter(AttendanceSession.class_id == current_class_id)
 
         # Suppress duplicate auto tap-outs from known race conditions.
         # Keep only the earliest row when daily-limit inactive events are otherwise identical.
-        duplicate_tap = aliased(TapEvent)
+        duplicate_tap = aliased(AttendanceSession)
         query = query.filter(~sa.and_(
-            TapEvent.status == 'inactive',
+            AttendanceSession.ended_at.isnot(None),
             or_(
-                TapEvent.reason_code == TapEventReasonCode.DAILY_LIMIT,
+                AttendanceSession.end_reason_code == AttendanceReasonCode.DAILY_LIMIT,
                 sa.and_(
-                    TapEvent.reason_code.is_(None),
-                    TapEvent.reason.like('Daily limit%')
+                    AttendanceSession.end_reason_code.is_(None),
+                    AttendanceSession.end_reason.like('Daily limit%')
                 )
             ),
             sa.exists(
                 sa.select(1).where(
                     sa.and_(
-                        duplicate_tap.seat_id == TapEvent.seat_id,
-                        duplicate_tap.class_id == TapEvent.class_id,
-                        duplicate_tap.period == TapEvent.period,
-                        duplicate_tap.status == TapEvent.status,
-                        duplicate_tap.reason == TapEvent.reason,
-                        duplicate_tap.timestamp == TapEvent.timestamp,
+                        duplicate_tap.seat_id == AttendanceSession.seat_id,
+                        duplicate_tap.class_id == AttendanceSession.class_id,
+                        duplicate_tap.period == AttendanceSession.period,
+                        duplicate_tap.started_at == AttendanceSession.started_at,
+                        duplicate_tap.end_reason == AttendanceSession.end_reason,
                         duplicate_tap.is_deleted.is_(False),
-                        duplicate_tap.id < TapEvent.id
+                        duplicate_tap.id < AttendanceSession.id
                     )
                 )
             )
@@ -1864,16 +1861,19 @@ def attendance_history():
 
         # Apply filters
         if period:
-            query = query.filter(TapEvent.period == period)
+            query = query.filter(AttendanceSession.period == period)
 
         if status:
-            query = query.filter(TapEvent.status == status)
+            if status == 'active':
+                query = query.filter(AttendanceSession.ended_at.is_(None))
+            elif status == 'inactive':
+                query = query.filter(AttendanceSession.ended_at.isnot(None))
 
         if start_date:
             try:
                 start_day = datetime.strptime(start_date, '%Y-%m-%d').date()
                 start_datetime, _ = local_date_bounds_utc(start_day, timezone_name='UTC')
-                query = query.filter(TapEvent.timestamp >= normalize_for_db(start_datetime))
+                query = query.filter(AttendanceSession.started_at >= normalize_for_db(start_datetime))
             except ValueError:
                 return jsonify({"status": "error", "message": "Invalid start date format"}), 400
 
@@ -1881,18 +1881,18 @@ def attendance_history():
             try:
                 end_day = datetime.strptime(end_date, '%Y-%m-%d').date()
                 _, end_datetime = local_date_bounds_utc(end_day, timezone_name='UTC')
-                query = query.filter(TapEvent.timestamp <= normalize_for_db(end_datetime))
+                query = query.filter(AttendanceSession.started_at <= normalize_for_db(end_datetime))
             except ValueError:
                 return jsonify({"status": "error", "message": "Invalid end date format"}), 400
 
         from app.models import Seat
         # Filter by block (need to join with Seat)
         if block:
-            query = query.join(Seat, TapEvent.seat_id == Seat.id)
-            query = query.filter(TapEvent.period == block)
+            query = query.join(Seat, AttendanceSession.seat_id == Seat.id)
+            query = query.filter(AttendanceSession.period == block)
 
         # Order by most recent first
-        query = query.order_by(TapEvent.timestamp.desc())
+        query = query.order_by(AttendanceSession.started_at.desc())
 
         # Get total count for pagination
         total = query.count()
@@ -1906,7 +1906,7 @@ def attendance_history():
         seats = {}
         if seat_ids:
             seat_rows = (
-                db.session.query(Seat.id, Seat.block, IdentityProfile.first_name, IdentityProfile.last_name)
+                db.session.query(Seat.id, Seat.block, IdentityProfile.first_name, IdentityProfile.last_initial)
                 .outerjoin(IdentityProfile, IdentityProfile.seat_id == Seat.id)
                 .filter(Seat.id.in_(seat_ids))
                 .all()
@@ -1918,7 +1918,7 @@ def attendance_history():
                     period_by_seat_id[record.seat_id] = record.period
 
             for row in seat_rows:
-                student_name = " ".join(part for part in [row.first_name, row.last_name] if part).strip() or "Unknown"
+                student_name = " ".join(part for part in [row.first_name, row.last_initial] if part).strip() or "Unknown"
                 student_block = period_by_seat_id.get(row.id) or row.block or "Unknown"
                 seats[row.id] = {"name": student_name, "block": student_block}
 
