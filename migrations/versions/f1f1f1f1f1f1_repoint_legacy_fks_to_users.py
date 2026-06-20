@@ -74,12 +74,18 @@ def drop_fks_for_column(table_name, column_name):
             op.drop_constraint(fk['name'], table_name, type_='foreignkey')
 
 def drop_indexes_for_column(table_name, column_name):
-    """Drop all indexes that include a column."""
+    """Drop all indexes that include a column (skips unique-constraint-backed indexes)."""
     conn = op.get_bind()
     inspector = sa.inspect(conn)
+    # Collect unique constraint names so we skip their backing indexes
+    uc_names = {uc.get('name') for uc in inspector.get_unique_constraints(table_name) if uc.get('name')}
     for idx in inspector.get_indexes(table_name):
-        if column_name in idx.get('column_names', []) and idx.get('name'):
-            op.drop_index(idx['name'], table_name=table_name)
+        name = idx.get('name')
+        if column_name in idx.get('column_names', []) and name and name not in uc_names:
+            try:
+                op.drop_index(name, table_name=table_name)
+            except Exception:
+                pass  # Already dropped or constraint-backed
 
 def drop_unique_constraints_for_column(table_name, column_name):
     """Drop unique constraints that include a column."""
@@ -95,8 +101,8 @@ def safe_drop_column(table_name, column_name):
         print(f"  ⚠️  {table_name}.{column_name} already gone, skipping")
         return
     drop_fks_for_column(table_name, column_name)
-    drop_indexes_for_column(table_name, column_name)
     drop_unique_constraints_for_column(table_name, column_name)
+    drop_indexes_for_column(table_name, column_name)
     op.drop_column(table_name, column_name)
     print(f"  ✅ Dropped {table_name}.{column_name}")
 
