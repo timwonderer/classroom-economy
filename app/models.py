@@ -2999,8 +2999,7 @@ class AdminCredential(db.Model):
     __tablename__ = 'teacher_credentials'
 
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
 
     # Credential metadata
     credential_id = db.Column(db.Text, unique=False, nullable=True, index=False)  # Optional: not needed for passwordless.dev SaaS
@@ -3011,11 +3010,10 @@ class AdminCredential(db.Model):
     last_used = db.Column(db.DateTime(timezone=True))
 
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('credentials', lazy='dynamic', cascade='all, delete-orphan'))
-    user = db.relationship('User', backref=db.backref('teacher_credentials', lazy='dynamic', cascade='all, delete-orphan'))
+    user = db.relationship('User', backref=db.backref('credentials', lazy='dynamic', cascade='all, delete-orphan'))
 
     def __repr__(self):
-        return f'<AdminCredential {self.authenticator_name or "Unnamed"} for Teacher {self.teacher_id}>'
+        return f'<AdminCredential {self.authenticator_name or "Unnamed"} for User {self.user_id}>'
 
 
 # ---- Account Recovery Models ----
