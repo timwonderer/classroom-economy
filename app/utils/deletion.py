@@ -147,18 +147,18 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         StudentBlock.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
         # 3. Insurance & Issue Data
-        issue_ids_subq = select(Issue.id).filter_by(class_id=class_id).subquery()
+        issue_ids_sel = select(Issue.id).filter_by(class_id=class_id)
         IssueResolutionAction.query.filter(
-            IssueResolutionAction.issue_id.in_(select(issue_ids_subq))
+            IssueResolutionAction.issue_id.in_(issue_ids_sel)
         ).delete(synchronize_session=False)
         Issue.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
-        insurance_ids_subq = select(StudentInsurance.id).filter_by(class_id=class_id).subquery()
-        tx_ids_subq = select(Transaction.id).filter_by(class_id=class_id).subquery()
+        insurance_ids_sel = select(StudentInsurance.id).filter_by(class_id=class_id)
+        tx_ids_sel = select(Transaction.id).filter_by(class_id=class_id)
         InsuranceClaim.query.filter(
             or_(
-                InsuranceClaim.enrollment_id.in_(select(insurance_ids_subq)),
-                InsuranceClaim.transaction_id.in_(select(tx_ids_subq))
+                InsuranceClaim.enrollment_id.in_(insurance_ids_sel),
+                InsuranceClaim.transaction_id.in_(tx_ids_sel)
             )
         ).delete(synchronize_session=False)
         StudentInsurance.query.filter_by(class_id=class_id).delete(synchronize_session=False)
