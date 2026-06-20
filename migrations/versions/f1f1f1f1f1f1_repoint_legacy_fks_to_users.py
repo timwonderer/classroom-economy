@@ -8,7 +8,7 @@ This is a clean-DB migration (v2 has no production data). All operations
 are destructive and non-reversible in the downgrade — downgrade simply
 drops and recreates from scratch.
 
-Requires: Seat.student_id removed from ORM (commit d2bf0a9e).
+Requires: All ORM FK declarations aligned with this migration.
 
 Revision ID: f1f1f1f1f1f1
 Revises: f0f0f0f0f0f0
