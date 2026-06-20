@@ -329,14 +329,11 @@ class Seat(db.Model):
     # Transitional public-token bridge until seat/class rewiring is complete.
     join_code = db.Column(db.String(20), nullable=False, index=True)
 
-    # Transitional bridge to existing student-backed tables.
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='SET NULL'), nullable=True, index=True)
     block = db.Column(db.String(10), nullable=True)
 
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
-    student = db.relationship('Student', backref=db.backref('seats', lazy='dynamic'))
     identity_profile = db.relationship(
         'IdentityProfile',
         backref=db.backref('seat', uselist=False),
