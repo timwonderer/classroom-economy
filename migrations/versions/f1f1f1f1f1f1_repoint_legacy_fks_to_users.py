@@ -58,6 +58,15 @@ def get_foreign_keys_by_column(table_name, column_name):
     except Exception:
         return []
 
+
+def has_foreign_key(table_name, constraint_name):
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    try:
+        return any(fk.get('name') == constraint_name for fk in inspector.get_foreign_keys(table_name))
+    except Exception:
+        return False
+
 def drop_fks_for_column(table_name, column_name):
     """Drop all FK constraints referencing a column."""
     for fk in get_foreign_keys_by_column(table_name, column_name):
@@ -97,12 +106,14 @@ def repoint_teacher_fk(table_name, col='teacher_id'):
         print(f"  ⚠️  {table_name}.{col} does not exist, skipping")
         return
     drop_fks_for_column(table_name, col)
-    op.create_foreign_key(
-        f'fk_{table_name}_{col}_users',
-        table_name, 'users',
-        [col], ['id'],
-        ondelete='CASCADE',
-    )
+    constraint_name = f'fk_{table_name}_{col}_users'
+    if not has_foreign_key(table_name, constraint_name):
+        op.create_foreign_key(
+            constraint_name,
+            table_name, 'users',
+            [col], ['id'],
+            ondelete='CASCADE',
+        )
     print(f"  ✅ Repointed {table_name}.{col} → users.id")
 
 
@@ -180,12 +191,13 @@ def upgrade():
         drop_fks_for_column('classes', 'created_by_admin_id')
         drop_indexes_for_column('classes', 'created_by_admin_id')
         op.alter_column('classes', 'created_by_admin_id', new_column_name='created_by_user_id')
-        op.create_foreign_key(
-            'fk_classes_created_by_user_id_users',
-            'classes', 'users',
-            ['created_by_user_id'], ['id'],
-            ondelete='SET NULL',
-        )
+        if not has_foreign_key('classes', 'fk_classes_created_by_user_id_users'):
+            op.create_foreign_key(
+                'fk_classes_created_by_user_id_users',
+                'classes', 'users',
+                ['created_by_user_id'], ['id'],
+                ondelete='SET NULL',
+            )
         print("  ✅ classes.created_by_admin_id → created_by_user_id (users.id)")
 
     # RentWaiver: created_by_teacher_id → created_by_user_id
@@ -193,22 +205,24 @@ def upgrade():
         drop_fks_for_column('rent_waivers', 'created_by_teacher_id')
         drop_indexes_for_column('rent_waivers', 'created_by_teacher_id')
         op.alter_column('rent_waivers', 'created_by_teacher_id', new_column_name='created_by_user_id')
-        op.create_foreign_key(
-            'fk_rent_waivers_created_by_user_id_users',
-            'rent_waivers', 'users',
-            ['created_by_user_id'], ['id'],
-        )
+        if not has_foreign_key('rent_waivers', 'fk_rent_waivers_created_by_user_id_users'):
+            op.create_foreign_key(
+                'fk_rent_waivers_created_by_user_id_users',
+                'rent_waivers', 'users',
+                ['created_by_user_id'], ['id'],
+            )
         print("  ✅ rent_waivers.created_by_teacher_id → created_by_user_id (users.id)")
 
     # TapEvent: deleted_by → repoint to users.id
     if column_exists('tap_events', 'deleted_by'):
         drop_fks_for_column('tap_events', 'deleted_by')
-        op.create_foreign_key(
-            'fk_tap_events_deleted_by_users',
-            'tap_events', 'users',
-            ['deleted_by'], ['id'],
-            ondelete='SET NULL',
-        )
+        if not has_foreign_key('tap_events', 'fk_tap_events_deleted_by_users'):
+            op.create_foreign_key(
+                'fk_tap_events_deleted_by_users',
+                'tap_events', 'users',
+                ['deleted_by'], ['id'],
+                ondelete='SET NULL',
+            )
         print("  ✅ tap_events.deleted_by → users.id")
 
     # ============================================================
@@ -229,12 +243,13 @@ def upgrade():
         drop_indexes_for_column('teacher_onboarding', 'teacher_id')
         drop_unique_constraints_for_column('teacher_onboarding', 'teacher_id')
         op.alter_column('teacher_onboarding', 'teacher_id', new_column_name='user_id')
-        op.create_foreign_key(
-            'fk_teacher_onboarding_user_id_users',
-            'teacher_onboarding', 'users',
-            ['user_id'], ['id'],
-            ondelete='CASCADE',
-        )
+        if not has_foreign_key('teacher_onboarding', 'fk_teacher_onboarding_user_id_users'):
+            op.create_foreign_key(
+                'fk_teacher_onboarding_user_id_users',
+                'teacher_onboarding', 'users',
+                ['user_id'], ['id'],
+                ondelete='CASCADE',
+            )
         op.create_unique_constraint('uq_teacher_onboarding_user_id', 'teacher_onboarding', ['user_id'])
         print("  ✅ teacher_onboarding.teacher_id → user_id (users.id)")
 
@@ -246,11 +261,12 @@ def upgrade():
         drop_fks_for_column('recovery_requests', 'teacher_id')
         drop_indexes_for_column('recovery_requests', 'teacher_id')
         op.alter_column('recovery_requests', 'teacher_id', new_column_name='user_id')
-        op.create_foreign_key(
-            'fk_recovery_requests_user_id_users',
-            'recovery_requests', 'users',
-            ['user_id'], ['id'],
-        )
+        if not has_foreign_key('recovery_requests', 'fk_recovery_requests_user_id_users'):
+            op.create_foreign_key(
+                'fk_recovery_requests_user_id_users',
+                'recovery_requests', 'users',
+                ['user_id'], ['id'],
+            )
         print("  ✅ recovery_requests.teacher_id → user_id (users.id)")
 
     # ============================================================
@@ -261,11 +277,12 @@ def upgrade():
         drop_fks_for_column('student_recovery_codes', 'student_id')
         drop_indexes_for_column('student_recovery_codes', 'student_id')
         op.alter_column('student_recovery_codes', 'student_id', new_column_name='user_id')
-        op.create_foreign_key(
-            'fk_student_recovery_codes_user_id_users',
-            'student_recovery_codes', 'users',
-            ['user_id'], ['id'],
-        )
+        if not has_foreign_key('student_recovery_codes', 'fk_student_recovery_codes_user_id_users'):
+            op.create_foreign_key(
+                'fk_student_recovery_codes_user_id_users',
+                'student_recovery_codes', 'users',
+                ['user_id'], ['id'],
+            )
         print("  ✅ student_recovery_codes.student_id → user_id (users.id)")
 
     # ============================================================
@@ -281,12 +298,13 @@ def upgrade():
 
     if column_exists('class_memberships', 'user_id'):
         op.alter_column('class_memberships', 'user_id', nullable=False)
-        op.create_foreign_key(
-            'fk_class_memberships_user_id_users',
-            'class_memberships', 'users',
-            ['user_id'], ['id'],
-            ondelete='CASCADE',
-        )
+        if not has_foreign_key('class_memberships', 'fk_class_memberships_user_id_users'):
+            op.create_foreign_key(
+                'fk_class_memberships_user_id_users',
+                'class_memberships', 'users',
+                ['user_id'], ['id'],
+                ondelete='CASCADE',
+            )
         # Unique constraint: one user per class
         op.create_unique_constraint(
             'uq_class_membership_user',

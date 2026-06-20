@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import Session, validates
+from sqlalchemy.orm import Session, synonym, validates
 from sqlalchemy import event
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
@@ -661,6 +661,7 @@ class ClassEconomy(db.Model):
         backref=db.backref('classes', lazy='dynamic', passive_deletes=True),
     )
     created_by_admin = db.relationship('Admin', foreign_keys=[created_by_admin_id])
+    created_by_user_id = synonym('created_by_admin_id')
 
     @property
     def status(self):
@@ -3367,6 +3368,7 @@ class TeacherOnboarding(db.Model):
     __tablename__ = 'teacher_onboarding'
     id = db.Column(db.Integer, primary_key=True)
     teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=False, unique=True)
+    user_id = synonym('teacher_id')
 
     # Onboarding status
     is_completed = db.Column(db.Boolean, default=False, nullable=False)
