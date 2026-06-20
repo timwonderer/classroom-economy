@@ -532,8 +532,12 @@ class Student(db.Model):
             float: The total earnings rounded to 2 decimal places
         """
         if class_id:
-            total = db.session.query(db.func.sum(Transaction.amount)).join(Seat, Transaction.seat_id == Seat.id).filter(
-                Seat.student_id == self.id,
+            total = db.session.query(db.func.sum(Transaction.amount)).join(Seat, Transaction.seat_id == Seat.id).join(
+                IdentityProfile, IdentityProfile.seat_id == Seat.id
+            ).join(
+                Student, Student.identity_id == IdentityProfile.id
+            ).filter(
+                Student.id == self.id,
                 Transaction.class_id == class_id,
                 Transaction.amount > 0,
                 Transaction.is_void == False,
@@ -543,8 +547,12 @@ class Student(db.Model):
 
         if join_code:
             # Legacy scoping by join_code (period-level isolation)
-            total = db.session.query(db.func.sum(Transaction.amount)).join(Seat, Transaction.seat_id == Seat.id).filter(
-                Seat.student_id == self.id,
+            total = db.session.query(db.func.sum(Transaction.amount)).join(Seat, Transaction.seat_id == Seat.id).join(
+                IdentityProfile, IdentityProfile.seat_id == Seat.id
+            ).join(
+                Student, Student.identity_id == IdentityProfile.id
+            ).filter(
+                Student.id == self.id,
                 Transaction.join_code == join_code,
                 Transaction.amount > 0,
                 Transaction.is_void == False,
@@ -569,7 +577,9 @@ class Student(db.Model):
         deposits = (
             db.session.query(Transaction)
             .join(Seat, Seat.id == Transaction.seat_id)
-            .filter(Seat.student_id == self.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(Student.id == self.id)
             .filter(Transaction.amount > 0)
             .filter(Transaction.is_void == False)
             .filter(~db.func.lower(Transaction.description).like('transfer%'))
@@ -2704,11 +2714,13 @@ class Admin(db.Model):
         return f"teacher_{self.id}"
 
     def get_student_count(self):
-        """Return unique students linked via StudentTeacher."""
+        """Return unique students attached through canonical class seats."""
         return (
-            db.session.query(StudentTeacher.student_id)
-            .join(Student, Student.id == StudentTeacher.student_id)
-            .filter(StudentTeacher.teacher_id == self.id)
+            db.session.query(Student.id)
+            .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+            .join(Seat, Seat.id == IdentityProfile.seat_id)
+            .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
+            .filter(ClassEconomy.teacher_id == self.id)
             .distinct()
             .count()
         )
