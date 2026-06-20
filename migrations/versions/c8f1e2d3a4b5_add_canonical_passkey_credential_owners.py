@@ -99,7 +99,7 @@ def upgrade():
             ondelete="CASCADE",
         )
 
-    if table_exists("teacher_credentials"):
+    if table_exists("teacher_credentials") and column_exists("teacher_credentials", "teacher_id"):
         _execute(
             """
             UPDATE teacher_credentials tc
