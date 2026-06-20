@@ -3120,7 +3120,6 @@ def rent():
     if not is_feature_enabled('rent'):
         abort(404)
 
-    seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
     student = get_logged_in_student()
@@ -3129,9 +3128,20 @@ def rent():
         flash("No class selected. Please choose a class to continue.", "error")
         return redirect(url_for('student.dashboard'))
 
+    seat_id = context.seat_id
+    if not seat_id:
+        flash("No seat assigned in this class.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    from app.models import Seat
+    seat = db.session.get(Seat, seat_id)
+    if not seat:
+        flash("No seat assigned in this class.", "error")
+        return redirect(url_for('student.dashboard'))
+
     teacher_id = None
-    join_code = get_display_join_code(context.class_id)
-    current_block = seat.block.strip().upper() if seat and seat.block else ""
+    class_id = class_id or context.class_id
+    current_block = (getattr(seat, "block", None) or "").strip().upper()
     settings = get_rent_settings_for_context(context)
 
     if not settings or not settings.is_enabled:
@@ -3142,19 +3152,8 @@ def rent():
         flash("No class period found for this class.", "error")
         return redirect(url_for('student.dashboard'))
 
-    class_id = class_id or context.class_id
-    if not class_id:
-        from app.models import ClassEconomy
-        ce = ClassEconomy.query.filter_by(join_code=join_code).first()
-        class_id = ce.class_id if ce else None
-
     if not class_id:
         flash("No class context available.", "error")
-        return redirect(url_for('student.dashboard'))
-
-    seat_id = get_seat_id_for_class(student.id, class_id)
-    if not seat_id:
-        flash("No seat assigned in this class.", "error")
         return redirect(url_for('student.dashboard'))
 
     # Calculate rent status for each period
@@ -3317,7 +3316,6 @@ def rent():
                           student_blocks=student_blocks,
                           period_status=period_status,
                           current_block=current_block,
-                          join_code=join_code,
                           checking_balance=checking_balance,
                           savings_balance=savings_balance,
                           due_date=due_date,
@@ -3336,49 +3334,59 @@ def rent():
 def rent_pay(period):
     """Process rent payment for a specific period."""
     student = get_logged_in_student()
-    try:
-        scope = resolve_scope(
-            actor=student,
-            selected_join_code=session.get('current_join_code'),
-        )
-    except AccessScopeDenied as exc:
-        flash(exc.message, "error")
-        return redirect(url_for('student.dashboard'))
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please choose a class to continue.", "error")
         return redirect(url_for('student.dashboard'))
-    seat = get_current_seat()
-
     class_id = context.class_id
-    if not class_id:
-        from app.models import ClassEconomy
-        ce = ClassEconomy.query.filter_by(join_code=session.get('current_join_code')).first()
-        class_id = ce.class_id if ce else None
-
     if not class_id:
         flash("No class context available.", "error")
         return redirect(url_for('student.dashboard'))
 
-    seat_id = seat.id if seat and seat.class_id == class_id else get_seat_id_for_class(student.id, class_id)
+    seat_id = context.seat_id
     if not seat_id:
+        flash("No seat assigned in this class.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    from app.models import Seat
+    seat = db.session.get(Seat, seat_id)
+    if not seat:
         flash("No seat assigned in this class.", "error")
         return redirect(url_for('student.dashboard'))
 
     settings = get_rent_settings_for_context(context)
 
     if not settings or not settings.is_enabled:
+        current_app.logger.info("rent_pay exit: rent settings missing or disabled")
         flash("Rent system is currently disabled.", "error")
         return redirect(url_for('student.dashboard'))
 
     if not student.is_rent_enabled:
+        current_app.logger.info("rent_pay exit: student rent disabled")
         flash("Rent is not enabled for your account.", "error")
         return redirect(url_for('student.dashboard'))
 
     # Validate period for the current class context only
     period = (period or '').strip().upper()
-    current_block = (seat.block or '').strip().upper() if seat and seat.block else ''
+    current_block = (seat.block_identifier or seat.block or '').strip().upper() if seat else ''
+    if not current_block:
+        current_block = period
+    current_app.logger.info(
+        "rent_pay state: seat_id=%s class_id=%s current_block=%s settings_block=%s enabled=%s",
+        seat_id,
+        class_id,
+        current_block,
+        getattr(settings, "block", None),
+        getattr(settings, "is_enabled", None),
+    )
     if period != current_block:
+        current_app.logger.info(
+            "rent_pay exit: period mismatch period=%s current_block=%s seat_id=%s class_id=%s",
+            period,
+            current_block,
+            seat_id,
+            class_id,
+        )
         flash("Invalid period.", "error")
         return redirect(url_for('student.rent'))
 
@@ -3393,6 +3401,11 @@ def rent_pay(period):
     rent_is_active = timeline['rent_is_active']
 
     if not rent_is_active:
+        current_app.logger.info(
+            "rent_pay exit: rent inactive preview_start=%s upcoming_due=%s",
+            preview_start_date,
+            upcoming_due_date,
+        )
         if preview_start_date:
             available_date = preview_start_date
             message = f"Rent is not due yet. You can start paying on {available_date.strftime('%B %d, %Y')}."
@@ -3479,6 +3492,14 @@ def rent_pay(period):
 
     # Calculate remaining amount to pay
     remaining_amount = _quantize_currency(total_due - total_paid_so_far)
+    current_app.logger.info(
+        "rent_pay totals: total_paid_so_far=%s total_due=%s remaining_amount=%s current_coverage_paid=%s preview=%s",
+        total_paid_so_far,
+        total_due,
+        remaining_amount,
+        current_coverage_paid,
+        is_preview_period,
+    )
 
     # Check if already fully paid
     if remaining_amount <= 0:
@@ -3519,6 +3540,18 @@ def rent_pay(period):
         payment_amount,
         banking_settings,
     )
+    if banking_settings is None:
+        allowed = True
+        shortfall = Decimal('0.00')
+    current_app.logger.info(
+        "rent_pay overdraft gate: allowed=%s shortfall=%s banking_enabled=%s payment_amount=%s checking=%s savings=%s",
+        allowed,
+        shortfall,
+        getattr(banking_settings, "overdraft_protection_enabled", None) if banking_settings else None,
+        payment_amount,
+        checking_balance,
+        savings_balance,
+    )
     if not allowed:
         fee_charged, fee_amount = _charge_overdraft_fee_if_needed(
             student,
@@ -3543,6 +3576,13 @@ def rent_pay(period):
     if shortfall > 0:
         overdraft_shortfall = shortfall
 
+    current_app.logger.info(
+        "rent_pay before execute: seat_id=%s class_id=%s period=%s amount=%s",
+        seat_id,
+        class_id,
+        period,
+        payment_amount,
+    )
     result = execute_rent_payment(
         seat=seat,
         context=context,
@@ -3564,6 +3604,22 @@ def rent_pay(period):
         now=now,
         calculate_due_dates_fn=_calculate_due_dates,
     )
+    current_app.logger.info(
+        "rent_pay after execute: transaction_id=%s payment_id=%s",
+        result.transaction_id,
+        result.payment_id,
+    )
+    from app.models import Transaction
+    persisted_tx = db.session.get(Transaction, result.transaction_id)
+    current_app.logger.info(
+        "rent_pay tx row: tx_id=%s seat_id=%s class_id=%s type=%s status=%s",
+        getattr(persisted_tx, "id", None),
+        getattr(persisted_tx, "seat_id", None),
+        getattr(persisted_tx, "class_id", None),
+        getattr(persisted_tx, "type", None),
+        getattr(persisted_tx, "status", None),
+    )
+    db.session.commit()
 
     # Success message
     if result.is_partial and settings.allow_incremental_payment:

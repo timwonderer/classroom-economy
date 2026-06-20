@@ -587,7 +587,7 @@ def test_rent_payment_creates_rent_obligation_record(client):
     rent_tx = (
         Transaction.query.filter(
             Transaction.seat_id == seat.id,
-            Transaction.join_code == "JOIN-RENT",
+            Transaction.class_id == economy.class_id,
             Transaction.type == "Rent Payment",
         )
         .order_by(Transaction.id.desc())

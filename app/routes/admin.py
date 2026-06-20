@@ -4353,8 +4353,8 @@ def students():
 
     # Claimed students are resolved through Seat rows in the active class.
     claimed_student_ids = sorted({
-        s.student_id for s in class_seats
-        if s.student_id is not None and s.claimed_at is not None
+        s.user_id for s in class_seats
+        if s.user_id is not None and s.claimed_at is not None
     })
     all_students = (
         sorted(
@@ -4367,9 +4367,9 @@ def students():
     # Group students by block within this class only.
     for block in blocks:
         block_claimed_ids = {
-            s.student_id for s in class_seats
+            s.user_id for s in class_seats
             if (s.block or '').strip().upper() == block
-            and s.student_id is not None
+            and s.user_id is not None
             and s.claimed_at is not None
         }
         students_by_block[block] = [s for s in all_students if s.id in block_claimed_ids]
