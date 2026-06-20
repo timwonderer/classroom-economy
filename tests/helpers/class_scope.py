@@ -15,6 +15,8 @@ def create_class_scope(
     create_teacher_membership=True,
     create_student_membership=True,
     create_seat=True,
+    teacher_user_id=None,
+    student_user_id=None,
     # Legacy param names kept for caller compatibility during migration
     create_claimed_teacher_block=False,
     teacher_block_teacher=None,
@@ -28,6 +30,7 @@ def create_class_scope(
     """
     claimed = teacher_block_claimed or create_claimed_teacher_block
 
+    resolved_teacher_user_id = teacher_user_id or teacher.id
     class_row = ClassEconomy(
         class_id=str(uuid4()),
         join_code=join_code,
@@ -35,7 +38,7 @@ def create_class_scope(
         display_name=display_name,
         section=block,
         status=class_status,
-        created_by_user_id=teacher.id,
+        created_by_user_id=resolved_teacher_user_id,
     )
     db.session.add(class_row)
     db.session.flush()
@@ -48,7 +51,7 @@ def create_class_scope(
             role="admin",
         ))
         t_seat = Seat(
-            user_id=teacher.id,
+            user_id=resolved_teacher_user_id,
             class_id=class_row.class_id,
             join_code=join_code,
             role="teacher",
@@ -72,7 +75,7 @@ def create_class_scope(
 
     if student is not None and create_seat:
         s_seat = Seat(
-            user_id=getattr(student, "user_id", None),
+            user_id=student_user_id or getattr(student, "user_id", None),
             class_id=class_row.class_id,
             join_code=join_code,
             block=block,
