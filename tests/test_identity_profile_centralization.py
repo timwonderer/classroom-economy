@@ -19,8 +19,6 @@ def test_student_requires_explicit_identity_profile(client):
         last_name="Quinn",
     )
     student = Student(
-        first_name="Alicia",
-        last_initial="Q",
         identity_profile=profile,
         block="A",
         salt=salt,
@@ -50,8 +48,6 @@ def test_student_name_update_syncs_identity_profile(client):
         last_name="Mills",
     )
     student = Student(
-        first_name="Jordan",
-        last_initial="M",
         identity_profile=profile,
         block="A",
         salt=salt,
@@ -61,8 +57,7 @@ def test_student_name_update_syncs_identity_profile(client):
     db.session.add(student)
     db.session.commit()
 
-    student.first_name = "Jordyn"
-    student.last_initial = "N"
+    student.identity_profile.first_name = "Jordyn"
     student.identity_profile.last_name = "Nguyen"
     db.session.commit()
 
@@ -101,8 +96,6 @@ def test_student_internal_reference_is_non_sequential_and_unique(client):
     profile_a = IdentityProfile(profile_type="student", first_name="One", last_name="Alpha")
     profile_b = IdentityProfile(profile_type="student", first_name="Two", last_name="Beta")
     a = Student(
-        first_name="One",
-        last_initial="A",
         identity_profile=profile_a,
         block="A",
         salt=salt_a,
@@ -110,8 +103,6 @@ def test_student_internal_reference_is_non_sequential_and_unique(client):
         pin_hash="fake-hash",
     )
     b = Student(
-        first_name="Two",
-        last_initial="B",
         identity_profile=profile_b,
         block="B",
         salt=salt_b,

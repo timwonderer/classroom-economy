@@ -51,7 +51,7 @@ from sqlalchemy.exc import IntegrityError
 from app import app as flask_app, db, Student
 from flask import current_app
 from app.extensions import limiter
-from app.models import Transaction, Seat
+from app.models import Transaction, Seat, IdentityProfile
 
 @event.listens_for(Transaction, "init")
 def intercept_transaction_student_id(target, args, kwargs):
@@ -297,9 +297,15 @@ def test_student():
     from app.hash_utils import hash_username, get_random_salt
     from app.feats.base import FEATBypass
     salt = get_random_salt()
+    profile = IdentityProfile(
+        profile_type='student',
+        first_name='Test',
+        last_name='Student',
+    )
+    db.session.add(profile)
+    db.session.flush()
     stu = Student(
-        first_name="Test",
-        last_initial="S",
+        identity_profile=profile,
         block="A",
         salt=salt,
         username_hash=hash_username("test", salt),
@@ -309,3 +315,54 @@ def test_student():
     with FEATBypass():
         db.session.commit()
     return stu
+
+
+@pytest.fixture
+def classroom_context():
+    """Create a fully-wired v2 classroom context.
+
+    Returns a factory function. The context uses User/Seat/IdentityProfile
+    as the primary identity chain. Legacy Admin/Student rows are created
+    as hidden infrastructure for FK/auth compatibility only.
+
+    Usage in tests:
+        def test_something(classroom_context):
+            ctx = classroom_context()
+            student = ctx.add_student("Alice", "A")
+            ctx.commit()
+
+            # Access v2 objects:
+            ctx.teacher_user      # User instance
+            ctx.teacher_seat      # Seat instance
+            ctx.teacher_profile   # IdentityProfile instance
+            student.user          # User instance
+            student.seat          # Seat instance
+            student.profile       # IdentityProfile instance
+    """
+    from tests.helpers.context_factory import ClassroomContextFactory
+
+    def _factory(**kwargs):
+        return ClassroomContextFactory(db, **kwargs).build()
+
+    return _factory
+
+
+@pytest.fixture
+def classroom_with_students():
+    """Convenience: create a class with N students, committed.
+
+    Usage:
+        def test_something(classroom_with_students):
+            ctx = classroom_with_students(3)
+            ctx.students[0].login(client)
+    """
+    from tests.helpers.context_factory import ClassroomContextFactory
+    from app.feats.base import FEATBypass
+
+    def _factory(n=1, **kwargs):
+        ctx = ClassroomContextFactory(db, **kwargs).with_students(n).build()
+        with FEATBypass():
+            db.session.commit()
+        return ctx
+
+    return _factory

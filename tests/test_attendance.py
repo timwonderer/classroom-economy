@@ -8,13 +8,13 @@ from app.attendance import (
     get_session_status,
     get_all_block_statuses
 )
-from app.models import AttendanceSession, ClassEconomy, SeatAttendanceState
+from app.models import AttendanceSession, ClassEconomy, IdentityProfile, SeatAttendanceState
 from app.utils.seat_scope import get_seat_id_for_class
 from datetime import datetime, timedelta, timezone
 
 
 def _attach_student_to_class(student, join_code="ATTEND1", block="A"):
-    from app.models import Admin, StudentTeacher, User, Seat, UserRole
+    from app.models import Admin, IdentityProfile, StudentTeacher, User, Seat, UserRole
     from tests.helpers.class_scope import create_class_scope
     from app.hash_utils import hash_username_lookup
 
@@ -80,7 +80,10 @@ def test_get_last_payroll_time(client):
         get_last_payroll_time(seat_id=None, class_id=None)
 
     # Create a student first
-    student = Student(first_name="Test", last_initial="S", block="A", salt=b'salt', has_completed_setup=True)
+    profile = IdentityProfile(profile_type="student", first_name="Test", last_name="S")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b'salt', has_completed_setup=True)
     db.session.add(student)
     db.session.commit()
     join_code = _attach_student_to_class(student, join_code="PAYROLL1", block="A")
@@ -139,7 +142,10 @@ def test_get_last_payroll_time(client):
     assert get_last_payroll_time(seat_id=seat_id, class_id=class_id) == manual_time
 
 def test_calculate_unpaid_attendance_seconds(client):
-    student = Student(first_name="Test", last_initial="S", block="A", salt=b'salt', has_completed_setup=True)
+    profile = IdentityProfile(profile_type="student", first_name="Test", last_name="S")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b'salt', has_completed_setup=True)
     db.session.add(student)
     db.session.commit()
     join_code = _attach_student_to_class(student, join_code="ATTEND2", block="A")
@@ -169,7 +175,10 @@ def test_calculate_unpaid_attendance_seconds(client):
     assert unpaid_seconds == 900
 
 def test_calculate_period_attendance(client):
-    student = Student(first_name="Test", last_initial="S", block="A", salt=b'salt', has_completed_setup=True)
+    profile = IdentityProfile(profile_type="student", first_name="Test", last_name="S")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b'salt', has_completed_setup=True)
     db.session.add(student)
     db.session.commit()
 
@@ -199,7 +208,10 @@ def test_calculate_period_attendance(client):
     assert period_attendance == 600
 
 def test_get_session_status(client):
-    student = Student(first_name="Test", last_initial="S", block="A", salt=b'salt', has_completed_setup=True)
+    profile = IdentityProfile(profile_type="student", first_name="Test", last_name="S")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b'salt', has_completed_setup=True)
     db.session.add(student)
     db.session.commit()
     join_code = _attach_student_to_class(student, join_code="ATTEND3", block="A")
@@ -238,7 +250,10 @@ def test_get_session_status(client):
     assert duration > 0
 
 def test_get_all_block_statuses(client):
-    student = Student(first_name="Test", last_initial="S", block="A,B", salt=b'salt', has_completed_setup=True)
+    profile = IdentityProfile(profile_type="student", first_name="Test", last_name="S")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A,B", salt=b'salt', has_completed_setup=True)
     db.session.add(student)
     db.session.commit()
     join_code_a = _attach_student_to_class(student, join_code="ATTEND4", block="A")

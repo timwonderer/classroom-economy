@@ -21,7 +21,7 @@ def teacher_admin(client):
 @pytest.fixture
 def student_in_class(client, teacher_admin):
     profile = IdentityProfile(profile_type='student', first_name='Audit', last_name='Stone')
-    student = Student(first_name="Audit", last_initial="S", identity_profile=profile, block="A", salt=b'salt')
+    student = Student(identity_profile=profile, block="A", salt=b'salt')
     student.passphrase_hash = generate_password_hash('password')
     db.session.add(student)
     db.session.flush()

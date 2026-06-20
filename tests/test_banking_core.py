@@ -4,7 +4,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import importlib.util
 from pathlib import Path
 import pytest
-from app.models import BalanceCache, Admin, ClassEconomy, Seat, Student, Transaction, TransactionStatus
+from app.models import BalanceCache, Admin, ClassEconomy, Seat, IdentityProfile, Student, Transaction, TransactionStatus
 from app.extensions import db
 from app.utils.banking import settle_balances, settle_pending_transaction_contexts
 
@@ -28,7 +28,10 @@ def _scope_for_student(student, join_code):
 def test_ledger_flow(client):
     """Test full flow: Create PENDING -> Settle -> Verify Cache."""
     # Setup
-    student = Student(first_name="Test", last_initial="S", block="A", 
+    profile = IdentityProfile(profile_type="student", first_name="Test", last_name="S")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", 
                       salt=b'123', first_half_hash="hash")
     teacher = make_admin("teacher", "secret")
     db.session.add(student)
@@ -79,7 +82,10 @@ def test_ledger_flow(client):
 
 def test_void_pending(client):
     """Test voiding a PENDING transaction (no reversal)."""
-    student = Student(first_name="Test2", last_initial="B", block="B", 
+    profile = IdentityProfile(profile_type="student", first_name="Test2", last_name="B")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="B", 
                       salt=b'456', first_half_hash="hash2")
     teacher = make_admin("teacher2", "secret")
     db.session.add(student)
@@ -135,7 +141,10 @@ def test_void_pending(client):
 
 def test_void_posted_with_reversal(client):
     """Test voiding a POSTED transaction (creates reversal)."""
-    student = Student(first_name="Test3", last_initial="C", block="C", 
+    profile = IdentityProfile(profile_type="student", first_name="Test3", last_name="C")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="C", 
                       salt=b'789', first_half_hash="hash3")
     teacher = make_admin("teacher3", "secret")
     db.session.add(student)
@@ -206,8 +215,12 @@ def test_void_posted_with_reversal(client):
 
 def test_settlement_sweep_processes_each_pending_context_once(client):
     teacher = make_admin("teacher-sweep", "secret")
-    student_one = Student(first_name="Sweep", last_initial="A", block="A", salt=b'111', first_half_hash="hasha")
-    student_two = Student(first_name="Sweep", last_initial="B", block="B", salt=b'222', first_half_hash="hashb")
+    profile_a = IdentityProfile(profile_type="student", first_name="Sweep", last_name="A")
+    profile_b = IdentityProfile(profile_type="student", first_name="Sweep", last_name="B")
+    db.session.add_all([profile_a, profile_b])
+    db.session.flush()
+    student_one = Student(identity_profile=profile_a, block="A", salt=b'111', first_half_hash="hasha")
+    student_two = Student(identity_profile=profile_b, block="B", salt=b'222', first_half_hash="hashb")
     db.session.add_all([teacher, student_one, student_two])
     db.session.commit()
     _attach_seat(student_one, teacher, "SWEEP-A", block="A")

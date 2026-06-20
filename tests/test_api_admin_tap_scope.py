@@ -24,7 +24,10 @@ def _setup_shared_student_with_split_membership():
     db.session.add_all([admin_a, admin_b])
     db.session.flush()
 
-    student = Student(first_name="Tap", last_initial="S", block="A", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Tap", last_name="S")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"salt")
     db.session.add(student)
     db.session.flush()
 
@@ -51,7 +54,7 @@ def _setup_shared_student_with_split_membership():
         seat = Seat(student_id=student.id, class_id=class_b.class_id, join_code="TAPB01", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
         db.session.add(seat)
         db.session.flush()
-        db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
+        db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
         db.session.add(seat)
         db.session.flush()
 

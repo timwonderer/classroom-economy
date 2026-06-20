@@ -170,8 +170,8 @@ def test_credential_reset_flow(client, test_data):
         assert s.id == student_id
 
         # Teacher-managed identity preserved
-        assert s.first_name == 'Flow'
-        assert s.last_initial == 'T'
+        assert s.display_first_name == 'Flow'
+        assert s.display_last_initial == 'T'
 
         # Credentials re-established
         assert s.has_completed_setup is True

@@ -135,14 +135,14 @@ def test_student_listing_scoped_to_teacher(client):
 
     response = client.get("/admin/students")
     body = response.get_data(as_text=True)
-    if response.status_code != 200 or student_a.first_name not in body:
+    if response.status_code != 200 or student_a.display_first_name not in body:
         print(f"DEBUG_BODY: status={response.status_code} len={len(body)}")
         with client.session_transaction() as sess:
             print(f"DEBUG_SESSION: {sess}")
             print(f"DEBUG_FLASHES: {sess.get('_flashes', [])}")
 
     assert response.status_code == 200
-    assert student_a.first_name in body
+    assert student_a.display_first_name in body
     assert "Bob" not in body
 
 

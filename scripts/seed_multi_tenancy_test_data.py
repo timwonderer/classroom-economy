@@ -28,7 +28,7 @@ from app.extensions import db
 from app.models import (
     Admin, Student, TeacherBlock, StudentTeacher, Transaction,
     StoreItem, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    PayrollSettings, RentSettings
+    PayrollSettings, RentSettings, IdentityProfile
 )
 from app.utils.join_code import generate_join_code
 from app.hash_utils import get_random_salt, hash_username, hash_username_lookup
@@ -208,10 +208,18 @@ def create_student_with_seat(first_name, last_name, dob_sum, teacher, block, joi
     # Password credential is first_initial + dob_sum
     password_credential = f"{first_name[0].upper()}{dob_sum}"
 
+    # Create identity profile
+    profile = IdentityProfile(
+        profile_type='student',
+        first_name=first_name,
+        last_name=last_initial,
+    )
+    db.session.add(profile)
+    db.session.flush()
+
     # Create student
     student = Student(
-        first_name=first_name,
-        last_initial=last_initial,
+        identity_profile=profile,
         block=block,
         salt=salt,
         first_half_hash=first_half_hash,

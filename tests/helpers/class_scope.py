@@ -84,8 +84,8 @@ def create_class_scope(
         db.session.add(IdentityProfile(
             seat_id=s_seat.id,
             profile_type='student_claimed' if claimed else 'student_unclaimed',
-            first_name=student.display_first_name or student.first_name,
-            last_name=student.display_last_name or student.last_initial,
+            first_name=student.display_first_name,
+            last_name=student.display_last_name,
         ))
 
     return class_row

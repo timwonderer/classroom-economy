@@ -44,15 +44,13 @@ def recovery_data(client):
         teacher_id=teacher.id,
         display_name="Recovery Class",
     )
-    profile = IdentityProfile(profile_type="student", first_name="Original", last_initial="O")
+    profile = IdentityProfile(profile_type="student", first_name="Original", last_name="O")
     db.session.add_all([class_row, profile])
     db.session.flush()
 
     salt = get_random_salt()
     student = Student(
-        first_name="Original",
-        last_initial="O",
-        identity_id=profile.id,
+        identity_profile=profile,
         block="A",
         join_code=join_code,
         class_id=class_row.class_id,
@@ -77,7 +75,7 @@ def recovery_data(client):
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Original", last_initial="O"))
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Original", last_name="O"))
     seat = Seat(
         user_id=user.id,
         student_id=student.id,
@@ -191,8 +189,8 @@ def test_student_lookup_success(client, recovery_data):
     assert student.pin_hash is None
     assert student.passphrase_hash is None
     assert student.has_completed_setup is False
-    assert student.first_name == "Original"
-    assert student.last_initial == "O"
+    assert student.display_first_name == "Original"
+    assert student.display_last_initial == "O"
     # Reset code still active until credential setup completes
     assert student.reset_code == "RESET123"
     assert student.recovery_status == 'to_be_claimed'
@@ -342,8 +340,8 @@ def test_recovery_preserves_identity(client, recovery_data):
     }, follow_redirects=True)
 
     db.session.refresh(student)
-    assert student.first_name == "Original"
-    assert student.last_initial == "O"
+    assert student.display_first_name == "Original"
+    assert student.display_last_initial == "O"
 
 
 # ------------------------------------------------------------------
@@ -496,7 +494,7 @@ def test_interrupting_reclaim_after_lookup(client, recovery_data):
     """After lookup, credentials are cleared but reset_code stays valid for retry."""
     student = recovery_data["student"]
     join_code = recovery_data["join_code"]
-    original_name = student.first_name
+    original_name = student.display_first_name
 
     student.reset_code = "MIDFLOW1"
     student.reset_code_expires_at = utc_now() + timedelta(minutes=10)
@@ -513,7 +511,7 @@ def test_interrupting_reclaim_after_lookup(client, recovery_data):
     db.session.refresh(student)
 
     # Identity preserved (teacher-managed)
-    assert student.first_name == original_name
+    assert student.display_first_name == original_name
     # Credentials cleared (setup must be re-completed)
     assert student.username_hash is None
     assert student.pin_hash is None

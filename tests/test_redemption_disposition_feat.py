@@ -22,6 +22,7 @@ from app.models import (
     Admin,
     ClassEconomy,
     ClassMembership,
+    IdentityProfile,
     RedemptionAuditAction,
     RedemptionAuditLog,
     Seat,
@@ -63,7 +64,10 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         db.session.flush()
         admin.user_id = user.id
 
-        student = Student(first_name=b"X", last_initial="S", block="A", salt=b"salt")
+        profile = IdentityProfile(profile_type="student", first_name="X", last_name="S")
+        db.session.add(profile)
+        db.session.flush()
+        student = Student(identity_profile=profile, block="A", salt=b"salt")
         db.session.add(student)
         db.session.flush()
 

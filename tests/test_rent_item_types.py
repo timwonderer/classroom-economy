@@ -22,7 +22,10 @@ def teacher_admin(client):
 @pytest.fixture
 def student_in_class(client, teacher_admin):
     """Create a student in the teacher's class."""
-    student = Student(first_name="Test", last_initial="S", block="A", salt=b'salt')
+    profile = IdentityProfile(profile_type='student', first_name='Test', last_name='S')
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b'salt')
     db.session.add(student)
     db.session.flush()
 
@@ -34,7 +37,7 @@ def student_in_class(client, teacher_admin):
     seat = Seat(student_id=student.id, join_code='JOINCODE123', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name='Test', last_initial='S'))
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name='Test', last_name='S'))
     db.session.add(seat)
     db.session.add(seat)
     
@@ -59,7 +62,10 @@ def student_in_class(client, teacher_admin):
 @pytest.fixture
 def admin_class_scope(client, teacher_admin):
     """Create a class-scoped seat so admin feature routes can resolve scope."""
-    student = Student(first_name="Scope", last_initial="S", block="A", salt=b"scope-salt")
+    profile = IdentityProfile(profile_type='student', first_name='Scope', last_name='S')
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"scope-salt")
     db.session.add(student)
     db.session.flush()
 
@@ -771,12 +777,15 @@ def test_mid_period_lock_blocks_semantic_changes(client, teacher_admin):
     tb = Seat(join_code='LOCKTEST', block='A', block_identifier='A', role="student")
     db.session.add(tb)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_unclaimed', first_name='Seat', last_initial='1'))
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_unclaimed', first_name='Seat', last_name='1'))
     db.session.add(tb)
     db.session.flush()
 
     # Create a student who has paid rent for the current coverage period
-    student = Student(first_name="Payer", last_initial="P", block="A", salt=b'salt')
+    profile_payer = IdentityProfile(profile_type='student', first_name='Payer', last_name='P')
+    db.session.add(profile_payer)
+    db.session.flush()
+    student = Student(identity_profile=profile_payer, block="A", salt=b'salt')
     db.session.add(student)
     db.session.flush()
 
@@ -848,11 +857,14 @@ def test_mid_period_lock_allows_new_items(client, teacher_admin):
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_unclaimed', first_name='Seat', last_initial='2'))
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_unclaimed', first_name='Seat', last_name='2'))
     db.session.add(tb)
     db.session.flush()
 
-    student = Student(first_name="Payer", last_initial="P", block="A", salt=b'salt')
+    profile_payer = IdentityProfile(profile_type='student', first_name='Payer', last_name='P')
+    db.session.add(profile_payer)
+    db.session.flush()
+    student = Student(identity_profile=profile_payer, block="A", salt=b'salt')
     db.session.add(student)
     db.session.flush()
 

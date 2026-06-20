@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, Seat, Student, StudentTeacher, Transaction, TransactionStatus, User, UserRole
+from app.models import Admin, Seat, IdentityProfile, Student, StudentTeacher, Transaction, TransactionStatus, User, UserRole
 from tests.helpers.class_scope import create_class_scope
 
 
@@ -40,7 +40,10 @@ def test_admin_payroll_displays_scoped_balances_only(client):
     user_a = _bind_canonical_teacher(teacher_a)
     _bind_canonical_teacher(teacher_b)
 
-    student = Student(first_name="Pay", last_initial="S", block="A", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Pay", last_name="S")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"salt")
     db.session.add(student)
     db.session.flush()
 
@@ -64,8 +67,8 @@ def test_admin_payroll_displays_scoped_balances_only(client):
                 class_id=class_a.class_id,
                 student_id=student.id,
                 is_claimed=True,
-                first_name=student.first_name,
-                last_initial=student.last_initial,
+                first_name=student.display_first_name,
+                last_initial=student.display_last_initial,
                 last_name_hash_by_part=[],
                 dob_sum_hash=None,
                 salt=b"salt",
@@ -77,8 +80,8 @@ def test_admin_payroll_displays_scoped_balances_only(client):
                 class_id=class_b.class_id,
                 student_id=student.id,
                 is_claimed=True,
-                first_name=student.first_name,
-                last_initial=student.last_initial,
+                first_name=student.display_first_name,
+                last_initial=student.display_last_initial,
                 last_name_hash_by_part=[],
                 dob_sum_hash=None,
                 salt=b"salt",

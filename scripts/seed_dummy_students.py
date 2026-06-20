@@ -1,7 +1,7 @@
 # 📄 seed_dummy_students.py for Classroom Token Hub
 
 from app.extensions import db
-from app.models import Student
+from app.models import Student, IdentityProfile
 from werkzeug.security import generate_password_hash
 from app.hash_utils import hash_username, get_random_salt
 
@@ -27,9 +27,16 @@ def seed_dummy_students():
         username = f"{student['challenge']}-{student['dob_sum']}-{initials}"
         username_hash = hash_username(username, salt)
 
-        new_student = Student(
+        profile = IdentityProfile(
+            profile_type='student',
             first_name=student["first_name"],
-            last_initial=student["last_name"][0],
+            last_name=student["last_name"][0],
+        )
+        db.session.add(profile)
+        db.session.flush()
+
+        new_student = Student(
+            identity_profile=profile,
             block=student["block"],
             salt=salt,
             username_hash=username_hash,

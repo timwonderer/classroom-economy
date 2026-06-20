@@ -26,7 +26,10 @@ def _build_teacher_student(join_code='VOID123'):
     db.session.add(teacher)
     db.session.flush()
 
-    student = Student(first_name="Void", last_initial="T", block="A", salt=b'salt')
+    profile = IdentityProfile(profile_type='student', first_name='Void', last_name='T')
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b'salt')
     student.passphrase_hash = generate_password_hash('password')
     db.session.add(student)
     db.session.flush()
@@ -41,7 +44,7 @@ def _build_teacher_student(join_code='VOID123'):
     _tb_seat = Seat(student_id=student.id, join_code=join_code, block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Void', last_initial='T'))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Void', last_name='T'))
     db.session.commit()
     return teacher, student
 

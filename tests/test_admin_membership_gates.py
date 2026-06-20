@@ -131,7 +131,7 @@ def test_issues_queue_respects_current_join_code_membership_scope(client):
     class_a = create_class_scope(teacher=admin, join_code="ISSGA1")
     class_b = create_class_scope(teacher=admin, join_code="ISSGB1")
     profile = IdentityProfile(profile_type="student", first_name="Gate", last_name="Stone")
-    student = Student(first_name="Gate", last_initial="S", identity_profile=profile, block="A", class_id=class_a.class_id, join_code="ISSGA1", salt=b"salt")
+    student = Student(identity_profile=profile, block="A", class_id=class_a.class_id, join_code="ISSGA1", salt=b"salt")
     db.session.add(student)
     db.session.flush()
     seat_a = Seat(student_id=student.id, class_id=class_a.class_id, join_code="ISSGA1", block="A", block_identifier="A", role="student")
@@ -514,7 +514,10 @@ def test_payroll_settings_uses_feature_scope_blocks_not_student_block_text(clien
     db.session.flush()
     user = _bind_canonical_teacher(admin)
 
-    student = Student(first_name="Scope", last_initial="S", block="A", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Scope", last_name="S")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"salt")
     db.session.add(student)
     db.session.flush()
 

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.extensions import db
-from app.models import ClassEconomy, ClassMembership, Seat, Student, StudentTeacher, TapEvent
+from app.models import ClassEconomy, ClassMembership, Seat, IdentityProfile, Student, StudentTeacher, TapEvent
 from tests.helpers.v2_fixtures import make_admin
 
 
@@ -30,7 +30,10 @@ def _setup_scoped_student(with_seat: bool = True):
         )
     )
 
-    student = Student(first_name="Tap", last_initial="I", block="A", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Tap", last_name="I")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"salt")
     db.session.add(student)
     db.session.flush()
 

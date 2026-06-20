@@ -572,12 +572,6 @@ def claim_account():
         second_half_hash = hash_hmac(secrets.token_bytes(16), salt)
 
         new_student = Student(
-            first_name=first_name,
-            last_initial=(
-                matched_seat.identity_profile.display_last_initial
-                if matched_seat.identity_profile else
-                (last_name[0].upper() if last_name else "?")
-            ),
             identity_profile=matched_seat.identity_profile,
             block=matched_seat.block or "",
             salt=salt,

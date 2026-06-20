@@ -5,11 +5,11 @@ from datetime import datetime, timezone
 from app.extensions import db
 from app.feats.base import InvariantViolation
 from app.models import (
-    Admin, ClassEconomy, ClassMembership, Transaction, StudentBlock,
+    Admin, IdentityProfile, ClassEconomy, ClassMembership, Transaction, StudentBlock,
     TapEvent, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
     AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
     StudentInsurance, RentPayment, Announcement, StoreItemBlock, StoreItem,
-    Student, StudentTeacher, PayrollSettings, RentSettings,
+    Seat, Student, StudentTeacher, PayrollSettings, RentSettings,
     IssueCategory, InsurancePolicy, InsurancePolicyBlock
 )
 from app.utils.deletion import collapse_universe
@@ -20,11 +20,17 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     db.session.add(admin)
     db.session.flush()
 
-    student = Student(first_name="Collapse", last_initial="S", block="A", salt=b"salt")
+    profile_a = IdentityProfile(profile_type="student", first_name="Collapse", last_name="S")
+    db.session.add(profile_a)
+    db.session.flush()
+    student = Student(identity_profile=profile_a, block="A", salt=b"salt")
     db.session.add(student)
     db.session.flush()
     
-    student_b = Student(first_name="Survive", last_initial="B", block="A", salt=b"salt")
+    profile_b = IdentityProfile(profile_type="student", first_name="Survive", last_name="B")
+    db.session.add(profile_b)
+    db.session.flush()
+    student_b = Student(identity_profile=profile_b, block="A", salt=b"salt")
     db.session.add(student_b)
     db.session.flush()
 
@@ -77,8 +83,6 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     
     issue = Issue(
         student_id=student.id, 
-        student_first_name="Collapse",
-        student_last_initial="S",
         actor_public_id="ref",
         class_label="A",
         teacher_id=admin.id, 
@@ -162,7 +166,10 @@ def test_collapse_universe_raises_on_null_class_id_scope_rows(client):
     db.session.add(admin)
     db.session.flush()
 
-    student = Student(first_name="Invalid", last_initial="S", block="A", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Invalid", last_name="S")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"salt")
     db.session.add(student)
     db.session.flush()
 

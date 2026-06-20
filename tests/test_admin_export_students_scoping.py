@@ -5,6 +5,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
 from app.models import (
     Admin,
+    IdentityProfile,
     Student,
     StudentTeacher,
     Transaction,
@@ -30,7 +31,10 @@ def test_export_students_uses_only_teacher_owned_join_codes(client):
     db.session.add_all([teacher_a, teacher_b])
     db.session.flush()
 
-    student = Student(first_name="Alex", last_initial="S", block="A", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Alex", last_name="S")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"salt")
     db.session.add(student)
     db.session.flush()
 

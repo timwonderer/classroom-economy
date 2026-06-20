@@ -4,7 +4,7 @@ import pytest
 import pyotp
 import uuid
 from app import db
-from app.models import Admin, Student, StudentTeacher
+from app.models import Admin, IdentityProfile, Student, StudentTeacher
 from app.hash_utils import get_random_salt
 
 def test_student_count_relies_only_on_link_table(client):
@@ -20,11 +20,13 @@ def test_student_count_relies_only_on_link_table(client):
 
     # Create Student (with NO teacher_id)
     s_firstname = f"Hardened_{uuid.uuid4().hex[:8]}"
+    profile = IdentityProfile(profile_type='student', first_name=s_firstname, last_name='S')
+    db.session.add(profile)
+    db.session.flush()
     student = Student(
-        first_name=s_firstname,
-        last_initial='S',
+        identity_profile=profile,
         block='Period 1',
-        salt=get_random_salt() 
+        salt=get_random_salt()
     )
     db.session.add(student)
     db.session.commit()
@@ -63,9 +65,11 @@ def test_delete_teacher_cleans_up_links(client):
 
     # Create Student
     s_firstname = f"Survivor_{uuid.uuid4().hex[:8]}"
+    profile2 = IdentityProfile(profile_type='student', first_name=s_firstname, last_name='S')
+    db.session.add(profile2)
+    db.session.flush()
     student = Student(
-        first_name=s_firstname,
-        last_initial='S',
+        identity_profile=profile2,
         block='Period 1',
         salt=get_random_salt()
     )
@@ -107,7 +111,10 @@ def test_student_teacher_unique_constraint(client):
     
     # Setup
     t = make_admin(f"unique_t_{uuid.uuid4().hex}", 's')
-    s = Student(first_name="Unique", last_initial="S", block="B", salt=b's')
+    p = IdentityProfile(profile_type='student', first_name='Unique', last_name='S')
+    db.session.add(p)
+    db.session.flush()
+    s = Student(identity_profile=p, block="B", salt=b's')
     db.session.add_all([t, s])
     db.session.commit()
     
@@ -134,7 +141,10 @@ def test_remove_student_from_teacher_scope_preserves_shared_student(client):
     """
     t1 = make_admin(f"t1_{uuid.uuid4().hex[:8]}", 's')
     t2 = make_admin(f"t2_{uuid.uuid4().hex[:8]}", 's2')
-    s = Student(first_name="Shared", last_initial="S", block="B", salt=get_random_salt())
+    p_shared = IdentityProfile(profile_type='student', first_name='Shared', last_name='S')
+    db.session.add(p_shared)
+    db.session.flush()
+    s = Student(identity_profile=p_shared, block="B", salt=get_random_salt())
     db.session.add_all([t1, t2, s])
     db.session.commit()
 

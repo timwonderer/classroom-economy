@@ -80,7 +80,7 @@ def _link_student_to_teacher(student: Student, admin: Admin, join_code: str, blo
     _tb_seat = Seat(student_id=student.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
     economy = ClassEconomy.query.filter_by(join_code=join_code).first()
     if economy:
         seat = Seat.query.filter_by(student_id=student.id, class_id=economy.class_id).first()

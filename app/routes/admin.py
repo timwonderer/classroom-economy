@@ -4885,12 +4885,10 @@ def edit_student():
     )
 
     # Update basic fields
-    student.first_name = new_first_name
-    student.last_initial = new_last_initial
     student.block = new_blocks
     if student.identity_profile:
         student.identity_profile.first_name = new_first_name
-        student.identity_profile.last_name = last_name_input or None
+        student.identity_profile.last_name = last_name_input or new_last_initial
 
     # Handle account reset — generate recovery code per recovery spec
     reset_login = request.form.get('reset_login') == 'on'

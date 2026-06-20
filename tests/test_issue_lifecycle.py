@@ -20,7 +20,7 @@ def test_teacher_must_close_issue_after_final_review(client):
     db.session.add(class_row)
     db.session.flush()
     profile = IdentityProfile(profile_type="student", first_name="Casey", last_name="Lopez")
-    student = Student(first_name="Casey", last_initial="L", identity_profile=profile, block="A", join_code="JOINLIFE1", class_id=class_row.class_id, salt=b"salt")
+    student = Student(identity_profile=profile, block="A", join_code="JOINLIFE1", class_id=class_row.class_id, salt=b"salt")
     category = IssueCategory(
         name="Lifecycle Category",
         category_type="general",

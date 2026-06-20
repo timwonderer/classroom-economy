@@ -71,7 +71,7 @@ def _add_claimed_seat(admin: Admin, student: Student, block: str, join_code: str
     )
     db.session.add(seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student_claimed", first_name=student.first_name, last_initial=student.last_initial))
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student_claimed", first_name=student.display_first_name, last_name=student.display_last_initial))
     db.session.commit()
     return seat
 

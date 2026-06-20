@@ -239,11 +239,16 @@ class IdentityProfile(db.Model):
     seat_id = db.Column(
         db.Integer,
         db.ForeignKey('seats.id', ondelete='CASCADE'),
-        nullable=True,
+        nullable=False,
         unique=True,
         index=True,
     )
-    # Transitional discriminator until every profile is bound to a seat.
+    class_id = db.Column(
+        db.String(36),
+        db.ForeignKey('classes.class_id', ondelete='CASCADE'),
+        nullable=False,
+        index=True,
+    )
     profile_type = db.Column(db.String(32), nullable=False, index=True)
     first_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
     last_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
@@ -387,8 +392,6 @@ def _sync_seat_scope(mapper, connection, target):
 class Student(db.Model):
     __tablename__ = 'students'
     id = db.Column(db.Integer, primary_key=True)
-    first_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
-    last_initial = db.Column(db.String(1), nullable=False)
     identity_id = db.Column(db.Integer, db.ForeignKey('identity_profiles.id', ondelete='RESTRICT'), nullable=False, index=True)
     block = db.Column(db.String(10), nullable=False)
     join_code = db.Column(db.String(20), nullable=True, index=True)
@@ -3013,8 +3016,26 @@ class Admin(db.Model):
         return normalize_totp_for_storage(value)
 
 
-    def get_display_name(self):
-        """Return display_name if set, otherwise fall back to public teacher ID."""
+    def get_display_name(self, class_id=None):
+        """Return display name from IdentityProfile for the given class.
+
+        Teachers have per-class display names stored in IdentityProfile
+        via their Seat.  Falls back to legacy display_name column, then
+        teacher_public_id.
+        """
+        if class_id:
+            profile = (
+                db.session.query(IdentityProfile)
+                .join(Seat, Seat.id == IdentityProfile.seat_id)
+                .filter(
+                    IdentityProfile.class_id == class_id,
+                    IdentityProfile.profile_type == 'teacher',
+                )
+                .first()
+            )
+            if profile:
+                return profile.full_name
+        # Legacy fallbacks (until Admin table cutover)
         if self.display_name:
             return self.display_name
         if self.teacher_public_id:
@@ -3805,8 +3826,8 @@ class IntegrityStatus(db.Model):
         return f'<IntegrityStatus {state} checked={self.last_checked_utc}>'
 
 
-def _sync_identity_profile(session, entity, profile_type):
-    first_name = (entity.first_name or "").strip() if entity.first_name else None
+def _validate_identity_profile(session, entity):
+    """Ensure entity has a valid IdentityProfile with required fields."""
     profile = entity.identity_profile
     if profile is None and getattr(entity, "identity_id", None):
         profile = session.get(IdentityProfile, entity.identity_id)
@@ -3814,24 +3835,20 @@ def _sync_identity_profile(session, entity, profile_type):
             entity.identity_profile = profile
 
     if profile is None:
-        raise ValueError("Student flush requires an explicit canonical IdentityProfile with full last_name.")
+        raise ValueError(f"{type(entity).__name__} flush requires an explicit canonical IdentityProfile.")
 
-    if not first_name:
-        raise ValueError("IdentityProfile sync requires student.first_name.")
+    if not profile.first_name:
+        raise ValueError("IdentityProfile.first_name is required.")
     if not profile.last_name:
-        raise ValueError("IdentityProfile.last_name is required; legacy initial fallback is not allowed.")
-
-    profile.first_name = first_name
-    if not profile.profile_type:
-        profile.profile_type = profile_type
+        raise ValueError("IdentityProfile.last_name is required.")
 
 
 @event.listens_for(Session, "before_flush")
 def _ensure_identity_profiles(session, flush_context, instances):
     for obj in session.new:
         if isinstance(obj, Student):
-            _sync_identity_profile(session, obj, "student")
+            _validate_identity_profile(session, obj)
 
     for obj in session.dirty:
         if isinstance(obj, Student):
-            _sync_identity_profile(session, obj, "student")
+            _validate_identity_profile(session, obj)

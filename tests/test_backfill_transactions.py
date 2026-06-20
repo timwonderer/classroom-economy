@@ -71,7 +71,7 @@ def _make_teacher_block(admin_id: int, block: str, join_code: str, student: Stud
     tb = Seat(student_id=student.id if student else None, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name=student.first_name if student else "Placeholder", last_initial=student.last_initial if student else "P"))
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name=student.display_first_name if student else "Placeholder", last_name=student.display_last_initial if student else "P"))
     db.session.add(tb)
     db.session.commit()
     return tb
@@ -373,7 +373,7 @@ def test_backfill_multiple_join_codes_per_block_uses_most_frequent(client):
             tb = Seat(student_id=student.id, join_code=jc, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
             db.session.add(tb)
             db.session.flush()
-            db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
+            db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
             db.session.add(tb)
     db.session.commit()
 
