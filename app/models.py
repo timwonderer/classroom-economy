@@ -17,7 +17,7 @@ import sqlalchemy as sa
 from sqlalchemy import func
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import Session, synonym, validates
+from sqlalchemy.orm import Session, validates
 from sqlalchemy import event
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
@@ -635,7 +635,7 @@ class ClassEconomy(db.Model):
     section = db.Column(db.String(50), nullable=True)
     teacher_id = db.Column(
         db.Integer,
-        db.ForeignKey('teachers.id', ondelete='CASCADE'),
+        db.ForeignKey('users.id', ondelete='CASCADE'),
         nullable=False,
         index=True,
     )
@@ -643,9 +643,9 @@ class ClassEconomy(db.Model):
     class_timezone = db.Column(db.String(64), nullable=False, default='UTC', server_default='UTC')
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
-    created_by_admin_id = db.Column(
+    created_by_user_id = db.Column(
         db.Integer,
-        db.ForeignKey('teachers.id', ondelete='SET NULL'),
+        db.ForeignKey('users.id', ondelete='SET NULL'),
         nullable=True,
         index=True,
     )
@@ -653,12 +653,11 @@ class ClassEconomy(db.Model):
     memberships = db.relationship('ClassMembership', backref='economy', cascade='all, delete-orphan', lazy='dynamic')
     features = db.relationship('ClassFeature', backref='class_economy', cascade='all, delete-orphan', lazy='dynamic')
     teacher = db.relationship(
-        'Admin',
+        'User',
         foreign_keys=[teacher_id],
         backref=db.backref('classes', lazy='dynamic', passive_deletes=True),
     )
-    created_by_admin = db.relationship('Admin', foreign_keys=[created_by_admin_id])
-    created_by_user_id = synonym('created_by_admin_id')
+    created_by_user = db.relationship('User', foreign_keys=[created_by_user_id])
 
     @property
     def status(self):
@@ -835,7 +834,7 @@ class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     # student_id has been formally severed in favor of seat_id. 
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
     # CRITICAL: join_code is the source of truth for class isolation
     # Each join code represents a distinct class economy, even if same teacher
@@ -886,7 +885,7 @@ class Transaction(db.Model):
     lineage_version  = db.Column(db.Integer, nullable=True, default=1)
 
     # Relationship to track which teacher created this transaction
-    teacher = db.relationship('Admin', backref=db.backref('transactions', lazy='dynamic'))
+    teacher = db.relationship('User', backref=db.backref('transactions', lazy='dynamic'))
     seat = db.relationship('Seat', backref=db.backref('transactions', lazy='dynamic'))
 
     __table_args__ = (
@@ -1324,7 +1323,7 @@ class PayrollCache(db.Model):
 class StoreItem(db.Model):
     __tablename__ = 'store_items'
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     join_code = db.Column(db.String(20), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     name = db.Column(db.String(100), nullable=False)
@@ -1362,7 +1361,7 @@ class StoreItem(db.Model):
     is_rent_linked = db.Column(db.Boolean, default=False, nullable=False)
 
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('store_items', lazy='dynamic'))
+    teacher = db.relationship('User', backref=db.backref('store_items', lazy='dynamic'))
     student_items = db.relationship('StudentItem', backref='store_item', lazy=True)
 
     # Many-to-many relationship for block visibility
@@ -1511,7 +1510,7 @@ class RedemptionAuditLog(db.Model):
         index=True,
     )
     notes = db.Column(db.Text, nullable=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=True, index=True)
@@ -1528,7 +1527,7 @@ class RedemptionAuditLog(db.Model):
     )
 
     student_item = db.relationship('StudentItem', backref=db.backref('redemption_audit_logs', lazy='dynamic'))
-    teacher = db.relationship('Admin', backref=db.backref('redemption_audit_logs', lazy='dynamic'))
+    teacher = db.relationship('User', backref=db.backref('redemption_audit_logs', lazy='dynamic'))
 
     __table_args__ = (
         db.Index('ix_redemption_audit_logs_teacher_timestamp', 'teacher_id', 'timestamp'),
@@ -1777,20 +1776,12 @@ class RentWaiver(db.Model):
     waiver_end_date = db.Column(db.DateTime(timezone=True), nullable=False)
     periods_count = db.Column(db.Integer, nullable=False)  # Number of rent periods to skip
     reason = db.Column(db.Text, nullable=True)
-    created_by_teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
 
     student = db.relationship('Student', backref='rent_waivers')
     seat = db.relationship('Seat', backref='rent_waivers')
-    created_by = db.relationship('Admin', backref='rent_waivers_created')
-
-    @property
-    def created_by_admin_id(self):
-        return self.created_by_teacher_id
-
-    @created_by_admin_id.setter
-    def created_by_admin_id(self, value):
-        self.created_by_teacher_id = value
+    created_by = db.relationship('User', backref='rent_waivers_created')
 
 
 
@@ -1972,7 +1963,7 @@ class InsurancePolicy(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     policy_code = db.Column(db.String(16), unique=True, nullable=False, index=True)  # Unique code per teacher's policy
     version_number = db.Column(db.Integer, nullable=False, default=1)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=True)  # Owner teacher
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # Owner teacher
     join_code = db.Column(db.String(20), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     title = db.Column(db.String(100), nullable=False)
@@ -2020,7 +2011,7 @@ class InsurancePolicy(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     # Relationships
-    teacher = db.relationship('Admin', foreign_keys=[teacher_id], backref='insurance_policies_owned')
+    teacher = db.relationship('User', foreign_keys=[teacher_id], backref='insurance_policies_owned')
     student_policies = db.relationship('StudentInsurance', backref='policy', lazy='dynamic')
     claims = db.relationship('InsuranceClaim', backref='policy', lazy='dynamic')
 
@@ -2738,7 +2729,7 @@ class Issue(db.Model):
     actor_public_id = db.Column(db.String(64), nullable=False, index=True)
 
     # Class context
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False, index=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=False, index=True)
@@ -2796,7 +2787,7 @@ class Issue(db.Model):
 
     # Relationships
     student = db.relationship('Student', backref=db.backref('issues', lazy='dynamic'))
-    teacher = db.relationship('Admin', backref=db.backref('class_issues', lazy='dynamic'))
+    teacher = db.relationship('User', backref=db.backref('class_issues', lazy='dynamic'))
     sysadmin = db.relationship('SystemAdmin', backref=db.backref('reviewed_issues', lazy='dynamic'))
     related_transaction = db.relationship('Transaction', backref='related_issues')
     status_history = db.relationship('IssueStatusHistory', backref='issue', lazy='dynamic', cascade='all, delete-orphan', order_by='IssueStatusHistory.changed_at.desc()')
@@ -3008,7 +2999,7 @@ class AdminCredential(db.Model):
     __tablename__ = 'teacher_credentials'
 
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True, index=True)
 
     # Credential metadata
@@ -3033,7 +3024,7 @@ class RecoveryRequest(db.Model):
     __tablename__ = 'recovery_requests'
 
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     join_code = db.Column(db.String(20), nullable=True, index=True)
     dob_sum_hash = db.Column(db.String(64), nullable=True)  # Hashed input for verification trail
 
@@ -3053,7 +3044,7 @@ class RecoveryRequest(db.Model):
     resume_new_username = db.Column(db.String(100), nullable=True)  # Temporary storage for new username
 
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('recovery_requests', lazy='dynamic'))
+    user = db.relationship('User', backref=db.backref('recovery_requests', lazy='dynamic'))
     verification_codes = db.relationship('StudentRecoveryCode', backref='recovery_request', lazy='dynamic', cascade='all, delete-orphan')
 
 
@@ -3063,7 +3054,7 @@ class StudentRecoveryCode(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     recovery_request_id = db.Column(db.Integer, db.ForeignKey('recovery_requests.id'), nullable=False, index=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     join_code = db.Column(db.String(20), nullable=True, index=True)
 
     # Verification code (6-digit, hashed)
@@ -3075,7 +3066,7 @@ class StudentRecoveryCode(db.Model):
     dismissed = db.Column(db.Boolean, default=False, nullable=False)  # Student dismissed notification
 
     # Relationships
-    student = db.relationship('Student', backref=db.backref('recovery_codes', lazy='dynamic'))
+    user = db.relationship('User', backref=db.backref('recovery_codes', lazy='dynamic'))
 
 
 # ---- Payroll Settings Model ----
@@ -3364,8 +3355,7 @@ class TeacherOnboarding(db.Model):
     """
     __tablename__ = 'teacher_onboarding'
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=False, unique=True)
-    user_id = synonym('teacher_id')
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, unique=True)
 
     # Onboarding status
     is_completed = db.Column(db.Boolean, default=False, nullable=False)
@@ -3392,11 +3382,11 @@ class TeacherOnboarding(db.Model):
     last_activity_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
 
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('onboarding', uselist=False, passive_deletes=True))
+    user = db.relationship('User', backref=db.backref('onboarding', uselist=False, passive_deletes=True))
 
     def __repr__(self):
         status = 'completed' if self.is_completed else ('skipped' if self.is_skipped else 'in_progress')
-        return f'<TeacherOnboarding teacher={self.teacher_id} step={self.current_step}/{self.total_steps} status={status}>'
+        return f'<TeacherOnboarding user={self.user_id} step={self.current_step}/{self.total_steps} status={status}>'
 
     def mark_step_completed(self, step_name):
         """Mark a specific step as completed."""
@@ -3472,14 +3462,14 @@ class Announcement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     # Author (one of these will be set)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=True)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
     system_admin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id', ondelete='CASCADE'), nullable=True)
 
     # Audience targeting
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=True, index=True)  # For teacher/sysadmin specific class announcements
     audience_type = db.Column(db.String(30), default='class', nullable=False)  # 'class', 'system_wide', 'all_teachers', 'all_students', 'teacher_all_classes', 'specific_class'
-    target_teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=True)  # For 'teacher_all_classes' audience type
+    target_teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True)  # For 'teacher_all_classes' audience type
 
     # Announcement content
     title = db.Column(db.String(200), nullable=False)
@@ -3495,9 +3485,9 @@ class Announcement(db.Model):
     expires_at = db.Column(db.DateTime(timezone=True), nullable=True)  # Optional expiration
 
     # Relationships
-    teacher = db.relationship('Admin', foreign_keys=[teacher_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
+    teacher = db.relationship('User', foreign_keys=[teacher_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
     system_admin = db.relationship('SystemAdmin', foreign_keys=[system_admin_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
-    target_teacher = db.relationship('Admin', foreign_keys=[target_teacher_id], backref=db.backref('targeted_announcements', lazy='dynamic', passive_deletes=True))
+    target_teacher = db.relationship('User', foreign_keys=[target_teacher_id], backref=db.backref('targeted_announcements', lazy='dynamic', passive_deletes=True))
 
     # Indexes
     __table_args__ = (
@@ -3582,10 +3572,10 @@ class AnalyticsSnapshot(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     
     # Scoping (CRITICAL: join_code is source of truth for multi-tenancy)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=False, index=True)
-    
+
     # Time window
     window_type = db.Column(db.String(20), nullable=False)  # 'week', 'month', 'pay_cycle', 'rent_cycle' (see analytics.ALLOWED_WINDOW_TYPES)
     window_start = db.Column(db.DateTime(timezone=True), nullable=False)
@@ -3616,7 +3606,7 @@ class AnalyticsSnapshot(db.Model):
     is_complete = db.Column(db.Boolean, default=True, nullable=False)  # False if window is ongoing
     
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('analytics_snapshots', lazy='dynamic', passive_deletes=True))
+    teacher = db.relationship('User', backref=db.backref('analytics_snapshots', lazy='dynamic', passive_deletes=True))
     
     # Indexes for efficient queries
     __table_args__ = (
@@ -3647,10 +3637,10 @@ class AnalyticsEvent(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     
     # Scoping
-    teacher_id = db.Column(db.Integer, db.ForeignKey('teachers.id', ondelete='CASCADE'), nullable=False)
+    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=False, index=True)
-    
+
     # Event details
     event_type = db.Column(db.String(50), nullable=False)  # 'rent_change', 'wage_change', 'inflation', 'holiday', 'wildcard', 'custom'
     event_date = db.Column(db.DateTime(timezone=True), nullable=False)
@@ -3665,7 +3655,7 @@ class AnalyticsEvent(db.Model):
     created_by_admin = db.Column(db.Boolean, default=True, nullable=False)  # True if manually created, False if auto-detected
     
     # Relationships
-    teacher = db.relationship('Admin', backref=db.backref('analytics_events', lazy='dynamic', passive_deletes=True))
+    teacher = db.relationship('User', backref=db.backref('analytics_events', lazy='dynamic', passive_deletes=True))
     
     # Indexes
     __table_args__ = (
