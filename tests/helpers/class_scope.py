@@ -57,7 +57,7 @@ def create_class_scope(
     class_row = ClassEconomy(
         class_id=str(uuid4()),
         join_code=join_code,
-        teacher_id=teacher.id,
+        teacher_id=resolved_teacher_user_id,
         display_name=display_name,
         section=block,
         status=class_status,
@@ -70,7 +70,7 @@ def create_class_scope(
         db.session.add(ClassMembership(
             class_id=class_row.class_id,
             join_code=join_code,
-            admin_id=teacher.id,
+            admin_id=resolved_teacher_user_id,
             role="admin",
         ))
         t_seat = Seat(

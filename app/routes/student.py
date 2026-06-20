@@ -3609,18 +3609,6 @@ def rent_pay(period):
         result.transaction_id,
         result.payment_id,
     )
-    from app.models import Transaction
-    persisted_tx = db.session.get(Transaction, result.transaction_id)
-    current_app.logger.info(
-        "rent_pay tx row: tx_id=%s seat_id=%s class_id=%s type=%s status=%s",
-        getattr(persisted_tx, "id", None),
-        getattr(persisted_tx, "seat_id", None),
-        getattr(persisted_tx, "class_id", None),
-        getattr(persisted_tx, "type", None),
-        getattr(persisted_tx, "status", None),
-    )
-    db.session.commit()
-
     # Success message
     if result.is_partial and settings.allow_incremental_payment:
         if result.new_remaining > 0:
