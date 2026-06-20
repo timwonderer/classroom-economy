@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **Tuple-only runtime cutover checkpointed** — Admin, recovery, analytics, attendance, deletion, and shared seat-scope helpers now operate on canonical `User`/`Seat`/`class_id` boundaries instead of reconstructing runtime identity from `StudentTeacher` or `Seat.student_id`. The remaining migration work is test-corpus cleanup and `canonicalContextFactory` adoption.
 - **Wave 7 rent-waiver actor cutover completed** — `ObligationReversal` now uses seat-scoped actor attribution (`reversed_by_seat_id`) instead of the legacy nullable user FK. Rent-waiver add/remove flows no longer emit legacy `AnalyticsEvent` compatibility rows; the follow-up analytics event will return only after the analytics schema is seat-scoped.
 - **README rewritten for v2 architecture** — Corrected platform framing (classroom management tool, not financial literacy), updated key models table to reflect `Seat`/`IdentityProfile`/`ClassEconomy`, removed stale v1 references
 - **Wave 11 bulk test refactoring: TeacherBlock→Seat** — ~60 test files migrated from `TeacherBlock` fixtures to canonical `Seat` + `IdentityProfile` + `ClassEconomy` constructs. Deleted `tests/helpers/mock_teacher_block.py` shim. 7 legacy-only test modules marked skipped for decommissioning. TeacherBlock test surface reduced from 71 to 27 files (62% reduction). (#1220)
