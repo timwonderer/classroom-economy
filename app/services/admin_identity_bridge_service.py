@@ -57,7 +57,7 @@ def _tables() -> tuple[sa.Table, sa.Table, sa.Table]:
 def _onboarding_row_to_view(row: sa.Row) -> TeacherOnboardingView:
     return TeacherOnboardingView(
         id=row.id,
-        teacher_id=row.teacher_id,
+        teacher_id=row.user_id,
         is_completed=bool(row.is_completed),
         is_skipped=bool(row.is_skipped),
         current_step=row.current_step,
@@ -97,7 +97,7 @@ def _invite_row_to_view(row: sa.Row) -> AdminInviteCodeView:
 
 def get_teacher_onboarding(teacher_id: int) -> TeacherOnboardingView | None:
     onboarding, _credentials, _invites = _tables()
-    stmt = sa.select(onboarding).where(onboarding.c.teacher_id == teacher_id).limit(1)
+    stmt = sa.select(onboarding).where(onboarding.c.user_id == teacher_id).limit(1)
     row = db.session.execute(stmt).first()
     return _onboarding_row_to_view(row) if row else None
 
@@ -107,7 +107,7 @@ def create_teacher_onboarding(teacher_id: int, now: datetime) -> TeacherOnboardi
     insert_stmt = (
         sa.insert(onboarding)
         .values(
-            teacher_id=teacher_id,
+            user_id=teacher_id,
             is_completed=False,
             is_skipped=False,
             current_step=1,
@@ -149,7 +149,7 @@ def create_legacy_completed_teacher_onboarding(teacher_id: int, completed_at: da
     insert_stmt = (
         sa.insert(onboarding)
         .values(
-            teacher_id=teacher_id,
+            user_id=teacher_id,
             is_completed=True,
             is_skipped=True,
             current_step=1,
@@ -176,7 +176,7 @@ def set_teacher_onboarding_skipped(teacher_id: int, now: datetime) -> None:
     onboarding, _credentials, _invites = _tables()
     stmt = (
         sa.update(onboarding)
-        .where(onboarding.c.teacher_id == teacher_id)
+        .where(onboarding.c.user_id == teacher_id)
         .values(
             is_skipped=True,
             skipped_at=now,
@@ -193,7 +193,7 @@ def set_teacher_onboarding_widget_task_status(teacher_id: int, task_name: str, s
     onboarding, _credentials, _invites = _tables()
     stmt = (
         sa.update(onboarding)
-        .where(onboarding.c.teacher_id == teacher_id)
+        .where(onboarding.c.user_id == teacher_id)
         .values(
             widget_tasks_completed=tasks,
             last_activity_at=now,
@@ -207,7 +207,7 @@ def set_teacher_onboarding_widget_dismissed(teacher_id: int, dismissed: bool, no
     onboarding, _credentials, _invites = _tables()
     stmt = (
         sa.update(onboarding)
-        .where(onboarding.c.teacher_id == teacher_id)
+        .where(onboarding.c.user_id == teacher_id)
         .values(
             widget_dismissed=dismissed,
             widget_dismissed_at=(now if dismissed else None),
@@ -219,7 +219,7 @@ def set_teacher_onboarding_widget_dismissed(teacher_id: int, dismissed: bool, no
 
 def delete_teacher_onboarding_for_teacher(teacher_id: int) -> None:
     onboarding, _credentials, _invites = _tables()
-    db.session.execute(sa.delete(onboarding).where(onboarding.c.teacher_id == teacher_id))
+    db.session.execute(sa.delete(onboarding).where(onboarding.c.user_id == teacher_id))
 
 
 def admin_has_passkeys(teacher_id: int) -> bool:

@@ -26,8 +26,8 @@ from app.extensions import db, limiter
 from app.models import (
     Student, Transaction, TransactionStatus, TapEvent, StoreItem, StoreItemBlock, StudentItem,
     RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole, StudentTeacher,
-    ClassMembership, ClassEconomy, _quantize_currency
+    BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole,
+    ClassMembership, ClassEconomy, IdentityProfile, _quantize_currency
 )
 from app.auth import (
     admin_required,
@@ -109,13 +109,13 @@ from app.utils.insurance_eligibility import (
 )
 
 
-def _get_identity_bound_seat_options(student: Student):
-    """Return class options for a student's identity-bound seats."""
+def _get_identity_bound_seat_options(user_id: int):
+    """Return class options for the canonical student's claimed seats."""
     seat_rows = (
         db.session.query(Seat, ClassEconomy)
         .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
         .filter(
-            Seat.student_id == student.id,
+            Seat.user_id == user_id,
             Seat.user_id.isnot(None),
             Seat.claimed_at.isnot(None),
             Seat.class_id.isnot(None),
@@ -210,14 +210,14 @@ RENT_PAYMENT_MATCH_TOLERANCE_SECONDS = 300
 
 # -------------------- PERIOD SELECTION HELPERS --------------------
 
-def _find_linked_user_for_student(student_id: int | None) -> User | None:
-    if not student_id:
+def _find_linked_user_for_student(student: Student | None) -> User | None:
+    if not student or not student.identity_profile or not student.identity_profile.seat_id:
         return None
     return (
         User.query
         .join(Seat, Seat.user_id == User.id)
         .filter(
-            Seat.student_id == student_id,
+            Seat.id == student.identity_profile.seat_id,
             Seat.user_id.isnot(None),
         )
         .order_by(Seat.id.asc())
@@ -225,17 +225,17 @@ def _find_linked_user_for_student(student_id: int | None) -> User | None:
     )
 
 
-def _get_or_create_setup_user_for_student(student_id: int | None) -> User | None:
-    if not student_id:
+def _get_or_create_setup_user_for_student(student: Student | None) -> User | None:
+    if not student:
         return None
 
-    user = _find_linked_user_for_student(student_id)
+    user = _find_linked_user_for_student(student)
     if user:
         return user
 
     user = User(
         user_role=UserRole.STUDENT,
-        username_hash=hash_username_lookup(f"pending_{student_id}_{secrets.token_urlsafe(8)}"),
+        username_hash=hash_username_lookup(f"pending_{student.id}_{secrets.token_urlsafe(8)}"),
         password_hash=generate_password_hash(secrets.token_urlsafe(24)),
     )
     db.session.add(user)
@@ -273,8 +273,13 @@ def _get_claimed_setup_state():
     student = db.session.get(Student, student_id) if student_id else None
     user = db.session.get(User, user_id) if user_id else None
 
-    if seat and not student and seat.student_id:
-        student = db.session.get(Student, seat.student_id)
+    if seat and not student:
+        student = (
+            Student.query
+            .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+            .filter(IdentityProfile.seat_id == seat.id)
+            .first()
+        )
     if seat and not user and seat.user_id:
         user = db.session.get(User, seat.user_id)
 
@@ -287,7 +292,13 @@ def _prime_student_teacher_display_name_cache(student_id: int) -> None:
     """Cache decrypted teacher display names in session for this student session."""
     from app.models import Seat, ClassEconomy, Admin
 
-    seats = Seat.query.filter(Seat.student_id == student_id, Seat.claimed_at.isnot(None)).all()
+    seats = (
+        Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
+        .filter(Student.id == student_id, Seat.claimed_at.isnot(None))
+        .all()
+    )
     class_ids = sorted({seat.class_id for seat in seats if seat.class_id})
     teacher_ids = []
     if class_ids:
@@ -481,7 +492,7 @@ def claim_account():
     6. Links Seat to Student
     7. Creates StudentTeacher link
     """
-    from app.models import ClassEconomy, Seat, IdentityProfile, StudentTeacher, Student
+    from app.models import ClassEconomy, Seat, IdentityProfile, Student
     from app.hash_utils import hash_username_lookup
     from app.utils.join_code import format_join_code
 
@@ -584,20 +595,10 @@ def claim_account():
         db.session.flush()  # Get student ID
 
         # Link seat to student
-        matched_seat.student_id = new_student.id
         matched_seat.claimed_at = utc_now()
 
-        # Create StudentTeacher link
-        if teacher_id:
-            link = StudentTeacher(
-                student_id=new_student.id,
-                teacher_id=teacher_id,
-                join_code=matched_seat.join_code,
-            )
-            db.session.add(link)
-
         _ensure_student_class_membership(new_student.id, matched_seat.join_code)
-        linked_user = _get_or_create_setup_user_for_student(new_student.id)
+        linked_user = _get_or_create_setup_user_for_student(new_student)
         if linked_user:
             matched_seat.user_id = linked_user.id
         db.session.flush()
@@ -651,7 +652,7 @@ def create_username():
         username = f"{adjective}{write_in_word}{numeric_segment}{initials}"
         # Save username plaintext in session for display
         session['generated_username'] = username
-        user = user or _find_linked_user_for_student(student.id)
+        user = user or _find_linked_user_for_student(student)
         if not user:
             user = User(
                 user_role=UserRole.STUDENT,
@@ -751,7 +752,7 @@ def add_class():
     Each join_code is an independent universe. Credentials entered here
     are matched against the *new* class's own unclaimed roster seat.
     """
-    from app.models import ClassEconomy, Seat, IdentityProfile, StudentTeacher
+    from app.models import ClassEconomy, Seat, IdentityProfile
     from app.utils.join_code import format_join_code
     from app.forms import StudentAddClassForm
     from app.hash_utils import hash_username_lookup
@@ -876,34 +877,16 @@ def add_class():
                 return redirect(_get_return_target())
             matched_seat = dedupe_matches[0]
 
-        # Check if student is already linked to this teacher's block
-        existing_link = StudentTeacher.query.filter_by(
-            student_id=student.id,
-            teacher_id=teacher_id
-        ).first()
+        current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+        new_block_check = matched_seat.block.strip().upper()
+        if new_block_check in current_blocks:
+            flash(f"You are already enrolled in Block {new_block_check}.", "warning")
+            return redirect(_get_return_target())
 
-        if existing_link:
-            current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-            new_block_check = matched_seat.block.strip().upper()
-            if new_block_check in current_blocks:
-                flash(f"You are already enrolled in Block {new_block_check}.", "warning")
-                return redirect(_get_return_target())
-
-        # Link the seat to the student
-        matched_seat.student_id = student.id
         matched_seat.claimed_at = utc_now()
-        linked_user = _get_or_create_setup_user_for_student(student.id)
+        linked_user = _get_or_create_setup_user_for_student(student)
         if linked_user:
             matched_seat.user_id = linked_user.id
-
-        # Create StudentTeacher link if it doesn't exist
-        if not existing_link:
-            link = StudentTeacher(
-                student_id=student.id,
-                teacher_id=teacher_id,
-                join_code=matched_seat.join_code,
-            )
-            db.session.add(link)
 
         _ensure_student_class_membership(student.id, matched_seat.join_code)
 
@@ -2343,13 +2326,17 @@ def shop():
     from app.models import Seat
     class_size = 0
     if join_code:
-        class_size = db.session.query(db.func.count(db.func.distinct(Student.id))).join(
-            Seat, Seat.student_id == Student.id
-        ).filter(
-            Seat.join_code == join_code,
-            Seat.claimed_at.isnot(None),
-            Student.is_teacher == False,  # Exclude teacher account from class size
-        ).scalar() or 0
+        class_size = (
+            db.session.query(db.func.count(db.func.distinct(Seat.id)))
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(
+                Seat.join_code == join_code,
+                Seat.claimed_at.isnot(None),
+                Student.is_teacher == False,  # Exclude teacher account from class size
+            )
+            .scalar() or 0
+        )
 
     collective_progress = {}
     collective_items = [item for item in items if item.item_type == 'collective']
@@ -2817,13 +2804,11 @@ def _build_rent_coverage_context(
     if not join_code:
         return None
 
-    seat_rows = (
-        db.session.query(Seat.id, Seat.student_id)
+    valid_seat_ids = [
+        seat_id for (seat_id,) in db.session.query(Seat.id)
         .filter(Seat.class_id == class_id, Seat.id.in_(seat_ids))
         .all()
-    )
-    student_id_by_seat = {sid: stid for sid, stid in seat_rows}
-    valid_seat_ids = list(student_id_by_seat.keys())
+    ]
     if not valid_seat_ids:
         return None
 
@@ -3698,7 +3683,6 @@ def login():
 
         if linked_user and linked_user.last_active_class_id:
             has_active_class_seat = Seat.query.filter_by(
-                student_id=student.id,
                 user_id=linked_user.id,
                 class_id=linked_user.last_active_class_id,
             ).first()
@@ -3706,7 +3690,7 @@ def login():
                 linked_user.last_active_class_id = None
                 db.session.flush()
 
-        seat_options = _get_identity_bound_seat_options(student)
+        seat_options = _get_identity_bound_seat_options(linked_user.id)
         if linked_user and linked_user.last_active_class_id is None:
             if seat_options:
                 return redirect(url_for('student.select_class_context'))
@@ -3770,16 +3754,7 @@ def select_class_context():
     if not student:
         return redirect(url_for('student.login'))
 
-    linked_user = (
-        User.query
-        .join(Seat, Seat.user_id == User.id)
-        .filter(
-            Seat.student_id == student.id,
-            Seat.user_id.isnot(None),
-        )
-        .order_by(Seat.id.asc())
-        .first()
-    )
+    linked_user = _find_linked_user_for_student(student)
     if not linked_user:
         current_app.logger.critical(
             "P0 INCIDENT: Student %s has no identity-linked user during class-context gate.",
@@ -3789,7 +3764,7 @@ def select_class_context():
         flash("Account scope incident detected. Contact support immediately.", "error")
         return redirect(url_for('student.login'))
 
-    seat_options = _get_identity_bound_seat_options(student)
+    seat_options = _get_identity_bound_seat_options(linked_user.id)
     if not seat_options:
         current_app.logger.critical(
             "P0 INCIDENT: Student %s has no surviving seats during class-context gate.",

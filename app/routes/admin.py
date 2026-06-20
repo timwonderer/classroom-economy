@@ -55,7 +55,7 @@ from app.extensions import db, limiter
 from app.feats.base import feat_shell, FEATContext, InvariantViolation
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    Student, Admin, ClassEconomy, StudentTeacher, Transaction, TransactionStatus, TapEvent, StoreItem, StudentItem,
+    Student, Admin, ClassEconomy, Transaction, TransactionStatus, TapEvent, StoreItem, StudentItem,
     InsurancePolicy, InsurancePolicyBlock, RentItem, RentPayment, RentSettings, StoreItemBlock,
     InsuranceEnrollment, StudentInsurance, InsuranceClaim, HallPassLog, HallPassSettings, PayrollSettings, SavedAdjustment,
     BankingSettings,
@@ -1961,13 +1961,13 @@ def _ensure_join_code_anchors(teacher_id, join_code, class_label=None, return_me
             raise ValueError("Join code belongs to a different teacher.")
         if class_label and not economy.display_name:
             economy.display_name = class_label
-        if economy.created_by_admin_id is None:
-            economy.created_by_admin_id = teacher_id
+        if economy.created_by_user_id is None:
+            economy.created_by_user_id = teacher_id
     else:
         economy = ClassEconomy(
             join_code=join_code,
             teacher_id=teacher_id,
-            created_by_admin_id=teacher_id,
+            created_by_user_id=teacher_id,
             display_name=class_label,
         )
         db.session.add(economy)
@@ -2788,17 +2788,17 @@ def _apply_rebalance_plan(admin_id, settings_row, change_plan, activation_mode):
     return applied_labels
 
 
-def _get_or_create_onboarding(teacher_id):
+def _get_or_create_onboarding(user_id):
     """
     Get or create onboarding record for a teacher.
 
     Args:
-        teacher_id: The teacher's admin ID
+        user_id: The teacher's canonical user ID
 
     Returns:
         Teacher onboarding record view
     """
-    return get_or_create_teacher_onboarding(teacher_id, utc_now())
+    return get_or_create_teacher_onboarding(user_id, utc_now())
 
 
 def _check_onboarding_redirect():
@@ -2812,21 +2812,21 @@ def _check_onboarding_redirect():
     Returns:
         None - onboarding redirect disabled in favor of floating widget
     """
-    admin_id = session.get('admin_id')
-    if not admin_id:
+    admin = get_current_admin()
+    user = get_current_user()
+    if not admin or not user:
         return None
 
     # Check if teacher has completed or skipped onboarding
-    onboarding = get_teacher_onboarding(admin_id)
+    onboarding = get_teacher_onboarding(user.id)
 
     # If no onboarding record exists, teacher needs onboarding
     if not onboarding:
         # Check if teacher has any existing students - if so, they're a legacy teacher
         # and we should skip onboarding for them
-        admin = db.session.get(Admin, admin_id)
         if admin and admin.has_assigned_students:
             # Legacy teacher - create completed onboarding record
-            create_legacy_completed_teacher_onboarding(admin_id, utc_now())
+            create_legacy_completed_teacher_onboarding(user.id, utc_now())
             return None
 
         # New teacher - no redirect, they'll see the Getting Started widget
@@ -11591,9 +11591,18 @@ def onboarding_status():
         # Onboarding is per teacher account, not per class section
         # If ANY of the teacher's class sections has a feature set up, mark as complete
 
-        # Roster: has at least one student in ANY class OR marked complete
-        # Use StudentTeacher to get all students for this teacher
-        student_count = StudentTeacher.query.filter_by(teacher_id=admin_id).count()
+        # Roster: has at least one claimed student seat in any owned class.
+        student_count = (
+            db.session.query(Seat.id)
+            .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
+            .filter(
+                ClassEconomy.teacher_id == admin_id,
+                Seat.role == "student",
+                Seat.user_id.isnot(None),
+                Seat.claimed_at.isnot(None),
+            )
+            .count()
+        )
         data_completed['roster'] = student_count > 0
 
         class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=admin_id).subquery()
@@ -11691,12 +11700,12 @@ def onboarding():
 @admin_required
 def onboarding_skip():
     """Mark onboarding as skipped for the current admin (legacy endpoint)."""
-    admin_id = session.get('admin_id')
-    if not admin_id:
+    user = get_current_user()
+    if not user:
         return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
 
-    get_or_create_teacher_onboarding(admin_id, utc_now())
-    set_teacher_onboarding_skipped(admin_id, utc_now())
+    get_or_create_teacher_onboarding(user.id, utc_now())
+    set_teacher_onboarding_skipped(user.id, utc_now())
     db.session.flush()
     return jsonify({'status': 'success'})
 
@@ -11705,7 +11714,9 @@ def onboarding_skip():
 @admin_required
 def onboarding_skip_task():
     """Mark an optional onboarding task as skipped."""
-    admin_id = session.get('admin_id')
+    user = get_current_user()
+    if not user:
+        return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
 
     try:
         data = request.get_json()
@@ -11716,7 +11727,7 @@ def onboarding_skip_task():
 
         # Get or create onboarding record
         set_teacher_onboarding_widget_task_status(
-            admin_id,
+            user.id,
             task_name=task_name,
             status='skipped',
             now=utc_now(),
@@ -11739,11 +11750,13 @@ def onboarding_skip_task():
 @admin_required
 def onboarding_dismiss_widget():
     """Dismiss the Getting Started widget permanently."""
-    admin_id = session.get('admin_id')
+    user = get_current_user()
+    if not user:
+        return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
 
     try:
         # Get or create onboarding record
-        set_teacher_onboarding_widget_dismissed(admin_id, dismissed=True, now=utc_now())
+        set_teacher_onboarding_widget_dismissed(user.id, dismissed=True, now=utc_now())
 
         db.session.flush()
 
@@ -11762,11 +11775,13 @@ def onboarding_dismiss_widget():
 @admin_required
 def onboarding_undismiss_widget():
     """Un-dismiss the Getting Started widget to show it again."""
-    admin_id = session.get('admin_id')
+    user = get_current_user()
+    if not user:
+        return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
 
     try:
         # Get onboarding record
-        set_teacher_onboarding_widget_dismissed(admin_id, dismissed=False, now=utc_now())
+        set_teacher_onboarding_widget_dismissed(user.id, dismissed=False, now=utc_now())
 
         db.session.flush()
 

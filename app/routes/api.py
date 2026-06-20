@@ -22,9 +22,9 @@ from app.extensions import db, limiter
 from app.models import (
     Admin, Student, StoreItem, StudentItem, Transaction, TransactionStatus, TapEvent,
     TapEventReasonCode, HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
-    StudentTeacher, StudentBlock, StoreItemBlock,
+    StudentBlock, StoreItemBlock,
     RedemptionAuditLog, RedemptionAuditAction, RedemptionAuditSource, _quantize_currency,
-    ClassEconomy, ClassMembership, Seat, SeatAttendanceState,
+    ClassEconomy, ClassMembership, Seat, SeatAttendanceState, IdentityProfile,
 )
 from app.auth import (
     login_required,
@@ -1905,12 +1905,12 @@ def attendance_history():
         seat_ids = [r.seat_id for r in records if r.seat_id]
         seats = {}
         if seat_ids:
-            seat_rows = db.session.query(Seat.id, Seat.student_id, Seat.block).filter(Seat.id.in_(seat_ids)).all()
-            student_ids = list({row.student_id for row in seat_rows if row.student_id})
-            students_by_id = {}
-            if student_ids:
-                student_rows = Student.query.filter(Student.id.in_(student_ids)).all()
-                students_by_id = {student.id: student for student in student_rows}
+            seat_rows = (
+                db.session.query(Seat.id, Seat.block, IdentityProfile.first_name, IdentityProfile.last_name)
+                .outerjoin(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+                .filter(Seat.id.in_(seat_ids))
+                .all()
+            )
 
             period_by_seat_id = {}
             for record in records:
@@ -1918,8 +1918,7 @@ def attendance_history():
                     period_by_seat_id[record.seat_id] = record.period
 
             for row in seat_rows:
-                student = students_by_id.get(row.student_id)
-                student_name = student.full_name if student else "Unknown"
+                student_name = " ".join(part for part in [row.first_name, row.last_name] if part).strip() or "Unknown"
                 student_block = period_by_seat_id.get(row.id) or row.block or "Unknown"
                 seats[row.id] = {"name": student_name, "block": student_block}
 
@@ -2395,12 +2394,19 @@ def update_student_block_settings():
         return jsonify({"error": "Student not found or access denied"}), 404
 
     # Resolve seat_id and class_id for V2 identity
-    seat = Seat.query.join(ClassEconomy, Seat.class_id == ClassEconomy.class_id).filter(
-        ClassEconomy.teacher_id == admin.id,
-        Seat.student_id == student_id,
-        Seat.claimed_at.isnot(None),
-        func.upper(Seat.block) == period,
-    ).first()
+    seat = (
+        Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
+        .join(ClassEconomy, Seat.class_id == ClassEconomy.class_id)
+        .filter(
+            ClassEconomy.teacher_id == admin.id,
+            Student.id == student_id,
+            Seat.claimed_at.isnot(None),
+            func.upper(Seat.block) == period,
+        )
+        .first()
+    )
 
     if not seat or not seat.class_id:
         return jsonify({"error": "Student block not found or access denied"}), 403
