@@ -79,19 +79,20 @@ def resolve_seat_from_transient_student(mapper, connection, target):
                     class_id = class_row[0]
                     target.class_id = class_id
             
-            # resolve seat_id
+            # resolve seat_id via user_id (v2: student_id column removed from seats)
+            # The transient student_id is treated as a user_id for seat lookup
             if class_id:
                 seat_row = connection.execute(
-                    sa.text("SELECT id FROM seats WHERE student_id = :sid AND class_id = :cid LIMIT 1"),
-                    {"sid": student_id, "cid": class_id}
+                    sa.text("SELECT id FROM seats WHERE user_id = :uid AND class_id = :cid LIMIT 1"),
+                    {"uid": student_id, "cid": class_id}
                 ).fetchone()
                 if seat_row:
                     target.seat_id = seat_row[0]
             else:
                 # fallback
                 seat_row = connection.execute(
-                    sa.text("SELECT id, class_id FROM seats WHERE student_id = :sid LIMIT 1"),
-                    {"sid": student_id}
+                    sa.text("SELECT id, class_id FROM seats WHERE user_id = :uid LIMIT 1"),
+                    {"uid": student_id}
                 ).fetchone()
                 if seat_row:
                     target.seat_id = seat_row[0]
@@ -112,29 +113,25 @@ def resolve_seat_from_transient_student(mapper, connection, target):
                     {"cid": cid}
                 ).fetchone()
                 if not class_exists:
-                    teacher_row = connection.execute(
-                        sa.text("SELECT teacher_id FROM student_teachers WHERE student_id = :sid LIMIT 1"),
-                        {"sid": student_id}
-                    ).fetchone()
-                    if teacher_row:
-                        connection.execute(
-                            sa.text("""
-                            INSERT INTO classes (class_id, teacher_id, join_code, created_at, updated_at)
-                            VALUES (:cid, :tid, :jc, :now, :now)
-                            ON CONFLICT DO NOTHING
-                            """),
-                            {"cid": cid, "tid": teacher_row[0], "jc": jc, "now": now}
-                        )
+                    # Use the student_id as teacher_id for mock class creation
+                    connection.execute(
+                        sa.text("""
+                        INSERT INTO classes (class_id, teacher_id, join_code, created_at, updated_at)
+                        VALUES (:cid, :tid, :jc, :now, :now)
+                        ON CONFLICT DO NOTHING
+                        """),
+                        {"cid": cid, "tid": student_id, "jc": jc, "now": now}
+                    )
 
                 target.class_id = cid
                 target.join_code = join_code or jc
                 connection.execute(
                     sa.text("""
-                    INSERT INTO seats (public_id, student_id, class_id, join_code, role, has_received_rent_exemption, created_at, updated_at)
-                    VALUES (:pid, :sid, :cid, :jc, 'student', false, :now, :now)
+                    INSERT INTO seats (public_id, user_id, class_id, join_code, role, has_received_rent_exemption, created_at, updated_at)
+                    VALUES (:pid, :uid, :cid, :jc, 'student', false, :now, :now)
                     """),
                     {
-                        "pid": pub_id, "sid": student_id, "cid": cid,
+                        "pid": pub_id, "uid": student_id, "cid": cid,
                         "jc": target.join_code, "now": now
                     }
                 )

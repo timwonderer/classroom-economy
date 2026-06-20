@@ -153,4 +153,3 @@ def downgrade():
         op.drop_column("system_admin_credentials", "user_id")
     if table_exists("teacher_credentials") and column_exists("teacher_credentials", "user_id"):
         op.drop_column("teacher_credentials", "user_id")
-# CI trigger

@@ -254,17 +254,23 @@ class IdentityProfile(db.Model):
     # Transitional discriminator until every profile is bound to a seat.
     profile_type = db.Column(db.String(32), nullable=False, index=True)
     first_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
-    last_initial = db.Column(db.String(1), nullable=False)
+    last_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
+    notes = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
     __table_args__ = (
-        db.Index('ix_identity_profiles_type_name', 'profile_type', 'last_initial'),
+        db.Index('ix_identity_profiles_type_name', 'profile_type', 'last_name'),
     )
 
     @property
+    def last_initial(self):
+        """Backward-compatible accessor for display contexts needing just the initial."""
+        return self.last_name[0] if self.last_name else ''
+
+    @property
     def full_name(self):
-        return f"{self.first_name} {self.last_initial}."
+        return f"{self.first_name} {self.last_name}"
 
 
 class UserInviteToken(db.Model):
@@ -527,7 +533,7 @@ class Student(db.Model):
         """
         if class_id:
             total = db.session.query(db.func.sum(Transaction.amount)).join(Seat, Transaction.seat_id == Seat.id).filter(
-                Seat.student_id == self.id,
+                Seat.user_id == self.id,
                 Transaction.class_id == class_id,
                 Transaction.amount > 0,
                 Transaction.is_void == False,
@@ -538,7 +544,7 @@ class Student(db.Model):
         if join_code:
             # Legacy scoping by join_code (period-level isolation)
             total = db.session.query(db.func.sum(Transaction.amount)).join(Seat, Transaction.seat_id == Seat.id).filter(
-                Seat.student_id == self.id,
+                Seat.user_id == self.id,
                 Transaction.join_code == join_code,
                 Transaction.amount > 0,
                 Transaction.is_void == False,
@@ -572,7 +578,7 @@ class Student(db.Model):
         deposits = (
             db.session.query(Transaction)
             .join(Seat, Seat.id == Transaction.seat_id)
-            .filter(Seat.student_id == self.id)
+            .filter(Seat.user_id == self.id)
             .filter(Transaction.amount > 0)
             .filter(Transaction.is_void == False)
             .filter(~db.func.lower(Transaction.description).like('transfer%'))
@@ -3764,14 +3770,15 @@ def _normalize_initial(value):
 
 def _sync_identity_profile(session, entity, profile_type):
     first_name = (entity.first_name or "").strip() if entity.first_name else None
-    last_initial = _normalize_initial(entity.last_initial)
-    
-    # Use placeholder values if first_name or last_initial is missing
+    # Legacy Student only stores last_initial; use it as last_name for the profile
+    last_name = _normalize_initial(entity.last_initial) if hasattr(entity, 'last_initial') else None
+
+    # Use placeholder values if first_name or last_name is missing
     # This prevents constraint violations when IdentityProfile can't sync
     if not first_name:
         first_name = "[Unknown]"
-    if not last_initial:
-        last_initial = "?"
+    if not last_name:
+        last_name = "?"
 
     profile = entity.identity_profile
     if profile is None and getattr(entity, "identity_id", None):
@@ -3783,13 +3790,13 @@ def _sync_identity_profile(session, entity, profile_type):
         profile = IdentityProfile(
             profile_type=profile_type,
             first_name=first_name,
-            last_initial=last_initial,
+            last_name=last_name,
         )
         session.add(profile)
         entity.identity_profile = profile
     else:
         profile.first_name = first_name
-        profile.last_initial = last_initial
+        profile.last_name = last_name
         if not profile.profile_type:
             profile.profile_type = profile_type
 

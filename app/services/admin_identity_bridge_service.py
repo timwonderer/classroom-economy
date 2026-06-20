@@ -60,9 +60,10 @@ def _onboarding_user_col(onboarding: sa.Table) -> sa.ColumnElement:
 
 
 def _onboarding_row_to_view(row: sa.Row) -> TeacherOnboardingView:
+    teacher_id = row._mapping["user_id"] if "user_id" in row._mapping else row._mapping["teacher_id"]
     return TeacherOnboardingView(
         id=row.id,
-        teacher_id=getattr(row, "user_id", getattr(row, "teacher_id")),
+        teacher_id=teacher_id,
         is_completed=bool(row.is_completed),
         is_skipped=bool(row.is_skipped),
         current_step=row.current_step,

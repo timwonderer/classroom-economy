@@ -1254,7 +1254,7 @@ def payroll():
     seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
+    student = get_logged_in_student()
     if not student:
         student = get_logged_in_student()
 
@@ -1571,7 +1571,7 @@ def insurance_marketplace():
     seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
+    student = get_logged_in_student()
     if not student:
         student = get_logged_in_student()
 
@@ -2119,9 +2119,7 @@ def view_policy(enrollment_id):
     seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
-    if not student:
-        student = get_logged_in_student()
+    student = get_logged_in_student()
     enrollment = db.get_or_404(StudentInsurance, enrollment_id)
 
     # Verify ownership
@@ -2160,9 +2158,7 @@ def shop():
     seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
-    if not student:
-        student = get_logged_in_student()
+    student = get_logged_in_student()
 
     # CRITICAL FIX v2: Get full class context
     context = resolve_canonical_context()
@@ -2916,7 +2912,7 @@ def _expand_rent_waiver_history(settings, waivers, *, now=None):
             coverage_day = ensure_utc(coverage_due_date).date()
             current_day = ensure_utc(current_coverage_due_date).date() if current_coverage_due_date else None
             seat = getattr(waiver, "seat", None)
-            student = seat.student if seat and seat.student_id else None
+            student = get_logged_in_student() if seat else None
 
             if current_day is None or coverage_day > current_day:
                 status = 'upcoming'
@@ -2995,7 +2991,7 @@ def _is_student_coverage_period_paid(
             join_code = class_row.join_code if class_row else None
         if seat_id:
             seat = db.session.get(Seat, seat_id)
-            student_id = seat.student_id if seat else None
+            student_id = seat.user_id if seat else None
         if include_waivers:
             if _has_active_rent_waiver_v2(seat_id, class_id, coverage_due_date):
                 return True
@@ -3127,9 +3123,7 @@ def rent():
     seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
-    if not student:
-        student = get_logged_in_student()
+    student = get_logged_in_student()
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please choose a class to continue.", "error")

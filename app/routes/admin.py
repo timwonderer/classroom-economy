@@ -2986,18 +2986,18 @@ def dashboard():
 
     # Recent attendance logs (limited to 5 for display)
     raw_logs = (
-        db.session.query(TapEvent, Student)
-        .join(Student, TapEvent.student_id == Student.id)
-        .filter(Student.id.in_(sa.select(student_ids_subq)))
+        db.session.query(TapEvent, Seat)
+        .join(Seat, TapEvent.seat_id == Seat.id)
+        .filter(Seat.class_id.in_(teacher_class_ids))
         .order_by(TapEvent.timestamp.desc())
         .limit(5)
         .all()
     )
     recent_logs = []
-    for log, student in raw_logs:
+    for log, seat in raw_logs:
         recent_logs.append({
-            'student_id': log.student_id,
-            'student_name': student.full_name if student else 'Unknown',
+            'seat_id': log.seat_id,
+            'student_name': f"{seat.display_first_name} {seat.display_last_initial}".strip() if seat else 'Unknown',
             'period': log.period,
             'timestamp': log.timestamp,
             'reason': log.reason,
@@ -4426,7 +4426,7 @@ def students():
     class_seat_pairs = [(seat.class_id, seat.id) for seat in seats]
     raw_balances = get_batch_balances_by_class_seat(class_seat_pairs)
 
-    seat_map = {(seat.student_id, seat.class_id): seat for seat in seats}
+    seat_map = {(seat.user_id, seat.class_id): seat for seat in seats}
 
     # 3. Populate the result dictionary for ALL students to ensure 0-balance entries exist
     for block in blocks:
@@ -4593,14 +4593,14 @@ def student_detail_public(student_public_id):
         )
         .first()
     )
-    if not scoped_seat or not scoped_seat.student_id:
+    if not scoped_seat or not scoped_seat.user_id:
         abort(404)
-    if expected_student_id and scoped_seat.student_id != expected_student_id:
+    if expected_student_id and scoped_seat.user_id != expected_student_id:
         abort(404)
     if expected_class_id and str(scoped_seat.class_id or "") != expected_class_id:
         abort(404)
 
-    student = _get_student_or_404(scoped_seat.student_id)
+    student = _get_student_or_404(scoped_seat.user_id)
     join_code = scoped_seat.join_code
     class_id = scoped_seat.class_id
     seat_id = scoped_seat.id
@@ -6780,7 +6780,7 @@ def rent_settings():
     active_waivers = [
         SimpleNamespace(
             id=waiver.id,
-            student=waiver.seat.student if waiver.seat and waiver.seat.student_id else None,
+            student=waiver.seat.student if waiver.seat and waiver.seat.user_id else None,
             waiver_start_date=waiver.coverage_start_time,
             waiver_end_date=waiver.coverage_end_time,
             periods_count=_count_rent_waiver_periods(rent_settings, waiver),
@@ -7247,7 +7247,7 @@ def remove_rent_waiver(waiver_id):
     waiver = db.session.get(ObligationAssessment, waiver_id)
     if waiver is None or waiver.obligation_type != "RENT_WAIVER":
         abort(404)
-    student = waiver.seat.student if waiver.seat and waiver.seat.student_id else None
+    student = waiver.seat.student if waiver.seat and waiver.seat.user_id else None
     if student is None:
         abort(404)
     student_name = student.full_name
@@ -8654,7 +8654,7 @@ def payroll_history():
     payroll_records = []
     for tx in payroll_transactions:
         seat = seat_lookup.get(tx.seat_id)
-        student = student_lookup.get(seat.student_id) if seat else None
+        student = student_lookup.get(seat.user_id) if seat else None
         student_block = student.block if student else 'Unknown'
         payroll_records.append({
             'id': tx.id,
@@ -8844,7 +8844,7 @@ def payroll():
             seat for seat in seats
             if ((seat.block_identifier or seat.block or '').strip().upper() == selected_block_upper)
         ]
-    student_ids = [seat.student_id for seat in seats if seat.student_id]
+    student_ids = [seat.user_id for seat in seats if seat.user_id]
     students = (
         Student.query
         .filter(Student.id.in_(student_ids))

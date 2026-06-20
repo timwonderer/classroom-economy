@@ -1906,7 +1906,7 @@ def attendance_history():
         seats = {}
         if seat_ids:
             seat_rows = (
-                db.session.query(Seat.id, Seat.block, IdentityProfile.first_name, IdentityProfile.last_initial)
+                db.session.query(Seat.id, Seat.block, IdentityProfile.first_name, IdentityProfile.last_name)
                 .outerjoin(IdentityProfile, IdentityProfile.seat_id == Seat.id)
                 .filter(Seat.id.in_(seat_ids))
                 .all()
@@ -1918,7 +1918,7 @@ def attendance_history():
                     period_by_seat_id[record.seat_id] = record.period
 
             for row in seat_rows:
-                student_name = " ".join(part for part in [row.first_name, row.last_initial] if part).strip() or "Unknown"
+                student_name = " ".join(part for part in [row.first_name, row.last_name] if part).strip() or "Unknown"
                 student_block = period_by_seat_id.get(row.id) or row.block or "Unknown"
                 seats[row.id] = {"name": student_name, "block": student_block}
 

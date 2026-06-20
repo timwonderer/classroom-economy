@@ -117,3 +117,42 @@ def create_class_scope(
         ))
 
     return class_row
+
+
+def make_student_seat(
+    *,
+    class_id=None,
+    join_code=None,
+    block="A",
+    role="student",
+    user_id=None,
+    claimed=True,
+    first_name="Student",
+    last_name="Test",
+    profile_type="student_claimed",
+):
+    """Create a Seat + IdentityProfile + auto-created User for tests.
+
+    This replaces the common pattern of ``Seat(student_id=student.id, ...)``,
+    which broke when ``student_id`` was removed from the Seat ORM in v2.
+    """
+    resolved_user_id = _ensure_user(user_id, role=role)
+    seat = Seat(
+        user_id=resolved_user_id,
+        class_id=class_id,
+        join_code=join_code,
+        block=block,
+        block_identifier=block,
+        role=role,
+        claimed_at=datetime.now(timezone.utc) if claimed else None,
+    )
+    db.session.add(seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(
+        seat_id=seat.id,
+        profile_type=profile_type if claimed else "student_unclaimed",
+        first_name=first_name,
+        last_name=last_name,
+    ))
+    db.session.flush()
+    return seat

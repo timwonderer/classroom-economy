@@ -39,8 +39,8 @@ def _resolve_student_and_seat(identity, *, seat=None) -> tuple[Student | None, S
 
     if resolved_seat and not resolved_student:
         resolved_student = resolved_seat.student
-        if not resolved_student and resolved_seat.student_id:
-            resolved_student = db.session.get(Student, resolved_seat.student_id)
+        if not resolved_student and resolved_seat.user_id:
+            resolved_student = db.session.get(Student, resolved_seat.user_id)
 
     if resolved_student and not resolved_seat:
         resolved_seat = (

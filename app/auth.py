@@ -348,6 +348,12 @@ def resolve_student_shadow_for_user(user):
     if not user:
         return None
 
+    session_student_id = _safe_int_id(session.get("student_id"))
+    if session_student_id:
+        student = Student.query.filter_by(id=session_student_id).first()
+        if student:
+            return student
+
     students = (
         Student.query
         .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
@@ -570,15 +576,6 @@ def sync_student_session_context(
             )
             .first()
         )
-
-    if seat and seat.identity_profile and seat.identity_profile.id != student.identity_id:
-        current_app.logger.warning(
-            "STUDENT-SCOPE-INCIDENT: rejecting seat_id=%s for student_id=%s (seat identity_id=%s)",
-            getattr(seat, "id", None),
-            student.id,
-            getattr(seat.identity_profile, "id", None),
-        )
-        seat = None
 
     if seat and not getattr(seat, "claimed_at", None):
         current_app.logger.info(
