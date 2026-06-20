@@ -38,6 +38,8 @@ def _assert_class_scope_integrity(class_id: str, join_code: str) -> None:
     )
     violations = []
     for label, model in scoped_models:
+        if not hasattr(model, 'join_code') or not hasattr(model, 'class_id'):
+            continue
         count = db.session.query(model).filter(
             model.join_code == join_code,
             model.class_id.is_(None),

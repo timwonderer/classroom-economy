@@ -687,6 +687,9 @@ def get_logged_in_student():
 
 def get_current_admin():
     """Return the legacy admin route shadow for the current canonical teacher user."""
+    if hasattr(g, "_auth_current_admin_cache"):
+        return g._auth_current_admin_cache
+
     if not session.get("is_admin"):
         return None
 
@@ -703,6 +706,7 @@ def get_current_admin():
         return None
 
     session["admin_id"] = admin.id
+    g._auth_current_admin_cache = admin
     return admin
 
 

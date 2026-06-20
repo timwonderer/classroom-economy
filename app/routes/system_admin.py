@@ -989,6 +989,11 @@ def delete_admin(admin_id):
                 Seat.class_id.in_(class_ids),
                 Seat.role == "student",
             ).count() if class_ids else 0
+
+            from app.utils.deletion import collapse_universe
+            for cid in class_ids:
+                collapse_universe(cid, reason="Teacher account deletion", actor_membership_id=None)
+
             delete_recovery_rows_for_teacher(teacher_user.id)
             delete_admin_credentials_for_teacher(teacher_user.id)
             delete_teacher_onboarding_for_teacher(teacher_user.id)
