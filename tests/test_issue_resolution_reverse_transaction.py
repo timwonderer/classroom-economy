@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, ClassEconomy, Issue, IssueCategory, Student, StudentTeacher, Transaction, TransactionStatus
+from app.models import Admin, ClassEconomy, IdentityProfile, Issue, IssueCategory, Student, StudentTeacher, Transaction, TransactionStatus
 
 
 def _login_admin(client, admin_id):
@@ -18,7 +18,10 @@ def _build_issue_context():
     db.session.add(teacher)
     db.session.flush()
 
-    student = Student(first_name="Ivy", last_initial="R", block="A", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Ivy", last_name="R")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"salt")
     db.session.add(student)
     db.session.flush()
 
@@ -55,8 +58,6 @@ def test_issue_reverse_transaction_creates_reversal_for_posted_tx(client):
 
     issue = Issue(
         student_id=student.id,
-        student_first_name=student.first_name,
-        student_last_initial=student.last_initial,
         actor_public_id="seat-public-issue-1",
         teacher_id=teacher.id,
         join_code="ISSUEA1",
@@ -107,8 +108,6 @@ def test_issue_reverse_transaction_rejects_scope_mismatch(client):
 
     issue = Issue(
         student_id=student.id,
-        student_first_name=student.first_name,
-        student_last_initial=student.last_initial,
         actor_public_id="seat-public-issue-2",
         teacher_id=teacher.id,
         join_code="ISSUEA1",

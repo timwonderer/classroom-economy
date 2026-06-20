@@ -77,7 +77,6 @@ def execute_rent_payment(
         type='Rent Payment',
         description=payment_description,
     )
-
     late_fee_for_this_payment = Decimal('0.00')
     if is_late and late_fee > Decimal('0.00'):
         late_fee_for_this_payment = (

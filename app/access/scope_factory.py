@@ -31,7 +31,7 @@ def _store_session_class_context(*, class_id: str | None, join_code: str | None)
 
 def _scope_from_runtime_seat(*, actor, selected_class_id: str | None) -> Scope | None:
     current_seat = get_current_student_seat()
-    if not current_seat or current_seat.student_id != actor.id or not current_seat.join_code:
+    if not current_seat or not current_seat.join_code:
         return None
     if selected_class_id and current_seat.class_id != selected_class_id:
         return None
@@ -67,7 +67,7 @@ def resolve_student_class_switch_scope(*, actor, class_id: str) -> ResolvedStude
 
     seat = (
         Seat.query.filter_by(
-            student_id=actor.id,
+            user_id=actor.id,
             class_id=normalized_class_id,
         )
         .filter(Seat.claimed_at.isnot(None))
@@ -178,9 +178,8 @@ def resolve_scope(*, actor, selected_join_code: str | None = None, actor_role: s
     scope = _scope_from_runtime_seat(actor=actor, selected_class_id=selected_class_id)
     if scope is not None:
         return scope
-
     claimed_seats = (
-        Seat.query.filter_by(student_id=actor.id)
+        Seat.query.filter_by(user_id=actor.id)
         .filter(Seat.claimed_at.isnot(None))
         .order_by(Seat.id.asc())
         .all()

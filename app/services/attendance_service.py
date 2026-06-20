@@ -6,6 +6,8 @@ from app.models import (
     SeatAttendanceState,
     StudentBlock,
     Seat,
+    IdentityProfile,
+    Student,
 )
 from app.utils.time import ensure_utc, get_class_now
 
@@ -43,11 +45,16 @@ def get_all_block_statuses(student, *, class_id: str, payroll_anchor_by_class_id
     if not class_id:
         raise ValueError("get_all_block_statuses requires class_id.")
 
-    claimed_seats = Seat.query.filter(
-        Seat.student_id == student.id,
-        Seat.class_id == class_id,
-        Seat.claimed_at.isnot(None),
-    ).all()
+    claimed_seats = (
+        Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
+        .filter(
+            Student.id == student.id,
+            Seat.class_id == class_id,
+            Seat.claimed_at.isnot(None),
+        ).all()
+    )
     student_blocks = [seat.block.strip() for seat in claimed_seats if seat.block]
 
     period_states = {}

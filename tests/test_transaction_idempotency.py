@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
-from app.models import Admin, Student, Transaction
+from app.models import Admin, IdentityProfile, Student, Transaction
 import app.utils.transaction_idempotency as transaction_idempotency
 from app.utils.transaction_idempotency import (
     IDEMPOTENT_TRANSACTION_TYPES,
@@ -29,7 +29,10 @@ def test_idempotent_transaction_types_are_explicit():
 
 def test_create_idempotent_transaction_reuses_existing_row_on_retry(client):
     teacher = make_admin("idempotent-teacher", "secret")
-    student = Student(first_name="Retry", last_initial="R", block="A", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Retry", last_name="R")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"salt")
     db.session.add_all([teacher, student])
     db.session.commit()
 
@@ -63,7 +66,10 @@ def test_create_idempotent_transaction_reuses_existing_row_on_retry(client):
 
 def test_create_idempotent_transaction_recovers_from_integrity_race(client, monkeypatch):
     teacher = make_admin("idempotent-race-teacher", "secret")
-    student = Student(first_name="Race", last_initial="R", block="A", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Race", last_name="R")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"salt")
     db.session.add_all([teacher, student])
     db.session.commit()
 
@@ -115,7 +121,10 @@ def test_create_idempotent_transaction_recovers_from_integrity_race(client, monk
 
 def test_create_idempotent_transaction_rejects_non_idempotent_types(client):
     teacher = make_admin("idempotent-invalid-teacher", "secret")
-    student = Student(first_name="Nope", last_initial="N", block="A", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Nope", last_name="N")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"salt")
     db.session.add_all([teacher, student])
     db.session.commit()
 
@@ -135,7 +144,10 @@ def test_create_idempotent_transaction_rejects_non_idempotent_types(client):
 @pytest.mark.parametrize("bad_key", [None, "", "   "])
 def test_create_idempotent_transaction_rejects_empty_keys(client, bad_key):
     teacher = make_admin("idempotent-empty-key-teacher", "secret")
-    student = Student(first_name="Empty", last_initial="E", block="A", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Empty", last_name="E")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"salt")
     db.session.add_all([teacher, student])
     db.session.commit()
 
@@ -154,7 +166,10 @@ def test_create_idempotent_transaction_rejects_empty_keys(client, bad_key):
 
 def test_create_idempotent_transaction_rejects_oversize_keys(client):
     teacher = make_admin("idempotent-long-key-teacher", "secret")
-    student = Student(first_name="Long", last_initial="L", block="A", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Long", last_name="L")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"salt")
     db.session.add_all([teacher, student])
     db.session.commit()
 

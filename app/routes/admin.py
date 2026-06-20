@@ -55,7 +55,7 @@ from app.extensions import db, limiter
 from app.feats.base import feat_shell, FEATContext, InvariantViolation
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    Student, Admin, ClassEconomy, StudentTeacher, Transaction, TransactionStatus, AttendanceSession, StoreItem, StudentItem,
+    Student, Admin, ClassEconomy, Transaction, TransactionStatus, TapEvent, AttendanceSession, StoreItem, StudentItem,
     InsurancePolicy, InsurancePolicyBlock, RentItem, RentPayment, RentSettings, StoreItemBlock,
     InsuranceEnrollment, StudentInsurance, InsuranceClaim, HallPassLog, HallPassSettings, PayrollSettings, SavedAdjustment,
     BankingSettings,
@@ -64,7 +64,7 @@ from app.models import (
     RedemptionAuditSource, Issue, IssueStatusHistory, IssueResolutionAction, AnalyticsSnapshot, AnalyticsEvent, Seat,
     BalanceCache, ClassMembership, ClassEconomy, EconomySnapshot, User, UserRole, _quantize_currency,
     ObligationAssessment,
-    SeatAttendanceState, AttendanceReasonCode, IdentityProfile,
+    SeatAttendanceState, TapEventReasonCode, IdentityProfile,
 )
 from app.auth import (
     admin_required,
@@ -859,11 +859,10 @@ def _scoped_students(include_unassigned=True):
         return query
 
     class_scoped_student_ids = (
-        db.session.query(Seat.student_id)
-        .filter(
-            Seat.class_id == class_id,
-            Seat.student_id.isnot(None),
-        )
+        db.session.query(Student.id)
+        .join(IdentityProfile, Student.identity_id == IdentityProfile.id)
+        .join(Seat, Seat.id == IdentityProfile.seat_id)
+        .filter(Seat.class_id == class_id)
         .subquery()
     )
     return query.filter(Student.id.in_(sa.select(class_scoped_student_ids)))
@@ -1031,11 +1030,17 @@ def _build_payroll_preview_state(students, join_codes_by_block):
 
         class_id = economy.class_id
         student_ids = [s.id for s in class_students]
-        seats = Seat.query.filter(Seat.student_id.in_(student_ids), Seat.class_id == class_id).all()
-        seat_ids = [s.id for s in seats]
+        seat_rows = (
+            db.session.query(Seat.id, Student.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(Student.id.in_(student_ids), Seat.class_id == class_id)
+            .all()
+        )
+        seat_ids = [seat_id for seat_id, _student_id in seat_rows]
 
         # map seat_id to student_id to preserve backward compatibility of the preview payload
-        seat_to_student = {s.id: s.student_id for s in seats if s.student_id}
+        seat_to_student = {seat_id: student_id for seat_id, student_id in seat_rows}
 
         anchor = None
         if getattr(g, "read_only", False):
@@ -1088,12 +1093,12 @@ def _student_scope_subquery_for_join_code(join_code: str, *, include_unassigned:
 
     query = (
         db.session.query(Student.id)
-        .join(Seat, Seat.student_id == Student.id)
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .join(Seat, Seat.id == IdentityProfile.seat_id)
         .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
         .filter(
             ClassEconomy.teacher_id == admin_id,
             Seat.join_code == join_code,
-            Seat.student_id.isnot(None),
         )
         .distinct()
     )
@@ -1109,9 +1114,11 @@ def _get_claimed_teacher_block_for_join_code(student_id: int, teacher_id: int, j
         return None
     return (
         Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
         .filter(
-            Seat.student_id == student_id,
+            Student.id == student_id,
             ClassEconomy.teacher_id == teacher_id,
             Seat.join_code == join_code,
             Seat.claimed_at.isnot(None),
@@ -1237,7 +1244,7 @@ def _remove_student_from_teacher_scope(student, teacher_id):
 
     If the student is shared with other teachers, only the current teacher
     association is removed. The student record is hard-deleted only when it no
-    longer has any StudentTeacher links.
+    longer has any canonical class-seat links.
     """
     return remove_student_from_teacher_scope(student.id, teacher_id)
 
@@ -1268,6 +1275,7 @@ def _hard_delete_class_scope(class_id, teacher_id):
     scoped_models = (
         ("ledger_transaction", Transaction),
         ("student_blocks", StudentBlock),
+        ("tap_events", TapEvent),
         ("hall_pass_logs", HallPassLog),
         ("student_items", StudentItem),
         ("analytics_events", AnalyticsEvent),
@@ -1293,11 +1301,10 @@ def _hard_delete_class_scope(class_id, teacher_id):
         raise InvariantViolation(message)
 
     scoped_student_ids = [
-        sid for (sid,) in db.session.query(Seat.student_id)
-        .filter(
-            Seat.class_id == class_id,
-            Seat.student_id.isnot(None),
-        )
+        sid for (sid,) in db.session.query(Student.id)
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .join(Seat, IdentityProfile.seat_id == Seat.id)
+        .filter(Seat.class_id == class_id)
         .distinct()
         .all()
     ]
@@ -1346,8 +1353,7 @@ def _hard_delete_class_scope(class_id, teacher_id):
         RedemptionAuditLog.student_item_id.in_(sa.select(student_item_ids_subq))
     ).delete(synchronize_session=False)
     StudentItem.query.filter(StudentItem.class_id == class_id).delete(synchronize_session=False)
-    SeatAttendanceState.query.filter(SeatAttendanceState.class_id == class_id).delete(synchronize_session=False)
-    AttendanceSession.query.filter(AttendanceSession.class_id == class_id).delete(synchronize_session=False)
+    TapEvent.query.filter(TapEvent.class_id == class_id).delete(synchronize_session=False)
     HallPassLog.query.filter(HallPassLog.class_id == class_id).delete(synchronize_session=False)
     RentPayment.query.filter(RentPayment.class_id == class_id).delete(synchronize_session=False)
     StudentBlock.query.filter(StudentBlock.class_id == class_id).delete(synchronize_session=False)
@@ -1435,19 +1441,19 @@ def _hard_delete_class_scope(class_id, teacher_id):
     ClassEconomy.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
     # Remove students that no longer belong to any class after this class deletion.
-    remaining_student_ids_subq = db.session.query(Seat.student_id).filter(
-        Seat.student_id.isnot(None),
-        Seat.class_id != class_id,
-    ).subquery()
+    remaining_student_ids_subq = (
+        db.session.query(Student.id)
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .join(Seat, IdentityProfile.seat_id == Seat.id)
+        .filter(Seat.class_id != class_id)
+        .subquery()
+    )
     orphan_student_ids = (
         db.session.query(Student.id)
         .filter(Student.id.in_(scoped_student_ids))
         .filter(~Student.id.in_(sa.select(remaining_student_ids_subq)))
         .subquery()
     )
-    StudentTeacher.query.filter(
-        StudentTeacher.student_id.in_(sa.select(orphan_student_ids))
-    ).delete(synchronize_session=False)
     Student.query.filter(
         Student.id.in_(sa.select(orphan_student_ids))
     ).delete(synchronize_session=False)
@@ -1457,7 +1463,6 @@ def _delete_teacher_residual_ownership_rows(teacher_id):
     Seat.query.join(ClassEconomy, ClassEconomy.class_id == Seat.class_id).filter(
         ClassEconomy.teacher_id == teacher_id
     ).delete(synchronize_session=False)
-    StudentTeacher.query.filter_by(teacher_id=teacher_id).delete(synchronize_session=False)
 
 
 def _delete_teacher_settings_activity_and_audit_rows(teacher_id):
@@ -1557,12 +1562,16 @@ def _delete_teacher_store_rows(teacher_id):
 
 
 def _delete_orphan_students(affected_student_ids):
-    """Delete students that no longer have any teacher links."""
+    """Delete students that no longer have any canonical seat attachments."""
     if not affected_student_ids:
         return
-    linked_student_ids_subq = db.session.query(StudentTeacher.student_id).filter(
-        StudentTeacher.student_id.in_(affected_student_ids)
-    ).subquery()
+    linked_student_ids_subq = (
+        db.session.query(Student.id)
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .join(Seat, IdentityProfile.seat_id == Seat.id)
+        .filter(Student.id.in_(affected_student_ids))
+        .subquery()
+    )
     orphan_student_ids_subq = (
         db.session.query(Student.id)
         .filter(Student.id.in_(affected_student_ids))
@@ -1586,16 +1595,13 @@ def _hard_delete_teacher_account_scope(teacher_id):
     ]
 
     affected_student_ids = {
-        sid for (sid,) in db.session.query(Seat.student_id).filter(
-            Seat.class_id.in_(class_ids),
-            Seat.student_id.isnot(None),
-        ).distinct().all()
+        sid for (sid,) in db.session.query(Student.id)
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .join(Seat, IdentityProfile.seat_id == Seat.id)
+        .filter(Seat.class_id.in_(class_ids))
+        .distinct()
+        .all()
     }
-    affected_student_ids.update(
-        sid for (sid,) in db.session.query(StudentTeacher.student_id).filter(
-            StudentTeacher.teacher_id == teacher_id
-        ).distinct().all()
-    )
 
     # Required ordering: all join-code-scoped data is destroyed before admin account deletion.
     for class_id in class_ids:
@@ -1736,12 +1742,14 @@ def _resolve_student_detail_seat(student_id: int, teacher_id: int) -> Seat | Non
 
     seat_query = (
         Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
         .filter(
-            Seat.student_id == student_id,
             Seat.role == "student",
             Seat.public_id.isnot(None),
             ClassEconomy.teacher_id == teacher_id,
+            Student.id == student_id,
         )
     )
     if selected_class_id:
@@ -1815,7 +1823,7 @@ def _ensure_teacher_student_seat(teacher_id, join_code, block):
         return
 
     first_name = "Teacher"
-    last_initial = "S"
+    last_name = "Student"
 
     # Roster fingerprint is class-scoped to prevent cross-class correlation (INV-CORE).
     claim_first_name_hash = hash_username_lookup(first_name.lower())
@@ -1840,7 +1848,7 @@ def _ensure_teacher_student_seat(teacher_id, join_code, block):
         seat_id=teacher_seat.id,
         profile_type='teacher_shadow_student',
         first_name=first_name,
-        last_initial=last_initial
+        last_name=last_name,
     )
     db.session.add(profile)
     current_app.logger.info(f"Created teacher shadow student seat for teacher {teacher_id}, join_code {join_code}")
@@ -1961,13 +1969,13 @@ def _ensure_join_code_anchors(teacher_id, join_code, class_label=None, return_me
             raise ValueError("Join code belongs to a different teacher.")
         if class_label and not economy.display_name:
             economy.display_name = class_label
-        if economy.created_by_admin_id is None:
-            economy.created_by_admin_id = teacher_id
+        if economy.created_by_user_id is None:
+            economy.created_by_user_id = teacher_id
     else:
         economy = ClassEconomy(
             join_code=join_code,
             teacher_id=teacher_id,
-            created_by_admin_id=teacher_id,
+            created_by_user_id=teacher_id,
             display_name=class_label,
         )
         db.session.add(economy)
@@ -2060,7 +2068,7 @@ def _link_student_to_admin(
 ):
     """
     Ensure the given admin is associated with the student.
-    Creates a StudentTeacher link and a claimed Seat record.
+    Creates the canonical student seat linkage for the admin's class.
     """
     if not admin_id:
         return
@@ -2072,13 +2080,6 @@ def _link_student_to_admin(
             "Selected student has no block assigned, skipping Seat creation"
         )
         return
-
-    # 1. Create StudentTeacher link
-    existing_link = StudentTeacher.query.filter_by(student_id=student.id, teacher_id=admin_id).first()
-    if not existing_link:
-        db.session.add(StudentTeacher(student_id=student.id, teacher_id=admin_id, join_code=join_code))
-    elif join_code and not existing_link.join_code:
-        existing_link.join_code = join_code
 
     target_join_code = join_code
     target_class_id = class_id
@@ -2112,6 +2113,8 @@ def _link_student_to_admin(
 
     if not existing_seat:
         from app.hash_utils import hash_username_lookup as _h
+        seat_first_name = student.display_first_name or ""
+        seat_last_name = student.display_last_name or ""
         new_seat = Seat(
             class_id=target_class_id,
             student_id=student.id,
@@ -2119,10 +2122,10 @@ def _link_student_to_admin(
             block_identifier=target_block,
             block=target_block,
             join_code=target_join_code,
-            claim_first_name_hash=_h(student.first_name.lower()) if student.first_name else None,
-            claim_last_name_hash=_h(student.last_initial.lower()) if student.last_initial else None,
+            claim_first_name_hash=_h(seat_first_name.lower()) if seat_first_name else None,
+            claim_last_name_hash=_h(seat_last_name.lower()) if seat_last_name else None,
             roster_fingerprint=_h(
-                f"{target_class_id}|{(student.first_name or '').lower()}|{(student.last_initial or '').lower()}"
+                f"{target_class_id}|{seat_first_name.lower()}|{seat_last_name.lower()}"
             ),
             claimed_at=utc_now(),
         )
@@ -2131,8 +2134,8 @@ def _link_student_to_admin(
         profile = IdentityProfile(
             seat_id=new_seat.id,
             profile_type='student',
-            first_name=student.first_name,
-            last_initial=student.last_initial,
+            first_name=seat_first_name,
+            last_name=student.display_last_name,
         )
         db.session.add(profile)
         current_app.logger.info(
@@ -2786,17 +2789,17 @@ def _apply_rebalance_plan(admin_id, settings_row, change_plan, activation_mode):
     return applied_labels
 
 
-def _get_or_create_onboarding(teacher_id):
+def _get_or_create_onboarding(user_id):
     """
     Get or create onboarding record for a teacher.
 
     Args:
-        teacher_id: The teacher's admin ID
+        user_id: The teacher's canonical user ID
 
     Returns:
         Teacher onboarding record view
     """
-    return get_or_create_teacher_onboarding(teacher_id, utc_now())
+    return get_or_create_teacher_onboarding(user_id, utc_now())
 
 
 def _check_onboarding_redirect():
@@ -2810,21 +2813,21 @@ def _check_onboarding_redirect():
     Returns:
         None - onboarding redirect disabled in favor of floating widget
     """
-    admin_id = session.get('admin_id')
-    if not admin_id:
+    admin = get_current_admin()
+    user = get_current_user()
+    if not admin or not user:
         return None
 
     # Check if teacher has completed or skipped onboarding
-    onboarding = get_teacher_onboarding(admin_id)
+    onboarding = get_teacher_onboarding(user.id)
 
     # If no onboarding record exists, teacher needs onboarding
     if not onboarding:
         # Check if teacher has any existing students - if so, they're a legacy teacher
         # and we should skip onboarding for them
-        admin = db.session.get(Admin, admin_id)
         if admin and admin.has_assigned_students:
             # Legacy teacher - create completed onboarding record
-            create_legacy_completed_teacher_onboarding(admin_id, utc_now())
+            create_legacy_completed_teacher_onboarding(user.id, utc_now())
             return None
 
         # New teacher - no redirect, they'll see the Getting Started widget
@@ -2866,7 +2869,10 @@ def dashboard():
     # trigger (`/admin/enforce-daily-limits`).
 
     # Get all students for calculations
-    students = _scoped_students().order_by(Student.first_name).all()
+    students = sorted(
+        _scoped_students().all(),
+        key=lambda student: ((student.display_first_name or "").lower(), student.id),
+    )
     student_lookup = {s.id: s for s in students}
 
     # Quick Stats
@@ -2917,7 +2923,9 @@ def dashboard():
     pending_insurance_claims_count = (
         InsuranceClaim.query
         .join(Seat, InsuranceClaim.seat_id == Seat.id)
-        .filter(Seat.student_id.in_(sa.select(student_ids_subq)))
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
+        .filter(Student.id.in_(sa.select(student_ids_subq)))
         .filter(InsuranceClaim.status == 'pending')
         .count()
     )
@@ -2946,7 +2954,9 @@ def dashboard():
     recent_insurance_claims = (
         InsuranceClaim.query
         .join(Seat, InsuranceClaim.seat_id == Seat.id)
-        .filter(Seat.student_id.in_(sa.select(student_ids_subq)))
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
+        .filter(Student.id.in_(sa.select(student_ids_subq)))
         .filter(InsuranceClaim.status == 'pending')
         .order_by(InsuranceClaim.filed_date.desc())
         .limit(5)
@@ -2976,23 +2986,22 @@ def dashboard():
 
     # Recent attendance logs (limited to 5 for display)
     raw_logs = (
-        db.session.query(AttendanceSession, Student)
-        .join(Student, AttendanceSession.student_id == Student.id)
-        .filter(Student.id.in_(sa.select(student_ids_subq)))
-        .filter(AttendanceSession.is_deleted.is_(False))
-        .order_by(AttendanceSession.started_at.desc())
+        db.session.query(TapEvent, Seat)
+        .join(Seat, TapEvent.seat_id == Seat.id)
+        .filter(Seat.class_id.in_(teacher_class_ids))
+        .order_by(TapEvent.timestamp.desc())
         .limit(5)
         .all()
     )
     recent_logs = []
-    for log, student in raw_logs:
+    for log, seat in raw_logs:
         recent_logs.append({
-            'student_id': log.student_id,
-            'student_name': student.full_name if student else 'Unknown',
+            'seat_id': log.seat_id,
+            'student_name': f"{seat.display_first_name} {seat.display_last_initial}".strip() if seat else 'Unknown',
             'period': log.period,
             'timestamp': log.timestamp,
             'reason': log.reason,
-            'status': log.status,
+            'status': log.status
         })
 
     # --- Payroll Info ---
@@ -3536,11 +3545,17 @@ def recover():
         seats_by_jc = {}
         for c in teacher_classes:
             if c.join_code:
-                jc_seats = Seat.query.filter(
-                    Seat.class_id == c.class_id,
-                    Seat.student_id.isnot(None),
-                    Seat.claimed_at.isnot(None),
-                ).all()
+                jc_seats = (
+                    Seat.query
+                    .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+                    .join(Student, Student.identity_id == IdentityProfile.id)
+                    .filter(
+                        Seat.class_id == c.class_id,
+                        Seat.claimed_at.isnot(None),
+                    )
+                    .with_entities(Seat.id, Student.id)
+                    .all()
+                )
                 seats_by_jc[c.join_code] = jc_seats
 
         for join_code, username in pairs:
@@ -3549,7 +3564,7 @@ def recover():
 
             # Get all student IDs associated with this specific join_code
             seats_for_jc = seats_by_jc.get(join_code, [])
-            student_ids_in_class = [s.student_id for s in seats_for_jc if s.student_id]
+            student_ids_in_class = [student_id for _seat_id, student_id in seats_for_jc if student_id]
 
             student = (
                 Student.query
@@ -3801,10 +3816,10 @@ def confirm_reset():
     teacher.username = None
     teacher.username_hash = username_hash
     teacher.username_lookup_hash = username_lookup_hash
-    teacher.totp_secret = encrypt_totp(totp_secret)  # Encrypt before storing
+    encrypted_totp_secret = encrypt_totp(totp_secret)
     user.username_hash = username_hash
     user.username_lookup_hash = username_lookup_hash
-    user.totp_secret_encrypted = teacher.totp_secret
+    user.totp_secret_encrypted = encrypted_totp_secret
 
     # Mark recovery request as completed
     mark_recovery_request_verified(recovery_request.id, utc_now())
@@ -4338,17 +4353,23 @@ def students():
 
     # Claimed students are resolved through Seat rows in the active class.
     claimed_student_ids = sorted({
-        s.student_id for s in class_seats
-        if s.student_id is not None and s.claimed_at is not None
+        s.user_id for s in class_seats
+        if s.user_id is not None and s.claimed_at is not None
     })
-    all_students = _scoped_students().filter(Student.id.in_(claimed_student_ids)).order_by(Student.block, Student.first_name).all() if claimed_student_ids else []
+    all_students = (
+        sorted(
+            _scoped_students().filter(Student.id.in_(claimed_student_ids)).all(),
+            key=lambda student: (((student.block or "").lower()), (student.display_first_name or "").lower(), student.id),
+        )
+        if claimed_student_ids else []
+    )
 
     # Group students by block within this class only.
     for block in blocks:
         block_claimed_ids = {
-            s.student_id for s in class_seats
+            s.user_id for s in class_seats
             if (s.block or '').strip().upper() == block
-            and s.student_id is not None
+            and s.user_id is not None
             and s.claimed_at is not None
         }
         students_by_block[block] = [s for s in all_students if s.id in block_claimed_ids]
@@ -4405,7 +4426,7 @@ def students():
     class_seat_pairs = [(seat.class_id, seat.id) for seat in seats]
     raw_balances = get_batch_balances_by_class_seat(class_seat_pairs)
 
-    seat_map = {(seat.student_id, seat.class_id): seat for seat in seats}
+    seat_map = {(seat.user_id, seat.class_id): seat for seat in seats}
 
     # 3. Populate the result dictionary for ALL students to ensure 0-balance entries exist
     for block in blocks:
@@ -4572,14 +4593,14 @@ def student_detail_public(student_public_id):
         )
         .first()
     )
-    if not scoped_seat or not scoped_seat.student_id:
+    if not scoped_seat or not scoped_seat.user_id:
         abort(404)
-    if expected_student_id and scoped_seat.student_id != expected_student_id:
+    if expected_student_id and scoped_seat.user_id != expected_student_id:
         abort(404)
     if expected_class_id and str(scoped_seat.class_id or "") != expected_class_id:
         abort(404)
 
-    student = _get_student_or_404(scoped_seat.student_id)
+    student = _get_student_or_404(scoped_seat.user_id)
     join_code = scoped_seat.join_code
     class_id = scoped_seat.class_id
     seat_id = scoped_seat.id
@@ -4589,7 +4610,9 @@ def student_detail_public(student_public_id):
         session['current_class_id'] = class_id
 
     tx_scope = sa.and_(Transaction.seat_id == seat_id, Transaction.class_id == class_id)
-    att_scope = sa.and_(AttendanceSession.seat_id == seat_id, AttendanceSession.class_id == class_id)
+    tap_scope = sa.and_(TapEvent.seat_id == seat_id, TapEvent.class_id == class_id)
+
+    # Remove deprecated last_tap_in/last_tap_out logic; rely on TapEvent backend.
     # Fetch last rent payment
     rent_query = Transaction.query.filter(tx_scope, Transaction.type == "rent")
     if join_code:
@@ -4624,14 +4647,16 @@ def student_detail_public(student_public_id):
 
     transactions_query = Transaction.query.filter(tx_scope)
     student_items_query = student.items
-    latest_att_query = AttendanceSession.query.filter(att_scope, AttendanceSession.is_deleted.is_(False))
+    latest_tap_event_query = TapEvent.query.filter(tap_scope)
     if join_code:
         transactions_query = transactions_query.filter(Transaction.join_code == join_code)
         student_items_query = student_items_query.filter(StudentItem.join_code == join_code)
+        latest_tap_event_query = latest_tap_event_query.filter(TapEvent.join_code == join_code)
 
     transactions = transactions_query.order_by(Transaction.timestamp.desc()).all()
     student_items = student_items_query.order_by(StudentItem.purchase_date.desc()).all()
-    latest_tap_event = latest_att_query.order_by(AttendanceSession.started_at.desc()).first()
+    # Fetch most recent TapEvent for this student
+    latest_tap_event = latest_tap_event_query.order_by(TapEvent.timestamp.desc()).first()
 
     class_row = ClassEconomy.query.filter_by(join_code=join_code).first() if join_code else None
     class_id = class_row.class_id if class_row else class_id
@@ -4755,7 +4780,10 @@ def edit_student():
     # Get form data
     new_first_name = request.form.get('first_name', '').strip()
     last_name_input = request.form.get('last_name', '').strip()
-    new_last_initial = last_name_input[0].upper() if last_name_input else student.last_initial
+    if not new_first_name or not last_name_input:
+        flash("First name and last name are required.", "error")
+        return _redirect_to_student_detail(student_id)
+    new_last_initial = last_name_input[0].upper()
 
     # Get selected blocks (multiple checkboxes)
     selected_blocks = request.form.getlist('blocks')
@@ -4818,14 +4846,15 @@ def edit_student():
                     teacher_id=current_admin_id,
                     section=block
                 ).first()
-
                 if ce and ce.join_code:
                     target_join_code = ce.join_code
                     target_seat_id = (
                         Seat.query
+                        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+                        .join(Student, Student.identity_id == IdentityProfile.id)
                         .with_entities(Seat.id)
                         .filter(
-                            Seat.student_id == student.id,
+                            Student.id == student.id,
                             Seat.join_code == target_join_code,
                         )
                         .scalar()
@@ -4835,7 +4864,9 @@ def edit_student():
                     for old_join_code in old_join_codes:
                         old_seat_id = (
                             Seat.query.with_entities(Seat.id)
-                            .filter(Seat.student_id == student.id, Seat.join_code == old_join_code)
+                            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+                            .join(Student, Student.identity_id == IdentityProfile.id)
+                            .filter(Student.id == student.id, Seat.join_code == old_join_code)
                             .scalar()
                         )
                         if not old_seat_id:
@@ -4860,12 +4891,18 @@ def edit_student():
             # If 'start_fresh', do nothing - student starts with $0 in that period
 
     # Check if name changed (keep seat identity fields in sync).
-    name_changed = (new_first_name != student.first_name or new_last_initial != student.last_initial)
+    current_first_name = student.display_first_name or ""
+    current_last_name = student.display_last_name or ""
+    name_changed = (
+        new_first_name != current_first_name
+        or last_name_input != current_last_name
+    )
 
     # Update basic fields
-    student.first_name = new_first_name
-    student.last_initial = new_last_initial
     student.block = new_blocks
+    if student.identity_profile:
+        student.identity_profile.first_name = new_first_name
+        student.identity_profile.last_name = last_name_input or new_last_initial
 
     # Handle account reset — generate recovery code per recovery spec
     reset_login = request.form.get('reset_login') == 'on'
@@ -4888,16 +4925,18 @@ def edit_student():
         class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=current_admin_id).subquery()
         seats_to_update = (
             Seat.query
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
             .filter(
-                Seat.student_id == student.id,
+                Student.id == student.id,
                 Seat.class_id.in_(sa.select(class_ids_subq)),
             )
             .all()
         )
         for seat in seats_to_update:
             if seat.identity_profile:
-                seat.identity_profile.first_name = student.first_name
-                seat.identity_profile.last_initial = student.last_initial
+                seat.identity_profile.first_name = new_first_name
+                seat.identity_profile.last_name = last_name_input or None
 
     # Handle block changes - update Seat entries
     print(f"DEBUG_TRANSFER: old_blocks={old_blocks} new_blocks_set={new_blocks_set}")
@@ -4909,8 +4948,10 @@ def edit_student():
     class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=current_admin_id).subquery()
     existing_seat_count = (
         Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .filter(
-            Seat.student_id == student.id,
+            Student.id == student.id,
             Seat.class_id.in_(sa.select(class_ids_subq)),
         )
         .count()
@@ -5135,7 +5176,6 @@ def delete_block():
         if block_class_ids:
             Seat.query.filter(
                 Seat.class_id.in_(block_class_ids),
-                Seat.student_id.is_(None),
                 Seat.claimed_at.is_(None),
             ).delete(synchronize_session=False)
         return jsonify({
@@ -5242,7 +5282,11 @@ def delete_pending_student():
                 "message": "This seat has already been claimed. Use the regular student deletion route instead."
             }), 400
 
-        student_name = f"{seat_entry.display_first_name or 'Unknown'} {seat_entry.display_last_initial or ''}."
+        student_name = (
+            seat_entry.identity_profile.full_name
+            if seat_entry.identity_profile
+            else (seat_entry.display_first_name or 'Unknown')
+        )
 
         # Delete the Seat entry (this is the only record for unclaimed seats)
         db.session.delete(seat_entry)
@@ -5292,7 +5336,6 @@ def bulk_delete_pending_students():
                 deleted_count = Seat.query.filter(
                     Seat.class_id.in_(block_class_ids),
                     Seat.claimed_at.is_(None),
-                    Seat.student_id.is_(None),
                 ).delete(synchronize_session=False)
         else:
             # Delete specific Seat entries
@@ -5433,18 +5476,18 @@ def add_individual_student():
             flash(f"Student {first_name} {last_name} is already in your class.", "info")
             return redirect(url_for('admin.students'))
 
-        if additional_notes:
-            current_app.logger.info(
-                "Student add additional notes provided (not persisted): class_id=%s block=%s length=%s",
-                class_id,
-                block,
-                len(additional_notes),
-            )
+        profile = IdentityProfile(
+            profile_type='student',
+            first_name=first_name,
+            last_name=last_name,
+            notes=additional_notes or None,
+        )
 
         # Create student
         new_student = Student(
             first_name=first_name,
             last_initial=last_initial,
+            identity_profile=profile,
             block=block,
             join_code=join_code,
             class_id=class_id,
@@ -5456,13 +5499,12 @@ def add_individual_student():
 
         db.session.add(new_student)
         db.session.flush()
-        db.session.add(StudentTeacher(student_id=new_student.id, teacher_id=current_admin_id, join_code=join_code))
 
         # Ensure ClassEconomy record exists before creating Seat
         _ensure_join_code_anchors(current_admin_id, join_code)
 
         new_seat = Seat(
-            student_id=new_student.id,
+            user_id=None,
             class_id=class_id,
             join_code=join_code,
             block=block,
@@ -5470,6 +5512,9 @@ def add_individual_student():
             claimed_at=None,  # Student hasn't set up username yet
         )
         db.session.add(new_seat)
+        db.session.flush()
+
+        profile.seat_id = new_seat.id
 
         if class_context.get('class_created'):
             _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
@@ -5585,10 +5630,17 @@ def add_manual_student():
                         _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
                 return redirect(url_for('admin.students'))
 
+        profile = IdentityProfile(
+            profile_type='student',
+            first_name=first_name,
+            last_name=last_name,
+        )
+
         # Create student
         new_student = Student(
             first_name=first_name,
             last_initial=last_initial,
+            identity_profile=profile,
             block=block,
             join_code=join_code,
             class_id=class_id,
@@ -5615,7 +5667,6 @@ def add_manual_student():
 
         db.session.add(new_student)
         db.session.flush()
-        db.session.add(StudentTeacher(student_id=new_student.id, teacher_id=current_admin_id, join_code=join_code))
 
         # Ensure ClassEconomy record exists before creating Seat
         _ensure_join_code_anchors(current_admin_id, join_code)
@@ -5624,7 +5675,7 @@ def add_manual_student():
         is_claimed = bool(username)
 
         new_seat = Seat(
-            student_id=new_student.id,
+            user_id=None,
             class_id=class_id,
             join_code=join_code,
             block=block,
@@ -5632,6 +5683,9 @@ def add_manual_student():
             claimed_at=utc_now() if is_claimed else None,
         )
         db.session.add(new_seat)
+        db.session.flush()
+
+        profile.seat_id = new_seat.id
 
         if class_context.get('class_created'):
             _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
@@ -5806,12 +5860,13 @@ def store_management():
         class_size_query = (
             db.session.query(
                 Seat.join_code,
-                db.func.count(db.func.distinct(Seat.student_id)).label('student_count')
+                db.func.count(db.func.distinct(Student.id)).label('student_count')
             )
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
             .filter(
                 Seat.class_id == selected_scope['class_id'],
                 Seat.claimed_at.isnot(None),
-                Seat.student_id.isnot(None),
                 Seat.join_code.isnot(None),
             )
             .group_by(Seat.join_code)
@@ -5906,8 +5961,6 @@ def store_management():
         RedemptionAuditLog.source == RedemptionAuditSource.LIVE,
         RedemptionAuditLog.join_code == selected_join_code,
     )
-    if audit_student:
-        live_query = live_query.filter(RedemptionAuditLog.student_display_name.ilike(f"%{audit_student}%"))
     if audit_class:
         live_query = live_query.filter(RedemptionAuditLog.class_display_label == audit_class)
     if parsed_audit_action:
@@ -5929,6 +5982,12 @@ def store_management():
             flash("Invalid audit end date format. Please use YYYY-MM-DD.", "warning")
 
     live_rows = live_query.order_by(RedemptionAuditLog.timestamp.desc()).limit(5000).all()
+    if audit_student:
+        audit_student_lower = audit_student.lower()
+        live_rows = [
+            row for row in live_rows
+            if audit_student_lower in row.resolved_student_display_name.lower()
+        ]
     live_keys = {
         (row.student_item_id, row.action.value if hasattr(row.action, 'value') else row.action)
         for row in live_rows
@@ -6007,7 +6066,7 @@ def store_management():
 
     live_serialized = [{
         'student_item_id': row.student_item_id,
-        'student_display_name': row.student_display_name,
+        'student_display_name': row.resolved_student_display_name,
         'class_display_label': row.class_display_label,
         'action': row.action.value if hasattr(row.action, 'value') else row.action,
         'notes': row.notes,
@@ -6721,7 +6780,7 @@ def rent_settings():
     active_waivers = [
         SimpleNamespace(
             id=waiver.id,
-            student=waiver.seat.student if waiver.seat and waiver.seat.student_id else None,
+            student=waiver.seat.student if waiver.seat and waiver.seat.user_id else None,
             waiver_start_date=waiver.coverage_start_time,
             waiver_end_date=waiver.coverage_end_time,
             periods_count=_count_rent_waiver_periods(rent_settings, waiver),
@@ -6735,7 +6794,10 @@ def rent_settings():
     ]
 
     # Get all students for waiver form
-    all_students = _scoped_students().order_by(Student.first_name).all()
+    all_students = sorted(
+        _scoped_students().all(),
+        key=lambda student: ((student.display_first_name or "").lower(), student.id),
+    )
 
     # Build class_labels_by_block dictionary
     class_labels_by_block = _get_class_labels_for_blocks(admin_id, teacher_blocks)
@@ -6823,10 +6885,13 @@ def rent_settings():
             if not join_code:
                 continue
             claimed_student_ids = {
-                s_id for (s_id,) in db.session.query(Seat.student_id).filter(
+                student_id for (student_id,) in db.session.query(Student.id).join(
+                    IdentityProfile, Student.identity_id == IdentityProfile.id
+                ).join(
+                    Seat, Seat.id == IdentityProfile.seat_id
+                ).filter(
                     Seat.class_id == ce.class_id,
                     Seat.claimed_at.isnot(None),
-                    Seat.student_id.isnot(None),
                 ).all()
             }
             if not claimed_student_ids:
@@ -6863,13 +6928,16 @@ def rent_settings():
             class_students = Student.query.filter(
                 Student.id.in_(student_ids),
                 Student.is_rent_enabled == True
-            ).order_by(Student.first_name).all()
+            ).all()
+            class_students.sort(key=lambda student: ((student.display_first_name or "").lower(), student.id))
             class_student_ids = [student.id for student in class_students]
             class_seat_rows = (
-                db.session.query(Seat.id, Seat.student_id)
+                db.session.query(Seat.id, Student.id)
+                .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+                .join(Student, Student.identity_id == IdentityProfile.id)
                 .filter(
                     Seat.class_id == class_id,
-                    Seat.student_id.in_(class_student_ids),
+                    Student.id.in_(class_student_ids),
                 )
                 .all()
             )
@@ -7179,7 +7247,7 @@ def remove_rent_waiver(waiver_id):
     waiver = db.session.get(ObligationAssessment, waiver_id)
     if waiver is None or waiver.obligation_type != "RENT_WAIVER":
         abort(404)
-    student = waiver.seat.student if waiver.seat and waiver.seat.student_id else None
+    student = waiver.seat.student if waiver.seat and waiver.seat.user_id else None
     if student is None:
         abort(404)
     student_name = student.full_name
@@ -7639,10 +7707,12 @@ def delete_insurance_policy(policy_id):
     pending_claims = (
         InsuranceClaim.query
         .join(Seat, InsuranceClaim.seat_id == Seat.id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .filter(
             InsuranceClaim.policy_id == policy_id,
             InsuranceClaim.status == 'pending',
-            Seat.student_id.in_(sa.select(student_ids_subq)),
+            Student.id.in_(sa.select(student_ids_subq)),
         ).count()
     )
 
@@ -7664,9 +7734,11 @@ def delete_insurance_policy(policy_id):
         claim_ids_to_delete = [
             c.id for c in InsuranceClaim.query
             .join(Seat, InsuranceClaim.seat_id == Seat.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
             .filter(
                 InsuranceClaim.policy_id == policy_id,
-                Seat.student_id.in_(sa.select(student_ids_subq)),
+                Student.id.in_(sa.select(student_ids_subq)),
             ).all()
         ]
         claims_deleted = InsuranceClaim.query.filter(InsuranceClaim.id.in_(claim_ids_to_delete)).delete(synchronize_session=False) if claim_ids_to_delete else 0
@@ -7998,7 +8070,10 @@ def process_claim(claim_id):
                 approved_amount=approved_amount,
             )
             if requires_payout:
-                flash(f"Monetary claim approved! ${approved_amount:.2f} deposited to {enrollment.student.full_name}'s checking account.", "success")
+                student_name = enrollment.seat.display_first_name if enrollment.seat else "the student"
+                student_initial = enrollment.seat.display_last_initial if enrollment.seat else ""
+                student_display = f"{student_name} {student_initial}.".strip()
+                flash(f"Monetary claim approved! ${approved_amount:.2f} deposited to {student_display}'s checking account.", "success")
         except IntegrityError as exc:
             db.session.rollback()
             if 'uq_insurance_reimbursement_source_policy' in str(exc.orig):
@@ -8582,7 +8657,7 @@ def payroll_history():
     payroll_records = []
     for tx in payroll_transactions:
         seat = seat_lookup.get(tx.seat_id)
-        student = student_lookup.get(seat.student_id) if seat else None
+        student = student_lookup.get(seat.user_id) if seat else None
         student_block = student.block if student else 'Unknown'
         payroll_records.append({
             'id': tx.id,
@@ -8627,7 +8702,7 @@ def run_payroll(*args, **kwargs):
 
 def _run_payroll_legacy():
     """
-    Run payroll by computing earned seconds from attendance sessions.
+    Run payroll by computing earned seconds from TapEvent append-only log (LEGACY).
     For each student, for each block, match active/inactive pairs since last payroll,
     sum total seconds, and post ledger payroll entries.
 
@@ -8661,7 +8736,8 @@ def _run_payroll_legacy():
 
         students_query = (
             _scoped_students(include_unassigned=False)
-            .join(Seat, Seat.student_id == Student.id)
+            .join(IdentityProfile, Student.identity_id == IdentityProfile.id)
+            .join(Seat, Seat.id == IdentityProfile.seat_id)
             .filter(
                 Seat.join_code == selected_join_code,
                 Seat.claimed_at.isnot(None),
@@ -8771,7 +8847,7 @@ def payroll():
             seat for seat in seats
             if ((seat.block_identifier or seat.block or '').strip().upper() == selected_block_upper)
         ]
-    student_ids = [seat.student_id for seat in seats if seat.student_id]
+    student_ids = [seat.user_id for seat in seats if seat.user_id]
     students = (
         Student.query
         .filter(Student.id.in_(student_ids))
@@ -8882,7 +8958,7 @@ def payroll():
     # Pre-fetch payroll earnings and last payroll dates in batch
     class_seat_pairs = [(seat.class_id, seat.id) for seat in seats]
     raw_balances = get_batch_balances_by_class_seat(class_seat_pairs)
-    seat_map = {(seat.student_id, seat.class_id): seat for seat in seats}
+    seat_map = {(seat.id, seat.class_id): seat for seat in seats}
 
     scoped_balances_by_student = {}
     for student in students:
@@ -8899,7 +8975,7 @@ def payroll():
         }
 
     seat_ids = [s.id for s in seats]
-    student_id_by_seat = {seat.id: seat.student_id for seat in seats}
+    student_id_by_seat = {seat.id: seat.user_id for seat in seats}
 
     # Batch: Total Earned
     earnings_rows = db.session.query(
@@ -9025,7 +9101,7 @@ def payroll():
     payroll_history = []
     for tx in payroll_history_transactions:
         seat = seat_lookup.get(tx.seat_id)
-        student = student_lookup.get(seat.student_id) if seat else None
+        student = student_lookup.get(seat.user_id) if seat else None
         student_block = student.block if student else 'Unknown'
         payroll_history.append({
             'transaction_id': tx.id,
@@ -9033,7 +9109,7 @@ def payroll():
             'type': tx.type or 'manual_payment',
             'block': student_block,
             'class_label': class_labels_by_block.get(student_block, student_block) if student_block != 'Unknown' else 'Unknown',
-            'student_id': seat.student_id if seat else tx.student_id,
+            'student_id': seat.user_id if seat else tx.student_id,
             'student': student,
             'student_name': student.full_name if student else 'Unknown',
             'join_code': join_codes_by_block.get(student_block, ''),
@@ -9627,13 +9703,13 @@ def payroll_manual_payment():
 @admin_required
 def attendance_log():
     """View complete attendance log."""
-    # Get accessible student IDs for tenant scoping
-    student_ids_subq = _student_scope_subquery(include_unassigned=False)
-
+    # Attendance history is now seat-scoped; derive periods from canonical session rows.
+    class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=session.get("admin_id")).subquery()
     periods_query = (
         db.session.query(AttendanceSession.period)
-        .filter(AttendanceSession.student_id.in_(sa.select(student_ids_subq)))
-        .filter(AttendanceSession.is_deleted.is_(False))
+        .join(Seat, Seat.id == AttendanceSession.seat_id)
+        .filter(Seat.class_id.in_(sa.select(class_ids_subq)))
+        .filter(AttendanceSession.is_deleted.is_not(True))
         .distinct()
         .order_by(AttendanceSession.period)
     )
@@ -9858,17 +9934,10 @@ def upload_students():
                     seat_id=seat.id,
                     profile_type='student',
                     first_name=first_name,
-                    last_initial=last_initial
+                    last_name=last_name,
+                    notes=additional_notes or None,
                 )
                 db.session.add(profile)
-
-                if additional_notes:
-                    current_app.logger.info(
-                        "Bulk upload additional notes provided (not persisted): class_id=%s block=%s length=%s",
-                        class_id,
-                        block,
-                        len(additional_notes),
-                    )
                 added_count += 1
             except Exception as e:
                 current_app.logger.error(f"Error processing row {row}: {e}", exc_info=True)
@@ -9928,13 +9997,13 @@ def export_students():
 
     # Write header
     writer.writerow([
-        'First Name', 'Last Initial', 'Block', 'Checking Balance',
+        'First Name', 'Last Name', 'Block', 'Checking Balance',
         'Savings Balance', 'Total Earnings', 'Insurance Plan',
         'Rent Enabled', 'Has Completed Setup'
     ])
 
     # Write student data
-    students_query = _scoped_students().order_by(Student.first_name, Student.last_initial)
+    students_query = _scoped_students()
     if selected_join_code:
         students_query = students_query.filter(
             Student.id.in_(
@@ -9947,6 +10016,7 @@ def export_students():
         )
 
     students = students_query.all()
+    students.sort(key=lambda student: ((student.display_first_name or "").lower(), (student.display_last_name or "").lower(), student.id))
     teacher_id = admin_id
     student_ids = [s.id for s in students]
     scoped_class_ids = []
@@ -9964,7 +10034,7 @@ def export_students():
     seats = Seat.query.filter(Seat.class_id.in_(scoped_class_ids), Seat.role == 'student').all()
     class_seat_pairs = [(seat.class_id, seat.id) for seat in seats]
     raw_balances = get_batch_balances_by_class_seat(class_seat_pairs)
-    seat_map = {(seat.student_id, seat.class_id): seat for seat in seats}
+    seat_map = {(seat.user_id, seat.class_id): seat for seat in seats}
 
     scoped_balances_by_student = {}
     for student in students:
@@ -9972,7 +10042,10 @@ def export_students():
         savings_total = Decimal('0.00')
         earnings_total = Decimal('0.00')
         for class_id in scoped_class_ids:
-            seat = seat_map.get((student.id, class_id))
+            seat = next(
+                (seat for seat in seats if seat.class_id == class_id and getattr(seat.identity_profile, "student", None) and seat.identity_profile.student.id == student.id),
+                None,
+            )
             balances = raw_balances.get((str(class_id), seat.id)) if seat else None
             if not balances:
                 balances = {'checking_cents': 0, 'savings_cents': 0, 'earnings': Decimal('0.00')}
@@ -10007,11 +10080,17 @@ def export_students():
     for student in students:
         export_block = student.block
         if selected_join_code:
-            scoped_seat = Seat.query.filter(
-                Seat.student_id == student.id,
-                Seat.join_code == selected_join_code,
-                Seat.claimed_at.isnot(None),
-            ).first()
+            scoped_seat = (
+                Seat.query
+                .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+                .join(Student, Student.identity_id == IdentityProfile.id)
+                .filter(
+                    Student.id == student.id,
+                    Seat.join_code == selected_join_code,
+                    Seat.claimed_at.isnot(None),
+                )
+                .first()
+            )
             if scoped_seat and scoped_seat.block:
                 export_block = scoped_seat.block
 
@@ -10020,7 +10099,13 @@ def export_students():
         insurance_name = active_insurance.policy.title if active_insurance else 'None'
 
         if selected_join_code:
-            export_seat = Seat.query.filter_by(student_id=student.id, class_id=selected_class_id).first() if selected_class_id else None
+            export_seat = (
+                Seat.query
+                .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+                .join(Student, Student.identity_id == IdentityProfile.id)
+                .filter(Student.id == student.id, Seat.class_id == selected_class_id)
+                .first()
+            ) if selected_class_id else None
             if not export_seat:
                 raise ValueError(
                     f"Missing canonical seat scope for export student_id={student.id} class_id={selected_class_id}"
@@ -10035,8 +10120,8 @@ def export_students():
             total_earnings = scoped_balances.get('earnings', Decimal('0.00'))
 
         writer.writerow([
-            _sanitize_csv_field(student.first_name),
-            _sanitize_csv_field(student.last_initial),
+            _sanitize_csv_field(student.display_first_name),
+            _sanitize_csv_field(student.display_last_name or ''),
             _sanitize_csv_field(export_block),
             f"{checking_balance:.2f}",
             f"{savings_balance:.2f}",
@@ -10128,10 +10213,11 @@ def enforce_daily_limits():
                     student_id=student.id,
                     seat_id=seat_id,
                     class_id=class_id,
+                    join_code=join_code,
                     period=period_upper,
                     status="inactive",
                     reason=f"Daily limit reached ({daily_limit / 3600:.1f}h)",
-                    reason_code=AttendanceReasonCode.DAILY_LIMIT,
+                    reason_code=TapEventReasonCode.DAILY_LIMIT,
                     timestamp_utc=now_utc,
                 )
                 att_state.done_for_day_date = today_local
@@ -10555,7 +10641,8 @@ def banking():
     query = (
         db.session.query(Transaction, Student, Seat)
         .join(Seat, Transaction.seat_id == Seat.id)
-        .join(Student, Seat.student_id == Student.id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .filter(Transaction.class_id.in_(teacher_class_ids))
     )
 
@@ -11547,9 +11634,18 @@ def onboarding_status():
         # Onboarding is per teacher account, not per class section
         # If ANY of the teacher's class sections has a feature set up, mark as complete
 
-        # Roster: has at least one student in ANY class OR marked complete
-        # Use StudentTeacher to get all students for this teacher
-        student_count = StudentTeacher.query.filter_by(teacher_id=admin_id).count()
+        # Roster: has at least one claimed student seat in any owned class.
+        student_count = (
+            db.session.query(Seat.id)
+            .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
+            .filter(
+                ClassEconomy.teacher_id == admin_id,
+                Seat.role == "student",
+                Seat.user_id.isnot(None),
+                Seat.claimed_at.isnot(None),
+            )
+            .count()
+        )
         data_completed['roster'] = student_count > 0
 
         class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=admin_id).subquery()
@@ -11647,12 +11743,12 @@ def onboarding():
 @admin_required
 def onboarding_skip():
     """Mark onboarding as skipped for the current admin (legacy endpoint)."""
-    admin_id = session.get('admin_id')
-    if not admin_id:
+    user = get_current_user()
+    if not user:
         return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
 
-    get_or_create_teacher_onboarding(admin_id, utc_now())
-    set_teacher_onboarding_skipped(admin_id, utc_now())
+    get_or_create_teacher_onboarding(user.id, utc_now())
+    set_teacher_onboarding_skipped(user.id, utc_now())
     db.session.flush()
     return jsonify({'status': 'success'})
 
@@ -11661,7 +11757,9 @@ def onboarding_skip():
 @admin_required
 def onboarding_skip_task():
     """Mark an optional onboarding task as skipped."""
-    admin_id = session.get('admin_id')
+    user = get_current_user()
+    if not user:
+        return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
 
     try:
         data = request.get_json()
@@ -11672,7 +11770,7 @@ def onboarding_skip_task():
 
         # Get or create onboarding record
         set_teacher_onboarding_widget_task_status(
-            admin_id,
+            user.id,
             task_name=task_name,
             status='skipped',
             now=utc_now(),
@@ -11695,11 +11793,13 @@ def onboarding_skip_task():
 @admin_required
 def onboarding_dismiss_widget():
     """Dismiss the Getting Started widget permanently."""
-    admin_id = session.get('admin_id')
+    user = get_current_user()
+    if not user:
+        return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
 
     try:
         # Get or create onboarding record
-        set_teacher_onboarding_widget_dismissed(admin_id, dismissed=True, now=utc_now())
+        set_teacher_onboarding_widget_dismissed(user.id, dismissed=True, now=utc_now())
 
         db.session.flush()
 
@@ -11718,11 +11818,13 @@ def onboarding_dismiss_widget():
 @admin_required
 def onboarding_undismiss_widget():
     """Un-dismiss the Getting Started widget to show it again."""
-    admin_id = session.get('admin_id')
+    user = get_current_user()
+    if not user:
+        return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
 
     try:
         # Get onboarding record
-        set_teacher_onboarding_widget_dismissed(admin_id, dismissed=False, now=utc_now())
+        set_teacher_onboarding_widget_dismissed(user.id, dismissed=False, now=utc_now())
 
         db.session.flush()
 

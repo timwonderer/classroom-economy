@@ -461,6 +461,15 @@ def _backfill_student_profiles():
 
 
 def upgrade():
+    # Guard: if seats.student_id has already been dropped by the identity-repoint
+    # migration, the backfill queries will fail.  On a clean v2 DB there is nothing
+    # to backfill anyway, so skip gracefully.
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    seat_cols = [c['name'] for c in inspector.get_columns('seats')]
+    if 'student_id' not in seat_cols:
+        return
+
     _assert_no_cross_principal_username_collisions()
     _assert_unambiguous_student_bindings()
     _assert_unambiguous_user_roles()

@@ -3,7 +3,7 @@ from datetime import timedelta
 import secrets
 
 from app.extensions import db, limiter
-from app.models import Seat, Student, User
+from app.models import IdentityProfile, Seat, Student, User
 from app.auth import admin_required, get_student_for_admin
 from app.utils.time import utc_now, ensure_utc
 
@@ -17,8 +17,10 @@ def _find_linked_user_for_student(student_id: int | None) -> User | None:
     return (
         User.query
         .join(Seat, Seat.user_id == User.id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .filter(
-            Seat.student_id == student_id,
+            Student.id == student_id,
             Seat.user_id.isnot(None),
         )
         .order_by(Seat.id.asc())
@@ -80,7 +82,7 @@ def _generate_reset_code_legacy(student_id):
         f"Reset code generated for student {student.id} by admin {session.get('admin_id')}"
     )
  
-    flash(f"Reset code generated for {student.first_name} {student.last_initial}. "
+    flash(f"Reset code generated for {student.full_name} "
           f"Code: {code} — Expires in 10 minutes.", "success")
     from app.routes.admin import _build_student_detail_url
     detail_url = _build_student_detail_url(student.id, teacher_id=session.get("admin_id"))
@@ -130,14 +132,21 @@ def _account_lookup_legacy():
         # Find candidate row by both reset_code and join_code to avoid collisions.
         seat = (
             Seat.query
-            .join(Student, Student.id == Seat.student_id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
             .filter(
                 Seat.join_code == join_code,
                 Student.reset_code == reset_code,
             )
             .first()
         )
-        student = db.session.get(Student, seat.student_id) if seat else None
+        student = (
+            db.session.query(Student)
+            .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+            .join(Seat, Seat.id == IdentityProfile.seat_id)
+            .filter(Seat.id == seat.id)
+            .first()
+        ) if seat else None
  
         # Validate all conditions — use a single generic error for security
         valid = True

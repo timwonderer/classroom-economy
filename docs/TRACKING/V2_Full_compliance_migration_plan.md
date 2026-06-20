@@ -92,6 +92,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [x] Complete Wave 5 ledger table migration and FEAT hook reassignment
 - [x] Complete Wave 6 attendance table migration (`tap_events` lineage removed; canonical reads/writes and legacy table drop landed)
 - [ ] Complete Wave 7 obligations schema migration while preserving already-landed prepay/temporal behavior
+- [ ] Deferred follow-up from commit 2 cutover: finish rent post-payment linkage cleanup so hall-pass reconciliation no longer depends on legacy seat/student assumptions or display-only block metadata.
 - [ ] Complete Wave 8 store schema migration and remove remaining teacher-scoped enforcement remnants
 - [ ] Complete Wave 9 operations + interpretation canonical migration
 - [ ] Complete Wave 10 support domain canonical migration
@@ -1123,6 +1124,19 @@ Focused validation:
   - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
+
+### Status Update (2026-06-20): Commit 2 Tuple-Only Runtime Cutover
+
+- Landed the Commit 2 runtime slice that removes identity/scope reconstruction from the active request path after authentication and canonical context resolution.
+- Converted admin, recovery, analytics, attendance, deletion, store, and seat-scope helpers to use canonical `User`/`Seat`/`class_id` joins instead of `StudentTeacher` or `Seat.student_id`.
+- Rewrote model helper methods that still derived runtime student meaning from legacy seat links.
+- Test work is intentionally deferred into a separate migration wave. The remaining corpus still contains legacy `StudentTeacher` fixtures and `created_by_admin_id` / `created_by_teacher_id` uses, and those should be migrated to `canonicalContextFactory` rather than preserved through new shims.
+
+Focused validation:
+- `python3 -c "from app import app; print('OK')"`
+  - Result: pass
+- `pytest -q tests/test_context_resolver.py tests/test_feature_settings.py`
+  - Result: `32 passed`
 
 - `python3 -m py_compile app/services/recovery_bridge_service.py app/routes/admin.py app/routes/student.py app/utils/student_deletion.py tests/test_recovery_bridge_service.py`
   - Result: pass

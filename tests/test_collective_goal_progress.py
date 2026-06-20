@@ -25,7 +25,10 @@ def _login_admin(client, admin_id):
 
 
 def _create_student(teacher, first_name, join_code, block='A'):
-    student = Student(first_name=first_name, last_initial='S', block=block, salt=b'salt')
+    profile = IdentityProfile(profile_type='student', first_name=first_name, last_name='S')
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block=block, salt=b'salt')
     student.passphrase_hash = generate_password_hash('password')
     db.session.add(student)
     db.session.flush()
@@ -56,7 +59,7 @@ def _create_student(teacher, first_name, join_code, block='A'):
     _tb_seat = Seat(student_id=student.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_initial='S'))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_name='S'))
     db.session.add(Transaction(
         student_id=student.id,
         teacher_id=teacher.id,
@@ -500,7 +503,7 @@ def test_whole_class_goal_with_duplicate_seats_shows_correct_roster(client):
     _tb_seat = Seat(student_id=student_a1.id, join_code='JOINDUP', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Laura', last_initial='S'))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Laura', last_name='S'))
     db.session.flush()
 
     item = StoreItem(

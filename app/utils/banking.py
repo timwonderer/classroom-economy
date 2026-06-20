@@ -51,11 +51,10 @@ def _settle_pending_transaction_contexts_legacy(limit: int | None = None) -> dic
  
     for seat_id, class_id in pending_contexts:
         try:
-            settle_balances(seat_id, class_id)
-            db.session.flush() # FEAT-LEGACY-WRAP: commit removed
+            with db.session.begin_nested():
+                settle_balances(seat_id, class_id)
             settled_contexts += 1
         except Exception:
-            db.session.rollback()
             failed_contexts += 1
             logger.exception(
                 "Settlement sweep failed for seat %s in class %s",

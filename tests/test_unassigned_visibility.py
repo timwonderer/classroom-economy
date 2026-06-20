@@ -1,7 +1,7 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from app import db
-from app.models import Admin, Student, StudentTeacher
+from app.models import Admin, IdentityProfile, Student, StudentTeacher
 from app.hash_utils import get_random_salt
 import pyotp
 from flask import session
@@ -20,9 +20,11 @@ def test_new_admin_cannot_see_unassigned_students(client):
 
     # Create Student B (Unassigned)
     salt = get_random_salt()
+    profile_b = IdentityProfile(profile_type="student", first_name="UnassignedStudent", last_name="B")
+    db.session.add(profile_b)
+    db.session.flush()
     student_b = Student(
-        first_name="UnassignedStudent",
-        last_initial="B",
+        identity_profile=profile_b,
         block="A",
         salt=salt,
         first_half_hash="hash_unassigned",
@@ -65,9 +67,11 @@ def test_owner_can_see_unassigned_students_if_linked(client):
     db.session.commit()
 
     salt = get_random_salt()
+    profile_b = IdentityProfile(profile_type="student", first_name="OwnerTestStudent", last_name="B")
+    db.session.add(profile_b)
+    db.session.flush()
     student_b = Student(
-        first_name="OwnerTestStudent",
-        last_initial="B",
+        identity_profile=profile_b,
         block="A",
         salt=salt,
         first_half_hash="hash_owner",
@@ -89,4 +93,4 @@ def test_owner_can_see_unassigned_students_if_linked(client):
         results = query.all()
 
         assert len(results) == 1
-        assert results[0].first_name == "OwnerTestStudent"
+        assert results[0].display_first_name == "OwnerTestStudent"

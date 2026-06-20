@@ -142,7 +142,7 @@ def ensure_user(username: str) -> User:
 def ensure_identity(first_name: str, last_initial: str) -> IdentityProfile:
     row = (
         IdentityProfile.query.filter_by(profile_type="student")
-        .filter(IdentityProfile.last_initial == last_initial)
+        .filter(IdentityProfile.last_name == last_initial)
         .all()
     )
     for cand in row:
@@ -152,7 +152,7 @@ def ensure_identity(first_name: str, last_initial: str) -> IdentityProfile:
     ident = IdentityProfile(
         profile_type="student",
         first_name=first_name,
-        last_initial=last_initial,
+        last_name=last_initial,
         created_at=now_utc(),
         updated_at=now_utc(),
     )
@@ -169,9 +169,7 @@ def ensure_student(first_name: str, last_initial: str, block: str, class_row: Cl
 
     ident = ensure_identity(first_name, last_initial)
     row = Student(
-        first_name=first_name,
-        last_initial=last_initial,
-        identity_id=ident.id,
+        identity_profile=ident,
         block=block,
         join_code=class_row.join_code,
         class_id=class_row.class_id,
@@ -228,8 +226,8 @@ def ensure_teacher_block(student: Student, teacher: Admin, class_row: ClassEcono
         teacher_id=teacher.id,
         block=block,
         class_label=class_row.display_name,
-        first_name=student.first_name,
-        last_initial=student.last_initial,
+        first_name=student.display_first_name,
+        last_initial=student.display_last_initial,
         identity_id=student.identity_id,
         last_name_hash_by_part=[h(f"ln:{student.id}")],
         dob_sum_hash=h(f"dobsum:{student.id}"),

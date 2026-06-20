@@ -51,7 +51,7 @@ from sqlalchemy.exc import IntegrityError
 from app import app as flask_app, db, Student
 from flask import current_app
 from app.extensions import limiter
-from app.models import Transaction, Seat
+from app.models import Transaction, Seat, IdentityProfile
 
 @event.listens_for(Transaction, "init")
 def intercept_transaction_student_id(target, args, kwargs):
@@ -79,19 +79,20 @@ def resolve_seat_from_transient_student(mapper, connection, target):
                     class_id = class_row[0]
                     target.class_id = class_id
             
-            # resolve seat_id
+            # resolve seat_id via user_id (v2: student_id column removed from seats)
+            # The transient student_id is treated as a user_id for seat lookup
             if class_id:
                 seat_row = connection.execute(
-                    sa.text("SELECT id FROM seats WHERE student_id = :sid AND class_id = :cid LIMIT 1"),
-                    {"sid": student_id, "cid": class_id}
+                    sa.text("SELECT id FROM seats WHERE user_id = :uid AND class_id = :cid LIMIT 1"),
+                    {"uid": student_id, "cid": class_id}
                 ).fetchone()
                 if seat_row:
                     target.seat_id = seat_row[0]
             else:
                 # fallback
                 seat_row = connection.execute(
-                    sa.text("SELECT id, class_id FROM seats WHERE student_id = :sid LIMIT 1"),
-                    {"sid": student_id}
+                    sa.text("SELECT id, class_id FROM seats WHERE user_id = :uid LIMIT 1"),
+                    {"uid": student_id}
                 ).fetchone()
                 if seat_row:
                     target.seat_id = seat_row[0]
@@ -112,29 +113,25 @@ def resolve_seat_from_transient_student(mapper, connection, target):
                     {"cid": cid}
                 ).fetchone()
                 if not class_exists:
-                    teacher_row = connection.execute(
-                        sa.text("SELECT teacher_id FROM student_teachers WHERE student_id = :sid LIMIT 1"),
-                        {"sid": student_id}
-                    ).fetchone()
-                    if teacher_row:
-                        connection.execute(
-                            sa.text("""
-                            INSERT INTO classes (class_id, teacher_id, join_code, created_at, updated_at)
-                            VALUES (:cid, :tid, :jc, :now, :now)
-                            ON CONFLICT DO NOTHING
-                            """),
-                            {"cid": cid, "tid": teacher_row[0], "jc": jc, "now": now}
-                        )
+                    # Use the student_id as teacher_id for mock class creation
+                    connection.execute(
+                        sa.text("""
+                        INSERT INTO classes (class_id, teacher_id, join_code, created_at, updated_at)
+                        VALUES (:cid, :tid, :jc, :now, :now)
+                        ON CONFLICT DO NOTHING
+                        """),
+                        {"cid": cid, "tid": student_id, "jc": jc, "now": now}
+                    )
 
                 target.class_id = cid
                 target.join_code = join_code or jc
                 connection.execute(
                     sa.text("""
-                    INSERT INTO seats (public_id, student_id, class_id, join_code, role, has_received_rent_exemption, created_at, updated_at)
-                    VALUES (:pid, :sid, :cid, :jc, 'student', false, :now, :now)
+                    INSERT INTO seats (public_id, user_id, class_id, join_code, role, has_received_rent_exemption, created_at, updated_at)
+                    VALUES (:pid, :uid, :cid, :jc, 'student', false, :now, :now)
                     """),
                     {
-                        "pid": pub_id, "sid": student_id, "cid": cid,
+                        "pid": pub_id, "uid": student_id, "cid": cid,
                         "jc": target.join_code, "now": now
                     }
                 )
@@ -296,16 +293,92 @@ def _auto_bypass_feat(request, app):
 def test_student():
     from app.hash_utils import hash_username, get_random_salt
     from app.feats.base import FEATBypass
+    from app.models import User, UserRole, Seat
+    from app.utils.auth_username import build_hashed_username_fields
     salt = get_random_salt()
+    _, username_hash, username_lookup_hash = build_hashed_username_fields("test_student")
+    user = User(
+        user_role=UserRole.STUDENT,
+        username_hash=username_hash,
+        username_lookup_hash=username_lookup_hash,
+    )
+    db.session.add(user)
+    db.session.flush()
+    profile = IdentityProfile(
+        profile_type='student',
+        first_name='Test',
+        last_name='Student',
+    )
+    db.session.add(profile)
+    db.session.flush()
     stu = Student(
-        first_name="Test",
-        last_initial="S",
+        identity_profile=profile,
         block="A",
         salt=salt,
         username_hash=hash_username("test", salt),
         pin_hash="fake-hash",
     )
     db.session.add(stu)
+    seat = Seat(
+        user_id=user.id,
+        class_id=stu.class_id,
+        join_code=stu.join_code or "TESTSTUDENT",
+        role="student",
+    )
+    db.session.add(seat)
+    db.session.flush()
+    profile.seat_id = seat.id
     with FEATBypass():
         db.session.commit()
     return stu
+
+
+@pytest.fixture
+def classroom_context():
+    """Create a fully-wired v2 classroom context.
+
+    Returns a factory function. The context uses User/Seat/IdentityProfile
+    as the primary identity chain. Legacy Admin/Student rows are created
+    as hidden infrastructure for FK/auth compatibility only.
+
+    Usage in tests:
+        def test_something(classroom_context):
+            ctx = classroom_context()
+            student = ctx.add_student("Alice", "A")
+            ctx.commit()
+
+            # Access v2 objects:
+            ctx.teacher_user      # User instance
+            ctx.teacher_seat      # Seat instance
+            ctx.teacher_profile   # IdentityProfile instance
+            student.user          # User instance
+            student.seat          # Seat instance
+            student.profile       # IdentityProfile instance
+    """
+    from tests.helpers.context_factory import canonicalContextFactory
+
+    def _factory(**kwargs):
+        return canonicalContextFactory(db, **kwargs).build()
+
+    return _factory
+
+
+@pytest.fixture
+def classroom_with_students():
+    """Convenience: create a class with N students, committed.
+
+    Usage:
+        def test_something(classroom_with_students):
+            ctx = classroom_with_students(3)
+            ctx.students[0].login(client)
+    """
+    from tests.helpers.context_factory import canonicalContextFactory
+    from app.feats.base import FEATBypass
+
+    def _factory(n=1, **kwargs):
+        ctx = canonicalContextFactory(db, **kwargs).with_students(n).build()
+        with FEATBypass():
+            db.session.commit()
+        return ctx
+
+    return _factory

@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, Student, StudentTeacher, Transaction, TransactionStatus
+from app.models import Admin, IdentityProfile, Student, StudentTeacher, Transaction, TransactionStatus
 from tests.helpers.class_scope import create_class_scope
 
 
@@ -20,7 +20,10 @@ def _build_multi_class_student():
     db.session.add(teacher)
     db.session.flush()
 
-    student = Student(first_name="Scope", last_initial="T", block="A, B", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Scope", last_name="T")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A, B", salt=b"salt")
     db.session.add(student)
     db.session.flush()
 

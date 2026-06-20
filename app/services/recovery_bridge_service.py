@@ -25,7 +25,7 @@ class RecoveryRequestView:
 @dataclass
 class RecoveryCodeView:
     id: int
-    student_id: int
+    user_id: int
     recovery_request_id: int
     code_hash: str | None
     verified_at: datetime | None
@@ -57,7 +57,7 @@ def _request_row_to_view(row: sa.Row) -> RecoveryRequestView:
 def _code_row_to_view(row: sa.Row) -> RecoveryCodeView:
     return RecoveryCodeView(
         id=row.code_id,
-        student_id=row.student_id,
+        user_id=row.user_id,
         recovery_request_id=row.recovery_request_id,
         code_hash=row.code_hash,
         verified_at=row.verified_at,
@@ -72,7 +72,7 @@ def get_pending_recovery_code_for_student(student_id: int, now_utc: datetime) ->
     stmt = (
         sa.select(
             codes.c.id.label("code_id"),
-            codes.c.student_id,
+            codes.c.user_id,
             codes.c.recovery_request_id,
             codes.c.code_hash,
             codes.c.verified_at,
@@ -82,7 +82,7 @@ def get_pending_recovery_code_for_student(student_id: int, now_utc: datetime) ->
         )
         .select_from(codes.join(requests, requests.c.id == codes.c.recovery_request_id))
         .where(
-            codes.c.student_id == student_id,
+            codes.c.user_id == student_id,
             codes.c.dismissed.is_(False),
             codes.c.code_hash.is_(None),
             requests.c.status == "pending",
@@ -100,7 +100,7 @@ def get_recovery_code_for_student(code_id: int, student_id: int) -> RecoveryCode
     stmt = (
         sa.select(
             codes.c.id.label("code_id"),
-            codes.c.student_id,
+            codes.c.user_id,
             codes.c.recovery_request_id,
             codes.c.code_hash,
             codes.c.verified_at,
@@ -111,7 +111,7 @@ def get_recovery_code_for_student(code_id: int, student_id: int) -> RecoveryCode
         .select_from(codes.join(requests, requests.c.id == codes.c.recovery_request_id))
         .where(
             codes.c.id == code_id,
-            codes.c.student_id == student_id,
+            codes.c.user_id == student_id,
         )
         .limit(1)
     )
@@ -289,4 +289,4 @@ def delete_recovery_rows_for_teacher(teacher_id: int) -> None:
 
 def delete_recovery_codes_for_student(student_id: int) -> None:
     _requests, codes = _tables()
-    db.session.execute(sa.delete(codes).where(codes.c.student_id == student_id))
+    db.session.execute(sa.delete(codes).where(codes.c.user_id == student_id))

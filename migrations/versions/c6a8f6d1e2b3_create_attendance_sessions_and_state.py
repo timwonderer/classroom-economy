@@ -143,6 +143,11 @@ def _backfill_from_tap_events(conn):
     if not table_exists("tap_events"):
         return
 
+    # student_id may have been dropped by the identity-repoint migration.
+    # On a clean v2 DB there are zero tap_events anyway, so skip backfill entirely.
+    if not column_exists("tap_events", "student_id"):
+        return
+
     existing_sessions = conn.execute(sa.text("SELECT COUNT(1) FROM attendance_sessions")).scalar() or 0
     if existing_sessions > 0:
         return
@@ -323,7 +328,6 @@ def upgrade():
         op.create_table(
             "attendance_sessions",
             sa.Column("id", sa.Integer(), nullable=False),
-            sa.Column("student_id", sa.Integer(), nullable=False),
             sa.Column("seat_id", sa.Integer(), nullable=False),
             sa.Column("class_id", sa.String(length=36), nullable=False),
             sa.Column("period", sa.String(length=10), nullable=False),
@@ -344,8 +348,6 @@ def upgrade():
         )
     else:
         with op.batch_alter_table("attendance_sessions", schema=None) as batch_op:
-            if not column_exists("attendance_sessions", "student_id"):
-                batch_op.add_column(sa.Column("student_id", sa.Integer(), nullable=True))
             if not column_exists("attendance_sessions", "seat_id"):
                 batch_op.add_column(sa.Column("seat_id", sa.Integer(), nullable=True))
             if not column_exists("attendance_sessions", "class_id"):
@@ -389,7 +391,6 @@ def upgrade():
         op.create_table(
             "seat_attendance_state",
             sa.Column("id", sa.Integer(), nullable=False),
-            sa.Column("student_id", sa.Integer(), nullable=False),
             sa.Column("seat_id", sa.Integer(), nullable=False),
             sa.Column("class_id", sa.String(length=36), nullable=False),
             sa.Column("period", sa.String(length=10), nullable=False),
@@ -406,8 +407,6 @@ def upgrade():
         )
     else:
         with op.batch_alter_table("seat_attendance_state", schema=None) as batch_op:
-            if not column_exists("seat_attendance_state", "student_id"):
-                batch_op.add_column(sa.Column("student_id", sa.Integer(), nullable=True))
             if not column_exists("seat_attendance_state", "seat_id"):
                 batch_op.add_column(sa.Column("seat_id", sa.Integer(), nullable=True))
             if not column_exists("seat_attendance_state", "class_id"):
@@ -431,11 +430,11 @@ def upgrade():
             if not column_exists("seat_attendance_state", "updated_at"):
                 batch_op.add_column(sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True))
 
-    if not index_exists("seat_attendance_state", "ix_attendance_state_student_period"):
+    if not index_exists("seat_attendance_state", "ix_attendance_state_seat_period"):
         op.create_index(
-            "ix_attendance_state_student_period",
+            "ix_attendance_state_seat_period",
             "seat_attendance_state",
-            ["student_id", "period"],
+            ["seat_id", "period"],
             unique=False,
         )
 

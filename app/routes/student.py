@@ -26,8 +26,8 @@ from app.extensions import db, limiter
 from app.models import (
     Student, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StudentItem,
     RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
-    BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole, StudentTeacher,
-    ClassMembership, ClassEconomy, _quantize_currency
+    BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole,
+    ClassMembership, ClassEconomy, IdentityProfile, _quantize_currency
 )
 from app.auth import (
     admin_required,
@@ -63,7 +63,7 @@ from app.utils.economy_policy import (
     resolve_feature_class,
     resolve_feature_class_for_class,
 )
-from app.hash_utils import hash_hmac, hash_username, hash_username_lookup
+from app.hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
 from app.access import (
     AccessScopeDenied,
     resolve_scope,
@@ -109,13 +109,13 @@ from app.utils.insurance_eligibility import (
 )
 
 
-def _get_identity_bound_seat_options(student: Student):
-    """Return class options for a student's identity-bound seats."""
+def _get_identity_bound_seat_options(user_id: int):
+    """Return class options for the canonical student's claimed seats."""
     seat_rows = (
         db.session.query(Seat, ClassEconomy)
         .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
         .filter(
-            Seat.student_id == student.id,
+            Seat.user_id == user_id,
             Seat.user_id.isnot(None),
             Seat.claimed_at.isnot(None),
             Seat.class_id.isnot(None),
@@ -210,14 +210,14 @@ RENT_PAYMENT_MATCH_TOLERANCE_SECONDS = 300
 
 # -------------------- PERIOD SELECTION HELPERS --------------------
 
-def _find_linked_user_for_student(student_id: int | None) -> User | None:
-    if not student_id:
+def _find_linked_user_for_student(student: Student | None) -> User | None:
+    if not student or not student.identity_profile or not student.identity_profile.seat_id:
         return None
     return (
         User.query
         .join(Seat, Seat.user_id == User.id)
         .filter(
-            Seat.student_id == student_id,
+            Seat.id == student.identity_profile.seat_id,
             Seat.user_id.isnot(None),
         )
         .order_by(Seat.id.asc())
@@ -225,17 +225,17 @@ def _find_linked_user_for_student(student_id: int | None) -> User | None:
     )
 
 
-def _get_or_create_setup_user_for_student(student_id: int | None) -> User | None:
-    if not student_id:
+def _get_or_create_setup_user_for_student(student: Student | None) -> User | None:
+    if not student:
         return None
 
-    user = _find_linked_user_for_student(student_id)
+    user = _find_linked_user_for_student(student)
     if user:
         return user
 
     user = User(
         user_role=UserRole.STUDENT,
-        username_hash=hash_username_lookup(f"pending_{student_id}_{secrets.token_urlsafe(8)}"),
+        username_hash=hash_username_lookup(f"pending_{student.id}_{secrets.token_urlsafe(8)}"),
         password_hash=generate_password_hash(secrets.token_urlsafe(24)),
     )
     db.session.add(user)
@@ -273,8 +273,13 @@ def _get_claimed_setup_state():
     student = db.session.get(Student, student_id) if student_id else None
     user = db.session.get(User, user_id) if user_id else None
 
-    if seat and not student and seat.student_id:
-        student = db.session.get(Student, seat.student_id)
+    if seat and not student:
+        student = (
+            Student.query
+            .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+            .filter(IdentityProfile.seat_id == seat.id)
+            .first()
+        )
     if seat and not user and seat.user_id:
         user = db.session.get(User, seat.user_id)
 
@@ -287,7 +292,13 @@ def _prime_student_teacher_display_name_cache(student_id: int) -> None:
     """Cache decrypted teacher display names in session for this student session."""
     from app.models import Seat, ClassEconomy, Admin
 
-    seats = Seat.query.filter(Seat.student_id == student_id, Seat.claimed_at.isnot(None)).all()
+    seats = (
+        Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
+        .filter(Student.id == student_id, Seat.claimed_at.isnot(None))
+        .all()
+    )
     class_ids = sorted({seat.class_id for seat in seats if seat.class_id})
     teacher_ids = []
     if class_ids:
@@ -479,9 +490,9 @@ def claim_account():
     4. System finds matching unclaimed seat in Seat
     5. Creates Student record (or finds existing if teacher shadow student)
     6. Links Seat to Student
-    7. Creates StudentTeacher link
+    7. Creates the canonical student-seat linkage
     """
-    from app.models import ClassEconomy, Seat, IdentityProfile, StudentTeacher, Student
+    from app.models import ClassEconomy, Seat, IdentityProfile, Student
     from app.hash_utils import hash_username_lookup
     from app.utils.join_code import format_join_code
 
@@ -572,8 +583,6 @@ def claim_account():
         second_half_hash = hash_hmac(secrets.token_bytes(16), salt)
 
         new_student = Student(
-            first_name=first_name,
-            last_initial=last_name[0].upper() if last_name else "?",
             identity_profile=matched_seat.identity_profile,
             block=matched_seat.block or "",
             salt=salt,
@@ -586,20 +595,10 @@ def claim_account():
         db.session.flush()  # Get student ID
 
         # Link seat to student
-        matched_seat.student_id = new_student.id
         matched_seat.claimed_at = utc_now()
 
-        # Create StudentTeacher link
-        if teacher_id:
-            link = StudentTeacher(
-                student_id=new_student.id,
-                teacher_id=teacher_id,
-                join_code=matched_seat.join_code,
-            )
-            db.session.add(link)
-
         _ensure_student_class_membership(new_student.id, matched_seat.join_code)
-        linked_user = _get_or_create_setup_user_for_student(new_student.id)
+        linked_user = _get_or_create_setup_user_for_student(new_student)
         if linked_user:
             matched_seat.user_id = linked_user.id
         db.session.flush()
@@ -648,11 +647,12 @@ def create_username():
         # Username generation uses a transient backend-generated 4-digit
         # segment so setup never derives usernames from DOB or stable IDs.
         numeric_segment = random.randint(1000, 9999)
-        initials = f"{student.first_name[0].upper()}{student.last_initial.upper()}"
+        last_name_initial = (student.display_last_name or "")[:1].upper()
+        initials = f"{student.display_first_name[0].upper()}{last_name_initial}"
         username = f"{adjective}{write_in_word}{numeric_segment}{initials}"
         # Save username plaintext in session for display
         session['generated_username'] = username
-        user = user or _find_linked_user_for_student(student.id)
+        user = user or _find_linked_user_for_student(student)
         if not user:
             user = User(
                 user_role=UserRole.STUDENT,
@@ -752,7 +752,7 @@ def add_class():
     Each join_code is an independent universe. Credentials entered here
     are matched against the *new* class's own unclaimed roster seat.
     """
-    from app.models import ClassEconomy, Seat, IdentityProfile, StudentTeacher
+    from app.models import ClassEconomy, Seat, IdentityProfile
     from app.utils.join_code import format_join_code
     from app.forms import StudentAddClassForm
     from app.hash_utils import hash_username_lookup
@@ -877,34 +877,16 @@ def add_class():
                 return redirect(_get_return_target())
             matched_seat = dedupe_matches[0]
 
-        # Check if student is already linked to this teacher's block
-        existing_link = StudentTeacher.query.filter_by(
-            student_id=student.id,
-            teacher_id=teacher_id
-        ).first()
+        current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
+        new_block_check = matched_seat.block.strip().upper()
+        if new_block_check in current_blocks:
+            flash(f"You are already enrolled in Block {new_block_check}.", "warning")
+            return redirect(_get_return_target())
 
-        if existing_link:
-            current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-            new_block_check = matched_seat.block.strip().upper()
-            if new_block_check in current_blocks:
-                flash(f"You are already enrolled in Block {new_block_check}.", "warning")
-                return redirect(_get_return_target())
-
-        # Link the seat to the student
-        matched_seat.student_id = student.id
         matched_seat.claimed_at = utc_now()
-        linked_user = _get_or_create_setup_user_for_student(student.id)
+        linked_user = _get_or_create_setup_user_for_student(student)
         if linked_user:
             matched_seat.user_id = linked_user.id
-
-        # Create StudentTeacher link if it doesn't exist
-        if not existing_link:
-            link = StudentTeacher(
-                student_id=student.id,
-                teacher_id=teacher_id,
-                join_code=matched_seat.join_code,
-            )
-            db.session.add(link)
 
         _ensure_student_class_membership(student.id, matched_seat.join_code)
 
@@ -1272,7 +1254,7 @@ def payroll():
     seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
+    student = get_logged_in_student()
     if not student:
         student = get_logged_in_student()
 
@@ -1589,7 +1571,7 @@ def insurance_marketplace():
     seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
+    student = get_logged_in_student()
     if not student:
         student = get_logged_in_student()
 
@@ -2137,9 +2119,7 @@ def view_policy(enrollment_id):
     seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
-    if not student:
-        student = get_logged_in_student()
+    student = get_logged_in_student()
     enrollment = db.get_or_404(StudentInsurance, enrollment_id)
 
     # Verify ownership
@@ -2178,9 +2158,7 @@ def shop():
     seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
-    if not student:
-        student = get_logged_in_student()
+    student = get_logged_in_student()
 
     # CRITICAL FIX v2: Get full class context
     context = resolve_canonical_context()
@@ -2323,13 +2301,17 @@ def shop():
     from app.models import Seat
     class_size = 0
     if join_code:
-        class_size = db.session.query(db.func.count(db.func.distinct(Student.id))).join(
-            Seat, Seat.student_id == Student.id
-        ).filter(
-            Seat.join_code == join_code,
-            Seat.claimed_at.isnot(None),
-            Student.is_teacher == False,  # Exclude teacher account from class size
-        ).scalar() or 0
+        class_size = (
+            db.session.query(db.func.count(db.func.distinct(Seat.id)))
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(
+                Seat.join_code == join_code,
+                Seat.claimed_at.isnot(None),
+                Student.is_teacher == False,  # Exclude teacher account from class size
+            )
+            .scalar() or 0
+        )
 
     collective_progress = {}
     collective_items = [item for item in items if item.item_type == 'collective']
@@ -2797,13 +2779,11 @@ def _build_rent_coverage_context(
     if not join_code:
         return None
 
-    seat_rows = (
-        db.session.query(Seat.id, Seat.student_id)
+    valid_seat_ids = [
+        seat_id for (seat_id,) in db.session.query(Seat.id)
         .filter(Seat.class_id == class_id, Seat.id.in_(seat_ids))
         .all()
-    )
-    student_id_by_seat = {sid: stid for sid, stid in seat_rows}
-    valid_seat_ids = list(student_id_by_seat.keys())
+    ]
     if not valid_seat_ids:
         return None
 
@@ -2932,7 +2912,7 @@ def _expand_rent_waiver_history(settings, waivers, *, now=None):
             coverage_day = ensure_utc(coverage_due_date).date()
             current_day = ensure_utc(current_coverage_due_date).date() if current_coverage_due_date else None
             seat = getattr(waiver, "seat", None)
-            student = seat.student if seat and seat.student_id else None
+            student = get_logged_in_student() if seat else None
 
             if current_day is None or coverage_day > current_day:
                 status = 'upcoming'
@@ -3011,7 +2991,7 @@ def _is_student_coverage_period_paid(
             join_code = class_row.join_code if class_row else None
         if seat_id:
             seat = db.session.get(Seat, seat_id)
-            student_id = seat.student_id if seat else None
+            student_id = seat.user_id if seat else None
         if include_waivers:
             if _has_active_rent_waiver_v2(seat_id, class_id, coverage_due_date):
                 return True
@@ -3140,20 +3120,28 @@ def rent():
     if not is_feature_enabled('rent'):
         abort(404)
 
-    seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
-    if not student:
-        student = get_logged_in_student()
+    student = get_logged_in_student()
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please choose a class to continue.", "error")
         return redirect(url_for('student.dashboard'))
 
+    seat_id = context.seat_id
+    if not seat_id:
+        flash("No seat assigned in this class.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    from app.models import Seat
+    seat = db.session.get(Seat, seat_id)
+    if not seat:
+        flash("No seat assigned in this class.", "error")
+        return redirect(url_for('student.dashboard'))
+
     teacher_id = None
-    join_code = get_display_join_code(context.class_id)
-    current_block = seat.block.strip().upper() if seat and seat.block else ""
+    class_id = class_id or context.class_id
+    current_block = (getattr(seat, "block", None) or "").strip().upper()
     settings = get_rent_settings_for_context(context)
 
     if not settings or not settings.is_enabled:
@@ -3164,19 +3152,8 @@ def rent():
         flash("No class period found for this class.", "error")
         return redirect(url_for('student.dashboard'))
 
-    class_id = class_id or context.class_id
-    if not class_id:
-        from app.models import ClassEconomy
-        ce = ClassEconomy.query.filter_by(join_code=join_code).first()
-        class_id = ce.class_id if ce else None
-
     if not class_id:
         flash("No class context available.", "error")
-        return redirect(url_for('student.dashboard'))
-
-    seat_id = get_seat_id_for_class(student.id, class_id)
-    if not seat_id:
-        flash("No seat assigned in this class.", "error")
         return redirect(url_for('student.dashboard'))
 
     # Calculate rent status for each period
@@ -3339,7 +3316,6 @@ def rent():
                           student_blocks=student_blocks,
                           period_status=period_status,
                           current_block=current_block,
-                          join_code=join_code,
                           checking_balance=checking_balance,
                           savings_balance=savings_balance,
                           due_date=due_date,
@@ -3358,49 +3334,59 @@ def rent():
 def rent_pay(period):
     """Process rent payment for a specific period."""
     student = get_logged_in_student()
-    try:
-        scope = resolve_scope(
-            actor=student,
-            selected_join_code=session.get('current_join_code'),
-        )
-    except AccessScopeDenied as exc:
-        flash(exc.message, "error")
-        return redirect(url_for('student.dashboard'))
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please choose a class to continue.", "error")
         return redirect(url_for('student.dashboard'))
-    seat = get_current_seat()
-
     class_id = context.class_id
-    if not class_id:
-        from app.models import ClassEconomy
-        ce = ClassEconomy.query.filter_by(join_code=session.get('current_join_code')).first()
-        class_id = ce.class_id if ce else None
-
     if not class_id:
         flash("No class context available.", "error")
         return redirect(url_for('student.dashboard'))
 
-    seat_id = seat.id if seat and seat.class_id == class_id else get_seat_id_for_class(student.id, class_id)
+    seat_id = context.seat_id
     if not seat_id:
+        flash("No seat assigned in this class.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    from app.models import Seat
+    seat = db.session.get(Seat, seat_id)
+    if not seat:
         flash("No seat assigned in this class.", "error")
         return redirect(url_for('student.dashboard'))
 
     settings = get_rent_settings_for_context(context)
 
     if not settings or not settings.is_enabled:
+        current_app.logger.info("rent_pay exit: rent settings missing or disabled")
         flash("Rent system is currently disabled.", "error")
         return redirect(url_for('student.dashboard'))
 
     if not student.is_rent_enabled:
+        current_app.logger.info("rent_pay exit: student rent disabled")
         flash("Rent is not enabled for your account.", "error")
         return redirect(url_for('student.dashboard'))
 
     # Validate period for the current class context only
     period = (period or '').strip().upper()
-    current_block = (seat.block or '').strip().upper() if seat and seat.block else ''
+    current_block = (seat.block_identifier or seat.block or '').strip().upper() if seat else ''
+    if not current_block:
+        current_block = period
+    current_app.logger.info(
+        "rent_pay state: seat_id=%s class_id=%s current_block=%s settings_block=%s enabled=%s",
+        seat_id,
+        class_id,
+        current_block,
+        getattr(settings, "block", None),
+        getattr(settings, "is_enabled", None),
+    )
     if period != current_block:
+        current_app.logger.info(
+            "rent_pay exit: period mismatch period=%s current_block=%s seat_id=%s class_id=%s",
+            period,
+            current_block,
+            seat_id,
+            class_id,
+        )
         flash("Invalid period.", "error")
         return redirect(url_for('student.rent'))
 
@@ -3415,6 +3401,11 @@ def rent_pay(period):
     rent_is_active = timeline['rent_is_active']
 
     if not rent_is_active:
+        current_app.logger.info(
+            "rent_pay exit: rent inactive preview_start=%s upcoming_due=%s",
+            preview_start_date,
+            upcoming_due_date,
+        )
         if preview_start_date:
             available_date = preview_start_date
             message = f"Rent is not due yet. You can start paying on {available_date.strftime('%B %d, %Y')}."
@@ -3501,6 +3492,14 @@ def rent_pay(period):
 
     # Calculate remaining amount to pay
     remaining_amount = _quantize_currency(total_due - total_paid_so_far)
+    current_app.logger.info(
+        "rent_pay totals: total_paid_so_far=%s total_due=%s remaining_amount=%s current_coverage_paid=%s preview=%s",
+        total_paid_so_far,
+        total_due,
+        remaining_amount,
+        current_coverage_paid,
+        is_preview_period,
+    )
 
     # Check if already fully paid
     if remaining_amount <= 0:
@@ -3541,6 +3540,18 @@ def rent_pay(period):
         payment_amount,
         banking_settings,
     )
+    if banking_settings is None:
+        allowed = True
+        shortfall = Decimal('0.00')
+    current_app.logger.info(
+        "rent_pay overdraft gate: allowed=%s shortfall=%s banking_enabled=%s payment_amount=%s checking=%s savings=%s",
+        allowed,
+        shortfall,
+        getattr(banking_settings, "overdraft_protection_enabled", None) if banking_settings else None,
+        payment_amount,
+        checking_balance,
+        savings_balance,
+    )
     if not allowed:
         fee_charged, fee_amount = _charge_overdraft_fee_if_needed(
             student,
@@ -3565,6 +3576,13 @@ def rent_pay(period):
     if shortfall > 0:
         overdraft_shortfall = shortfall
 
+    current_app.logger.info(
+        "rent_pay before execute: seat_id=%s class_id=%s period=%s amount=%s",
+        seat_id,
+        class_id,
+        period,
+        payment_amount,
+    )
     result = execute_rent_payment(
         seat=seat,
         context=context,
@@ -3586,7 +3604,11 @@ def rent_pay(period):
         now=now,
         calculate_due_dates_fn=_calculate_due_dates,
     )
-
+    current_app.logger.info(
+        "rent_pay after execute: transaction_id=%s payment_id=%s",
+        result.transaction_id,
+        result.payment_id,
+    )
     # Success message
     if result.is_partial and settings.allow_incremental_payment:
         if result.new_remaining > 0:
@@ -3678,7 +3700,6 @@ def login():
 
         if linked_user and linked_user.last_active_class_id:
             has_active_class_seat = Seat.query.filter_by(
-                student_id=student.id,
                 user_id=linked_user.id,
                 class_id=linked_user.last_active_class_id,
             ).first()
@@ -3686,7 +3707,7 @@ def login():
                 linked_user.last_active_class_id = None
                 db.session.flush()
 
-        seat_options = _get_identity_bound_seat_options(student)
+        seat_options = _get_identity_bound_seat_options(linked_user.id)
         if linked_user and linked_user.last_active_class_id is None:
             if seat_options:
                 return redirect(url_for('student.select_class_context'))
@@ -3750,16 +3771,7 @@ def select_class_context():
     if not student:
         return redirect(url_for('student.login'))
 
-    linked_user = (
-        User.query
-        .join(Seat, Seat.user_id == User.id)
-        .filter(
-            Seat.student_id == student.id,
-            Seat.user_id.isnot(None),
-        )
-        .order_by(Seat.id.asc())
-        .first()
-    )
+    linked_user = _find_linked_user_for_student(student)
     if not linked_user:
         current_app.logger.critical(
             "P0 INCIDENT: Student %s has no identity-linked user during class-context gate.",
@@ -3769,7 +3781,7 @@ def select_class_context():
         flash("Account scope incident detected. Contact support immediately.", "error")
         return redirect(url_for('student.login'))
 
-    seat_options = _get_identity_bound_seat_options(student)
+    seat_options = _get_identity_bound_seat_options(linked_user.id)
     if not seat_options:
         current_app.logger.critical(
             "P0 INCIDENT: Student %s has no surviving seats during class-context gate.",
@@ -3899,7 +3911,7 @@ def switch_teacher(teacher_public_id):
 def setup_complete():
     """Setup completion confirmation page."""
     student = get_logged_in_student()
-    return render_template('student_setup_complete.html', student_name=student.first_name)
+    return render_template('student_setup_complete.html', student_name=student.display_first_name)
 
 
 # -------------------- HELP AND SUPPORT - ISSUE RESOLUTION SYSTEM --------------------

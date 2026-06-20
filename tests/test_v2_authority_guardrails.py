@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 
 from app.extensions import db
-from app.models import Student, StudentTeacher, Transaction
+from app.models import IdentityProfile, Student, StudentTeacher, Transaction
 from app.routes import student as student_routes
 from app.services import attendance_service
 from tests.helpers.class_scope import create_class_scope
@@ -221,7 +221,10 @@ def test_dashboard_read_is_interest_mutation_free(client):
     db.session.add(teacher)
     db.session.flush()
 
-    student = Student(first_name="Read", last_initial="P", block="A", salt=b"salt", has_completed_setup=True)
+    profile_read = IdentityProfile(profile_type='student', first_name='Read', last_name='P')
+    db.session.add(profile_read)
+    db.session.flush()
+    student = Student(identity_profile=profile_read, block="A", salt=b"salt", has_completed_setup=True)
     db.session.add(student)
     db.session.flush()
 
@@ -269,7 +272,10 @@ def test_dashboard_access_policy_fail_closed_invalid_join_code(client):
     db.session.add(teacher)
     db.session.flush()
 
-    student = Student(first_name="Scope", last_initial="Q", block="A", salt=b"salt", has_completed_setup=True)
+    profile_scope = IdentityProfile(profile_type='student', first_name='Scope', last_name='Q')
+    db.session.add(profile_scope)
+    db.session.flush()
+    student = Student(identity_profile=profile_scope, block="A", salt=b"salt", has_completed_setup=True)
     db.session.add(student)
     db.session.flush()
 

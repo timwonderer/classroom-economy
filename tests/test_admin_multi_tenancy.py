@@ -9,7 +9,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 import sqlalchemy as sa
 from app import app as flask_app
-from app.models import Admin, Student, StudentTeacher
+from app.models import Admin, IdentityProfile, Student, StudentTeacher
 from app.extensions import db
 from app.auth import get_admin_student_query
 from app.hash_utils import get_random_salt
@@ -28,9 +28,11 @@ def multi_teacher_data(client):
     # Create students for teacher1
     for i in range(5):
         salt = get_random_salt()
+        profile = IdentityProfile(profile_type="student", first_name=f"StudentT1_{i}", last_name="A")
+        db.session.add(profile)
+        db.session.flush()
         student = Student(
-            first_name=f"StudentT1_{i}",
-            last_initial="A",
+            identity_profile=profile,
             block="A",
             salt=salt,
             first_half_hash=f"hash_t1_{i}",  # Unique hash for each student
@@ -47,9 +49,11 @@ def multi_teacher_data(client):
     # Create students for teacher2
     for i in range(3):
         salt = get_random_salt()
+        profile = IdentityProfile(profile_type="student", first_name=f"StudentT2_{i}", last_name="B")
+        db.session.add(profile)
+        db.session.flush()
         student = Student(
-            first_name=f"StudentT2_{i}",
-            last_initial="B",
+            identity_profile=profile,
             block="B",
             salt=salt,
             first_half_hash=f"hash_t2_{i}",  # Unique hash for each student
@@ -88,8 +92,8 @@ def test_teacher_can_only_see_own_students(client, multi_teacher_data):
         
         # Verify all students belong to teacher1
         for student in students:
-            assert student.first_name.startswith("StudentT1_"), \
-                f"Teacher1 should only see StudentT1_ students, but saw {student.first_name}"
+            assert student.display_first_name.startswith("StudentT1_"), \
+                f"Teacher1 should only see StudentT1_ students, but saw {student.display_first_name}"
 
 
 def test_brand_new_teacher_sees_no_students(client, multi_teacher_data):
@@ -114,7 +118,7 @@ def test_brand_new_teacher_sees_no_students(client, multi_teacher_data):
         
         # Should see 0 students
         assert len(students) == 0, \
-            f"Brand new teacher should see 0 students, but saw {len(students)} students: {[s.first_name for s in students]}"
+            f"Brand new teacher should see 0 students, but saw {len(students)} students: {[s.display_first_name for s in students]}"
 
 
 def test_teacher2_sees_only_their_students(client, multi_teacher_data):
@@ -137,8 +141,8 @@ def test_teacher2_sees_only_their_students(client, multi_teacher_data):
         
         # Verify all students belong to teacher2
         for student in students:
-            assert student.first_name.startswith("StudentT2_"), \
-                f"Teacher2 should only see StudentT2_ students, but saw {student.first_name}"
+            assert student.display_first_name.startswith("StudentT2_"), \
+                f"Teacher2 should only see StudentT2_ students, but saw {student.display_first_name}"
 
 
 def test_students_with_null_teacher_id_not_visible_to_teachers(client):
@@ -179,7 +183,7 @@ def test_students_with_null_teacher_id_not_visible_to_teachers(client):
             f"Teacher should see 0 students (orphaned student should not be visible), but saw {len(students)}"
         
         # Verify orphaned student is not in the results
-        student_names = [s.first_name for s in students]
+        student_names = [s.display_first_name for s in students]
         assert "OrphanedStudent" not in student_names, \
             f"Orphaned student should not be visible to teacher, but was found in results: {student_names}"
 

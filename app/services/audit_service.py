@@ -284,14 +284,15 @@ def emit_audit_event(
     next_sequence = head.latest_sequence + 1
     previous_hash = head.latest_hash
 
+    resolved_actor_type = actor_type if not _is_system_authority() else "system"
     payload_digest = _compute_payload_digest(
         table_name, row_pk_str, operation, class_id, protected_fields
     )
     context_digest = _compute_context_digest(
-        feat_id, class_id, actor_type, actor_id_hash, correlation_id, idempotency_key
+        feat_id, class_id, resolved_actor_type, actor_id_hash, correlation_id, idempotency_key
     )
     actor_context_json = json.dumps({
-        "actor_type": actor_type,
+        "actor_type": resolved_actor_type,
         "actor_id_hash": actor_id_hash,
         "feat_id": feat_id,
         "correlation_id": correlation_id,
@@ -318,7 +319,7 @@ def emit_audit_event(
         table_name=table_name,
         row_pk=row_pk_str,
         operation=operation,
-        actor_type=actor_type if not _is_system_authority() else "system",
+        actor_type=resolved_actor_type,
         actor_id_hash=actor_id_hash,
         class_id=class_id,
         seat_id=seat_id,

@@ -334,8 +334,6 @@ def test_delete_student_clears_cross_issue_transaction_references(client):
 
     issue = Issue(
         student_id=reporter_student.id,
-        student_first_name=reporter_student.first_name,
-        student_last_initial=reporter_student.last_initial,
         actor_public_id="seat-public-ref-123",
         teacher_id=teacher.id,
         join_code=join_code,

@@ -41,7 +41,7 @@ New code must route writes through FEATs; legacy routes that commit directly are
 | Store | `StoreItem`, `StudentItem`, `RedemptionAuditLog` | Classroom store catalog and purchases |
 | Attendance | `AttendanceSession`, `SeatAttendanceState`, `HallPassLog` | Start Work / Break Done tracking, current attendance gate state, hall passes |
 
-55+ models total. Legacy tables (`Admin`, `Student`, `TeacherBlock`) still exist as compatibility shadows during the auth transition.
+55+ models total. Legacy tables (`Admin`, `Student`, `TeacherBlock`) still exist as compatibility shadows during the auth transition, but runtime identity now stays on canonical `User` + `Seat` + `class_id` boundaries after request authentication and context resolution.
 
 ---
 

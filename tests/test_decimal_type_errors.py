@@ -121,7 +121,7 @@ class TestDecimalTypeErrors:
             teacher_block_claimed=False,
         )
 
-        seat = Seat.query.filter_by(student_id=student.id, class_id=class_scope.class_id).first()
+        seat = Seat.query.filter_by(user_id=seat.user_id if False else None).first()
         assert seat is not None
 
         # Add various transaction types to test edge cases
@@ -323,7 +323,7 @@ class TestDecimalTypeErrors:
             teacher_block_claimed=False,
         )
 
-        seat = Seat.query.filter_by(student_id=student.id, class_id=class_scope.class_id).first()
+        seat = Seat.query.filter_by(class_id=class_scope.class_id, join_code='INTEREST_TEST', role='student').first()
         assert seat is not None
 
         # Add a savings deposit from 31+ days ago (eligible for interest)

@@ -25,8 +25,12 @@ def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_clas
     db.session.add(other_admin)
     db.session.flush()
 
-    student_a = Student(first_name="Alpha", last_initial="A", block="A", salt=b"salt")
-    student_b = Student(first_name="Bravo", last_initial="B", block="B", salt=b"salt")
+    profile_a = IdentityProfile(profile_type='student', first_name='Alpha', last_name='A')
+    profile_b = IdentityProfile(profile_type='student', first_name='Bravo', last_name='B')
+    db.session.add_all([profile_a, profile_b])
+    db.session.flush()
+    student_a = Student(identity_profile=profile_a, block="A", salt=b"salt")
+    student_b = Student(identity_profile=profile_b, block="B", salt=b"salt")
     db.session.add_all([student_a, student_b])
     db.session.flush()
 
@@ -113,7 +117,10 @@ def test_approve_redemption_requires_membership(client):
     db.session.add_all([admin_owner, admin_intruder])
     db.session.flush()
 
-    student = Student(first_name="Redeem", last_initial="S", block="A", salt=b"salt")
+    profile_redeem = IdentityProfile(profile_type='student', first_name='Redeem', last_name='S')
+    db.session.add(profile_redeem)
+    db.session.flush()
+    student = Student(identity_profile=profile_redeem, block="A", salt=b"salt")
     db.session.add(student)
     db.session.flush()
 
@@ -161,7 +168,10 @@ def test_file_claim_scoped_to_class(client):
     db.session.add(admin)
     db.session.flush()
     
-    student = Student(first_name="Claimer", last_initial="S", block="A", salt=b"salt")
+    profile_claimer = IdentityProfile(profile_type='student', first_name='Claimer', last_name='S')
+    db.session.add(profile_claimer)
+    db.session.flush()
+    student = Student(identity_profile=profile_claimer, block="A", salt=b"salt")
     db.session.add(student)
     db.session.flush()
 
@@ -187,8 +197,8 @@ def test_file_claim_scoped_to_class(client):
     db.session.add_all([seat_a, seat_b])
     db.session.flush()
     db.session.add_all([
-        IdentityProfile(seat_id=seat_a.id, profile_type='student_claimed', first_name="Claimer", last_initial="S"),
-        IdentityProfile(seat_id=seat_b.id, profile_type='student_claimed', first_name="Claimer", last_initial="S"),
+        IdentityProfile(seat_id=seat_a.id, profile_type='student_claimed', first_name="Claimer", last_name="S"),
+        IdentityProfile(seat_id=seat_b.id, profile_type='student_claimed', first_name="Claimer", last_name="S"),
     ])
 
     # Policy in Class A

@@ -240,23 +240,6 @@ def teacher_page(app, client, axe_live_server, browser, axe_script):
         db.session.add(teacher)
         db.session.flush()
 
-        join_code = "AXET01"
-        class_row = create_class_scope(
-            teacher=teacher,
-            join_code=join_code,
-            block="A",
-            display_name="Axe Test Period",
-            create_seat=False,
-        )
-
-        onboarding = TeacherOnboarding(
-            teacher_id=teacher.id,
-            is_completed=True,
-            completed_at=datetime.now(timezone.utc),
-        )
-        db.session.add(onboarding)
-        db.session.flush()
-
         _, teacher_username_hash, teacher_username_lookup_hash = build_hashed_username_fields("axe_teacher_t")
         user = User(
             username_hash=teacher_username_hash,
@@ -264,9 +247,29 @@ def teacher_page(app, client, axe_live_server, browser, axe_script):
             password_hash=generate_password_hash("secret"),
             user_role="teacher",
             has_completed_setup=True,
-            last_active_class_id=class_row.class_id,
         )
         db.session.add(user)
+        db.session.flush()
+
+        join_code = "AXET01"
+        class_row = create_class_scope(
+            teacher=teacher,
+            join_code=join_code,
+            block="A",
+            display_name="Axe Test Period",
+            create_seat=False,
+            teacher_user_id=user.id,
+        )
+
+        user.last_active_class_id = class_row.class_id
+
+        onboarding = TeacherOnboarding(
+            user_id=user.id,
+            is_completed=True,
+            completed_at=datetime.now(timezone.utc),
+        )
+        db.session.add(onboarding)
+
         for feat in ClassFeature.feature_names():
             if not ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feat).first():
                 db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feat))
@@ -318,6 +321,28 @@ def student_page(app, client, axe_live_server, browser, axe_script):
         db.session.add(student)
         db.session.flush()
 
+        _, teacher_username_hash, teacher_username_lookup_hash = build_hashed_username_fields("axe_teacher_s")
+        teacher_user = User(
+            username_hash=teacher_username_hash,
+            username_lookup_hash=teacher_username_lookup_hash,
+            password_hash=generate_password_hash("secret"),
+            user_role="teacher",
+            has_completed_setup=True,
+        )
+        db.session.add(teacher_user)
+
+        _, student_username_hash, student_username_lookup_hash = build_hashed_username_fields("axe_student")
+        user = User(
+            username_hash=student_username_hash,
+            username_lookup_hash=student_username_lookup_hash,
+            password_hash=generate_password_hash("secret"),
+            pin_hash=generate_password_hash("1234"),
+            user_role="student",
+            has_completed_setup=True,
+        )
+        db.session.add(user)
+        db.session.flush()
+
         join_code = "AXES01"
         class_row = create_class_scope(
             teacher=teacher,
@@ -328,25 +353,16 @@ def student_page(app, client, axe_live_server, browser, axe_script):
             create_claimed_teacher_block=True,
             teacher_block_claimed=True,
             create_seat=True,
+            teacher_user_id=teacher_user.id,
+            student_user_id=user.id,
         )
         db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
 
-        _, student_username_hash, student_username_lookup_hash = build_hashed_username_fields("axe_student")
-        user = User(
-            username_hash=student_username_hash,
-            username_lookup_hash=student_username_lookup_hash,
-            password_hash=generate_password_hash("secret"),
-            pin_hash=generate_password_hash("1234"),
-            user_role="student",
-            has_completed_setup=True,
-            last_active_class_id=class_row.class_id,
-        )
-        db.session.add(user)
-        db.session.flush()
+        teacher_user.last_active_class_id = class_row.class_id
+        user.last_active_class_id = class_row.class_id
 
-        seat = Seat.query.filter_by(student_id=student.id, class_id=class_row.class_id).first()
+        seat = Seat.query.filter_by(user_id=user.id, class_id=class_row.class_id).first()
         if seat:
-            seat.user_id = user.id
             seat.claimed_at = datetime.now(timezone.utc)
             db.session.flush()
             user.last_active_seat_id = seat.id

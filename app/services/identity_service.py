@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.extensions import db
-from app.models import Student, StudentBlock, User, Seat
+from app.models import IdentityProfile, Student, StudentBlock, User, Seat
 
 
 def _resolve_student_and_seat(identity, *, seat=None) -> tuple[Student | None, Seat | None]:
@@ -26,7 +26,6 @@ def _resolve_student_and_seat(identity, *, seat=None) -> tuple[Student | None, S
                 Seat.query
                 .filter(
                     Seat.user_id == identity.id,
-                    Seat.student_id.isnot(None),
                 )
                 .order_by(Seat.id.asc())
                 .first()
@@ -39,14 +38,15 @@ def _resolve_student_and_seat(identity, *, seat=None) -> tuple[Student | None, S
             resolved_student = identity
 
     if resolved_seat and not resolved_student:
-        resolved_student = resolved_seat.student
-        if not resolved_student and resolved_seat.student_id:
-            resolved_student = db.session.get(Student, resolved_seat.student_id)
+        if resolved_seat.user_id:
+            resolved_student = db.session.get(Student, resolved_seat.user_id)
 
     if resolved_student and not resolved_seat:
         resolved_seat = (
             Seat.query
-            .filter_by(student_id=resolved_student.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(Student.id == resolved_student.id)
             .order_by(Seat.id.asc())
             .first()
         )

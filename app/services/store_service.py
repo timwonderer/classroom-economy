@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from app.extensions import db
-from app.models import RentItem, RentPolicyVersion, Student, StudentItem, Seat
+from app.models import RentItem, RentPolicyVersion, Seat, Student, StudentItem
 from app.utils.time import utc_now
 
 
@@ -82,7 +82,6 @@ def grant_rent_per_use_items_from_version(
                 expiry_date = next_due
 
         db.session.add(StudentItem(
-            student_id=seat.student_id,
             seat_id=seat.id,
             class_id=seat.class_id,
             store_item_id=store_item_id,
@@ -143,7 +142,6 @@ def grant_rent_per_use_items(*, seat, settings, calculate_due_dates_fn) -> int:
                 expiry_date = next_due
 
         db.session.add(StudentItem(
-            student_id=seat.student_id,
             seat_id=seat.id,
             class_id=seat.class_id,
             store_item_id=pu_item.store_item_id,
@@ -180,7 +178,6 @@ def ensure_active_rent_per_use_grant(
 
     granted_item = StudentItem(
         seat_id=seat.id,
-        student_id=seat.student_id,
         class_id=seat.class_id,
         store_item_id=store_item_id,
         purchase_date=now,
@@ -212,7 +209,6 @@ def record_rent_perk_purchase(
 
     student_item = StudentItem(
         seat_id=seat.id,
-        student_id=seat.student_id,
         class_id=seat.class_id,
         store_item_id=item.id,
         purchase_date=now,
@@ -230,6 +226,7 @@ def record_rent_perk_purchase(
 def record_standard_purchase_items(
     *,
     seat,
+    student_id: int | None,
     item,
     quantity: int,
     purchase_tx_id: int,
@@ -242,11 +239,10 @@ def record_standard_purchase_items(
 
     from app.feats.base import get_correlation_id
     corr_id = get_correlation_id()
-    
     if item.is_bundle and item.bundle_quantity is not None:
         new_student_item = StudentItem(
             seat_id=seat.id,
-            student_id=seat.student_id,
+            student_id=student_id,
             class_id=seat.class_id,
             store_item_id=item.id,
             correlation_id=corr_id,
@@ -268,7 +264,7 @@ def record_standard_purchase_items(
     for _ in range(quantity):
         new_student_item = StudentItem(
             seat_id=seat.id,
-            student_id=seat.student_id,
+            student_id=student_id,
             class_id=seat.class_id,
             store_item_id=item.id,
             correlation_id=corr_id,
@@ -298,7 +294,9 @@ def unlock_collective_goal_if_ready(*, item, class_id: str, join_code: str | Non
     if not class_id:
         raise ValueError("class_id is required for collective goal unlock")
     class_size = db.session.query(db.func.count(db.func.distinct(Student.id))).join(
-        Seat, Seat.student_id == Student.id,
+        IdentityProfile, IdentityProfile.id == Student.identity_id
+    ).join(
+        Seat, Seat.id == IdentityProfile.seat_id,
     ).filter(
         Seat.class_id == class_id,
         Seat.claimed_at.isnot(None),

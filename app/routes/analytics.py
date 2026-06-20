@@ -529,7 +529,9 @@ def student_drill_down(student_id):
 
     # Get student with scoping
     student = Student.query.join(
-        Seat, Student.id == Seat.student_id
+        IdentityProfile, IdentityProfile.id == Student.identity_id
+    ).join(
+        Seat, Seat.id == IdentityProfile.seat_id
     ).filter(
         Student.id == student_id,
         Seat.class_id == class_id
@@ -541,10 +543,13 @@ def student_drill_down(student_id):
     weeks_enrolled = 18  # default/fallback for legacy behavior
 
     # Try to determine when the student enrolled in this class period
-    student_seat = Seat.query.filter_by(
-        student_id=student.id,
-        class_id=class_id
-    ).first()
+    student_seat = (
+        Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
+        .filter(Student.id == student.id, Seat.class_id == class_id)
+        .first()
+    )
 
     enrollment_start = None
     if student_seat is not None and student_seat.claimed_at:

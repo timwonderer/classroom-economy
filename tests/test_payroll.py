@@ -12,7 +12,7 @@ FLOAT_TOLERANCE = 0.0001
 @pytest.fixture
 def test_teacher(client):
     """Fixture to create a test teacher for payroll tests."""
-    from app.models import Admin, Seat, IdentityProfile
+    from app.models import Admin, Seat, IdentityProfile, Student
     teacher = make_admin("test_teacher", "s")
     db.session.add(teacher)
     db.session.commit()
@@ -44,9 +44,11 @@ def test_calculate_payroll(client):
     db.session.commit()
 
     # Create a student
+    profile = IdentityProfile(profile_type='student', first_name='Test', last_name='S')
+    db.session.add(profile)
+    db.session.flush()
     student = Student(
-        first_name="Test",
-        last_initial="S",
+        identity_profile=profile,
         block="A",
         salt=b'salt',
         has_completed_setup=True
@@ -66,7 +68,7 @@ def test_calculate_payroll(client):
     tb = Seat(student_id=student.id, class_id=class_economy.class_id, join_code="JOIN123", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Test", last_initial="S"))
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Test", last_name="S"))
     db.session.add(tb)
     db.session.commit()
 
@@ -106,7 +108,10 @@ def test_calculate_payroll(client):
     # NOTE: student2 intentionally has no StudentTeacher link and no TeacherBlock
     # to verify proper skipping behavior in calculate_payroll. Students without
     # these associations should be skipped during payroll processing.
-    student2 = Student(first_name="Test2", last_initial="S", block="B", salt=b'salt2', has_completed_setup=True)
+    profile2 = IdentityProfile(profile_type='student', first_name='Test2', last_name='S')
+    db.session.add(profile2)
+    db.session.flush()
+    student2 = Student(identity_profile=profile2, block="B", salt=b'salt2', has_completed_setup=True)
     db.session.add(student2)
     db.session.commit()
 
@@ -141,7 +146,7 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
 
     student = Student(
         first_name="Multi",
-        last_initial="S",
+        last_name="S",
         block="A,B",
         salt=b'salt',
         has_completed_setup=True,
@@ -170,11 +175,11 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=tb_a.id, profile_type='student_claimed', first_name="Multi", last_initial="S"))
+    db.session.add(IdentityProfile(seat_id=tb_a.id, profile_type='student_claimed', first_name="Multi", last_name="S"))
     tb_b = Seat(student_id=student.id, class_id=class_b.class_id, join_code="PAYB01", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb_b)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb_b.id, profile_type='student_claimed', first_name="Multi", last_initial="S"))
+    db.session.add(IdentityProfile(seat_id=tb_b.id, profile_type='student_claimed', first_name="Multi", last_name="S"))
     db.session.add_all([tb_a, tb_b])
     db.session.flush()
 
@@ -429,7 +434,10 @@ def test_get_cached_payroll_with_meta(client):
     db.session.commit()
 
     # Setup Student
-    student = Student(first_name="CacheUser", last_initial="T", block="A", salt=b's', has_completed_setup=True)
+    profile_cache = IdentityProfile(profile_type='student', first_name='CacheUser', last_name='T')
+    db.session.add(profile_cache)
+    db.session.flush()
+    student = Student(identity_profile=profile_cache, block="A", salt=b's', has_completed_setup=True)
     db.session.add(student)
     db.session.flush()
     class_economy = create_class_scope(
@@ -445,7 +453,7 @@ def test_get_cached_payroll_with_meta(client):
     tb = Seat(student_id=student.id, class_id=class_economy.class_id, join_code="CACHE1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="CacheUser", last_initial="T"))
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="CacheUser", last_name="T"))
     db.session.add(tb)
     db.session.commit()
 

@@ -20,8 +20,8 @@ from app.utils.economy_policy import (
 def _create_class_scope(admin, block='A', join_code='JOIN_A'):
     economy = ClassEconomy(
         join_code=join_code,
-        teacher_id=admin.id,
-        created_by_admin_id=admin.id,
+        teacher_id=admin.user_id,
+        created_by_user_id=admin.user_id,
         display_name=f'Period {block}',
     )
     db.session.add(economy)
@@ -208,7 +208,7 @@ class TestTeacherOnboarding:
 
     def test_onboarding_model_defaults(self, client, test_admin):
         """Test that TeacherOnboarding has correct defaults."""
-        onboarding = TeacherOnboarding(teacher_id=test_admin.id)
+        onboarding = TeacherOnboarding(user_id=test_admin.user_id)
         db.session.add(onboarding)
         db.session.commit()
 
@@ -220,7 +220,7 @@ class TestTeacherOnboarding:
 
     def test_mark_step_completed(self, client, test_admin):
         """Test marking steps as completed."""
-        onboarding = TeacherOnboarding(teacher_id=test_admin.id)
+        onboarding = TeacherOnboarding(user_id=test_admin.user_id)
         db.session.add(onboarding)
         db.session.commit()
 
@@ -234,7 +234,7 @@ class TestTeacherOnboarding:
 
     def test_complete_onboarding(self, client, test_admin):
         """Test completing onboarding."""
-        onboarding = TeacherOnboarding(teacher_id=test_admin.id)
+        onboarding = TeacherOnboarding(user_id=test_admin.user_id)
         db.session.add(onboarding)
         db.session.commit()
 
@@ -246,7 +246,7 @@ class TestTeacherOnboarding:
 
     def test_skip_onboarding(self, client, test_admin):
         """Test skipping onboarding."""
-        onboarding = TeacherOnboarding(teacher_id=test_admin.id)
+        onboarding = TeacherOnboarding(user_id=test_admin.user_id)
         db.session.add(onboarding)
         db.session.commit()
 
@@ -258,7 +258,7 @@ class TestTeacherOnboarding:
 
     def test_needs_onboarding_property(self, client, test_admin):
         """Test the needs_onboarding property."""
-        onboarding = TeacherOnboarding(teacher_id=test_admin.id)
+        onboarding = TeacherOnboarding(user_id=test_admin.user_id)
         db.session.add(onboarding)
         db.session.commit()
 
@@ -272,12 +272,12 @@ class TestTeacherOnboarding:
 
     def test_unique_teacher_onboarding(self, client, test_admin):
         """Test that each teacher can only have one onboarding record."""
-        onboarding1 = TeacherOnboarding(teacher_id=test_admin.id)
+        onboarding1 = TeacherOnboarding(user_id=test_admin.user_id)
         db.session.add(onboarding1)
         db.session.commit()
 
         # Try to add another onboarding for the same teacher
-        onboarding2 = TeacherOnboarding(teacher_id=test_admin.id)
+        onboarding2 = TeacherOnboarding(user_id=test_admin.user_id)
         db.session.add(onboarding2)
 
         with pytest.raises(Exception):  # Should raise IntegrityError
@@ -313,7 +313,7 @@ class TestOnboardingRoutes:
     def test_onboarding_skip(self, client, test_admin):
         """Test skipping onboarding via API."""
         # Create onboarding record
-        onboarding = TeacherOnboarding(teacher_id=test_admin.id)
+        onboarding = TeacherOnboarding(user_id=test_admin.user_id)
         db.session.add(onboarding)
         db.session.commit()
 
@@ -328,7 +328,7 @@ class TestOnboardingRoutes:
 
         # Verify onboarding was skipped
         onboarding = TeacherOnboarding.query.filter_by(
-            teacher_id=test_admin.id
+            user_id=test_admin.user_id
         ).first()
         assert onboarding.is_skipped is True
 
@@ -336,14 +336,28 @@ class TestOnboardingRoutes:
 class TestTeacherDeletionCascade:
     """Tests for CASCADE deletion when a teacher is deleted."""
 
+    @staticmethod
+    def _attach_teacher_user(admin):
+        user = User(
+            user_role=UserRole.TEACHER,
+            username_hash=admin.username_hash,
+            username_lookup_hash=admin.username_lookup_hash,
+            totp_secret_encrypted=admin.totp_secret,
+        )
+        db.session.add(user)
+        db.session.flush()
+        admin.user_id = user.id
+        db.session.commit()
+        return user
+
     def test_class_features_cascade_on_teacher_delete(self, client_with_fk):
         """Class features are removed when their teacher-owned class is deleted."""
         # Create a teacher
         admin = make_admin('cascade_test_teacher', pyotp.random_base32(),
         )
         db.session.add(admin)
-        db.session.commit()
-        teacher_id = admin.id
+        teacher_user = self._attach_teacher_user(admin)
+        teacher_id = teacher_user.id
 
         economy_a = _create_class_scope(admin, block='A', join_code='TESTA1')
         economy_b = _create_class_scope(admin, block='B', join_code='TESTB1')
@@ -354,7 +368,7 @@ class TestTeacherDeletionCascade:
         ).count() == 2
 
         # Delete the teacher
-        db.session.delete(admin)
+        db.session.delete(teacher_user)
         db.session.commit()
 
         assert ClassFeature.query.join(ClassEconomy, ClassFeature.class_id == ClassEconomy.class_id).filter(
@@ -367,23 +381,23 @@ class TestTeacherDeletionCascade:
         admin = make_admin('onboarding_cascade_test', pyotp.random_base32(),
         )
         db.session.add(admin)
-        db.session.commit()
-        teacher_id = admin.id
+        teacher_user = self._attach_teacher_user(admin)
+        teacher_id = teacher_user.id
 
         # Create onboarding record for the teacher
-        onboarding = TeacherOnboarding(teacher_id=teacher_id)
+        onboarding = TeacherOnboarding(user_id=teacher_id)
         db.session.add(onboarding)
         db.session.commit()
 
         # Verify onboarding exists
-        assert TeacherOnboarding.query.filter_by(teacher_id=teacher_id).first() is not None
+        assert TeacherOnboarding.query.filter_by(user_id=teacher_id).first() is not None
 
         # Delete the teacher
-        db.session.delete(admin)
+        db.session.delete(teacher_user)
         db.session.commit()
 
         # Verify onboarding was CASCADE deleted
-        assert TeacherOnboarding.query.filter_by(teacher_id=teacher_id).first() is None
+        assert TeacherOnboarding.query.filter_by(user_id=teacher_id).first() is None
 
     def test_class_scoped_seats_cascade_on_teacher_delete(self, client_with_fk):
         """Test that class-scoped seats are removed when the teacher's classes are deleted."""
@@ -393,14 +407,14 @@ class TestTeacherDeletionCascade:
         admin = make_admin('blocks_cascade_test', pyotp.random_base32(),
         )
         db.session.add(admin)
-        db.session.commit()
-        teacher_id = admin.id
+        teacher_user = self._attach_teacher_user(admin)
+        teacher_id = teacher_user.id
 
         # Ensure ClassEconomy exists for FK constraints
         if not ClassEconomy.query.filter_by(class_id='TEST123').first():
-            db.session.add(ClassEconomy(class_id='TEST123', join_code='TEST123', teacher_id=teacher_id, created_by_admin_id=teacher_id, display_name='Class TEST123'))
+            db.session.add(ClassEconomy(class_id='TEST123', join_code='TEST123', teacher_id=teacher_id, created_by_user_id=teacher_id, display_name='Class TEST123'))
         if not ClassEconomy.query.filter_by(class_id='TEST456').first():
-            db.session.add(ClassEconomy(class_id='TEST456', join_code='TEST456', teacher_id=teacher_id, created_by_admin_id=teacher_id, display_name='Class TEST456'))
+            db.session.add(ClassEconomy(class_id='TEST456', join_code='TEST456', teacher_id=teacher_id, created_by_user_id=teacher_id, display_name='Class TEST456'))
         db.session.commit()
 
         block1 = Seat(class_id='TEST123', join_code='TEST123', block='A', block_identifier='A', role='student')
@@ -413,7 +427,7 @@ class TestTeacherDeletionCascade:
         assert Seat.query.filter(Seat.class_id.in_(['TEST123', 'TEST456'])).count() == 2
 
         # Delete the teacher
-        db.session.delete(admin)
+        db.session.delete(teacher_user)
         db.session.commit()
 
         # Verify class-scoped seats were CASCADE deleted via class deletion.

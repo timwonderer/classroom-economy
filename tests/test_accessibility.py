@@ -213,7 +213,7 @@ def auth_student_context(app, client):
         db.session.flush()
 
         # Link Seat to User
-        seat = Seat.query.filter_by(student_id=student.id, class_id=class_row.class_id).first()
+        seat = Seat.query.filter_by(class_id=class_row.class_id, role="student").first()
         if seat:
             seat.user_id = user.id
             seat.claimed_at = datetime.now(timezone.utc)
@@ -278,7 +278,7 @@ def auth_teacher_context(app, client):
 
         # Mark onboarding as completed for this teacher
         onboarding = TeacherOnboarding(
-            teacher_id=teacher.id,
+            user_id=teacher.id,
             is_completed=True,
             completed_at=datetime.now(timezone.utc)
         )
@@ -387,4 +387,3 @@ def test_teacher_insurance_accessibility(client, auth_teacher_context):
     response = client.get('/admin/insurance')
     assert response.status_code == 200
     audit_html_accessibility(response.data.decode('utf-8'))
-

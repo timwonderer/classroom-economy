@@ -804,8 +804,7 @@ def create_app():
                 'teacher_id': current_teacher_id,
                 'block': current_seat.block,
                 'block_display': current_class_label,
-                'student_first_name': current_seat.display_first_name,
-                'student_last_initial': current_seat.display_last_initial,
+                'student_full_name': current_seat.identity_profile.full_name if current_seat.identity_profile else "",
             }
 
             return {
