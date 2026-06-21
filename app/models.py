@@ -2995,13 +2995,11 @@ class Admin(db.Model):
         return f"teacher_{self.id}"
 
     def get_student_count(self):
-        """Return unique students linked via canonical seats."""
+        """Return unique students linked via StudentTeacher."""
         return (
-            db.session.query(Seat.student_id)
-            .filter(
-                Seat.user_id == self.id,
-                Seat.student_id.isnot(None),
-            )
+            db.session.query(StudentTeacher.student_id)
+            .join(Student, Student.id == StudentTeacher.student_id)
+            .filter(StudentTeacher.teacher_id == self.id)
             .distinct()
             .count()
         )
