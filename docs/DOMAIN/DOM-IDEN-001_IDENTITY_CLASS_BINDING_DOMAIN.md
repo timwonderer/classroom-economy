@@ -80,7 +80,7 @@ Key fields:
 - `username_lookup_hash` — HMAC-based lookup
 - `totp_secret_encrypted` / `pin_hash` / `passphrase_hash`
 - `username_hash` — canonical credential verifier for username-based login
-- `last_active_class_id` — nullable class-context restoration pointer
+- `last_active_class_id` — nullable class-context restoration preference; the login boundary may use it when valid, but it is never runtime authority
 - `current_session_nonce` — binds requests to a specific login event
 - `last_active_seat_id` — nullable FK to `seats`; tracks the last resolved context for multi-device continuity
 
@@ -90,6 +90,7 @@ Rules:
 - No PII (Date of Birth) shall be stored.
 - Credential metadata tables may implement authentication capabilities, but their
   authority is always derived from `users.id`.
+- If `last_active_class_id` is missing or stale, the login boundary may surface explicit class selection when valid seats exist; it must fail closed only after confirming that no valid class/seat pair remains.
 
 ### 2. `seats`
 
