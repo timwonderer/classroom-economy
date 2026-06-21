@@ -254,8 +254,6 @@ def _get_request_join_code(payload=None):
         raw_join_code = payload.get("join_code")
         if raw_join_code is not None:
             join_code = str(raw_join_code).strip()
-    if not join_code:
-        join_code = (session.get("current_join_code") or "").strip()
     return join_code or None
 
 
@@ -407,14 +405,13 @@ def _charge_overdraft_fee_if_needed(student, banking_settings, teacher_id, join_
 @login_required
 @feat_shell("FEAT-STOR-002")
 def purchase_item():
-    from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
-
     student = get_logged_in_student()
     try:
-        scope = resolve_scope(
-            actor=student,
-            selected_join_code=session.get("current_join_code"),
-        )
+        context = getattr(g, "canonical_context", None)
+        if not context:
+            raise AccessScopeDenied(reason_code="no_class_scope", message="No class selected. Please select a class to continue.")
+        if not student:
+            raise AccessScopeDenied(reason_code="missing_actor", message="No active actor is bound to this request.")
     except AccessScopeDenied as exc:
         return jsonify({"status": "error", "message": exc.message}), 403
     data = request.get_json(silent=True) or {}
@@ -1160,22 +1157,9 @@ def _enforce_hall_pass_student_context(student, log_entry):
 
     Class context is required and must match the pass class/join scope.
     """
-    current_class_id = get_current_class_id()
+    context = resolve_canonical_context()
+    current_class_id = context.class_id if context else None
     if not current_class_id:
-        context = resolve_canonical_context()
-        current_class_id = context.get("class_id") if context else None
-
-    if not current_class_id:
-        # Legacy sessions may only pin join_code; treat that as invalid for mutation context.
-        if session.get("current_join_code"):
-            return jsonify({
-                "status": "error",
-                "message": "This pass belongs to a different class context. Switch class and retry.",
-            }), 403
-        # Canonical fallback for sessions with no class selected:
-        # ownership is already enforced by student_id match above, so allow class-scoped pass rows.
-        if log_entry.class_id:
-            return None
         return jsonify({
             "status": "error",
             "message": "This pass belongs to a different class context. Switch class and retry.",
@@ -1238,15 +1222,14 @@ def checkout_hall_pass():
     
     log_entry = db.get_or_404(HallPassLog, pass_id)
     current_app.logger.info(
-        "HALL_PASS_CHECKOUT_DEBUG: student_id=%s pass_id=%s pass_student_id=%s pass_seat_id=%s pass_class_id=%s pass_join_code=%s session_class_id=%s session_join_code=%s",
+        "HALL_PASS_CHECKOUT_DEBUG: student_id=%s pass_id=%s pass_student_id=%s pass_seat_id=%s pass_class_id=%s pass_join_code=%s session_class_id=%s",
         getattr(student, "id", None),
         pass_id,
         log_entry.student_id,
         log_entry.seat_id,
         log_entry.class_id,
         log_entry.join_code,
-        session.get("current_class_id"),
-        session.get("current_join_code"),
+        getattr(getattr(g, "canonical_context", None), "class_id", None),
     )
     
     # Verify this pass belongs to the logged-in student
@@ -1309,15 +1292,14 @@ def checkin_hall_pass():
     
     log_entry = db.get_or_404(HallPassLog, pass_id)
     current_app.logger.info(
-        "HALL_PASS_CHECKIN_DEBUG: student_id=%s pass_id=%s pass_student_id=%s pass_seat_id=%s pass_class_id=%s pass_join_code=%s session_class_id=%s session_join_code=%s",
+        "HALL_PASS_CHECKIN_DEBUG: student_id=%s pass_id=%s pass_student_id=%s pass_seat_id=%s pass_class_id=%s pass_join_code=%s session_class_id=%s",
         getattr(student, "id", None),
         pass_id,
         log_entry.student_id,
         log_entry.seat_id,
         log_entry.class_id,
         log_entry.join_code,
-        session.get("current_class_id"),
-        session.get("current_join_code"),
+        getattr(getattr(g, "canonical_context", None), "class_id", None),
     )
     
     # Verify this pass belongs to the logged-in student
@@ -1369,9 +1351,9 @@ def hall_pass_settings():
     if not current_admin:
         return jsonify({"status": "error", "message": "Admin ID not found in session"}), 401
 
-    join_code = (session.get("current_join_code") or "").strip()
-    class_id = (session.get("current_class_id") or "").strip()
-    if not join_code or not class_id:
+    context = getattr(g, "canonical_context", None)
+    class_id = context.class_id if context else None
+    if not class_id:
         return jsonify({"status": "error", "message": "Class context is required"}), 400
 
     settings = HallPassSettings.query.filter_by(class_id=class_id).first()
@@ -1395,9 +1377,9 @@ def update_hall_pass_settings():
         return jsonify({"status": "error", "message": "Admin ID not found in session"}), 401
     scoped_admin_id = current_admin.id
 
-    join_code = (session.get("current_join_code") or "").strip()
-    class_id = (session.get("current_class_id") or "").strip()
-    if not join_code or not class_id:
+    context = getattr(g, "canonical_context", None)
+    class_id = context.class_id if context else None
+    if not class_id:
         return jsonify({"status": "error", "message": "Class context is required"}), 400
 
     data = request.get_json() or {}
@@ -1405,7 +1387,7 @@ def update_hall_pass_settings():
         settings = feat_update_hall_pass_queue_settings(
             teacher_id=scoped_admin_id,
             class_id=class_id,
-            join_code=join_code,
+            join_code=None,
             queue_enabled=data.get("queue_enabled") if "queue_enabled" in data else None,
             queue_limit=data.get("queue_limit") if "queue_limit" in data else None,
             updated_at=utc_now(),
@@ -1462,7 +1444,7 @@ def hall_pass_history():
         )
 
         # Enforce single-class context for admin history views.
-        current_class_id = (session.get("current_class_id") or "").strip()
+        current_class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or "").strip()
         if current_class_id:
             query = query.filter(HallPassLog.class_id == current_class_id)
 
@@ -1544,7 +1526,8 @@ def get_hall_pass_setup():
     if not current_admin:
         return jsonify({"status": "error", "message": "Admin ID not found in session"}), 401
     teacher_id = current_admin.id
-    current_class_id = get_current_class_id()
+    context = getattr(g, "canonical_context", None)
+    current_class_id = context.class_id if context else None
     if not current_class_id:
         return jsonify({"status": "error", "message": "Active class context is required"}), 400
     class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
@@ -1588,7 +1571,8 @@ def save_hall_pass_setup():
         return jsonify({"status": "error", "message": "Admin ID not found in session"}), 401
     scoped_admin_id = current_admin.id
     data = request.get_json() or {}
-    current_class_id = get_current_class_id()
+    context = getattr(g, "canonical_context", None)
+    current_class_id = context.class_id if context else None
     if not current_class_id:
         return jsonify({"status": "error", "message": "Active class context is required"}), 400
     class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
@@ -1829,7 +1813,7 @@ def attendance_history():
             scoped_admin_id,
             None,
         )
-        current_class_id = (session.get("current_class_id") or "").strip()
+        current_class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or "").strip()
         if current_class_id:
             query = query.filter(AttendanceSession.class_id == current_class_id)
 
@@ -2023,7 +2007,7 @@ def handle_tap():
     normalized_action = action_map[action]
 
     context = resolve_canonical_context()
-    class_id = context.get("class_id") if context else get_current_class_id()
+    class_id = context.class_id if context else None
     if not class_id:
         current_app.logger.warning("TAP ERROR: Missing class_id context for student_id=%s", student.id)
         return jsonify({"error": "Unable to resolve class context for this period."}), 400
@@ -2239,7 +2223,8 @@ def get_tap_entries(student_id):
     if not student:
         return jsonify({"error": "Student not found or access denied"}), 404
 
-    active_class_id = get_current_class_id()
+    context = getattr(g, "canonical_context", None)
+    active_class_id = context.class_id if context else None
     if not active_class_id:
         return jsonify({"error": "Class context unavailable"}), 404
 
@@ -2342,7 +2327,8 @@ def delete_tap_entry(event_id):
     if not event:
         return jsonify({"error": "Tap entry not found"}), 404
 
-    active_class_id = get_current_class_id()
+    context = getattr(g, "canonical_context", None)
+    active_class_id = context.class_id if context else None
     if not active_class_id:
         return jsonify({"error": "Class context unavailable"}), 404
 
@@ -2473,7 +2459,7 @@ def student_status():
     if not context:
         return jsonify({"status": "error", "message": "No class selected."}), 400
 
-    class_id = context.get("class_id")
+    class_id = context.class_id
     if not class_id:
         return jsonify({"status": "error", "message": "Class context unavailable."}), 400
 

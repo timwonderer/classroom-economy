@@ -17,7 +17,6 @@ from app.models import (
     StudentBlock,
     StudentInsurance,
     StudentItem,
-    StudentTeacher,
     AttendanceSession,
     SeatAttendanceState,
     Transaction,
@@ -142,11 +141,10 @@ def _delete_student_scoped_rows(student_id, student_item_ids, issue_ids, insuran
 def hard_delete_student_if_orphaned(student_id):
     """Hard-delete a student and dependent rows only when no teacher links remain."""
     has_links = (
-        db.session.query(StudentTeacher.id)
-        .filter(StudentTeacher.student_id == student_id)
+        db.session.query(Seat.id)
+        .filter(Seat.student_id == student_id)
         .all()
     )
-    print(f"DEBUG: hard_delete_student_if_orphaned for student_id={student_id}. has_links={has_links}")
     if has_links:
         return False
 
@@ -162,10 +160,6 @@ def remove_student_from_teacher_scope(student_id, teacher_id):
     """
     Remove a student from a specific teacher's roster and hard-delete if orphaned.
     """
-    StudentTeacher.query.filter(
-        StudentTeacher.student_id == student_id,
-        StudentTeacher.teacher_id == teacher_id,
-    ).delete(synchronize_session=False)
     # Detach the student's seats that belong to this teacher's classes.
     # Seats belonging to other teachers' classes are left intact.
     from app.models import ClassEconomy

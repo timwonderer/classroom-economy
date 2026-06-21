@@ -7,6 +7,7 @@ from app.services.context_resolver import (
     ContextNotEstablished,
     ContextForbidden,
     ContextMismatch,
+    ContextInvariantViolation,
 )
 from app.models import Seat, User, UserRole
 
@@ -19,7 +20,13 @@ def test_resolve_canonical_context_rejects_sysadmin(app):
 def test_resolve_canonical_context_missing_keys(app):
     with app.test_request_context():
         session["user_id"] = 1
-        with pytest.raises(ContextNotEstablished, match="Missing user_id, class_id, or seat_id in session."):
+        with pytest.raises(ContextInvariantViolation, match="Missing canonical class_id or seat_id in session."):
+            resolve_canonical_context()
+
+def test_resolve_canonical_context_missing_scope_fails_closed(app):
+    with app.test_request_context():
+        session["user_id"] = 1
+        with pytest.raises(ContextInvariantViolation, match="Missing canonical class_id or seat_id in session."):
             resolve_canonical_context()
 
 def test_resolve_canonical_context_invalid_format(app):
@@ -46,7 +53,7 @@ def test_resolve_canonical_context_seat_unclaimed(mock_get, app):
         session["user_id"] = 1
         session["current_class_id"] = "some-uuid"
         session["current_seat_id"] = 1
-        mock_seat = Seat(id=1, user_id=1, class_id="some-uuid", claimed_at=None)
+        mock_seat = Seat(id=1, user_id=1, class_id="some-uuid", role="student", claimed_at=None)
         mock_get.return_value = mock_seat
         with pytest.raises(ContextNotEstablished, match="Seat is not claimed."):
             resolve_canonical_context()
@@ -87,6 +94,15 @@ def test_resolve_canonical_context_success(mock_get, app):
         assert context.seat_id == 1
         assert context.actor_role == "student"
 
+@patch("app.extensions.db.session.get")
+def test_resolve_canonical_context_teacher_exception_returns_none(mock_get, app):
+    with app.test_request_context("/admin/onboarding", method="GET"):
+        session["user_id"] = 1
+        session["current_class_id"] = None
+        session["current_seat_id"] = None
+        mock_get.return_value = type("UserStub", (), {"user_role": UserRole.TEACHER})()
+        assert resolve_canonical_context() is None
+
 def test_canonical_context_guards():
     context = CanonicalContext(user_id=1, class_id="uuid", seat_id=1, actor_role="student")
     
@@ -98,4 +114,3 @@ def test_canonical_context_guards():
         
     with pytest.raises(AttributeError, match="Strict context invariant violation: cannot access student_id"):
         _ = context.student_id
-

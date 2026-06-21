@@ -8,11 +8,11 @@ import uuid
 from datetime import timedelta
 
 import sqlalchemy as sa
-from flask import has_request_context, request, session
+from flask import has_request_context, request, current_app
 
-from app.auth import get_current_admin, get_current_system_admin, get_current_seat, get_current_user
 from app.extensions import db
 from app.models import ActorRequestTrace, ErrorEvent, ClassEconomy, Seat, TicketCorrelationPack
+from app.services.context_resolver import CanonicalContext
 from app.utils.time import utc_now
 
 CORRELATION_VERSION = 1
@@ -28,6 +28,14 @@ DEFAULT_NOISE_ENDPOINT_PREFIXES = (
     "/favicon.ico",
     "/api/set-timezone",
 )
+
+DEFAULT_PUBLIC_ENDPOINTS = {
+    "admin.login",
+    "main.district",
+    "main.offline",
+    "main.service_worker",
+    "api.tips",
+}
 
 
 def _int_env(name: str, default: int) -> int:
@@ -48,30 +56,6 @@ def _sanitize_error_message(raw_message: str | None) -> str:
     return compact[:500]
 
 
-def _session_seat(*, class_id: str | None = None, role: str | None = None) -> Seat | None:
-    seat_id = session.get("current_seat_id") or session.get("seat_id")
-    if not seat_id:
-        return None
-    seat = db.session.get(Seat, seat_id)
-    if not seat:
-        return None
-    if class_id and seat.class_id != class_id:
-        return None
-    if role and seat.role != role:
-        return None
-    return seat
-
-
-def _teacher_seat_public_id(*, class_id: str | None) -> str | None:
-    if not class_id:
-        return None
-    session_seat = _session_seat(class_id=class_id, role="teacher")
-    if session_seat:
-        return session_seat.public_id
-    seat = Seat.query.filter_by(class_id=class_id, role="teacher").first()
-    return seat.public_id if seat else None
-
-
 def _noise_endpoint_prefixes() -> tuple[str, ...]:
     raw = os.getenv("TLCP_NOISE_ENDPOINT_PREFIXES")
     if not raw:
@@ -86,31 +70,50 @@ def _is_noise_endpoint(endpoint: str | None) -> bool:
     return any(endpoint.startswith(prefix) for prefix in _noise_endpoint_prefixes())
 
 
-def resolve_actor_context() -> dict | None:
-    """Resolve request actor context for correlation logging."""
+def _is_public_request(endpoint: str | None, path: str | None) -> bool:
+    if endpoint in DEFAULT_PUBLIC_ENDPOINTS:
+        return True
+    if path and any(path.startswith(prefix) for prefix in _noise_endpoint_prefixes()):
+        return True
+    return False
+
+
+def _log_invariant_violation(message: str, *, context: CanonicalContext | None = None) -> None:
+    extra = {
+        "actor_type": "-",
+        "actor_public_id": "-",
+        "class_id": "-",
+        "error_class": "InvariantViolation",
+        "correlation_version": CORRELATION_VERSION,
+    }
+    if context is not None:
+        extra.update(
+            actor_type=context.actor_role,
+            class_id=context.class_id,
+        )
+    current_app.logger.error(f"TLCP-INVARIANT-VIOLATION: {message}", extra=extra)
+
+
+def resolve_actor_context(context: CanonicalContext | None) -> dict | None:
+    """Convert canonical request context into correlation logging fields."""
     if not has_request_context():
         return None
-
-    class_id = None
-    actor_public_id = None
-
-    current_seat = get_current_seat()
-    current_user = get_current_user()
-    if current_seat and current_user and current_seat.role == "student":
-        actor_type = "student"
-        actor_id = current_user.id
-        class_id = current_seat.class_id
-        actor_public_id = current_seat.public_id
-    elif (admin := get_current_admin()) is not None:
-        actor_type = "teacher"
-        actor_id = admin.id
-        class_id = session.get("current_class_id")
-        actor_public_id = _teacher_seat_public_id(class_id=class_id)
-    elif (sysadmin := get_current_system_admin()) is not None:
-        actor_type = "sysadmin"
-        actor_id = sysadmin.id
-    else:
+    if context is None:
+        endpoint = request.url_rule.rule if request.url_rule and request.url_rule.rule else request.endpoint
+        if _is_public_request(endpoint, request.path):
+            return None
+        _log_invariant_violation("missing canonical context")
         return None
+
+    seat = db.session.get(Seat, context.seat_id)
+    if not seat:
+        _log_invariant_violation("missing canonical seat", context=context)
+        return None
+
+    actor_type = seat.role
+    actor_id = context.user_id
+    class_id = context.class_id
+    actor_public_id = seat.public_id
 
     endpoint = request.url_rule.rule if request.url_rule and request.url_rule.rule else request.path
     return {

@@ -920,10 +920,10 @@ def dashboard():
     student = get_logged_in_student()
 
     try:
-        scope = resolve_scope(
-            actor=student,
-            selected_join_code=session.get("current_join_code"),
-        )
+        context = resolve_canonical_context()
+        scope = resolve_scope(actor=student, selected_join_code=None)
+        if context and scope.class_id != context.class_id:
+            raise AccessScopeDenied(reason_code="foreign_class_scope", message="Please switch to the selected class.")
         access_policy_service.assert_can_view_dashboard(scope)
     except AccessScopeDenied as exc:
         flash(exc.message, "error")
@@ -1835,10 +1835,10 @@ def file_claim(policy_id):
         flash("You are not enrolled in this policy.", "danger")
         return redirect(url_for('student.student_insurance'))
     try:
-        scope = resolve_scope(
-            actor=student,
-            selected_join_code=enrollment.join_code or session.get("current_join_code"),
-        )
+        context = resolve_canonical_context()
+        scope = resolve_scope(actor=student, selected_join_code=None)
+        if context and scope.class_id != context.class_id:
+            raise AccessScopeDenied(reason_code="foreign_class_scope", message="Please switch to the selected class.")
     except AccessScopeDenied as exc:
         flash(exc.message, "danger")
         return redirect(url_for('student.student_insurance'))
@@ -3680,7 +3680,6 @@ def login():
         # Clear old student-specific session keys without wiping the CSRF token
         session.pop('student_id', None)
         session.pop('user_id', None)
-        session.pop('current_seat_id', None)
         session.pop('login_time', None)
         session.pop('last_activity', None)
         # Explicitly clear other potential student-related session keys
@@ -3697,6 +3696,8 @@ def login():
 
         linked_user = user
         session['user_id'] = linked_user.id
+        session['current_session_nonce'] = secrets.token_urlsafe(32)
+        linked_user.current_session_nonce = session['current_session_nonce']
 
         if linked_user and linked_user.last_active_class_id:
             has_active_class_seat = Seat.query.filter_by(
@@ -3708,6 +3709,21 @@ def login():
                 db.session.flush()
 
         seat_options = _get_identity_bound_seat_options(linked_user.id)
+        if not seat_options:
+            current_app.logger.critical(
+                "P0 INCIDENT: Student %s login has no valid class seats.",
+                student.id,
+            )
+            session.pop('student_id', None)
+            session.pop('user_id', None)
+            session.pop('current_join_code', None)
+            session.pop('login_time', None)
+            session.pop('last_activity', None)
+            if is_json:
+                return jsonify(status="error", message="Account scope incident detected. Contact support immediately."), 500
+            flash("Account scope incident detected. Contact support immediately.", "error")
+            return redirect(url_for('student.login', next=request.args.get('next')))
+
         if linked_user and linked_user.last_active_class_id is None:
             if seat_options:
                 return redirect(url_for('student.select_class_context'))
@@ -3717,11 +3733,7 @@ def login():
             )
             session.pop('student_id', None)
             session.pop('user_id', None)
-            session.pop('current_seat_id', None)
-            session.pop('current_class_id', None)
             session.pop('current_join_code', None)
-            session.pop('seat_id', None)
-            session.pop('class_id', None)
             session.pop('login_time', None)
             session.pop('last_activity', None)
             if is_json:
@@ -3733,11 +3745,7 @@ def login():
         if seat is None:
             session.pop('student_id', None)
             session.pop('user_id', None)
-            session.pop('current_seat_id', None)
-            session.pop('current_class_id', None)
             session.pop('current_join_code', None)
-            session.pop('seat_id', None)
-            session.pop('class_id', None)
             session.pop('login_time', None)
             session.pop('last_activity', None)
             if is_json:
