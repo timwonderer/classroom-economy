@@ -89,13 +89,14 @@ def test_migration_1ef03001fb2a_idempotency(test_db):
 
 
 def test_migration_w2x3y4z5a6b7_idempotency(test_db):
-    """Test that migration w2x3y4z5a6b7 can detect existing columns."""
+    """Test that the canonical settings tables no longer expose legacy teacher scoping."""
     tables = ["rent_settings", "payroll_settings", "banking_settings", "hall_pass_settings"]
 
     inspector = inspect(db.engine)
     for table in tables:
         columns = [col["name"] for col in inspector.get_columns(table)]
-        assert "teacher_id" in columns
+        assert "class_id" in columns
+        assert "teacher_id" not in columns
 
     test_tables = ["test_rent", "test_payroll", "test_banking", "test_hall_pass"]
     with db.engine.begin() as conn:
