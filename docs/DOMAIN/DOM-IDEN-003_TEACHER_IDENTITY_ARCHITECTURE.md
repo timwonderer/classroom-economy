@@ -68,6 +68,7 @@ Key fields:
 - `current_session_started_at`
 - `current_session_expires_at` — fixed window set at login, does not slide forward
 - `current_session_nonce` — regenerated at each login; binds requests to one session
+- `last_active_class_id` — persisted preference only; login may fall back to explicit class selection when this pointer is missing or stale, but runtime authority still comes from a validated `seat_id + class_id` pair
 - `money_action_cooldown_until` — rate-limit guard for financial mutations
 - `has_completed_setup`
 - `created_at`
@@ -81,6 +82,7 @@ Rules:
 - Student-credential fields are `NULL` for teacher/sysadmin rows.
 - No DOB, DOB hash, DOB sum, or any birth-date-derived field is stored on `users`.
 - A teacher user may own multiple seats across multiple classes (one seat per class).
+- A missing or invalid `last_active_class_id` must not be treated as authority failure by itself; the login boundary may surface explicit class selection when valid seats exist, and only fail closed after verifying that no valid class/seat options remain.
 - Session window fields behave identically for both roles.
 - Only one active session is supported per user identity.
 - Passkey credential metadata may live in compatibility tables during migration, but

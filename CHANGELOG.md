@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **Canonical auth hydration now fails closed only after seat-aware recovery** — Student login first validates persisted `last_active_class_id`, then falls back to explicit class selection when one or more valid class/seat options exist. If no valid option exists, the login flow now logs an invariant violation and returns the generic role-appropriate recovery message instead of treating missing persisted selection as a terminal session error.
 - **Tuple-only runtime cutover checkpointed** — Admin, recovery, analytics, attendance, deletion, and shared seat-scope helpers now operate on canonical `User`/`Seat`/`class_id` boundaries instead of reconstructing runtime identity from `StudentTeacher` or `Seat.student_id`. The remaining migration work is test-corpus cleanup and `canonicalContextFactory` adoption.
 - **Wave 7 rent-waiver actor cutover completed** — `ObligationReversal` now uses seat-scoped actor attribution (`reversed_by_seat_id`) instead of the legacy nullable user FK. Rent-waiver add/remove flows no longer emit legacy `AnalyticsEvent` compatibility rows; the follow-up analytics event will return only after the analytics schema is seat-scoped.
 - **README rewritten for v2 architecture** — Corrected platform framing (classroom management tool, not financial literacy), updated key models table to reflect `Seat`/`IdentityProfile`/`ClassEconomy`, removed stale v1 references
