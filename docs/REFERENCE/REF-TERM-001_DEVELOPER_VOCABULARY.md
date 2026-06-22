@@ -309,7 +309,7 @@ Feature-specific behavioral rules: Mid-Period Lock, Rent Late Fee Reversal, rent
 
 ### Removed (Replaced or Premature)
 
-Legacy terms being replaced by canonical vocabulary: `block` (→ section), `StudentBlock` (→ seat_attendance_state), `tap_events` (→ attendance_sessions; legacy table dropped), `teacher_blocks` (model removed from `models.py`; legacy references remain in a few admin routes and CLI commands). Premature terms: `TemporalContext` (no code yet). Derivable model names: `AnalyticsAlert`, `AnalyticsSnapshot`.
+Legacy terms being replaced by canonical vocabulary: `block` (→ section), `StudentBlock` (→ seat_attendance_state), `tap_events` (→ attendance_sessions; legacy table dropped), `teacher_blocks` (model removed from `models.py`; any remaining references are transitional migration or archived-doc residue, not live runtime authority). Premature terms: `TemporalContext` (no code yet). Derivable model names: `AnalyticsAlert`, `AnalyticsSnapshot`.
 
 ---
 

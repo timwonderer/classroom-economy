@@ -34,6 +34,7 @@ def test_migrated_teacher_login_sets_canonical_user_id(client):
         username_hash=admin.username_hash,
         username_lookup_hash=admin.username_lookup_hash,
         totp_secret_encrypted=admin.totp_secret,
+        current_session_nonce="nonce",
     )
     db.session.add_all([admin, user])
     db.session.commit()
@@ -133,8 +134,16 @@ def test_student_login_verifies_user_pin_and_resolves_shadow_through_claimed_sea
     admin = make_admin("student_login_teacher", pyotp.random_base32())
     db.session.add(admin)
     db.session.flush()
-    class_row = ClassEconomy(join_code="CANON-STUDENT", teacher_id=admin.id, display_name="Canonical")
-    profile = IdentityProfile(profile_type="student", first_name="Canonical", last_initial="S")
+    teacher_user = User(
+        user_role=UserRole.TEACHER,
+        username_hash=admin.username_hash,
+        username_lookup_hash=admin.username_lookup_hash,
+        totp_secret_encrypted=admin.totp_secret,
+    )
+    db.session.add(teacher_user)
+    db.session.flush()
+    class_row = ClassEconomy(join_code="CANON-STUDENT", teacher_id=teacher_user.id, display_name="Canonical")
+    profile = IdentityProfile(profile_type="student", first_name="Canonical", last_name="S")
     db.session.add_all([class_row, profile])
     db.session.flush()
 
@@ -165,13 +174,14 @@ def test_student_login_verifies_user_pin_and_resolves_shadow_through_claimed_sea
     db.session.flush()
     seat = Seat(
         user_id=user.id,
-        student_id=student.id,
         class_id=class_row.class_id,
         join_code=class_row.join_code,
         role="student",
         claimed_at=utc_now(),
     )
     db.session.add(seat)
+    db.session.flush()
+    profile.seat_id = seat.id
     db.session.commit()
 
     response = client.post(
@@ -184,6 +194,143 @@ def test_student_login_verifies_user_pin_and_resolves_shadow_through_claimed_sea
     with client.session_transaction() as auth_session:
         assert auth_session["user_id"] == user.id
         assert auth_session["student_id"] == student.id
+
+
+def test_student_login_missing_last_active_class_shows_selector(client, monkeypatch):
+    monkeypatch.setattr("app.routes.student.verify_turnstile_token", lambda *_args, **_kwargs: True)
+
+    admin = make_admin("student_selector_teacher", pyotp.random_base32())
+    db.session.add(admin)
+    db.session.flush()
+    teacher_user = User(
+        user_role=UserRole.TEACHER,
+        username_hash=admin.username_hash,
+        username_lookup_hash=admin.username_lookup_hash,
+        totp_secret_encrypted=admin.totp_secret,
+    )
+    db.session.add(teacher_user)
+    db.session.flush()
+    class_row = ClassEconomy(join_code="CANON-SELECT", teacher_id=teacher_user.id, display_name="Selector")
+    profile = IdentityProfile(profile_type="student", first_name="Select", last_name="A")
+    db.session.add_all([class_row, profile])
+    db.session.flush()
+
+    username = "selector_student"
+    salt = get_random_salt()
+    student = Student(
+        first_name="Select",
+        last_initial="A",
+        identity_id=profile.id,
+        block="A",
+        join_code=class_row.join_code,
+        class_id=class_row.class_id,
+        salt=salt,
+        username_hash=hash_username(username, salt),
+        username_lookup_hash=hash_username_lookup(username),
+        pin_hash=generate_password_hash("legacy-pin"),
+        has_completed_setup=True,
+    )
+    user = User(
+        user_role=UserRole.STUDENT,
+        username_hash=hash_username_lookup(username),
+        username_lookup_hash=hash_username_lookup(username),
+        pin_hash=generate_password_hash("2468"),
+        has_completed_setup=True,
+        last_active_class_id=None,
+    )
+    db.session.add_all([student, user])
+    db.session.flush()
+    seat = Seat(
+        user_id=user.id,
+        class_id=class_row.class_id,
+        join_code=class_row.join_code,
+        role="student",
+        claimed_at=utc_now(),
+    )
+    db.session.add(seat)
+    db.session.flush()
+    profile.seat_id = seat.id
+    db.session.commit()
+
+    monkeypatch.setattr(
+        "app.routes.student._get_identity_bound_seat_options",
+        lambda _user_id: [{"seat_id": seat.id, "class_id": class_row.class_id, "join_code": class_row.join_code, "class_identifier": "A", "class_name": class_row.display_name}],
+    )
+    monkeypatch.setattr(
+        "app.routes.student.sync_student_session_context",
+        lambda student, **kwargs: seat,
+    )
+
+    response = client.post("/student/login", data={"username": username, "pin": "2468"}, follow_redirects=False)
+
+    assert response.status_code == 302
+    assert "/student/select-class-context" in response.headers["Location"]
+
+
+def test_student_login_no_valid_class_seats_hard_fails(client, monkeypatch):
+    monkeypatch.setattr("app.routes.student.verify_turnstile_token", lambda *_args, **_kwargs: True)
+
+    admin = make_admin("student_hard_fail_teacher", pyotp.random_base32())
+    db.session.add(admin)
+    db.session.flush()
+    teacher_user = User(
+        user_role=UserRole.TEACHER,
+        username_hash=admin.username_hash,
+        username_lookup_hash=admin.username_lookup_hash,
+        totp_secret_encrypted=admin.totp_secret,
+    )
+    db.session.add(teacher_user)
+    db.session.flush()
+    class_row = ClassEconomy(join_code="CANON-HARDFAIL", teacher_id=teacher_user.id, display_name="HardFail")
+    profile = IdentityProfile(profile_type="student", first_name="Hard", last_name="F")
+    db.session.add_all([class_row, profile])
+    db.session.flush()
+
+    username = "hardfail_student"
+    salt = get_random_salt()
+    student = Student(
+        first_name="Hard",
+        last_initial="F",
+        identity_id=profile.id,
+        block="A",
+        join_code=class_row.join_code,
+        class_id=class_row.class_id,
+        salt=salt,
+        username_hash=hash_username(username, salt),
+        username_lookup_hash=hash_username_lookup(username),
+        pin_hash=generate_password_hash("legacy-pin"),
+        has_completed_setup=True,
+    )
+    user = User(
+        user_role=UserRole.STUDENT,
+        username_hash=hash_username_lookup(username),
+        username_lookup_hash=hash_username_lookup(username),
+        pin_hash=generate_password_hash("2468"),
+        has_completed_setup=True,
+        last_active_class_id=None,
+    )
+    db.session.add_all([student, user])
+    db.session.flush()
+    seat = Seat(
+        user_id=user.id,
+        class_id=class_row.class_id,
+        join_code=class_row.join_code,
+        role="student",
+        claimed_at=utc_now(),
+    )
+    db.session.add(seat)
+    db.session.flush()
+    profile.seat_id = seat.id
+    db.session.commit()
+
+    monkeypatch.setattr("app.routes.student._get_identity_bound_seat_options", lambda _user_id: [])
+
+    response = client.post("/student/login", data={"username": username, "pin": "2468"}, follow_redirects=False)
+
+    assert response.status_code == 302
+    assert "/student/login" in response.headers["Location"]
+    with client.session_transaction() as auth_session:
+        assert "user_id" not in auth_session
 
 
 def test_admin_passkey_register_uses_canonical_user_external_id(client, monkeypatch):
@@ -202,6 +349,7 @@ def test_admin_passkey_register_uses_canonical_user_external_id(client, monkeypa
         username_hash=admin.username_hash,
         username_lookup_hash=admin.username_lookup_hash,
         totp_secret_encrypted=admin.totp_secret,
+        current_session_nonce="nonce",
     )
     db.session.add_all([admin, user])
     db.session.commit()
@@ -212,6 +360,7 @@ def test_admin_passkey_register_uses_canonical_user_external_id(client, monkeypa
         auth_session["user_id"] = user.id
         auth_session["last_activity"] = utc_now().isoformat()
         auth_session["admin_auth_username"] = "passkey_teacher"
+        auth_session["current_session_nonce"] = "nonce"
 
     response = client.post("/admin/passkey/register/start", json={})
 
@@ -242,7 +391,7 @@ def test_admin_passkey_finish_sets_canonical_user_session(client, monkeypatch):
     )
     db.session.add_all([admin, user])
     db.session.flush()
-    db.session.add(AdminCredential(teacher_id=admin.id, user_id=user.id, authenticator_name="Key"))
+    db.session.add(AdminCredential(user_id=user.id, authenticator_name="Key"))
     db.session.commit()
 
     monkeypatch.setattr(
@@ -265,6 +414,7 @@ def test_system_admin_passkey_finish_sets_canonical_user_session(client, monkeyp
         username_hash=admin.username_hash,
         username_lookup_hash=admin.username_lookup_hash,
         totp_secret_encrypted=admin.totp_secret,
+        current_session_nonce="nonce",
     )
     db.session.add_all([admin, user])
     db.session.flush()
@@ -365,8 +515,16 @@ def test_logged_in_student_requires_canonical_user_id(client):
     admin = make_admin("resolver_student_teacher", pyotp.random_base32())
     db.session.add(admin)
     db.session.flush()
-    class_row = ClassEconomy(join_code="RES-STUDENT", teacher_id=admin.id, display_name="Resolver")
-    profile = IdentityProfile(profile_type="student", first_name="Resolver", last_initial="S")
+    teacher_user = User(
+        user_role=UserRole.TEACHER,
+        username_hash=admin.username_hash,
+        username_lookup_hash=admin.username_lookup_hash,
+        totp_secret_encrypted=admin.totp_secret,
+    )
+    db.session.add(teacher_user)
+    db.session.flush()
+    class_row = ClassEconomy(join_code="RES-STUDENT", teacher_id=teacher_user.id, display_name="Resolver")
+    profile = IdentityProfile(profile_type="student", first_name="Resolver", last_name="S")
     db.session.add_all([class_row, profile])
     db.session.flush()
 
@@ -396,16 +554,18 @@ def test_logged_in_student_requires_canonical_user_id(client):
     db.session.flush()
     seat = Seat(
         user_id=user.id,
-        student_id=student.id,
         class_id=class_row.class_id,
         join_code=class_row.join_code,
         role="student",
         claimed_at=utc_now(),
     )
     db.session.add(seat)
+    db.session.flush()
+    profile.seat_id = seat.id
     db.session.commit()
 
     with client.application.test_request_context("/"):
+        session["current_session_nonce"] = "nonce"
         session["student_id"] = student.id
         assert get_logged_in_student() is None
 

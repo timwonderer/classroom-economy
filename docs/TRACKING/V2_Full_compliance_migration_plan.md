@@ -92,7 +92,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [x] Complete Wave 5 ledger table migration and FEAT hook reassignment
 - [x] Complete Wave 6 attendance table migration (`tap_events` lineage removed; canonical reads/writes and legacy table drop landed)
 - [ ] Complete Wave 7 obligations schema migration while preserving already-landed prepay/temporal behavior
-- [ ] Deferred follow-up from commit 2 cutover: finish rent post-payment linkage cleanup so hall-pass reconciliation no longer depends on legacy seat/student assumptions or display-only block metadata.
+- [ ] Deferred follow-up from commit 2 cutover: finish rent post-payment linkage cleanup so hall-pass reconciliation no longer depends on legacy seat/student assumptions or display-only block metadata. The remaining rent persistence smoke failure is out of scope for this PR and will be merged as a known follow-up.
 - [ ] Complete Wave 8 store schema migration and remove remaining teacher-scoped enforcement remnants
 - [ ] Complete Wave 9 operations + interpretation canonical migration
 - [ ] Complete Wave 10 support domain canonical migration
@@ -106,6 +106,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [ ] Wave 11 invariant sweeps complete (INV-ARC-007, INV-ARC-014, INV-ARC-015 full repo pass)
 - [ ] Wave 11 `V2_CLASS_ID_INVARIANT_BACKLOG` closure
 - [ ] Complete single-context UI enforcement sweep: remove remaining page-level class selectors and request `join_code` context controls outside nav context switch
+- [ ] Enforce canonical-auth runtime gate matrix: [`V2_CANONICAL_AUTH_RUNTIME_GATE_MATRIX.md`](./V2_CANONICAL_AUTH_RUNTIME_GATE_MATRIX.md) as the hard acceptance gate for any remaining `user_id` / `class_id` / `seat_id` / `join_code` runtime work
 - [/] Wave 11 FEATBypass default-flip — invert `tests/conftest.py` so FEAT enforcement is the test default and `FEATBypass` is opt-in per test. **Phase 1 (instrumentation) complete 2026-06-09. Phase 2 (fixture consolidation) is the next active item, co-located with Waves 6–10 as canonical helpers land.** Full plan in [V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md](./V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md); Phase 1 findings in [V2_FEAT_BYPASS_DEPENDENCY_REPORT.md](./V2_FEAT_BYPASS_DEPENDENCY_REPORT.md). Headline: **4 dead mutating endpoints** (`admin.process_claim`, `sysadmin.resolve_escalated_issue`, `admin.rent_settings`, `admin.passkey_auth_finish`), **0 GET-side-effect endpoints**, **585 tests with fixture-only bypass dependency**. Original trigger: 2026-06-08 audit of `/api/approve-redemption` and `/api/reject-redemption` (dead, now fixed via `FEAT-STOR-006`) and the cross-FEAT correlation bug in `Transaction.before_update` (also fixed).
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 

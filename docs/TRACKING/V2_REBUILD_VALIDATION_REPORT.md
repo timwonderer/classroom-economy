@@ -30,6 +30,15 @@
   - Invalid `Seat.teacher_id` / `Seat.is_claimed` references corrected
   - Teacher seat `profile_type` corrected to `teacher_primary`
 
+### Post-Report Update (2026-06-21, `continue-legacy-identity-drop`) — Canonical auth hydration hardening
+
+- Student login now treats `last_active_class_id` as a persisted preference rather than a terminal authority anchor.
+- When one or more valid class/seat options exist, the login boundary now routes through explicit class selection instead of hard-failing on a missing or stale persisted class pointer.
+- When no valid class/seat pair remains, the login flow fails closed with an invariant-violation log entry and a generic role-appropriate recovery message.
+- Verification:
+  - auth/context focused pytest slice -> pass
+  - canonical context immutability guard -> pass
+
 ### Post-Report Update (2026-06-09, `codex/v2.0`) — Wave 7 Insurance Claim Canonical Lifecycle Write
 
 - Completed the previously open Wave 7 write-path gap for insurance-claim resolution.

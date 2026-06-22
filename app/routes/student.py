@@ -43,6 +43,7 @@ from app.auth import (
     SESSION_TIMEOUT_MINUTES,
     sync_student_session_context,
 )
+from app.services.context_resolver import ContextResolutionError, resolve_canonical_context
 from app.forms import (
     StudentClaimAccountForm, StudentCreateUsernameForm, StudentPinPassphraseForm,
     StudentLoginForm, InsuranceClaimForm, StudentCompleteProfileForm
@@ -133,6 +134,38 @@ def _get_identity_bound_seat_options(user_id: int):
         }
         for seat, class_row in seat_rows
     ]
+
+
+def _reset_student_login_session():
+    """Remove transient student login state before redirecting away from auth."""
+    session.pop("student_id", None)
+    session.pop("user_id", None)
+    session.pop("current_join_code", None)
+    session.pop("login_time", None)
+    session.pop("last_activity", None)
+
+
+def _student_login_failure_message() -> str:
+    return "We are having trouble with your account, please try again or ask your teacher for help"
+
+
+def _student_login_hard_fail(*, student_id: int, reason: str, is_json: bool, status_code: int = 500):
+    current_app.logger.error(
+        "TLCP-INVARIANT-VIOLATION: %s",
+        reason,
+        extra={
+            "actor_type": "student",
+            "actor_public_id": "-",
+            "class_id": "-",
+            "error_class": "InvariantViolation",
+            "correlation_version": "v1",
+        },
+    )
+    _reset_student_login_session()
+    if is_json:
+        return jsonify(status="error", message=_student_login_failure_message()), status_code
+    flash(_student_login_failure_message(), "error")
+    return redirect(url_for("student.login", next=request.args.get("next")))
 from app.utils.display_name_session import (
     get_teacher_display_name_cache,
     upsert_teacher_display_name_cache,
@@ -920,11 +953,13 @@ def dashboard():
     student = get_logged_in_student()
 
     try:
-        scope = resolve_scope(
-            actor=student,
-            selected_join_code=session.get("current_join_code"),
-        )
+        context = resolve_canonical_context()
+        scope = resolve_scope(actor=student, selected_join_code=None)
+        if context and scope.class_id != context.class_id:
+            raise AccessScopeDenied(reason_code="foreign_class_scope", message="Please switch to the selected class.")
         access_policy_service.assert_can_view_dashboard(scope)
+    except ContextResolutionError:
+        raise AccessScopeDenied(reason_code="no_class_scope", message="Please select a class to continue.")
     except AccessScopeDenied as exc:
         flash(exc.message, "error")
         return redirect(url_for("student.select_class_context"))
@@ -1835,10 +1870,12 @@ def file_claim(policy_id):
         flash("You are not enrolled in this policy.", "danger")
         return redirect(url_for('student.student_insurance'))
     try:
-        scope = resolve_scope(
-            actor=student,
-            selected_join_code=enrollment.join_code or session.get("current_join_code"),
-        )
+        context = resolve_canonical_context()
+        scope = resolve_scope(actor=student, selected_join_code=None)
+        if context and scope.class_id != context.class_id:
+            raise AccessScopeDenied(reason_code="foreign_class_scope", message="Please switch to the selected class.")
+    except ContextResolutionError:
+        raise AccessScopeDenied(reason_code="no_class_scope", message="Please select a class to continue.")
     except AccessScopeDenied as exc:
         flash(exc.message, "danger")
         return redirect(url_for('student.student_insurance'))
@@ -3678,11 +3715,7 @@ def login():
 
         # --- Set session timeout ---
         # Clear old student-specific session keys without wiping the CSRF token
-        session.pop('student_id', None)
-        session.pop('user_id', None)
-        session.pop('current_seat_id', None)
-        session.pop('login_time', None)
-        session.pop('last_activity', None)
+        _reset_student_login_session()
         # Explicitly clear other potential student-related session keys
         session.pop('claimed_student_id', None)
         session.pop('claimed_seat_id', None)
@@ -3697,53 +3730,54 @@ def login():
 
         linked_user = user
         session['user_id'] = linked_user.id
+        session['current_session_nonce'] = secrets.token_urlsafe(32)
+        linked_user.current_session_nonce = session['current_session_nonce']
 
-        if linked_user and linked_user.last_active_class_id:
-            has_active_class_seat = Seat.query.filter_by(
-                user_id=linked_user.id,
-                class_id=linked_user.last_active_class_id,
-            ).first()
-            if not has_active_class_seat:
+        seat_options = _get_identity_bound_seat_options(linked_user.id)
+        persisted_class_id = getattr(linked_user, "last_active_class_id", None)
+        valid_persisted_selection = None
+        if persisted_class_id:
+            valid_persisted_selection = next(
+                (item for item in seat_options if item["class_id"] == persisted_class_id),
+                None,
+            )
+            if valid_persisted_selection is None:
+                current_app.logger.error(
+                    "TLCP-INVARIANT-VIOLATION: Student %s login has invalid persisted class %s.",
+                    student.id,
+                    persisted_class_id,
+                    extra={
+                        "actor_type": "student",
+                        "actor_public_id": "-",
+                        "class_id": "-",
+                        "error_class": "InvariantViolation",
+                        "correlation_version": "v1",
+                    },
+                )
                 linked_user.last_active_class_id = None
                 db.session.flush()
 
-        seat_options = _get_identity_bound_seat_options(linked_user.id)
-        if linked_user and linked_user.last_active_class_id is None:
-            if seat_options:
-                return redirect(url_for('student.select_class_context'))
-            current_app.logger.critical(
-                "P0 INCIDENT: Student %s login has NULL last_active_class_id and no surviving seats.",
-                student.id,
+        if not seat_options:
+            return _student_login_hard_fail(
+                student_id=student.id,
+                reason=f"Student {student.id} login has no valid class seats.",
+                is_json=is_json,
             )
-            session.pop('student_id', None)
-            session.pop('user_id', None)
-            session.pop('current_seat_id', None)
-            session.pop('current_class_id', None)
-            session.pop('current_join_code', None)
-            session.pop('seat_id', None)
-            session.pop('class_id', None)
-            session.pop('login_time', None)
-            session.pop('last_activity', None)
-            if is_json:
-                return jsonify(status="error", message="Account scope incident detected. Contact support immediately."), 500
-            flash("Account scope incident detected. Contact support immediately.", "error")
-            return redirect(url_for('student.login', next=request.args.get('next')))
 
-        seat = sync_student_session_context(student, allow_writes=True)
+        if valid_persisted_selection is None:
+            return redirect(url_for('student.select_class_context'))
+
+        seat = sync_student_session_context(
+            student,
+            class_id=valid_persisted_selection["class_id"],
+            allow_writes=True,
+        )
         if seat is None:
-            session.pop('student_id', None)
-            session.pop('user_id', None)
-            session.pop('current_seat_id', None)
-            session.pop('current_class_id', None)
-            session.pop('current_join_code', None)
-            session.pop('seat_id', None)
-            session.pop('class_id', None)
-            session.pop('login_time', None)
-            session.pop('last_activity', None)
-            if is_json:
-                return jsonify(status="error", message="Account has no valid seat context."), 403
-            flash("Your account is missing class seat context. Contact your teacher.", "error")
-            return redirect(url_for('student.login', next=request.args.get('next')))
+            return _student_login_hard_fail(
+                student_id=student.id,
+                reason=f"Student {student.id} login failed to hydrate canonical seat for class {valid_persisted_selection['class_id']}.",
+                is_json=is_json,
+            )
         _prime_student_teacher_display_name_cache(student.id)
 
 
@@ -3795,19 +3829,21 @@ def select_class_context():
         selected_class_id = (request.form.get('class_id') or '').strip()
         allowed_class_ids = {item["class_id"] for item in seat_options}
         if selected_class_id not in allowed_class_ids:
-            flash("Invalid class selection.", "error")
-            return render_template('student_select_class_context.html', class_options=seat_options), 400
+            return _student_login_hard_fail(
+                student_id=student.id,
+                reason=f"Student {student.id} selected invalid class {selected_class_id} during class-context switch.",
+                is_json=False,
+                status_code=302,
+            )
 
         selected_seat = sync_student_session_context(student, class_id=selected_class_id)
         if selected_seat is None:
-            current_app.logger.critical(
-                "P0 INCIDENT: Student %s selected class %s but seat context failed to resolve.",
-                student.id,
-                selected_class_id,
+            return _student_login_hard_fail(
+                student_id=student.id,
+                reason=f"Student {student.id} selected class {selected_class_id} but seat context failed to resolve.",
+                is_json=False,
+                status_code=302,
             )
-            session.clear()
-            flash("Account scope incident detected. Contact support immediately.", "error")
-            return redirect(url_for('student.login'))
 
         linked_user.last_active_class_id = selected_class_id
         db.session.flush()

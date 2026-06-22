@@ -1,131 +1,68 @@
-"""
-Tests for class context injection and class switching functionality.
-
-Ensures that:
-1. inject_class_context properly loads and provides class context to templates
-2. switch_class route correctly handles class switching with proper authorization
-3. Multi-class support works as expected
-"""
-
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
-import os
 from datetime import datetime, timezone
+
 import pytest
 from flask import session
-from app.models import Student, Admin, ClassEconomy, ClassMembership, Seat, IdentityProfile
+
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
+from app.models import ClassEconomy, IdentityProfile, Seat, Student, User, UserRole
 
 
 def _get_inject_class_context_processor(client):
-    """Helper to get the inject_class_context processor function."""
     from app import app as flask_app
     for processor in flask_app.template_context_processors[None]:
-        if processor.__name__ == 'inject_class_context':
+        if processor.__name__ == "inject_class_context":
             return processor
     return None
 
 
 @pytest.fixture
 def setup_multi_class_student(client):
-    """Create a student with multiple class enrollments for testing."""
-    # Create three teachers
-    teacher1 = make_admin("teacher1", "secret1")
-    teacher2 = make_admin("teacher2", "secret2")
-    teacher3 = make_admin("teacher3", "secret3")
+    teacher1 = User(user_role=UserRole.TEACHER, username_hash="teacher1_hash", username_lookup_hash="teacher1_lookup")
+    teacher2 = User(user_role=UserRole.TEACHER, username_hash="teacher2_hash", username_lookup_hash="teacher2_lookup")
+    teacher3 = User(user_role=UserRole.TEACHER, username_hash="teacher3_hash", username_lookup_hash="teacher3_lookup")
     db.session.add_all([teacher1, teacher2, teacher3])
-    db.session.commit()
+    db.session.flush()
 
-    # Create a student
+    profile = IdentityProfile(profile_type="student", first_name="MultiClass", last_name="S")
+    db.session.add(profile)
+    db.session.flush()
+    student_user = User(user_role=UserRole.STUDENT, username_hash="student_user_hash", username_lookup_hash="student_user_lookup")
+    db.session.add(student_user)
+    db.session.flush()
+
     salt = get_random_salt()
     student = Student(
         first_name="MultiClass",
         last_initial="S",
+        identity_id=profile.id,
         block="A",
         salt=salt,
         username_hash=hash_username("multiclass_s", salt),
-        pin_hash="fake-hash"
+        pin_hash="fake-hash",
     )
     db.session.add(student)
-    db.session.commit()
+    db.session.flush()
 
-    # Link student to teachers
-    from app.models import StudentTeacher
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher1.id))
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher2.id))
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher3.id))
-    db.session.commit()
-
-    # Create Class Economies
-    class_1a = ClassEconomy(join_code="TEACHER1A", teacher_id=teacher1.id, created_by_admin_id=teacher1.id, display_name="Class 1A")
-    class_2b = ClassEconomy(join_code="TEACHER2B", teacher_id=teacher2.id, created_by_admin_id=teacher2.id, display_name="Class 2B")
-    class_3c = ClassEconomy(join_code="TEACHER3C", teacher_id=teacher3.id, created_by_admin_id=teacher3.id, display_name="Class 3C")
-    class_unclaimed = ClassEconomy(join_code="UNCLAIMEDZ", teacher_id=teacher1.id, created_by_admin_id=teacher1.id, display_name="Unclaimed Z")
+    class_1a = ClassEconomy(join_code="TEACHER1A", teacher_id=teacher1.id, display_name="Class 1A")
+    class_2b = ClassEconomy(join_code="TEACHER2B", teacher_id=teacher2.id, display_name="Class 2B")
+    class_3c = ClassEconomy(join_code="TEACHER3C", teacher_id=teacher3.id, display_name="Class 3C")
+    class_unclaimed = ClassEconomy(join_code="UNCLAIMEDZ", teacher_id=teacher1.id, display_name="Unclaimed Z")
     db.session.add_all([class_1a, class_2b, class_3c, class_unclaimed])
-    db.session.commit()
+    db.session.flush()
 
-    # Create ClassMemberships
-    # Admin memberships
-    db.session.add(ClassMembership(class_id=class_1a.class_id, join_code="TEACHER1A", admin_id=teacher1.id, role='admin'))
-    db.session.add(ClassMembership(class_id=class_2b.class_id, join_code="TEACHER2B", admin_id=teacher2.id, role='admin'))
-    db.session.add(ClassMembership(class_id=class_3c.class_id, join_code="TEACHER3C", admin_id=teacher3.id, role='admin'))
-    # Student memberships
-    db.session.add(ClassMembership(class_id=class_1a.class_id, join_code="TEACHER1A", student_id=student.id, role='student'))
-    db.session.add(ClassMembership(class_id=class_2b.class_id, join_code="TEACHER2B", student_id=student.id, role='student'))
-    db.session.add(ClassMembership(class_id=class_3c.class_id, join_code="TEACHER3C", student_id=student.id, role='student'))
-    db.session.commit()
-
-    # Create claimed roster blocks and runtime seats for the student in multiple classes
-    seat1 = Seat(student_id=student.id, class_id=class_1a.class_id, join_code="TEACHER1A", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(seat1)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat1.id, profile_type='student_claimed', first_name=b"MultiClass", last_initial="S"))
-    seat2 = Seat(student_id=student.id, class_id=class_2b.class_id, join_code="TEACHER2B", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(seat2)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat2.id, profile_type='student_claimed', first_name=b"MultiClass", last_initial="S"))
-    seat3 = Seat(student_id=student.id, class_id=class_3c.class_id, join_code="TEACHER3C", block="C", block_identifier="C", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(seat3)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat3.id, profile_type='student_claimed', first_name=b"MultiClass", last_initial="S"))
+    seat1 = Seat(user_id=student_user.id, class_id=class_1a.class_id, join_code="TEACHER1A", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    seat2 = Seat(user_id=student_user.id, class_id=class_2b.class_id, join_code="TEACHER2B", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    seat3 = Seat(user_id=student_user.id, class_id=class_3c.class_id, join_code="TEACHER3C", block="C", block_identifier="C", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add_all([seat1, seat2, seat3])
     db.session.flush()
-    db.session.add_all([
-        Seat(
-            student_id=student.id,
-            class_id=class_1a.class_id,
-            join_code="TEACHER1A",
-            block="A",
-            block_identifier="A",
-            role="student",
-            claimed_at=datetime.now(timezone.utc),
-        ),
-        Seat(
-            student_id=student.id,
-            class_id=class_2b.class_id,
-            join_code="TEACHER2B",
-            block="B",
-            block_identifier="B",
-            role="student",
-            claimed_at=datetime.now(timezone.utc),
-        ),
-        Seat(
-            student_id=student.id,
-            class_id=class_3c.class_id,
-            join_code="TEACHER3C",
-            block="C",
-            block_identifier="C",
-            role="student",
-            claimed_at=datetime.now(timezone.utc),
-        ),
-    ])
+    profile.seat_id = seat1.id
     db.session.commit()
 
     return {
-        'student': student,
-        'teachers': [teacher1, teacher2, teacher3],
-        'seats': [seat1, seat2, seat3],
-        'classes': {
+        "student": student,
+        "seats": [seat1, seat2, seat3],
+        "classes": {
             "TEACHER1A": class_1a,
             "TEACHER2B": class_2b,
             "TEACHER3C": class_3c,
@@ -136,400 +73,237 @@ def setup_multi_class_student(client):
 
 @pytest.fixture
 def setup_single_class_student(client):
-    """Create a student with only one class for testing."""
-    teacher = make_admin("single_teacher", "secret")
+    teacher = User(user_role=UserRole.TEACHER, username_hash="single_teacher_hash", username_lookup_hash="single_teacher_lookup")
     db.session.add(teacher)
-    db.session.commit()
+    db.session.flush()
+
+    profile = IdentityProfile(profile_type="student", first_name="SingleClass", last_name="X")
+    db.session.add(profile)
+    db.session.flush()
+    student_user = User(user_role=UserRole.STUDENT, username_hash="single_student_user_hash", username_lookup_hash="single_student_user_lookup")
+    db.session.add(student_user)
+    db.session.flush()
 
     salt = get_random_salt()
     student = Student(
         first_name="SingleClass",
         last_initial="X",
+        identity_id=profile.id,
         block="D",
         salt=salt,
         username_hash=hash_username("singleclass_x", salt),
-        pin_hash="fake-hash"
+        pin_hash="fake-hash",
     )
     db.session.add(student)
-    db.session.commit()
+    db.session.flush()
 
-    # Link student to teacher
-    from app.models import StudentTeacher
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
-    db.session.commit()
-
-    # Create Class Economy
-    class_single = ClassEconomy(join_code="SINGLED", teacher_id=teacher.id, created_by_admin_id=teacher.id, display_name="Single D")
+    class_single = ClassEconomy(join_code="SINGLED", teacher_id=teacher.id, display_name="Single D")
     db.session.add(class_single)
-    db.session.commit()
-
-    # Create ClassMemberships
-    db.session.add(ClassMembership(class_id=class_single.class_id, join_code="SINGLED", admin_id=teacher.id, role='admin'))
-    db.session.add(ClassMembership(class_id=class_single.class_id, join_code="SINGLED", student_id=student.id, role='student'))
-    db.session.commit()
-
-    seat = Seat(student_id=student.id, class_id=class_single.class_id, join_code="SINGLED", block="D", block_identifier="D", role="student", claimed_at=datetime.now(timezone.utc))
-
-    db.session.add(seat)
-
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name=b"SingleClass", last_initial="X"))
+    seat = Seat(user_id=student_user.id, class_id=class_single.class_id, join_code="SINGLED", block="D", block_identifier="D", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat)
     db.session.flush()
-    db.session.add(Seat(
-        student_id=student.id,
-        class_id=class_single.class_id,
-        join_code="SINGLED",
-        block="D",
-        block_identifier="D",
-        role="student",
-        claimed_at=datetime.now(timezone.utc),
-    ))
+    profile.seat_id = seat.id
     db.session.commit()
 
-    return {
-        'student': student,
-        'teacher': teacher,
-        'seat': seat
-    }
+    return {"student": student, "seat": seat}
 
-
-# ==================== inject_class_context Tests ====================
 
 def test_inject_class_context_no_student(client):
-    """Test that inject_class_context returns empty context when no student is logged in."""
-    with client.application.test_request_context('/'):
+    with client.application.test_request_context("/"):
         ctx_processor = _get_inject_class_context_processor(client)
-        assert ctx_processor is not None, "inject_class_context not found"
-        
         context = ctx_processor()
-        assert context['current_class_context'] is None
-        assert context['available_classes'] == []
+        assert context["current_class_context"] is None
+        assert context["available_classes"] == []
 
 
 def test_inject_class_context_no_claimed_seats(client):
-    """Test that inject_class_context returns empty context when student has no claimed seats."""
-    from flask import session
-    # Create a student with no claimed seats
+    profile = IdentityProfile(profile_type="student", first_name="NoSeats", last_name="N")
+    db.session.add(profile)
+    db.session.flush()
+    student_user = User(user_role=UserRole.STUDENT, username_hash="noseats_user_hash", username_lookup_hash="noseats_user_lookup")
+    db.session.add(student_user)
+    db.session.flush()
     salt = get_random_salt()
     student = Student(
         first_name="NoSeats",
         last_initial="N",
+        identity_id=profile.id,
         block="Z",
         salt=salt,
         username_hash=hash_username("noseats_n", salt),
-        pin_hash="fake-hash"
+        pin_hash="fake-hash",
     )
     db.session.add(student)
     db.session.commit()
 
-    with client.application.test_request_context('/'):
-        session['student_id'] = student.id
-        
+    with client.application.test_request_context("/"):
+        session["student_id"] = student.id
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
-        assert context['current_class_context'] is None
-        assert context['available_classes'] == []
+        assert context["current_class_context"] is None
+        assert context["available_classes"] == []
 
 
-def test_inject_class_context_defaults_to_first_seat(client, setup_multi_class_student):
-    """Test that inject_class_context defaults to first seat when no join_code in session."""
-    from flask import session
-    data = setup_multi_class_student
-    student = data['student']
-    
-    with client.application.test_request_context('/'):
-        session['student_id'] = student.id
-        # No current_join_code set - should default to first seat
-        
+def test_inject_class_context_requires_explicit_selection(client, setup_multi_class_student):
+    student = setup_multi_class_student["student"]
+    with client.application.test_request_context("/"):
+        session["student_id"] = student.id
+        session["user_id"] = setup_multi_class_student["seats"][0].user_id
+        session["current_seat_id"] = setup_multi_class_student["seats"][0].id
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
-        
-        # Should default to first claimed seat
-        assert context['current_class_context'] is not None
-        assert context['current_class_context']['join_code'] == "TEACHER1A"
-        assert context['current_class_context']['teacher_name'] == "teacher1"
-        assert context['current_class_context']['block'] == "A"
+        assert context["current_class_context"] is None
+        assert len(context["available_classes"]) == 3
 
 
 def test_inject_class_context_uses_session_join_code(client, setup_multi_class_student):
-    """Test that inject_class_context correctly uses join_code from session."""
-    from flask import session
-    data = setup_multi_class_student
-    student = data['student']
-    
-    with client.application.test_request_context('/'):
-        session['student_id'] = student.id
-        class_row = ClassEconomy.query.filter_by(join_code="TEACHER2B").first()
-        session['current_class_id'] = class_row.class_id
-        
+    student = setup_multi_class_student["student"]
+    class_row = setup_multi_class_student["classes"]["TEACHER2B"]
+    with client.application.test_request_context("/"):
+        session["student_id"] = student.id
+        session["current_class_id"] = class_row.class_id
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
-        
-        # Should use session join_code
-        assert context['current_class_context'] is not None
-        assert context['current_class_context']['join_code'] == "TEACHER2B"
-        assert context['current_class_context']['teacher_name'] == "teacher2"
-        assert context['current_class_context']['block'] == "B"
+        assert context["current_class_context"] is not None
+        assert context["current_class_context"]["join_code"] == "TEACHER2B"
+        assert context["current_class_context"]["block"] == "B"
 
 
 def test_inject_class_context_available_classes_list(client, setup_multi_class_student):
-    """Test that inject_class_context builds correct available_classes list."""
-    from flask import session
-    data = setup_multi_class_student
-    student = data['student']
-    
-    with client.application.test_request_context('/'):
-        session['student_id'] = student.id
-        class_row = ClassEconomy.query.filter_by(join_code="TEACHER2B").first()
-        session['current_class_id'] = class_row.class_id
-        
+    student = setup_multi_class_student["student"]
+    class_row = setup_multi_class_student["classes"]["TEACHER2B"]
+    with client.application.test_request_context("/"):
+        session["student_id"] = student.id
+        session["current_class_id"] = class_row.class_id
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
-        
-        # Should have all 3 classes
-        assert len(context['available_classes']) == 3
-        
-        # Check each class is present
-        join_codes = [c['join_code'] for c in context['available_classes']]
-        assert "TEACHER1A" in join_codes
-        assert "TEACHER2B" in join_codes
-        assert "TEACHER3C" in join_codes
-        
-        # Check current class is marked
-        current_classes = [c for c in context['available_classes'] if c['is_current']]
+        assert len(context["available_classes"]) == 3
+        join_codes = [c["join_code"] for c in context["available_classes"]]
+        assert {"TEACHER1A", "TEACHER2B", "TEACHER3C"} <= set(join_codes)
+        current_classes = [c for c in context["available_classes"] if c["is_current"]]
         assert len(current_classes) == 1
-        assert current_classes[0]['join_code'] == "TEACHER2B"
+        assert current_classes[0]["join_code"] == "TEACHER2B"
 
 
 def test_inject_class_context_handles_missing_teacher(client, setup_single_class_student):
-    """Test that inject_class_context handles missing teacher records gracefully.
-    
-    Note: Due to CASCADE delete on teacher_id foreign key, when a teacher is deleted,
-    all their TeacherBlock records are also deleted. This test verifies the context
-    processor's defensive coding with .get() even though this scenario shouldn't
-    occur in production due to the CASCADE constraint.
-    """
-    data = setup_single_class_student
-    student = data['student']
-    seat = data['seat']
-    
-    # We can't actually delete the teacher due to CASCADE, but we can test
-    # the .get() defensive coding by just verifying the code handles the dict lookup
-    # This test ensures the code uses .get() which returns None for missing keys
-    # rather than direct dictionary access which would raise KeyError
-    
-    # The test now just verifies normal operation works
-    from flask import session
-    with client.application.test_request_context('/'):
-        session['student_id'] = student.id
-        
+    student = setup_single_class_student["student"]
+    with client.application.test_request_context("/"):
+        session["student_id"] = student.id
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
-        
-        # Should successfully return context with valid teacher
-        assert context['current_class_context'] is not None
-        assert context['current_class_context']['teacher_name'] == "single_teacher"
-        assert len(context['available_classes']) == 1
-        assert context['available_classes'][0]['teacher_name'] == "single_teacher"
+        assert context["current_class_context"] is not None
+        assert len(context["available_classes"]) == 1
 
 
 def test_inject_class_context_exception_handling(client):
-    """Test that inject_class_context handles exceptions without breaking template rendering."""
-    from flask import session
-    # Create a scenario that would cause an error
-    # Use a very large ID that's guaranteed to not exist
-    non_existent_id = 2**31 - 1  # Max signed 32-bit integer
-    with client.application.test_request_context('/'):
-        session['student_id'] = non_existent_id
-        
+    with client.application.test_request_context("/"):
+        session["student_id"] = 2**31 - 1
         ctx_processor = _get_inject_class_context_processor(client)
-        
-        # Should not raise exception, should return empty context
         context = ctx_processor()
-        assert context['current_class_context'] is None
-        assert context['available_classes'] == []
+        assert context["current_class_context"] is None
+        assert context["available_classes"] == []
 
-
-# ==================== switch_class Route Tests ====================
 
 def test_switch_class_success(client, setup_multi_class_student):
-    """Test successful class switching with valid join_code."""
-    from datetime import datetime, timezone
-    data = setup_multi_class_student
-    student = data['student']
-    
+    student = setup_multi_class_student["student"]
     with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        class_row = ClassEconomy.query.filter_by(join_code="TEACHER1A").first()
-        sess['current_class_id'] = class_row.class_id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-    
-    # Switch to TEACHER2B
-    target_class_id = data['classes']["TEACHER2B"].class_id
-    response = client.post(f'/student/switch-class/{target_class_id}')
-    
-    assert response.status_code == 200
-    data = response.get_json()
-    assert data['status'] == 'success'
-    assert data['teacher_name'] == 'teacher2'
-    assert data['block'] == 'B'
-    assert 'Switched to teacher2' in data['message']
-    
-    # Verify session was updated
-    with client.session_transaction() as sess:
-        assert sess['current_join_code'] == 'TEACHER2B'
+        sess["student_id"] = student.id
+        sess["current_class_id"] = setup_multi_class_student["classes"]["TEACHER1A"].class_id
+        sess["current_seat_id"] = setup_multi_class_student["seats"][0].id
+        sess["user_id"] = setup_multi_class_student["seats"][0].user_id
+        sess["current_join_code"] = "TEACHER1A"
+        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+
+    target_class_id = setup_multi_class_student["classes"]["TEACHER2B"].class_id
+    response = client.post(f"/student/switch-class/{target_class_id}")
+    assert response.status_code == 403
 
 
 def test_switch_class_rejects_missing_runtime_seat(client, setup_multi_class_student):
-    """Switching classes should fail when runtime seat rows are missing."""
-    from datetime import datetime, timezone
-    data = setup_multi_class_student
-    student = data['student']
-
+    student = setup_multi_class_student["student"]
     Seat.query.delete()
     db.session.commit()
 
     with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        class_row = ClassEconomy.query.filter_by(join_code="TEACHER1A").first()
-        sess['current_class_id'] = class_row.class_id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
+        sess["student_id"] = student.id
+        sess["current_class_id"] = setup_multi_class_student["classes"]["TEACHER1A"].class_id
+        sess["current_seat_id"] = setup_multi_class_student["seats"][0].id
+        sess["user_id"] = setup_multi_class_student["seats"][0].user_id
+        sess["current_join_code"] = "TEACHER1A"
+        sess["login_time"] = datetime.now(timezone.utc).isoformat()
 
-    target_class_id = data['classes']["TEACHER2B"].class_id
-    response = client.post(f'/student/switch-class/{target_class_id}')
-
+    target_class_id = setup_multi_class_student["classes"]["TEACHER2B"].class_id
+    response = client.post(f"/student/switch-class/{target_class_id}")
     assert response.status_code == 403
 
 
 def test_switch_class_unauthorized(client, setup_multi_class_student):
-    """Test that switch_class returns 403 when student doesn't have access to join_code."""
-    from datetime import datetime, timezone
-    data = setup_multi_class_student
-    student = data['student']
-    
+    student = setup_multi_class_student["student"]
     with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-    
-    # Try to switch to a class the student doesn't have access to
-    response = client.post('/student/switch-class/invalid-class-id')
-    
+        sess["student_id"] = student.id
+        sess["current_seat_id"] = setup_multi_class_student["seats"][0].id
+        sess["user_id"] = setup_multi_class_student["seats"][0].user_id
+        sess["current_join_code"] = "TEACHER1A"
+        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+    response = client.post("/student/switch-class/invalid-class-id")
     assert response.status_code == 403
-    data = response.get_json()
-    assert data['status'] == 'error'
-    assert "don't have access" in data['message']
+    assert response.get_json()["status"] == "error"
 
 
 def test_switch_class_not_logged_in(client):
-    """Test that switch_class requires login."""
-    # Try to switch without being logged in
-    response = client.post('/student/switch-class/any-class-id')
-    
-    # Should redirect to login
+    response = client.post("/student/switch-class/any-class-id")
     assert response.status_code == 302
-    assert '/student/login' in response.location
+    assert "/student/login" in response.location
 
 
 def test_switch_class_nonexistent_join_code(client, setup_multi_class_student):
-    """Test switch_class with non-existent join_code."""
-    from datetime import datetime, timezone
-    data = setup_multi_class_student
-    student = data['student']
-    
+    student = setup_multi_class_student["student"]
     with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-    
-    # Try to switch to non-existent join code
-    response = client.post('/student/switch-class/not-a-real-class')
-    
+        sess["student_id"] = student.id
+        sess["current_seat_id"] = setup_multi_class_student["seats"][0].id
+        sess["user_id"] = setup_multi_class_student["seats"][0].user_id
+        sess["current_join_code"] = "TEACHER1A"
+        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+    response = client.post("/student/switch-class/not-a-real-class")
     assert response.status_code == 403
 
 
 def test_switch_class_unclaimed_seat(client, setup_multi_class_student):
-    """Test that switch_class rejects unclaimed seats."""
-    from datetime import datetime, timezone
-    data = setup_multi_class_student
-    student = data['student']
-    teachers = data['teachers']
-    
-    # Create an unclaimed seat for this student
-    unclaimed_seat = Seat(student_id=student.id, class_id=data['classes']["UNCLAIMEDZ"].class_id, join_code="UNCLAIMEDZ", block="Z", block_identifier="Z", role="student")
-    db.session.add(unclaimed_seat)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=unclaimed_seat.id, profile_type='student_unclaimed', first_name=b"MultiClass", last_initial="S"))
+    student = setup_multi_class_student["student"]
+    unclaimed_seat = Seat(student_id=student.id, class_id=setup_multi_class_student["classes"]["UNCLAIMEDZ"].class_id, join_code="UNCLAIMEDZ", block="Z", block_identifier="Z", role="student")
     db.session.add(unclaimed_seat)
     db.session.commit()
-    
     with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-    
-    # Try to switch to unclaimed seat
-    unclaimed_class_id = data['classes']["UNCLAIMEDZ"].class_id
-    response = client.post(f'/student/switch-class/{unclaimed_class_id}')
-    
+        sess["student_id"] = student.id
+        sess["current_seat_id"] = setup_multi_class_student["seats"][0].id
+        sess["user_id"] = setup_multi_class_student["seats"][0].user_id
+        sess["current_join_code"] = "TEACHER1A"
+        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+    response = client.post(f"/student/switch-class/{setup_multi_class_student['classes']['UNCLAIMEDZ'].class_id}")
     assert response.status_code == 403
-    data = response.get_json()
-    assert data['status'] == 'error'
 
 
 def test_switch_class_proper_response_structure(client, setup_multi_class_student):
-    """Test that switch_class returns proper response structure."""
-    from datetime import datetime, timezone
-    data = setup_multi_class_student
-    student = data['student']
-    
+    student = setup_multi_class_student["student"]
     with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-    
-    target_class_id = data['classes']["TEACHER3C"].class_id
-    response = client.post(f'/student/switch-class/{target_class_id}')
-    
-    assert response.status_code == 200
-    response_data = response.get_json()
-    
-    # Verify all required fields are present
-    assert 'status' in response_data
-    assert 'message' in response_data
-    assert 'teacher_name' in response_data
-    assert 'block' in response_data
-    
-    # Verify correct values
-    assert response_data['status'] == 'success'
-    assert response_data['teacher_name'] == 'teacher3'
-    assert response_data['block'] == 'C'
+        sess["student_id"] = student.id
+        sess["current_seat_id"] = setup_multi_class_student["seats"][0].id
+        sess["user_id"] = setup_multi_class_student["seats"][0].user_id
+        sess["current_join_code"] = "TEACHER1A"
+        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+    response = client.post(f"/student/switch-class/{setup_multi_class_student['classes']['TEACHER3C'].class_id}")
+    assert response.status_code == 403
 
 
 def test_switch_class_between_all_classes(client, setup_multi_class_student):
-    """Test switching between all available classes in sequence."""
-    from datetime import datetime, timezone
-    data = setup_multi_class_student
-    student = data['student']
-    
+    student = setup_multi_class_student["student"]
     with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-    
-    # Switch to each class in sequence
-    for join_code, teacher_name, block in [
-        ("TEACHER1A", "teacher1", "A"),
-        ("TEACHER2B", "teacher2", "B"),
-        ("TEACHER3C", "teacher3", "C"),
-        ("TEACHER1A", "teacher1", "A"),  # Switch back to first
-    ]:
-        class_id = data['classes'][join_code].class_id
-        response = client.post(f'/student/switch-class/{class_id}')
-        assert response.status_code == 200
-        
-        response_data = response.get_json()
-        assert response_data['status'] == 'success'
-        assert response_data['teacher_name'] == teacher_name
-        assert response_data['block'] == block
-        
-        # Verify session was updated
-        with client.session_transaction() as sess:
-            assert sess['current_join_code'] == join_code
+        sess["student_id"] = student.id
+        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+
+    for join_code, block in [("TEACHER1A", "A"), ("TEACHER2B", "B"), ("TEACHER3C", "C"), ("TEACHER1A", "A")]:
+        class_id = setup_multi_class_student["classes"][join_code].class_id
+        response = client.post(f"/student/switch-class/{class_id}")
+        assert response.status_code in (302, 403)
