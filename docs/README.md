@@ -65,8 +65,8 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 
 ## Quick Links
 
-- **[Core Invariants](archive/v1-architecture/core/INV-CORE-000_Core_Invariants.md)** — Archived v1 constitutional constraints
-- **[Authority Model](archive/v1-architecture/core/INV-CORE-001_Authority_Model.md)** — Archived v1 INV → DOM → FEAT hierarchy
+- **[Core Invariants](INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md)** — Canonical v2 core invariants
+- **[Authority Model](INVARIANT/CORE/INV-CORE-001_CAPABILITY_BASED_ARCHITECTURE_AND_AUTHORITY_MODEL.md)** — Canonical capability-based authority hierarchy
 - **[Domain Authority Summary](DOMAIN/DOM-CORE-001_DOMAIN_AUTHORITY_SUMMARY.md)** — Per-domain authority overview
 - **[FEAT Constitutional Directive](FEATURE-EXECUTION/FEAT-CORE-000_FEATURE_EXECUTION_CONSTITUTIONAL_DIRECTIVE.md)** — FEAT execution rules
 - **[Schema Ownership Index](ARCHITECTURE/OPERATIONS/ARC-OPS-016_Schema_Ownership_Index.md)** — Table-to-domain ownership map

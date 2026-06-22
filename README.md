@@ -211,12 +211,12 @@ python scripts/seed_dummy_students.py   # Seed test data
 
 ## Documentation
 
-- **[Architecture Foundation](docs/ARCHITECTURE/ARC-CORE-000_Architecture_Foundation.md)** — System design and domain boundaries
-- **[Authority Model](docs/archive/v1-architecture/core/INV-CORE-001_Authority_Model.md)** — Archived v1 INV → DOM → FEAT hierarchy
+- **[Architecture Foundation](docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md)** — Core runtime invariants and system boundaries
+- **[Authority Model](docs/INVARIANT/CORE/INV-CORE-001_CAPABILITY_BASED_ARCHITECTURE_AND_AUTHORITY_MODEL.md)** — Capability-based INV → DOM → FEAT hierarchy
 - **[Domain Specs](docs/DOMAIN/)** — Per-domain authority contracts
 - **[FEAT Contracts](docs/FEATURE-EXECUTION/)** — Execution layer specifications
 - **[API Reference](docs/ARCHITECTURE/OPERATIONS/ARC-OPS-005_Api_Reference.md)** — REST API documentation
-- **[Deployment Guide](docs/archive/v1-docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-006_Deployment_Guide.md)** — Archived v1 production deployment guide
+- **[Deployment Guide](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-023_V2_Production_Transition_Runbook.md)** — Current v2 production transition runbook
 - **[Development Priorities](DEVELOPMENT.md)** — Roadmap and v2 launch readiness
 - **[V2 Migration Tracker](docs/TRACKING/V2_Full_compliance_migration_plan.md)** — Active wave-by-wave execution status
 - **[Changelog](CHANGELOG.md)** — Version history
