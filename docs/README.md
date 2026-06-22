@@ -88,4 +88,4 @@ The `archive/` directory contains genuinely superseded v1 documentation:
 
 > **Note (2026-06-21):** Documentation reorganized. v1 namespace directories (`ARCHITECTURE/`, `FEATURES/`, `DOMAINS/`) archived — their content is covered by v2 namespaces (`INVARIANT/ARCHITECTURE/`, `FEATURE-EXECUTION/`, `DOMAIN/`). v2 docs previously misplaced in the archive were restored to canonical namespaces.
 >
-> **Known content gaps:** Datetime implementation patterns (formerly ARC-OPS-012), cross-domain reference semantics (formerly ARC-OPS-017), and sysadmin interface spec (formerly ARC-SYS-001) need v2 equivalents written under INV-ARC or DOM namespaces.
+> **Known content gaps:** None. Cross-domain reference semantics (formerly ARC-OPS-017) is now covered by `INV-ARC-021`. Sysadmin interface does not require a standalone spec — it follows from DOM authority and FEAT contracts like other interfaces.
