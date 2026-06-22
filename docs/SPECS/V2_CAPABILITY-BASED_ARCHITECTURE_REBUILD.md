@@ -6,6 +6,8 @@
 
 This report audits the **`timwonderer/classroom-economy`** repository on branch `codex/v2.0` against the capability-based authority model defined in `INV-CORE-001`.
 
+> **Archive Note:** This audit reflects a pre-extraction state and is kept as a historical record of the authority work that has since landed.
+
 **Core finding:** the repo is **partway** to the `INV-CORE-001` model (“capability checks at request time under a strict authority hierarchy”), but the current implementation still has systemic violations of the invariant, especially:
 
 - **Write-on-read / implicit side effects**: several **GET** endpoints trigger DB writes and commits (e.g., student dashboard commits hall-pass reconciliation and interest posts; student shop lazily expires collective goals and refunds on GET).  

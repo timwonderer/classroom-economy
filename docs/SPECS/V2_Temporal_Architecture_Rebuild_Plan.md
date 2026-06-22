@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| V2-TEMP-001      | 1.0     | 2026-04-21     | N/A        | Informational (Build Plan) |
+| V2-TEMP-001      | 1.0     | 2026-04-21     | N/A        | Archived (Historical Build Plan) |
 
 ---
 
@@ -19,7 +19,7 @@ It defines the future authoritative model for:
 - elimination of competing temporal models
 - temporal invariant enforcement and reconciliation
 
-This document is not part of the current live-test blocker lane. It is a saved implementation plan for the future post-launch rebuild project.
+This document is not part of the current live-test blocker lane. It is a saved implementation plan for the future post-launch rebuild project and is retained for historical reference only.
 
 ---
 

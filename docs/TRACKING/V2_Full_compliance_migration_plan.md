@@ -1067,7 +1067,7 @@ Wave impact:
   - Added `scripts/wave3_identity_drop_surface_guardrail.py`
     - scans `app/**/*.py` (excluding model definition files) for legacy auth symbols and legacy session-principal keys
     - compares current coupling surface to a checked-in baseline and fails only when the surface expands
-  - Added baseline: `docs/TRACKING/wave3_identity_drop_surface_baseline.json`
+  - Added baseline: `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`
   - Added CI test: `tests/test_wave3_identity_drop_surface_guardrail.py`
 - Baseline snapshot (current deferred surface):
   - Legacy symbol file counts:
@@ -1101,7 +1101,7 @@ Focused validation:
 - Surface reduction applied and baseline re-cut:
   - `symbols.RecoveryRequest`: removed `app/routes/student.py` coupling
   - `symbols.StudentRecoveryCode`: removed `app/routes/student.py` coupling
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`
 
 Focused validation:
 
@@ -1122,7 +1122,7 @@ Focused validation:
 - Surface reduction applied and baseline re-cut:
   - `symbols.RecoveryRequest`: removed `app/routes/admin.py` coupling (now 0 runtime symbol references in `app/**`).
   - `symbols.StudentRecoveryCode`: removed `app/routes/admin.py` and `app/utils/student_deletion.py` couplings (now 0 runtime symbol references in `app/**`).
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 
@@ -1159,7 +1159,7 @@ Focused validation:
 - Surface reduction applied and baseline re-cut:
   - `symbols.AdminCredential`: removed `app/routes/admin.py` coupling.
   - `symbols.TeacherOnboarding`: removed `app/routes/admin.py` and `app/routes/system_admin.py` couplings.
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 
@@ -1179,7 +1179,7 @@ Focused validation:
   - extended coverage in `tests/test_admin_identity_bridge_service.py` for invite-code lifecycle behavior.
 - Surface reduction applied and baseline re-cut:
   - `symbols.AdminInviteCode`: removed `app/routes/admin.py` and `app/routes/system_admin.py` couplings.
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 
@@ -1201,7 +1201,7 @@ Focused validation:
   - `session_keys.admin_id`: removed `app/routes/docs.py`, `app/routes/main.py`, `app/utils/helpers.py` couplings.
   - `session_keys.student_id`: removed `app/routes/docs.py`, `app/routes/main.py`, `app/utils/helpers.py` couplings.
   - `session_keys.is_admin`: removed `app/routes/main.py` coupling.
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 
@@ -1225,7 +1225,7 @@ Focused validation:
   - `session_keys.is_admin`: removed `app/routes/api.py`, `app/services/tlcp.py` couplings.
   - `session_keys.is_system_admin`: removed `app/__init__.py`, `app/routes/api.py`, `app/services/tlcp.py` couplings.
   - `session_keys.student_id`: removed `app/services/tlcp.py` coupling.
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 
