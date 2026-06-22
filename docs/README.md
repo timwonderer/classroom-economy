@@ -33,11 +33,12 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 | **[STANDARD_OPERATING_PROCEDURES/](STANDARD_OPERATING_PROCEDURES/)** | Normative | SOPs for database, deployment, devops, documentation |
 | **[SECURITY/](SECURITY/)** | Normative (CONT) / Informative | Security controls, audits, incidents, threat models |
 
-### Reference
+### Reference & Principles
 
 | Directory | Tier | Purpose |
 |-----------|------|---------|
 | **[REFERENCE/](REFERENCE/)** | Normative | Authoritative vocabulary and terminology (`REF-TERM-*`) |
+| **[PRINCIPLES/](PRINCIPLES/)** | Informative | Design principles (security, privacy, SSO rationale) |
 
 ### Planning & Status
 
@@ -78,4 +79,14 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 
 ## Archive
 
-v1 user-facing documentation (teacher manual, student guide, diagnostics, feature guides) has been moved to `archive/v1-user-guides/` pending review for v2 port. Archived v1 identity and core docs are in `archive/v1-architecture/`, and the broader legacy doc set is in `archive/v1-docs/`. GitHub Pages landing site assets are in `archive/github-pages/`.
+The `archive/` directory contains genuinely superseded v1 documentation:
+
+| Directory | Contents |
+|-----------|----------|
+| `archive/v1-user-guides/` | v1 teacher manual, student guide, diagnostics, feature guides (pending v2 port) |
+| `archive/v1-architecture/` | Early v1 identity and core architectural specs |
+| `archive/v1-development/` | v1→v2 migration planning and legacy schema analysis |
+| `archive/v1-docs/` | v1 security audits, deployment SOPs, and operational docs (~33 files) |
+| `archive/github-pages/` | GitHub Pages landing site assets |
+
+> **Note (2026-06-21):** 91 v2 documents were restored from `archive/v1-docs/` after being inadvertently archived during a documentation cleanup. All remaining archived files are confirmed v1-only.

@@ -1,5 +1,7 @@
 # Classroom Token Hub (CTH) v2 Teacher Identity Architecture
 
+> **Terminology Note:** This spec was written during the v1→v2 transition. Legacy model references (`Admin`, `StudentTeacher`, `TeacherBlock`, `get_admin_student_query`) describe v1 shadows that are migration targets. The v2 canonical identity model uses `User` (global principal) + `Seat` (class-local binding) with `class_id` as the class boundary.
+
 ## Purpose
 
 This document defines the canonical v2 identity model for teacher participation in CTH.
@@ -109,7 +111,7 @@ Domains must not accept teacher authority from `join_code` or `user_id` without 
 
 ## Forbidden Patterns
 
-- Using `Admin` rows as architectural identity authority.
+- Using `Admin` rows as architectural identity authority (v1 shadow — v2 target: `User` + teacher role).
 - Treating `join_code` as backend authority boundary.
 - Implicitly deriving active scope from unrelated session residue.
 - Writing class-scoped state when no teacher seat is resolved.

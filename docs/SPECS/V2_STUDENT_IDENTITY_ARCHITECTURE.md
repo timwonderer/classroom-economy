@@ -1,5 +1,7 @@
 # Classroom Token Hub (CTH) v2 Student Identity Architecture
 
+> **Terminology Note:** This spec was written during the v1→v2 transition. Legacy model references (`Admin`, `StudentTeacher`, `TeacherBlock`, `get_admin_student_query`) describe v1 shadows that are migration targets. The v2 canonical identity model uses `User` (global principal) + `Seat` (class-local binding) with `class_id` as the class boundary.
+
 ## Purpose
 
 This document defines the v2 identity model for student participation inside CTH.
