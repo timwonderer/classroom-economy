@@ -37,6 +37,12 @@ DEFAULT_PUBLIC_ENDPOINTS = {
     "api.tips",
 }
 
+DEFAULT_NO_CONTEXT_ENDPOINTS = {
+    "admin.onboarding",
+    "admin.select_class_context",
+    "student.select_class_context",
+}
+
 
 def _int_env(name: str, default: int) -> int:
     raw = os.getenv(name)
@@ -100,6 +106,8 @@ def resolve_actor_context(context: CanonicalContext | None) -> dict | None:
         return None
     if context is None:
         endpoint = request.url_rule.rule if request.url_rule and request.url_rule.rule else request.endpoint
+        if request.endpoint in DEFAULT_NO_CONTEXT_ENDPOINTS:
+            return None
         if _is_public_request(endpoint, request.path):
             return None
         _log_invariant_violation("missing canonical context")

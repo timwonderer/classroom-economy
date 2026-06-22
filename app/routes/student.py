@@ -43,6 +43,7 @@ from app.auth import (
     SESSION_TIMEOUT_MINUTES,
     sync_student_session_context,
 )
+from app.services.context_resolver import ContextResolutionError, resolve_canonical_context
 from app.forms import (
     StudentClaimAccountForm, StudentCreateUsernameForm, StudentPinPassphraseForm,
     StudentLoginForm, InsuranceClaimForm, StudentCompleteProfileForm
@@ -957,6 +958,8 @@ def dashboard():
         if context and scope.class_id != context.class_id:
             raise AccessScopeDenied(reason_code="foreign_class_scope", message="Please switch to the selected class.")
         access_policy_service.assert_can_view_dashboard(scope)
+    except ContextResolutionError:
+        raise AccessScopeDenied(reason_code="no_class_scope", message="Please select a class to continue.")
     except AccessScopeDenied as exc:
         flash(exc.message, "error")
         return redirect(url_for("student.select_class_context"))
@@ -1871,6 +1874,8 @@ def file_claim(policy_id):
         scope = resolve_scope(actor=student, selected_join_code=None)
         if context and scope.class_id != context.class_id:
             raise AccessScopeDenied(reason_code="foreign_class_scope", message="Please switch to the selected class.")
+    except ContextResolutionError:
+        raise AccessScopeDenied(reason_code="no_class_scope", message="Please select a class to continue.")
     except AccessScopeDenied as exc:
         flash(exc.message, "danger")
         return redirect(url_for('student.student_insurance'))

@@ -38,6 +38,7 @@ from app.auth import (
     SESSION_TIMEOUT_MINUTES,
 )
 from app.access import AccessScopeDenied, resolve_scope
+from app.services.context_resolver import ContextResolutionError, resolve_canonical_context
 from app.feats.base import feat_shell
 from app.feats.attendance import (
     apply_standard_tap_mutations as feat_apply_standard_tap_mutations,
@@ -437,7 +438,10 @@ def purchase_item():
         return jsonify({"status": "error", "message": "Incorrect passphrase."}), 403
 
     # CRITICAL FIX v2: Get full class context (class_id is source of truth)
-    context = resolve_canonical_context()
+    try:
+        context = resolve_canonical_context()
+    except ContextResolutionError:
+        context = None
     if not context:
         return jsonify({"status": "error", "message": "No class context available."}), 400
 
@@ -835,7 +839,10 @@ def use_item():
         return jsonify({"status": "error", "message": "This item has expired."}), 400
 
     # Get context up front for audit snapshots and transaction scoping.
-    context = resolve_canonical_context()
+    try:
+        context = resolve_canonical_context()
+    except ContextResolutionError:
+        context = None
     teacher_id_for_audit = (
         context['teacher_id'] if context else
         (student_item.store_item.teacher_id if student_item.store_item else None)

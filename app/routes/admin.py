@@ -2918,19 +2918,15 @@ def dashboard():
         flash("Admin session is invalid. Please log in again.", "error")
         return redirect(url_for("admin.login"))
 
+    class_options = _get_validated_teacher_class_options(user.id, admin.id)
     current_class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or "").strip()
     if not current_class_id:
-        class_options = _get_validated_teacher_class_options(user.id, admin.id)
         if not class_options:
             return redirect(url_for("admin.onboarding"))
         return redirect(url_for("admin.select_class_context"))
 
-    current_class_validated = any(
-        option["class_id"] == current_class_id
-        for option in _get_validated_teacher_class_options(user.id, admin.id)
-    )
+    current_class_validated = any(option["class_id"] == current_class_id for option in class_options)
     if not current_class_validated:
-        class_options = _get_validated_teacher_class_options(user.id, admin.id)
         if not class_options:
             return redirect(url_for("admin.onboarding"))
         return redirect(url_for("admin.select_class_context"))
@@ -10104,9 +10100,6 @@ def upload_students():
                 if actor_public_id:
                     requested_public_ids.add(actor_public_id)
                     existing_rows_by_public_id[actor_public_id] = roster_rows[-1]
-                continue
-
-                # unreachable in roster sync mode
 
                 # Generate initials
                 first_initial = first_name[0].upper()
@@ -10326,6 +10319,7 @@ def export_class_roster():
 
     seats = (
         Seat.query
+        .options(sa.orm.joinedload(Seat.identity_profiles))
         .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
         .filter(Seat.class_id == class_id, Seat.role == "student")
         .order_by(Seat.id.asc())
