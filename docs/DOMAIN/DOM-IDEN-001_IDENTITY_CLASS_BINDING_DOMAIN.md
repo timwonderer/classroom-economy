@@ -116,8 +116,8 @@ Rules:
 - `seats.public_id` is a UUID encoded as a 36-character string. It carries no
   human-readable or role-specific meaning and MUST resolve under the active `class_id`.
 - Section or period metadata belongs to `classes.section`. Any remaining seat-level
-  block or section fields are transitional compatibility mirrors only and MUST NOT be
-  treated as canonical class identity.
+  block or section fields are compatibility mirrors only and MUST NOT be treated as
+  canonical class identity.
 
 ---
 
@@ -172,7 +172,7 @@ Every request operating within a class MUST be resolved to a specific `seat_id`.
   - **Global Requests**: Authentication only (`user_id`). Permitted for identity management, class selection, and Sysadmin actions.
   - **Scoped Requests**: Authentication + Authorization (`user_id` + `seat_id`). MANDATORY for all activity in Ledger, Obligations, Attendance, and Store domains.
 - Cross-seat or cross-class requests where the `user_id` does not own the target `seat_id` MUST be rejected.
-- Class-scoped participant routes MUST NOT accept legacy numeric student IDs or role-specific public IDs as aliases for `seats.public_id`.
+- Class-scoped participant routes MUST NOT accept numeric student IDs or role-specific public IDs as aliases for `seats.public_id`.
 
 ### 3. Context Restoration Law (The Sticky Context)
 To support multi-device continuity and prevent "Class Drift," the system maintains a persistent pointer to the last used context.

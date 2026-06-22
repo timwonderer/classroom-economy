@@ -5,6 +5,8 @@
 |------------------|---------|----------------|------------|-----------------|
 | ARC-OPS-007      | 1.4     | 2026-04-18     | 1.3        | Constitutional  |
 
+> **Terminology Note:** This document was written during the v1→v2 transition. References to `teacher_id` scoping, `student_id` as activity key, and `join_code` as "the boundary" reflect v1 patterns. The v2 canonical model uses `class_id` (UUID) as the class boundary, `seat_id` as the per-class activity anchor, and `join_code` as a public alias only.
+
 ## I. Purpose
 
 This document summarizes the current database contract for v2.0 live-test work, with emphasis on class-scoping authority, identity infrastructure, and analytics/observability support.

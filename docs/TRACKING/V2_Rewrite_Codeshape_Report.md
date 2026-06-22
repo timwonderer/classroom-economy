@@ -32,7 +32,7 @@ The v2 rewrite is a response to documented architecture violations in prior/lega
 This is captured in:
 
 - `docs/SPECS/V2_CAPABILITY-BASED_ARCHITECTURE_REBUILD.md`
-- `docs/TRACKING/V2_Compliance_Validation_Report.md`
+- `docs/archive/v1-development/tracking/V2_Compliance_Validation_Report.md`
 - `docs/TRACKING/V2_Full_compliance_migration_plan.md`
 
 The rewrite direction is intentionally constitutional: **INV → DOM → FEAT**.
@@ -241,7 +241,7 @@ Grounded current design direction:
 
 ### 9.3 Tracking/validation guardrails
 
-- `docs/TRACKING/V2_Compliance_Validation_Report.md`
+- `docs/archive/v1-development/tracking/V2_Compliance_Validation_Report.md`
 - `docs/TRACKING/V2_Full_compliance_migration_plan.md`
 - ongoing wave gates and explicit invariant compliance audits
 
@@ -320,7 +320,7 @@ The plan explicitly states this is a **clean break** path, with staged retiremen
 
 ### Tracking and status
 
-- `docs/TRACKING/V2_Compliance_Validation_Report.md`
+- `docs/archive/v1-development/tracking/V2_Compliance_Validation_Report.md`
 - `docs/TRACKING/V2_Full_compliance_migration_plan.md`
 
 ---
