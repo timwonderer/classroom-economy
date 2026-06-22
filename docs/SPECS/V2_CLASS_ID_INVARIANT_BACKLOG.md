@@ -13,7 +13,7 @@ That is not the v2 model.
 ## Canonical Invariants
 
 - `class_id` either exists or never existed.
-- `join_code` is the current public entry point that resolves to a single class universe.
+- `join_code` is the ingress alias that resolves to a single class universe.
 - Labels such as `block`, `period`, `section`, and `display_name` are metadata only, not identity.
 - The canonical class-section metadata field is `classes.section`; legacy `block`
   naming should be retired in favor of `section`.
@@ -33,7 +33,7 @@ That is not the v2 model.
 - Replace cleanup and lifecycle logic that keys off labels or teacher-wide label groupings instead of surviving class associations.
 - Revisit settings models and cleanup rules that still act like `teacher_id + block` is a durable ownership boundary.
 - Move period/block metadata onto `classes.section` and remove remaining identity-adjacent
-  `block` fields or mirrors from seat and roster surfaces once bridge paths are retired.
+  `block` fields or mirrors from seat and roster surfaces once compatibility paths are retired.
 - Remove stale tests that still construct impossible class worlds through deprecated lifecycle fields.
 - Retire `join_code`-authoritative banking and ledger scope once the V2 ledger rebuild plan lands.
 

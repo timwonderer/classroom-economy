@@ -5,9 +5,9 @@
 
 ## Purpose
 
-This document records the runtime identity/auth contract during the v2 cutover. It
-does not replace the constitutional identity docs. It explains how the current code
-must behave while deprecated v1 tables still exist for route compatibility.
+This document records the runtime identity/auth contract for the canonical v2 runtime.
+It complements the constitutional identity docs and describes how the current code
+must behave while compatibility residue still exists.
 
 ## Canonical Runtime Authority
 
@@ -41,13 +41,13 @@ principal-based `ClassMembership` rows are not authoritative identity sources.
 - recovery capability
 - passkey capability
 
-Passkey metadata may remain in compatibility tables while the bridge exists:
+Passkey metadata may remain in credential tables while compatibility residue exists:
 
 - `teacher_credentials.user_id`
 - `system_admin_credentials.user_id`
 
 Those rows are credential metadata only. Legacy `teacher_id` and `sysadmin_id` values
-on those rows are route compatibility shadows.
+on those rows are compatibility-only metadata.
 
 Passwordless external IDs must use:
 
@@ -69,7 +69,7 @@ Compatibility session keys may still exist:
 - `session["sysadmin_id"]`
 
 These keys may only be populated after resolving the canonical `User` and loading the
-legacy route shadow owned by that user. They are not authentication authority and must
+compatibility rows owned by that user. They are not authentication authority and must
 not be accepted as substitutes for `user_id`.
 
 Class-scoped behavior must resolve:
@@ -113,7 +113,7 @@ Recovery token lifecycle state includes:
 - `revoked_at`
 - `issued_by`
 
-Short-lived teacher-visible reset-code fields may remain during the migration bridge,
+Short-lived teacher-visible reset-code fields may remain as compatibility residue,
 but successful recovery must replace canonical credential hashes on `users`.
 
 ## Display Identity Boundary
@@ -137,13 +137,13 @@ It must not contain:
 
 ## Remaining Bridge Debt
 
-The following residue is allowed only as compatibility debt:
+The following residue is allowed only while compatibility support remains:
 
-- legacy principal rows used by route templates
-- legacy session IDs derived from canonical `User`
+- principal rows used by route templates
+- session IDs derived from canonical `User`
 - `TeacherBlock` roster mirrors
 - principal IDs on class membership rows
 - credential metadata role IDs beside canonical `user_id`
 
-The bridge retirement path is to remove consumers after every credential, recovery,
+The retirement path is to remove consumers after every credential, recovery,
 class-scope, and display path resolves from `User + Seat + Class`.

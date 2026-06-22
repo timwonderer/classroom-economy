@@ -13,7 +13,7 @@ alters economic history or creates a new participant record.
 
 For teacher account recovery, see `DOM-IDEN-004_TEACHER_ACCOUNT_RECOVERY.md`.
 
-Supersedes `docs/ARCHITECTURE/IDENTITY/ARC-IDEN-002_Account_Recovery.md`.
+Supersedes `docs/archive/v1-architecture/identity/ARC-IDEN-002_Account_Recovery.md`.
 
 ## II. Dependencies
 

@@ -164,7 +164,7 @@ Append-only audit trail of every support issue status transition. Owned by the S
 Operations-domain event log for scheduled and background work such as invariant runs, activation jobs, retries, and failures.
 
 **Join Code** (`join_code`)
-Human-facing class entry alias that resolves to `class_id` before any authority-sensitive action. Still a primary operational key on ~30 tables during the v1→v2 transition; the v2 architectural goal is alias-only status where `class_id` is the sole internal scoping key.
+Human-facing class entry alias that resolves to `class_id` before any authority-sensitive action. In v2 it should be treated as an ingress-only alias, while `class_id` remains the sole internal scoping key.
 
 ### L
 
@@ -262,7 +262,7 @@ Most restrictive policy mode. Emphasizes survival, slower savings growth, and hi
 V2 identity architecture where teachers, students, and sysadmins share `users`/`seats`/`classes` primitives instead of separate role-specific tables.
 
 **User Recovery Tokens** (`user_recovery_tokens`)
-Canonical user-owned recovery-token lifecycle rows for v2 recovery authority. Distinct from short-lived bridge-era reset-code fields.
+Canonical user-owned recovery-token lifecycle rows for v2 recovery authority. Distinct from short-lived compatibility-era reset-code fields.
 
 **Username Lookup Hash** (`username_lookup_hash`)
 Deterministic hashed lookup key used to locate a user during login and recovery without storing plaintext usernames.
@@ -309,7 +309,7 @@ Feature-specific behavioral rules: Mid-Period Lock, Rent Late Fee Reversal, rent
 
 ### Removed (Replaced or Premature)
 
-Legacy terms being replaced by canonical vocabulary: `block` (→ section), `StudentBlock` (→ seat_attendance_state), `tap_events` (→ attendance_sessions; legacy table dropped), `teacher_blocks` (model removed from `models.py`; any remaining references are transitional migration or archived-doc residue, not live runtime authority). Premature terms: `TemporalContext` (no code yet). Derivable model names: `AnalyticsAlert`, `AnalyticsSnapshot`.
+Legacy terms being replaced by canonical vocabulary: `block` (→ section), `StudentBlock` (→ seat_attendance_state), `tap_events` (→ attendance_sessions), `teacher_blocks` (model removed from `models.py`; any remaining references are archived-doc or migration residue, not live runtime authority). Premature terms: `TemporalContext` (no code yet). Derivable model names: `AnalyticsAlert`, `AnalyticsSnapshot`.
 
 ---
 

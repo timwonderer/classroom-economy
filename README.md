@@ -20,7 +20,7 @@ The platform is multi-tenant: a single deployment serves many teachers, each wit
 
 The v2 architecture is built on three layers:
 
-- **Identity:** `User` authenticates, `Seat` acts within a class, `ClassEconomy` (`class_id`) scopes all data. `join_code` is the public alias for `class_id`.
+- **Identity:** `User` authenticates, `Seat` acts within a class, `ClassEconomy` (`class_id`) scopes all data. `join_code` is the ingress alias for `class_id`.
 - **Domains:** Bounded services (`app/services/`) own read and validation logic. Domains do not call each other directly.
 - **FEATs:** All state mutation flows through `app/feats/` — atomic execution units that resolve identity, validate across domains, and commit in a single transaction.
 
@@ -41,7 +41,7 @@ New code must route writes through FEATs; legacy routes that commit directly are
 | Store | `StoreItem`, `StudentItem`, `RedemptionAuditLog` | Classroom store catalog and purchases |
 | Attendance | `AttendanceSession`, `SeatAttendanceState`, `HallPassLog` | Start Work / Break Done tracking, current attendance gate state, hall passes |
 
-55+ models total. Legacy tables (`Admin`, `Student`, `TeacherBlock`) still exist as compatibility shadows during the auth transition, but runtime identity now stays on canonical `User` + `Seat` + `class_id` boundaries after request authentication and context resolution.
+55+ models total. Legacy tables (`Admin`, `Student`, `TeacherBlock`) now live in the archive doc set and should not be treated as current architecture authority.
 
 ---
 
@@ -63,7 +63,6 @@ New code must route writes through FEATs; legacy routes that commit directly are
 
 ### For System Admins
 - **Admin Portal** — Teacher overview, support tickets, error/event logs, broadcast announcements
-  > **v2 direction:** Invite-code gating replaced by open teacher self-signup; sysadmin role shifts to operational oversight.
 
 ### Platform
 - **Multi-Tenant** — Full class-period isolation; shared students across teachers
@@ -202,11 +201,11 @@ python scripts/seed_dummy_students.py   # Seed test data
 ## Documentation
 
 - **[Architecture Foundation](docs/ARCHITECTURE/ARC-CORE-000_Architecture_Foundation.md)** — System design and domain boundaries
-- **[Authority Model](docs/INVARIANT/CORE/INV-CORE-001_CAPABILITY_BASED_ARCHITECTURE_AND_AUTHORITY_MODEL.md)** — INV → DOM → FEAT enforcement hierarchy
+- **[Authority Model](docs/archive/v1-architecture/core/INV-CORE-001_Authority_Model.md)** — Archived v1 INV → DOM → FEAT hierarchy
 - **[Domain Specs](docs/DOMAIN/)** — Per-domain authority contracts
 - **[FEAT Contracts](docs/FEATURE-EXECUTION/)** — Execution layer specifications
 - **[API Reference](docs/ARCHITECTURE/OPERATIONS/ARC-OPS-005_Api_Reference.md)** — REST API documentation
-- **[Deployment Guide](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-006_Deployment_Guide.md)** — Production deployment
+- **[Deployment Guide](docs/archive/v1-docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-006_Deployment_Guide.md)** — Archived v1 production deployment guide
 - **[Development Priorities](DEVELOPMENT.md)** — Roadmap and v2 launch readiness
 - **[V2 Migration Tracker](docs/TRACKING/V2_Full_compliance_migration_plan.md)** — Active wave-by-wave execution status
 - **[Changelog](CHANGELOG.md)** — Version history

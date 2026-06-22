@@ -128,8 +128,8 @@ These legacy specifications remain active for reference during the transitional 
 
 ### Architecture
 - [ARC-CORE-000_Architecture_Foundation.md](../../ARCHITECTURE/ARC-CORE-000_Architecture_Foundation.md)
-- [ARC-IDEN-001_Admin_Identity_Handling.md](../../ARCHITECTURE/IDENTITY/ARC-IDEN-001_Admin_Identity_Handling.md)
-- [ARC-IDEN-002_Account_Recovery.md](../../ARCHITECTURE/IDENTITY/ARC-IDEN-002_Account_Recovery.md)
+- [ARC-IDEN-001_Admin_Identity_Handling.md](../../archive/v1-architecture/identity/ARC-IDEN-001_Admin_Identity_Handling.md)
+- [ARC-IDEN-002_Account_Recovery.md](../../archive/v1-architecture/identity/ARC-IDEN-002_Account_Recovery.md)
 - [ARC-OPS-000_Operational_Constraints.md](../../ARCHITECTURE/OPERATIONS/ARC-OPS-000_Operational_Constraints.md)
 - [ARC-OPS-001_Transaction_Based_Reimbursement_Architecture.md](../../ARCHITECTURE/OPERATIONS/ARC-OPS-001_Transaction_Based_Reimbursement_Architecture.md)
 - [ARC-OPS-005_Api_Reference.md](../../ARCHITECTURE/OPERATIONS/ARC-OPS-005_Api_Reference.md)
@@ -195,7 +195,7 @@ These legacy specifications remain active for reference during the transitional 
 - [SOP-DB-015_Schema_Change_Proposals.md](../../STANDARD_OPERATING_PROCEDURES/DATABASE/SOP-DB-015_Schema_Change_Proposals.md)
 - [SOP-DEP-001_Production_Deployment_Instructions.md](../../STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-001_Production_Deployment_Instructions.md)
 - [SOP-DEP-005_Digitalocean_Cloudflare_Setup.md](../../STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-005_Digitalocean_Cloudflare_Setup.md)
-- [SOP-DEP-006_Deployment_Guide.md](../../STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-006_Deployment_Guide.md)
+- [SOP-DEP-006_Deployment_Guide.md](../../archive/v1-docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-006_Deployment_Guide.md)
 - [SOP-DEP-007_Github_Pages_Setup.md](../../STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-007_Github_Pages_Setup.md)
 - [SOP-DEP-008_Grafana_Fix_Guide.md](../../STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-008_Grafana_Fix_Guide.md)
 - [SOP-DEP-009_Landing_Page_Deployment.md](../../STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-009_Landing_Page_Deployment.md)

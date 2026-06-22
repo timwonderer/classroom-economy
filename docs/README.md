@@ -65,8 +65,8 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 
 ## Quick Links
 
-- **[Core Invariants](INV-CORE-000_Core_Invariants.md)** — Constitutional constraints (Tier 1)
-- **[Authority Model](INV-CORE-001_Authority_Model.md)** — INV → DOM → FEAT hierarchy
+- **[Core Invariants](archive/v1-architecture/core/INV-CORE-000_Core_Invariants.md)** — Archived v1 constitutional constraints
+- **[Authority Model](archive/v1-architecture/core/INV-CORE-001_Authority_Model.md)** — Archived v1 INV → DOM → FEAT hierarchy
 - **[Domain Authority Summary](DOMAIN/DOM-CORE-001_DOMAIN_AUTHORITY_SUMMARY.md)** — Per-domain authority overview
 - **[FEAT Constitutional Directive](FEATURE-EXECUTION/FEAT-CORE-000_FEATURE_EXECUTION_CONSTITUTIONAL_DIRECTIVE.md)** — FEAT execution rules
 - **[Schema Ownership Index](ARCHITECTURE/OPERATIONS/ARC-OPS-016_Schema_Ownership_Index.md)** — Table-to-domain ownership map
@@ -78,4 +78,4 @@ All documents are classified into one of three tiers. See [SOP-DOC-000 Section V
 
 ## Archive
 
-v1 user-facing documentation (teacher manual, student guide, diagnostics, feature guides) has been moved to `archive/v1-user-guides/` pending review for v2 port. GitHub Pages landing site assets are in `archive/github-pages/`.
+v1 user-facing documentation (teacher manual, student guide, diagnostics, feature guides) has been moved to `archive/v1-user-guides/` pending review for v2 port. Archived v1 identity and core docs are in `archive/v1-architecture/`, and the broader legacy doc set is in `archive/v1-docs/`. GitHub Pages landing site assets are in `archive/github-pages/`.

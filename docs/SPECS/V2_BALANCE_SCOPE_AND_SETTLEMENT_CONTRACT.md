@@ -140,4 +140,3 @@ Priority:
 - [ ] No FEAT atomicity violations in settlement sweep
 - [ ] No write-on-read regressions introduced
 - [ ] Route-level store/rent tests pass with canonical fixtures and feature flags
-

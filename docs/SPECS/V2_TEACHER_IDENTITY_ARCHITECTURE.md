@@ -4,7 +4,7 @@
 
 This document defines the canonical v2 identity model for teacher participation in CTH.
 
-This is a pure v2 architecture document. It is not a migration tracker, it does not define dual-runtime behavior, and it does not authorize legacy identity fallback.
+This is a pure v2 architecture document. It is not a migration tracker, it does not define dual-runtime behavior, and it does not authorize non-canonical identity fallback.
 
 ## Constitutional References
 
@@ -34,8 +34,7 @@ Required role law:
 
 - Teacher identity is a `users` row with `user_role='teacher'`.
 - Teacher credentials and recovery capability are owned by `users`.
-- Passkey metadata may be implemented by compatibility credential tables only when
-  ownership is keyed by `users.id`.
+- Passkey metadata may be implemented by credential tables owned by `users.id`.
 - DOB and other forbidden claim-era PII are not part of teacher identity.
 
 Sticky context law:
@@ -79,7 +78,7 @@ Rules:
 
 4. Membership by existence:
 - If a teacher seat exists for (`user_id`, `class_id`), membership exists.
-- No implied membership from legacy tables or duplicated denormalized markers.
+- No implied membership from other tables or duplicated denormalized markers.
 
 ## Runtime Context Flow (Teacher)
 
@@ -110,7 +109,7 @@ Domains must not accept teacher authority from `join_code` or `user_id` without 
 
 ## Forbidden Patterns
 
-- Using legacy `Admin` rows as architectural identity authority.
+- Using `Admin` rows as architectural identity authority.
 - Treating `join_code` as backend authority boundary.
 - Implicitly deriving active scope from unrelated session residue.
 - Writing class-scoped state when no teacher seat is resolved.
