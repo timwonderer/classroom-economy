@@ -55,7 +55,7 @@ APScheduler==3.11.2
 # - See https://flask-limiter.readthedocs.io/en/stable/changelog.html
 # Review before upgrading from 3.5.0 to 4.1.1
 Flask-Limiter==3.5.0
-redis==7.4.0
+redis==8.0.0
 passwordless==2.0.0
 requests==2.34.2
 opentelemetry-api==1.42.1
