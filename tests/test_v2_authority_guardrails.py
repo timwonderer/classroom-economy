@@ -144,11 +144,18 @@ def test_admin_get_routes_remain_read_only():
         return source[start:end] if end != -1 else source[start:]
 
     banking_source = get_func_source(admin_source, "def banking():")
+def test_admin_get_routes_remain_read_only():
+    admin_source = Path("app/routes/admin.py").read_text()
+    banking_start = admin_source.index("def banking():")
+    banking_end = admin_source.index("@admin_bp.route('/banking/settings'", banking_start)
+    banking_source = admin_source[banking_start:banking_end]
     assert "BankingSettings(" not in banking_source
     assert "db.session.commit()" not in banking_source
     assert "db.session.flush()" not in banking_source
 
-    recovery_source = get_func_source(admin_source, "def recovery_status():")
+    recovery_start = admin_source.index("def recovery_status():")
+    recovery_end = admin_source.index("@admin_bp.route('/reset-credentials'", recovery_start)
+    recovery_source = admin_source[recovery_start:recovery_end]
     assert "db.session.commit()" not in recovery_source
     assert "db.session.flush()" not in recovery_source
     assert "recovery_request.status = 'expired'" not in recovery_source

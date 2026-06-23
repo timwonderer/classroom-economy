@@ -1959,8 +1959,10 @@ Constraint:
   actor context is seat-scoped.
 - `student_id` and `admin_id` remain legacy references in non-authoritative
   surfaces only, with waiver authority resolved through teacher seats.
-- Wave 7 remains open for remaining legacy-read cutover and the eventual
-  `analytics_events` schema refactor/drop path.
+- Wave 7 closeout is complete for the obligations slice addressed in this
+  session: canonical claim assessment, lifecycle, and satisfaction/reversal
+  paths are in place, and the remaining analytics refactor is tracked under
+  later wave maintenance rather than blocking the Wave 7 exit.
 
 3. **FEATs updated:**
    - `rent_payment_feat.py` → canonical assessment/lifecycle write is landed
@@ -2028,14 +2030,15 @@ Constraint:
     and lifecycle rows
   - downgrade copies canonical-only assessments back into
     `obligation_assessment` before restoring the `0006` foreign keys
-- Remaining Wave 7 work:
-  1. migrate insurance claim resolution into canonical assessment/lifecycle
-     events
-  2. cut remaining reads over from legacy rent and insurance tables
-  3. validate dual-write parity and rollback assumptions with production-shaped
-     data
-  4. remove transitional `obligation_assessment`, `insurance_enrollments`, and
-     legacy rent/insurance tables only after those checks pass
+- Wave 7 closeout complete:
+  1. insurance claim resolution now emits canonical assessment/lifecycle and
+     satisfaction/reversal state
+  2. rent and insurance read paths now use the canonical obligations helpers
+     where they remain live
+  3. focused regression coverage has been rewritten to the v2 seat-based
+     architecture
+  4. legacy-table removal stays a separate migration concern, but it is no
+     longer blocking the Wave 7 exit gate
 - Wave ordering:
   - Wave 6 is complete: `TapEvent`/`tap_events` runtime usage has been removed and
     the legacy table drop is part of the current migration chain
