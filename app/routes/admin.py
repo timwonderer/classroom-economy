@@ -7771,6 +7771,7 @@ def view_student_policy(enrollment_id):
 
 
 @admin_bp.route('/insurance/claim/<int:claim_id>', methods=['GET', 'POST'])
+@feat_shell("FEAT-ADMN-001")
 @admin_required
 def process_claim(claim_id):
     """Process insurance claim with auto-deposit for monetary claims."""
@@ -12222,6 +12223,7 @@ def passkey_auth_start():
 
 
 @admin_bp.route('/passkey/auth/finish', methods=['POST'])
+@feat_shell("FEAT-ADMN-001")
 @limiter.limit("20 per minute")
 def passkey_auth_finish():
     """
@@ -12443,6 +12445,7 @@ def view_issue(issue_ref):
 
 
 @admin_bp.route('/issues/<issue_ref>/resolve', methods=['POST'])
+@feat_shell("FEAT-ADMN-001")
 @admin_required
 def resolve_issue(issue_ref):
     """

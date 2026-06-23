@@ -25,6 +25,7 @@ from werkzeug.exceptions import BadRequest, Unauthorized, Forbidden, NotFound, S
 import pyotp
 
 from app.extensions import db, limiter
+from app.feats.base import feat_shell
 from app.models import (
     Seat, SystemAdmin, SystemAdminCredential, Admin, Student, ErrorLog,
     Transaction, TransactionStatus, AttendanceSession, SeatAttendanceState, HallPassLog, StudentItem, RentPayment,
@@ -364,6 +365,7 @@ def passkey_auth_start():
 
 
 @sysadmin_bp.route('/passkey/auth/finish', methods=['POST'])
+@feat_shell("FEAT-OPS-001")
 @limiter.limit("20 per minute")
 def passkey_auth_finish():
     """
@@ -1930,6 +1932,7 @@ def start_review_escalated_issue(issue_ref):
 
 
 @sysadmin_bp.route('/issues/<issue_ref>/resolve', methods=['POST'])
+@feat_shell("FEAT-OPS-001")
 @system_admin_required
 def resolve_escalated_issue(issue_ref):
     """Mark technical fix complete, optionally issue bug bounty, then return to teacher final review."""
