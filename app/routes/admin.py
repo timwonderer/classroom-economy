@@ -7878,7 +7878,6 @@ def view_student_policy(enrollment_id):
 
 
 @admin_bp.route('/insurance/claim/<int:claim_id>', methods=['GET', 'POST'])
-@feat_shell("FEAT-ADMN-001")
 @admin_required
 def process_claim(claim_id):
     """Process insurance claim with auto-deposit for monetary claims."""
