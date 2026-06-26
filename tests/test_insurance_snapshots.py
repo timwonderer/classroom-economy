@@ -6,12 +6,11 @@ from app import db
 from app.services import obligations_service
 from app.models import (
     Admin,
-    InsuranceEnrollment,
     InsurancePolicy,
     InsuranceClaim,
     ObligationAssessment,
     Seat,
-    StudentInsurance,
+    InsuranceEnrollment,
     StudentTeacher,
     Transaction,
     TransactionStatus,
@@ -61,9 +60,13 @@ def test_student_insurance_keeps_frozen_snapshot_after_policy_edit(client, test_
 
     policy = _create_policy(admin.id, title="Original Policy", max_claim_amount=Decimal("42.00"))
 
-    enrollment = StudentInsurance(
-        student_id=test_student.id,
+    seat = Seat.query.filter_by(student_id=test_student.id).first()
+    assert seat is not None
+    enrollment = InsuranceEnrollment(
+        seat_id=seat.id,
+        class_id=seat.class_id,
         policy_id=policy.id,
+        join_code=seat.join_code,
         status="active",
         purchase_date=datetime.now(timezone.utc),
         coverage_start_date=datetime.now(timezone.utc) - timedelta(days=1),

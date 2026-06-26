@@ -5,7 +5,7 @@ from werkzeug.security import generate_password_hash
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Seat, IdentityProfile, Admin, InsurancePolicy, RentPayment, StoreItem, Student, StudentInsurance, StudentItem, StudentTeacher, Transaction
+from app.models import Seat, IdentityProfile, Admin, InsurancePolicy, RentPayment, StoreItem, Student, InsuranceEnrollment, StudentItem, StudentTeacher, Transaction
 
 
 def _login_admin(client, admin_id):
@@ -465,8 +465,9 @@ def test_void_insurance_premium_marks_enrollment_unpaid(client):
     db.session.add(policy)
     db.session.flush()
 
-    enrollment = StudentInsurance(
-        student_id=student.id,
+    enrollment = InsuranceEnrollment(
+        seat_id=_tb_seat.id,
+        class_id=_tb_seat.class_id,
         policy_id=policy.id,
         join_code='VOIDINS1',
         status='active',

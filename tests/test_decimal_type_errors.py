@@ -121,7 +121,7 @@ class TestDecimalTypeErrors:
             teacher_block_claimed=False,
         )
 
-        seat = Seat.query.filter_by(user_id=seat.user_id if False else None).first()
+        seat = Seat.query.filter_by(class_id=class_scope.class_id, join_code=join_code, role="student").first()
         assert seat is not None
 
         # Add various transaction types to test edge cases
@@ -393,7 +393,7 @@ class TestDecimalTypeErrors:
         Fix: Use Decimal('0.00') as the fallback when scalar() returns None.
         """
         from app.models import (
-            Admin, Student, StudentTeacher, InsurancePolicy, StudentInsurance,
+            Admin, Student, StudentTeacher, InsurancePolicy, InsuranceEnrollment,
         )
         from tests.helpers.class_scope import create_class_scope
 
@@ -462,8 +462,9 @@ class TestDecimalTypeErrors:
         db.session.flush()
 
         # Enroll student (active, payment current, coverage started)
-        enrollment = StudentInsurance(
-            student_id=student.id,
+        enrollment = InsuranceEnrollment(
+            seat_id=seat.id,
+            class_id=seat.class_id,
             policy_id=policy.id,
             join_code='CLAIMCAP1',
             status='active',

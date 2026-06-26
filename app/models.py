@@ -489,11 +489,13 @@ class Student(db.Model):
         1) class-scoped (`class_id`) when available (canonical)
         2) teacher-scoped fallback for legacy callers
         """
-        query = StudentInsurance.query.join(
-            InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id
+        query = InsuranceEnrollment.query.join(
+            InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id
         ).filter(
-            StudentInsurance.student_id == self.id,
-            StudentInsurance.status == 'active',
+            InsuranceEnrollment.seat_id.in_(
+                db.session.query(Seat.id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).filter(IdentityProfile.id == self.identity_id)
+            ),
+            InsuranceEnrollment.status == 'active',
         )
 
         if class_id:
@@ -2018,7 +2020,7 @@ class InsurancePolicy(db.Model):
 
     # Relationships
     teacher = db.relationship('User', foreign_keys=[teacher_id], backref='insurance_policies_owned')
-    student_policies = db.relationship('StudentInsurance', backref='policy', lazy='dynamic')
+    student_policies = db.relationship('InsuranceEnrollment', back_populates='policy', lazy='dynamic')
     claims = db.relationship('InsuranceClaim', backref='policy', lazy='dynamic')
 
     # Many-to-many relationship for block visibility
@@ -2076,276 +2078,6 @@ class InsurancePolicyBlock(db.Model):
     )
 
 
-class StudentInsurance(db.Model):
-    __tablename__ = 'student_insurance'
-    id = db.Column(db.Integer, primary_key=True)
-    # student_id is DEPRECATED in favor of seat_id.
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
-    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
-    policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id'), nullable=False)
-
-    # join_code is for UI display/filtering only
-    join_code = db.Column(db.String(20), nullable=True, index=True)
-
-    status = db.Column(db.String(20), default='active')  # active, cancelled, suspended, expired
-    purchase_date = db.Column(db.DateTime(timezone=True), default=utc_now)
-    cancel_date = db.Column(db.DateTime(timezone=True), nullable=True)
-    last_payment_date = db.Column(db.DateTime(timezone=True), nullable=True)
-    next_payment_due = db.Column(db.DateTime(timezone=True), nullable=True)
-    coverage_start_date = db.Column(db.DateTime(timezone=True), nullable=True)  # After waiting period
-
-    # Track payment status
-    payment_current = db.Column(db.Boolean, default=True)
-    days_unpaid = db.Column(db.Integer, default=0)
-
-    # Immutable snapshot of the policy terms at purchase time.
-    frozen_policy_title = db.Column(db.String(100), nullable=True)
-    frozen_policy_description = db.Column(db.Text, nullable=True)
-    frozen_max_claim_amount = db.Column(db.Numeric(precision=12, scale=2), nullable=True)
-    frozen_max_payout_per_period = db.Column(db.Numeric(precision=12, scale=2), nullable=True)
-    frozen_max_claims_count = db.Column(db.Integer, nullable=True)
-    frozen_max_claims_period = db.Column(db.String(20), nullable=True)
-    frozen_claim_time_limit_days = db.Column(db.Integer, nullable=True)
-    policy_version = db.Column(db.Integer, nullable=True)
-
-    # Relationships
-    student = db.relationship('Student', backref='insurance_policies')
-
-    def freeze_policy_snapshot(self, policy):
-        """Copy mutable template values into this enrollment's immutable contract snapshot."""
-        self.frozen_policy_title = policy.title
-        self.frozen_policy_description = policy.description
-        self.frozen_max_claim_amount = policy.max_claim_amount
-        self.frozen_max_payout_per_period = policy.max_payout_per_period
-        self.frozen_max_claims_count = policy.max_claims_count
-        self.frozen_max_claims_period = policy.max_claims_period
-        self.frozen_claim_time_limit_days = policy.claim_time_limit_days
-        self.policy_version = policy.version_number or 1
-
-    def build_renewed_enrollment(self, policy):
-        """Create a new enrollment row with a fresh snapshot for the next coverage period."""
-        from app.utils.insurance_eligibility import compute_coverage_start_utc_from_purchase
-
-        purchase_utc = utc_now()
-        coverage_start_utc = compute_coverage_start_utc_from_purchase(
-            purchase_utc=purchase_utc,
-            class_id=self.class_id,
-            waiting_period_days=policy.waiting_period_days,
-        )
-        renewal = StudentInsurance(
-            student_id=self.student_id,
-            seat_id=self.seat_id,
-            class_id=self.class_id,
-            policy_id=policy.id,
-            join_code=self.join_code,
-            status='active',
-            purchase_date=purchase_utc,
-            last_payment_date=purchase_utc,
-            next_payment_due=purchase_utc + timedelta(days=30),
-            coverage_start_date=coverage_start_utc,
-            payment_current=True,
-            days_unpaid=0,
-        )
-        renewal.freeze_policy_snapshot(policy)
-        return renewal
-
-    @property
-    def contract_title(self):
-        return self.frozen_policy_title or (self.policy.title if self.policy else "")
-
-    @property
-    def contract_description(self):
-        return self.frozen_policy_description if self.frozen_policy_description is not None else (
-            self.policy.description if self.policy else None
-        )
-
-    @property
-    def contract_max_claim_amount(self):
-        return self.frozen_max_claim_amount if self.frozen_max_claim_amount is not None else (
-            self.policy.max_claim_amount if self.policy else None
-        )
-
-    @property
-    def contract_max_payout_per_period(self):
-        return self.frozen_max_payout_per_period if self.frozen_max_payout_per_period is not None else (
-            self.policy.max_payout_per_period if self.policy else None
-        )
-
-    @property
-    def contract_max_claims_count(self):
-        return self.frozen_max_claims_count if self.frozen_max_claims_count is not None else (
-            self.policy.max_claims_count if self.policy else None
-        )
-
-    @property
-    def contract_max_claims_period(self):
-        return self.frozen_max_claims_period if self.frozen_max_claims_period else (
-            self.policy.max_claims_period if self.policy else "month"
-        )
-
-    @property
-    def contract_claim_time_limit_days(self):
-        return self.frozen_claim_time_limit_days if self.frozen_claim_time_limit_days is not None else (
-            self.policy.claim_time_limit_days if self.policy else None
-        )
-
-
-@sa.event.listens_for(StudentInsurance, "before_insert")
-@sa.event.listens_for(StudentInsurance, "before_update")
-def _sync_student_insurance_scope(_mapper, connection, target):
-    """Dual-write bridge for student_insurance seat/class scope."""
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-    student_id = getattr(target, "student_id", None)
-    policy_id = getattr(target, "policy_id", None)
-    policy_teacher_id = None
-
-    if policy_id:
-        policy_teacher_id = connection.execute(
-            sa.text("SELECT teacher_id FROM insurance_policies WHERE id = :policy_id LIMIT 1"),
-            {"policy_id": policy_id},
-        ).scalar()
-
-    if not class_id and join_code:
-        class_id = connection.execute(
-            sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-            {"join_code": join_code},
-        ).scalar()
-        if not class_id and policy_teacher_id:
-                proposed_class_id = str(uuid.uuid4())
-                connection.execute(
-                    sa.text(
-                        "INSERT INTO classes "
-                        "(class_id, join_code, teacher_id, display_name, class_timezone, created_at, updated_at, created_by_admin_id) "
-                        "VALUES (:class_id, :join_code, :teacher_id, NULL, 'UTC', :created_at, :updated_at, :created_by_admin_id) "
-                        "ON CONFLICT (join_code) DO NOTHING"
-                    ),
-                    {
-                        "class_id": proposed_class_id,
-                        "join_code": join_code,
-                        "teacher_id": policy_teacher_id,
-                        "created_at": utc_now(),
-                        "updated_at": utc_now(),
-                        "created_by_admin_id": policy_teacher_id,
-                    },
-                )
-                class_id = connection.execute(
-                    sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-                    {"join_code": join_code},
-                ).scalar()
-        if class_id:
-            target.class_id = str(class_id)
-
-    if not class_id and student_id and policy_teacher_id:
-        membership_row = connection.execute(
-            sa.text(
-                "SELECT cm.class_id, ce.join_code "
-                "FROM class_memberships cm "
-                "JOIN classes ce ON ce.class_id = cm.class_id "
-                "WHERE cm.student_id = :student_id AND ce.teacher_id = :teacher_id "
-                "ORDER BY cm.id ASC LIMIT 1"
-            ),
-            {"student_id": student_id, "teacher_id": policy_teacher_id},
-        ).fetchone()
-        if membership_row:
-            class_id = membership_row[0]
-            target.class_id = str(class_id)
-            if not join_code and membership_row[1]:
-                join_code = membership_row[1]
-                target.join_code = str(join_code)
-
-    if not class_id and policy_teacher_id:
-        teacher_class = connection.execute(
-            sa.text(
-                "SELECT class_id, join_code FROM classes "
-                "WHERE teacher_id = :teacher_id ORDER BY created_at ASC LIMIT 1"
-            ),
-            {"teacher_id": policy_teacher_id},
-        ).fetchone()
-        if teacher_class:
-            class_id = teacher_class[0]
-            target.class_id = str(class_id)
-            if not join_code and teacher_class[1]:
-                join_code = teacher_class[1]
-                target.join_code = str(join_code)
-        else:
-            synthetic_join_code = f"INS{policy_teacher_id}_{uuid.uuid4().hex[:8]}".upper()[:20]
-            synthetic_class_id = str(uuid.uuid4())
-            connection.execute(
-                sa.text(
-                    "INSERT INTO classes "
-                    "(class_id, join_code, teacher_id, display_name, class_timezone, created_at, updated_at, created_by_admin_id) "
-                    "VALUES (:class_id, :join_code, :teacher_id, NULL, 'UTC', :created_at, :updated_at, :created_by_admin_id)"
-                ),
-                {
-                    "class_id": synthetic_class_id,
-                    "join_code": synthetic_join_code,
-                    "teacher_id": policy_teacher_id,
-                    "created_at": utc_now(),
-                    "updated_at": utc_now(),
-                    "created_by_admin_id": policy_teacher_id,
-                },
-            )
-            class_id = synthetic_class_id
-            join_code = synthetic_join_code
-            target.class_id = class_id
-            target.join_code = join_code
-
-    if not getattr(target, "seat_id", None) and student_id:
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-        if seat_id:
-            target.seat_id = seat_id
-
-    if not getattr(target, "seat_id", None) and student_id:
-        legacy_join_code = join_code or f"LEGACY_{student_id}"
-        legacy_block = connection.execute(
-            sa.text("SELECT COALESCE(block, 'A') FROM students WHERE id = :student_id LIMIT 1"),
-            {"student_id": student_id},
-        ).scalar() or "A"
-        legacy_seat_id = connection.execute(
-            sa.text(
-                "INSERT INTO seats (public_id, user_id, class_id, role, block_identifier, roster_fingerprint, dedupe_code, claimed_at, has_received_rent_exemption, join_code, student_id, block, created_at, updated_at) "
-                "VALUES (:public_id, NULL, :class_id, :role, :block_identifier, NULL, NULL, NULL, :has_received_rent_exemption, :join_code, :student_id, :block, :created_at, :updated_at) "
-                "RETURNING id"
-            ),
-            {
-                "public_id": str(uuid.uuid4()),
-                "class_id": str(class_id) if class_id else None,
-                "role": "student",
-                "block_identifier": legacy_block,
-                "has_received_rent_exemption": False,
-                "join_code": legacy_join_code,
-                "student_id": student_id,
-                "block": legacy_block,
-                "created_at": utc_now(),
-                "updated_at": utc_now(),
-            },
-        ).scalar()
-        if legacy_seat_id:
-            target.seat_id = int(legacy_seat_id)
-
-    if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
-        seat_class_id = connection.execute(
-            sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_class_id:
-            target.class_id = str(seat_class_id)
-    elif getattr(target, "class_id", None) and getattr(target, "seat_id", None):
-        connection.execute(
-            sa.text("UPDATE seats SET class_id = :class_id WHERE id = :seat_id AND class_id IS NULL"),
-            {"class_id": str(target.class_id), "seat_id": target.seat_id},
-        )
-
-    if not getattr(target, "join_code", None) and getattr(target, "class_id", None):
-        resolved_join_code = connection.execute(
-            sa.text("SELECT join_code FROM classes WHERE class_id = :class_id LIMIT 1"),
-            {"class_id": target.class_id},
-        ).scalar()
-        if resolved_join_code:
-            target.join_code = str(resolved_join_code)
-
 class InsuranceClaim(db.Model):
     __tablename__ = 'insurance_claims'
     __table_args__ = (
@@ -2387,6 +2119,12 @@ class InsuranceClaim(db.Model):
         if self.seat.identity_profile:
             return Student.query.filter_by(identity_id=self.seat.identity_profile.id).first()
         return None
+
+    @property
+    def student_id(self):
+        """Resolve the canonical student id through the seat binding."""
+        student = self.student
+        return student.id if student else None
 
 
 
@@ -2502,7 +2240,7 @@ class InsuranceEnrollment(db.Model):
     policy_version = db.Column(db.Integer, nullable=True)
 
     seat = db.relationship('Seat', backref=db.backref('insurance_enrollments', passive_deletes=True))
-    policy = db.relationship('InsurancePolicy', backref='enrollments')
+    policy = db.relationship('InsurancePolicy', back_populates='student_policies')
 
     __table_args__ = (
         db.Index('ix_insurance_enrollment_seat_class', 'seat_id', 'class_id'),
