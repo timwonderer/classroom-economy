@@ -68,7 +68,7 @@ def test_dashboard_renders_recent_deposit(client, test_student):
     tb = Seat(student_id=test_student.id, join_code=join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name=test_student.first_name, last_initial=test_student.last_initial))
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name=test_student.display_first_name, last_name=test_student.display_last_initial))
     db.session.add(tb)
 
     db.session.commit()

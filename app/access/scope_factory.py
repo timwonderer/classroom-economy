@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from flask import session
+from flask import g, session
 
 from app.access.scope import Scope
-from app.auth import _column_exists, get_current_student_seat, sync_student_session_context
+from app.auth import _column_exists, sync_student_session_context
+from app.extensions import db
 from app.models import ClassEconomy, Seat
 
 
@@ -23,15 +24,15 @@ class ResolvedStudentClassSwitch:
 
 
 def _store_session_class_context(*, class_id: str | None, join_code: str | None) -> None:
-    if class_id:
-        session["current_class_id"] = class_id
-    if join_code:
-        session["current_join_code"] = join_code
+    return None
 
 
 def _scope_from_runtime_seat(*, actor, selected_class_id: str | None) -> Scope | None:
-    current_seat = get_current_student_seat()
-    if not current_seat or current_seat.student_id != actor.id or not current_seat.join_code:
+    context = getattr(g, "canonical_context", None)
+    if not context:
+        return None
+    current_seat = db.session.get(Seat, context.seat_id)
+    if not current_seat:
         return None
     if selected_class_id and current_seat.class_id != selected_class_id:
         return None
@@ -40,11 +41,9 @@ def _scope_from_runtime_seat(*, actor, selected_class_id: str | None) -> Scope |
     if current_seat.class_id:
         class_row = ClassEconomy.query.filter_by(class_id=current_seat.class_id).first()
     if not class_row:
-        class_row = ClassEconomy.query.filter_by(join_code=current_seat.join_code).first()
-    if not class_row:
         return None
 
-    _store_session_class_context(class_id=class_row.class_id, join_code=current_seat.join_code)
+    _store_session_class_context(class_id=class_row.class_id, join_code=None)
     return Scope(
         class_id=class_row.class_id,
         join_code=current_seat.join_code,
@@ -67,7 +66,7 @@ def resolve_student_class_switch_scope(*, actor, class_id: str) -> ResolvedStude
 
     seat = (
         Seat.query.filter_by(
-            student_id=actor.id,
+            user_id=actor.id,
             class_id=normalized_class_id,
         )
         .filter(Seat.claimed_at.isnot(None))
@@ -101,14 +100,17 @@ def resolve_student_class_switch_scope(*, actor, class_id: str) -> ResolvedStude
 
 
 def _resolve_teacher_scope(*, actor, selected_class_id: str | None) -> Scope:
-    normalized_class_id = (selected_class_id or session.get("current_class_id") or "").strip() or None
+    normalized_class_id = (selected_class_id or "").strip() or None
+    if not normalized_class_id:
+        context = getattr(g, "canonical_context", None)
+        normalized_class_id = getattr(context, "class_id", None)
     if normalized_class_id:
         class_row = ClassEconomy.query.filter_by(
             teacher_id=actor.id,
             class_id=normalized_class_id,
         ).first()
         if class_row:
-            _store_session_class_context(class_id=class_row.class_id, join_code=class_row.join_code)
+            _store_session_class_context(class_id=class_row.class_id, join_code=None)
             return Scope(
                 class_id=class_row.class_id,
                 join_code=class_row.join_code,
@@ -131,10 +133,7 @@ def _resolve_teacher_scope(*, actor, selected_class_id: str | None) -> Scope:
         class_row = class_query.first()
     
     if class_row:
-        _store_session_class_context(
-            class_id=class_row.class_id,
-            join_code=class_row.join_code,
-        )
+        _store_session_class_context(class_id=class_row.class_id, join_code=None)
         return Scope(
             class_id=class_row.class_id,
             join_code=class_row.join_code,
@@ -166,7 +165,8 @@ def resolve_scope(*, actor, selected_join_code: str | None = None, actor_role: s
             selected_class_id = class_row.class_id if class_row else None
         return _resolve_teacher_scope(actor=actor, selected_class_id=selected_class_id)
 
-    selected_class_id = (session.get("current_class_id") or "").strip() or None
+    context = getattr(g, "canonical_context", None)
+    selected_class_id = getattr(context, "class_id", None)
     if selected_join_code:
         class_row = ClassEconomy.query.filter_by(join_code=selected_join_code).first()
         if class_row is None:
@@ -178,9 +178,8 @@ def resolve_scope(*, actor, selected_join_code: str | None = None, actor_role: s
     scope = _scope_from_runtime_seat(actor=actor, selected_class_id=selected_class_id)
     if scope is not None:
         return scope
-
     claimed_seats = (
-        Seat.query.filter_by(student_id=actor.id)
+        Seat.query.filter_by(user_id=actor.id)
         .filter(Seat.claimed_at.isnot(None))
         .order_by(Seat.id.asc())
         .all()
@@ -195,8 +194,8 @@ def resolve_scope(*, actor, selected_join_code: str | None = None, actor_role: s
     if active_seat is None:
         active_seat = claimed_seats[0]
 
-    _store_session_class_context(class_id=active_seat.class_id, join_code=active_seat.join_code)
-    sync_student_session_context(actor, join_code=active_seat.join_code)
+    _store_session_class_context(class_id=active_seat.class_id, join_code=None)
+    sync_student_session_context(actor, class_id=active_seat.class_id, seat_id=active_seat.id)
 
     class_row = ClassEconomy.query.filter_by(class_id=active_seat.class_id).first()
     if not class_row:

@@ -12,10 +12,10 @@ It is a companion to `docs/SPECS/V2_STUDENT_IDENTITY_ARCHITECTURE.md`.
 Both roles use the same `users`, `seats`, and `classes` tables, differentiated by
 `user_role` on the `users` row and `role` on the `seat`.
 
-This document assumes the clean v2 identity redesign. It is not a v1-to-v2 migration
-plan and does not preserve v1 data model constraints.
+This document defines the canonical v2 identity model. It does not preserve v1 data
+model constraints.
 
-Supersedes `docs/ARCHITECTURE/IDENTITY/ARC-IDEN-001_Admin_Identity_Handling.md`.
+Supersedes `docs/archive/v1-architecture/identity/ARC-IDEN-001_Admin_Identity_Handling.md`.
 
 ## II. Dependencies
 
@@ -68,6 +68,7 @@ Key fields:
 - `current_session_started_at`
 - `current_session_expires_at` — fixed window set at login, does not slide forward
 - `current_session_nonce` — regenerated at each login; binds requests to one session
+- `last_active_class_id` — persisted preference only; login may fall back to explicit class selection when this pointer is missing or stale, but runtime authority still comes from a validated `seat_id + class_id` pair
 - `money_action_cooldown_until` — rate-limit guard for financial mutations
 - `has_completed_setup`
 - `created_at`
@@ -81,16 +82,16 @@ Rules:
 - Student-credential fields are `NULL` for teacher/sysadmin rows.
 - No DOB, DOB hash, DOB sum, or any birth-date-derived field is stored on `users`.
 - A teacher user may own multiple seats across multiple classes (one seat per class).
+- A missing or invalid `last_active_class_id` must not be treated as authority failure by itself; the login boundary may surface explicit class selection when valid seats exist, and only fail closed after verifying that no valid class/seat options remain.
 - Session window fields behave identically for both roles.
 - Only one active session is supported per user identity.
-- Passkey credential metadata may live in compatibility tables during migration, but
-  the credential owner is always `users.id`.
+- Passkey credential metadata may live in credential tables owned by `users.id`.
 
 ### Passkey Credential Metadata
 
 Passkey credentials are an authentication capability owned by `users`.
 
-During the compatibility bridge, passkey metadata is implemented in:
+Passkey metadata is implemented in:
 
 - `teacher_credentials.user_id`
 - `system_admin_credentials.user_id`
@@ -101,7 +102,7 @@ Rules:
 - Legacy external IDs such as `admin_<id>` and `sysadmin_<id>` are invalid v2
   principals.
 - Legacy `teacher_id` and `sysadmin_id` columns on credential metadata tables are
-  route compatibility shadows only.
+  compatibility-only metadata.
 - Passkey metadata tables do not authorize class access, seat access, recovery, or
   economic actions.
 
@@ -225,7 +226,7 @@ The following patterns are explicitly excluded from the v2 teacher identity mode
 - **`dob_sum_hash` / `salt` for DOB** — removed; no DOB recovery mechanism
 - **`has_assigned_students` flag** — setup state belongs on `has_completed_setup`
 - **Passkeys owned by role-specific principal IDs** — passkey metadata may be stored
-  in compatibility tables, but ownership is `users.id`
+  in credential tables owned by `users.id`
 
 ---
 

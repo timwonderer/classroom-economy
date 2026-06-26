@@ -75,7 +75,7 @@ def debug_student_state():
         if problematic:
             print(f"⚠ Found {len(problematic)} students WITH accounts but NO StudentTeacher associations:")
             for s in problematic[:10]:  # Show first 10
-                print(f"  - {s.full_name} (ID: {s.id}, Block: {s.block}, teacher_id: {s.teacher_id})")
+                print(f"  - {s.display_first_name} {s.display_last_initial}. (ID: {s.id}, Block: {s.block}, teacher_id: {s.teacher_id})")
             if len(problematic) > 10:
                 print(f"  ... and {len(problematic) - 10} more")
         else:
@@ -96,7 +96,7 @@ def debug_student_state():
         if no_tb:
             print(f"⚠ Found {len(no_tb)} students WITH accounts but NO claimed TeacherBlock:")
             for s in no_tb[:10]:  # Show first 10
-                print(f"  - {s.full_name} (ID: {s.id}, Block: {s.block}, teacher_id: {s.teacher_id})")
+                print(f"  - {s.display_first_name} {s.display_last_initial}. (ID: {s.id}, Block: {s.block}, teacher_id: {s.teacher_id})")
             if len(no_tb) > 10:
                 print(f"  ... and {len(no_tb) - 10} more")
         else:
@@ -162,14 +162,14 @@ def debug_student_state():
                         teacher_id=teacher.id,
                         is_claimed=False
                     ).all()
-                    # Build a lookup dictionary by (first_name, last_initial)
+                    # Build a lookup dictionary by (display_first_name, display_last_initial)
                     unclaimed_tb_lookup = {
-                        (tb.first_name, tb.last_initial): tb for tb in unclaimed_tbs
+                        (tb.display_first_name, tb.display_last_initial): tb for tb in unclaimed_tbs
                     }
                     for s in without_tb[:10]:
-                        key = (s.first_name, s.last_initial)
+                        key = (s.display_first_name, s.display_last_initial)
                         status = "has unclaimed seat" if key in unclaimed_tb_lookup else "no seat found"
-                        print(f"    - {s.full_name} (ID: {s.id}, Block: {s.block}, {status})")
+                        print(f"    - {s.display_first_name} {s.display_last_initial}. (ID: {s.id}, Block: {s.block}, {status})")
                 print()
 
 if __name__ == '__main__':

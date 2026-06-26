@@ -808,14 +808,14 @@
                                 <div class="col-md-6 mb-3">
                                     <label for="edit_first_name" class="form-label fw-bold">First Name</label>
                                     <input type="text" class="form-control" id="edit_first_name" name="first_name"
-                                        value="{{ student.first_name }}" required>
+                                        value="{{ student.display_first_name }}" required>
                                     <div class="form-text">Used for account claim process</div>
                                 </div>
                                 <div class="col-md-6 mb-3">
                                     <label for="edit_last_name" class="form-label fw-bold">Last Name</label>
                                     <input type="text" class="form-control" id="edit_last_name" name="last_name"
-                                        value="{{ student.last_initial }}" required>
-                                    <div class="form-text">First letter will become last initial</div>
+                                        value="{{ student.display_last_name or '' }}" required>
+                                    <div class="form-text">Stored as the student's encrypted full last name</div>
                                 </div>
                             </div>
                         </div>

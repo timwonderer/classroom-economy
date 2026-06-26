@@ -23,7 +23,10 @@ def teacher_admin(client):
 
 @pytest.fixture
 def student_in_class(client, teacher_admin):
-    student = Student(first_name="TestRejection", last_initial="S", block="A", salt=b'salt')
+    profile = IdentityProfile(profile_type='student', first_name='TestRejection', last_name='S')
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b'salt')
     student.passphrase_hash = generate_password_hash('password')
     db.session.add(student)
     db.session.flush()
@@ -37,7 +40,7 @@ def student_in_class(client, teacher_admin):
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name='TestRejection', last_initial='S'))
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name='TestRejection', last_name='S'))
     db.session.add(seat)
 
     db.session.add(ClassEconomy(join_code='REJECT123', teacher_id=teacher_admin.id, status="active", created_by_admin_id=teacher_admin.id))

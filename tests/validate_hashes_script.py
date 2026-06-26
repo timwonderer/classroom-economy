@@ -32,20 +32,20 @@ def validate_from_csv():
         students = Student.query.all()
         for student in students:
             # Find the corresponding CSV row
-            match = next((r for r in student_data if r['first_name'].strip() == student.first_name.strip() and r['block'].strip().upper() == student.block.strip().upper()), None)
+            match = next((r for r in student_data if r['first_name'].strip() == student.display_first_name.strip() and r['block'].strip().upper() == student.block.strip().upper()), None)
             if not match:
-                print(f"No CSV match found for {student.first_name} in block {student.block}")
+                print(f"No CSV match found for {student.display_first_name} in block {student.block}")
                 continue
 
             last_name = match['last_name'].strip()
             dob_str = match['date_of_birth'].strip()
 
-            name_code = compute_name_code(student.first_name, last_name)
+            name_code = compute_name_code(student.display_first_name, last_name)
             dob_sum = compute_dob_sum(dob_str)
 
             # Validate dob_sum matches
             if student.dob_sum != dob_sum:
-                print(f"DOB SUM MISMATCH for {student.first_name}: stored {student.dob_sum}, computed {dob_sum}")
+                print(f"DOB SUM MISMATCH for {student.display_first_name}: stored {student.dob_sum}, computed {dob_sum}")
 
             first_half_hash_check = hmac.new(pepper, student.salt + name_code.encode(), hashlib.sha256).hexdigest()
             second_half_hash_check = hmac.new(pepper, student.salt + str(dob_sum).encode(), hashlib.sha256).hexdigest()
@@ -54,7 +54,7 @@ def validate_from_csv():
             is_second_match = (student.second_half_hash == second_half_hash_check)
 
             print(f"Student ID: {student.id}")
-            print(f"Name: {student.first_name}")
+            print(f"Name: {student.display_first_name}")
             print(f"Expected First Half Hash: {first_half_hash_check}")
             print(f"Stored First Half Hash:   {student.first_half_hash}")
             print(f"Match: {is_first_match}")

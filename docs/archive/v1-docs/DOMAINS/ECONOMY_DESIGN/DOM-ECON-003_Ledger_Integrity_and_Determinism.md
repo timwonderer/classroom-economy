@@ -15,7 +15,7 @@ Constitutional (DOM Tier). Subordinate to INV-CORE-000 (Section 3: Deterministic
 
 ## IV. Dependencies
 - `INV-CORE-000_CORE_INVARIANTS.md`
-- `ARC-OPS-013_Money_Handling.md`
+- `ARC-OPS-013_Money_Handling.md` (consolidated into this document as of 2026-06-21)
 
 ## V. Mathematical Foundation: Integer Cents
 To eliminate floating-point drift (a common source of economic inconsistency), the system follows a "Double-Representation" strategy.

@@ -28,11 +28,11 @@ from app.extensions import db, limiter
 from app.feats.base import feat_shell
 from app.models import (
     Seat, SystemAdmin, SystemAdminCredential, Admin, Student, ErrorLog,
-    Transaction, TransactionStatus, AttendanceSession, SeatAttendanceState, HallPassLog, StudentItem, RentPayment,
-    StudentInsurance, InsuranceClaim, StudentTeacher, StudentBlock, UserReport,
+    Transaction, TransactionStatus, TapEvent, HallPassLog, StudentItem, RentPayment,
+    StudentInsurance, InsuranceClaim, StudentBlock, UserReport,
     FeatureSettings, RentSettings, BankingSettings,
-    HallPassSettings, SavedAdjustment,
-    PayrollSettings, StoreItem, Announcement, Issue, IssueStatusHistory, IssueResolutionAction, User
+    HallPassSettings, SavedAdjustment, ClassEconomy, User,
+    PayrollSettings, StoreItem, Announcement, Issue, IssueStatusHistory, IssueResolutionAction
 )
 from app.auth import (
     system_admin_required,
@@ -61,16 +61,72 @@ from app.utils.opaque_refs import make_opaque_ref, resolve_opaque_ref
 from app.services.admin_identity_bridge_service import (
     count_active_admin_invite_codes,
     create_admin_invite_code,
+    delete_admin_credentials_for_teacher,
+    delete_teacher_onboarding_for_teacher,
     get_admin_invite_code_by_id,
     list_admin_invite_codes,
     mark_admin_invite_code_used,
 )
+from app.services.recovery_bridge_service import delete_recovery_rows_for_teacher
 
 # Create blueprint
 sysadmin_bp = Blueprint('sysadmin', __name__, url_prefix='/sysadmin')
 
 # Constants
 INACTIVITY_THRESHOLD_DAYS = 180  # Number of days of inactivity before highlighting inactive teachers
+
+
+def _resolve_teacher_user(admin: Admin) -> User | None:
+    """Resolve the canonical teacher user for a legacy admin shadow."""
+    if not admin or not admin.username_lookup_hash:
+        return None
+    return User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
+
+
+def _teacher_student_counts(teacher_user_ids: list[int]) -> tuple[dict[int, int], dict[int, dict[str, int]]]:
+    """Aggregate claimed student seats per teacher user."""
+    if not teacher_user_ids:
+        return {}, {}
+
+    teacher_students = (
+        db.session.query(
+            ClassEconomy.teacher_id.label("teacher_user_id"),
+            Seat.id.label("seat_id"),
+            Seat.block.label("block"),
+        )
+        .join(Seat, Seat.class_id == ClassEconomy.class_id)
+        .filter(
+            ClassEconomy.teacher_id.in_(teacher_user_ids),
+            Seat.role == "student",
+            Seat.user_id.isnot(None),
+            Seat.claimed_at.isnot(None),
+        )
+        .subquery()
+    )
+
+    count_rows = (
+        db.session.query(
+            teacher_students.c.teacher_user_id,
+            db.func.count(teacher_students.c.seat_id).label("count"),
+        )
+        .group_by(teacher_students.c.teacher_user_id)
+        .all()
+    )
+    total_counts = {row.teacher_user_id: row.count for row in count_rows}
+
+    period_rows = (
+        db.session.query(
+            teacher_students.c.teacher_user_id,
+            teacher_students.c.block,
+            db.func.count(teacher_students.c.seat_id).label("count"),
+        )
+        .group_by(teacher_students.c.teacher_user_id, teacher_students.c.block)
+        .all()
+    )
+    periods: dict[int, dict[str, int]] = {}
+    for teacher_user_id, block, count in period_rows:
+        periods.setdefault(teacher_user_id, {})[block] = count
+    return total_counts, periods
 
 
 def _find_sysadmin_by_auth_username(username: str):
@@ -877,10 +933,10 @@ def reset_teacher_totp(admin_id):
         user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
         if not user:
             return jsonify({"status": "error", "message": "Canonical teacher identity is missing."}), 409
-        admin.totp_secret = encrypt_totp(new_secret)  # Encrypt before storing
-        user.totp_secret_encrypted = admin.totp_secret
+        encrypted_totp_secret = encrypt_totp(new_secret)
+        user.totp_secret_encrypted = encrypted_totp_secret
         db.session.flush()
-        stored_secret = admin.totp_secret
+        stored_secret = user.totp_secret_encrypted
 
         # Generate QR code
         totp_uri = pyotp.totp.TOTP(new_secret).provisioning_uri(
@@ -921,64 +977,36 @@ def delete_admin(admin_id):
     admin = db.get_or_404(Admin, admin_id)
 
     try:
-        # SECURITY FIX: Only use StudentTeacher table, NOT deprecated teacher_id
-        # Get all students linked to this teacher via StudentTeacher table
-        linked_student_ids = [
-            st.student_id for st in StudentTeacher.query.filter_by(teacher_id=admin.id)
-        ]
-
-        candidate_student_ids = set(linked_student_ids)
-
-        # Find students that are shared with other teachers
-        shared_student_ids = set()
-        if candidate_student_ids:
-            shared_student_ids = set(
-                sid for (sid,) in db.session.query(StudentTeacher.student_id)
-                .filter(
-                    StudentTeacher.student_id.in_(candidate_student_ids),
-                    StudentTeacher.teacher_id != admin.id,
-                )
-            )
-
-        exclusive_student_ids = candidate_student_ids - shared_student_ids
-
-        if shared_student_ids:
-            StudentTeacher.query.filter(
-                StudentTeacher.teacher_id == admin.id,
-                StudentTeacher.student_id.in_(shared_student_ids),
-            ).delete(synchronize_session=False)
-
-        if exclusive_student_ids:
-            exclusive_seat_ids = [
-                s_id for (s_id,) in db.session.query(Seat.id)
-                .filter(Seat.student_id.in_(exclusive_student_ids))
+        teacher_user = _resolve_teacher_user(admin)
+        deleted_student_count = 0
+        deleted_class_count = 0
+        if teacher_user:
+            class_ids = [
+                class_id for (class_id,) in db.session.query(ClassEconomy.class_id)
+                .filter(ClassEconomy.teacher_id == teacher_user.id)
+                .all()
             ]
-            if exclusive_seat_ids:
-                Transaction.query.filter(Transaction.seat_id.in_(exclusive_seat_ids)).delete(synchronize_session=False)
-            SeatAttendanceState.query.filter(SeatAttendanceState.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
-            AttendanceSession.query.filter(AttendanceSession.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
-            HallPassLog.query.filter(HallPassLog.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
-            StudentItem.query.filter(StudentItem.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
-            RentPayment.query.filter(RentPayment.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
-            db.session.execute(delete(StudentInsurance).where(StudentInsurance.student_id.in_(exclusive_student_ids)))
-            seat_ids_for_students = [s.id for s in Seat.query.filter(Seat.student_id.in_(exclusive_student_ids)).all()]
-            if seat_ids_for_students:
-                InsuranceClaim.query.filter(InsuranceClaim.seat_id.in_(seat_ids_for_students)).delete(synchronize_session=False)
-            StudentTeacher.query.filter(StudentTeacher.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
-            StudentBlock.query.filter(StudentBlock.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
-            Seat.query.filter(Seat.student_id.in_(exclusive_student_ids)).delete(synchronize_session=False)
-            Student.query.filter(Student.id.in_(exclusive_student_ids)).delete(synchronize_session=False)
+            deleted_class_count = len(class_ids)
+            deleted_student_count = db.session.query(Seat.id).filter(
+                Seat.class_id.in_(class_ids),
+                Seat.role == "student",
+            ).count() if class_ids else 0
+
+            from app.utils.deletion import collapse_universe
+            for cid in class_ids:
+                collapse_universe(cid, reason="Teacher account deletion", actor_membership_id=None)
+
+            delete_recovery_rows_for_teacher(teacher_user.id)
+            delete_admin_credentials_for_teacher(teacher_user.id)
+            delete_teacher_onboarding_for_teacher(teacher_user.id)
+            db.session.delete(teacher_user)
 
         admin_username = admin.get_sysadmin_display_name()
         db.session.delete(admin)
         db.session.flush()
 
-        shared_notice = ""
-        if shared_student_ids:
-            shared_notice = f" Detached {len(shared_student_ids)} shared students without deleting their records."
-
         flash(
-            f"Admin '{admin_username}' deleted. Removed {len(exclusive_student_ids)} exclusively-owned students.{shared_notice}",
+            f"Admin '{admin_username}' deleted. Removed {deleted_student_count} student seats across {deleted_class_count} classes.",
             "success",
         )
 
@@ -1032,45 +1060,19 @@ def manage_teachers():
     all_teachers = Admin.query.order_by(db.func.coalesce(Admin.teacher_public_id, ''), Admin.id.asc()).all()
     inactivity_threshold = utc_now() - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
 
-    # Batch query: teacher-student relationships
-    if all_teachers:
-        teacher_ids = [t.id for t in all_teachers]
-        teacher_students = db.session.query(
-            StudentTeacher.teacher_id.label('teacher_id'),
-            Student.id.label('student_id'),
-            Student.block.label('block')
-        ).join(Student, Student.id == StudentTeacher.student_id).filter(
-            StudentTeacher.teacher_id.in_(teacher_ids),
-        ).subquery()
-
-        teacher_student_count_rows = db.session.query(
-            teacher_students.c.teacher_id,
-            db.func.count(teacher_students.c.student_id).label('count')
-        ).group_by(teacher_students.c.teacher_id).all()
-        teacher_student_counts = {row.teacher_id: row.count for row in teacher_student_count_rows}
-
-        period_counts_query = db.session.query(
-            teacher_students.c.teacher_id,
-            teacher_students.c.block,
-            db.func.count(teacher_students.c.student_id).label('count')
-        ).group_by(teacher_students.c.teacher_id, teacher_students.c.block).all()
-
-        teacher_periods = {}
-        for teacher_id, block, count in period_counts_query:
-            if teacher_id not in teacher_periods:
-                teacher_periods[teacher_id] = {}
-            teacher_periods[teacher_id][block] = count
-
-        teacher_pending_requests = {}
-    else:
-        teacher_student_counts = {}
-        teacher_periods = {}
-        teacher_pending_requests = {}
+    teacher_user_ids_by_admin_id = {
+        teacher.id: resolved.id
+        for teacher in all_teachers
+        if (resolved := _resolve_teacher_user(teacher)) is not None
+    }
+    teacher_student_counts, teacher_periods = _teacher_student_counts(list(teacher_user_ids_by_admin_id.values()))
+    teacher_pending_requests = {}
 
     teachers = []
     for teacher in all_teachers:
-        total_students = teacher_student_counts.get(teacher.id, 0)
-        periods = teacher_periods.get(teacher.id, {})
+        teacher_user_id = teacher_user_ids_by_admin_id.get(teacher.id)
+        total_students = teacher_student_counts.get(teacher_user_id, 0) if teacher_user_id else 0
+        periods = teacher_periods.get(teacher_user_id, {}) if teacher_user_id else {}
         pending_requests = teacher_pending_requests.get(teacher.id, [])
 
         is_inactive = False
@@ -1141,41 +1143,12 @@ def teacher_overview():
     # Define inactivity threshold (6 months)
     inactivity_threshold = utc_now() - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
 
-    # Batch query: Get all teacher-student relationships in one query
-    # Uses StudentTeacher table only (Multi-Teacher Hardening)
-    teacher_students = db.session.query(
-        StudentTeacher.teacher_id.label('teacher_id'),
-        Student.id.label('student_id'),
-        Student.block.label('block')
-    ).join(
-        Student, Student.id == StudentTeacher.student_id
-    ).filter(
-        StudentTeacher.teacher_id.in_([t.id for t in teachers]),
-    ).subquery()
-
-    # Get total student counts per teacher in a single query
-    teacher_student_count_rows = db.session.query(
-        teacher_students.c.teacher_id,
-        db.func.count(teacher_students.c.student_id).label('count')
-    ).group_by(teacher_students.c.teacher_id).all()
-    teacher_student_counts = {row.teacher_id: row.count for row in teacher_student_count_rows}
-
-    # Get period counts per teacher in a single query
-    period_counts_query = db.session.query(
-        teacher_students.c.teacher_id,
-        teacher_students.c.block,
-        db.func.count(teacher_students.c.student_id).label('count')
-    ).group_by(
-        teacher_students.c.teacher_id,
-        teacher_students.c.block
-    ).all()
-
-    # Organize period counts by teacher
-    teacher_periods = {}
-    for teacher_id, block, count in period_counts_query:
-        if teacher_id not in teacher_periods:
-            teacher_periods[teacher_id] = {}
-        teacher_periods[teacher_id][block] = count
+    teacher_user_ids_by_admin_id = {
+        teacher.id: resolved.id
+        for teacher in teachers
+        if (resolved := _resolve_teacher_user(teacher)) is not None
+    }
+    teacher_student_counts, teacher_periods = _teacher_student_counts(list(teacher_user_ids_by_admin_id.values()))
 
     teacher_pending_requests = {}
 
@@ -1183,8 +1156,9 @@ def teacher_overview():
     teacher_data = []
     for teacher in teachers:
         # Get data from batched queries
-        total_students = teacher_student_counts.get(teacher.id, 0)
-        periods = teacher_periods.get(teacher.id, {})
+        teacher_user_id = teacher_user_ids_by_admin_id.get(teacher.id)
+        total_students = teacher_student_counts.get(teacher_user_id, 0) if teacher_user_id else 0
+        periods = teacher_periods.get(teacher_user_id, {}) if teacher_user_id else {}
         pending_requests = teacher_pending_requests.get(teacher.id, [])
 
         # Check if teacher is inactive

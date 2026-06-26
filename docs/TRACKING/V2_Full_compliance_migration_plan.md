@@ -92,6 +92,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [x] Complete Wave 5 ledger table migration and FEAT hook reassignment
 - [x] Complete Wave 6 attendance table migration (`tap_events` lineage removed; canonical reads/writes and legacy table drop landed)
 - [ ] Complete Wave 7 obligations schema migration while preserving already-landed prepay/temporal behavior
+- [ ] Deferred follow-up from commit 2 cutover: finish rent post-payment linkage cleanup so hall-pass reconciliation no longer depends on legacy seat/student assumptions or display-only block metadata. The remaining rent persistence smoke failure is out of scope for this PR and will be merged as a known follow-up.
 - [ ] Complete Wave 8 store schema migration and remove remaining teacher-scoped enforcement remnants
 - [ ] Complete Wave 9 operations + interpretation canonical migration
 - [ ] Complete Wave 10 support domain canonical migration
@@ -105,6 +106,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [ ] Wave 11 invariant sweeps complete (INV-ARC-007, INV-ARC-014, INV-ARC-015 full repo pass)
 - [ ] Wave 11 `V2_CLASS_ID_INVARIANT_BACKLOG` closure
 - [ ] Complete single-context UI enforcement sweep: remove remaining page-level class selectors and request `join_code` context controls outside nav context switch
+- [ ] Enforce canonical-auth runtime gate matrix: [`V2_CANONICAL_AUTH_RUNTIME_GATE_MATRIX.md`](./V2_CANONICAL_AUTH_RUNTIME_GATE_MATRIX.md) as the hard acceptance gate for any remaining `user_id` / `class_id` / `seat_id` / `join_code` runtime work
 - [/] Wave 11 FEATBypass default-flip — invert `tests/conftest.py` so FEAT enforcement is the test default and `FEATBypass` is opt-in per test. **Phase 1 (instrumentation) complete 2026-06-09. Phase 2 (fixture consolidation) is the next active item, co-located with Waves 6–10 as canonical helpers land.** Full plan in [V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md](./V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md); Phase 1 findings in [V2_FEAT_BYPASS_DEPENDENCY_REPORT.md](./V2_FEAT_BYPASS_DEPENDENCY_REPORT.md). Headline: **4 dead mutating endpoints** (`admin.process_claim`, `sysadmin.resolve_escalated_issue`, `admin.rent_settings`, `admin.passkey_auth_finish`), **0 GET-side-effect endpoints**, **585 tests with fixture-only bypass dependency**. Original trigger: 2026-06-08 audit of `/api/approve-redemption` and `/api/reject-redemption` (dead, now fixed via `FEAT-STOR-006`) and the cross-FEAT correlation bug in `Transaction.before_update` (also fixed).
 - Session note 2026-06-22: began closing the Wave 7 / P0 remediation slice on `codex/wave7-closure-p0-remediation`. Rewrote `tests/test_v2_authority_guardrails.py` toward canonical v2 source-level assertions and wrapped the currently touched mutation entrypoints in FEAT ownership (`admin.process_claim`, `admin.passkey_auth_finish`, `admin.resolve_issue`, `sysadmin.resolve_escalated_issue`). The Wave 11 dead-route backlog line above remains the authoritative remaining count until the `admin.rent_settings` surface is addressed and the audit is rerun.
 - Session note 2026-06-25: added explicit guardrail coverage that source-checks the newly FEAT-owned dead-route mutation entrypoints and the admin GET read-only surface. This keeps the canonical v2 contract pinned without reintroducing legacy compatibility assumptions.
@@ -1067,7 +1069,7 @@ Wave impact:
   - Added `scripts/wave3_identity_drop_surface_guardrail.py`
     - scans `app/**/*.py` (excluding model definition files) for legacy auth symbols and legacy session-principal keys
     - compares current coupling surface to a checked-in baseline and fails only when the surface expands
-  - Added baseline: `docs/TRACKING/wave3_identity_drop_surface_baseline.json`
+  - Added baseline: `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`
   - Added CI test: `tests/test_wave3_identity_drop_surface_guardrail.py`
 - Baseline snapshot (current deferred surface):
   - Legacy symbol file counts:
@@ -1101,7 +1103,7 @@ Focused validation:
 - Surface reduction applied and baseline re-cut:
   - `symbols.RecoveryRequest`: removed `app/routes/student.py` coupling
   - `symbols.StudentRecoveryCode`: removed `app/routes/student.py` coupling
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`
 
 Focused validation:
 
@@ -1122,9 +1124,22 @@ Focused validation:
 - Surface reduction applied and baseline re-cut:
   - `symbols.RecoveryRequest`: removed `app/routes/admin.py` coupling (now 0 runtime symbol references in `app/**`).
   - `symbols.StudentRecoveryCode`: removed `app/routes/admin.py` and `app/utils/student_deletion.py` couplings (now 0 runtime symbol references in `app/**`).
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
+
+### Status Update (2026-06-20): Commit 2 Tuple-Only Runtime Cutover
+
+- Landed the Commit 2 runtime slice that removes identity/scope reconstruction from the active request path after authentication and canonical context resolution.
+- Converted admin, recovery, analytics, attendance, deletion, store, and seat-scope helpers to use canonical `User`/`Seat`/`class_id` joins instead of `StudentTeacher` or `Seat.student_id`.
+- Rewrote model helper methods that still derived runtime student meaning from legacy seat links.
+- Test work is intentionally deferred into a separate migration wave. The remaining corpus still contains legacy `StudentTeacher` fixtures and `created_by_admin_id` / `created_by_teacher_id` uses, and those should be migrated to `canonicalContextFactory` rather than preserved through new shims.
+
+Focused validation:
+- `python3 -c "from app import app; print('OK')"`
+  - Result: pass
+- `pytest -q tests/test_context_resolver.py tests/test_feature_settings.py`
+  - Result: `32 passed`
 
 - `python3 -m py_compile app/services/recovery_bridge_service.py app/routes/admin.py app/routes/student.py app/utils/student_deletion.py tests/test_recovery_bridge_service.py`
   - Result: pass
@@ -1146,7 +1161,7 @@ Focused validation:
 - Surface reduction applied and baseline re-cut:
   - `symbols.AdminCredential`: removed `app/routes/admin.py` coupling.
   - `symbols.TeacherOnboarding`: removed `app/routes/admin.py` and `app/routes/system_admin.py` couplings.
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 
@@ -1166,7 +1181,7 @@ Focused validation:
   - extended coverage in `tests/test_admin_identity_bridge_service.py` for invite-code lifecycle behavior.
 - Surface reduction applied and baseline re-cut:
   - `symbols.AdminInviteCode`: removed `app/routes/admin.py` and `app/routes/system_admin.py` couplings.
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 
@@ -1188,7 +1203,7 @@ Focused validation:
   - `session_keys.admin_id`: removed `app/routes/docs.py`, `app/routes/main.py`, `app/utils/helpers.py` couplings.
   - `session_keys.student_id`: removed `app/routes/docs.py`, `app/routes/main.py`, `app/utils/helpers.py` couplings.
   - `session_keys.is_admin`: removed `app/routes/main.py` coupling.
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 
@@ -1212,7 +1227,7 @@ Focused validation:
   - `session_keys.is_admin`: removed `app/routes/api.py`, `app/services/tlcp.py` couplings.
   - `session_keys.is_system_admin`: removed `app/__init__.py`, `app/routes/api.py`, `app/services/tlcp.py` couplings.
   - `session_keys.student_id`: removed `app/services/tlcp.py` coupling.
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 

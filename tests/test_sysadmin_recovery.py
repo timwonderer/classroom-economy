@@ -1,7 +1,7 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from app import db
-from app.models import Admin, SystemAdmin
+from app.models import Admin, SystemAdmin, User
 import pyotp
 
 def test_sysadmin_reset_totp(client):
@@ -13,6 +13,12 @@ def test_sysadmin_reset_totp(client):
     old_secret = pyotp.random_base32()
     teacher = make_admin("teacher_to_reset", old_secret)
     db.session.add(teacher)
+    db.session.flush()
+    db.session.add(User(
+        username_hash=teacher.username_hash,
+        username_lookup_hash=teacher.username_lookup_hash,
+        totp_secret_encrypted=teacher.totp_secret,
+    ))
     db.session.commit()
 
     # Login as sysadmin
@@ -30,8 +36,10 @@ def test_sysadmin_reset_totp(client):
 
     # Verify in DB
     db.session.expire(teacher)
-    assert teacher.totp_secret == data['totp_secret']
-    assert teacher.totp_secret != old_secret
+    user = User.query.filter_by(username_lookup_hash=teacher.username_lookup_hash).first()
+    assert user is not None
+    assert user.totp_secret_encrypted == data['totp_secret']
+    assert user.totp_secret_encrypted != old_secret
 
 def test_sysadmin_reset_totp_unauthorized(client):
     # Create teacher

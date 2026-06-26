@@ -132,7 +132,7 @@ def setup_hall_pass_checkout_test(client):
     _tb_seat = Seat(student_id=student.id, class_id=economy.class_id, join_code="TEST123", block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
     db.session.commit()
 
     return {
@@ -378,7 +378,7 @@ def test_checkout_rejects_wrong_student(client, setup_hall_pass_checkout_test):
     _tb_seat = Seat(student_id=other_student.id, class_id=economy.class_id, join_code=economy.join_code, block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=other_student.first_name, last_initial=other_student.last_initial))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=other_student.display_first_name, last_name=other_student.display_last_initial))
     db.session.commit()
 
     _login_student_context(client, student=other_student, user=other_user, seat=other_seat)
@@ -477,7 +477,7 @@ def test_checkout_rejects_mismatched_class_context(client, setup_hall_pass_check
     _tb_seat = Seat(student_id=student.id, class_id=other_economy.class_id, join_code="OTHER123", block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
     db.session.commit()
 
     _login_student_context(client, student=student, user=user, seat=other_seat)
@@ -527,7 +527,7 @@ def test_cancel_rejects_mismatched_class_context(client, setup_hall_pass_checkou
     _tb_seat = Seat(student_id=student.id, class_id=other_economy.class_id, join_code="OTHER123", block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
     db.session.commit()
 
     _login_student_context(client, student=student, user=user, seat=other_seat)

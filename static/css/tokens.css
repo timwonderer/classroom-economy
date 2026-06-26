@@ -74,8 +74,8 @@
     --primary-subtle: #e8f0ef;
 
     /* Secondary: Gold */
-    --secondary: #d3af37;
-    --secondary-hover: #c49f2e;
+    --secondary: #8a6a1c;
+    --secondary-hover: #735816;
     --secondary-text: var(--neutral-900);
     --secondary-subtle: #f9f5e6;
     /* Dark text on gold */
@@ -115,8 +115,8 @@ body.student-shell {
     --primary-subtle: #e8edf4;
 
     /* Secondary: Bronze/Brown */
-    --secondary: #ac8255;
-    --secondary-hover: #9a7349;
+    --secondary: #8a643f;
+    --secondary-hover: #725132;
     --secondary-text: var(--text-inverse);
     --secondary-subtle: #f4efe9;
     /* White text on brown */

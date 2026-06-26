@@ -69,7 +69,7 @@ def resolve_current_class_context(teacher_id: int):
     }
 
     selected = None
-    session_class_id = (session.get('current_class_id') or '').strip()
+    session_class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or '').strip()
     if session_class_id:
         selected = by_class_id.get(session_class_id)
 
@@ -79,8 +79,6 @@ def resolve_current_class_context(teacher_id: int):
     if not selected:
         return None, available_classes
 
-    session['current_class_id'] = selected['class_id']
-    session['current_join_code'] = selected['join_code']
     return selected, available_classes
 
 
@@ -529,7 +527,9 @@ def student_drill_down(student_id):
 
     # Get student with scoping
     student = Student.query.join(
-        Seat, Student.id == Seat.student_id
+        IdentityProfile, IdentityProfile.id == Student.identity_id
+    ).join(
+        Seat, Seat.id == IdentityProfile.seat_id
     ).filter(
         Student.id == student_id,
         Seat.class_id == class_id
@@ -541,10 +541,13 @@ def student_drill_down(student_id):
     weeks_enrolled = 18  # default/fallback for legacy behavior
 
     # Try to determine when the student enrolled in this class period
-    student_seat = Seat.query.filter_by(
-        student_id=student.id,
-        class_id=class_id
-    ).first()
+    student_seat = (
+        Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
+        .filter(Student.id == student.id, Seat.class_id == class_id)
+        .first()
+    )
 
     enrollment_start = None
     if student_seat is not None and student_seat.claimed_at:

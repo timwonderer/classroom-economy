@@ -4,6 +4,8 @@
 |------------------|---------|----------------|------------|-----------------|
 |SEC-AUD-015| 1.1 | 2026-03-08 | 1.0 |Normative|
 
+> **Terminology Note:** This audit was conducted during the v1→v2 transition. Findings reference v1 patterns (`teacher_id` scoping, `student_id` keys, `join_code` boundaries) that are active migration targets. The v2 canonical model uses `class_id` (UUID) as the class boundary and `seat_id` as the per-class activity anchor.
+
 **Date:** 2025-11-29
 **Severity:** CRITICAL (P0)
 **Status:** ACTIVE SECURITY VULNERABILITY

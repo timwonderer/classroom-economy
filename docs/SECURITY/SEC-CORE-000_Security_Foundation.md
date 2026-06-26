@@ -4,6 +4,8 @@
 |------------------|---------|----------------|------------|-----------------|
 |SEC-CORE-000| 1.1 | 2026-03-08 | 1.0 |Constitutional|
 
+> **Terminology Note:** This document was written during the v1→v2 transition. References to `teacher_id` scoping, `student_id` as activity key, and `join_code` as "the boundary" reflect v1 patterns. The v2 canonical model uses `class_id` (UUID) as the class boundary, `seat_id` as the per-class activity anchor, and `join_code` as a public alias only.
+
 ## I. Purpose
 To establish the foundational rules and methodologies for security audits, threat models, incident responses, and vulnerability disclosures across the Classroom Token Hub.
 

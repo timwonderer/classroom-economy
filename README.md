@@ -2,15 +2,21 @@
 
 A classroom management platform that uses a simulated token economy to drive student engagement and participation.
 
-**Version:** 2.0.0 (live-test candidate)  
-**License:** [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/) — Free for educational and nonprofit use.  
+**Version:** 2.0.0 (local development and testing)  
+**License:** [PolyForm Noncommercial 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)
 **Development branch:** `codex/v2.0`
+
+> [!IMPORTANT]
+>
+> Current deployed version is v1.10, which will reach end-of-service on June 30, 2026. The target public release for v2.0 is scheduled for late July 2026 or early August 2026.
+>
+> This branch represents the most up to date v2.0 development. For v1 Legacy codes, see branch [legacy_v1.10.0](https://github.com/timwonderer/classroom-token-hub/tree/legacy_v1.10.0)
 
 ---
 
 ## Overview
 
-Classroom Token Hub gives teachers a token-based economy to manage their classroom. Students earn tokens for attendance and participation, then spend them in a class store, use them for hall passes, or save them — creating a feedback loop that reinforces positive classroom behavior. Teachers configure pay rates, rent, store items, and feature toggles per class period.
+Classroom Token Hub gives teachers a token-based economy to manage their classroom. Students earn tokens for attendance and participation, then spend them in a class store, use them for hall passes, or save them. This system creates a feedback loop that reinforces positive classroom behavior. Teachers configure pay rates, rent, store items, and feature toggles per class period.
 
 The platform is multi-tenant: a single deployment serves many teachers, each with multiple class periods. Students can belong to multiple classes with different teachers. All data is isolated by class.
 
@@ -20,7 +26,7 @@ The platform is multi-tenant: a single deployment serves many teachers, each wit
 
 The v2 architecture is built on three layers:
 
-- **Identity:** `User` authenticates, `Seat` acts within a class, `ClassEconomy` (`class_id`) scopes all data. `join_code` is the public alias for `class_id`.
+- **Identity:** `User` authenticates, `Seat` acts within a class, `ClassEconomy` (`class_id`) scopes all data. `join_code` is the ingress alias for `class_id`.
 - **Domains:** Bounded services (`app/services/`) own read and validation logic. Domains do not call each other directly.
 - **FEATs:** All state mutation flows through `app/feats/` — atomic execution units that resolve identity, validate across domains, and commit in a single transaction.
 
@@ -41,13 +47,14 @@ New code must route writes through FEATs; legacy routes that commit directly are
 | Store | `StoreItem`, `StudentItem`, `RedemptionAuditLog` | Classroom store catalog and purchases |
 | Attendance | `AttendanceSession`, `SeatAttendanceState`, `HallPassLog` | Start Work / Break Done tracking, current attendance gate state, hall passes |
 
-55+ models total. Legacy tables (`Admin`, `Student`, `TeacherBlock`) still exist as compatibility shadows during the auth transition.
+55+ models total. Legacy tables (`Admin`, `Student`, `TeacherBlock`) now live in the archive doc set and should not be treated as current architecture authority.
 
 ---
 
 ## Features
 
 ### For Teachers
+- **Two-Step Sign Up** with just your username and authenticator. No more date of birth references
 - **At-a-Glance Dashboard** for quick class stats, activities, and pending approvals
 - **Teacher-Provisioned Seats** that are created when teacher upload a roster for student to self-claim in class
 - **Automated Payroll** for streamlined set-it-and-forget-it workflow. Configure rates, pay schedule, and overtime for your classroom needs
@@ -63,7 +70,6 @@ New code must route writes through FEATs; legacy routes that commit directly are
 
 ### For System Admins
 - **Admin Portal** — Teacher overview, support tickets, error/event logs, broadcast announcements
-  > **v2 direction:** Invite-code gating replaced by open teacher self-signup; sysadmin role shifts to operational oversight.
 
 ### Platform
 - **Multi-Tenant** — Full class-period isolation; shared students across teachers
@@ -72,7 +78,11 @@ New code must route writes through FEATs; legacy routes that commit directly are
 - **Security** — PII encryption at rest, TOTP 2FA for admins, CSRF protection, salted+peppered credential hashing, Cloudflare Turnstile bot protection, post-claim PII deletion
 
 > [!IMPORTANT]
-> Classroom Token Hub is designed to be privacy first. If we can design our app around minimizing PII, we would. We believe the only people that should know the human inside each classroom are the teachers and their students. That said, we find external identity anchor to be unneccessarily risky for our needs. 
+>
+> Classroom Token Hub is designed to be privacy first. This means our platform only collects information that's necessary for the app to function as intended. This is why we do not ask teachers to provide their identities nor their physical locations. We also do not collect email addresses or phone numbers.
+>
+> Our justification for this is to reduce the blast radius should a breach happens. Our minimal PII collection approach means the data will be almost meaningless without external references. Integration of SSO will fundamentally and permanently attach validated external identity to an actor in a simulated economy. This approach is the opposite of what we believe in.
+>
 > Because of that, we do not support SSO integration. Learn more about why we made that choice at [PRN-SNP-001 Why Classroom Token Hub Does Not Implement SSO](docs/PRINCIPLES/SECURITY_AND_PRIVACY/PRN-SNP-001_Why_Classroom_Token_Hub_Does_Not_Implement_SSO.md)
 
 ---
@@ -201,12 +211,12 @@ python scripts/seed_dummy_students.py   # Seed test data
 
 ## Documentation
 
-- **[Architecture Foundation](docs/ARCHITECTURE/ARC-CORE-000_Architecture_Foundation.md)** — System design and domain boundaries
-- **[Authority Model](docs/INVARIANT/CORE/INV-CORE-001_CAPABILITY_BASED_ARCHITECTURE_AND_AUTHORITY_MODEL.md)** — INV → DOM → FEAT enforcement hierarchy
+- **[Architecture Foundation](docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md)** — Core runtime invariants and system boundaries
+- **[Authority Model](docs/INVARIANT/CORE/INV-CORE-001_CAPABILITY_BASED_ARCHITECTURE_AND_AUTHORITY_MODEL.md)** — Capability-based INV → DOM → FEAT hierarchy
 - **[Domain Specs](docs/DOMAIN/)** — Per-domain authority contracts
 - **[FEAT Contracts](docs/FEATURE-EXECUTION/)** — Execution layer specifications
 - **[API Reference](docs/ARCHITECTURE/OPERATIONS/ARC-OPS-005_Api_Reference.md)** — REST API documentation
-- **[Deployment Guide](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-006_Deployment_Guide.md)** — Production deployment
+- **[Deployment Guide](docs/STANDARD_OPERATING_PROCEDURES/DEPLOYMENT/SOP-DEP-023_V2_Production_Transition_Runbook.md)** — Current v2 production transition runbook
 - **[Development Priorities](DEVELOPMENT.md)** — Roadmap and v2 launch readiness
 - **[V2 Migration Tracker](docs/TRACKING/V2_Full_compliance_migration_plan.md)** — Active wave-by-wave execution status
 - **[Changelog](CHANGELOG.md)** — Version history

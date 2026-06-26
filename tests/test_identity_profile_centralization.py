@@ -11,11 +11,15 @@ def _create_admin(username: str) -> Admin:
     return admin
 
 
-def test_student_auto_creates_identity_profile(client):
+def test_student_requires_explicit_identity_profile(client):
     salt = get_random_salt()
-    student = Student(
+    profile = IdentityProfile(
+        profile_type="student",
         first_name="Alicia",
-        last_initial="Q",
+        last_name="Quinn",
+    )
+    student = Student(
+        identity_profile=profile,
         block="A",
         salt=salt,
         username_hash=hash_username("alicia", salt),
@@ -29,8 +33,8 @@ def test_student_auto_creates_identity_profile(client):
     assert profile is not None
     assert profile.profile_type == "student"
     assert profile.first_name == "Alicia"
-    assert profile.last_initial == "Q"
-    assert student.full_name == "Alicia Q."
+    assert profile.last_name == "Quinn"
+    assert student.full_name == "Alicia Quinn"
     assert student.internal_db_id.startswith("sint_")
     assert student.internal_db_id != str(student.id)
     assert student.opaque_id.startswith("stu_")
@@ -38,9 +42,13 @@ def test_student_auto_creates_identity_profile(client):
 
 def test_student_name_update_syncs_identity_profile(client):
     salt = get_random_salt()
-    student = Student(
+    profile = IdentityProfile(
+        profile_type="student",
         first_name="Jordan",
-        last_initial="M",
+        last_name="Mills",
+    )
+    student = Student(
+        identity_profile=profile,
         block="A",
         salt=salt,
         username_hash=hash_username("jordan", salt),
@@ -49,20 +57,20 @@ def test_student_name_update_syncs_identity_profile(client):
     db.session.add(student)
     db.session.commit()
 
-    student.first_name = "Jordyn"
-    student.last_initial = "N"
+    student.identity_profile.first_name = "Jordyn"
+    student.identity_profile.last_name = "Nguyen"
     db.session.commit()
 
     profile = db.session.get(IdentityProfile, student.identity_id)
     assert profile.first_name == "Jordyn"
-    assert profile.last_initial == "N"
+    assert profile.last_name == "Nguyen"
     assert student.display_first_name == "Jordyn"
     assert student.display_last_initial == "N"
+    assert student.display_last_name == "Nguyen"
 
 
-def test_teacher_block_auto_creates_identity_profile(client):
+def test_seat_reads_name_from_identity_profile(client):
     admin = _create_admin("identity-teacher")
-    salt = get_random_salt()
 
     seat = Seat(join_code="JOIN-IDENTITY", block="A", block_identifier="A", role="student")
 
@@ -70,31 +78,32 @@ def test_teacher_block_auto_creates_identity_profile(client):
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_unclaimed', first_name="Mateo", last_initial="R"))
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_unclaimed', first_name="Mateo", last_name="Rivera"))
     db.session.add(seat)
     db.session.commit()
 
     assert seat.identity_id is not None
     profile = db.session.get(IdentityProfile, seat.identity_id)
-    assert profile.profile_type == "teacher_block"
+    assert profile.profile_type == "student_unclaimed"
     assert seat.display_first_name == "Mateo"
     assert seat.display_last_initial == "R"
+    assert seat.display_last_name == "Rivera"
 
 
 def test_student_internal_reference_is_non_sequential_and_unique(client):
     salt_a = get_random_salt()
     salt_b = get_random_salt()
+    profile_a = IdentityProfile(profile_type="student", first_name="One", last_name="Alpha")
+    profile_b = IdentityProfile(profile_type="student", first_name="Two", last_name="Beta")
     a = Student(
-        first_name="One",
-        last_initial="A",
+        identity_profile=profile_a,
         block="A",
         salt=salt_a,
         username_hash=hash_username("one", salt_a),
         pin_hash="fake-hash",
     )
     b = Student(
-        first_name="Two",
-        last_initial="B",
+        identity_profile=profile_b,
         block="B",
         salt=salt_b,
         username_hash=hash_username("two", salt_b),

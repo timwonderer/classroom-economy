@@ -20,12 +20,14 @@ def get_join_code_for_student_period(student_id, period, teacher_id=None):
     Returns:
         str | None: join_code matching the student's seat for the requested period.
     """
-    from app.models import ClassEconomy, Seat
+    from app.models import ClassEconomy, IdentityProfile, Seat, Student
 
     query = (
         Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .filter(
-            Seat.student_id == student_id,
+            Student.id == student_id,
             func.upper(Seat.block) == func.upper(period),
             Seat.claimed_at.isnot(None),
         )

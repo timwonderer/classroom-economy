@@ -20,7 +20,8 @@ def teacher_admin(client):
 
 @pytest.fixture
 def student_in_class(client, teacher_admin):
-    student = Student(first_name="Audit", last_initial="S", block="A", salt=b'salt')
+    profile = IdentityProfile(profile_type='student', first_name='Audit', last_name='Stone')
+    student = Student(identity_profile=profile, block="A", salt=b'salt')
     student.passphrase_hash = generate_password_hash('password')
     db.session.add(student)
     db.session.flush()
@@ -35,35 +36,44 @@ def student_in_class(client, teacher_admin):
     db.session.add(class_economy)
     db.session.flush()
     db.session.add(ClassMembership(
+        class_id=class_economy.class_id,
         join_code='AUDIT123',
         admin_id=teacher_admin.id,
         role='admin',
     ))
     db.session.add(ClassMembership(
+        class_id=class_economy.class_id,
         join_code='AUDIT123',
         student_id=student.id,
         role='student',
     ))
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher_admin.id))
-    _tb_seat = Seat(student_id=student.id, join_code='AUDIT123', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(_tb_seat)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Audit', last_initial='S'))
-    db.session.add(Seat(
+    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher_admin.id, class_id=class_economy.class_id, join_code='AUDIT123'))
+    _tb_seat = Seat(
         student_id=student.id,
         class_id=class_economy.class_id,
         join_code='AUDIT123',
         block='A',
-        role='student',
-    ))
+        block_identifier='A',
+        role="student",
+        claimed_at=datetime.now(timezone.utc),
+    )
+    db.session.add(_tb_seat)
+    db.session.flush()
+    profile.seat_id = _tb_seat.id
     db.session.commit()
     return student
 
 
 def _login_student(client, student_id):
+    class_row = ClassEconomy.query.filter_by(join_code='AUDIT123').first()
+    seat = Seat.query.filter_by(student_id=student_id, join_code='AUDIT123').first()
     with client.session_transaction() as sess:
         sess['student_id'] = student_id
         sess['current_join_code'] = 'AUDIT123'
+        if class_row is not None:
+            sess['current_class_id'] = class_row.class_id
+        if seat is not None:
+            sess['current_seat_id'] = seat.id
         sess['login_time'] = datetime.now(timezone.utc).isoformat()
 
 
@@ -74,6 +84,7 @@ def _login_admin(client, admin_id):
         class_row = ClassEconomy.query.filter_by(join_code='AUDIT123').first()
         if class_row is not None:
             sess['current_class_id'] = class_row.class_id
+            sess['current_join_code'] = class_row.join_code
 
 
 def _fund_and_purchase_delayed_item(client, teacher_admin, student, item_name='Audit Item', price=Decimal('10.00')):

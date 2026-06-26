@@ -366,6 +366,11 @@ def get_docs_audience():
     """Determine the documentation audience ('user' or 'devops') for the current request."""
     from app.auth import get_current_admin, get_current_seat, get_current_user
 
+    # Sysadmins default to 'devops' — check first so they don't fall into 'user' mode
+    if session.get('is_system_admin') and session.get('sysadmin_id'):
+        audience = request.cookies.get('docs_audience')
+        return audience if audience in ['user', 'devops'] else 'devops'
+
     # Active teacher/student session enforces 'user' mode
     if (
         get_current_admin() is not None
@@ -373,15 +378,11 @@ def get_docs_audience():
         or get_current_user() is not None
     ):
         return 'user'
-    
+
     # Otherwise respect the chosen cookie
     audience = request.cookies.get('docs_audience')
     if audience in ['user', 'devops']:
         return audience
-        
-    # Sysadmins default to 'devops'
-    if session.get('is_system_admin') and session.get('sysadmin_id'):
-        return 'devops'
         
     # Default public audience
     return 'user'

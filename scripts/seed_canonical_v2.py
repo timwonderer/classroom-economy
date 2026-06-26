@@ -153,38 +153,34 @@ def seed():
             ip_teacher = IdentityProfile(
                 profile_type="teacher",
                 first_name="Happy",
-                last_initial="T",
+                last_name="T",
             )
             ip_happy = IdentityProfile(
                 profile_type="student",
                 first_name="Happy",
-                last_initial="H"
+                last_name="H"
             )
             ip_adv = IdentityProfile(
                 profile_type="student",
                 first_name="Adversarial",
-                last_initial="A"
+                last_name="A"
             )
             ip_unclaimed = IdentityProfile(
                 profile_type="student",
                 first_name="Unclaimed",
-                last_initial="S",
+                last_name="S",
             )
             db.session.add_all([ip_teacher, ip_happy, ip_adv, ip_unclaimed])
             db.session.flush()
             
             student_happy = Student(
-                identity_id=ip_happy.id,
-                first_name="Happy",
-                last_initial="H",
+                identity_profile=ip_happy,
                 block="A",
                 class_id=economy.class_id,
                 salt=os.urandom(16)
             )
             student_adv = Student(
-                identity_id=ip_adv.id,
-                first_name="Adversarial",
-                last_initial="A",
+                identity_profile=ip_adv,
                 block="A",
                 class_id=economy.class_id,
                 salt=os.urandom(16)
@@ -320,8 +316,6 @@ def seed():
             
             issue = Issue(
                 student_id=student_adv.id,
-                student_first_name="Chaos",
-                student_last_initial="A",
                 actor_public_id=seat_adv.public_id,
                 teacher_id=teacher_adversarial.id,
                 class_id=economy.class_id,

@@ -435,7 +435,7 @@
                       {% for seat in unclaimed_seats %}
                       <tr>
                         <td>
-                          <span class="fw-bold">{{ seat.first_name }} {{ seat.last_initial }}.</span>
+                          <span class="fw-bold">{{ seat.identity_profile.full_name if seat.identity_profile else 'Unknown' }}</span>
                           {% if seat.is_teacher %}
                           <div><small class="text-muted">Claim credential: managed by system</small></div>
                           {% endif %}
@@ -452,8 +452,8 @@
                         </td>
                         <td>
                           <button type="button" class="btn btn-sm btn-outline-danger"
-                            onclick="deletePendingStudent({{ seat.id }}, '{{ seat.first_name }} {{ seat.last_initial }}.')"
-                            aria-label="Delete pending student {{ seat.first_name }} {{ seat.last_initial }}.">
+                            onclick="deletePendingStudent({{ seat.id }}, '{{ seat.identity_profile.full_name if seat.identity_profile else 'Unknown' }}')"
+                            aria-label="Delete pending student {{ seat.identity_profile.full_name if seat.identity_profile else 'Unknown' }}.">
                             <span class="material-symbols-outlined align-middle fs-6" aria-hidden="true">delete</span>
                           </button>
                         </td>
@@ -629,8 +629,8 @@
                         <td>
                           <button class="btn btn-sm btn-outline-primary quick-action-btn me-1" data-bs-toggle="modal"
                             data-bs-target="#editStudentModal" data-student-id="{{ student.id }}"
-                            data-student-name="{{ student.display_first_name }}"
-                            data-student-last-initial="{{ student.display_last_initial }}"
+                            data-student-first-name="{{ student.display_first_name }}"
+                            data-student-last-name="{{ student.display_last_name or '' }}"
                             data-student-block="{{ student.block }}">
                             <span class="material-symbols-outlined" style="vertical-align: middle;">edit</span>
                           </button>
@@ -846,7 +846,7 @@
                 <div class="col-md-6 mb-3">
                   <label for="edit_last_name" class="form-label fw-bold">Last Name</label>
                   <input type="text" class="form-control" id="edit_last_name" name="last_name" required>
-                  <div class="form-text">First letter will become last initial</div>
+                  <div class="form-text">Stored as the student's encrypted full last name</div>
                 </div>
               </div>
             </div>
@@ -1120,13 +1120,13 @@
       editModal.addEventListener('show.bs.modal', event => {
         const button = event.relatedTarget;
         const studentId = button.getAttribute('data-student-id');
-        const firstName = button.getAttribute('data-student-name');
-        const lastInitial = button.getAttribute('data-student-last-initial');
+        const firstName = button.getAttribute('data-student-first-name');
+        const lastName = button.getAttribute('data-student-last-name');
         const blocksStr = button.getAttribute('data-student-block');
         // Populate basic fields
         editModal.querySelector('#edit_student_id').value = studentId;
         editModal.querySelector('#edit_first_name').value = firstName;
-        editModal.querySelector('#edit_last_name').value = lastInitial; // Show just the initial, teacher can expand
+        editModal.querySelector('#edit_last_name').value = lastName;
 
         // Uncheck all blocks first
         editModal.querySelectorAll('.block-checkbox').forEach(cb => cb.checked = false);

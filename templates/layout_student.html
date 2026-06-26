@@ -100,7 +100,7 @@
                     </div>
                     {% if current_class_context %}
                     <div class="sidebar-scope-name">
-                        {{ current_class_context.student_first_name|upper }} {{ current_class_context.student_last_initial }}
+                        {{ current_class_context.student_full_name|upper }}
                     </div>
                     <div class="sidebar-scope-context">{{ current_class_context.class_identifier }}</div>
                     <div class="sidebar-scope-meta">{{ current_class_context.join_code }}</div>

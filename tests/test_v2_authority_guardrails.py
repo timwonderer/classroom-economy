@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 
 from app.extensions import db
-from app.models import Student, StudentTeacher, Transaction
+from app.models import IdentityProfile, Student, StudentTeacher, Transaction
 from app.routes import student as student_routes
 from app.services import attendance_service
 from tests.helpers.class_scope import create_class_scope
@@ -245,15 +245,95 @@ def test_insurance_claim_feat_enforces_access_policy():
     assert "assert_can_process_claim(" in source
 
 
-def test_dashboard_read_is_interest_mutation_free():
-    source = inspect.getsource(student_routes.dashboard)
-    assert "apply_savings_interest(" not in source
-    assert "_ensure_rent_hall_pass_top_off(" not in source
-    assert "db.session.commit()" not in source
-    assert "db.session.flush()" not in source
+def test_dashboard_read_is_interest_mutation_free(client):
+    teacher = make_admin("dash_guard_teacher", "secret")
+    db.session.add(teacher)
+    db.session.flush()
+
+    profile_read = IdentityProfile(profile_type='student', first_name='Read', last_name='P')
+    db.session.add(profile_read)
+    db.session.flush()
+    student = Student(identity_profile=profile_read, block="A", salt=b"salt", has_completed_setup=True)
+    db.session.add(student)
+    db.session.flush()
+
+    join_code = "READPURE1"
+    create_class_scope(
+        teacher=teacher,
+        join_code=join_code,
+        student=student,
+        block="A",
+        display_name="A",
+        create_claimed_teacher_block=True,
+        teacher_block_claimed=True,
+    )
+    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    mature_savings_time = datetime.now(timezone.utc) - timedelta(days=31)
+    db.session.add(Transaction(
+        student_id=student.id,
+        teacher_id=teacher.id,
+        join_code=join_code,
+        amount=100.0,
+        account_type="savings",
+        description="Savings Seed",
+        timestamp=mature_savings_time,
+        date_funds_available=mature_savings_time,
+    ))
+    db.session.commit()
+
+    before_count = Transaction.query.filter_by(student_id=student.id).count()
+    _login_student(client, student.id, join_code)
+
+    response = client.get("/student/dashboard")
+
+    assert response.status_code == 200
+    after_count = Transaction.query.filter_by(student_id=student.id).count()
+    assert after_count == before_count
+    assert Transaction.query.filter_by(
+        student_id=student.id,
+        description="Monthly Savings Interest",
+        account_type="savings",
+    ).first() is None
 
 
-def test_dashboard_access_policy_fail_closed_invalid_join_code():
-    source = inspect.getsource(student_routes.dashboard)
-    assert "current_join_code=join_code" in source
-    assert "select-class-context" not in source
+def test_dashboard_access_policy_fail_closed_invalid_join_code(client):
+    teacher = make_admin("dash_scope_teacher", "secret")
+    db.session.add(teacher)
+    db.session.flush()
+
+    profile_scope = IdentityProfile(profile_type='student', first_name='Scope', last_name='Q')
+    db.session.add(profile_scope)
+    db.session.flush()
+    student = Student(identity_profile=profile_scope, block="A", salt=b"salt", has_completed_setup=True)
+    db.session.add(student)
+    db.session.flush()
+
+    create_class_scope(
+        teacher=teacher,
+        join_code="SCOPEA1",
+        student=student,
+        block="A",
+        display_name="A",
+        create_claimed_teacher_block=True,
+        teacher_block_claimed=True,
+    )
+    create_class_scope(
+        teacher=teacher,
+        join_code="SCOPEB1",
+        student=student,
+        block="B",
+        display_name="B",
+        create_claimed_teacher_block=True,
+        teacher_block_claimed=True,
+    )
+    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.commit()
+
+    _login_student(client, student.id, "MISSING")
+
+    response = client.get("/student/dashboard")
+
+    assert response.status_code == 302
+    assert response.headers["Location"].endswith("/student/select-class-context")
+    with client.session_transaction() as sess:
+        assert sess["current_join_code"] == "MISSING"

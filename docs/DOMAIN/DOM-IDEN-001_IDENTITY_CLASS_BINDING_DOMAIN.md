@@ -80,7 +80,7 @@ Key fields:
 - `username_lookup_hash` — HMAC-based lookup
 - `totp_secret_encrypted` / `pin_hash` / `passphrase_hash`
 - `username_hash` — canonical credential verifier for username-based login
-- `last_active_class_id` — nullable class-context restoration pointer
+- `last_active_class_id` — nullable class-context restoration preference; the login boundary may use it when valid, but it is never runtime authority
 - `current_session_nonce` — binds requests to a specific login event
 - `last_active_seat_id` — nullable FK to `seats`; tracks the last resolved context for multi-device continuity
 
@@ -90,6 +90,7 @@ Rules:
 - No PII (Date of Birth) shall be stored.
 - Credential metadata tables may implement authentication capabilities, but their
   authority is always derived from `users.id`.
+- If `last_active_class_id` is missing or stale, the login boundary may surface explicit class selection when valid seats exist; it must fail closed only after confirming that no valid class/seat pair remains.
 
 ### 2. `seats`
 
@@ -115,8 +116,8 @@ Rules:
 - `seats.public_id` is a UUID encoded as a 36-character string. It carries no
   human-readable or role-specific meaning and MUST resolve under the active `class_id`.
 - Section or period metadata belongs to `classes.section`. Any remaining seat-level
-  block or section fields are transitional compatibility mirrors only and MUST NOT be
-  treated as canonical class identity.
+  block or section fields are compatibility mirrors only and MUST NOT be treated as
+  canonical class identity.
 
 ---
 
@@ -171,7 +172,7 @@ Every request operating within a class MUST be resolved to a specific `seat_id`.
   - **Global Requests**: Authentication only (`user_id`). Permitted for identity management, class selection, and Sysadmin actions.
   - **Scoped Requests**: Authentication + Authorization (`user_id` + `seat_id`). MANDATORY for all activity in Ledger, Obligations, Attendance, and Store domains.
 - Cross-seat or cross-class requests where the `user_id` does not own the target `seat_id` MUST be rejected.
-- Class-scoped participant routes MUST NOT accept legacy numeric student IDs or role-specific public IDs as aliases for `seats.public_id`.
+- Class-scoped participant routes MUST NOT accept numeric student IDs or role-specific public IDs as aliases for `seats.public_id`.
 
 ### 3. Context Restoration Law (The Sticky Context)
 To support multi-device continuity and prevent "Class Drift," the system maintains a persistent pointer to the last used context.

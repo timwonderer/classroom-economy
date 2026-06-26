@@ -342,9 +342,35 @@ def create_app():
 
     @app.before_request
     def capture_correlation_context():
+        from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
         from app.services.tlcp import resolve_actor_context
 
-        g.correlation_context = resolve_actor_context()
+        try:
+            g.canonical_context = resolve_canonical_context()
+        except ContextResolutionError:
+            g.canonical_context = None
+        g.correlation_context = resolve_actor_context(getattr(g, "canonical_context", None))
+
+    @app.before_request
+    def validate_canonical_session_nonce():
+        if request.path.startswith("/static/"):
+            return None
+        if request.endpoint in {"main.health_check"}:
+            return None
+
+        from app.models import User
+        user_id = session.get("user_id")
+        session_nonce = session.get("current_session_nonce")
+        if not user_id:
+            return None
+        user = db.session.get(User, user_id)
+        if not user:
+            session.clear()
+            return None
+        if not session_nonce or user.current_session_nonce != session_nonce:
+            session.clear()
+            return None
+        return None
 
     @app.after_request
     def attach_request_id_header(response):
@@ -536,18 +562,6 @@ def create_app():
             # Keep request resilient; legacy fallbacks below preserve behavior.
             teacher_id = None
 
-        # Legacy fallback path (required until admin identity cutover).
-        if teacher_id is None:
-            admin_id = session.get('admin_id')
-            if admin_id:
-                teacher_id = admin_id
-
-        # Legacy student teacher-context fallback.
-        if teacher_id is None:
-            current_teacher_id = session.get('current_teacher_id')
-            if current_teacher_id:
-                teacher_id = current_teacher_id
-        
         if teacher_id:
             try:
                 from sqlalchemy import text
@@ -671,22 +685,19 @@ def create_app():
             from app.models import FeatureSettings
             from app.routes.admin import get_admin_feature_settings_for_join_code
 
-            # Canonical helper-first resolution (legacy fallback retained below).
-            _ = get_current_user()
-            admin_id = session.get('admin_id')
-            join_code = session.get('current_join_code')
-            if not join_code:
-                current_class_id = get_current_class_id()
-                if current_class_id:
-                    from app.models import ClassEconomy
-                    class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
-                    join_code = class_row.join_code if class_row else None
-            if not admin_id:
+            current_user = get_current_user()
+            current_class_id = get_current_class_id()
+            if not current_user or not current_class_id:
+                return {'admin_feature_settings': FeatureSettings.get_defaults()}
+
+            from app.models import ClassEconomy
+            class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
+            if not class_row or not class_row.teacher_id:
                 return {'admin_feature_settings': FeatureSettings.get_defaults()}
             return {
                 'admin_feature_settings': get_admin_feature_settings_for_join_code(
-                    admin_id,
-                    join_code=join_code,
+                    class_row.teacher_id,
+                    join_code=class_row.join_code,
                 )
             }
         except Exception as e:
@@ -698,67 +709,30 @@ def create_app():
     def inject_class_context():
         """Inject current class context and available classes for student navigation."""
         try:
-            from app.auth import get_logged_in_student, get_current_seat, get_current_class_id, get_current_user
+            from app.auth import get_current_seat, get_current_class_id, get_current_user
             from app.models import Seat, Admin, ClassEconomy
-            from flask import session
             from app.utils.display_name_session import (
                 get_teacher_display_name_cache,
                 upsert_teacher_display_name_cache,
             )
 
             current_seat_ctx = get_current_seat()
-            _ = get_current_user()
-            student_id = current_seat_ctx.student_id if current_seat_ctx and current_seat_ctx.student_id else None
-            if student_id is None:
-                # Legacy fallback until all student routes/session anchors are migrated.
-                student = get_logged_in_student()
-                student_id = student.id if student else None
-            if not student_id:
+            current_user = get_current_user()
+            if not current_seat_ctx or not current_user:
                 return {'current_class_context': None, 'available_classes': []}
 
-            # Get all claimed seats for this student
-            claimed_seats = (
-                Seat.query
-                .filter_by(student_id=student_id)
-                .filter(Seat.claimed_at.isnot(None))
-                .order_by(Seat.class_id, Seat.block)
-                .all()
-            )
-
-            if not claimed_seats:
+            class_id = current_seat_ctx.class_id
+            if not class_id:
                 return {'current_class_context': None, 'available_classes': []}
-
-            claimed_class_ids = {seat.class_id for seat in claimed_seats if seat.class_id}
-            requested_class_id = (session.get('current_class_id') or '').strip()
-            resolved_class_id = (
-                requested_class_id
-                or get_current_class_id()
-            )
-            if resolved_class_id not in claimed_class_ids:
-                resolved_class_id = None
-
-            # Class context is required whenever the student has at least one claimed seat.
-            current_seat = next(
-                (seat for seat in claimed_seats if seat.class_id == resolved_class_id),
-                claimed_seats[0]
-            )
-
-            # Keep session context aligned with canonical current seat scope.
-            session['current_seat_id'] = current_seat.id
-            session['seat_id'] = current_seat.id
-            session['current_class_id'] = current_seat.class_id
-            session['class_id'] = current_seat.class_id
-            session['current_join_code'] = current_seat.join_code
 
             class_rows_by_class_id = {
                 row.class_id: row
-                for row in ClassEconomy.query.filter(
-                    ClassEconomy.class_id.in_([seat.class_id for seat in claimed_seats if seat.class_id])
-                ).all()
+                for row in ClassEconomy.query.filter(ClassEconomy.class_id == class_id).all()
             }
 
+            current_seat = current_seat_ctx
+
             # Build list of available classes with teacher names.
-            # teacher_id is on ClassEconomy, not on Seat.
             teacher_ids = sorted({row.teacher_id for row in class_rows_by_class_id.values() if row.teacher_id})
             teacher_name_cache = get_teacher_display_name_cache()
             missing_ids = [tid for tid in teacher_ids if str(tid) not in teacher_name_cache]
@@ -770,23 +744,6 @@ def create_app():
                     upsert_teacher_display_name_cache(cache_updates)
                     teacher_name_cache.update(cache_updates)
 
-            available_classes = []
-            for seat in claimed_seats:
-                class_row = class_rows_by_class_id.get(seat.class_id)
-                row_teacher_id = getattr(class_row, 'teacher_id', None)
-                teacher_name = teacher_name_cache.get(str(row_teacher_id), 'Unknown') if row_teacher_id else 'Unknown'
-                class_label = (class_row.display_name if class_row and class_row.display_name else None) or seat.join_code
-                available_classes.append({
-                    'join_code': seat.join_code,
-                    'class_id': getattr(class_row, 'class_id', None),
-                    'class_identifier': class_label,
-                    'class_timezone': getattr(class_row, 'class_timezone', None),
-                    'teacher_name': teacher_name,
-                    'block': seat.block,
-                    'block_display': class_label,
-                    'is_current': seat.class_id == current_seat.class_id
-                })
-
             # Build current class context from cache.
             current_class_row = class_rows_by_class_id.get(current_seat.class_id)
             current_teacher_id = getattr(current_class_row, 'teacher_id', None)
@@ -795,6 +752,17 @@ def create_app():
                 if current_class_row and current_class_row.display_name
                 else current_seat.join_code
             )
+            available_classes = [{
+                'join_code': current_seat.join_code,
+                'class_id': getattr(current_class_row, 'class_id', None),
+                'class_identifier': current_class_label,
+                'class_timezone': getattr(current_class_row, 'class_timezone', None),
+                'teacher_name': teacher_name_cache.get(str(current_teacher_id), 'Unknown') if current_teacher_id else 'Unknown',
+                'teacher_id': current_teacher_id,
+                'block': current_seat.block,
+                'block_display': current_class_label,
+                'is_current': True,
+            }]
             current_class_context = {
                 'join_code': current_seat.join_code,
                 'class_id': getattr(current_class_row, 'class_id', None),
@@ -804,8 +772,7 @@ def create_app():
                 'teacher_id': current_teacher_id,
                 'block': current_seat.block,
                 'block_display': current_class_label,
-                'student_first_name': current_seat.display_first_name,
-                'student_last_initial': current_seat.display_last_initial,
+                'student_full_name': current_seat.identity_profile.full_name if current_seat.identity_profile else "",
             }
 
             return {
@@ -821,64 +788,30 @@ def create_app():
     def inject_admin_class_context():
         """Inject current class context and available classes for admin navigation."""
         try:
-            from flask import session
             from app.models import ClassEconomy
-            from app.routes.admin import _resolve_admin_class_context
             from app.auth import get_current_user, get_current_class_id
 
-            _ = get_current_user()
-            admin_id = session.get('admin_id')
-            if not admin_id or not session.get('is_admin'):
+            current_user = get_current_user()
+            current_class_id = get_current_class_id()
+            if not current_user or getattr(current_user.user_role, "value", current_user.user_role) != "teacher" or not current_class_id:
                 return {'admin_current_class_context': None, 'admin_available_classes': []}
 
-            class_rows = (
-                ClassEconomy.query
-                .filter(ClassEconomy.teacher_id == admin_id)
-                .order_by(ClassEconomy.display_name.asc(), ClassEconomy.join_code.asc())
-                .all()
-            )
-            if not class_rows:
+            class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
+            if not class_row:
                 return {'admin_current_class_context': None, 'admin_available_classes': []}
-
-            admin_available_classes = []
-            for class_row in class_rows:
-                if not class_row.join_code:
-                    continue
-                class_label = class_row.display_name or class_row.join_code
-                admin_available_classes.append({
-                    'join_code': class_row.join_code,
-                    'class_id': class_row.class_id,
-                    'class_identifier': class_label,
-                    'class_timezone': class_row.class_timezone,
-                    'block': class_row.section,
-                    'block_display': class_label,
-                })
-
-            if not admin_available_classes:
-                return {'admin_current_class_context': None, 'admin_available_classes': []}
-
-            resolved_context = _resolve_admin_class_context(admin_id)
-            resolved_class_id = get_current_class_id() or (resolved_context.get('class_id') if resolved_context else None)
-            current_class = next(
-                (item for item in admin_available_classes if item['class_id'] == resolved_class_id),
-                admin_available_classes[0],
-            )
 
             admin_current_class_context = {
-                'join_code': current_class['join_code'],
-                'class_id': current_class['class_id'],
-                'class_identifier': current_class['class_identifier'],
-                'class_timezone': current_class['class_timezone'],
-                'block': current_class['block'],
-                'block_display': current_class['block_display'],
+                'join_code': class_row.join_code,
+                'class_id': class_row.class_id,
+                'class_identifier': class_row.display_name or class_row.join_code,
+                'class_timezone': class_row.class_timezone,
+                'block': class_row.section,
+                'block_display': class_row.display_name or class_row.join_code,
             }
-
-            for class_option in admin_available_classes:
-                class_option['is_current'] = class_option['class_id'] == admin_current_class_context['class_id']
 
             return {
                 'admin_current_class_context': admin_current_class_context,
-                'admin_available_classes': admin_available_classes,
+                'admin_available_classes': [admin_current_class_context],
             }
         except Exception as e:
             app.logger.warning(f"Could not load admin class context: {e}")

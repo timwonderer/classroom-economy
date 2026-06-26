@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import secrets
 
 
 def login_admin(
@@ -32,6 +33,13 @@ def login_admin(
         sess["admin_id"] = admin_id
         if user_id is not None:
             sess["user_id"] = user_id
+            sess["current_session_nonce"] = secrets.token_urlsafe(32)
+            from app.extensions import db
+            from app.models import User
+            user = db.session.get(User, user_id)
+            if user:
+                user.current_session_nonce = sess["current_session_nonce"]
+                db.session.commit()
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
         if join_code is not None:
             sess["current_join_code"] = join_code

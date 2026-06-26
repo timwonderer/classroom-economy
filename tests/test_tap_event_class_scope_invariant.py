@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.extensions import db
-from app.models import ClassEconomy, ClassMembership, Seat, Student, StudentTeacher, AttendanceSession
+from app.models import ClassEconomy, ClassMembership, Seat, IdentityProfile, Student, StudentTeacher, TapEvent
 from tests.helpers.v2_fixtures import make_admin
 
 
@@ -30,7 +30,10 @@ def _setup_scoped_student(with_seat: bool = True):
         )
     )
 
-    student = Student(first_name="Tap", last_initial="I", block="A", salt=b"salt")
+    profile = IdentityProfile(profile_type="student", first_name="Tap", last_name="I")
+    db.session.add(profile)
+    db.session.flush()
+    student = Student(identity_profile=profile, block="A", salt=b"salt")
     db.session.add(student)
     db.session.flush()
 
@@ -61,42 +64,38 @@ def _setup_scoped_student(with_seat: bool = True):
     return student_id, seat.id if seat else None, class_id
 
 
-def test_attendance_session_rejects_missing_class_id_and_seat_id():
-    """AttendanceSession without class_id and seat_id fails at DB level (NOT NULL)."""
-    import sqlalchemy
-
+def test_tap_event_rejects_missing_class_id_and_seat_id():
     student_id, _seat_id, _class_id = _setup_scoped_student(with_seat=False)
 
     db.session.add(
-        AttendanceSession(
+        TapEvent(
             student_id=student_id,
             period="A",
-            started_at=datetime.now(timezone.utc),
+            status="active",
+            timestamp=datetime.now(timezone.utc),
         )
     )
 
-    with pytest.raises(sqlalchemy.exc.IntegrityError):
+    with pytest.raises(ValueError, match="class_id is required"):
         db.session.flush()
 
     db.session.rollback()
 
 
-def test_attendance_session_requires_seat_even_when_class_is_present():
-    """AttendanceSession with class_id but without seat_id fails at DB level (NOT NULL)."""
-    import sqlalchemy
-
+def test_tap_event_requires_seat_even_when_class_is_present():
     student_id, _seat_id, class_id = _setup_scoped_student(with_seat=False)
 
     db.session.add(
-        AttendanceSession(
+        TapEvent(
             student_id=student_id,
             class_id=class_id,
             period="A",
-            started_at=datetime.now(timezone.utc),
+            status="active",
+            timestamp=datetime.now(timezone.utc),
         )
     )
 
-    with pytest.raises(sqlalchemy.exc.IntegrityError):
+    with pytest.raises(ValueError, match="seat_id is required"):
         db.session.flush()
 
     db.session.rollback()

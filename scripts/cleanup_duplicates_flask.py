@@ -18,7 +18,7 @@ from app import create_app
 from app.extensions import db
 from app.models import (
     Seat, Student, Transaction, TapEvent, HallPassLog, StudentItem,
-    RentPayment, RentWaiver, StudentInsurance, InsuranceClaim
+    RentPayment, RentWaiver, StudentInsurance, InsuranceClaim, IdentityProfile
 )
 from collections import defaultdict
 
@@ -29,11 +29,11 @@ def list_duplicates():
     with app.app_context():
         students = Student.query.order_by(Student.id).all()
 
-        # Group by (first_name, last_initial, block)
+        # Group by (display_first_name, display_last_initial, block)
         groups = defaultdict(list)
         for student in students:
             if student.block:
-                key = (student.first_name, student.last_initial, student.block)
+                key = (student.display_first_name, student.display_last_initial, student.block)
                 groups[key].append(student)
 
         duplicates = {k: v for k, v in groups.items() if len(v) > 1}
@@ -95,11 +95,11 @@ def delete_duplicates():
     with app.app_context():
         students = Student.query.order_by(Student.id).all()
 
-        # Group by (first_name, last_initial, block)
+        # Group by (display_first_name, display_last_initial, block)
         groups = defaultdict(list)
         for student in students:
             if student.block:
-                key = (student.first_name, student.last_initial, student.block)
+                key = (student.display_first_name, student.display_last_initial, student.block)
                 groups[key].append(student)
 
         duplicates = {k: v for k, v in groups.items() if len(v) > 1}

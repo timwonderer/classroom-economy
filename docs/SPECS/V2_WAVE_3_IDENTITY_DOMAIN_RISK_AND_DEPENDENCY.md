@@ -1,5 +1,7 @@
 # Wave 3 Identity Domain — Risk & Dependency Analysis
 
+> **Terminology Note:** This spec was written during the v1→v2 transition. Legacy model references (`Admin`, `StudentTeacher`, `TeacherBlock`, `get_admin_student_query`) describe v1 shadows that are migration targets. The v2 canonical identity model uses `User` (global principal) + `Seat` (class-local binding) with `class_id` as the class boundary.
+
 > [!IMPORTANT]
 > This is a pre-cutover risk analysis. It is still useful for dependency maps and
 > legacy-removal risk, but it is no longer the current runtime auth contract.
@@ -141,7 +143,7 @@ All route decorators and helper functions currently depend on **v1 session keys*
 
 Removing `Student` and `Admin` from `app/models.py` will break:
 
-**Admin (teachers table) — direct imports:**
+**Admin (teachers table — v1 shadow, v2 target: `User` + teacher role) — direct imports:**
 - `app/routes/main.py:16` — `from app.models import Admin`
 - `app/routes/api.py:1646` — lazy import
 - `app/routes/student.py:319,3849,3916,3928` — 4 lazy imports
@@ -172,7 +174,7 @@ Removing `Student` and `Admin` from `app/models.py` will break:
 
 ### 2.4 `get_logged_in_student()` → `(User, Seat)` Transition
 
-Current signature returns `Student | None`. The plan changes this to return a `(User, Seat)` tuple.
+Current signature returns `Student | None` (legacy — requires `class_id` scope filter in v2). The plan changes this to return a `(User, Seat)` tuple.
 
 **Breaking points:**
 - Every caller that does `student = get_logged_in_student()` and then accesses `student.id`, `student.full_name`, `student.checking_balance`, etc.
@@ -182,7 +184,7 @@ Current signature returns `Student | None`. The plan changes this to return a `(
 
 ### 2.5 `get_current_admin()` → `User(role=teacher)` Transition
 
-Current returns `Admin | None` from `db.session.get(Admin, admin_id)`.
+Current returns `Admin | None` (v1 shadow — v2 target: `User` + teacher role) from `db.session.get(Admin, admin_id)`.
 
 **Breaking points:**
 - `admin.id` is used as FK value for `teacher_id` across 29 columns — these must resolve to the same integer after migration
@@ -202,7 +204,9 @@ Current returns `Admin | None` from `db.session.get(Admin, admin_id)`.
 
 ---
 
-## 3. Removing Legacy Auth Tables
+## 3. Removing Legacy Auth Tables (v1→v2 Migration Targets)
+
+> All tables listed in this section are v1 shadows targeted for removal as part of the v1→v2 migration. They are not permanent architecture. `StudentTeacher` and `TeacherBlock` are deprecated — v2 target: `ClassEconomy` for class-teacher linkage. `Admin` is a v1 shadow — v2 target: `User` + teacher role.
 
 ### 3.1 Tables Targeted for Removal
 
@@ -210,10 +214,10 @@ Current returns `Admin | None` from `db.session.get(Admin, admin_id)`.
 |---|---|---|
 | `teachers` | `Admin` | **29 FK columns** across entire codebase (see §2.3) |
 | `students` | `Student` | **17+ FK columns** across entire codebase |
-| `student_teachers` | `StudentTeacher` | None (junction table) |
+| `student_teachers` | `StudentTeacher` (deprecated — v2 target: `ClassEconomy` for class-teacher linkage) | None (junction table) |
 | `student_blocks` | `StudentBlock` | None |
-| `teacher_blocks` | `TeacherBlock` | None |
-| `class_memberships` | `ClassMembership` | None |
+| `teacher_blocks` | `TeacherBlock` (deprecated — v2 target: `ClassEconomy` for class-teacher linkage) | None |
+| `class_memberships` | `ClassMembership` (deprecated — v2 target: `ClassEconomy`) | None |
 | `recovery_requests` | `RecoveryRequest` | None |
 | `student_recovery_codes` | `StudentRecoveryCode` | None |
 | `teacher_onboarding` | `TeacherOnboarding` | None |
@@ -309,8 +313,8 @@ graph TD
 |---|---|---|
 | `Student` | 20+ files | App won't start |
 | `Admin` | 10+ files | App won't start |
-| `StudentTeacher` | 6 files | Login/roster broken |
-| `TeacherBlock` | 8 files | Roster/claim broken |
+| `StudentTeacher` (deprecated — v2 target: `ClassEconomy`) | 6 files | Login/roster broken |
+| `TeacherBlock` (deprecated — v2 target: `ClassEconomy`) | 8 files | Roster/claim broken |
 | `ClassEconomy` | 15+ files | Class ops broken |
 | `SystemAdmin` | 3 files | Sysadmin broken |
 | `RecoveryRequest` | 2 files | Recovery broken |

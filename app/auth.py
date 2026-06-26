@@ -136,9 +136,6 @@ def login_required(f):
             # Clear student-specific keys but preserve CSRF token
             session.pop('student_id', None)
             session.pop('user_id', None)
-            session.pop('current_seat_id', None)
-            session.pop('seat_id', None)
-            session.pop('class_id', None)
             session.pop('login_time', None)
             session.pop('last_activity', None)
             session.pop('teacher_display_name_cache', None)
@@ -153,9 +150,6 @@ def login_required(f):
             # Clear student-specific keys but preserve CSRF token
             session.pop('student_id', None)
             session.pop('user_id', None)
-            session.pop('current_seat_id', None)
-            session.pop('seat_id', None)
-            session.pop('class_id', None)
             session.pop('login_time', None)
             session.pop('last_activity', None)
             session.pop('teacher_display_name_cache', None)
@@ -172,9 +166,6 @@ def login_required(f):
         if not student:
             session.pop('student_id', None)
             session.pop('user_id', None)
-            session.pop('current_seat_id', None)
-            session.pop('seat_id', None)
-            session.pop('class_id', None)
             session.pop('login_time', None)
             session.pop('last_activity', None)
             session.pop('teacher_display_name_cache', None)
@@ -184,22 +175,16 @@ def login_required(f):
             return redirect(url_for('student.login'))
 
         session['last_activity'] = utc_now().isoformat()
-        had_explicit_seat = bool(session.get('current_seat_id'))
         seat = sync_student_session_context(student)
-        if had_explicit_seat and seat is None:
+        if seat is None:
             session.pop('student_id', None)
             session.pop('user_id', None)
-            session.pop('current_seat_id', None)
-            session.pop('seat_id', None)
-            session.pop('class_id', None)
-            session.pop('current_class_id', None)
-            session.pop('current_join_code', None)
             session.pop('login_time', None)
             session.pop('last_activity', None)
             session.pop('teacher_display_name_cache', None)
             if request.path.startswith('/api/'):
-                return jsonify({"status": "error", "error": "Account claim is required for this class context."}), 403
-            flash("Account claim is required before accessing class resources.", "error")
+                return jsonify({"status": "error", "error": "Account scope is unavailable."}), 403
+            flash("Account scope is unavailable.", "error")
             return redirect(url_for('student.login'))
         return f(*args, **kwargs)
     return decorated_function
@@ -246,7 +231,6 @@ def admin_required(f):
                 return redirect(f"{url_for('admin.login')}?next={encoded_next}")
 
         session['last_activity'] = now.isoformat()
-        ensure_admin_join_code(admin.id)
         return f(*args, **kwargs)
     return decorated_function
 
@@ -343,14 +327,21 @@ def resolve_system_admin_shadow_for_user(user):
 
 def resolve_student_shadow_for_user(user):
     """Resolve one legacy student shadow through the canonical user's owned seats."""
-    from app.models import Seat, Student
+    from app.models import Seat, Student, IdentityProfile
 
     if not user:
         return None
 
+    session_student_id = _safe_int_id(session.get("student_id"))
+    if session_student_id:
+        student = Student.query.filter_by(id=session_student_id).first()
+        if student:
+            return student
+
     students = (
         Student.query
-        .join(Seat, Seat.student_id == Student.id)
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .join(Seat, Seat.id == IdentityProfile.seat_id)
         .filter(
             Seat.user_id == user.id,
             Seat.role == "student",
@@ -365,26 +356,7 @@ def resolve_student_shadow_for_user(user):
 
 def get_current_student_seat():
     """Return the active seat for the current student session, if present."""
-    from app.models import Seat
-
-    seat_id = session.get('current_seat_id')
-    if not seat_id:
-        return None
-    seat = db.session.get(Seat, seat_id)
-    if not seat:
-        return None
-
-    user = get_current_user()
-    if user and seat.user_id != user.id:
-        return None
-
-    student_id = _safe_int_id(session.get('student_id'))
-    if student_id and seat.student_id != student_id:
-        return None
-
-    if not getattr(seat, "claimed_at", None):
-        return None
-
+    seat = get_current_seat()
     return seat
 
 
@@ -412,51 +384,45 @@ def get_current_seat():
     Return the current Seat from session context.
 
     Resolution order:
-    1) seat_id/current_seat_id
-    2) student_id + class_id/current_class_id exact match
-    Returns None when context cannot be resolved safely.
+    1) current_seat_id
+    Returns None when canonical seat context cannot be resolved safely.
     """
     from app.models import Seat
 
     if hasattr(g, "_auth_current_seat_cache"):
         return g._auth_current_seat_cache
 
-    student_id = _safe_int_id(_first_present_session_value('student_id'))
-    seat_id = _safe_int_id(_first_present_session_value('seat_id', 'current_seat_id'))
-    if seat_id:
-        seat = db.session.get(Seat, seat_id)
-        if seat and (not student_id or seat.student_id == student_id) and getattr(seat, "claimed_at", None):
-            g._auth_current_seat_cache = seat
-            return seat
+    context = getattr(g, "_auth_canonical_context_cache", None)
+    if context is None:
+        try:
+            from app.services.context_resolver import resolve_canonical_context
 
-    if not student_id:
+            context = resolve_canonical_context()
+        except Exception:
+            context = None
+        g._auth_canonical_context_cache = context
+    if not context:
         return None
-
-    target_class_id = _first_present_session_value('class_id', 'current_class_id')
-    if target_class_id:
-        seat = (
-            Seat.query
-            .filter_by(student_id=student_id, class_id=target_class_id)
-            .order_by(Seat.id.asc())
-            .first()
-        )
-        if seat and getattr(seat, "claimed_at", None):
-            g._auth_current_seat_cache = seat
-            return seat
-        return None
-
-    return None
+    seat = db.session.get(Seat, context.seat_id)
+    if seat:
+        g._auth_current_seat_cache = seat
+    return seat
 
 
 def get_current_class_id():
     """
-    Return current class identifier from session/seat context.
-
-    Resolution order:
-    1) class_id/current_class_id
+    Return current class identifier from canonical request context.
     """
-    class_id = _first_present_session_value('class_id', 'current_class_id')
-    return class_id if class_id else None
+    context = getattr(g, "_auth_canonical_context_cache", None)
+    if context is None:
+        try:
+            from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
+
+            context = resolve_canonical_context()
+        except Exception:
+            context = None
+        g._auth_canonical_context_cache = context
+    return getattr(context, "class_id", None) if context else None
 
 
 def get_current_user():
@@ -465,7 +431,6 @@ def get_current_user():
 
     Resolution order:
     1) canonical user_id session key
-    2) get_current_seat().user
     Returns None when unavailable.
     """
     from app.models import User
@@ -480,12 +445,6 @@ def get_current_user():
             g._auth_current_user_cache = user
             return user
 
-    seat = get_current_seat()
-    if seat and seat.user_id:
-        user = db.session.get(User, seat.user_id)
-        if user:
-            g._auth_current_user_cache = user
-        return user
     return None
 
 
@@ -509,13 +468,9 @@ def switch_student_session_context(student, *, class_id: str, seat_id: int):
     from flask import session, current_app
     from app.models import User
     
-    old_class = session.get('current_class_id')
-    
-    # 1. Update primary session anchors
-    session['current_class_id'] = class_id
-    session['current_seat_id'] = seat_id
-    
-    # 2. Sync seat/user identifiers via bridge utility
+    old_class = getattr(getattr(g, "canonical_context", None), "class_id", None)
+
+    # Sync seat/user identifiers via bridge utility
     seat = sync_student_session_context(student, class_id=class_id, seat_id=seat_id)
     if seat and seat.user_id:
         linked_user = db.session.get(User, seat.user_id)
@@ -523,7 +478,7 @@ def switch_student_session_context(student, *, class_id: str, seat_id: int):
             linked_user.last_active_class_id = class_id
             db.session.flush()
     
-    # 3. Log the transition for audit clarity
+    # Log the transition for audit clarity
     current_app.logger.info(
         f"SESSION-CONTEXT-SWITCH: Student {student.id} moved from class {old_class} "
         f"to {class_id} (Seat {seat_id})."
@@ -540,38 +495,31 @@ def sync_student_session_context(
     allow_writes: bool = False,
 ):
     """Backfill user/seat session keys for the current class context."""
-    from app.models import User, Seat
+    from app.models import User, Seat, IdentityProfile
 
     if student is None and 'student_id' in session:
         student = get_logged_in_student()
     if not student:
         session.pop('user_id', None)
-        session.pop('current_seat_id', None)
-        session.pop('current_class_id', None)
-        session.pop('seat_id', None)
-        session.pop('class_id', None)
         return None
 
-    target_class_id = class_id or session.get('current_class_id')
-    target_seat_id = seat_id or session.get('current_seat_id')
-    target_join_code = join_code or session.get('current_join_code')
-
+    target_class_id = class_id
+    target_seat_id = seat_id
     seat = None
     explicit_seat_requested = bool(target_seat_id)
     if target_seat_id:
         seat = db.session.get(Seat, target_seat_id)
     
     if not seat and target_class_id:
-        seat = Seat.query.filter_by(student_id=student.id, class_id=target_class_id).first()
-
-    if seat and seat.student_id != student.id:
-        current_app.logger.warning(
-            "STUDENT-SCOPE-INCIDENT: rejecting seat_id=%s for student_id=%s (seat belongs to student_id=%s)",
-            getattr(seat, "id", None),
-            student.id,
-            seat.student_id,
+        seat = (
+            Seat.query
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .filter(
+                IdentityProfile.id == student.identity_id,
+                Seat.class_id == target_class_id,
+            )
+            .first()
         )
-        seat = None
 
     if seat and not getattr(seat, "claimed_at", None):
         current_app.logger.info(
@@ -594,7 +542,7 @@ def sync_student_session_context(
             User.query
             .join(Seat, Seat.user_id == User.id)
             .filter(
-                Seat.student_id == student.id,
+                Seat.id == student.identity_profile.seat_id,
                 Seat.user_id.isnot(None),
             )
             .order_by(Seat.id.asc())
@@ -604,7 +552,6 @@ def sync_student_session_context(
     # Durable identity-scoped class preference: resolve class first, then owned seat.
     if not seat and linked_user and linked_user.last_active_class_id:
         candidate_seat = Seat.query.filter_by(
-            student_id=student.id,
             user_id=linked_user.id,
             class_id=linked_user.last_active_class_id,
         ).first()
@@ -633,20 +580,10 @@ def sync_student_session_context(
         db.session.flush()
 
     if seat:
-        session['current_seat_id'] = seat.id
-        session['current_class_id'] = seat.class_id
-        session['current_join_code'] = seat.join_code
-        session['seat_id'] = seat.id
-        session['class_id'] = seat.class_id
         if seat.user_id:
             session['user_id'] = seat.user_id
     else:
-        session.pop('current_seat_id', None)
         session.pop('user_id', None)
-        session.pop('current_class_id', None)
-        session.pop('current_join_code', None)
-        session.pop('seat_id', None)
-        session.pop('class_id', None)
 
     return seat
 
@@ -681,6 +618,9 @@ def get_logged_in_student():
 
 def get_current_admin():
     """Return the legacy admin route shadow for the current canonical teacher user."""
+    if hasattr(g, "_auth_current_admin_cache"):
+        return g._auth_current_admin_cache
+
     if not session.get("is_admin"):
         return None
 
@@ -697,6 +637,7 @@ def get_current_admin():
         return None
 
     session["admin_id"] = admin.id
+    g._auth_current_admin_cache = admin
     return admin
 
 
@@ -726,44 +667,26 @@ def get_current_system_admin():
 
 
 def ensure_admin_join_code(admin_id):
-    """Ensure an admin has a current join code selected in session."""
+    """Validate an existing admin join-code selection without auto-resolving one."""
     from app.models import ClassEconomy  # Imported lazily to avoid circular import
 
     if not admin_id:
         return
 
-    join_code = session.get('current_join_code')
-    if join_code:
-        # Verify the admin still owns this class economy
-        if ClassEconomy.query.filter_by(teacher_id=admin_id, join_code=join_code).first():
-            return
-        session.pop('current_join_code', None)
-
-    # Fallback to the first class economy owned by this admin
-    first_class = (
-        ClassEconomy.query
-        .filter_by(teacher_id=admin_id)
-        .order_by(ClassEconomy.display_name, ClassEconomy.join_code)
-        .first()
-    )
-    if first_class:
-        session['current_join_code'] = first_class.join_code
+    return
 
 
 def get_admin_student_query(include_unassigned=True):
     """Return a Student query scoped to the current admin's ownership.
 
     System admins are allowed to see all students. Regular admins only see
-    students linked to them via the StudentTeacher association table.
-    
-    CRITICAL SECURITY NOTE: We ONLY use the StudentTeacher table as the source of truth.
-    The teacher_id column on Student is DEPRECATED and should NOT be used for scoping
-    because it can contain stale data from deleted teachers or data migration issues.
-    
+    students whose identity profile is linked to a seat in a class owned by
+    this teacher (via Seat → ClassEconomy).
+
     Args:
         include_unassigned (bool): [DEPRECATED] No longer used. Kept for backward compatibility.
     """
-    from app.models import Student, StudentTeacher  # Imported lazily to avoid circular import
+    from app.models import Student, Seat, IdentityProfile, ClassEconomy
 
     if session.get("is_system_admin"):
         return Student.query
@@ -772,19 +695,18 @@ def get_admin_student_query(include_unassigned=True):
     if not admin:
         return Student.query.filter(sa.text("0=1"))
 
-    # Get student IDs that are explicitly linked to this admin via StudentTeacher table
-    # This is the ONLY source of truth for student-teacher associations
-    shared_student_ids = (
-        StudentTeacher.query.with_entities(StudentTeacher.student_id)
-        .filter(StudentTeacher.teacher_id == admin.id)
+    # Students linked to this teacher via Seat → ClassEconomy ownership
+    teacher_student_ids = (
+        db.session.query(Student.id)
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .join(Seat, Seat.id == IdentityProfile.seat_id)
+        .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
+        .filter(ClassEconomy.teacher_id == admin.id)
         .subquery()
     )
 
-    # SECURITY FIX: Only use StudentTeacher associations, NOT the deprecated teacher_id column
-    # The old code used: sa.or_(Student.teacher_id == admin.id, Student.id.in_(shared_student_ids))
-    # This caused multi-tenancy leaks when teacher_id had stale data
     return Student.query.filter(
-        Student.id.in_(sa.select(shared_student_ids)),
+        Student.id.in_(sa.select(teacher_student_ids)),
     )
 
 
