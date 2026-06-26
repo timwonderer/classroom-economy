@@ -1713,6 +1713,10 @@ def purchase_insurance(policy_id):
     if not context:
         flash("No class selected.", "danger")
         return redirect(url_for('student.dashboard'))
+    seat = get_current_seat()
+    if seat is None:
+        flash("No class selected.", "danger")
+        return redirect(url_for('student.dashboard'))
 
     join_code = get_display_join_code(context.class_id)
     teacher_id = None
@@ -1825,10 +1829,11 @@ def purchase_insurance(policy_id):
 def cancel_insurance(enrollment_id):
     """Cancel insurance policy."""
     student = get_logged_in_student()
+    seat = get_current_seat()
     enrollment = db.get_or_404(InsuranceEnrollment, enrollment_id)
 
     # Verify ownership
-    if enrollment.seat_id != seat.id:
+    if seat is None or enrollment.seat_id != seat.id:
         flash("Unauthorized access.", "danger")
         return redirect(url_for('student.student_insurance'))
 
@@ -1845,6 +1850,10 @@ def cancel_insurance(enrollment_id):
 def file_claim(policy_id):
     """File insurance claim."""
     student = get_logged_in_student()
+    seat = get_current_seat()
+    if seat is None:
+        flash("No class selected.", "danger")
+        return redirect(url_for('student.student_insurance'))
 
     # Get student's enrollment for this policy
     enrollment = InsuranceEnrollment.query.filter_by(

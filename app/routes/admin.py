@@ -7074,9 +7074,9 @@ def rent_settings():
             payment_join = payment_join.strip()
             payment_block = payment.seat.block_identifier if payment.seat and payment.seat.block_identifier else (payment.seat.block if payment.seat else '')
             coverage_label = "Unknown"
-            if payment.coverage_year and payment.coverage_month:
+            if payment.period_year and payment.period_month:
                 coverage_label = datetime(
-                    payment.coverage_year, payment.coverage_month, 1
+                    payment.period_year, payment.period_month, 1
                 ).strftime('%b %Y')
             payment_log.append({
                 'student': payment.seat.user if payment.seat and payment.seat.user else None,
@@ -7914,8 +7914,6 @@ def process_claim(claim_id):
         abort(404)
 
     enrollment = db.session.get(InsuranceEnrollment, claim.enrollment_id)
-    if enrollment is None:
-        enrollment = db.session.get(InsuranceEnrollment, claim.enrollment_id)
     if enrollment is None:
         abort(404)
 
