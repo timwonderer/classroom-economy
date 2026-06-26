@@ -125,25 +125,13 @@ def test_dead_route_mutations_are_feat_owned():
     admin_source = Path("app/routes/admin.py").read_text()
     system_admin_source = Path("app/routes/system_admin.py").read_text()
 
-    def assert_decorator(source, func_name, decorator):
-        idx = source.index(func_name)
-        start = max(0, idx - 150)
-        assert decorator in source[start:idx]
-
-    assert_decorator(admin_source, "def resolve_issue(", "@feat_shell(\"FEAT-ADMN-001\")")
-    assert_decorator(admin_source, "def passkey_auth_finish(", "@feat_shell(\"FEAT-ADMN-001\")")
-    assert_decorator(system_admin_source, "def resolve_escalated_issue(", "@feat_shell(\"FEAT-OPS-001\")")
-    assert_decorator(system_admin_source, "def passkey_auth_finish(", "@feat_shell(\"FEAT-OPS-001\")")
+    assert '@feat_shell("FEAT-ADMN-001")' in admin_source[admin_source.index("def process_claim(") - 150:admin_source.index("def process_claim(")]
+    assert '@feat_shell("FEAT-ADMN-001")' in admin_source[admin_source.index("def resolve_issue(") - 150:admin_source.index("def resolve_issue(")]
+    assert '@feat_shell("FEAT-ADMN-001")' in admin_source[admin_source.index("def passkey_auth_finish(") - 150:admin_source.index("def passkey_auth_finish(")]
+    assert '@feat_shell("FEAT-OPS-001")' in system_admin_source[system_admin_source.index("def resolve_escalated_issue(") - 150:system_admin_source.index("def resolve_escalated_issue(")]
+    assert '@feat_shell("FEAT-OPS-001")' in system_admin_source[system_admin_source.index("def passkey_auth_finish(") - 150:system_admin_source.index("def passkey_auth_finish(")]
 
 
-def test_admin_get_routes_remain_read_only():
-    admin_source = Path("app/routes/admin.py").read_text()
-    def get_func_source(source, func_name):
-        start = source.index(func_name)
-        end = source.find("@admin_bp.route(", start + 1)
-        return source[start:end] if end != -1 else source[start:]
-
-    banking_source = get_func_source(admin_source, "def banking():")
 def test_admin_get_routes_remain_read_only():
     admin_source = Path("app/routes/admin.py").read_text()
     banking_start = admin_source.index("def banking():")
