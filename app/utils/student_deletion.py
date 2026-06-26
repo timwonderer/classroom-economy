@@ -7,6 +7,7 @@ from app.models import (
     BalanceCache,
     HallPassLog,
     InsuranceClaim,
+    InsuranceEnrollment,
     Issue,
     IssueResolutionAction,
     IssueStatusHistory,
@@ -15,13 +16,13 @@ from app.models import (
     RentWaiver,
     Student,
     StudentBlock,
-    StudentInsurance,
     StudentItem,
     AttendanceSession,
     SeatAttendanceState,
     Transaction,
     UserReport,
     Seat,
+    IdentityProfile,
 )
 from app.services.recovery_bridge_service import delete_recovery_codes_for_student
 
@@ -38,7 +39,11 @@ def _collect_related_ids(student_id):
     ]
     insurance_ids = [
         row[0]
-        for row in db.session.query(StudentInsurance.id).filter(StudentInsurance.student_id == student_id).all()
+        for row in db.session.query(InsuranceEnrollment.id)
+        .join(Seat, InsuranceEnrollment.seat_id == Seat.id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .filter(IdentityProfile.id == db.session.query(Student.identity_id).filter(Student.id == student_id).scalar_subquery())
+        .all()
     ]
     tx_ids = [
         row[0]
@@ -122,7 +127,14 @@ def _delete_student_scoped_rows(student_id, student_item_ids, issue_ids, insuran
     InsuranceClaim.query.filter(sa.or_(*insurance_claim_filters)).delete(synchronize_session=False)
 
     Issue.query.filter(Issue.student_id == student_id).delete(synchronize_session=False)
-    StudentInsurance.query.filter(StudentInsurance.student_id == student_id).delete(synchronize_session=False)
+    InsuranceEnrollment.query.filter(
+        InsuranceEnrollment.seat_id.in_(
+            db.session.query(Seat.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(Student.id == student_id)
+        )
+    ).delete(synchronize_session=False)
     UserReport.query.filter(UserReport._student_id == student_id).delete(synchronize_session=False)
     delete_recovery_codes_for_student(student_id)
     if tx_ids:

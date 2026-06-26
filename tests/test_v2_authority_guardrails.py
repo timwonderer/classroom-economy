@@ -130,6 +130,7 @@ def test_dead_route_mutations_are_feat_owned():
         start = max(0, idx - 150)
         assert decorator in source[start:idx]
 
+    assert_decorator(admin_source, "def process_claim(", '@feat_shell("FEAT-ADMN-001")')
     assert_decorator(admin_source, "def resolve_issue(", "@feat_shell(\"FEAT-ADMN-001\")")
     assert_decorator(admin_source, "def passkey_auth_finish(", "@feat_shell(\"FEAT-ADMN-001\")")
     assert_decorator(system_admin_source, "def resolve_escalated_issue(", "@feat_shell(\"FEAT-OPS-001\")")

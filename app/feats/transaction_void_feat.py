@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import InsurancePolicy, RentPayment, StoreItem, StudentInsurance, StudentItem, Transaction, TransactionStatus
-from app.services import ledger_service
+from app.models import InsurancePolicy, InsuranceEnrollment, StoreItem, StudentItem, Transaction, TransactionStatus
+from app.services import ledger_service, obligations_service
 from app.utils.seat_scope import get_seat_ids_for_student_join, seat_scoped_filter
 from app.utils.time import ensure_utc, utc_now
 from app.utils.transaction_idempotency import void_refund_key
@@ -129,17 +129,23 @@ def _void_rent_payment(tx: Transaction) -> None:
     if not tx.class_id:
         raise ValueError("Transaction is missing class scope (class_id) and cannot be voided safely.")
     
-    rent_payments = RentPayment.query.filter(
-        RentPayment.seat_id == tx.seat_id,
-        RentPayment.class_id == tx.class_id,
-        RentPayment.amount_paid == abs(tx.amount or Decimal('0.00')),
-    ).all()
-    
+    rent_payments = obligations_service.get_paid_rent_assessments_for_cycle(
+        tx.class_id,
+        tx.timestamp.month if tx.timestamp else utc_now().month,
+        tx.timestamp.year if tx.timestamp else utc_now().year,
+        seat_ids=[tx.seat_id],
+    )
+
+    rent_payments = [
+        payment for payment in rent_payments
+        if payment.satisfaction and payment.satisfaction.amount_paid == abs(tx.amount or Decimal('0.00'))
+    ]
+
     if rent_payments:
         tx_ts = ensure_utc(tx.timestamp) if tx.timestamp else utc_now()
         matched_rent_payment = min(
             rent_payments,
-            key=lambda p: abs((ensure_utc(p.payment_date or tx.timestamp or utc_now()) - tx_ts).total_seconds())
+            key=lambda p: abs((ensure_utc(p.satisfaction.satisfied_at or tx.timestamp or utc_now()) - tx_ts).total_seconds())
         )
         db.session.delete(matched_rent_payment)
 
@@ -152,11 +158,11 @@ def _void_insurance_premium(tx: Transaction) -> None:
         raise ValueError("Transaction is missing class scope (class_id) and cannot be voided safely.")
 
     enrollments_query = (
-        StudentInsurance.query
-        .join(InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id)
+        InsuranceEnrollment.query
+        .join(InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id)
         .filter(
-            StudentInsurance.seat_id == tx.seat_id,
-            StudentInsurance.class_id == tx.class_id,
+            InsuranceEnrollment.seat_id == tx.seat_id,
+            InsuranceEnrollment.class_id == tx.class_id,
         )
     )
     if policy_title:

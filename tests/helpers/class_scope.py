@@ -54,6 +54,7 @@ def create_class_scope(
     claimed = teacher_block_claimed or create_claimed_teacher_block
 
     resolved_teacher_user_id = _ensure_user(teacher_user_id, role="teacher")
+    resolved_teacher_admin_id = getattr(teacher, "id", None) or resolved_teacher_user_id
     class_row = ClassEconomy(
         class_id=str(uuid4()),
         join_code=join_code,
@@ -70,7 +71,7 @@ def create_class_scope(
         db.session.add(ClassMembership(
             class_id=class_row.class_id,
             join_code=join_code,
-            admin_id=resolved_teacher_user_id,
+            admin_id=resolved_teacher_admin_id,
             role="admin",
         ))
         t_seat = Seat(

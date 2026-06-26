@@ -8,7 +8,7 @@ from app.models import (
     Admin, IdentityProfile, ClassEconomy, ClassMembership, Transaction, StudentBlock,
     TapEvent, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
     AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
-    StudentInsurance, RentPayment, Announcement, StoreItemBlock, StoreItem,
+    InsuranceEnrollment, RentPayment, Announcement, StoreItemBlock, StoreItem,
     Seat, Student, StudentTeacher, PayrollSettings, RentSettings,
     IssueCategory, InsurancePolicy, InsurancePolicyBlock
 )
