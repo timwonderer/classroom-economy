@@ -121,6 +121,17 @@ def test_admin_claim_route_is_not_direct_ledger_authority():
     assert "execute_insurance_claim_resolution(" in source
 
 
+def test_dead_route_mutations_are_feat_owned():
+    admin_source = Path("app/routes/admin.py").read_text()
+    system_admin_source = Path("app/routes/system_admin.py").read_text()
+
+    assert "@feat_shell(\"FEAT-ADMN-001\")" in admin_source[admin_source.index("def process_claim(") - 150:admin_source.index("def process_claim(")]
+    assert "@feat_shell(\"FEAT-ADMN-001\")" in admin_source[admin_source.index("def resolve_issue(") - 150:admin_source.index("def resolve_issue(")]
+    assert "@feat_shell(\"FEAT-ADMN-001\")" in admin_source[admin_source.index("def passkey_auth_finish(") - 150:admin_source.index("def passkey_auth_finish(")]
+    assert "@feat_shell(\"FEAT-OPS-001\")" in system_admin_source[system_admin_source.index("def resolve_escalated_issue(") - 150:system_admin_source.index("def resolve_escalated_issue(")]
+    assert "@feat_shell(\"FEAT-OPS-001\")" in system_admin_source[system_admin_source.index("def passkey_auth_finish(") - 150:system_admin_source.index("def passkey_auth_finish(")]
+
+
 def test_admin_get_routes_remain_read_only():
     admin_source = Path("app/routes/admin.py").read_text()
     banking_start = admin_source.index("def banking():")
