@@ -3237,30 +3237,16 @@ def rent():
 
     period_status = {}
 
-    # Get all payments that COVER the current period (pre-paid system)
-    all_payments_for_period = RentPayment.query.filter(
-        RentPayment.seat_id == seat_id,
-        RentPayment.class_id == class_id,
-        RentPayment.coverage_month == coverage_month,
-        RentPayment.coverage_year == coverage_year,
-    ).all()
+    from app.services.obligations_service import get_paid_rent_assessments_for_cycle
+    payments = get_paid_rent_assessments_for_cycle(
+        class_id,
+        coverage_month,
+        coverage_year,
+        seat_ids=[seat_id],
+    )
+    payments = [payment for payment in payments if payment.satisfaction is not None]
 
-    # Filter out payments where the corresponding transaction was voided
-    payments = []
-    for payment in all_payments_for_period:
-        txn = Transaction.query.filter(
-            Transaction.seat_id == seat_id,
-            Transaction.class_id == class_id,
-            Transaction.type == 'Rent Payment',
-            Transaction.timestamp >= payment.payment_date - timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-            Transaction.timestamp <= payment.payment_date + timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-            Transaction.amount == -payment.amount_paid
-        ).first()
-
-        if txn and not txn.is_void:
-            payments.append(payment)
-
-    total_paid = sum(p.amount_paid for p in payments) if payments else Decimal('0.00')
+    total_paid = sum((p.satisfaction.amount_paid for p in payments), Decimal('0.00'))
 
     paid_by_grace = _total_paid_by_grace(payments, grace_end_date_for_status)
     late_fee = Decimal('0.00')
@@ -3291,12 +3277,8 @@ def rent():
     checking_balance, savings_balance = get_available_balances(seat_id, class_id)
 
     # Get payment history for the current class only
-    payment_history = RentPayment.query.filter(
-        RentPayment.seat_id == seat_id,
-        RentPayment.class_id == class_id,
-    ).order_by(
-        RentPayment.payment_date.desc()
-    ).limit(24).all()  # Increased to show more history with multiple periods
+    from app.services.obligations_service import get_rent_payment_history
+    payment_history = get_rent_payment_history(seat_id, class_id, limit=24)
 
     waiver_history = []
     if settings:
@@ -3310,11 +3292,11 @@ def rent():
         payment_history_rows.append({
             'period_month': payment.period_month,
             'period_year': payment.period_year,
-            'amount_paid': payment.amount_paid,
-            'recorded_at': payment.payment_date,
+            'amount_paid': payment.satisfaction.amount_paid if payment.satisfaction else Decimal('0.00'),
+            'recorded_at': payment.satisfaction.satisfied_at if payment.satisfaction else payment.assessed_at,
             'status_text': (
-                f"Paid late with fee of ${payment.late_fee_charged:.2f}"
-                if payment.was_late else "On Time"
+                f"Paid late with fee of ${payment.satisfaction.late_fee_charged:.2f}"
+                if payment.satisfaction and payment.satisfaction.was_late else "On Time"
             ),
             'entry_type': 'payment',
         })
