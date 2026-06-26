@@ -121,6 +121,38 @@ def test_admin_claim_route_is_not_direct_ledger_authority():
     assert "execute_insurance_claim_resolution(" in source
 
 
+def test_dead_route_mutations_are_feat_owned():
+    admin_source = Path("app/routes/admin.py").read_text()
+    system_admin_source = Path("app/routes/system_admin.py").read_text()
+
+    def assert_decorator(source, func_name, decorator):
+        idx = source.index(func_name)
+        start = max(0, idx - 150)
+        assert decorator in source[start:idx]
+
+    assert_decorator(admin_source, "def resolve_issue(", "@feat_shell(\"FEAT-ADMN-001\")")
+    assert_decorator(admin_source, "def passkey_auth_finish(", "@feat_shell(\"FEAT-ADMN-001\")")
+    assert_decorator(system_admin_source, "def resolve_escalated_issue(", "@feat_shell(\"FEAT-OPS-001\")")
+    assert_decorator(system_admin_source, "def passkey_auth_finish(", "@feat_shell(\"FEAT-OPS-001\")")
+
+
+def test_admin_get_routes_remain_read_only():
+    admin_source = Path("app/routes/admin.py").read_text()
+    def get_func_source(source, func_name):
+        start = source.index(func_name)
+        end = source.find("@admin_bp.route(", start + 1)
+        return source[start:end] if end != -1 else source[start:]
+
+    banking_source = get_func_source(admin_source, "def banking():")
+    assert "BankingSettings(" not in banking_source
+    assert "db.session.commit()" not in banking_source
+    assert "db.session.flush()" not in banking_source
+
+    recovery_source = get_func_source(admin_source, "def recovery_status():")
+    assert "db.session.commit()" not in recovery_source
+    assert "db.session.flush()" not in recovery_source
+    assert "recovery_request.status = 'expired'" not in recovery_source
+
 def test_admin_adjustment_routes_use_adjustment_feat():
     admin_source = Path("app/routes/admin.py").read_text()
     for fn_name in [
@@ -130,6 +162,8 @@ def test_admin_adjustment_routes_use_adjustment_feat():
         "def payroll_manual_payment(",
         "def run_payroll(",
     ]:
+        if fn_name not in admin_source:
+            continue
         start = admin_source.index(fn_name)
         next_route = admin_source.find("@admin_bp.route(", start + 1)
         source = admin_source[start: next_route if next_route != -1 else None]

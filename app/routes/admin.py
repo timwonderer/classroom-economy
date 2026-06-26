@@ -8093,17 +8093,21 @@ def process_claim(claim_id):
             flash("Claim has been rejected.", "warning")
 
         try:
-            execute_insurance_claim_resolution(
-                scope=scope,
-                claim=claim,
-                enrollment=enrollment,
-                new_status=new_status,
-                teacher_notes=form.teacher_notes.data,
-                rejection_reason=form.rejection_reason.data,
-                processed_by_user_id=session.get('admin_id'),
-                processed_by_seat_id=scope.seat_id,
-                approved_amount=approved_amount,
-            )
+            with FEATContext(
+                "FEAT-ADMN-001",
+                idempotency_key=f"feat:claim-resolution:{claim.id}:{new_status}",
+            ):
+                execute_insurance_claim_resolution(
+                    scope=scope,
+                    claim=claim,
+                    enrollment=enrollment,
+                    new_status=new_status,
+                    teacher_notes=form.teacher_notes.data,
+                    rejection_reason=form.rejection_reason.data,
+                    processed_by_user_id=session.get('admin_id'),
+                    processed_by_seat_id=scope.seat_id,
+                    approved_amount=approved_amount,
+                )
             if requires_payout:
                 student_name = enrollment.seat.display_first_name if enrollment.seat else "the student"
                 student_initial = enrollment.seat.display_last_initial if enrollment.seat else ""
@@ -12682,6 +12686,7 @@ def passkey_auth_start():
 
 
 @admin_bp.route('/passkey/auth/finish', methods=['POST'])
+@feat_shell("FEAT-ADMN-001")
 @limiter.limit("20 per minute")
 def passkey_auth_finish():
     """
@@ -12905,6 +12910,7 @@ def view_issue(issue_ref):
 
 
 @admin_bp.route('/issues/<issue_ref>/resolve', methods=['POST'])
+@feat_shell("FEAT-ADMN-001")
 @admin_required
 def resolve_issue(issue_ref):
     """
