@@ -2068,8 +2068,8 @@ Constraint:
 - Wave impact:
   - closes the previously open insurance-claim resolution canonical write-path
     gap
-  - Wave 7 remains open for legacy-read cutover, parity validation, and
-    transitional/legacy obligation-table removal
+- Wave 7 closeout is complete for the canonical obligations migration slice;
+  follow-on table-drop cleanup is tracked separately
 
 ---
 

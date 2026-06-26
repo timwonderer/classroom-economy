@@ -533,9 +533,12 @@ class Student(db.Model):
         Returns:
             float: The total earnings rounded to 2 decimal places
         """
+        seat_id = None
+        if self.identity_profile and self.identity_profile.seat_id:
+            seat_id = self.identity_profile.seat_id
+
         if class_id:
-            total = db.session.query(db.func.sum(Transaction.amount)).join(Seat, Transaction.seat_id == Seat.id).filter(
-                Seat.user_id == self.id,
+            total = db.session.query(db.func.sum(Transaction.amount)).filter(
                 Transaction.class_id == class_id,
                 Transaction.amount > 0,
                 Transaction.is_void == False,
@@ -545,8 +548,7 @@ class Student(db.Model):
 
         if join_code:
             # Legacy scoping by join_code (period-level isolation)
-            total = db.session.query(db.func.sum(Transaction.amount)).join(Seat, Transaction.seat_id == Seat.id).filter(
-                Seat.user_id == self.id,
+            total = db.session.query(db.func.sum(Transaction.amount)).filter(
                 Transaction.join_code == join_code,
                 Transaction.amount > 0,
                 Transaction.is_void == False,
@@ -3517,9 +3519,16 @@ def _normalize_initial(value):
 
 
 def _sync_identity_profile(session, entity, profile_type):
+    profile = entity.identity_profile
+
     first_name = (entity.first_name or "").strip() if entity.first_name else None
-    # Legacy Student only stores last_initial; use it as last_name for the profile
+    if not first_name and profile is not None and getattr(profile, "first_name", None):
+        first_name = str(profile.first_name).strip() or None
+
+    # Legacy Student only stores last_initial; use it as last_name for the profile.
     last_name = _normalize_initial(entity.last_initial) if hasattr(entity, 'last_initial') else None
+    if not last_name and profile is not None and getattr(profile, "last_name", None):
+        last_name = _normalize_initial(profile.last_name)
 
     # Use placeholder values if first_name or last_name is missing
     # This prevents constraint violations when IdentityProfile can't sync
@@ -3528,7 +3537,6 @@ def _sync_identity_profile(session, entity, profile_type):
     if not last_name:
         last_name = "?"
 
-    profile = entity.identity_profile
     if profile is None and getattr(entity, "identity_id", None):
         profile = session.get(IdentityProfile, entity.identity_id)
         if profile:
@@ -3547,6 +3555,12 @@ def _sync_identity_profile(session, entity, profile_type):
         profile.last_name = last_name
         if not profile.profile_type:
             profile.profile_type = profile_type
+
+    if isinstance(entity, Student):
+        if not getattr(entity, "first_name", None):
+            entity.first_name = first_name
+        if not getattr(entity, "last_initial", None):
+            entity.last_initial = last_name
 
 
 @event.listens_for(Session, "before_flush")

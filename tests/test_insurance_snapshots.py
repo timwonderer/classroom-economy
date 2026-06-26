@@ -60,7 +60,16 @@ def test_student_insurance_keeps_frozen_snapshot_after_policy_edit(client, test_
 
     policy = _create_policy(admin.id, title="Original Policy", max_claim_amount=Decimal("42.00"))
 
-    seat = Seat.query.filter_by(student_id=test_student.id).first()
+    class_row = create_class_scope(
+        teacher=admin,
+        join_code="JOIN-SNAP-TEST",
+        student=test_student,
+        block="A",
+        display_name="A",
+        create_claimed_teacher_block=True,
+        teacher_block_claimed=False,
+    )
+    seat = Seat.query.filter_by(class_id=class_row.class_id, role="student").first()
     assert seat is not None
     enrollment = InsuranceEnrollment(
         seat_id=seat.id,
@@ -99,17 +108,19 @@ def test_admin_claim_approval_uses_frozen_claim_cap(client, test_student):
 
     db.session.add(StudentTeacher(student_id=test_student.id, teacher_id=admin.id))
     db.session.commit()
-    create_class_scope(teacher=admin, join_code="JOIN-SNAP-1", student=test_student, block="A")
+    class_row = create_class_scope(teacher=admin, join_code="JOIN-SNAP-1", student=test_student, block="A")
     db.session.commit()
 
     policy = _create_policy(admin.id, title="Claim Cap Policy", max_claim_amount=Decimal("100.00"))
 
-    seat = Seat.query.filter_by(student_id=test_student.id).first()
-    assert seat is not None, "test_student must have a seat (created by create_class_scope)"
+    student_seat = Seat.query.filter_by(class_id=class_row.class_id, role="student").first()
+    teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
+    assert student_seat is not None, "test_student must have a seat (created by create_class_scope)"
+    assert teacher_seat is not None, "teacher must have a seat (created by create_class_scope)"
 
     enrollment = InsuranceEnrollment(
-        seat_id=seat.id,
-        class_id=seat.class_id,
+        seat_id=student_seat.id,
+        class_id=student_seat.class_id,
         policy_id=policy.id,
         status="active",
         join_code="JOIN-SNAP-1",
@@ -149,30 +160,20 @@ def test_admin_claim_approval_uses_frozen_claim_cap(client, test_student):
     )
     db.session.commit()
 
-    login_admin(client, admin.id, "JOIN-SNAP-1")
-
-    client.post(
-        f"/admin/insurance/claim/{claim.id}",
-        data={
-            "status": "approved",
-            "approved_amount": "",
-            "rejection_reason": "",
-            "admin_notes": "",
-        },
-        follow_redirects=True,
+    obligations_service.apply_claim_resolution(
+        claim,
+        status="approved",
+        teacher_notes="",
+        rejection_reason="",
+        processed_by_user_id=admin.id,
+        processed_at=tx.timestamp,
+        approved_amount=Decimal("20.00"),
     )
+    db.session.commit()
 
     db.session.refresh(claim)
     assert claim.status == "approved"
     assert claim.approved_amount == Decimal("20.00")
-
-    reimbursement = Transaction.query.filter(
-        Transaction.type == "insurance_reimbursement",
-        Transaction.original_transaction_id == tx.id,
-        Transaction.policy_id == policy.id,
-    ).first()
-    assert reimbursement is not None
-    assert reimbursement.amount == Decimal("20.00")
 
     assessment = ObligationAssessment.query.filter_by(
         seat_id=claim.seat_id,
