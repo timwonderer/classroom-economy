@@ -24,7 +24,7 @@ from dateutil.relativedelta import relativedelta
 
 from app.extensions import db, limiter
 from app.models import (
-    Student, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StudentItem,
+    Student, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StorePurchase,
     RentSettings, RentPayment, InsurancePolicy, InsuranceEnrollment, InsuranceClaim,
     BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole,
     ClassMembership, ClassEconomy, IdentityProfile, _quantize_currency
@@ -983,14 +983,17 @@ def dashboard():
         class_id=scope.class_id,
     ).order_by(Transaction.timestamp.desc()).all()
 
-    # FIX: Filter student items by current teacher's store
-    student_items = student.items.join(
-        StoreItem, StudentItem.store_item_id == StoreItem.id
-    ).filter(
-        StudentItem.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired']),
-        StudentItem.class_id == scope.class_id,
-        StudentItem.seat_id == scope.seat_id,
-    ).order_by(StudentItem.purchase_date.desc()).all()
+    # Canonical store purchases scoped to the active seat/class.
+    student_items = (
+        StorePurchase.query
+        .filter(
+            StorePurchase.class_id == scope.class_id,
+            StorePurchase.seat_id == scope.seat_id,
+            StorePurchase.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired']),
+        )
+        .order_by(StorePurchase.purchased_at.desc())
+        .all()
+    )
 
     checking_transactions = [tx for tx in transactions if tx.account_type == 'checking']
     savings_transactions = [tx for tx in transactions if tx.account_type == 'savings']
@@ -2222,13 +2225,16 @@ def shop():
         )
     items = items_query.order_by(StoreItem.name).all()
 
-    # FIX: Fetch student's purchased items scoped to current teacher's store
-    student_items = student.items.join(
-        StoreItem, StudentItem.store_item_id == StoreItem.id
-    ).filter(
-        StudentItem.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired']),
-        StudentItem.join_code == join_code,
-    ).order_by(StudentItem.purchase_date.desc()).all()
+    student_items = (
+        StorePurchase.query
+        .filter(
+            StorePurchase.class_id == class_id,
+            StorePurchase.seat_id == seat.id,
+            StorePurchase.status.in_(['purchased', 'pending', 'processing', 'redeemed', 'completed', 'expired']),
+        )
+        .order_by(StorePurchase.purchased_at.desc())
+        .all()
+    )
 
     # Check if student has paid rent this month and get per-period rent item IDs
     from app.models import RentSettings, RentPayment, RentItem
@@ -2291,20 +2297,18 @@ def shop():
     rent_free_uses = {}  # {store_item_id: uses_remaining or -1 for unlimited}
     if student:
         now_utc = utc_now()
-        rent_linked_items_query = StudentItem.query.filter(
-            StudentItem.student_id == student.id,
-            StudentItem.uses_remaining != None,
+        rent_linked_items_query = StorePurchase.query.filter(
+            StorePurchase.seat_id == seat.id,
+            StorePurchase.uses_remaining != None,
             db.or_(
-                StudentItem.uses_remaining > 0,
-                StudentItem.uses_remaining == -1
+                StorePurchase.uses_remaining > 0,
+                StorePurchase.uses_remaining == -1
             ),
             db.or_(
-                StudentItem.expiry_date.is_(None),
-                StudentItem.expiry_date > now_utc
+                StorePurchase.expiry_date.is_(None),
+                StorePurchase.expiry_date > now_utc
             )
         )
-        rent_linked_items_query = rent_linked_items_query.filter(StudentItem.join_code == join_code)
-
         rent_linked_items = rent_linked_items_query.all()
         for si in rent_linked_items:
             if si.store_item_id:
@@ -2314,14 +2318,13 @@ def shop():
         # but are missing grant rows (legacy/edge-state). Do not override items
         # that already have an explicit grant record (including exhausted = 0).
         if has_paid_rent and per_use_limit_by_store_id:
-            existing_per_use_rows = StudentItem.query.filter(
-                StudentItem.student_id == student.id,
-                StudentItem.join_code == join_code,
-                StudentItem.store_item_id.in_(list(per_use_limit_by_store_id.keys())),
-                StudentItem.uses_remaining.isnot(None),
+            existing_per_use_rows = StorePurchase.query.filter(
+                StorePurchase.seat_id == seat.id,
+                StorePurchase.store_item_id.in_(list(per_use_limit_by_store_id.keys())),
+                StorePurchase.uses_remaining.isnot(None),
                 db.or_(
-                    StudentItem.expiry_date.is_(None),
-                    StudentItem.expiry_date > now_utc
+                    StorePurchase.expiry_date.is_(None),
+                    StorePurchase.expiry_date > now_utc
                 )
             ).all()
             existing_per_use_ids = {row.store_item_id for row in existing_per_use_rows if row.store_item_id}
@@ -2352,19 +2355,20 @@ def shop():
     if collective_item_ids and join_code:
         progress_rows = (
             db.session.query(
-                StudentItem.store_item_id,
-                db.func.count(db.distinct(StudentItem.student_id)).label('student_count'),
+                StorePurchase.store_item_id,
+                db.func.count(db.distinct(StorePurchase.seat_id)).label('student_count'),
             )
-            .join(Student, StudentItem.student_id == Student.id)
-            .join(StoreItem, StudentItem.store_item_id == StoreItem.id)
+            .join(Seat, StorePurchase.seat_id == Seat.id)
+            .join(Student, Seat.student_id == Student.id)
+            .join(StoreItem, StorePurchase.store_item_id == StoreItem.id)
             .filter(
-                StudentItem.store_item_id.in_(collective_item_ids),
-                StudentItem.join_code == join_code,
-                StudentItem.status.in_(['pending', 'processing', 'purchased', 'redeemed', 'completed']),
+                StorePurchase.store_item_id.in_(collective_item_ids),
+                StorePurchase.class_id == scope.class_id if 'scope' in locals() else StorePurchase.class_id == class_id,
+                StorePurchase.status.in_(['pending', 'processing', 'purchased', 'redeemed', 'completed']),
                 Student.is_teacher == False,  # Exclude teacher purchases from progress
-                StudentItem.collective_goal_instance_code == StoreItem.collective_goal_instance_code,
+                StorePurchase.collective_goal_instance_code == StoreItem.collective_goal_instance_code,
             )
-            .group_by(StudentItem.store_item_id)
+            .group_by(StorePurchase.store_item_id)
             .all()
         )
         progress_counts = {row.store_item_id: int(row.student_count or 0) for row in progress_rows}

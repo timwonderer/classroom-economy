@@ -57,13 +57,13 @@ from app.extensions import db, limiter
 from app.feats.base import feat_shell, FEATContext, InvariantViolation
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    Student, Admin, ClassEconomy, Transaction, TransactionStatus, TapEvent, AttendanceSession, StoreItem, StudentItem,
+    Student, Admin, ClassEconomy, Transaction, TransactionStatus, TapEvent, AttendanceSession, StoreItem, StorePurchase,
     InsurancePolicy, InsurancePolicyBlock, RentItem, RentPayment, RentSettings, StoreItemBlock,
     InsuranceEnrollment, InsuranceClaim, HallPassLog, HallPassSettings, PayrollSettings, SavedAdjustment,
     BankingSettings,
     UserReport, FeatureSettings, StudentBlock,
     Announcement, RedemptionAuditLog, RedemptionAuditAction,
-    RedemptionAuditSource, Issue, IssueStatusHistory, IssueResolutionAction, AnalyticsSnapshot, AnalyticsEvent, Seat,
+    RedemptionAuditSource, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, Issue, IssueStatusHistory, IssueResolutionAction, AnalyticsSnapshot, AnalyticsEvent, Seat,
     BalanceCache, ClassMembership, ClassEconomy, EconomySnapshot, User, UserRole, _quantize_currency,
     ObligationAssessment,
     SeatAttendanceState, TapEventReasonCode, IdentityProfile,
@@ -1261,7 +1261,7 @@ def _hard_delete_class_scope(class_id, teacher_id):
         ("student_blocks", StudentBlock),
         ("tap_events", TapEvent),
         ("hall_pass_logs", HallPassLog),
-        ("student_items", StudentItem),
+        ("student_items", StorePurchase),
         ("analytics_events", AnalyticsEvent),
         ("analytics_snapshots", AnalyticsSnapshot),
         ("issues", Issue),
@@ -1292,9 +1292,9 @@ def _hard_delete_class_scope(class_id, teacher_id):
         .distinct()
         .all()
     ]
-    student_item_ids_subq = (
-        db.session.query(StudentItem.id)
-        .filter(StudentItem.class_id == class_id)
+    store_purchase_ids_subq = (
+        db.session.query(StorePurchase.id)
+        .filter(StorePurchase.class_id == class_id)
         .subquery()
     )
     insurance_ids_subq = (
@@ -1333,10 +1333,10 @@ def _hard_delete_class_scope(class_id, teacher_id):
             raise InvariantViolation(message)
 
     # Class-scoped records
-    RedemptionAuditLog.query.filter(
-        RedemptionAuditLog.student_item_id.in_(sa.select(student_item_ids_subq))
+    RedemptionEvent.query.filter(
+        RedemptionEvent.purchase_id.in_(sa.select(store_purchase_ids_subq))
     ).delete(synchronize_session=False)
-    StudentItem.query.filter(StudentItem.class_id == class_id).delete(synchronize_session=False)
+    StorePurchase.query.filter(StorePurchase.class_id == class_id).delete(synchronize_session=False)
     TapEvent.query.filter(TapEvent.class_id == class_id).delete(synchronize_session=False)
     HallPassLog.query.filter(HallPassLog.class_id == class_id).delete(synchronize_session=False)
     RentPayment.query.filter(RentPayment.class_id == class_id).delete(synchronize_session=False)
@@ -1386,16 +1386,16 @@ def _hard_delete_class_scope(class_id, teacher_id):
             )
             .subquery()
         )
-        class_item_student_ids = (
-            db.session.query(StudentItem.id)
-            .filter(StudentItem.store_item_id.in_(sa.select(deletable_store_item_ids)))
+        class_item_purchase_ids = (
+            db.session.query(StorePurchase.id)
+            .filter(StorePurchase.store_item_id.in_(sa.select(deletable_store_item_ids)))
             .subquery()
         )
-        RedemptionAuditLog.query.filter(
-            RedemptionAuditLog.student_item_id.in_(sa.select(class_item_student_ids))
+        RedemptionEvent.query.filter(
+            RedemptionEvent.purchase_id.in_(sa.select(class_item_purchase_ids))
         ).delete(synchronize_session=False)
-        StudentItem.query.filter(
-            StudentItem.store_item_id.in_(sa.select(deletable_store_item_ids))
+        StorePurchase.query.filter(
+            StorePurchase.store_item_id.in_(sa.select(deletable_store_item_ids))
         ).delete(synchronize_session=False)
         StoreItem.query.filter(
             StoreItem.id.in_(sa.select(deletable_store_item_ids))
@@ -1539,8 +1539,8 @@ def _delete_teacher_recovery_and_credentials_rows(teacher_id):
 def _delete_teacher_store_rows(teacher_id):
     """Delete store rows owned by teacher, including dependent student items."""
     store_item_ids_subq = db.session.query(StoreItem.id).filter_by(teacher_id=teacher_id).subquery()
-    StudentItem.query.filter(
-        StudentItem.store_item_id.in_(sa.select(store_item_ids_subq))
+    StorePurchase.query.filter(
+        StorePurchase.store_item_id.in_(sa.select(store_item_ids_subq))
     ).delete(synchronize_session=False)
     StoreItem.query.filter_by(teacher_id=teacher_id).delete(synchronize_session=False)
 
@@ -2988,10 +2988,11 @@ def dashboard():
 
     # Pending actions - count all types of pending approvals
     pending_redemptions_count = (
-        StudentItem.query
-        .join(Student, StudentItem.student_id == Student.id)
+        StorePurchase.query
+        .join(Seat, StorePurchase.seat_id == Seat.id)
+        .join(Student, Seat.student_id == Student.id)
         .filter(Student.id.in_(sa.select(student_ids_subq)))
-        .filter(StudentItem.status == 'processing')
+        .filter(StorePurchase.status == 'processing')
         .count()
     )
     pending_hall_passes_count = (
@@ -3015,11 +3016,12 @@ def dashboard():
 
     # Get recent items for each pending type (limited for display)
     recent_redemptions = (
-        StudentItem.query
-        .join(Student, StudentItem.student_id == Student.id)
+        StorePurchase.query
+        .join(Seat, StorePurchase.seat_id == Seat.id)
+        .join(Student, Seat.student_id == Student.id)
         .filter(Student.id.in_(sa.select(student_ids_subq)))
-        .filter(StudentItem.status == 'processing')
-        .order_by(StudentItem.redemption_date.desc())
+        .filter(StorePurchase.status == 'processing')
+        .order_by(StorePurchase.purchased_at.desc())
         .limit(5)
         .all()
     )
@@ -4219,21 +4221,32 @@ def _build_rent_privileges_by_block(current_admin, blocks, join_codes_by_block, 
                         if block_class_id == class_id:
                             paid_student_ids_by_block[block].add(assessment.seat.user_id)
 
-    # 5. Fetch all relevant StudentItems in a single query each
+    # 5. Fetch all relevant StorePurchase rows in a single query each
     items_by_student = defaultdict(set)
     if all_store_item_ids:
-        student_items = StudentItem.query.filter(
-            StudentItem.student_id.in_(list(all_student_ids)),
-            StudentItem.store_item_id.in_(list(all_store_item_ids)),
-            StudentItem.status.in_(['purchased', 'redeemed']),
-            or_(
-                StudentItem.expiry_date.is_(None),
-                StudentItem.expiry_date > now
+        student_items = (
+            StorePurchase.query.filter(
+                StorePurchase.seat_id.in_(
+                    sa.select(Seat.id).where(Seat.user_id.in_(list(all_student_ids)))
+                ),
+                StorePurchase.store_item_id.in_(list(all_store_item_ids)),
+                StorePurchase.status.in_(['purchased', 'redeemed']),
+                or_(
+                    StorePurchase.expiry_date.is_(None),
+                    StorePurchase.expiry_date > now
+                )
             )
-        ).with_entities(StudentItem.student_id, StudentItem.store_item_id).all()
+            .with_entities(StorePurchase.seat_id, StorePurchase.store_item_id)
+            .all()
+        )
 
-        for student_id, store_item_id in student_items:
-            items_by_student[student_id].add(store_item_id)
+        seat_to_student = {
+            seat.id: seat.user_id for seat in class_seats if seat.user_id is not None
+        }
+        for seat_id, store_item_id in student_items:
+            student_id = seat_to_student.get(seat_id)
+            if student_id is not None:
+                items_by_student[student_id].add(store_item_id)
 
     # 6. Process the data in memory within the loop
     for block in target_blocks:
@@ -4328,17 +4341,19 @@ def _get_rent_privileges_for_student(student, class_id, join_code):
     frozen_privileges = get_frozen_privilege_items(active_version)
     store_item_ids = [item['store_item_id'] for item in frozen_privileges if item.get('store_item_id')]
     items_by_student = set()
-    if store_item_ids:
-        student_items = StudentItem.query.filter(
-            StudentItem.student_id == student.id,
-            StudentItem.store_item_id.in_(store_item_ids),
-            StudentItem.status.in_(['purchased', 'redeemed']),
-            db.or_(
-                StudentItem.expiry_date.is_(None),
-                StudentItem.expiry_date > now
-            )
-        ).all()
-        items_by_student = {si.store_item_id for si in student_items}
+    if store_item_ids and student.id is not None:
+        seat = Seat.query.filter_by(student_id=student.id, class_id=class_id).first()
+        if seat:
+            student_items = StorePurchase.query.filter(
+                StorePurchase.seat_id == seat.id,
+                StorePurchase.store_item_id.in_(store_item_ids),
+                StorePurchase.status.in_(['purchased', 'redeemed']),
+                db.or_(
+                    StorePurchase.expiry_date.is_(None),
+                    StorePurchase.expiry_date > now
+                )
+            ).all()
+            items_by_student = {si.store_item_id for si in student_items}
 
     for frozen_item in frozen_privileges:
         source = None
@@ -4519,7 +4534,7 @@ def students():
                 }
 
     # Calculate rent privileges for each student in each block (batched)
-    from app.models import RentItem, RentSettings, RentPayment, StudentItem
+    from app.models import RentItem, RentSettings, RentPayment, StorePurchase
     student_rent_privileges = _build_rent_privileges_by_block(current_admin, blocks, join_codes_by_block, students_by_block)
 
     return render_template('admin_students.html',
@@ -4701,15 +4716,20 @@ def student_detail_public(student_public_id):
     )
 
     transactions_query = Transaction.query.filter(tx_scope)
-    student_items_query = student.items
     latest_tap_event_query = TapEvent.query.filter(tap_scope)
     if join_code:
         transactions_query = transactions_query.filter(Transaction.join_code == join_code)
-        student_items_query = student_items_query.filter(StudentItem.join_code == join_code)
         latest_tap_event_query = latest_tap_event_query.filter(TapEvent.join_code == join_code)
 
     transactions = transactions_query.order_by(Transaction.timestamp.desc()).all()
-    student_items = student_items_query.order_by(StudentItem.purchase_date.desc()).all()
+    store_purchases = (
+        StorePurchase.query
+        .join(Seat, StorePurchase.seat_id == Seat.id)
+        .filter(Seat.student_id == student.id)
+    )
+    if join_code:
+        store_purchases = store_purchases.filter(StorePurchase.class_id == class_id)
+    store_purchases = store_purchases.order_by(StorePurchase.purchased_at.desc()).all()
     # Fetch most recent TapEvent for this student
     latest_tap_event = latest_tap_event_query.order_by(TapEvent.timestamp.desc()).first()
 
@@ -4789,7 +4809,7 @@ def student_detail_public(student_public_id):
                          reset_code_is_active=reset_code_is_active,
                          join_codes=join_codes,
                          transactions=transactions,
-                         student_items=student_items,
+                         student_items=store_purchases,
                          latest_tap_event=latest_tap_event,
                          active_insurance=active_insurance,
                          blocks=blocks,
@@ -5867,38 +5887,40 @@ def store_management():
     ]
 
     # Get store statistics for overview tab
-    from app.models import StudentItem
     total_items = len(items)
     active_items = len([i for i in items if i.is_active])
     total_purchases = (
-        StudentItem.query
-        .join(Student, StudentItem.student_id == Student.id)
+        StorePurchase.query
+        .join(Seat, StorePurchase.seat_id == Seat.id)
+        .join(Student, Seat.student_id == Student.id)
         .filter(Student.id.in_(sa.select(student_ids_subq)))
-        .filter(StudentItem.join_code == selected_join_code)
+        .filter(StorePurchase.class_id == selected_scope['class_id'])
         .count()
     )
 
     # Get pending redemption requests (items awaiting teacher approval)
     pending_redemptions = (
-        StudentItem.query
-        .options(joinedload(StudentItem.student), joinedload(StudentItem.store_item))
-        .join(Student, StudentItem.student_id == Student.id)
+        StorePurchase.query
+        .options(joinedload(StorePurchase.seat), joinedload(StorePurchase.store_item))
+        .join(Seat, StorePurchase.seat_id == Seat.id)
+        .join(Student, Seat.student_id == Student.id)
         .filter(Student.id.in_(sa.select(student_ids_subq)))
-        .filter(StudentItem.join_code == selected_join_code)
-        .filter(StudentItem.status == 'processing')
-        .order_by(StudentItem.redemption_date.desc())
+        .filter(StorePurchase.class_id == selected_scope['class_id'])
+        .filter(StorePurchase.status == 'processing')
+        .order_by(StorePurchase.purchased_at.desc())
         .limit(10)
         .all()
     )
 
     # Get recent purchases (all statuses, ordered by purchase date)
     recent_purchases = (
-        StudentItem.query
-        .options(joinedload(StudentItem.student), joinedload(StudentItem.store_item))
-        .join(Student, StudentItem.student_id == Student.id)
+        StorePurchase.query
+        .options(joinedload(StorePurchase.seat), joinedload(StorePurchase.store_item))
+        .join(Seat, StorePurchase.seat_id == Seat.id)
+        .join(Student, Seat.student_id == Student.id)
         .filter(Student.id.in_(sa.select(student_ids_subq)))
-        .filter(StudentItem.join_code == selected_join_code)
-        .order_by(StudentItem.purchase_date.desc())
+        .filter(StorePurchase.class_id == selected_scope['class_id'])
+        .order_by(StorePurchase.purchased_at.desc())
         .limit(10)
         .all()
     )
@@ -5938,25 +5960,25 @@ def store_management():
         collective_item_ids = [item.id for item in collective_items]
         collective_counts = (
             db.session.query(
-                StudentItem.store_item_id,
-                StudentItem.join_code,
-                db.func.count(db.distinct(StudentItem.student_id)).label('student_count'),
+                StorePurchase.store_item_id,
+                StorePurchase.class_id,
+                db.func.count(db.distinct(StorePurchase.seat_id)).label('student_count'),
             )
-            .join(Student, StudentItem.student_id == Student.id)
-            .join(StoreItem, StudentItem.store_item_id == StoreItem.id)
+            .join(Seat, StorePurchase.seat_id == Seat.id)
+            .join(Student, Seat.student_id == Student.id)
+            .join(StoreItem, StorePurchase.store_item_id == StoreItem.id)
             .filter(
                 Student.id.in_(sa.select(student_ids_subq)),
-                StudentItem.join_code == selected_join_code,
-                StudentItem.store_item_id.in_(collective_item_ids),
-                StudentItem.join_code.isnot(None),
-                StudentItem.status.in_(['pending', 'processing', 'purchased', 'redeemed', 'completed']),
-                StudentItem.collective_goal_instance_code == StoreItem.collective_goal_instance_code,
+                StorePurchase.class_id == selected_scope['class_id'],
+                StorePurchase.store_item_id.in_(collective_item_ids),
+                StorePurchase.status.in_(['pending', 'processing', 'purchased', 'redeemed', 'completed']),
+                StorePurchase.collective_goal_instance_code == StoreItem.collective_goal_instance_code,
             )
-            .group_by(StudentItem.store_item_id, StudentItem.join_code)
+            .group_by(StorePurchase.store_item_id, StorePurchase.class_id)
             .all()
         )
         counts_lookup = {
-            (row.store_item_id, row.join_code): int(row.student_count or 0)
+            (row.store_item_id, row.class_id): int(row.student_count or 0)
             for row in collective_counts
         }
 
@@ -5971,13 +5993,11 @@ def store_management():
 
             per_class = []
             for jc in sorted(applicable_join_codes):
-                if jc != selected_join_code:
-                    continue
-                count = counts_lookup.get((item.id, jc), 0)
+                count = counts_lookup.get((item.id, selected_scope['class_id']), 0)
                 if item.collective_goal_type == 'fixed':
                     target = int(item.collective_goal_target or 0)
                 else:
-                    target = class_sizes.get(jc, 0)
+                    target = class_sizes.get(selected_join_code, 0)
                 per_class.append({
                     'join_code': jc,
                     'class_label': join_code_to_label.get(jc, jc),
@@ -6044,80 +6064,10 @@ def store_management():
             if audit_student_lower in row.resolved_student_display_name.lower()
         ]
     live_keys = {
-        (row.student_item_id, row.action.value if hasattr(row.action, 'value') else row.action)
+        (row.id, row.action.value if hasattr(row.action, 'value') else row.action)
         for row in live_rows
     }
-
-    inferred_query = (
-        StudentItem.query
-        .options(joinedload(StudentItem.student), joinedload(StudentItem.store_item))
-        .join(Student, StudentItem.student_id == Student.id)
-        .join(StoreItem, StudentItem.store_item_id == StoreItem.id)
-        .filter(Student.id.in_(sa.select(student_ids_subq)))
-        .filter(StoreItem.class_id == selected_scope['class_id'])
-        .filter(StudentItem.join_code == selected_join_code)
-    )
-    if audit_student:
-        matching_student_ids = []
-        for s in _scoped_students().all():
-            if audit_student.lower() in s.full_name.lower():
-                matching_student_ids.append(s.id)
-        if matching_student_ids:
-            inferred_query = inferred_query.filter(StudentItem.student_id.in_(matching_student_ids))
-        else:
-            inferred_query = inferred_query.filter(sa.false())
-
-    inferred_items = inferred_query.all()
     inferred_rows = []
-    for si in inferred_items:
-        if si.status == 'processing':
-            inferred_action = 'request'
-            inferred_ts = si.redemption_date or si.purchase_date
-        elif si.status == 'completed':
-            inferred_action = 'approved'
-            inferred_ts = si.redemption_date or si.purchase_date
-        else:
-            continue
-
-        if (si.id, inferred_action) in live_keys:
-            continue
-
-        class_label = join_code_label_map.get(si.join_code)
-        if not class_label:
-            class_label = class_labels_by_block.get((si.student.block or '').upper(), si.student.block or 'Unknown Class')
-
-        row = {
-            'student_item_id': si.id,
-            'student_display_name': si.student.full_name if si.student else 'Unknown Student',
-            'class_display_label': class_label,
-            'action': inferred_action,
-            'notes': si.redemption_details,
-            'timestamp': inferred_ts,
-            'source': 'inferred_legacy',
-        }
-
-        if audit_class and row['class_display_label'] != audit_class:
-            continue
-        if parsed_audit_action and row['action'] != parsed_audit_action.value:
-            continue
-        if audit_start_date:
-            try:
-                start_day = datetime.strptime(audit_start_date, '%Y-%m-%d').date()
-                start_dt, _ = local_date_bounds_utc(start_day)
-                if not row['timestamp'] or ensure_utc(row['timestamp']) < start_dt:
-                    continue
-            except ValueError:
-                pass
-        if audit_end_date:
-            try:
-                end_day = datetime.strptime(audit_end_date, '%Y-%m-%d').date()
-                _, end_dt = local_date_bounds_utc(end_day)
-                end_dt = end_dt + timedelta(seconds=1)
-                if not row['timestamp'] or ensure_utc(row['timestamp']) >= end_dt:
-                    continue
-            except ValueError:
-                pass
-        inferred_rows.append(row)
 
     live_serialized = [{
         'student_item_id': row.student_item_id,

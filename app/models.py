@@ -1544,6 +1544,109 @@ class RedemptionAuditLog(db.Model):
     )
 
 
+# -------------------- CANONICAL STORE MODELS (v2) --------------------
+
+
+class StoreItemVisibility(db.Model):
+    __tablename__ = 'store_item_visibility'
+    id = db.Column(db.Integer, primary_key=True)
+    store_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id', ondelete='CASCADE'), nullable=False, index=True)
+    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+
+    __table_args__ = (
+        db.UniqueConstraint('store_item_id', 'seat_id', name='uq_store_item_visibility_item_seat'),
+    )
+
+    store_item = db.relationship('StoreItem', backref=db.backref('visibility_grants', lazy='dynamic', cascade='all, delete-orphan'))
+    seat = db.relationship('Seat', backref=db.backref('store_visibility_grants', lazy='dynamic'))
+
+
+class StorePurchaseStatus(enum.Enum):
+    PURCHASED = 'purchased'
+    PENDING = 'pending'
+    PROCESSING = 'processing'
+    COMPLETED = 'completed'
+    EXPIRED = 'expired'
+    REDEEMED = 'redeemed'
+    VOIDED = 'voided'
+
+
+class StorePurchase(db.Model):
+    __tablename__ = 'store_purchases'
+    id = db.Column(db.Integer, primary_key=True)
+    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
+    store_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id'), nullable=False, index=True)
+    quantity = db.Column(db.Integer, nullable=False, default=1)
+    price_at_purchase = db.Column(db.Numeric(precision=12, scale=2), nullable=False)
+    total_price = db.Column(db.Numeric(precision=12, scale=2), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='purchased')
+    idempotency_key = db.Column(db.String(100), nullable=True, unique=True, index=True)
+    ledger_tx_id = db.Column(db.Integer, db.ForeignKey('ledger_transaction.id'), nullable=True, index=True)
+    purchased_at = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now)
+    expiry_date = db.Column(db.DateTime(timezone=True), nullable=True)
+    is_from_bundle = db.Column(db.Boolean, default=False, nullable=False)
+    bundle_remaining = db.Column(db.Integer, nullable=True)
+    uses_remaining = db.Column(db.Integer, nullable=True)
+    collective_goal_instance_code = db.Column(db.String(36), nullable=True, index=True)
+
+    seat = db.relationship('Seat', backref=db.backref('store_purchases', lazy='dynamic'))
+    store_item = db.relationship('StoreItem', backref=db.backref('purchases', lazy='dynamic'))
+    ledger_tx = db.relationship('Transaction', backref=db.backref('store_purchase', uselist=False))
+
+    __table_args__ = (
+        db.Index('ix_store_purchases_seat_class', 'seat_id', 'class_id'),
+    )
+
+
+class RedemptionEventAction(enum.Enum):
+    REQUEST = 'request'
+    APPROVED = 'approved'
+    REJECTED = 'rejected'
+
+
+class RedemptionEventSource(enum.Enum):
+    LIVE = 'live'
+
+
+class RedemptionEvent(db.Model):
+    __tablename__ = 'redemption_events'
+    id = db.Column(db.String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    purchase_id = db.Column(db.Integer, db.ForeignKey('store_purchases.id', ondelete='CASCADE'), nullable=False, index=True)
+    seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
+    action = db.Column(
+        db.Enum(
+            RedemptionEventAction,
+            values_callable=lambda x: [e.value for e in x],
+            name='redemption_event_action_enum',
+        ),
+        nullable=False,
+        index=True,
+    )
+    source = db.Column(
+        db.Enum(
+            RedemptionEventSource,
+            values_callable=lambda x: [e.value for e in x],
+            name='redemption_event_source_enum',
+        ),
+        nullable=False,
+        default=RedemptionEventSource.LIVE,
+    )
+    initiated_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    seat_display_name = db.Column(db.String(120), nullable=False)
+    class_display_label = db.Column(db.String(120), nullable=False)
+    notes = db.Column(db.Text, nullable=True)
+    timestamp = db.Column(db.DateTime(timezone=True), nullable=False, default=utc_now, index=True)
+
+    purchase = db.relationship('StorePurchase', backref=db.backref('redemption_events', lazy='dynamic'))
+    initiated_by = db.relationship('User', backref=db.backref('initiated_redemption_events', lazy='dynamic'))
+
+    __table_args__ = (
+        db.Index('ix_redemption_events_initiated_by_timestamp', 'initiated_by_user_id', 'timestamp'),
+    )
+
+
 # -------------------- RENT SETTINGS MODEL --------------------
 class RentSettings(db.Model):
     __tablename__ = 'rent_settings'

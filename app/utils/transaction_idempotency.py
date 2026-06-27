@@ -34,8 +34,8 @@ def insurance_reimbursement_key(claim_id):
     return build_transaction_idempotency_key("insurance", "claim", claim_id, "reimbursement")
 
 
-def student_item_refund_key(student_item_id, reason):
-    return build_transaction_idempotency_key("refund", "student-item", student_item_id, reason)
+def store_purchase_refund_key(purchase_id, reason):
+    return build_transaction_idempotency_key("refund", "store-purchase", purchase_id, reason)
 
 
 def purchase_transaction_key(student_id, join_code, item_id, client_purchase_id):

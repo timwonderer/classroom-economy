@@ -8,7 +8,7 @@ from typing import Optional, Set, Tuple
 
 from sqlalchemy import and_
 
-from app.models import InsuranceClaim, RentItem, StoreItem, StudentItem, Transaction, TransactionStatus
+from app.models import InsuranceClaim, RentItem, StoreItem, StorePurchase, Transaction, TransactionStatus
 from app.utils.time import ensure_utc, get_class_now, to_class_time
 
 CLAIM_TYPE_TRANSACTION_MONETARY = "transaction_monetary"
@@ -154,31 +154,27 @@ def _check_delay_use_rule(tx: Transaction, *, class_id: str, now_class: datetime
 
     tx_ts = ensure_utc(tx.timestamp)
     tolerance = timedelta(minutes=5)
-    item_query = StudentItem.query.filter(
-        StudentItem.student_id == tx.student_id,
-        StudentItem.store_item_id == store_item.id,
+    item_query = StorePurchase.query.filter(
+        StorePurchase.seat_id == tx.seat_id,
+        StorePurchase.store_item_id == store_item.id,
         and_(
-            StudentItem.purchase_date >= tx_ts - tolerance,
-            StudentItem.purchase_date <= tx_ts + tolerance,
+            StorePurchase.purchased_at >= tx_ts - tolerance,
+            StorePurchase.purchased_at <= tx_ts + tolerance,
         ),
     )
-    if tx.join_code:
-        item_query = item_query.filter(StudentItem.join_code == tx.join_code)
-    item_row = item_query.order_by(StudentItem.id.desc()).first()
+    item_row = item_query.order_by(StorePurchase.id.desc()).first()
     if not item_row:
         # Fallback for historical rows with slight timestamp drift.
-        fallback_query = StudentItem.query.filter(
-            StudentItem.student_id == tx.student_id,
-            StudentItem.store_item_id == store_item.id,
+        fallback_query = StorePurchase.query.filter(
+            StorePurchase.seat_id == tx.seat_id,
+            StorePurchase.store_item_id == store_item.id,
         )
-        if tx.join_code:
-            fallback_query = fallback_query.filter(StudentItem.join_code == tx.join_code)
-        item_row = fallback_query.order_by(StudentItem.purchase_date.desc()).first()
+        item_row = fallback_query.order_by(StorePurchase.purchased_at.desc()).first()
     if not item_row:
-        # Legacy data may not have a matching StudentItem row.
+        # Legacy data may not have a matching canonical store row.
         return None
 
-    used_at = ensure_utc(item_row.redemption_date) if item_row.redemption_date else None
+    used_at = ensure_utc(getattr(item_row, "redemption_date", None)) if getattr(item_row, "redemption_date", None) else None
     if not used_at:
         return CLAIM_REASON_DELAY_USE_NOT_USED
 

@@ -81,9 +81,9 @@ New code must route writes through FEATs; legacy routes that commit directly are
 >
 > Classroom Token Hub is designed to be privacy first. This means our platform only collects information that's necessary for the app to function as intended. This is why we do not ask teachers to provide their identities nor their physical locations. We also do not collect email addresses or phone numbers.
 >
-> Our justification for this is to reduce the blast radius should a breach happens. Our minimal PII collection approach means the data will be almost meaningless without external references. Integration of SSO will fundamentally and permanently attach validated external identity to an actor in a simulated economy. This approach is the opposite of what we believe in.
+> Our justification for this is to reduce the blast radius should a breach happens. Our minimal PII collection approach means the data will be almost meaningless without external references. Integration of SSO on our server will fundamentally and permanently attach validated external identity to an actor in a simulated economy. This approach is the opposite of what we believe in.
 >
-> Because of that, we do not support SSO integration. Learn more about why we made that choice at [PRN-SNP-001 Why Classroom Token Hub Does Not Implement SSO](docs/PRINCIPLES/SECURITY_AND_PRIVACY/PRN-SNP-001_Why_Classroom_Token_Hub_Does_Not_Implement_SSO.md)
+> Because of that, we do not support SSO integration natively on our server. However, if district partners are interested in forking and internally hosting this project on their own infrastructure, they may implement whichever authentication or account provisioning mechanism as they see fit. We will be more than happy to provide technical support on architecture but the district will have full operational control over its fork, including authentication, infrastructure, identity management, security, deployment, and maintenance. Learn more about why we made that choice at [PRN-SNP-001 Why Classroom Token Hub Does Not Implement SSO](docs/PRINCIPLES/SECURITY_AND_PRIVACY/PRN-SNP-001_Why_Classroom_Token_Hub_Does_Not_Implement_SSO.md)
 
 ---
 
