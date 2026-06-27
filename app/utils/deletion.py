@@ -9,7 +9,7 @@ from app.models import (
     ClassEconomy, ClassMembership, Seat, Transaction, StudentBlock,
     AttendanceSession, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
     AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
-    StudentInsurance, RentPayment, Announcement, StoreItemBlock, StoreItem,
+    InsuranceEnrollment, RentPayment, Announcement, StoreItemBlock, StoreItem,
     Student, PayrollSettings, RentSettings, IdentityProfile,
     InsurancePolicyBlock,
 )
@@ -32,7 +32,7 @@ def _assert_class_scope_integrity(class_id: str, join_code: str) -> None:
         ("analytics_events", AnalyticsEvent),
         ("analytics_snapshots", AnalyticsSnapshot),
         ("issues", Issue),
-        ("student_insurance", StudentInsurance),
+        ("insurance_enrollments", InsuranceEnrollment),
         ("rent_payments", RentPayment),
         ("announcements", Announcement),
     )
@@ -153,7 +153,7 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         ).delete(synchronize_session=False)
         Issue.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
-        insurance_ids_sel = select(StudentInsurance.id).filter_by(class_id=class_id)
+        insurance_ids_sel = select(InsuranceEnrollment.id).filter_by(class_id=class_id)
         tx_ids_sel = select(Transaction.id).filter_by(class_id=class_id)
         InsuranceClaim.query.filter(
             or_(
@@ -161,7 +161,7 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
                 InsuranceClaim.transaction_id.in_(tx_ids_sel)
             )
         ).delete(synchronize_session=False)
-        StudentInsurance.query.filter_by(class_id=class_id).delete(synchronize_session=False)
+        InsuranceEnrollment.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
         # 4. Inventory / Store Data
         student_item_ids_subq = select(StudentItem.id).filter_by(class_id=class_id).subquery()
