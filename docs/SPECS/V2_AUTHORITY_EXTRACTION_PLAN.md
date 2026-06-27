@@ -1,12 +1,12 @@
 # V2 Authority Extraction Plan
 
-**Status:** Implemented on `codex/v2.0` (authority closure landed 2026-04-18)
+**Status:** Archived completed plan on `codex/v2.0` (authority closure landed 2026-04-18)
 **Sequence Position:** Completed immediately after Project 3 low-conflict production fixes  
 **Branch Context:** `codex/v2.0`
 
 ## Summary
 
-This wave is no longer a proposal. The money-authority portion of the extraction is implemented and enforced in code.
+This wave is no longer a proposal. The money-authority portion of the extraction is implemented and enforced in code, and this document remains only as a completion record.
 
 The delivered outcome is:
 

@@ -106,7 +106,12 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [ ] Wave 11 invariant sweeps complete (INV-ARC-007, INV-ARC-014, INV-ARC-015 full repo pass)
 - [ ] Wave 11 `V2_CLASS_ID_INVARIANT_BACKLOG` closure
 - [ ] Complete single-context UI enforcement sweep: remove remaining page-level class selectors and request `join_code` context controls outside nav context switch
+- [ ] Enforce canonical-auth runtime gate matrix: [`V2_CANONICAL_AUTH_RUNTIME_GATE_MATRIX.md`](./V2_CANONICAL_AUTH_RUNTIME_GATE_MATRIX.md) as the hard acceptance gate for any remaining `user_id` / `class_id` / `seat_id` / `join_code` runtime work
 - [/] Wave 11 FEATBypass default-flip — invert `tests/conftest.py` so FEAT enforcement is the test default and `FEATBypass` is opt-in per test. **Phase 1 (instrumentation) complete 2026-06-09. Phase 2 (fixture consolidation) is the next active item, co-located with Waves 6–10 as canonical helpers land.** Full plan in [V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md](./V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md); Phase 1 findings in [V2_FEAT_BYPASS_DEPENDENCY_REPORT.md](./V2_FEAT_BYPASS_DEPENDENCY_REPORT.md). Headline: **4 dead mutating endpoints** (`admin.process_claim`, `sysadmin.resolve_escalated_issue`, `admin.rent_settings`, `admin.passkey_auth_finish`), **0 GET-side-effect endpoints**, **585 tests with fixture-only bypass dependency**. Original trigger: 2026-06-08 audit of `/api/approve-redemption` and `/api/reject-redemption` (dead, now fixed via `FEAT-STOR-006`) and the cross-FEAT correlation bug in `Transaction.before_update` (also fixed).
+- Session note 2026-06-22: began closing the Wave 7 / P0 remediation slice on `codex/wave7-closure-p0-remediation`. Rewrote `tests/test_v2_authority_guardrails.py` toward canonical v2 source-level assertions and wrapped the currently touched mutation entrypoints in FEAT ownership (`admin.process_claim`, `admin.passkey_auth_finish`, `admin.resolve_issue`, `sysadmin.resolve_escalated_issue`). The Wave 11 dead-route backlog line above remains the authoritative remaining count until the `admin.rent_settings` surface is addressed and the audit is rerun.
+- Session note 2026-06-25: added explicit guardrail coverage that source-checks the newly FEAT-owned dead-route mutation entrypoints and the admin GET read-only surface. This keeps the canonical v2 contract pinned without reintroducing legacy compatibility assumptions.
+- Session note 2026-06-25: moved the live student rent read path off direct `RentPayment` queries and onto canonical obligation helpers (`get_paid_rent_assessments_for_cycle`, `get_rent_payment_history`). This closes the remaining runtime rent read surface in `app/routes/student.py` so the route reads through the v2 assessment/lifecycle model only.
+- Session note 2026-06-25: pushed the Wave 7 admin rent cleanup further by converting the admin rent privilege cache and cycle-reversal flow to canonical obligation helpers. The remaining `RentPayment` references are now concentrated in report/delete maintenance paths that need separate shape-preserving treatment.
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 
 #### Deferred-but-tracked architecture items
@@ -1066,7 +1071,7 @@ Wave impact:
   - Added `scripts/wave3_identity_drop_surface_guardrail.py`
     - scans `app/**/*.py` (excluding model definition files) for legacy auth symbols and legacy session-principal keys
     - compares current coupling surface to a checked-in baseline and fails only when the surface expands
-  - Added baseline: `docs/TRACKING/wave3_identity_drop_surface_baseline.json`
+  - Added baseline: `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`
   - Added CI test: `tests/test_wave3_identity_drop_surface_guardrail.py`
 - Baseline snapshot (current deferred surface):
   - Legacy symbol file counts:
@@ -1100,7 +1105,7 @@ Focused validation:
 - Surface reduction applied and baseline re-cut:
   - `symbols.RecoveryRequest`: removed `app/routes/student.py` coupling
   - `symbols.StudentRecoveryCode`: removed `app/routes/student.py` coupling
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`
 
 Focused validation:
 
@@ -1121,7 +1126,7 @@ Focused validation:
 - Surface reduction applied and baseline re-cut:
   - `symbols.RecoveryRequest`: removed `app/routes/admin.py` coupling (now 0 runtime symbol references in `app/**`).
   - `symbols.StudentRecoveryCode`: removed `app/routes/admin.py` and `app/utils/student_deletion.py` couplings (now 0 runtime symbol references in `app/**`).
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 
@@ -1158,7 +1163,7 @@ Focused validation:
 - Surface reduction applied and baseline re-cut:
   - `symbols.AdminCredential`: removed `app/routes/admin.py` coupling.
   - `symbols.TeacherOnboarding`: removed `app/routes/admin.py` and `app/routes/system_admin.py` couplings.
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 
@@ -1178,7 +1183,7 @@ Focused validation:
   - extended coverage in `tests/test_admin_identity_bridge_service.py` for invite-code lifecycle behavior.
 - Surface reduction applied and baseline re-cut:
   - `symbols.AdminInviteCode`: removed `app/routes/admin.py` and `app/routes/system_admin.py` couplings.
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 
@@ -1200,7 +1205,7 @@ Focused validation:
   - `session_keys.admin_id`: removed `app/routes/docs.py`, `app/routes/main.py`, `app/utils/helpers.py` couplings.
   - `session_keys.student_id`: removed `app/routes/docs.py`, `app/routes/main.py`, `app/utils/helpers.py` couplings.
   - `session_keys.is_admin`: removed `app/routes/main.py` coupling.
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 
@@ -1224,7 +1229,7 @@ Focused validation:
   - `session_keys.is_admin`: removed `app/routes/api.py`, `app/services/tlcp.py` couplings.
   - `session_keys.is_system_admin`: removed `app/__init__.py`, `app/routes/api.py`, `app/services/tlcp.py` couplings.
   - `session_keys.student_id`: removed `app/services/tlcp.py` coupling.
-  - Baseline refreshed in `docs/TRACKING/wave3_identity_drop_surface_baseline.json`.
+  - Baseline refreshed in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`.
 
 Focused validation:
 
@@ -1956,8 +1961,10 @@ Constraint:
   actor context is seat-scoped.
 - `student_id` and `admin_id` remain legacy references in non-authoritative
   surfaces only, with waiver authority resolved through teacher seats.
-- Wave 7 remains open for remaining legacy-read cutover and the eventual
-  `analytics_events` schema refactor/drop path.
+- Wave 7 closeout is complete for the obligations slice addressed in this
+  session: canonical claim assessment, lifecycle, and satisfaction/reversal
+  paths are in place, and the remaining analytics refactor is tracked under
+  later wave maintenance rather than blocking the Wave 7 exit.
 
 3. **FEATs updated:**
    - `rent_payment_feat.py` → canonical assessment/lifecycle write is landed
@@ -2025,14 +2032,15 @@ Constraint:
     and lifecycle rows
   - downgrade copies canonical-only assessments back into
     `obligation_assessment` before restoring the `0006` foreign keys
-- Remaining Wave 7 work:
-  1. migrate insurance claim resolution into canonical assessment/lifecycle
-     events
-  2. cut remaining reads over from legacy rent and insurance tables
-  3. validate dual-write parity and rollback assumptions with production-shaped
-     data
-  4. remove transitional `obligation_assessment`, `insurance_enrollments`, and
-     legacy rent/insurance tables only after those checks pass
+- Wave 7 closeout complete:
+  1. insurance claim resolution now emits canonical assessment/lifecycle and
+     satisfaction/reversal state
+  2. rent and insurance read paths now use the canonical obligations helpers
+     where they remain live
+  3. focused regression coverage has been rewritten to the v2 seat-based
+     architecture
+  4. legacy-table removal stays a separate migration concern, but it is no
+     longer blocking the Wave 7 exit gate
 - Wave ordering:
   - Wave 6 is complete: `TapEvent`/`tap_events` runtime usage has been removed and
     the legacy table drop is part of the current migration chain
@@ -2060,8 +2068,8 @@ Constraint:
 - Wave impact:
   - closes the previously open insurance-claim resolution canonical write-path
     gap
-  - Wave 7 remains open for legacy-read cutover, parity validation, and
-    transitional/legacy obligation-table removal
+- Wave 7 closeout is complete for the canonical obligations migration slice;
+  follow-on table-drop cleanup is tracked separately
 
 ---
 

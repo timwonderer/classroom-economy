@@ -1,5 +1,7 @@
 # V2 Banking Ledger Settlement Plan
 
+> **Terminology Note:** This spec was written during the v1→v2 transition. Where it references `student_id` as activity key, the v2 canonical target is `seat_id`. Where it references `join_code` as the class boundary, read `class_id` (UUID) as the canonical internal boundary with `join_code` as its public alias.
+
 **Status:** Deferred post-launch rebuild plan  
 **Last Updated:** 2026-04-19
 
@@ -90,7 +92,7 @@ Remove duplicate authority where possible:
 
 - do not keep both `status='void'` and `is_void` in the final V2 schema unless a short migration bridge is unavoidable during migration execution
 - do not treat `join_code` as part of ledger scope
-- do not use `student_id` as the balance key
+- do not use `student_id` as the balance key (v2 canonical activity key is `seat_id`)
 
 ### Write path
 

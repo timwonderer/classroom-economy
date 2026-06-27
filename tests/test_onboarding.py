@@ -3,6 +3,7 @@ import pytest
 
 pytestmark = [pytest.mark.critical, pytest.mark.regression]
 import json
+import secrets
 from datetime import datetime, timezone
 from app import db
 from app.models import Admin, TeacherOnboarding
@@ -34,6 +35,9 @@ def login_admin(client, username='admin'):
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
         sess['user_id'] = user.id
+        sess['current_session_nonce'] = secrets.token_urlsafe(32)
+        user.current_session_nonce = sess['current_session_nonce']
+        db.session.commit()
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
         sess['_fresh'] = True
 

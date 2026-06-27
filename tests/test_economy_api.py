@@ -12,6 +12,7 @@ expected_weekly_hours from payroll_settings rather than hardcoded values.
 from datetime import datetime, timezone
 from decimal import Decimal
 from os import urandom
+import secrets
 from app import db
 from app.models import Admin, ClassEconomy, EconomySnapshot, PayrollSettings, Seat, IdentityProfile, User, UserRole
 from app.utils.economy_balance import EconomyBalanceChecker, WarningLevel
@@ -79,6 +80,9 @@ def logged_in_admin_client(client, admin_with_payroll):
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
         sess['user_id'] = user.id
+        sess['current_session_nonce'] = secrets.token_urlsafe(32)
+        user.current_session_nonce = sess['current_session_nonce']
+        db.session.commit()
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
     return client
@@ -416,6 +420,9 @@ def test_different_expected_hours_per_block(client):
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
         sess['user_id'] = teacher_user.id
+        sess['current_session_nonce'] = secrets.token_urlsafe(32)
+        teacher_user.current_session_nonce = sess['current_session_nonce']
+        db.session.commit()
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
@@ -925,6 +932,9 @@ def test_analyze_endpoint_error_does_not_leak_exception_details(client):
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
         sess['user_id'] = user.id
+        sess['current_session_nonce'] = secrets.token_urlsafe(32)
+        user.current_session_nonce = sess['current_session_nonce']
+        db.session.commit()
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
@@ -978,6 +988,9 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client, caplog):
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
         sess['user_id'] = user.id
+        sess['current_session_nonce'] = secrets.token_urlsafe(32)
+        user.current_session_nonce = sess['current_session_nonce']
+        db.session.commit()
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
@@ -1022,6 +1035,9 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client, caplog):
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
         sess['user_id'] = user.id
+        sess['current_session_nonce'] = secrets.token_urlsafe(32)
+        user.current_session_nonce = sess['current_session_nonce']
+        db.session.commit()
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
@@ -1080,6 +1096,9 @@ def test_analyze_block_prefers_join_code_scoped_payroll_settings(client):
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
         sess['user_id'] = teacher_user.id
+        sess['current_session_nonce'] = secrets.token_urlsafe(32)
+        teacher_user.current_session_nonce = sess['current_session_nonce']
+        db.session.commit()
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 

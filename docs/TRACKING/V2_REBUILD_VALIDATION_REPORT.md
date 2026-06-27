@@ -30,6 +30,15 @@
   - Invalid `Seat.teacher_id` / `Seat.is_claimed` references corrected
   - Teacher seat `profile_type` corrected to `teacher_primary`
 
+### Post-Report Update (2026-06-21, `continue-legacy-identity-drop`) — Canonical auth hydration hardening
+
+- Student login now treats `last_active_class_id` as a persisted preference rather than a terminal authority anchor.
+- When one or more valid class/seat options exist, the login boundary now routes through explicit class selection instead of hard-failing on a missing or stale persisted class pointer.
+- When no valid class/seat pair remains, the login flow fails closed with an invariant-violation log entry and a generic role-appropriate recovery message.
+- Verification:
+  - auth/context focused pytest slice -> pass
+  - canonical context immutability guard -> pass
+
 ### Post-Report Update (2026-06-09, `codex/v2.0`) — Wave 7 Insurance Claim Canonical Lifecycle Write
 
 - Completed the previously open Wave 7 write-path gap for insurance-claim resolution.
@@ -351,13 +360,13 @@
   - `pytest -q tests/test_economy_api.py -k "analyze_endpoint_"` → `7 passed`
 - Added explicit guardrail coverage for the deferred Wave 3 structural table drops:
   - `scripts/wave3_identity_drop_surface_guardrail.py`
-  - `docs/TRACKING/wave3_identity_drop_surface_baseline.json`
+  - `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json`
   - `tests/test_wave3_identity_drop_surface_guardrail.py`
   - baseline-census confirms current deferred coupling is explicit and now blocked from expansion unless baseline is intentionally re-cut after approved reductions
 - Landed first approved reduction slice and refreshed baseline:
   - `app/routes/student.py` no longer directly references `RecoveryRequest` / `StudentRecoveryCode`; student recovery accesses were routed through `app/services/recovery_bridge_service.py`
   - targeted validation: `pytest -q tests/test_recovery_bridge_service.py` → `3 passed`
-  - baseline re-cut in `wave3_identity_drop_surface_baseline.json` after verified reductions
+  - baseline re-cut in `docs/archive/v1-development/tracking/wave3_identity_drop_surface_baseline.json` after verified reductions
 - Landed major follow-on reduction slice on admin/runtime recovery paths:
   - `app/routes/admin.py` recovery flow now uses `app/services/recovery_bridge_service.py` for recovery-request/code lifecycle operations instead of direct `RecoveryRequest` / `StudentRecoveryCode` symbol access
   - `app/utils/student_deletion.py` recovery-code cleanup now routes through bridge service

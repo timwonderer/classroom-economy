@@ -1,5 +1,7 @@
 # V2 Balance Scope and Settlement Contract
 
+> **Terminology Note:** This spec was written during the v1→v2 transition. Where it references `student_id` as activity key, the v2 canonical target is `seat_id`. Where it references `join_code` as the class boundary, read `class_id` (UUID) as the canonical internal boundary with `join_code` as its public alias.
+
 ## Purpose
 
 Define the current runtime contract for student balance reads and settlement behavior in v2, and identify concrete risk against v2 constitutional/domain rules where implementation is still transitional.
@@ -52,9 +54,9 @@ No frontend computation is authoritative.
 
 ### 3. Settlement now resolves canonical class context
 
-`settle_balances(student_id, join_code)` currently:
+`settle_balances(student_id, join_code)` (v1 shadow -- v2 target: `seat_id, class_id`) currently:
 
-- resolves seat IDs for `(student_id, join_code)`
+- resolves seat IDs for `(student_id, join_code)` (v1 shadow -- v2 target: `seat_id, class_id`)
 - resolves canonical `class_id` from seat first, class row fallback second
 - rejects execution if canonical `class_id` cannot be resolved
 - performs cache and transaction selection with `class_id` scope
@@ -73,11 +75,12 @@ Settlement sweep entrypoint:
 
 Current API shape:
 
-- `settle_balances(student_id, join_code)`
+- `settle_balances(student_id, join_code)` (v1 shadow -- v2 target: `seat_id, class_id`)
 
 v2 target:
 
 - canonical key should be `class_id + seat_id` account context
+- `student_id` must be replaced by `seat_id` as the activity anchor in all settlement interfaces
 
 Impact:
 
@@ -92,8 +95,8 @@ Priority:
 
 Runtime still carries:
 
-- `student_id`
-- `join_code`
+- `student_id` (v2 target: `seat_id`)
+- `join_code` (v2 target: `class_id`)
 
 on cache/transaction pathways, despite class/seat canonicalization.
 
@@ -101,6 +104,7 @@ Impact:
 
 - dual-authority drift risk
 - maintenance overhead and inconsistent query patterns
+- `student_id`-keyed interfaces must migrate to `seat_id` before v2 authority is fully canonical
 
 Priority:
 
@@ -140,4 +144,3 @@ Priority:
 - [ ] No FEAT atomicity violations in settlement sweep
 - [ ] No write-on-read regressions introduced
 - [ ] Route-level store/rent tests pass with canonical fixtures and feature flags
-

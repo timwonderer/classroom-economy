@@ -26,12 +26,20 @@ Foundational within `INV-ARC`. Derived from `INV-CORE-000` Section III.1, `` `cl
 
 All requests MUST construct explicit request context containing:
 
+- `user_id`
 - `class_id`
-- `join_code`
-- `actor_id`
+- `seat_id`
 - `actor_type`
 - `request_id`
 - `timestamp`
+
+> [!IMPORTANT]
+>
+> Although `user_id` is included in every context construction, `user_id` should only be used for the following cases:
+> 1. `seat_id` look up within the `class_id` boundary provided
+> 2. Verifying session validity 
+> 2. user credential recovery
+> 4. account deletion
 
 Requests missing required scope MUST fail immediately.
 

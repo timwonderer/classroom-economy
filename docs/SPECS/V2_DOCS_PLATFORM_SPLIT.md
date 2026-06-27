@@ -1,6 +1,6 @@
 # V2 Docs Platform Split
 
-Status: active
+Status: partially complete
 
 ## Goal
 
@@ -77,7 +77,7 @@ During migration:
 - the migrated public-route subset is defined in `docs-site/route-map.json` and shared by Flask plus the Docusaurus site
 - the Docusaurus site is currently a local preview surface only; v2 docs remain non-canonical until the rework is complete
 
-This contract lets the external site ship incrementally without breaking product help affordances.
+This contract lets the external site ship incrementally without breaking product help affordances. The Flask-side `EXTERNAL_DOCS_BASE_URL` and shared route-map plumbing exist, but the external docs split is still not fully complete.
 
 ## External Site Requirements
 

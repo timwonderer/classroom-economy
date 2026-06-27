@@ -63,7 +63,7 @@ def _make_env(client):
     db.session.flush()
 
     teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
-    seat = Seat.query.filter_by(student_id=student.id, class_id=class_row.class_id).first()
+    seat = Seat.query.filter_by(class_id=class_row.class_id, role="student").first()
     assert seat is not None
     assert teacher_seat is not None
 

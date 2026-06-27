@@ -199,13 +199,17 @@ def inject_session_cookie(page, client, axe_live_server_url, trigger_path="/"):
     This works because the live server and test client share the same app
     instance (same SECRET_KEY = 'test-secret'), so cookies are mutually valid.
     """
-    # Trigger a request so Flask sets the session cookie in the jar
-    client.get(trigger_path, follow_redirects=False)
-
     session_cookie = None
     cookie = client.get_cookie("session")
     if cookie is not None:
         session_cookie = cookie.value
+
+    if not session_cookie:
+        # Fall back to a harmless public request so Flask emits the session cookie.
+        client.get("/privacy", follow_redirects=False)
+        cookie = client.get_cookie("session")
+        if cookie is not None:
+            session_cookie = cookie.value
 
     if not session_cookie:
         raise RuntimeError("No session cookie found in test client — auth fixture may have failed.")

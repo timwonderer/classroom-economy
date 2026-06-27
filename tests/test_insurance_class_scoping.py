@@ -16,8 +16,8 @@ from datetime import datetime, timedelta, timezone
 from app import db
 from app.models import (
     Admin, ClassEconomy, IdentityProfile, Student, StudentBlock, StudentTeacher,
-    InsurancePolicy, InsurancePolicyBlock, StudentInsurance, InsuranceClaim,
-    InsuranceEnrollment, Seat,
+    InsurancePolicy, InsurancePolicyBlock, InsuranceEnrollment, InsuranceClaim,
+    Seat,
 )
 from app.hash_utils import hash_username
 from tests.helpers.class_scope import create_class_scope
@@ -275,10 +275,15 @@ def test_student_insurance_enrollments_filtered_by_join_code(
     policies = policies_for_two_classes
 
     # Create enrollment for student A in Period A
-    enrollment_a = StudentInsurance(
-        student_id=students['student_a'].id,
+    seat_a = Seat.query.filter_by(student_id=students['student_a'].id).first()
+    seat_b = Seat.query.filter_by(student_id=students['student_b'].id).first()
+    assert seat_a is not None
+    assert seat_b is not None
+    enrollment_a = InsuranceEnrollment(
+        seat_id=seat_a.id,
+        class_id=seat_a.class_id,
         policy_id=policies['policy_a'].id,
-        join_code="JOINA123",  # Period A's join code
+        join_code="JOINA123",
         status="active",
         coverage_start_date=datetime.now(timezone.utc) - timedelta(days=2),
         payment_current=True
@@ -286,10 +291,11 @@ def test_student_insurance_enrollments_filtered_by_join_code(
     db.session.add(enrollment_a)
 
     # Create enrollment for student B in Period B
-    enrollment_b = StudentInsurance(
-        student_id=students['student_b'].id,
+    enrollment_b = InsuranceEnrollment(
+        seat_id=seat_b.id,
+        class_id=seat_b.class_id,
         policy_id=policies['policy_b'].id,
-        join_code="JOINB456",  # Period B's join code
+        join_code="JOINB456",
         status="active",
         coverage_start_date=datetime.now(timezone.utc) - timedelta(days=2),
         payment_current=True
@@ -299,9 +305,9 @@ def test_student_insurance_enrollments_filtered_by_join_code(
 
     # Query enrollments for Period A only
     period_a_enrollments = (
-        StudentInsurance.query
-        .filter(StudentInsurance.join_code == "JOINA123")
-        .filter(StudentInsurance.status == "active")
+        InsuranceEnrollment.query
+        .filter(InsuranceEnrollment.join_code == "JOINA123")
+        .filter(InsuranceEnrollment.status == "active")
         .all()
     )
 
@@ -311,9 +317,9 @@ def test_student_insurance_enrollments_filtered_by_join_code(
 
     # Query enrollments for Period B only
     period_b_enrollments = (
-        StudentInsurance.query
-        .filter(StudentInsurance.join_code == "JOINB456")
-        .filter(StudentInsurance.status == "active")
+        InsuranceEnrollment.query
+        .filter(InsuranceEnrollment.join_code == "JOINB456")
+        .filter(InsuranceEnrollment.status == "active")
         .all()
     )
 
@@ -463,8 +469,8 @@ def test_no_data_shown_for_class_without_insurance(
 
     # Query enrollments for Period C - should be empty
     period_c_enrollments = (
-        StudentInsurance.query
-        .filter(StudentInsurance.join_code == "JOINC789")
+        InsuranceEnrollment.query
+        .filter(InsuranceEnrollment.join_code == "JOINC789")
         .all()
     )
     assert len(period_c_enrollments) == 0

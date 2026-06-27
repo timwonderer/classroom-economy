@@ -1,11 +1,13 @@
 # Classroom Token Hub (CTH) v2 Student Identity Architecture
 
+> **Terminology Note:** This spec was written during the v1→v2 transition. Legacy model references (`Admin`, `StudentTeacher`, `TeacherBlock`, `get_admin_student_query`) describe v1 shadows that are migration targets. The v2 canonical identity model uses `User` (global principal) + `Seat` (class-local binding) with `class_id` as the class boundary.
+
 ## Purpose
 
 This document defines the v2 identity model for student participation inside CTH.
 
-This document assumes a clean v2 identity redesign. It is not a v1-to-v2 migration
-plan, and it does not preserve v1 data model constraints.
+This document defines the canonical v2 identity model. It does not preserve v1 data
+model constraints.
 
 It answers four questions:
 
@@ -151,7 +153,7 @@ Rules:
 - `user_id` is nullable until the seat is claimed.
 - If the seat exists, the participant exists in that class universe.
 - Class-section metadata belongs on `classes.section`, not on `seats`.
-  Any remaining seat-level block or section labels are transitional mirrors only.
+  Any remaining seat-level block or section labels are compatibility mirrors only.
 - `seats.public_id` is the public identifier for class-scoped participant navigation.
 - `seats.public_id` is the canonical deidentified public actor identifier for both teacher and
   student seats when the actor is being referenced inside a class-scoped context.
@@ -314,7 +316,7 @@ The redesign should avoid these patterns:
 Current runtime code still contains older tables such as `students` and `teacher_blocks`
 and still uses `join_code` heavily in operational flows.
 
-Those tables and columns should be treated as legacy implementation artifacts, not
+Those tables and columns should be treated as implementation artifacts, not
 target-state identity anchors.
 
 If a table map is meant to drive the redesign, the correct mental model is:

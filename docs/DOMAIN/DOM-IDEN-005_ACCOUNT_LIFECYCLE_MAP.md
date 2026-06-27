@@ -30,6 +30,7 @@ credentialed global users.
 3.  **Credential Activation**: The student sets their PIN/passphrase on `users` and becomes a full economic actor through `seat_id + class_id`.
 4.  **Cross-Class Participation**: The student claims a seat in a *second* class. The new `seats` row binds to the *same* existing `users` record.
 5.  **Recovery**: If credentials are lost, a teacher generates a reset code. The student re-sets their credentials on the same identity.
+6.  **Class Re-entry**: If `last_active_class_id` is missing or stale, login may surface explicit class selection only when at least one valid seat still exists. The selector is a boundary, not a recovery helper; hard fail only occurs when no valid class/seat pair remains.
 
 ## III. Key State Transitions
 
@@ -39,6 +40,7 @@ credentialed global users.
 | **Upload Roster** | Provisions inactive `users`, `seats`, `identity_profiles`, and seat-owned claim artifacts. | `DOM-IDEN-001` |
 | **Claim Seat** | Proves entitlement to a class-local seat and binds `user_id` to `seat_id`. | `DOM-IDEN-001` |
 | **Setup PIN** | Activates global login capability on `users`. | `DOM-IDEN-001` |
+| **Select Class Context** | Explicitly chooses a valid class/seat pair when persisted class preference is missing or stale. | `DOM-IDEN-001` |
 | **Initiate Reset** | Initiates a recovery process targeting the existing `users` record. | `DOM-IDEN-002` / `004` |
 | **Switch Class** | Initiates a recovery process targeting the existing `users` record. | `DOM-IDEN-001` |
 

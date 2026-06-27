@@ -25,7 +25,7 @@ from dateutil.relativedelta import relativedelta
 from app.extensions import db, limiter
 from app.models import (
     Student, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StudentItem,
-    RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
+    RentSettings, RentPayment, InsurancePolicy, InsuranceEnrollment, InsuranceClaim,
     BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole,
     ClassMembership, ClassEconomy, IdentityProfile, _quantize_currency
 )
@@ -43,6 +43,7 @@ from app.auth import (
     SESSION_TIMEOUT_MINUTES,
     sync_student_session_context,
 )
+from app.services.context_resolver import ContextResolutionError, resolve_canonical_context
 from app.forms import (
     StudentClaimAccountForm, StudentCreateUsernameForm, StudentPinPassphraseForm,
     StudentLoginForm, InsuranceClaimForm, StudentCompleteProfileForm
@@ -133,6 +134,38 @@ def _get_identity_bound_seat_options(user_id: int):
         }
         for seat, class_row in seat_rows
     ]
+
+
+def _reset_student_login_session():
+    """Remove transient student login state before redirecting away from auth."""
+    session.pop("student_id", None)
+    session.pop("user_id", None)
+    session.pop("current_join_code", None)
+    session.pop("login_time", None)
+    session.pop("last_activity", None)
+
+
+def _student_login_failure_message() -> str:
+    return "We are having trouble with your account, please try again or ask your teacher for help"
+
+
+def _student_login_hard_fail(*, student_id: int, reason: str, is_json: bool, status_code: int = 500):
+    current_app.logger.error(
+        "TLCP-INVARIANT-VIOLATION: %s",
+        reason,
+        extra={
+            "actor_type": "student",
+            "actor_public_id": "-",
+            "class_id": "-",
+            "error_class": "InvariantViolation",
+            "correlation_version": "v1",
+        },
+    )
+    _reset_student_login_session()
+    if is_json:
+        return jsonify(status="error", message=_student_login_failure_message()), status_code
+    flash(_student_login_failure_message(), "error")
+    return redirect(url_for("student.login", next=request.args.get("next")))
 from app.utils.display_name_session import (
     get_teacher_display_name_cache,
     upsert_teacher_display_name_cache,
@@ -920,11 +953,13 @@ def dashboard():
     student = get_logged_in_student()
 
     try:
-        scope = resolve_scope(
-            actor=student,
-            selected_join_code=session.get("current_join_code"),
-        )
+        context = resolve_canonical_context()
+        scope = resolve_scope(actor=student, selected_join_code=None)
+        if context and scope.class_id != context.class_id:
+            raise AccessScopeDenied(reason_code="foreign_class_scope", message="Please switch to the selected class.")
         access_policy_service.assert_can_view_dashboard(scope)
+    except ContextResolutionError:
+        raise AccessScopeDenied(reason_code="no_class_scope", message="Please select a class to continue.")
     except AccessScopeDenied as exc:
         flash(exc.message, "error")
         return redirect(url_for("student.select_class_context"))
@@ -1050,32 +1085,19 @@ def dashboard():
             coverage_year = coverage_due_date.year if coverage_due_date else upcoming_due_date.year
             grace_end_date_for_status = (coverage_due_date + timedelta(days=rent_settings.grace_period_days)) if coverage_due_date else grace_end_date
 
+        from app.services.obligations_service import get_paid_rent_assessments_for_cycle
         seat_ids = [scope.seat_id]
         all_paid = True
         for period in rent_blocks:
-            all_payments_for_period = RentPayment.query.filter(
-                RentPayment.seat_id == scope.seat_id,
-                RentPayment.class_id == class_id,
-                RentPayment.coverage_month == coverage_month,
-                RentPayment.coverage_year == coverage_year,
-            ).all()
+            payments = get_paid_rent_assessments_for_cycle(
+                class_id,
+                coverage_month,
+                coverage_year,
+                seat_ids=seat_ids,
+            )
+            payments = [payment for payment in payments if payment.satisfaction is not None]
 
-            payments = []
-            for payment in all_payments_for_period:
-                txn_scope = transaction_scope_filter(Transaction, scope.seat_id, seat_ids)
-                txn = Transaction.query.filter(
-                    txn_scope,
-                    Transaction.type == 'Rent Payment',
-                    Transaction.timestamp >= payment.payment_date - timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-                    Transaction.timestamp <= payment.payment_date + timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-                    Transaction.amount == -payment.amount_paid,
-                    Transaction.join_code == join_code
-                ).first()
-
-                if txn and not txn.is_void:
-                    payments.append(payment)
-
-            total_paid = sum(p.amount_paid for p in payments) if payments else Decimal('0.00')
+            total_paid = sum((p.satisfaction.amount_paid for p in payments), Decimal('0.00'))
             paid_by_grace = _total_paid_by_grace(payments, grace_end_date_for_status)
             late_fee = Decimal('0.00')
             if rent_is_active and now > grace_end_date_for_status and paid_by_grace < rent_settings.rent_amount:
@@ -1588,12 +1610,12 @@ def insurance_marketplace():
     now_utc = utc_now()
 
     # FIX: Get student's active policies scoped to current class only
-    my_policies = StudentInsurance.query.join(
-        InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id
+    my_policies = InsuranceEnrollment.query.join(
+        InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id
     ).filter(
-        StudentInsurance.student_id == student.id,
-        StudentInsurance.status == 'active',
-        StudentInsurance.join_code == join_code,
+        InsuranceEnrollment.seat_id == seat.id,
+        InsuranceEnrollment.status == 'active',
+        InsuranceEnrollment.join_code == join_code,
     ).all()
 
     # FIX: Get available policies (only from current teacher)
@@ -1608,8 +1630,8 @@ def insurance_marketplace():
 
     for policy in available_policies:
         # Check if already enrolled
-        existing = StudentInsurance.query.filter_by(
-            student_id=student.id,
+        existing = InsuranceEnrollment.query.filter_by(
+            seat_id=seat.id,
             policy_id=policy.id,
             status='active'
         ).first()
@@ -1620,11 +1642,11 @@ def insurance_marketplace():
 
         # Check repurchase restrictions
         if policy.no_repurchase_after_cancel:
-            cancelled = StudentInsurance.query.filter_by(
-                student_id=student.id,
+            cancelled = InsuranceEnrollment.query.filter_by(
+                seat_id=seat.id,
                 policy_id=policy.id,
                 status='cancelled'
-            ).order_by(StudentInsurance.cancel_date.desc()).first()
+            ).order_by(InsuranceEnrollment.cancel_date.desc()).first()
 
             if cancelled and cancelled.cancel_date:
                 cancel_dt = ensure_utc(cancelled.cancel_date)
@@ -1691,6 +1713,10 @@ def purchase_insurance(policy_id):
     if not context:
         flash("No class selected.", "danger")
         return redirect(url_for('student.dashboard'))
+    seat = get_current_seat()
+    if seat is None:
+        flash("No class selected.", "danger")
+        return redirect(url_for('student.dashboard'))
 
     join_code = get_display_join_code(context.class_id)
     teacher_id = None
@@ -1703,8 +1729,8 @@ def purchase_insurance(policy_id):
         return redirect(url_for('student.student_insurance'))
 
     # Check if already enrolled
-    existing = StudentInsurance.query.filter_by(
-        student_id=student.id,
+    existing = InsuranceEnrollment.query.filter_by(
+        seat_id=seat.id,
         policy_id=policy.id,
         status='active'
     ).first()
@@ -1714,11 +1740,11 @@ def purchase_insurance(policy_id):
         return redirect(url_for('student.student_insurance'))
 
     # Check repurchase restrictions
-    cancelled = StudentInsurance.query.filter_by(
-        student_id=student.id,
+    cancelled = InsuranceEnrollment.query.filter_by(
+        seat_id=seat.id,
         policy_id=policy.id,
         status='cancelled'
-    ).order_by(StudentInsurance.cancel_date.desc()).first()
+    ).order_by(InsuranceEnrollment.cancel_date.desc()).first()
 
     if cancelled:
         # Check for permanent block (no repurchase allowed EVER)
@@ -1735,13 +1761,13 @@ def purchase_insurance(policy_id):
 
     # Check tier restrictions - can only have one policy per tier (scoped to current class)
     if policy.tier_category_id:
-        existing_tier_enrollment = StudentInsurance.query.join(
-            InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id
+        existing_tier_enrollment = InsuranceEnrollment.query.join(
+            InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id
         ).filter(
-            StudentInsurance.student_id == student.id,
-            StudentInsurance.status == 'active',
+            InsuranceEnrollment.seat_id == seat.id,
+            InsuranceEnrollment.status == 'active',
             InsurancePolicy.tier_category_id == policy.tier_category_id,
-            StudentInsurance.join_code == join_code,
+            InsuranceEnrollment.join_code == join_code,
         ).first()
 
         if existing_tier_enrollment:
@@ -1803,10 +1829,11 @@ def purchase_insurance(policy_id):
 def cancel_insurance(enrollment_id):
     """Cancel insurance policy."""
     student = get_logged_in_student()
-    enrollment = db.get_or_404(StudentInsurance, enrollment_id)
+    seat = get_current_seat()
+    enrollment = db.get_or_404(InsuranceEnrollment, enrollment_id)
 
     # Verify ownership
-    if enrollment.student_id != student.id:
+    if seat is None or enrollment.seat_id != seat.id:
         flash("Unauthorized access.", "danger")
         return redirect(url_for('student.student_insurance'))
 
@@ -1823,10 +1850,14 @@ def cancel_insurance(enrollment_id):
 def file_claim(policy_id):
     """File insurance claim."""
     student = get_logged_in_student()
+    seat = get_current_seat()
+    if seat is None:
+        flash("No class selected.", "danger")
+        return redirect(url_for('student.student_insurance'))
 
     # Get student's enrollment for this policy
-    enrollment = StudentInsurance.query.filter_by(
-        student_id=student.id,
+    enrollment = InsuranceEnrollment.query.filter_by(
+        seat_id=seat.id,
         policy_id=policy_id,
         status='active'
     ).first()
@@ -1835,10 +1866,12 @@ def file_claim(policy_id):
         flash("You are not enrolled in this policy.", "danger")
         return redirect(url_for('student.student_insurance'))
     try:
-        scope = resolve_scope(
-            actor=student,
-            selected_join_code=enrollment.join_code or session.get("current_join_code"),
-        )
+        context = resolve_canonical_context()
+        scope = resolve_scope(actor=student, selected_join_code=None)
+        if context and scope.class_id != context.class_id:
+            raise AccessScopeDenied(reason_code="foreign_class_scope", message="Please switch to the selected class.")
+    except ContextResolutionError:
+        raise AccessScopeDenied(reason_code="no_class_scope", message="Please select a class to continue.")
     except AccessScopeDenied as exc:
         flash(exc.message, "danger")
         return redirect(url_for('student.student_insurance'))
@@ -2120,10 +2153,10 @@ def view_policy(enrollment_id):
     class_id = get_current_class_id()
     _ = get_current_user()
     student = get_logged_in_student()
-    enrollment = db.get_or_404(StudentInsurance, enrollment_id)
+    enrollment = db.get_or_404(InsuranceEnrollment, enrollment_id)
 
     # Verify ownership
-    if enrollment.student_id != student.id:
+    if enrollment.seat_id != seat.id:
         flash("Unauthorized access.", "danger")
         return redirect(url_for('student.student_insurance'))
 
@@ -3200,30 +3233,16 @@ def rent():
 
     period_status = {}
 
-    # Get all payments that COVER the current period (pre-paid system)
-    all_payments_for_period = RentPayment.query.filter(
-        RentPayment.seat_id == seat_id,
-        RentPayment.class_id == class_id,
-        RentPayment.coverage_month == coverage_month,
-        RentPayment.coverage_year == coverage_year,
-    ).all()
+    from app.services.obligations_service import get_paid_rent_assessments_for_cycle
+    payments = get_paid_rent_assessments_for_cycle(
+        class_id,
+        coverage_month,
+        coverage_year,
+        seat_ids=[seat_id],
+    )
+    payments = [payment for payment in payments if payment.satisfaction is not None]
 
-    # Filter out payments where the corresponding transaction was voided
-    payments = []
-    for payment in all_payments_for_period:
-        txn = Transaction.query.filter(
-            Transaction.seat_id == seat_id,
-            Transaction.class_id == class_id,
-            Transaction.type == 'Rent Payment',
-            Transaction.timestamp >= payment.payment_date - timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-            Transaction.timestamp <= payment.payment_date + timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-            Transaction.amount == -payment.amount_paid
-        ).first()
-
-        if txn and not txn.is_void:
-            payments.append(payment)
-
-    total_paid = sum(p.amount_paid for p in payments) if payments else Decimal('0.00')
+    total_paid = sum((p.satisfaction.amount_paid for p in payments), Decimal('0.00'))
 
     paid_by_grace = _total_paid_by_grace(payments, grace_end_date_for_status)
     late_fee = Decimal('0.00')
@@ -3254,12 +3273,8 @@ def rent():
     checking_balance, savings_balance = get_available_balances(seat_id, class_id)
 
     # Get payment history for the current class only
-    payment_history = RentPayment.query.filter(
-        RentPayment.seat_id == seat_id,
-        RentPayment.class_id == class_id,
-    ).order_by(
-        RentPayment.payment_date.desc()
-    ).limit(24).all()  # Increased to show more history with multiple periods
+    from app.services.obligations_service import get_rent_payment_history
+    payment_history = get_rent_payment_history(seat_id, class_id, limit=24)
 
     waiver_history = []
     if settings:
@@ -3273,11 +3288,11 @@ def rent():
         payment_history_rows.append({
             'period_month': payment.period_month,
             'period_year': payment.period_year,
-            'amount_paid': payment.amount_paid,
-            'recorded_at': payment.payment_date,
+            'amount_paid': payment.satisfaction.amount_paid if payment.satisfaction else Decimal('0.00'),
+            'recorded_at': payment.satisfaction.satisfied_at if payment.satisfaction else payment.assessed_at,
             'status_text': (
-                f"Paid late with fee of ${payment.late_fee_charged:.2f}"
-                if payment.was_late else "On Time"
+                f"Paid late with fee of ${payment.satisfaction.late_fee_charged:.2f}"
+                if payment.satisfaction and payment.satisfaction.was_late else "On Time"
             ),
             'entry_type': 'payment',
         })
@@ -3447,32 +3462,16 @@ def rent_pay(period):
 
     checking_balance, savings_balance = get_available_balances(seat_id, class_id)
 
-    # Get all existing payments that cover this period
-    all_payments = RentPayment.query.filter(
-        RentPayment.seat_id == seat_id,
-        RentPayment.class_id == class_id,
-        RentPayment.coverage_month == coverage_month,
-        RentPayment.coverage_year == coverage_year,
-    ).all()
+    from app.services.obligations_service import get_paid_rent_assessments_for_cycle
+    existing_payments = get_paid_rent_assessments_for_cycle(
+        class_id,
+        coverage_month,
+        coverage_year,
+        seat_ids=[seat_id],
+    )
+    existing_payments = [payment for payment in existing_payments if payment.satisfaction is not None]
 
-    # Filter out payments where the corresponding transaction was voided
-    existing_payments = []
-    for payment in all_payments:
-        # Find the transaction for this payment
-        txn = Transaction.query.filter(
-            Transaction.seat_id == seat_id,
-            Transaction.class_id == class_id,
-            Transaction.type == 'Rent Payment',
-            Transaction.timestamp >= payment.payment_date - timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-            Transaction.timestamp <= payment.payment_date + timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-            Transaction.amount == -payment.amount_paid
-        ).first()
-
-        # Only include if transaction exists and is not voided
-        if txn and not txn.is_void:
-            existing_payments.append(payment)
-
-    total_paid_so_far = sum(p.amount_paid for p in existing_payments) if existing_payments else Decimal('0.00')
+    total_paid_so_far = sum((p.satisfaction.amount_paid for p in existing_payments), Decimal('0.00'))
 
     # Calculate if late and total amount due
     due_date, grace_end_date = _calculate_rent_deadlines(settings, now)
@@ -3678,11 +3677,7 @@ def login():
 
         # --- Set session timeout ---
         # Clear old student-specific session keys without wiping the CSRF token
-        session.pop('student_id', None)
-        session.pop('user_id', None)
-        session.pop('current_seat_id', None)
-        session.pop('login_time', None)
-        session.pop('last_activity', None)
+        _reset_student_login_session()
         # Explicitly clear other potential student-related session keys
         session.pop('claimed_student_id', None)
         session.pop('claimed_seat_id', None)
@@ -3697,53 +3692,54 @@ def login():
 
         linked_user = user
         session['user_id'] = linked_user.id
+        session['current_session_nonce'] = secrets.token_urlsafe(32)
+        linked_user.current_session_nonce = session['current_session_nonce']
 
-        if linked_user and linked_user.last_active_class_id:
-            has_active_class_seat = Seat.query.filter_by(
-                user_id=linked_user.id,
-                class_id=linked_user.last_active_class_id,
-            ).first()
-            if not has_active_class_seat:
+        seat_options = _get_identity_bound_seat_options(linked_user.id)
+        persisted_class_id = getattr(linked_user, "last_active_class_id", None)
+        valid_persisted_selection = None
+        if persisted_class_id:
+            valid_persisted_selection = next(
+                (item for item in seat_options if item["class_id"] == persisted_class_id),
+                None,
+            )
+            if valid_persisted_selection is None:
+                current_app.logger.error(
+                    "TLCP-INVARIANT-VIOLATION: Student %s login has invalid persisted class %s.",
+                    student.id,
+                    persisted_class_id,
+                    extra={
+                        "actor_type": "student",
+                        "actor_public_id": "-",
+                        "class_id": "-",
+                        "error_class": "InvariantViolation",
+                        "correlation_version": "v1",
+                    },
+                )
                 linked_user.last_active_class_id = None
                 db.session.flush()
 
-        seat_options = _get_identity_bound_seat_options(linked_user.id)
-        if linked_user and linked_user.last_active_class_id is None:
-            if seat_options:
-                return redirect(url_for('student.select_class_context'))
-            current_app.logger.critical(
-                "P0 INCIDENT: Student %s login has NULL last_active_class_id and no surviving seats.",
-                student.id,
+        if not seat_options:
+            return _student_login_hard_fail(
+                student_id=student.id,
+                reason=f"Student {student.id} login has no valid class seats.",
+                is_json=is_json,
             )
-            session.pop('student_id', None)
-            session.pop('user_id', None)
-            session.pop('current_seat_id', None)
-            session.pop('current_class_id', None)
-            session.pop('current_join_code', None)
-            session.pop('seat_id', None)
-            session.pop('class_id', None)
-            session.pop('login_time', None)
-            session.pop('last_activity', None)
-            if is_json:
-                return jsonify(status="error", message="Account scope incident detected. Contact support immediately."), 500
-            flash("Account scope incident detected. Contact support immediately.", "error")
-            return redirect(url_for('student.login', next=request.args.get('next')))
 
-        seat = sync_student_session_context(student, allow_writes=True)
+        if valid_persisted_selection is None:
+            return redirect(url_for('student.select_class_context'))
+
+        seat = sync_student_session_context(
+            student,
+            class_id=valid_persisted_selection["class_id"],
+            allow_writes=True,
+        )
         if seat is None:
-            session.pop('student_id', None)
-            session.pop('user_id', None)
-            session.pop('current_seat_id', None)
-            session.pop('current_class_id', None)
-            session.pop('current_join_code', None)
-            session.pop('seat_id', None)
-            session.pop('class_id', None)
-            session.pop('login_time', None)
-            session.pop('last_activity', None)
-            if is_json:
-                return jsonify(status="error", message="Account has no valid seat context."), 403
-            flash("Your account is missing class seat context. Contact your teacher.", "error")
-            return redirect(url_for('student.login', next=request.args.get('next')))
+            return _student_login_hard_fail(
+                student_id=student.id,
+                reason=f"Student {student.id} login failed to hydrate canonical seat for class {valid_persisted_selection['class_id']}.",
+                is_json=is_json,
+            )
         _prime_student_teacher_display_name_cache(student.id)
 
 
@@ -3795,19 +3791,21 @@ def select_class_context():
         selected_class_id = (request.form.get('class_id') or '').strip()
         allowed_class_ids = {item["class_id"] for item in seat_options}
         if selected_class_id not in allowed_class_ids:
-            flash("Invalid class selection.", "error")
-            return render_template('student_select_class_context.html', class_options=seat_options), 400
+            return _student_login_hard_fail(
+                student_id=student.id,
+                reason=f"Student {student.id} selected invalid class {selected_class_id} during class-context switch.",
+                is_json=False,
+                status_code=302,
+            )
 
         selected_seat = sync_student_session_context(student, class_id=selected_class_id)
         if selected_seat is None:
-            current_app.logger.critical(
-                "P0 INCIDENT: Student %s selected class %s but seat context failed to resolve.",
-                student.id,
-                selected_class_id,
+            return _student_login_hard_fail(
+                student_id=student.id,
+                reason=f"Student {student.id} selected class {selected_class_id} but seat context failed to resolve.",
+                is_json=False,
+                status_code=302,
             )
-            session.clear()
-            flash("Account scope incident detected. Contact support immediately.", "error")
-            return redirect(url_for('student.login'))
 
         linked_user.last_active_class_id = selected_class_id
         db.session.flush()

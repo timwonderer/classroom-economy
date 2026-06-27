@@ -69,7 +69,7 @@ def resolve_current_class_context(teacher_id: int):
     }
 
     selected = None
-    session_class_id = (session.get('current_class_id') or '').strip()
+    session_class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or '').strip()
     if session_class_id:
         selected = by_class_id.get(session_class_id)
 
@@ -79,8 +79,6 @@ def resolve_current_class_context(teacher_id: int):
     if not selected:
         return None, available_classes
 
-    session['current_class_id'] = selected['class_id']
-    session['current_join_code'] = selected['join_code']
     return selected, available_classes
 
 

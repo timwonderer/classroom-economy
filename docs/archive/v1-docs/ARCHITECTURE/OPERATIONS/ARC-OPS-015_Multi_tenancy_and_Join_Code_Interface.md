@@ -4,6 +4,8 @@
 |------------------|---------|----------------|------------|-----------------|
 | ARC-OPS-015     | 1.0     | 2026-04-12     | N/A        | Constitutional  |
 
+> **Terminology Note:** This document was written during the v1→v2 transition. References to `teacher_id` scoping, `student_id` as activity key, and `join_code` as "the boundary" reflect v1 patterns. The v2 canonical model uses `class_id` (UUID) as the class boundary, `seat_id` as the per-class activity anchor, and `join_code` as a public alias only.
+
 ## I. Purpose
 Define the architectural relationship between public access identifiers (`join_code`), private tenant containers (`ClassEconomy`), and student identity bindings (`Seat`).
 
