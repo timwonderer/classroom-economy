@@ -11,7 +11,7 @@ Flask-Migrate==4.1.0
 Flask-SQLAlchemy==3.1.1
 # Upgraded to 26.5.0 in PR #1203 after comprehensive v2.0 compatibility testing
 gevent==26.5.0
-greenlet==3.5.1
+greenlet==3.5.2
 gunicorn==26.0.0
 iniconfig==2.3.0
 itsdangerous==2.2.0
@@ -23,24 +23,24 @@ markdown==3.10.2
 # - Markup.striptags() behavior may differ
 # Review Jinja2 compatibility before upgrading from 2.1.5 to 3.0.3
 MarkupSafe==2.1.5
-packaging==26.1
+packaging==26.2
 pluggy==1.6.0
 psycopg2-binary==2.9.12
 Pygments==2.20.0
-pyotp==2.9.0
-pytest==9.0.3
+pyotp==2.10.0
+pytest==9.1.1
 pytest-flask==1.3.0
 playwright==1.60.0
 pytz==2026.2
 PyYAML==6.0.3
 soupsieve==2.8.4
-SQLAlchemy==2.0.50
+SQLAlchemy==2.0.51
 tomli==2.4.1
 typing_extensions==4.15.0
 Werkzeug==3.1.8
 # TODO: [DEPENDABOT PR #847] zope.event 6.x is a major version change. Review for
 # breaking changes (transitive dep for gevent) before upgrading from 5.0 to 6.1
-zope.event==5.0
+zope.event==6.2
 # Upgraded to 8.5 after comprehensive v2.0 compatibility testing
 zope.interface==8.5
 python-dateutil==2.9.0.post0
