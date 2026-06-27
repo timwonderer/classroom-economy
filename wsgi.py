@@ -71,7 +71,6 @@ from app.models import (
     RentSettings,
     RentPayment,
     InsurancePolicy,
-    StudentInsurance,
     InsuranceClaim,
     ErrorLog,
     Admin,

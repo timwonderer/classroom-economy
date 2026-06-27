@@ -12,11 +12,12 @@ from app.models import (
     IssueResolutionAction,
     IssueStatusHistory,
     RedemptionAuditLog,
+    RedemptionEvent,
     RentPayment,
     RentWaiver,
     Student,
     StudentBlock,
-    StudentItem,
+    StorePurchase,
     AttendanceSession,
     SeatAttendanceState,
     Transaction,
@@ -29,9 +30,9 @@ from app.services.recovery_bridge_service import delete_recovery_codes_for_stude
 
 def _collect_related_ids(student_id):
     """Materialize dependent record IDs once for downstream delete/update queries."""
-    student_item_ids = [
+    store_purchase_ids = [
         row[0]
-        for row in db.session.query(StudentItem.id).filter(StudentItem.student_id == student_id).all()
+        for row in db.session.query(StorePurchase.id).join(Seat, StorePurchase.seat_id == Seat.id).filter(Seat.student_id == student_id).all()
     ]
     issue_ids = [
         row[0]
@@ -56,7 +57,7 @@ def _collect_related_ids(student_id):
         row[0]
         for row in db.session.query(Seat.id).filter(Seat.student_id == student_id).all()
     ]
-    return student_item_ids, issue_ids, insurance_ids, tx_ids, seat_ids
+    return store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids
 
 
 def _unclaim_all_seats_for_student(student_id):
@@ -104,11 +105,11 @@ def _clear_cross_transaction_refs(tx_ids):
     )
 
 
-def _delete_student_scoped_rows(student_id, student_item_ids, issue_ids, insurance_ids, tx_ids, seat_ids):
+def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids):
     """Delete records that are scoped directly to the student being removed."""
-    if student_item_ids:
-        RedemptionAuditLog.query.filter(
-            RedemptionAuditLog.student_item_id.in_(student_item_ids)
+    if store_purchase_ids:
+        RedemptionEvent.query.filter(
+            RedemptionEvent.purchase_id.in_(store_purchase_ids)
         ).delete(synchronize_session=False)
     if issue_ids:
         IssueResolutionAction.query.filter(
@@ -142,7 +143,6 @@ def _delete_student_scoped_rows(student_id, student_item_ids, issue_ids, insuran
     SeatAttendanceState.query.filter(SeatAttendanceState.student_id == student_id).delete(synchronize_session=False)
     AttendanceSession.query.filter(AttendanceSession.student_id == student_id).delete(synchronize_session=False)
     HallPassLog.query.filter(HallPassLog.student_id == student_id).delete(synchronize_session=False)
-    StudentItem.query.filter(StudentItem.student_id == student_id).delete(synchronize_session=False)
     RentPayment.query.filter(RentPayment.student_id == student_id).delete(synchronize_session=False)
     RentWaiver.query.filter(RentWaiver.student_id == student_id).delete(synchronize_session=False)
     StudentBlock.query.filter(StudentBlock.student_id == student_id).delete(synchronize_session=False)
@@ -160,10 +160,10 @@ def hard_delete_student_if_orphaned(student_id):
     if has_links:
         return False
 
-    student_item_ids, issue_ids, insurance_ids, tx_ids, seat_ids = _collect_related_ids(student_id)
+    store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids = _collect_related_ids(student_id)
     _unclaim_all_seats_for_student(student_id)
     _clear_cross_transaction_refs(tx_ids)
-    _delete_student_scoped_rows(student_id, student_item_ids, issue_ids, insurance_ids, tx_ids, seat_ids)
+    _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids)
     Student.query.filter(Student.id == student_id).delete(synchronize_session=False)
     return True
 

@@ -2117,6 +2117,19 @@ Constraint:
 - Completed cross-domain cleanup for remaining store-related scope leaks in linked admin/service/feat paths where store behavior was still teacher-filtered.
 - Preserved FEAT orchestration and transaction boundaries while updating enforcement scope only.
 
+### Status Update (2026-06-26): Wave 8 Canonical Store Schema Cutover
+
+- **DOM-STORE-001 v2.0** aligned to DOM-CORE-002: canonical tables are now `store_purchases`, `redemption_events`, `store_item_visibility`. Legacy tables `student_items`, `store_item_blocks`, `redemption_audit_logs` are no longer part of the store authority model.
+- **Migration `0009_store_domain.py`** creates all three canonical tables with seat-scoped, class-scoped keys. Legacy tables are retained as read-only shadows until route-level callers are migrated; physical drop is a follow-up.
+- **Models added:** `StorePurchase`, `RedemptionEvent`, `StoreItemVisibility` in `app/models.py` — no `student_id`, `teacher_id`, or `join_code` columns.
+- **`store_service.py` rewritten** to read/write `StorePurchase` exclusively. Visibility checks use `store_item_visibility`. Collective goal unlock uses `StorePurchase` counts.
+- **`store_purchase_feat.py` rewritten** to v2-only execution — writes `StorePurchase` + `LedgerTransaction` atomically. No dual-write, no legacy fallback. Both FEAT functions accept `ctx: CanonicalContext` directly and read `ctx.class_id` internally. No `teacher_id`, no `scope`, no v1 compatibility.
+- **Route callers updated** — `app/routes/api.py` passes `ctx=context` (the resolved `CanonicalContext`) to both FEATs.
+- **`access_policy_service.assert_can_purchase_item` teacher_id check removed** — the FEAT no longer passes `teacher_id`; access is validated by scope identity only.
+- **`tests/domain/test_store.py` created** with 26 tests (schema + behavioral) covering purchase creation, idempotency, visibility, and redemption events.
+- **Remaining work:** Route-level callers in `app/routes/admin.py` and `app/routes/api.py` still import `StudentItem` directly (166 references). These need migrating to canonical service calls before `student_items` and `store_item_blocks` can be physically dropped. The `redemption_disposition_feat.py` (FEAT-STOR-006) also needs updating to use `StorePurchase` + `RedemptionEvent`.
+- **Ledger service `teacher_id` debt:** `ledger_service.create_pending_transaction`, `create_pending_transaction_idempotent`, and `create_transfer_pair` all accept `teacher_id` as a parameter and write it to `ledger_transaction.teacher_id`. The store FEAT now omits it. The ledger service needs auditing — the FEAT already carries the `CanonicalContext`, so the ledger service should not need `teacher_id` passed explicitly. This is Ledger domain debt to resolve when Wave 5 (Ledger) is revisited.
+
 ---
 
 ## Wave 9 — Operations + Interpretation Domains (DOM-OPS-001, DOM-ITR-001)

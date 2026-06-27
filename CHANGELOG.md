@@ -9,6 +9,8 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **Wave 8 store domain cutover** — Canonical store tables `store_purchases`, `redemption_events`, and `store_item_visibility` replace `student_items`, `store_item_blocks`, and `redemption_audit_logs` as the store domain authority. DOM-STORE-001 v2.0 aligned with DOM-CORE-002. Migration `0009_store_domain.py` creates the canonical tables. `store_service.py` and `store_purchase_feat.py` rewritten to v2-only execution with no legacy fallback. Schema and behavioral tests in `tests/domain/test_store.py`. (#1244+)
+
 - **Wave 7 closeout completed for the insurance obligations slice** — legacy `StudentInsurance` runtime usage was removed, all insurance runtime paths now use `InsuranceEnrollment`, and the focused insurance/decimal regressions were rewritten to the v2 seat-based architecture. The remaining table-drop cleanup is tracked separately and no longer blocks the Wave 7 exit gate.
 - **Wave 7 admin rent read surfaces moved further onto canonical obligations** — the admin rent privilege cache and cycle reversal flow now read paid rent state from `obligations_service.get_paid_rent_assessments_for_cycle(...)` rather than direct `RentPayment` queries. The remaining legacy report/deletion surfaces are now isolated to non-1:1 maintenance paths.
 - **Wave 7 student rent read path moved to canonical obligations helpers** — `student.rent` now renders payment status and history from `obligations_service.get_paid_rent_assessments_for_cycle(...)` and `get_rent_payment_history(...)` instead of reading `RentPayment` rows directly. The live rent route now stays on the v2 assessment/lifecycle model end-to-end.

@@ -20,7 +20,7 @@ from werkzeug.security import check_password_hash
 
 from app.extensions import db, limiter
 from app.models import (
-    Admin, Student, StoreItem, StudentItem, Transaction, TransactionStatus, TapEvent, AttendanceSession,
+    Admin, Student, StoreItem, StorePurchase, Transaction, TransactionStatus, TapEvent, AttendanceSession,
     AttendanceReasonCode, TapEventReasonCode, HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
     StudentBlock, StoreItemBlock,
     RedemptionAuditLog, RedemptionAuditAction, RedemptionAuditSource, _quantize_currency,
@@ -69,6 +69,7 @@ from app.routes.student import (
 )
 from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
 from app.feats.store_purchase_feat import execute_rent_perk_purchase, execute_store_purchase
+from app.services.store_service import get_active_rent_grant, get_purchase_count
 from app.feats.redemption_disposition_feat import (
     RedemptionDispositionError,
     execute_redemption_approval,
@@ -83,7 +84,6 @@ from app.utils.transaction_idempotency import (
     MAX_IDEMPOTENCY_KEY_LENGTH,
     get_idempotent_transaction,
     purchase_transaction_key,
-    student_item_refund_key,
 )
 from app.utils.time import (
     utc_now,
@@ -450,7 +450,7 @@ def purchase_item():
     seat_id = context.seat_id
     if not seat_id:
          return jsonify({"status": "error", "message": "No seat assigned in this class."}), 403
-    
+
     # Authoritative seat object
     seat = db.session.get(Seat, seat_id)
     current_block = (seat.block or "").strip().upper() if seat and seat.block else ""
@@ -494,13 +494,8 @@ def purchase_item():
 
     # For collective items with whole_class goal, enforce one purchase per student per class
     if item.item_type == 'collective' and item.collective_goal_type == 'whole_class':
-        existing_purchase = StudentItem.query.filter(
-            StudentItem.seat_id == seat.id,
-            StudentItem.store_item_id == item.id,
-            StudentItem.class_id == class_id,
-            StudentItem.status.notin_(['voided', 'rejected'])
-        ).first()
-        if existing_purchase:
+        existing_purchase_count = get_purchase_count(seat.id, class_id, item.id)
+        if existing_purchase_count:
             return jsonify({"status": "error", "message": "You have already purchased this whole class goal item."}), 400
 
     # Check rent late restrictions
@@ -604,22 +599,7 @@ def purchase_item():
         and item.item_type != 'hall_pass'
         and (item.is_rent_linked or per_use_rent_item)
     ):
-        # Look for an active StudentItem with uses_remaining for this store item
-        rent_item_query = StudentItem.query.filter(
-            StudentItem.seat_id == seat.id,
-            StudentItem.class_id == class_id,
-            StudentItem.store_item_id == item.id,
-            db.or_(
-                StudentItem.uses_remaining > 0,
-                StudentItem.uses_remaining == -1
-            ),
-            db.or_(
-                StudentItem.expiry_date.is_(None),
-                StudentItem.expiry_date > now
-            )
-        )
-
-        active_rent_item = rent_item_query.first()
+        active_rent_item = get_active_rent_grant(seat.id, class_id, item.id)
         needs_rent_grant = (
             not active_rent_item
             and has_paid_rent
@@ -628,9 +608,8 @@ def purchase_item():
 
         if active_rent_item or needs_rent_grant:
             result = execute_rent_perk_purchase(
-                scope=scope,
+                ctx=context,
                 seat=seat,
-                teacher_id=teacher_id,
                 item=item,
                 active_rent_item=active_rent_item,
                 ensure_active_grant=needs_rent_grant,
@@ -711,12 +690,7 @@ def purchase_item():
 
             purchase_count = total_purchased
         else:
-            purchase_count = StudentItem.query.filter(
-                StudentItem.seat_id == seat.id,
-                StudentItem.class_id == class_id,
-                StudentItem.store_item_id == item.id,
-                StudentItem.status.notin_(['voided', 'rejected'])
-            ).count()
+            purchase_count = get_purchase_count(seat.id, class_id, item.id)
         if purchase_count + quantity > item.limit_per_student:
             return jsonify({"status": "error", "message": f"You can only purchase {item.limit_per_student - purchase_count} more of this item."}), 400
 
@@ -758,10 +732,8 @@ def purchase_item():
             student_item_status = 'purchased'
         
         result = execute_store_purchase(
-            scope=scope,
+            ctx=context,
             seat=seat,
-            teacher_id=scope.teacher_id,
-            student_id=student.id,
             item=item,
             quantity=quantity,
             total_price=total_price,
@@ -770,7 +742,7 @@ def purchase_item():
             purchase_idempotency_key=purchase_idempotency_key,
             expiry_date=expiry_date,
             uses_remaining=uses_remaining,
-            student_item_status=student_item_status,
+            purchase_status=student_item_status,
         )
         # No manual commit here; feat_shell owns it
 
@@ -806,19 +778,17 @@ def use_item():
         return jsonify({"status": "error", "message": "Incorrect passphrase."}), 403
 
     # 2. Get the student's item
-    student_item = db.session.get(StudentItem, student_item_id)
+    student_item = db.session.get(StorePurchase, student_item_id)
 
-    if not student_item or student_item.student_id != student.id:
+    if not student_item or student_item.seat_id != student.seat_id:
         return jsonify({"status": "error", "message": "Invalid item."}), 404
 
     # Special handling for hall_pass items in inventory (legacy or bundle)
     if student_item.store_item.item_type == 'hall_pass':
         # Grant balance immediately
-        qty = student_item.quantity_purchased or 1
+        qty = student_item.quantity or 1
         student.hall_passes = (student.hall_passes or 0) + qty
         student_item.status = 'redeemed'
-        student_item.redemption_date = utc_now()
-        student_item.redemption_details = f"Hall pass grant processed immediately ({qty} pass(es) added)."
         db.session.flush()
         return jsonify({"status": "success", "message": f"Added {qty} hall pass(es) to your balance!"})
 
@@ -844,8 +814,7 @@ def use_item():
     except ContextResolutionError:
         context = None
     teacher_id_for_audit = (
-        context['teacher_id'] if context else
-        (student_item.store_item.teacher_id if student_item.store_item else None)
+        context['teacher_id'] if context else None
     )
     fallback_block = context.get('block') if context else student.block
 
@@ -863,7 +832,7 @@ def use_item():
         audit_guard = {'inserted': False}
         if will_create_request:
             _append_redemption_audit_log(
-                student_item=student_item,
+                purchase=student_item,
                 student=student,
                 teacher_id=teacher_id_for_audit,
                 action='request',
@@ -878,11 +847,7 @@ def use_item():
             student_item.bundle_remaining -= 1
             if student_item.bundle_remaining == 0:
                 student_item.status = 'redeemed'  # All uses consumed
-            student_item.redemption_date = utc_now()
-            if student_item.redemption_details:
-                student_item.redemption_details += f"\n---\n{details}"
-            else:
-                student_item.redemption_details = details
+            # StorePurchase no longer tracks legacy redemption detail fields.
         elif student_item.uses_remaining is not None:
             # Multi-use item (Rent Per-Use with limit > 1) or unlimited (-1)
             # Don't decrement if unlimited
@@ -896,21 +861,15 @@ def use_item():
                     # Still has uses remaining - keep status as 'purchased' so it remains in "My Items"
                     pass
 
-            student_item.redemption_date = utc_now()
             if student_item.uses_remaining == -1:
                 uses_msg = "unlimited uses remaining"
             else:
                 uses_msg = f"{student_item.uses_remaining} uses remaining"
             
-            if student_item.redemption_details:
-                student_item.redemption_details += f"\n---\n{details} ({uses_msg})"
-            else:
-                student_item.redemption_details = f"{details} ({uses_msg})"
+            pass
         else:
             # Regular item - mark as processing
             student_item.status = 'processing'
-            student_item.redemption_date = utc_now()
-            student_item.redemption_details = details
 
         # Log the redemption event through Ledger without changing monetary balance.
         if student_item.class_id:
@@ -921,22 +880,22 @@ def use_item():
                 amount=Decimal('0.00'),
                 account_type='checking',
                 type='redemption',
-                description=f"Used: {student_item.store_item.name}" + (f" (bundle: {student_item.bundle_remaining} remaining)" if student_item.is_from_bundle else "")
+                description=f"Used: {student_item.store_item.name if student_item.store_item else 'Unknown Item'}" + (f" (bundle: {student_item.bundle_remaining} remaining)" if student_item.is_from_bundle and student_item.store_item else "")
             )
         # FEAT wrapper owns commit/rollback boundaries; keep mutations in the open transaction.
         db.session.flush()
 
         if student_item.is_from_bundle:
-            return jsonify({"status": "success", "message": f"You have used 1 from your bundle of {student_item.store_item.name}. {student_item.bundle_remaining} uses remaining."})
+            return jsonify({"status": "success", "message": f"You have used 1 from your bundle of {student_item.store_item.name if student_item.store_item else 'item'}. {student_item.bundle_remaining} uses remaining."})
         elif student_item.uses_remaining is not None:
             if student_item.uses_remaining == -1:
-                return jsonify({"status": "success", "message": f"You have used {student_item.store_item.name}. Unlimited uses remaining."})
+                return jsonify({"status": "success", "message": f"You have used {student_item.store_item.name if student_item.store_item else 'item'}. Unlimited uses remaining."})
             elif student_item.uses_remaining > 0:
-                return jsonify({"status": "success", "message": f"You have used {student_item.store_item.name}. {student_item.uses_remaining} uses remaining."})
+                return jsonify({"status": "success", "message": f"You have used {student_item.store_item.name if student_item.store_item else 'item'}. {student_item.uses_remaining} uses remaining."})
             else:
-                return jsonify({"status": "success", "message": f"You have requested to use {student_item.store_item.name}. Awaiting admin approval."})
+                return jsonify({"status": "success", "message": f"You have requested to use {student_item.store_item.name if student_item.store_item else 'item'}. Awaiting admin approval."})
         else:
-            return jsonify({"status": "success", "message": f"You have requested to use {student_item.store_item.name}. Awaiting admin approval."})
+            return jsonify({"status": "success", "message": f"You have requested to use {student_item.store_item.name if student_item.store_item else 'item'}. Awaiting admin approval."})
 
     except (SQLAlchemyError, RuntimeError, ValueError) as e:
         db.session.rollback()
@@ -964,28 +923,28 @@ def approve_redemption():
     if not student_item_id:
         return jsonify({"status": "error", "message": "Missing student item ID."}), 400
 
-    student_item = db.session.get(StudentItem, student_item_id)
-    if not student_item or student_item.status != 'processing':
+    purchase = db.session.get(StorePurchase, student_item_id)
+    if not purchase or purchase.status != 'processing':
         return jsonify({"status": "error", "message": "Invalid or already processed item."}), 404
 
     current_admin = get_current_admin()
     if not current_admin:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
 
-    has_membership = _admin_has_class_scope(current_admin.id, student_item.class_id)
+    has_membership = _admin_has_class_scope(current_admin.id, purchase.class_id)
     if not has_membership:
         return jsonify({"status": "error", "message": "You do not have access to this class."}), 403
 
-    if not student_item.store_item.class_id or student_item.store_item.class_id != student_item.class_id:
+    if not purchase.store_item.class_id or purchase.store_item.class_id != purchase.class_id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
-    if not _admin_has_class_scope(current_admin.id, student_item.store_item.class_id):
+    if not _admin_has_class_scope(current_admin.id, purchase.store_item.class_id):
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
 
     try:
         result = execute_redemption_approval(
-            student_item=student_item,
+            purchase=purchase,
             actor_teacher_id=current_admin.id,
-            notes=student_item.redemption_details,
+            notes=None,
         )
     except RedemptionDispositionError as e:
         # Business-rule failure (e.g., concurrent state change). Map to 409.
@@ -1021,24 +980,24 @@ def reject_redemption():
     if not student_item_id:
         return jsonify({"status": "error", "message": "Missing student item ID."}), 400
 
-    student_item = db.session.get(StudentItem, student_item_id)
-    if not student_item or student_item.status != 'processing':
+    purchase = db.session.get(StorePurchase, student_item_id)
+    if not purchase or purchase.status != 'processing':
         return jsonify({"status": "error", "message": "Invalid or already processed item."}), 404
 
     # SECURITY: Verify the current admin has class scope for this store item
     current_admin = get_current_admin()
     if not current_admin:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
-    if not student_item.store_item.class_id or student_item.store_item.class_id != student_item.class_id:
+    if not purchase.store_item.class_id or purchase.store_item.class_id != purchase.class_id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
-    if not _admin_has_class_scope(current_admin.id, student_item.store_item.class_id):
+    if not _admin_has_class_scope(current_admin.id, purchase.store_item.class_id):
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
 
     try:
         result = execute_redemption_rejection(
-            student_item=student_item,
+            purchase=purchase,
             actor_teacher_id=current_admin.id,
-            notes=student_item.redemption_details,
+            notes=None,
         )
     except RedemptionDispositionError as e:
         current_app.logger.info(

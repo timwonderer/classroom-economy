@@ -10,12 +10,15 @@ searchable: false
 
 ## 1. Purpose
 
-This document explains why CTH's identity architecture, which utilizes class-scoped isolation anchored on `class_id`, a deidentified public actor reference (`seats.public_id`), and a no-DOB, minimal-PII claim model, was deliberately chosen over institutional SSO. It explains why that architecture satisfies the underlying risk-management intent of CSF 2.0's access-control function (`PR.AA`) more effectively than SSO would, given this product's data model and the actual severity of a worst-case breach. 
+This document explains why CTH's identity architecture, which utilizes class-scoped isolation anchored on `class_id`, a deidentified public actor reference (`seats.public_id`), and a no-DOB, minimal-PII claim model, was deliberately chosen over institutional SSO on our server. It explains why that architecture satisfies the underlying risk-management intent of CSF 2.0's access-control function (`PR.AA`) more effectively than SSO would, given this product's data model and the actual severity of a worst-case breach. 
 
-This document outlines a risk-based engineering decision. SSO would not merely fail to improve this system's security posture, it would affirmatively increase the severity of a breach by attaching durable, real-world identity to data that is currently low-severity specifically because it currently does not carry it.
+This document outlines a risk-based engineering decision. SSO on our server would not merely fail to improve this system's security posture, it would affirmatively increase the severity of a breach by attaching durable, real-world identity to data that is currently low-severity specifically because it currently does not carry it.
 
 > [!IMPORTANT]
 > This document does not constitute a legal exception to FERPA or any other statute. It is intended for informational purposes only, and not as a substitute for legal counsel. This document does not claim, implicitly or otherwise, any form of certification, approval, or exemption from any legal or regulatory framework such as FERPA, COPPA, GDPR, or NIST CSF 2.0. **CTH strongly recommends that reviewing institutions consult with their own legal counsel for definitive guidance regarding compliance with applicable statutes and regulations.** However, the following sections outline why CTH's identity architecture satisfies the underlying risk-management intent of CSF 2.0's access-control function (`PR.AA`) more effectively than SSO would, given this product's data model and the actual severity of a worst-case breach. 
+
+> [!NOTE]
+> This document's scope applies only to the classroomtokenhub.com instance, which is independently-managed and provisioned on a public server. District interested in greater control over authentication and identity management should consider creating a fork of this project and host internally on district infrastructure. The upstream project may provide architectural guidance and deployment documentation. Operational ownership, infrastructure, security, identity management, monitoring, and ongoing maintenance remain the responsibility of the district.
 
 ## 2. Scope
 
@@ -69,7 +72,7 @@ Usernames are never persisted in plaintext and are instead stored as salted HMAC
 
 ### 4.1 SSO integration addresses security concerns that are not currently applicable to CTH.
 
-A worst-case compromise of CTH's database currently exposes: a display first name and last initial per seat, a deidentified `seats.public_id`, and a simulated currency ledger with no real monetary value. There is no DOB, no email, no phone, no address, no government or district ID, and no resolvable link from a `seats.public_id` to a real institutional identity for either students or teachers. The worst realistic harm from this exposure is dignity- or embarrassment-tier — not identity theft, not financial fraud, and not a FERPA-grade education-record disclosure, because no education record beyond a simulated classroom economy exists in this system.
+A worst-case compromise of CTH's database currently exposes: a display first name and last initial per seat, a deidentified `seats.public_id`, and a simulated currency ledger with no real monetary value. There is no DOB, no email, no phone, no address, no government or district ID, and no resolvable link from a `seats.public_id` to a real institutional identity for either students or teachers. The dataset does not contain grades, transcripts, attendance history, disciplinary records, or other categories of educational information commonly maintained in student information systems.
 
 SSO does not protect this asset; it changes what the asset *is*. A SAML assertion or OIDC ID token from an institutional IdP routinely carries `givenName`, `sn`, `email`, and a persistent institution-unique identifier. Consuming any of these to provision or match a CTH account would directly violate `INV-CORE-000` §2's prohibition on DOB-class and contact-method PII, and — more importantly for severity — it would attach exactly the kind of durable, cross-context identity that currently does not exist anywhere in this system. A breach of the resulting dataset would no longer expose "a first name and last initial with no external reference"; it would expose a real, named, institutionally-attributable person. That is a strictly higher-severity outcome than the one being defended against today, achieved by adopting the very mechanism proposed to reduce risk.
 
@@ -113,7 +116,7 @@ NIST CSF 2.0's `PR.AA` (Identity Management, Authentication, and Access Control)
 CTH's non-implementation of SSO is a deliberate, documented architectural decision, not an oversight. The `class_id`/`seats`-centric, no-DOB, minimal-PII model defined in `INV-CORE-000` and `INV-ARC-019` achieves the access-control and identity-management intent behind CSF 2.0's `PR.AA` category through mechanisms better suited to this product's actual risk profile than federated SSO would be. Because CTH's worst-case breach exposure currently contains no resolvable real-world identity, federating identity through an institutional IdP would convert a low-severity, deidentified exposure into a high-severity, attributable one, while also concentrating breach impact across every classroom rather than containing it to one, and reintroducing the class of cross-tenant identity bleed that CTH's prior incident response (`SEC-INC-013`) was specifically architected to eliminate. 
 
 > [!IMPORTANT]
-In that case, Classroom Token Hub no longer retains any responsibility for the security and privacy of that instance nor does the instance represent Classroom Token Hub in any way.
+> Once deployed as an independently managed institutional fork, operational responsibility, including issues of infrastructure, authentication, identity management, monitoring, maintenance, security operations, and applicable regulatory compliance, will rests with the deploying institution. The upstream Classroom Token Hub project no longer governs the architecture, configuration, or operation of that deployment.
 
 ## 7. References
 

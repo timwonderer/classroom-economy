@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.extensions import db
-from app.services import access_policy_service, identity_service, ledger_service, store_service
+from app.services import identity_service, ledger_service, store_service
+from app.services.context_resolver import CanonicalContext
 from app.utils.time import utc_now
 
 
@@ -13,7 +14,7 @@ from app.feats.base import requires_feat_context
 @dataclass
 class StorePurchaseResult:
     transaction_id: int
-    student_item_ids: list[int]
+    purchase_ids: list[int]
     hall_pass_balance: int | None = None
     rent_uses_remaining: int | None = None
     success_message: str = ""
@@ -22,9 +23,8 @@ class StorePurchaseResult:
 @requires_feat_context("FEAT-STOR-001-RENT-PERK")
 def execute_rent_perk_purchase(
     *,
-    scope,
+    ctx: CanonicalContext,
     seat,
-    teacher_id: int,
     item,
     active_rent_item,
     ensure_active_grant: bool = False,
@@ -32,20 +32,13 @@ def execute_rent_perk_purchase(
     banking_settings,
     purchase_idempotency_key: str | None = None,
 ):
-    """Store-led FEAT for zero-cost rent-perk purchases."""
-    class_id = scope.class_id
-    access_policy_service.assert_can_purchase_item(
-        scope=scope,
-        teacher_id=teacher_id,
-        class_id=class_id,
-    )
     description = f"Purchase: {item.name} [Rent Perk $0]"
+    class_id = ctx.class_id
     if purchase_idempotency_key:
         purchase_tx, created = ledger_service.create_pending_transaction_idempotent(
             idempotency_key=purchase_idempotency_key,
             seat_id=seat.id,
             class_id=class_id,
-            teacher_id=teacher_id,
             amount=Decimal('0.00'),
             account_type='checking',
             type='purchase',
@@ -54,14 +47,13 @@ def execute_rent_perk_purchase(
         if not created:
             return StorePurchaseResult(
                 transaction_id=purchase_tx.id,
-                student_item_ids=[],
+                purchase_ids=[],
                 success_message=f"You purchased {item.name} for $0 (rent perk). Purchase already recorded.",
             )
     else:
         purchase_tx = ledger_service.create_pending_transaction(
             seat_id=seat.id,
             class_id=class_id,
-            teacher_id=teacher_id,
             amount=Decimal('0.00'),
             account_type='checking',
             type='purchase',
@@ -78,7 +70,7 @@ def execute_rent_perk_purchase(
         )
 
     db.session.flush()
-    student_item = store_service.record_rent_perk_purchase(
+    purchase = store_service.record_rent_perk_purchase(
         seat=seat,
         item=item,
         purchase_tx_id=purchase_tx.id,
@@ -88,7 +80,7 @@ def execute_rent_perk_purchase(
 
     return StorePurchaseResult(
         transaction_id=purchase_tx.id,
-        student_item_ids=[student_item.id],
+        purchase_ids=[purchase.id],
         rent_uses_remaining=active_rent_item.uses_remaining if active_rent_item else None,
         success_message=f"You purchased {item.name} for $0 (rent perk).",
     )
@@ -97,10 +89,8 @@ def execute_rent_perk_purchase(
 @requires_feat_context("FEAT-STOR-002")
 def execute_store_purchase(
     *,
-    scope,
+    ctx: CanonicalContext,
     seat,
-    teacher_id: int,
-    student_id: int | None,
     item,
     quantity: int,
     total_price: Decimal,
@@ -109,21 +99,14 @@ def execute_store_purchase(
     purchase_idempotency_key: str | None = None,
     expiry_date=None,
     uses_remaining=None,
-    student_item_status: str = 'purchased',
+    purchase_status: str = 'purchased',
 ):
-    """Store-led FEAT for standard purchases."""
-    class_id = scope.class_id
-    access_policy_service.assert_can_purchase_item(
-        scope=scope,
-        teacher_id=teacher_id,
-        class_id=class_id,
-    )
+    class_id = ctx.class_id
     if purchase_idempotency_key:
         purchase_tx, created = ledger_service.create_pending_transaction_idempotent(
             idempotency_key=purchase_idempotency_key,
             seat_id=seat.id,
             class_id=class_id,
-            teacher_id=teacher_id,
             amount=-total_price,
             account_type='checking',
             type='purchase',
@@ -132,14 +115,13 @@ def execute_store_purchase(
         if not created:
             return StorePurchaseResult(
                 transaction_id=purchase_tx.id,
-                student_item_ids=[],
+                purchase_ids=[],
                 success_message=f"{item.name} purchase already recorded.",
             )
     else:
         purchase_tx = ledger_service.create_pending_transaction(
             seat_id=seat.id,
             class_id=class_id,
-            teacher_id=teacher_id,
             amount=-total_price,
             account_type='checking',
             type='purchase',
@@ -150,20 +132,21 @@ def execute_store_purchase(
     store_service.decrement_inventory(item, quantity)
 
     hall_pass_balance = None
-    created_item_ids: list[int] = []
+    created_purchase_ids: list[int] = []
 
     if item.item_type == 'hall_pass':
         hall_pass_balance = identity_service.add_hall_passes(seat, quantity)
     else:
-        created_item_ids = store_service.record_standard_purchase_items(
+        created_purchase_ids = store_service.record_standard_purchase_items(
             seat=seat,
-            student_id=student_id,
             item=item,
             quantity=quantity,
             purchase_tx_id=purchase_tx.id,
+            total_price=total_price,
             expiry_date=expiry_date,
-            student_item_status=student_item_status,
+            purchase_status=purchase_status,
             uses_remaining=uses_remaining,
+            idempotency_key=purchase_idempotency_key,
         )
 
     checking_balance, savings_balance = ledger_service.get_available_balances(seat.id, class_id)
@@ -173,7 +156,6 @@ def execute_store_purchase(
             ledger_service.create_transfer_pair(
                 seat_id=seat.id,
                 class_id=class_id,
-                teacher_id=teacher_id,
                 amount=shortfall,
                 from_account='savings',
                 to_account='checking',
@@ -194,8 +176,6 @@ def execute_store_purchase(
             class_id=class_id,
         )
 
-    # FEAT-LEGACY-WRAP: commit moved to shell
-
     success_message = f"You purchased {item.name}!"
     if item.is_bundle and item.bundle_quantity is not None:
         success_message = f"You purchased {quantity} bundle(s) of {item.name}! You have {item.bundle_quantity * quantity} uses."
@@ -207,7 +187,7 @@ def execute_store_purchase(
 
     return StorePurchaseResult(
         transaction_id=purchase_tx.id,
-        student_item_ids=created_item_ids,
+        purchase_ids=created_purchase_ids,
         hall_pass_balance=hall_pass_balance,
         success_message=success_message,
     )

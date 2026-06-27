@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import InsurancePolicy, InsuranceEnrollment, StoreItem, StudentItem, Transaction, TransactionStatus
+from app.models import InsurancePolicy, InsuranceEnrollment, StoreItem, StorePurchase, Transaction, TransactionStatus
 from app.services import ledger_service, obligations_service
 from app.utils.seat_scope import get_seat_ids_for_student_join, seat_scoped_filter
 from app.utils.time import ensure_utc, utc_now
@@ -80,34 +80,34 @@ def _void_purchase(tx: Transaction) -> None:
         raise ImmediatePurchaseNotVoidable
     if store_item.item_type != 'delayed':
         raise ValueError("Only delayed-use item purchases are voidable.")
-    matching_items = StudentItem.query.filter(
-        StudentItem.seat_id == tx.seat_id,
-        StudentItem.store_item_id == store_item.id,
-        StudentItem.class_id == tx.class_id,
+    matching_items = StorePurchase.query.filter(
+        StorePurchase.seat_id == tx.seat_id,
+        StorePurchase.store_item_id == store_item.id,
+        StorePurchase.class_id == tx.class_id,
     ).all()
     if not matching_items:
         raise ValueError("No matching student item was found for this purchase.")
 
     tx_ts = ensure_utc(tx.timestamp) if tx.timestamp else utc_now()
 
-    def _distance(student_item):
-        if not student_item.purchase_date:
+    def _distance(purchase):
+        if not purchase.purchased_at:
             return float('inf')
-        return abs((ensure_utc(student_item.purchase_date) - tx_ts).total_seconds())
+        return abs((ensure_utc(purchase.purchased_at) - tx_ts).total_seconds())
 
     matching_items.sort(key=lambda si: (_distance(si), -si.id))
     selected_items = []
     selected_units = 0
-    for student_item in matching_items:
-        selected_items.append(student_item)
-        selected_units += (student_item.quantity_purchased or 1)
+    for purchase in matching_items:
+        selected_items.append(purchase)
+        selected_units += (purchase.quantity or 1)
         if selected_units >= quantity:
             break
     if selected_units < quantity:
         raise ValueError("Unable to map this transaction to purchasable student items.")
 
     used_statuses = {'processing', 'completed', 'redeemed'}
-    if any((student_item.status or '').lower() in used_statuses for student_item in selected_items):
+    if any((purchase.status or '').lower() in used_statuses for purchase in selected_items):
         raise UsedDelayedPurchaseNotVoidable
 
     ledger_service.create_pending_transaction(
@@ -119,10 +119,8 @@ def _void_purchase(tx: Transaction) -> None:
         type='void_item_removed',
         description=f"item removed - {store_item.name}",
     )
-    for student_item in selected_items:
-        student_item.status = 'voided'
-        if not student_item.redemption_date:
-            student_item.redemption_date = utc_now()
+    for purchase in selected_items:
+        purchase.status = 'voided'
 
 
 def _void_rent_payment(tx: Transaction) -> None:

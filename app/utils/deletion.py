@@ -7,7 +7,7 @@ from sqlalchemy import func, or_, case, select
 from app.extensions import db
 from app.models import (
     ClassEconomy, ClassMembership, Seat, Transaction, StudentBlock,
-    AttendanceSession, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
+    AttendanceSession, HallPassLog, RedemptionAuditLog, StorePurchase, RedemptionEvent, AnalyticsEvent,
     AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
     InsuranceEnrollment, RentPayment, Announcement, StoreItemBlock, StoreItem,
     Student, PayrollSettings, RentSettings, IdentityProfile,
@@ -28,7 +28,8 @@ def _assert_class_scope_integrity(class_id: str, join_code: str) -> None:
         ("ledger_transaction", Transaction),
         ("student_blocks", StudentBlock),
         ("hall_pass_logs", HallPassLog),
-        ("student_items", StudentItem),
+        ("store_purchases", StorePurchase),
+        ("redemption_events", RedemptionEvent),
         ("analytics_events", AnalyticsEvent),
         ("analytics_snapshots", AnalyticsSnapshot),
         ("issues", Issue),
@@ -164,11 +165,11 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         InsuranceEnrollment.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
         # 4. Inventory / Store Data
-        student_item_ids_subq = select(StudentItem.id).filter_by(class_id=class_id).subquery()
-        RedemptionAuditLog.query.filter(
-            RedemptionAuditLog.student_item_id.in_(select(student_item_ids_subq))
+        store_purchase_ids_subq = select(StorePurchase.id).filter_by(class_id=class_id).subquery()
+        RedemptionEvent.query.filter(
+            RedemptionEvent.purchase_id.in_(select(store_purchase_ids_subq))
         ).delete(synchronize_session=False)
-        StudentItem.query.filter_by(class_id=class_id).delete(synchronize_session=False)
+        StorePurchase.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
         # 4b. StoreItemBlocks for this class (class-scoped; also handled by FK cascade on class deletion)
         StoreItemBlock.query.filter_by(class_id=class_id).delete(synchronize_session=False)
