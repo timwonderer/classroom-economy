@@ -202,7 +202,7 @@ def test_file_claim_scoped_to_class(client):
     ])
 
     # Policy in Class A
-    from app.models import InsurancePolicy, StudentInsurance
+    from app.models import InsurancePolicy, InsuranceEnrollment
     policy_a = InsurancePolicy(
         teacher_id=admin.id,
         policy_code="POL-A-1",
@@ -219,9 +219,12 @@ def test_file_claim_scoped_to_class(client):
     db.session.add(policy_a)
     db.session.flush()
 
-    enrollment = StudentInsurance(
+    seat = Seat.query.filter_by(student_id=student.id, class_id=class_a.class_id).first()
+    assert seat is not None
+    enrollment = InsuranceEnrollment(
         policy_id=policy_a.id,
-        student_id=student.id,
+        seat_id=seat.id,
+        class_id=seat.class_id,
         status="active",
         coverage_start_date=datetime.now(timezone.utc) - timedelta(days=1),
         join_code="CLAIM_A"

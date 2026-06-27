@@ -10,7 +10,7 @@ from app.models import (
     InsuranceEnrollment,
     InsurancePolicy,
     Seat,
-    StudentInsurance,
+    InsuranceEnrollment,
     InsuranceClaim,
     Transaction,
     TransactionStatus,
