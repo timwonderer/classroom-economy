@@ -25,7 +25,7 @@ from dateutil.relativedelta import relativedelta
 from app.extensions import db, limiter
 from app.models import (
     Student, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StudentItem,
-    RentSettings, RentPayment, InsurancePolicy, StudentInsurance, InsuranceClaim,
+    RentSettings, RentPayment, InsurancePolicy, InsuranceEnrollment, InsuranceClaim,
     BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole,
     ClassMembership, ClassEconomy, IdentityProfile, _quantize_currency
 )
@@ -1085,32 +1085,19 @@ def dashboard():
             coverage_year = coverage_due_date.year if coverage_due_date else upcoming_due_date.year
             grace_end_date_for_status = (coverage_due_date + timedelta(days=rent_settings.grace_period_days)) if coverage_due_date else grace_end_date
 
+        from app.services.obligations_service import get_paid_rent_assessments_for_cycle
         seat_ids = [scope.seat_id]
         all_paid = True
         for period in rent_blocks:
-            all_payments_for_period = RentPayment.query.filter(
-                RentPayment.seat_id == scope.seat_id,
-                RentPayment.class_id == class_id,
-                RentPayment.coverage_month == coverage_month,
-                RentPayment.coverage_year == coverage_year,
-            ).all()
+            payments = get_paid_rent_assessments_for_cycle(
+                class_id,
+                coverage_month,
+                coverage_year,
+                seat_ids=seat_ids,
+            )
+            payments = [payment for payment in payments if payment.satisfaction is not None]
 
-            payments = []
-            for payment in all_payments_for_period:
-                txn_scope = transaction_scope_filter(Transaction, scope.seat_id, seat_ids)
-                txn = Transaction.query.filter(
-                    txn_scope,
-                    Transaction.type == 'Rent Payment',
-                    Transaction.timestamp >= payment.payment_date - timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-                    Transaction.timestamp <= payment.payment_date + timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-                    Transaction.amount == -payment.amount_paid,
-                    Transaction.join_code == join_code
-                ).first()
-
-                if txn and not txn.is_void:
-                    payments.append(payment)
-
-            total_paid = sum(p.amount_paid for p in payments) if payments else Decimal('0.00')
+            total_paid = sum((p.satisfaction.amount_paid for p in payments), Decimal('0.00'))
             paid_by_grace = _total_paid_by_grace(payments, grace_end_date_for_status)
             late_fee = Decimal('0.00')
             if rent_is_active and now > grace_end_date_for_status and paid_by_grace < rent_settings.rent_amount:
@@ -1623,12 +1610,12 @@ def insurance_marketplace():
     now_utc = utc_now()
 
     # FIX: Get student's active policies scoped to current class only
-    my_policies = StudentInsurance.query.join(
-        InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id
+    my_policies = InsuranceEnrollment.query.join(
+        InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id
     ).filter(
-        StudentInsurance.student_id == student.id,
-        StudentInsurance.status == 'active',
-        StudentInsurance.join_code == join_code,
+        InsuranceEnrollment.seat_id == seat.id,
+        InsuranceEnrollment.status == 'active',
+        InsuranceEnrollment.join_code == join_code,
     ).all()
 
     # FIX: Get available policies (only from current teacher)
@@ -1643,8 +1630,8 @@ def insurance_marketplace():
 
     for policy in available_policies:
         # Check if already enrolled
-        existing = StudentInsurance.query.filter_by(
-            student_id=student.id,
+        existing = InsuranceEnrollment.query.filter_by(
+            seat_id=seat.id,
             policy_id=policy.id,
             status='active'
         ).first()
@@ -1655,11 +1642,11 @@ def insurance_marketplace():
 
         # Check repurchase restrictions
         if policy.no_repurchase_after_cancel:
-            cancelled = StudentInsurance.query.filter_by(
-                student_id=student.id,
+            cancelled = InsuranceEnrollment.query.filter_by(
+                seat_id=seat.id,
                 policy_id=policy.id,
                 status='cancelled'
-            ).order_by(StudentInsurance.cancel_date.desc()).first()
+            ).order_by(InsuranceEnrollment.cancel_date.desc()).first()
 
             if cancelled and cancelled.cancel_date:
                 cancel_dt = ensure_utc(cancelled.cancel_date)
@@ -1726,6 +1713,10 @@ def purchase_insurance(policy_id):
     if not context:
         flash("No class selected.", "danger")
         return redirect(url_for('student.dashboard'))
+    seat = get_current_seat()
+    if seat is None:
+        flash("No class selected.", "danger")
+        return redirect(url_for('student.dashboard'))
 
     join_code = get_display_join_code(context.class_id)
     teacher_id = None
@@ -1738,8 +1729,8 @@ def purchase_insurance(policy_id):
         return redirect(url_for('student.student_insurance'))
 
     # Check if already enrolled
-    existing = StudentInsurance.query.filter_by(
-        student_id=student.id,
+    existing = InsuranceEnrollment.query.filter_by(
+        seat_id=seat.id,
         policy_id=policy.id,
         status='active'
     ).first()
@@ -1749,11 +1740,11 @@ def purchase_insurance(policy_id):
         return redirect(url_for('student.student_insurance'))
 
     # Check repurchase restrictions
-    cancelled = StudentInsurance.query.filter_by(
-        student_id=student.id,
+    cancelled = InsuranceEnrollment.query.filter_by(
+        seat_id=seat.id,
         policy_id=policy.id,
         status='cancelled'
-    ).order_by(StudentInsurance.cancel_date.desc()).first()
+    ).order_by(InsuranceEnrollment.cancel_date.desc()).first()
 
     if cancelled:
         # Check for permanent block (no repurchase allowed EVER)
@@ -1770,13 +1761,13 @@ def purchase_insurance(policy_id):
 
     # Check tier restrictions - can only have one policy per tier (scoped to current class)
     if policy.tier_category_id:
-        existing_tier_enrollment = StudentInsurance.query.join(
-            InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id
+        existing_tier_enrollment = InsuranceEnrollment.query.join(
+            InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id
         ).filter(
-            StudentInsurance.student_id == student.id,
-            StudentInsurance.status == 'active',
+            InsuranceEnrollment.seat_id == seat.id,
+            InsuranceEnrollment.status == 'active',
             InsurancePolicy.tier_category_id == policy.tier_category_id,
-            StudentInsurance.join_code == join_code,
+            InsuranceEnrollment.join_code == join_code,
         ).first()
 
         if existing_tier_enrollment:
@@ -1838,10 +1829,11 @@ def purchase_insurance(policy_id):
 def cancel_insurance(enrollment_id):
     """Cancel insurance policy."""
     student = get_logged_in_student()
-    enrollment = db.get_or_404(StudentInsurance, enrollment_id)
+    seat = get_current_seat()
+    enrollment = db.get_or_404(InsuranceEnrollment, enrollment_id)
 
     # Verify ownership
-    if enrollment.student_id != student.id:
+    if seat is None or enrollment.seat_id != seat.id:
         flash("Unauthorized access.", "danger")
         return redirect(url_for('student.student_insurance'))
 
@@ -1858,10 +1850,14 @@ def cancel_insurance(enrollment_id):
 def file_claim(policy_id):
     """File insurance claim."""
     student = get_logged_in_student()
+    seat = get_current_seat()
+    if seat is None:
+        flash("No class selected.", "danger")
+        return redirect(url_for('student.student_insurance'))
 
     # Get student's enrollment for this policy
-    enrollment = StudentInsurance.query.filter_by(
-        student_id=student.id,
+    enrollment = InsuranceEnrollment.query.filter_by(
+        seat_id=seat.id,
         policy_id=policy_id,
         status='active'
     ).first()
@@ -2157,10 +2153,10 @@ def view_policy(enrollment_id):
     class_id = get_current_class_id()
     _ = get_current_user()
     student = get_logged_in_student()
-    enrollment = db.get_or_404(StudentInsurance, enrollment_id)
+    enrollment = db.get_or_404(InsuranceEnrollment, enrollment_id)
 
     # Verify ownership
-    if enrollment.student_id != student.id:
+    if enrollment.seat_id != seat.id:
         flash("Unauthorized access.", "danger")
         return redirect(url_for('student.student_insurance'))
 
@@ -3237,30 +3233,16 @@ def rent():
 
     period_status = {}
 
-    # Get all payments that COVER the current period (pre-paid system)
-    all_payments_for_period = RentPayment.query.filter(
-        RentPayment.seat_id == seat_id,
-        RentPayment.class_id == class_id,
-        RentPayment.coverage_month == coverage_month,
-        RentPayment.coverage_year == coverage_year,
-    ).all()
+    from app.services.obligations_service import get_paid_rent_assessments_for_cycle
+    payments = get_paid_rent_assessments_for_cycle(
+        class_id,
+        coverage_month,
+        coverage_year,
+        seat_ids=[seat_id],
+    )
+    payments = [payment for payment in payments if payment.satisfaction is not None]
 
-    # Filter out payments where the corresponding transaction was voided
-    payments = []
-    for payment in all_payments_for_period:
-        txn = Transaction.query.filter(
-            Transaction.seat_id == seat_id,
-            Transaction.class_id == class_id,
-            Transaction.type == 'Rent Payment',
-            Transaction.timestamp >= payment.payment_date - timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-            Transaction.timestamp <= payment.payment_date + timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-            Transaction.amount == -payment.amount_paid
-        ).first()
-
-        if txn and not txn.is_void:
-            payments.append(payment)
-
-    total_paid = sum(p.amount_paid for p in payments) if payments else Decimal('0.00')
+    total_paid = sum((p.satisfaction.amount_paid for p in payments), Decimal('0.00'))
 
     paid_by_grace = _total_paid_by_grace(payments, grace_end_date_for_status)
     late_fee = Decimal('0.00')
@@ -3291,12 +3273,8 @@ def rent():
     checking_balance, savings_balance = get_available_balances(seat_id, class_id)
 
     # Get payment history for the current class only
-    payment_history = RentPayment.query.filter(
-        RentPayment.seat_id == seat_id,
-        RentPayment.class_id == class_id,
-    ).order_by(
-        RentPayment.payment_date.desc()
-    ).limit(24).all()  # Increased to show more history with multiple periods
+    from app.services.obligations_service import get_rent_payment_history
+    payment_history = get_rent_payment_history(seat_id, class_id, limit=24)
 
     waiver_history = []
     if settings:
@@ -3310,11 +3288,11 @@ def rent():
         payment_history_rows.append({
             'period_month': payment.period_month,
             'period_year': payment.period_year,
-            'amount_paid': payment.amount_paid,
-            'recorded_at': payment.payment_date,
+            'amount_paid': payment.satisfaction.amount_paid if payment.satisfaction else Decimal('0.00'),
+            'recorded_at': payment.satisfaction.satisfied_at if payment.satisfaction else payment.assessed_at,
             'status_text': (
-                f"Paid late with fee of ${payment.late_fee_charged:.2f}"
-                if payment.was_late else "On Time"
+                f"Paid late with fee of ${payment.satisfaction.late_fee_charged:.2f}"
+                if payment.satisfaction and payment.satisfaction.was_late else "On Time"
             ),
             'entry_type': 'payment',
         })
@@ -3484,32 +3462,16 @@ def rent_pay(period):
 
     checking_balance, savings_balance = get_available_balances(seat_id, class_id)
 
-    # Get all existing payments that cover this period
-    all_payments = RentPayment.query.filter(
-        RentPayment.seat_id == seat_id,
-        RentPayment.class_id == class_id,
-        RentPayment.coverage_month == coverage_month,
-        RentPayment.coverage_year == coverage_year,
-    ).all()
+    from app.services.obligations_service import get_paid_rent_assessments_for_cycle
+    existing_payments = get_paid_rent_assessments_for_cycle(
+        class_id,
+        coverage_month,
+        coverage_year,
+        seat_ids=[seat_id],
+    )
+    existing_payments = [payment for payment in existing_payments if payment.satisfaction is not None]
 
-    # Filter out payments where the corresponding transaction was voided
-    existing_payments = []
-    for payment in all_payments:
-        # Find the transaction for this payment
-        txn = Transaction.query.filter(
-            Transaction.seat_id == seat_id,
-            Transaction.class_id == class_id,
-            Transaction.type == 'Rent Payment',
-            Transaction.timestamp >= payment.payment_date - timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-            Transaction.timestamp <= payment.payment_date + timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-            Transaction.amount == -payment.amount_paid
-        ).first()
-
-        # Only include if transaction exists and is not voided
-        if txn and not txn.is_void:
-            existing_payments.append(payment)
-
-    total_paid_so_far = sum(p.amount_paid for p in existing_payments) if existing_payments else Decimal('0.00')
+    total_paid_so_far = sum((p.satisfaction.amount_paid for p in existing_payments), Decimal('0.00'))
 
     # Calculate if late and total amount due
     due_date, grace_end_date = _calculate_rent_deadlines(settings, now)

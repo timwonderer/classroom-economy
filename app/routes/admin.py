@@ -59,7 +59,7 @@ from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
     Student, Admin, ClassEconomy, Transaction, TransactionStatus, TapEvent, AttendanceSession, StoreItem, StudentItem,
     InsurancePolicy, InsurancePolicyBlock, RentItem, RentPayment, RentSettings, StoreItemBlock,
-    InsuranceEnrollment, StudentInsurance, InsuranceClaim, HallPassLog, HallPassSettings, PayrollSettings, SavedAdjustment,
+    InsuranceEnrollment, InsuranceClaim, HallPassLog, HallPassSettings, PayrollSettings, SavedAdjustment,
     BankingSettings,
     UserReport, FeatureSettings, StudentBlock,
     Announcement, RedemptionAuditLog, RedemptionAuditAction,
@@ -1265,7 +1265,7 @@ def _hard_delete_class_scope(class_id, teacher_id):
         ("analytics_events", AnalyticsEvent),
         ("analytics_snapshots", AnalyticsSnapshot),
         ("issues", Issue),
-        ("student_insurance", StudentInsurance),
+        ("student_insurance", InsuranceEnrollment),
         ("rent_payments", RentPayment),
         ("announcements", Announcement),
     )
@@ -1298,8 +1298,8 @@ def _hard_delete_class_scope(class_id, teacher_id):
         .subquery()
     )
     insurance_ids_subq = (
-        db.session.query(StudentInsurance.id)
-        .filter(StudentInsurance.class_id == class_id)
+        db.session.query(InsuranceEnrollment.id)
+        .filter(InsuranceEnrollment.class_id == class_id)
         .subquery()
     )
     tx_ids_subq = (
@@ -1362,7 +1362,7 @@ def _hard_delete_class_scope(class_id, teacher_id):
             InsuranceClaim.transaction_id.in_(sa.select(tx_ids_subq)),
         )
     ).delete(synchronize_session=False)
-    StudentInsurance.query.filter(StudentInsurance.class_id == class_id).delete(synchronize_session=False)
+    InsuranceEnrollment.query.filter(InsuranceEnrollment.class_id == class_id).delete(synchronize_session=False)
 
     # Financial ledger (only here)
     Transaction.query.filter(Transaction.class_id == class_id).delete(synchronize_session=False)
@@ -1506,8 +1506,8 @@ def _delete_teacher_insurance_rows(teacher_id):
     InsuranceClaim.query.filter(
         InsuranceClaim.policy_id.in_(sa.select(policy_ids_subq))
     ).delete(synchronize_session=False)
-    StudentInsurance.query.filter(
-        StudentInsurance.policy_id.in_(sa.select(policy_ids_subq))
+    InsuranceEnrollment.query.filter(
+        InsuranceEnrollment.policy_id.in_(sa.select(policy_ids_subq))
     ).delete(synchronize_session=False)
     InsurancePolicyBlock.query.filter(
         InsurancePolicyBlock.policy_id.in_(sa.select(policy_ids_subq))
@@ -4198,11 +4198,7 @@ def _build_rent_privileges_by_block(current_admin, blocks, join_codes_by_block, 
         class_id = class_id_by_block.get(block)
         if not class_id:
             continue
-        payment_filters.append(and_(
-            RentPayment.class_id == class_id,
-            RentPayment.coverage_month == coverage_month,
-            RentPayment.coverage_year == coverage_year,
-        ))
+        payment_filters.append((class_id, coverage_month, coverage_year))
 
     if not all_student_ids:
         return student_rent_privileges
@@ -4210,15 +4206,18 @@ def _build_rent_privileges_by_block(current_admin, blocks, join_codes_by_block, 
     # 4. Fetch all relevant RentPayments in a single query each
     paid_student_ids_by_block = defaultdict(set)
     if payment_filters:
-        rent_payments = RentPayment.query.filter(
-            RentPayment.student_id.in_(list(all_student_ids)),
-            or_(*payment_filters)
-        ).with_entities(RentPayment.student_id, RentPayment.class_id).all()
-
-        for student_id, class_id in rent_payments:
-            for block, block_class_id in class_id_by_block.items():
-                if block_class_id == class_id:
-                    paid_student_ids_by_block[block].add(student_id)
+        from app.services.obligations_service import get_paid_rent_assessments_for_cycle
+        for class_id, coverage_month, coverage_year in payment_filters:
+            assessments = get_paid_rent_assessments_for_cycle(
+                class_id,
+                coverage_month,
+                coverage_year,
+            )
+            for assessment in assessments:
+                if assessment.seat and assessment.seat.user_id is not None:
+                    for block, block_class_id in class_id_by_block.items():
+                        if block_class_id == class_id:
+                            paid_student_ids_by_block[block].add(assessment.seat.user_id)
 
     # 5. Fetch all relevant StudentItems in a single query each
     items_by_student = defaultdict(set)
@@ -4307,14 +4306,16 @@ def _get_rent_privileges_for_student(student, class_id, join_code):
     coverage_month = coverage_due_date.month
     coverage_year = coverage_due_date.year
     seat_ids = get_seat_ids_for_student_join(student.id, join_code)
-    rent_scope = RentPayment.seat_id.in_(seat_ids) if seat_ids else sa.false()
-
-    has_paid_rent = RentPayment.query.filter(
-        rent_scope,
-        RentPayment.class_id == class_id,
-        RentPayment.coverage_month == coverage_month,
-        RentPayment.coverage_year == coverage_year,
-    ).first() is not None
+    from app.services.obligations_service import get_paid_rent_assessments_for_cycle
+    has_paid_rent = bool(
+        seat_ids
+        and get_paid_rent_assessments_for_cycle(
+            class_id,
+            coverage_month,
+            coverage_year,
+            seat_ids=seat_ids,
+        )
+    )
 
     # Read privilege items from the active policy version's frozen manifest
     # so mid-cycle teacher edits don't change what students see until next cycle.
@@ -7051,38 +7052,40 @@ def rent_settings():
                     }
                     unpaid_rent_log.append(item)
 
-        payment_query = (
-            RentPayment.query
-            .join(Student, RentPayment.student_id == Student.id)
-            .filter(Student.id.in_(sa.select(student_ids_subq)))
-            .filter(RentPayment.class_id.in_([info['class_id'] for info in classes_by_join_code.values() if info.get('class_id')]))
-            .order_by(RentPayment.payment_date.desc())
-            .limit(200)
-        )
+        from app.services.obligations_service import get_paid_rent_assessments_for_cycle
+        payment_query = []
+        for join_code, info in classes_by_join_code.items():
+            class_id = info.get('class_id')
+            if not class_id:
+                continue
+            for assessment in get_paid_rent_assessments_for_cycle(
+                class_id,
+                coverage_due_date.month,
+                coverage_due_date.year,
+            ):
+                if assessment.seat and assessment.seat.user_id in (info.get('student_ids') or set()):
+                    payment_query.append(assessment)
         class_label_by_join = {
             info['join_code']: info['class_label']
             for info in classes_by_join_code.values()
         }
-        block_by_join = {
-            info['join_code']: info['block']
-            for info in classes_by_join_code.values()
-        }
-        for payment in payment_query.all():
-            payment_join = (payment.join_code or '').strip()
-            payment_block = block_by_join.get(payment_join, payment.period)
+        for payment in payment_query:
+            payment_join = (payment.seat.join_code if payment.seat else '') or ''
+            payment_join = payment_join.strip()
+            payment_block = payment.seat.block_identifier if payment.seat and payment.seat.block_identifier else (payment.seat.block if payment.seat else '')
             coverage_label = "Unknown"
-            if payment.coverage_year and payment.coverage_month:
+            if payment.period_year and payment.period_month:
                 coverage_label = datetime(
-                    payment.coverage_year, payment.coverage_month, 1
+                    payment.period_year, payment.period_month, 1
                 ).strftime('%b %Y')
             payment_log.append({
-                'student': payment.student,
+                'student': payment.seat.user if payment.seat and payment.seat.user else None,
                 'join_code': payment_join,
                 'class_label': class_label_by_join.get(payment_join, payment.period),
                 'block': payment_block,
                 'coverage_label': coverage_label,
-                'amount_paid': payment.amount_paid,
-                'payment_date': payment.payment_date,
+                'amount_paid': payment.satisfaction.amount_paid if payment.satisfaction else Decimal('0.00'),
+                'payment_date': payment.satisfaction.satisfied_at if payment.satisfaction else payment.assessed_at,
             })
 
     student_past_due_json = {}
@@ -7342,24 +7345,21 @@ def reverse_cycle_penalties():
         return redirect(url_for('admin.rent_settings', settings_block=settings_block or block))
 
     grace_end_date = coverage_due_date + timedelta(days=rent_settings.grace_period_days)
-    cycle_payments = RentPayment.query.filter(
-        RentPayment.class_id == class_row_for_rent.class_id,
-        RentPayment.coverage_month == coverage_due_date.month,
-        RentPayment.coverage_year == coverage_due_date.year,
-    ).order_by(RentPayment.seat_id, RentPayment.payment_date).all()
-
+    from app.services.obligations_service import get_paid_rent_assessments_for_cycle
+    cycle_payments = get_paid_rent_assessments_for_cycle(
+        class_row_for_rent.class_id,
+        coverage_due_date.month,
+        coverage_due_date.year,
+    )
+    cycle_payments.sort(
+        key=lambda payment: (
+            payment.seat_id,
+            payment.satisfaction.satisfied_at if payment.satisfaction and payment.satisfaction.satisfied_at else payment.assessed_at,
+        )
+    )
     payments_by_seat = defaultdict(list)
     for payment in cycle_payments:
-        txn = Transaction.query.filter(
-            Transaction.seat_id == payment.seat_id,
-            Transaction.class_id == payment.class_id,
-            Transaction.type == 'Rent Payment',
-            Transaction.timestamp >= payment.payment_date - timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-            Transaction.timestamp <= payment.payment_date + timedelta(seconds=RENT_PAYMENT_MATCH_TOLERANCE_SECONDS),
-            Transaction.amount == -payment.amount_paid,
-        ).first()
-
-        if txn and not txn.is_void:
+        if payment.satisfaction is not None:
             payments_by_seat[payment.seat_id].append(payment)
 
     students_fixed = 0
@@ -7367,10 +7367,14 @@ def reverse_cycle_penalties():
 
     for seat_id, payments in payments_by_seat.items():
         paid_by_grace = sum(
-            payment.amount_paid for payment in payments
-            if payment.payment_date and ensure_utc(payment.payment_date) <= ensure_utc(grace_end_date)
+            payment.satisfaction.amount_paid for payment in payments
+            if payment.satisfaction and payment.satisfaction.satisfied_at and ensure_utc(payment.satisfaction.satisfied_at) <= ensure_utc(grace_end_date)
         )
-        total_late_fee_charged = sum(payment.late_fee_charged or Decimal('0.00') for payment in payments)
+        total_late_fee_charged = sum(
+            (payment.satisfaction.late_fee_charged or Decimal('0.00'))
+            for payment in payments
+            if payment.satisfaction
+        )
         if total_late_fee_charged <= Decimal('0.00'):
             continue
 
@@ -7390,9 +7394,9 @@ def reverse_cycle_penalties():
             )
 
             for payment in payments:
-                if payment.late_fee_charged and payment.late_fee_charged > Decimal('0.00'):
-                    payment.late_fee_charged = Decimal('0.00')
-                    payment.was_late = False
+                if payment.satisfaction and payment.satisfaction.late_fee_charged and payment.satisfaction.late_fee_charged > Decimal('0.00'):
+                    payment.satisfaction.late_fee_charged = Decimal('0.00')
+                    payment.satisfaction.was_late = False
 
             students_fixed += 1
             total_refunded += refund_amount
@@ -7544,36 +7548,46 @@ def insurance_management():
     if student_ids_in_scope and selected_join_code:
         # Filter enrollments by join_code to ensure proper class isolation
         active_enrollments = (
-            StudentInsurance.query
-            .join(Student, StudentInsurance.student_id == Student.id)
+            InsuranceEnrollment.query
+            .join(Seat, InsuranceEnrollment.seat_id == Seat.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
             .filter(Student.id.in_(student_ids_in_scope))
-            .filter(StudentInsurance.join_code == selected_join_code)
-            .filter(StudentInsurance.status == 'active')
+            .filter(InsuranceEnrollment.join_code == selected_join_code)
+            .filter(InsuranceEnrollment.status == 'active')
             .all()
         )
         cancelled_enrollments = (
-            StudentInsurance.query
-            .join(Student, StudentInsurance.student_id == Student.id)
+            InsuranceEnrollment.query
+            .join(Seat, InsuranceEnrollment.seat_id == Seat.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
             .filter(Student.id.in_(student_ids_in_scope))
-            .filter(StudentInsurance.join_code == selected_join_code)
-            .filter(StudentInsurance.status == 'cancelled')
+            .filter(InsuranceEnrollment.join_code == selected_join_code)
+            .filter(InsuranceEnrollment.status == 'cancelled')
             .all()
         )
 
         # Get claims for selected block, filtered by join_code for proper multi-tenancy isolation
         claims = (
             InsuranceClaim.query
-            .join(StudentInsurance, InsuranceClaim.enrollment_id == StudentInsurance.id)
-            .filter(StudentInsurance.student_id.in_(student_ids_in_scope))
-            .filter(StudentInsurance.join_code == selected_join_code)
+            .join(InsuranceEnrollment, InsuranceClaim.enrollment_id == InsuranceEnrollment.id)
+            .join(Seat, InsuranceEnrollment.seat_id == Seat.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(Student.id.in_(student_ids_in_scope))
+            .filter(InsuranceEnrollment.join_code == selected_join_code)
             .order_by(InsuranceClaim.filed_date.desc())
             .all()
         )
         pending_claims_count = (
             InsuranceClaim.query
-            .join(StudentInsurance, InsuranceClaim.enrollment_id == StudentInsurance.id)
-            .filter(StudentInsurance.student_id.in_(student_ids_in_scope))
-            .filter(StudentInsurance.join_code == selected_join_code)
+            .join(InsuranceEnrollment, InsuranceClaim.enrollment_id == InsuranceEnrollment.id)
+            .join(Seat, InsuranceEnrollment.seat_id == Seat.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(Student.id.in_(student_ids_in_scope))
+            .filter(InsuranceEnrollment.join_code == selected_join_code)
             .filter(InsuranceClaim.status == 'pending')
             .count()
         )
@@ -7732,10 +7746,12 @@ def delete_insurance_policy(policy_id):
     student_ids_subq = _student_scope_subquery()
 
     # Check for active enrollments within scope
-    active_enrollments = StudentInsurance.query.filter(
-        StudentInsurance.policy_id == policy_id,
-        StudentInsurance.status == 'active',
-        StudentInsurance.student_id.in_(sa.select(student_ids_subq)),
+    active_enrollments = InsuranceEnrollment.query.filter(
+        InsuranceEnrollment.policy_id == policy_id,
+        InsuranceEnrollment.status == 'active',
+        InsuranceEnrollment.seat_id.in_(
+            sa.select(Seat.id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).join(Student, Student.identity_id == IdentityProfile.id).filter(Student.id.in_(sa.select(student_ids_subq)))
+        ),
     ).count()
 
     # Check for pending claims within scope
@@ -7758,10 +7774,12 @@ def delete_insurance_policy(policy_id):
     try:
         # Cancel active enrollments if force delete
         if force_delete and active_enrollments > 0:
-            cancelled_count = StudentInsurance.query.filter(
-                StudentInsurance.policy_id == policy_id,
-                StudentInsurance.status == 'active',
-                StudentInsurance.student_id.in_(sa.select(student_ids_subq)),
+            cancelled_count = InsuranceEnrollment.query.filter(
+                InsuranceEnrollment.policy_id == policy_id,
+                InsuranceEnrollment.status == 'active',
+                InsuranceEnrollment.seat_id.in_(
+                    sa.select(Seat.id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).join(Student, Student.identity_id == IdentityProfile.id).filter(Student.id.in_(sa.select(student_ids_subq)))
+                ),
             ).update({'status': 'cancelled'}, synchronize_session=False)
             flash(f"Cancelled {cancelled_count} active enrollments.", "info")
 
@@ -7779,9 +7797,11 @@ def delete_insurance_policy(policy_id):
         claims_deleted = InsuranceClaim.query.filter(InsuranceClaim.id.in_(claim_ids_to_delete)).delete(synchronize_session=False) if claim_ids_to_delete else 0
 
         # Delete all enrollments for this policy (legacy + canonical)
-        enrollments_deleted = StudentInsurance.query.filter(
-            StudentInsurance.policy_id == policy_id,
-            StudentInsurance.student_id.in_(sa.select(student_ids_subq)),
+        enrollments_deleted = InsuranceEnrollment.query.filter(
+            InsuranceEnrollment.policy_id == policy_id,
+            InsuranceEnrollment.seat_id.in_(
+                sa.select(Seat.id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).join(Student, Student.identity_id == IdentityProfile.id).filter(Student.id.in_(sa.select(student_ids_subq)))
+            ),
         ).delete(synchronize_session=False)
         InsuranceEnrollment.query.filter(
             InsuranceEnrollment.policy_id == policy_id,
@@ -7817,20 +7837,26 @@ def mass_remove_policy(policy_id):
 
     if student_ids_raw == 'all':
         # Cancel for all active students in scope
-        count = StudentInsurance.query.filter(
-            StudentInsurance.policy_id == policy_id,
-            StudentInsurance.status == 'active',
-            StudentInsurance.student_id.in_(sa.select(student_ids_subq))
+        count = InsuranceEnrollment.query.filter(
+            InsuranceEnrollment.policy_id == policy_id,
+            InsuranceEnrollment.status == 'active',
+            InsuranceEnrollment.seat_id.in_(
+                sa.select(Seat.id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).join(Student, Student.identity_id == IdentityProfile.id).filter(Student.id.in_(sa.select(student_ids_subq)))
+            ),
         ).update({'status': 'cancelled'}, synchronize_session=False)
     else:
         # Cancel for specific students
         try:
             student_ids = [int(sid.strip()) for sid in student_ids_raw.split(',') if sid.strip()]
-            count = StudentInsurance.query.filter(
-                StudentInsurance.policy_id == policy_id,
-                StudentInsurance.student_id.in_(student_ids),
-                StudentInsurance.student_id.in_(sa.select(student_ids_subq)),
-                StudentInsurance.status == 'active'
+            count = InsuranceEnrollment.query.filter(
+                InsuranceEnrollment.policy_id == policy_id,
+                InsuranceEnrollment.seat_id.in_(
+                    sa.select(Seat.id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).join(Student, Student.identity_id == IdentityProfile.id).filter(Student.id.in_(student_ids))
+                ),
+                InsuranceEnrollment.seat_id.in_(
+                    sa.select(Seat.id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).join(Student, Student.identity_id == IdentityProfile.id).filter(Student.id.in_(sa.select(student_ids_subq)))
+                ),
+                InsuranceEnrollment.status == 'active'
             ).update({'status': 'cancelled'}, synchronize_session=False)
         except ValueError:
             flash("Invalid student IDs provided.", "danger")
@@ -7851,9 +7877,11 @@ def mass_remove_policy(policy_id):
 def view_student_policy(enrollment_id):
     """View student's policy enrollment details and claims history."""
     enrollment = (
-        StudentInsurance.query
-        .join(Student, StudentInsurance.student_id == Student.id)
-        .filter(StudentInsurance.id == enrollment_id)
+        InsuranceEnrollment.query
+        .join(Seat, InsuranceEnrollment.seat_id == Seat.id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
+        .filter(InsuranceEnrollment.id == enrollment_id)
         .filter(Student.id.in_(sa.select(_student_scope_subquery())))
         .first_or_404()
     )
@@ -7886,8 +7914,6 @@ def process_claim(claim_id):
         abort(404)
 
     enrollment = db.session.get(InsuranceEnrollment, claim.enrollment_id)
-    if enrollment is None:
-        enrollment = db.session.get(StudentInsurance, claim.enrollment_id)
     if enrollment is None:
         abort(404)
 
@@ -8093,17 +8119,21 @@ def process_claim(claim_id):
             flash("Claim has been rejected.", "warning")
 
         try:
-            execute_insurance_claim_resolution(
-                scope=scope,
-                claim=claim,
-                enrollment=enrollment,
-                new_status=new_status,
-                teacher_notes=form.teacher_notes.data,
-                rejection_reason=form.rejection_reason.data,
-                processed_by_user_id=session.get('admin_id'),
-                processed_by_seat_id=scope.seat_id,
-                approved_amount=approved_amount,
-            )
+            with FEATContext(
+                "FEAT-ADMN-001",
+                idempotency_key=f"feat:claim-resolution:{claim.id}:{new_status}",
+            ):
+                execute_insurance_claim_resolution(
+                    scope=scope,
+                    claim=claim,
+                    enrollment=enrollment,
+                    new_status=new_status,
+                    teacher_notes=form.teacher_notes.data,
+                    rejection_reason=form.rejection_reason.data,
+                    processed_by_user_id=session.get('admin_id'),
+                    processed_by_seat_id=scope.seat_id,
+                    approved_amount=approved_amount,
+                )
             if requires_payout:
                 student_name = enrollment.seat.display_first_name if enrollment.seat else "the student"
                 student_initial = enrollment.seat.display_last_initial if enrollment.seat else ""
@@ -10435,15 +10465,17 @@ def export_students():
     active_insurances_map = {}
     if teacher_id and student_ids:
         class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=teacher_id).subquery()
-        scoped_insurances = StudentInsurance.query.join(
-            InsurancePolicy, StudentInsurance.policy_id == InsurancePolicy.id
+        scoped_insurances = InsuranceEnrollment.query.join(
+            InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id
         ).filter(
-            StudentInsurance.student_id.in_(student_ids),
-            StudentInsurance.status == 'active',
+            InsuranceEnrollment.seat_id.in_(
+                sa.select(Seat.id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).join(Student, Student.identity_id == IdentityProfile.id).filter(Student.id.in_(student_ids))
+            ),
+            InsuranceEnrollment.status == 'active',
             InsurancePolicy.class_id.in_(sa.select(class_ids_subq)),
         )
         if selected_join_code:
-            scoped_insurances = scoped_insurances.filter(StudentInsurance.join_code == selected_join_code)
+            scoped_insurances = scoped_insurances.filter(InsuranceEnrollment.join_code == selected_join_code)
         scoped_insurances = scoped_insurances.all()
 
         for ins in scoped_insurances:
@@ -12682,6 +12714,7 @@ def passkey_auth_start():
 
 
 @admin_bp.route('/passkey/auth/finish', methods=['POST'])
+@feat_shell("FEAT-ADMN-001")
 @limiter.limit("20 per minute")
 def passkey_auth_finish():
     """
@@ -12905,6 +12938,7 @@ def view_issue(issue_ref):
 
 
 @admin_bp.route('/issues/<issue_ref>/resolve', methods=['POST'])
+@feat_shell("FEAT-ADMN-001")
 @admin_required
 def resolve_issue(issue_ref):
     """

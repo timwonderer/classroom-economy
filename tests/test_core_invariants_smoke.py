@@ -7,7 +7,7 @@ from werkzeug.security import generate_password_hash
 
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from app.models import Seat, IdentityProfile, Admin, ClassMembership, ClassFeature, InsuranceClaim, InsuranceEnrollment, InsurancePolicy, RentPayment, RentSettings, StoreItem, Student, StudentInsurance, StudentTeacher, AttendanceSession, Transaction, TransactionStatus, ClassEconomy, User, UserRole
+from app.models import Seat, IdentityProfile, Admin, ClassMembership, ClassFeature, InsuranceClaim, InsuranceEnrollment, InsurancePolicy, RentPayment, RentSettings, StoreItem, Student, StudentTeacher, AttendanceSession, Transaction, TransactionStatus, ClassEconomy, User, UserRole
 from app.services import ledger_service, obligations_service
 from tests.helpers.admin_context import login_admin
 from tests.helpers.class_scope import create_class_scope, make_student_seat, _ensure_user

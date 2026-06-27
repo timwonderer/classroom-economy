@@ -10,6 +10,10 @@
 
 Of 16 migration plan status claims validated, **13 are PASS**, **2 are PARTIAL**, and **1 is a critical FAIL**. There are **3 P0-severity issues** (runtime crashes), **5 P1-severity INV-ARC-007 violations**, and **3 P2-severity cleanup items**.
 
+### Session Note (2026-06-22)
+
+The current `codex/wave7-closure-p0-remediation` session rewrote the authoritative v2 guardrail tests to assert canonical source-level behavior and wrapped the touched mutation entrypoints in FEAT ownership. This session did not re-run the full Wave 7 audit, so the report status below remains a historical baseline until a fresh pass is recorded.
+
 ---
 
 ## Wave 3C Status Validation
