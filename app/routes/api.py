@@ -848,8 +848,6 @@ def use_item():
             if student_item.bundle_remaining == 0:
                 student_item.status = 'redeemed'  # All uses consumed
             # StorePurchase no longer tracks legacy redemption detail fields.
-            if student_item.redemption_details:
-                pass
         elif student_item.uses_remaining is not None:
             # Multi-use item (Rent Per-Use with limit > 1) or unlimited (-1)
             # Don't decrement if unlimited
@@ -882,7 +880,7 @@ def use_item():
                 amount=Decimal('0.00'),
                 account_type='checking',
                 type='redemption',
-                description=f"Used: {student_item.store_item.name}" + (f" (bundle: {student_item.bundle_remaining} remaining)" if student_item.is_from_bundle and student_item.store_item else "")
+                description=f"Used: {student_item.store_item.name if student_item.store_item else 'Unknown Item'}" + (f" (bundle: {student_item.bundle_remaining} remaining)" if student_item.is_from_bundle and student_item.store_item else "")
             )
         # FEAT wrapper owns commit/rollback boundaries; keep mutations in the open transaction.
         db.session.flush()

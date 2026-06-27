@@ -8,7 +8,7 @@ from typing import Optional, Set, Tuple
 
 from sqlalchemy import and_
 
-from app.models import InsuranceClaim, RentItem, StoreItem, StorePurchase, Transaction, TransactionStatus
+from app.models import InsuranceClaim, RedemptionEvent, RedemptionEventAction, RentItem, StoreItem, StorePurchase, Transaction, TransactionStatus
 from app.utils.time import ensure_utc, get_class_now, to_class_time
 
 CLAIM_TYPE_TRANSACTION_MONETARY = "transaction_monetary"
@@ -174,7 +174,11 @@ def _check_delay_use_rule(tx: Transaction, *, class_id: str, now_class: datetime
         # Legacy data may not have a matching canonical store row.
         return None
 
-    used_at = ensure_utc(getattr(item_row, "redemption_date", None)) if getattr(item_row, "redemption_date", None) else None
+    redemption_event = RedemptionEvent.query.filter_by(
+        purchase_id=item_row.id,
+        action=RedemptionEventAction.APPROVED,
+    ).first()
+    used_at = ensure_utc(redemption_event.timestamp) if redemption_event else None
     if not used_at:
         return CLAIM_REASON_DELAY_USE_NOT_USED
 

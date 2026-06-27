@@ -43,7 +43,7 @@ def set_item_visibility(store_item_id: int, seat_ids: list[int]) -> None:
     Empty list = visible to all (removes all grants).
     """
     StoreItemVisibility.query.filter_by(store_item_id=store_item_id).delete()
-    for sid in seat_ids:
+    for sid in set(seat_ids):
         db.session.add(StoreItemVisibility(store_item_id=store_item_id, seat_id=sid))
 
 

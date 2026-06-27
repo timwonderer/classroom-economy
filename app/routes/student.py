@@ -2363,7 +2363,7 @@ def shop():
             .join(StoreItem, StorePurchase.store_item_id == StoreItem.id)
             .filter(
                 StorePurchase.store_item_id.in_(collective_item_ids),
-                StorePurchase.class_id == scope.class_id if 'scope' in locals() else StorePurchase.class_id == class_id,
+                StorePurchase.class_id == class_id,
                 StorePurchase.status.in_(['pending', 'processing', 'purchased', 'redeemed', 'completed']),
                 Student.is_teacher == False,  # Exclude teacher purchases from progress
                 StorePurchase.collective_goal_instance_code == StoreItem.collective_goal_instance_code,

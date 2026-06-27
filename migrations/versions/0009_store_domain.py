@@ -1,13 +1,13 @@
 """Store domain canonical schema — create store_purchases, redemption_events, store_item_visibility
 
 Creates the canonical v2 store tables per DOM-CORE-002 and DOM-STORE-001 v2.0:
-- store_purchases (replaces student_items for purchase tracking)
-- redemption_events (replaces redemption_audit_logs for redemption history)
-- store_item_visibility (replaces store_item_blocks for per-seat visibility)
+- store_purchases (canonical purchase tracking)
+- redemption_events (canonical redemption history)
+- store_item_visibility (per-seat visibility grants)
 
-Legacy tables (student_items, store_item_blocks, redemption_audit_logs) are NOT
-dropped in this migration. They remain as read-only shadows until all route-level
-callers are migrated to the canonical service layer. Physical drop is a follow-up.
+Legacy tables are NOT dropped in this migration. They remain as read-only
+shadows until all route-level callers are migrated to the canonical service
+layer. Physical drop is a follow-up.
 
 Revision ID: 0009a1b2c3d4
 Revises: 0008a1b2c3d4
