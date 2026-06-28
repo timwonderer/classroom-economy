@@ -117,9 +117,7 @@ def login_required(f):
         except (ContextNotEstablished, ContextMismatch, ContextForbidden):
             if request.path.startswith('/api/'):
                 return jsonify({"status": "error", "error": "User not logged in or session expired"}), 401
-            next_path = _get_safe_next_path()
-            encoded_next = urllib.parse.quote(next_path, safe="")
-            return redirect(f"{url_for('student.login')}?next={encoded_next}")  # nosec # Safe: validated by _get_safe_next_path()
+            return redirect(url_for('student.login'))
         except ContextInvariantViolation:
             if request.path.startswith('/api/'):
                 return jsonify({"status": "error", "error": "Please select a class to continue."}), 403
@@ -128,9 +126,7 @@ def login_required(f):
         if not ctx or getattr(ctx, "actor_role", None) != "student":
             if request.path.startswith('/api/'):
                 return jsonify({"status": "error", "error": "User not logged in or session expired"}), 401
-            next_path = _get_safe_next_path()
-            encoded_next = urllib.parse.quote(next_path, safe="")
-            return redirect(f"{url_for('student.login')}?next={encoded_next}")  # nosec # Safe: validated by _get_safe_next_path()
+            return redirect(url_for('student.login'))
 
         g.canonical_context = ctx
         session['last_activity'] = utc_now().isoformat()
@@ -183,9 +179,7 @@ def admin_required(f):
             ctx = resolve_canonical_context(require_class=False)
         except (ContextNotEstablished, ContextMismatch, ContextForbidden, ContextInvariantViolation):
             flash("Admin session is invalid. Please log in again.")
-            next_path = _get_safe_next_path()
-            encoded_next = urllib.parse.quote(next_path, safe="")
-            return redirect(f"{url_for('admin.login')}?next={encoded_next}")  # nosec
+            return redirect(url_for('admin.login'))
 
         if ctx is None:
             # Fallback for _allow_teacher_context_exception which returns None
@@ -196,9 +190,7 @@ def admin_required(f):
 
         if ctx.actor_role != 'teacher':
             flash("Admin session is invalid. Please log in again.")
-            next_path = _get_safe_next_path()
-            encoded_next = urllib.parse.quote(next_path, safe="")
-            return redirect(f"{url_for('admin.login')}?next={encoded_next}")
+            return redirect(url_for('admin.login'))
 
         if isinstance(ctx, BoundaryContext):
             if request.endpoint not in _CLASSLESS_ADMIN_ENDPOINTS:
@@ -214,9 +206,7 @@ def admin_required(f):
             if (now - last_activity) > timedelta(minutes=SESSION_TIMEOUT_MINUTES):
                 session.clear()
                 flash("Admin session expired. Please log in again.")
-                next_path = _get_safe_next_path()
-                encoded_next = urllib.parse.quote(next_path, safe="")
-                return redirect(f"{url_for('admin.login')}?next={encoded_next}")
+                return redirect(url_for('admin.login'))
 
         session['last_activity'] = now.isoformat()
         return f(*args, **kwargs)
