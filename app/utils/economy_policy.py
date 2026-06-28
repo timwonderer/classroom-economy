@@ -424,7 +424,7 @@ def _resolve_join_code_for_block(teacher_id: int, block: Optional[str]) -> Optio
     row = (
         ClassEconomy.query.with_entities(ClassEconomy.join_code)
         .filter(
-            ClassEconomy.teacher_id == teacher_id,
+            ClassEconomy.user_id == teacher_id,
             ClassEconomy.section == block,
             ClassEconomy.join_code.isnot(None),
         )
@@ -453,7 +453,7 @@ def resolve_class_scope(
         block_row = (
             ClassEconomy.query.with_entities(ClassEconomy.section)
             .filter(
-                ClassEconomy.teacher_id == teacher_id,
+                ClassEconomy.user_id == teacher_id,
                 ClassEconomy.join_code == normalized_join_code,
                 ClassEconomy.section.isnot(None),
             )

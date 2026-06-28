@@ -48,7 +48,7 @@ def admin_with_students(client):
     db.session.flush()
     class_row = ClassEconomy(
         join_code="ATTEND_A",
-        teacher_id=admin.id,
+        user_id=admin.id,
         status="active",
         created_by_admin_id=admin.id,
     )
@@ -228,8 +228,8 @@ def test_attendance_history_tenant_scoping(client):
     db.session.add(StudentTeacher(student_id=student1.id, teacher_id=admin1.id))
     db.session.add(StudentTeacher(student_id=student2.id, teacher_id=admin2.id))
     db.session.flush()
-    class1 = ClassEconomy(join_code="ATTEND_1", teacher_id=admin1.id, status="active", created_by_admin_id=admin1.id)
-    class2 = ClassEconomy(join_code="ATTEND_2", teacher_id=admin2.id, status="active", created_by_admin_id=admin2.id)
+    class1 = ClassEconomy(join_code="ATTEND_1", user_id=admin1.id, status="active", created_by_admin_id=admin1.id)
+    class2 = ClassEconomy(join_code="ATTEND_2", user_id=admin2.id, status="active", created_by_admin_id=admin2.id)
     db.session.add_all([class1, class2])
     db.session.flush()
     db.session.add_all([

@@ -93,7 +93,7 @@ def _attach_join_code(admin, block='A', token='JOIN-A'):
     if not economy:
         economy = ClassEconomy(
             join_code=token,
-            teacher_id=admin.id,
+            user_id=admin.id,
             created_by_user_id=admin.id,
             display_name=f'Period {block}',
         )

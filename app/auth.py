@@ -190,6 +190,18 @@ def login_required(f):
     return decorated_function
 
 
+_CLASSLESS_ADMIN_ENDPOINTS = frozenset({
+    'admin.create_class',
+    'admin.onboarding',
+    'admin.login',
+    'admin.logout',
+    'admin.username_migration',
+    'admin.account_delete',
+    'admin.passkey_login_start',
+    'admin.passkey_login_finish',
+})
+
+
 def admin_required(f):
     """
     Decorator to require admin authentication for a route.
@@ -199,24 +211,42 @@ def admin_required(f):
     """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        current_app.logger.info(f"Admin access attempt: session = {dict(session)}")
-        if not session.get("is_admin"):
-            flash("You must be an admin to view this page.")
-            next_path = _get_safe_next_path()
-            encoded_next = urllib.parse.quote(next_path, safe="")
-            return redirect(f"{url_for('admin.login')}?next={encoded_next}")  # nosec # Safe: validated by _get_safe_next_path()
+        from app.services.context_resolver import (
+            resolve_canonical_context,
+            ContextNotEstablished,
+            ContextMismatch,
+            ContextForbidden,
+            ContextInvariantViolation,
+            CanonicalContext,
+            BoundaryContext
+        )
 
-        admin = get_current_admin()
-        if not admin:
-            session.pop("is_admin", None)
-            session.pop("admin_id", None)
-            session.pop("last_activity", None)
-            session.pop("admin_display_name", None)
-            session.pop("admin_display_name_admin_id", None)
+        try:
+            ctx = resolve_canonical_context(require_class=False)
+        except (ContextNotEstablished, ContextMismatch, ContextForbidden, ContextInvariantViolation):
             flash("Admin session is invalid. Please log in again.")
             next_path = _get_safe_next_path()
             encoded_next = urllib.parse.quote(next_path, safe="")
-            return redirect(f"{url_for('admin.login')}?next={encoded_next}")  # nosec # Safe: validated by _get_safe_next_path()
+            return redirect(f"{url_for('admin.login')}?next={encoded_next}")  # nosec
+
+        if ctx is None:
+            # Fallback for _allow_teacher_context_exception which returns None
+            user_id = session.get("user_id")
+            if not user_id:
+                return redirect(url_for('admin.login'))
+            ctx = BoundaryContext(user_id=int(user_id), actor_role="teacher")
+
+        if ctx.actor_role != 'teacher':
+            flash("Admin session is invalid. Please log in again.")
+            next_path = _get_safe_next_path()
+            encoded_next = urllib.parse.quote(next_path, safe="")
+            return redirect(f"{url_for('admin.login')}?next={encoded_next}")
+
+        if isinstance(ctx, BoundaryContext):
+            if request.endpoint not in _CLASSLESS_ADMIN_ENDPOINTS:
+                return redirect(url_for('admin.onboarding'))
+
+        g.canonical_context = ctx
 
         now = utc_now()
         last_activity = session.get('last_activity')
@@ -701,7 +731,7 @@ def get_admin_student_query(include_unassigned=True):
         .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
         .join(Seat, Seat.id == IdentityProfile.seat_id)
         .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-        .filter(ClassEconomy.teacher_id == admin.id)
+        .filter(ClassEconomy.user_id == admin.id)
         .subquery()
     )
 

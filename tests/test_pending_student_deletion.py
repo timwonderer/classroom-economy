@@ -39,7 +39,7 @@ def _create_unclaimed_teacher_block(first_name: str, teacher: Admin, block: str 
     if not db.session.get(ClassEconomy, join_code):
         economy = ClassEconomy(
             join_code=join_code,
-            teacher_id=teacher.id,
+            user_id=teacher.id,
             display_name=f'Test Class {teacher.id}{block}',
             status='active',
             created_by_admin_id=teacher.id
@@ -162,7 +162,7 @@ def test_delete_pending_student_already_claimed(client):
     join_code = f"TEST{teacher.id}D"
     economy = ClassEconomy(
         join_code=join_code,
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         display_name=f'Test Class {teacher.id}D',
         status='active',
         created_by_admin_id=teacher.id

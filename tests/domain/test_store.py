@@ -169,7 +169,7 @@ def store_test_setup(app):
         join_code = uuid.uuid4().hex[:8].upper()
         economy = ClassEconomy(
             class_id=class_id,
-            teacher_id=user.id,
+            user_id=user.id,
             join_code=join_code,
             display_name="Test Class",
         )

@@ -52,7 +52,7 @@ def setup_student_with_legacy_transactions(client):
     # Create ClassEconomy first for FK constraint
     economy = ClassEconomy(
         join_code=join_code,
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         display_name='Math Period 1A',
         status='active',
         created_by_admin_id=teacher.id
@@ -107,7 +107,7 @@ def setup_student_with_legacy_transactions(client):
     other_class_id = str(uuid.uuid4())
     other_economy = ClassEconomy(
         class_id=other_class_id,
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code="OTHER1",
         display_name="Other Class"
     )

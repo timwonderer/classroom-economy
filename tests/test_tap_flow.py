@@ -24,7 +24,7 @@ def create_claimed_seat(teacher_id, student_id, block, join_code, salt=None, use
     if not class_economy:
         class_economy = ClassEconomy(
             join_code=join_code,
-            teacher_id=teacher_id,
+            user_id=teacher_id,
             display_name=f"Class {join_code}",
             status="active",
             created_by_admin_id=teacher_id,
@@ -238,7 +238,7 @@ def test_auto_tapout_noops_without_canonical_seat_scope(client):
 
     class_economy = ClassEconomy(
         join_code="LEGACY_JOIN",
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         display_name="Legacy Class",
         status="active",
         created_by_admin_id=teacher.id,

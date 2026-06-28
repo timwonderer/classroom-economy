@@ -79,7 +79,7 @@ def setup_hall_pass_checkout_test(client):
 
     economy = ClassEconomy(
         join_code="TEST123",
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         display_name="Period1",
         status='active',
         created_by_admin_id=teacher.id,
@@ -456,7 +456,7 @@ def test_checkout_rejects_mismatched_class_context(client, setup_hall_pass_check
 
     other_economy = ClassEconomy(
         join_code="OTHER123",
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         display_name="Period2",
         status='active',
         created_by_admin_id=teacher.id,
@@ -506,7 +506,7 @@ def test_cancel_rejects_mismatched_class_context(client, setup_hall_pass_checkou
     hall_pass.decision_time = None
     other_economy = ClassEconomy(
         join_code="OTHER123",
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         display_name="Period2",
         status='active',
         created_by_admin_id=teacher.id,

@@ -247,7 +247,7 @@ def verify_hall_pass(teacher_public_token):
 
     # Get teacher's active classes (distinct join_codes with labels)
     classes_rows = (
-        ClassEconomy.query.filter_by(teacher_id=teacher.id)
+        ClassEconomy.query.filter_by(user_id=teacher.id)
         .order_by(ClassEconomy.display_name)
         .all()
     )

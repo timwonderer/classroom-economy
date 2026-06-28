@@ -58,7 +58,7 @@ def create_class_scope(
     class_row = ClassEconomy(
         class_id=str(uuid4()),
         join_code=join_code,
-        teacher_id=resolved_teacher_user_id,
+        user_id=resolved_teacher_user_id,
         display_name=display_name,
         section=block,
         status=class_status,

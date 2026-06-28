@@ -90,13 +90,13 @@ def _teacher_student_counts(teacher_user_ids: list[int]) -> tuple[dict[int, int]
 
     teacher_students = (
         db.session.query(
-            ClassEconomy.teacher_id.label("teacher_user_id"),
+            ClassEconomy.user_id.label("teacher_user_id"),
             Seat.id.label("seat_id"),
             Seat.block.label("block"),
         )
         .join(Seat, Seat.class_id == ClassEconomy.class_id)
         .filter(
-            ClassEconomy.teacher_id.in_(teacher_user_ids),
+            ClassEconomy.user_id.in_(teacher_user_ids),
             Seat.role == "student",
             Seat.user_id.isnot(None),
             Seat.claimed_at.isnot(None),
@@ -983,7 +983,7 @@ def delete_admin(admin_id):
         if teacher_user:
             class_ids = [
                 class_id for (class_id,) in db.session.query(ClassEconomy.class_id)
-                .filter(ClassEconomy.teacher_id == teacher_user.id)
+                .filter(ClassEconomy.user_id == teacher_user.id)
                 .all()
             ]
             deleted_class_count = len(class_ids)

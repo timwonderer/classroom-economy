@@ -50,7 +50,7 @@ def _make_class(teacher_id):
 
     class_id = _make_class_id()
     join_code = f"AUD{uuid.uuid4().hex[:5].upper()}"
-    ce = ClassEconomy(class_id=class_id, join_code=join_code, teacher_id=teacher_id)
+    ce = ClassEconomy(class_id=class_id, join_code=join_code, user_id=teacher_id)
     db.session.add(ce)
     db.session.flush()
     return ce

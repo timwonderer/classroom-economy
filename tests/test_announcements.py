@@ -29,7 +29,7 @@ def teacher_block(test_teacher):
     if not db.session.get(ClassEconomy, 'TEST123'):
         economy = ClassEconomy(
             join_code='TEST123',
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.id,
             display_name='Test Announcements Class',
             status='active',
             created_by_admin_id=test_teacher.id
@@ -190,14 +190,14 @@ class TestAnnouncementMultiTenancy:
         # Create ClassEconomies for FK constraints
         economy_a = ClassEconomy(
             join_code='CODE_A',
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.id,
             display_name='Class A',
             status='active',
             created_by_admin_id=test_teacher.id
         )
         economy_b = ClassEconomy(
             join_code='CODE_B',
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.id,
             display_name='Class B',
             status='active',
             created_by_admin_id=test_teacher.id

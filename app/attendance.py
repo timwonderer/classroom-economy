@@ -292,7 +292,7 @@ def batch_auto_tapout_students(admin_id):
         .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
         .join(Seat, Seat.id == IdentityProfile.seat_id)
         .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-        .filter(ClassEconomy.teacher_id == admin_id)
+        .filter(ClassEconomy.user_id == admin_id)
         .distinct()
         .all()
     ]
@@ -302,7 +302,7 @@ def batch_auto_tapout_students(admin_id):
 
     # 1b. SECURITY: Fetch only class scopes owned by this admin.
     admin_class_rows = db.session.query(ClassEconomy.class_id, ClassEconomy.join_code).filter(
-        ClassEconomy.teacher_id == admin_id,
+        ClassEconomy.user_id == admin_id,
         ClassEconomy.class_id.isnot(None),
     ).distinct().all()
     admin_class_ids = [row.class_id for row in admin_class_rows if row.class_id]

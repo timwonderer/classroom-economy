@@ -204,7 +204,7 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
                     .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
                     .filter(
                         Student.id == s_id,
-                        ClassEconomy.teacher_id == teacher_id,
+                        ClassEconomy.user_id == teacher_id,
                     )
                     .count()
                 )
@@ -231,7 +231,7 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
                     .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
                     .filter(
                         Seat.block == block_name,
-                        ClassEconomy.teacher_id == teacher_id,
+                        ClassEconomy.user_id == teacher_id,
                     )
                     .count()
                 )

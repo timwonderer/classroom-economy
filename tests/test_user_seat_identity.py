@@ -8,7 +8,7 @@ from app.models import Admin, ClassEconomy, Seat, User
 
 
 def _create_class(teacher_id: int, join_code: str) -> ClassEconomy:
-    economy = ClassEconomy(join_code=join_code, teacher_id=teacher_id, created_by_admin_id=teacher_id)
+    economy = ClassEconomy(join_code=join_code, user_id=teacher_id, created_by_admin_id=teacher_id)
     db.session.add(economy)
     db.session.flush()
     return economy

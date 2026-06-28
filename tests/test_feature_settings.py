@@ -20,7 +20,7 @@ from app.utils.economy_policy import (
 def _create_class_scope(admin, block='A', join_code='JOIN_A'):
     economy = ClassEconomy(
         join_code=join_code,
-        teacher_id=admin.user_id,
+        user_id=admin.user_id,
         created_by_user_id=admin.user_id,
         display_name=f'Period {block}',
     )
@@ -364,7 +364,7 @@ class TestTeacherDeletionCascade:
         db.session.commit()
 
         assert ClassFeature.query.join(ClassEconomy, ClassFeature.class_id == ClassEconomy.class_id).filter(
-            ClassEconomy.teacher_id == teacher_id
+            ClassEconomy.user_id == teacher_id
         ).count() == 2
 
         # Delete the teacher
@@ -372,7 +372,7 @@ class TestTeacherDeletionCascade:
         db.session.commit()
 
         assert ClassFeature.query.join(ClassEconomy, ClassFeature.class_id == ClassEconomy.class_id).filter(
-            ClassEconomy.teacher_id == teacher_id
+            ClassEconomy.user_id == teacher_id
         ).count() == 0
 
     def test_teacher_onboarding_cascade_on_teacher_delete(self, client_with_fk):
@@ -412,9 +412,9 @@ class TestTeacherDeletionCascade:
 
         # Ensure ClassEconomy exists for FK constraints
         if not ClassEconomy.query.filter_by(class_id='TEST123').first():
-            db.session.add(ClassEconomy(class_id='TEST123', join_code='TEST123', teacher_id=teacher_id, created_by_user_id=teacher_id, display_name='Class TEST123'))
+            db.session.add(ClassEconomy(class_id='TEST123', join_code='TEST123', user_id=teacher_id, created_by_user_id=teacher_id, display_name='Class TEST123'))
         if not ClassEconomy.query.filter_by(class_id='TEST456').first():
-            db.session.add(ClassEconomy(class_id='TEST456', join_code='TEST456', teacher_id=teacher_id, created_by_user_id=teacher_id, display_name='Class TEST456'))
+            db.session.add(ClassEconomy(class_id='TEST456', join_code='TEST456', user_id=teacher_id, created_by_user_id=teacher_id, display_name='Class TEST456'))
         db.session.commit()
 
         block1 = Seat(class_id='TEST123', join_code='TEST123', block='A', block_identifier='A', role='student')

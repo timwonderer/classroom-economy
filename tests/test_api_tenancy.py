@@ -104,7 +104,7 @@ def _login_admin(client, admin: Admin, secret: str):
                 sess["current_join_code"] = first_membership.join_code
         current_join_code = sess.get("current_join_code")
         if current_join_code:
-            class_row = ClassEconomy.query.filter_by(join_code=current_join_code, teacher_id=admin.id).first()
+            class_row = ClassEconomy.query.filter_by(join_code=current_join_code, user_id=admin.id).first()
             if class_row and class_row.class_id:
                 sess["current_class_id"] = class_row.class_id
             else:
@@ -116,7 +116,7 @@ def _login_admin(client, admin: Admin, secret: str):
 def _create_tap_event(student: Student, teacher: Admin, join_code: str, status: str = "active", period: str = "1"):
     """Create a canonical v2 attendance session for testing."""
     _create_class_scope(teacher, student, join_code)
-    class_row = ClassEconomy.query.filter_by(join_code=join_code, teacher_id=teacher.id).first()
+    class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=teacher.id).first()
     assert class_row is not None and class_row.class_id, "Expected class scope to exist before attendance session creation"
     seat = _get_or_create_student_seat(student, class_row.class_id, join_code)
     now = datetime.now(timezone.utc)
@@ -144,7 +144,7 @@ def _create_claimed_seat(teacher: Admin, student: Student, join_code: str, block
     ).first():
         _create_class_scope(teacher, student, join_code)
 
-    class_row = ClassEconomy.query.filter_by(join_code=join_code, teacher_id=teacher.id).first()
+    class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=teacher.id).first()
     runtime_seat = _get_or_create_student_seat(student, class_row.class_id, join_code) if class_row else None
     if runtime_seat and not runtime_seat.claimed_at:
         runtime_seat.claimed_at = datetime.now(timezone.utc)
@@ -193,7 +193,7 @@ def _create_class_scope(teacher: Admin, student: Student, join_code: str):
         student_id=student.id,
         role="student",
     ).first():
-        class_row = ClassEconomy.query.filter_by(join_code=join_code, teacher_id=teacher.id).first()
+        class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=teacher.id).first()
         db.session.add(ClassMembership(
             join_code=join_code,
             class_id=class_row.class_id if class_row else None,
@@ -306,9 +306,9 @@ def test_attendance_history_api_filters_work_with_scoping(client):
     _create_class_scope(teacher_a, student_a1, "FILTER_A1")
     _create_class_scope(teacher_a, student_a2, "FILTER_A2")
     _create_class_scope(teacher_b, student_b, "FILTER_B1")
-    class_a1 = ClassEconomy.query.filter_by(join_code="FILTER_A1", teacher_id=teacher_a.id).first()
-    class_a2 = ClassEconomy.query.filter_by(join_code="FILTER_A2", teacher_id=teacher_a.id).first()
-    class_b = ClassEconomy.query.filter_by(join_code="FILTER_B1", teacher_id=teacher_b.id).first()
+    class_a1 = ClassEconomy.query.filter_by(join_code="FILTER_A1", user_id=teacher_a.id).first()
+    class_a2 = ClassEconomy.query.filter_by(join_code="FILTER_A2", user_id=teacher_a.id).first()
+    class_b = ClassEconomy.query.filter_by(join_code="FILTER_B1", user_id=teacher_b.id).first()
     seat_a1 = _get_or_create_student_seat(student_a1, class_a1.class_id, "FILTER_A1")
     seat_a2 = _get_or_create_student_seat(student_a2, class_a2.class_id, "FILTER_A2")
     seat_b = _get_or_create_student_seat(student_b, class_b.class_id, "FILTER_B1")
@@ -659,7 +659,7 @@ def test_hall_pass_available_types_rejects_out_of_scope_join_code(client):
     _login_student(client, student, join_code="HALLS1")
     other_scope = ClassEconomy(
         join_code="OTHER999",
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         status="active",
         created_by_admin_id=teacher.id,
     )
@@ -676,7 +676,7 @@ def test_student_seat_context_rejects_unclaimed_seat(client):
     teacher, _ = _create_admin("teacher-seat-unclaimed")
     student = _create_student("UnclaimedSeat", primary_teacher=teacher)
     _create_class_scope(teacher, student, "UNCL1")
-    class_row = ClassEconomy.query.filter_by(join_code="UNCL1", teacher_id=teacher.id).first()
+    class_row = ClassEconomy.query.filter_by(join_code="UNCL1", user_id=teacher.id).first()
     unclaimed = Seat(
         student_id=student.id,
         class_id=class_row.class_id,
@@ -705,7 +705,7 @@ def test_student_seat_context_rejects_cross_user_seat_id(client):
     _create_claimed_seat(teacher_a, alice, "SEATA1", block="A")
     _create_claimed_seat(teacher_b, bob, "SEATB1", block="A")
 
-    bob_class = ClassEconomy.query.filter_by(join_code="SEATB1", teacher_id=teacher_b.id).first()
+    bob_class = ClassEconomy.query.filter_by(join_code="SEATB1", user_id=teacher_b.id).first()
     bob_seat = Seat.query.filter_by(student_id=bob.id, class_id=bob_class.class_id).first()
     assert bob_seat is not None and bob_seat.claimed_at is not None
     assert bob_seat.student_id != alice.id

@@ -37,7 +37,7 @@ def test_database_maintenance_bulk_cleans_only_orphaned_store_item_blocks(app):
         db.session.flush()
         class_economy = ClassEconomy(
             join_code="JOINA",
-            teacher_id=admin.id,
+            user_id=admin.id,
             status="active",
             created_by_admin_id=admin.id,
         )

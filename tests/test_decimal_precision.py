@@ -17,7 +17,7 @@ from app.utils.overdraft import charge_overdraft_fee_if_needed
 
 
 def _attach_class_scope(teacher, student, join_code, block='A'):
-    economy = ClassEconomy(join_code=join_code, teacher_id=teacher.id, created_by_admin_id=teacher.id)
+    economy = ClassEconomy(join_code=join_code, user_id=teacher.id, created_by_admin_id=teacher.id)
     db.session.add(economy)
     db.session.flush()
     seat = Seat(
@@ -521,7 +521,7 @@ class TestDecimalPrecision:
         identity = IdentityProfile(profile_type="roster", first_name="Late", last_initial="F")
         db.session.add(identity)
         db.session.flush()
-        economy = ClassEconomy(join_code=join_code, teacher_id=teacher.id, created_by_admin_id=teacher.id)
+        economy = ClassEconomy(join_code=join_code, user_id=teacher.id, created_by_admin_id=teacher.id)
         db.session.add(economy)
         db.session.flush()
 

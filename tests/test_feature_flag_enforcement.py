@@ -85,7 +85,7 @@ def setup_student_with_disabled_banking(client):
     # Create ClassEconomy first for FK constraint
     economy = ClassEconomy(
         join_code=join_code,
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         display_name='Math Period 1B',
         created_by_admin_id=teacher.id
     )
@@ -221,7 +221,7 @@ def setup_student_with_enabled_banking(client):
     # Create ClassEconomy first for FK constraint
     economy = ClassEconomy(
         join_code=join_code,
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         display_name='Math Period 2C',
         created_by_admin_id=teacher.id
     )
@@ -317,7 +317,7 @@ def test_admin_banking_rejects_disabled_class_scope(client):
     join_code = "BANKA1"
     economy = ClassEconomy(
         join_code=join_code,
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         display_name='Banking Period A',
         created_by_admin_id=teacher.id,
     )
@@ -361,7 +361,7 @@ def test_admin_banking_rejects_disabled_class_scope(client):
 def _create_admin_feature_scope(teacher, *, join_code, block, feature_name, enabled):
     economy = ClassEconomy(
         join_code=join_code,
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         display_name=f'{feature_name.title()} Period {block}',
         created_by_admin_id=teacher.id,
     )
@@ -538,7 +538,7 @@ def test_student_rent_rejects_disabled_feature_scope(client):
     join_code = "RENT03"
     economy = ClassEconomy(
         join_code=join_code,
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         display_name='Rent Period 3',
         created_by_admin_id=teacher.id,
     )

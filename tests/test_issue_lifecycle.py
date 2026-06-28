@@ -12,7 +12,7 @@ def test_teacher_must_close_issue_after_final_review(client):
     db.session.flush()
     class_row = ClassEconomy(
         join_code="JOINLIFE1",
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         created_by_admin_id=teacher.id,
         section="A",
         display_name="A",

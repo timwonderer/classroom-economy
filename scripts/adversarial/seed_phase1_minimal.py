@@ -96,7 +96,7 @@ def ensure_class(cdef: ClassDef, teacher: Admin) -> ClassEconomy:
         return row
     row = ClassEconomy(
         join_code=cdef.join_code,
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         created_by_admin_id=teacher.id,
         display_name=cdef.display_name,
         class_timezone="UTC",

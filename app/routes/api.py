@@ -1878,7 +1878,7 @@ def attendance_history():
         class_labels = {}
         if blocks_in_records:
             classes = ClassEconomy.query.filter(
-                ClassEconomy.teacher_id == scoped_admin_id
+                ClassEconomy.user_id == scoped_admin_id
             ).all()
             for c in classes:
                 block_name = (c.display_name or '').strip().upper()
@@ -2356,7 +2356,7 @@ def update_student_block_settings():
         .join(Student, Student.identity_id == IdentityProfile.id)
         .join(ClassEconomy, Seat.class_id == ClassEconomy.class_id)
         .filter(
-            ClassEconomy.teacher_id == admin.id,
+            ClassEconomy.user_id == admin.id,
             Student.id == student_id,
             Seat.claimed_at.isnot(None),
             func.upper(Seat.block) == period,
@@ -2555,7 +2555,7 @@ def get_block_tap_settings():
     
     # Resolve class_id for this admin and block
     class_row = ClassEconomy.query.filter(
-        ClassEconomy.teacher_id == admin.id,
+        ClassEconomy.user_id == admin.id,
         func.upper(ClassEconomy.display_name) == block,
     ).first()
     
@@ -2620,7 +2620,7 @@ def update_block_tap_settings():
     try:
         # Resolve class_id for this admin and block
         class_row = ClassEconomy.query.filter(
-            ClassEconomy.teacher_id == admin.id,
+            ClassEconomy.user_id == admin.id,
             func.upper(ClassEconomy.display_name) == block,
         ).first()
         

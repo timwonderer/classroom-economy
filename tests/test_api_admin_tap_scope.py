@@ -12,7 +12,7 @@ def _login_admin(client, admin_id, join_code):
         g.pop(attr, None)
     admin = db.session.get(Admin, admin_id)
     user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first() if admin else None
-    economy = ClassEconomy.query.filter_by(join_code=join_code, teacher_id=admin_id).first()
+    economy = ClassEconomy.query.filter_by(join_code=join_code, user_id=admin_id).first()
     with client.session_transaction() as sess:
         sess["is_admin"] = True
         sess["admin_id"] = admin_id
@@ -42,8 +42,8 @@ def _setup_shared_student_with_split_membership():
     db.session.add(student)
     db.session.flush()
 
-    class_a = ClassEconomy(join_code="TAPA01", teacher_id=admin_a.id, status="active", created_by_admin_id=admin_a.id)
-    class_b = ClassEconomy(join_code="TAPB01", teacher_id=admin_b.id, status="active", created_by_admin_id=admin_b.id)
+    class_a = ClassEconomy(join_code="TAPA01", user_id=admin_a.id, status="active", created_by_admin_id=admin_a.id)
+    class_b = ClassEconomy(join_code="TAPB01", user_id=admin_b.id, status="active", created_by_admin_id=admin_b.id)
     db.session.add_all([class_a, class_b])
     db.session.flush()
 

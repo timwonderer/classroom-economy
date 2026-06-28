@@ -45,7 +45,7 @@ def get_teacher_class_options(teacher_id: int):
     if not teacher_id:
         return []
 
-    classes = ClassEconomy.query.filter_by(teacher_id=teacher_id).order_by(ClassEconomy.display_name).all()
+    classes = ClassEconomy.query.filter_by(user_id=teacher_id).order_by(ClassEconomy.display_name).all()
 
     options = []
     for c in classes:

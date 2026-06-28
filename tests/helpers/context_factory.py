@@ -238,7 +238,7 @@ class ClassroomContextFactory:
         economy = ClassEconomy(
             class_id=class_id,
             join_code=join_code,
-            teacher_id=teacher_user.id,
+            user_id=teacher_user.id,
             created_by_user_id=teacher_user.id,
             display_name=f"Test Class {join_code}",
         )

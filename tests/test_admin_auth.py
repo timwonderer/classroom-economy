@@ -27,9 +27,8 @@ def test_admin_login_sets_session_identity(client):
 
     assert response.status_code == 302
     with client.session_transaction() as sess:
-        assert sess.get("is_admin") is True
-        assert sess.get("admin_id") == admin.id
         assert sess.get("user_id") == user.id
+        assert sess.get("current_session_nonce") is not None
         assert "last_activity" in sess
 
     with client.application.test_request_context('/'):
@@ -57,7 +56,7 @@ def test_ensure_admin_join_code_does_not_use_teacher_block_as_authority(client, 
     db.session.add(admin)
     db.session.flush()
 
-    identity = IdentityProfile(profile_type="student", first_name="Policy", last_initial="S")
+    identity = IdentityProfile(profile_type="student", first_name="Policy", last_name="S")
     db.session.add(identity)
     db.session.flush()
 
@@ -67,7 +66,7 @@ def test_ensure_admin_join_code_does_not_use_teacher_block_as_authority(client, 
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Policy", last_initial="S"))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Policy", last_name="S"))
     db.session.commit()
 
     monkeypatch.setattr("app.auth._table_exists", lambda table_name: table_name != "class_memberships")

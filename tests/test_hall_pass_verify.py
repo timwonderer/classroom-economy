@@ -41,7 +41,7 @@ def hp_student(client, hp_teacher):
     salt = get_random_salt()
     class_row = ClassEconomy(
         join_code="jc_chem3",
-        teacher_id=hp_teacher.id,
+        user_id=hp_teacher.id,
         created_by_admin_id=hp_teacher.id,
         section="Period3",
         display_name="Period3",

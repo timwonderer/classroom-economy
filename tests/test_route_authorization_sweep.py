@@ -34,9 +34,9 @@ def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_clas
     db.session.add_all([student_a, student_b])
     db.session.flush()
 
-    class_a = ClassEconomy(join_code="HPASS01", teacher_id=admin.id, status="active", created_by_admin_id=admin.id)
-    class_b = ClassEconomy(join_code="HPASS02", teacher_id=admin.id, status="active", created_by_admin_id=admin.id)
-    class_other = ClassEconomy(join_code="HPASS99", teacher_id=other_admin.id, status="active", created_by_admin_id=other_admin.id)
+    class_a = ClassEconomy(join_code="HPASS01", user_id=admin.id, status="active", created_by_admin_id=admin.id)
+    class_b = ClassEconomy(join_code="HPASS02", user_id=admin.id, status="active", created_by_admin_id=admin.id)
+    class_other = ClassEconomy(join_code="HPASS99", user_id=other_admin.id, status="active", created_by_admin_id=other_admin.id)
     db.session.add_all([class_a, class_b, class_other])
     db.session.flush()
     teacher_seat_a = Seat(class_id=class_a.class_id, join_code="HPASS01", role="teacher")
@@ -124,7 +124,7 @@ def test_approve_redemption_requires_membership(client):
     db.session.add(student)
     db.session.flush()
 
-    db.session.add(ClassEconomy(join_code="REDEEM1", teacher_id=admin_owner.id, status="active", created_by_admin_id=admin_owner.id))
+    db.session.add(ClassEconomy(join_code="REDEEM1", user_id=admin_owner.id, status="active", created_by_admin_id=admin_owner.id))
     db.session.flush()
     class_row = ClassEconomy.query.filter_by(join_code="REDEEM1").first()
     db.session.add(ClassMembership(class_id=class_row.class_id, admin_id=admin_owner.id, role="admin"))
@@ -177,8 +177,8 @@ def test_file_claim_scoped_to_class(client):
 
     # Class A and Class B
     db.session.add_all([
-        ClassEconomy(join_code="CLAIM_A", teacher_id=admin.id, status="active", created_by_admin_id=admin.id),
-        ClassEconomy(join_code="CLAIM_B", teacher_id=admin.id, status="active", created_by_admin_id=admin.id),
+        ClassEconomy(join_code="CLAIM_A", user_id=admin.id, status="active", created_by_admin_id=admin.id),
+        ClassEconomy(join_code="CLAIM_B", user_id=admin.id, status="active", created_by_admin_id=admin.id),
         ClassMembership(join_code="CLAIM_A", admin_id=admin.id, role="admin"),
         ClassMembership(join_code="CLAIM_B", admin_id=admin.id, role="admin"),
         ClassMembership(join_code="CLAIM_A", student_id=student.id, role="student"),

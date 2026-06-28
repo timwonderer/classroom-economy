@@ -41,7 +41,7 @@ def recovery_data(client):
     join_code = "A123"
     class_row = ClassEconomy(
         join_code=join_code,
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         display_name="Recovery Class",
     )
     profile = IdentityProfile(profile_type="student", first_name="Original", last_name="O")

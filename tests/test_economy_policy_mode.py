@@ -45,7 +45,7 @@ def _login_admin(client, admin_id, *, join_code=None, class_id=None):
     resolved_join_code = join_code
     resolved_class_id = class_id
     if not resolved_join_code:
-        class_row = ClassEconomy.query.filter_by(teacher_id=admin_id).first()
+        class_row = ClassEconomy.query.filter_by(user_id=admin_id).first()
         if class_row:
             resolved_join_code = class_row.join_code
             resolved_class_id = class_row.class_id
@@ -108,7 +108,7 @@ def _create_admin_with_block(block='A', join_code='JOINPOLA'):
 
     economy = ClassEconomy(
         join_code=join_code,
-        teacher_id=admin.id,
+        user_id=admin.id,
         created_by_admin_id=admin.id,
         display_name=f'Period {block}',
         section=block,
@@ -141,16 +141,16 @@ def _create_admin_with_block(block='A', join_code='JOINPOLA'):
 
 def _create_insurance_policy(admin_id, title, premium, block='A', join_code=None):
     join_code = join_code or f"JOIN{block}{admin_id}"
-    class_row = ClassEconomy.query.filter_by(join_code=join_code, teacher_id=admin_id).first()
+    class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=admin_id).first()
     if not class_row:
         db.session.add(ClassEconomy(
             join_code=join_code,
-            teacher_id=admin_id,
+            user_id=admin_id,
             created_by_admin_id=admin_id,
             display_name=f'Period {block}',
         ))
         db.session.flush()
-        class_row = ClassEconomy.query.filter_by(join_code=join_code, teacher_id=admin_id).first()
+        class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=admin_id).first()
     policy = InsurancePolicy(
         teacher_id=admin_id,
         join_code=join_code,
@@ -441,7 +441,7 @@ def test_join_code_cycle_locks_rent_rate_after_first_payment(client):
     join_code = "LOCKA1"
     lock_class = ClassEconomy(
         join_code=join_code,
-        teacher_id=admin.id,
+        user_id=admin.id,
         created_by_admin_id=admin.id,
         display_name='Period A Lock',
     )
@@ -686,7 +686,7 @@ def test_activate_due_rebalances_keeps_rent_mutation_in_settings_row_class(clien
 
     economy_b = ClassEconomy(
         join_code='JOINPOLB',
-        teacher_id=admin.id,
+        user_id=admin.id,
         created_by_admin_id=admin.id,
         display_name='Period B',
     )

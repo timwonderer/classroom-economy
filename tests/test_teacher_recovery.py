@@ -57,7 +57,7 @@ def create_student(teacher, username="student1", block="A"):
     join_code = f"JOIN{teacher.id}{block}"
     class_economy = ClassEconomy.query.filter_by(join_code=join_code).first()
     if not class_economy:
-        class_economy = ClassEconomy(join_code=join_code, teacher_id=teacher.id)
+        class_economy = ClassEconomy(join_code=join_code, user_id=teacher.id)
         db.session.add(class_economy)
         db.session.flush()
 

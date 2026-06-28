@@ -28,7 +28,7 @@ def student_in_class(client, teacher_admin):
 
     class_economy = ClassEconomy(
         join_code='AUDIT123',
-        teacher_id=teacher_admin.id,
+        user_id=teacher_admin.id,
         display_name='A',
         status='active',
         created_by_admin_id=teacher_admin.id,
