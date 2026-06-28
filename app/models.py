@@ -2642,7 +2642,7 @@ class Issue(db.Model):
 
     # Relationships
     student = db.relationship('Student', backref=db.backref('issues', lazy='dynamic'))
-    teacher = db.relationship('User', backref=db.backref('class_issues', lazy='dynamic'))
+    teacher = db.relationship('User', foreign_keys=[user_id], backref=db.backref('class_issues', lazy='dynamic'))
     sysadmin = db.relationship('User', foreign_keys=[sysadmin_id], backref=db.backref('reviewed_issues', lazy='dynamic'))
     related_transaction = db.relationship('Transaction', backref='related_issues')
     status_history = db.relationship('IssueStatusHistory', backref='issue', lazy='dynamic', cascade='all, delete-orphan', order_by='IssueStatusHistory.changed_at.desc()')
