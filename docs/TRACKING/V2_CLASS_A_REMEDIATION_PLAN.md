@@ -197,13 +197,13 @@ Once Phases 4, 6, 7 eliminate all callers, delete:
 |----------|--------|
 | `get_current_admin()` | Returns extinct `Admin` object from `session.get("admin_id")` |
 | `resolve_admin_shadow_for_user()` | Bridges `User` → extinct `Admin` |
-| `get_logged_in_student()` | Returns extinct `Student` from `session.get("student_id")` |
-| `resolve_student_shadow_for_user()` | Bridges `User` → extinct `Student` |
+| `get_logged_in_student()` | Historical bridge function (removed) |
+| `resolve_student_shadow_for_user()` | Historical bridge function (removed) |
 | `get_current_system_admin()` | Returns extinct `SystemAdmin` from `session.get("sysadmin_id")` |
 | `resolve_system_admin_shadow_for_user()` | Bridges `User` → extinct `SystemAdmin` |
-| `sync_student_session_context()` | Backfills extinct session keys |
-| `set_canonical_user_session()` | Login flow writes `user_id` directly |
-| `get_admin_student_query()` | Scopes by extinct `Admin.id` via `ClassEconomy.teacher_id` |
+| `sync_student_session_context()` | Historical bridge function (removed) |
+| `set_canonical_user_session()` | Historical helper (removed) |
+| `get_admin_student_query()` | Historical helper (removed) |
 
 **Validation:** `grep -rn` for each deleted function name across `app/` returns zero hits.
 
@@ -213,7 +213,7 @@ Once Phases 4, 6, 7 eliminate all callers, delete:
 
 **Files:** `app/auth.py`
 
-Replace the current decorator (which checks `session['student_id']`, calls `get_logged_in_student()`, calls `sync_student_session_context()`) with:
+Replace the current decorator (which previously checked `session['student_id']`, called `get_logged_in_student()`, and called `sync_student_session_context()`) with:
 
 1. Call `resolve_canonical_context()`
 2. On `ContextNotEstablished` / `ContextMismatch` → redirect to student login

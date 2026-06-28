@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from flask import current_app, has_request_context, request, session
+from flask import current_app, g, has_request_context, request, session
 
 
 def record(
@@ -30,7 +30,10 @@ def record(
         "severity": severity,
         "domain": domain,
         "route": route or (request.path if has_request_context() else None),
-        "actor_id": actor_id if actor_id is not None else (session.get("admin_id") if has_request_context() else None),
+        "actor_id": actor_id if actor_id is not None else (
+            getattr(getattr(g, 'canonical_context', None), 'user_id', None)
+            if has_request_context() else None
+        ),
         "class_id": class_id,
         "correlation_id": correlation_id,
         "details": details or {},

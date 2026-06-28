@@ -5,7 +5,7 @@ from app.models import Admin, IdentityProfile, Student, StudentTeacher
 from app.hash_utils import get_random_salt
 import pyotp
 from flask import session
-from app.auth import get_admin_student_query
+from app.routes.admin import _scoped_students
 
 def test_new_admin_cannot_see_unassigned_students(client):
     """
@@ -47,9 +47,12 @@ def test_new_admin_cannot_see_unassigned_students(client):
     with app.test_request_context():
         session['is_admin'] = True
         session['admin_id'] = teacher_a.id
+        from flask import g
+        from types import SimpleNamespace
+        g.canonical_context = SimpleNamespace(user_id=teacher_a.id, class_id=None, seat_id=None)
 
         # Default behavior (used by dashboard)
-        query = get_admin_student_query(include_unassigned=True)
+        query = _scoped_students(include_unassigned=True)
         results = query.all()
 
         # Teacher A should see 0 students
@@ -88,8 +91,11 @@ def test_owner_can_see_unassigned_students_if_linked(client):
     with app.test_request_context():
         session['is_admin'] = True
         session['admin_id'] = teacher_b.id
+        from flask import g
+        from types import SimpleNamespace
+        g.canonical_context = SimpleNamespace(user_id=teacher_b.id, class_id=None, seat_id=None)
 
-        query = get_admin_student_query(include_unassigned=True)
+        query = _scoped_students(include_unassigned=True)
         results = query.all()
 
         assert len(results) == 1

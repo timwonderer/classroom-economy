@@ -28,13 +28,13 @@ from app.services.tlcp import create_ticket_correlation_pack
 from app.feats.base import feat_shell
 
 
-def create_context_snapshot(student, join_code, related_transaction_id=None, related_record_type=None, related_record_id=None):
+def create_context_snapshot(student, class_id, related_transaction_id=None, related_record_type=None, related_record_id=None):
     """
     Create an immutable snapshot of system context for an issue.
 
     Args:
         student: Student model instance
-        join_code: Current class join code
+        class_id: Canonical class ID (UUID)
         related_transaction_id: Optional transaction ID for transaction-specific issues
         related_record_type: Optional record type ('transaction', 'tap_event', etc.)
         related_record_id: Optional record ID
@@ -49,8 +49,6 @@ def create_context_snapshot(student, join_code, related_transaction_id=None, rel
         'ip_address': get_real_ip() if request else None,
     }
 
-    class_row = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter_by(join_code=join_code).first()
-    class_id = class_row[0] if class_row and class_row[0] else None
     if not class_id:
         raise ValueError("create_context_snapshot requires canonical class_id scope.")
     seat = Seat.query.filter_by(student_id=student.id, class_id=class_id).first()
@@ -84,7 +82,7 @@ def create_context_snapshot(student, join_code, related_transaction_id=None, rel
     # Get recent transaction history (last 10 transactions for context)
     recent_transactions = Transaction.query.filter_by(
         student_id=student.id,
-        join_code=join_code
+        class_id=class_id
     ).order_by(Transaction.timestamp.desc()).limit(10).all()
 
     snapshot['recent_transactions'] = [
@@ -101,7 +99,7 @@ def create_context_snapshot(student, join_code, related_transaction_id=None, rel
 
 
 @feat_shell("FEAT-SUP-001")
-def create_issue(student, teacher_id, join_code, category_id, explanation, expected_outcome=None,
+def create_issue(student, teacher_id, class_id, category_id, explanation, expected_outcome=None,
                  related_transaction_id=None, related_record_type=None, related_record_id=None,
                  include_recent_error=True):
     """
@@ -110,7 +108,7 @@ def create_issue(student, teacher_id, join_code, category_id, explanation, expec
     Args:
         student: Student model instance
         teacher_id: Teacher's admin ID
-        join_code: Current class join code
+        class_id: Canonical class ID (UUID)
         category_id: IssueCategory ID
         explanation: Student's explanation of the issue
         expected_outcome: Optional - what student expected to happen
@@ -129,13 +127,11 @@ def create_issue(student, teacher_id, join_code, category_id, explanation, expec
     if not category:
         raise ValueError("Invalid category")
 
-    # Resolve class_id and label from ClassEconomy (canonical source of truth)
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-    class_label = (class_row.display_name if class_row and class_row.display_name else None) or join_code
-    class_id = class_row.class_id if class_row else None
-    canonical_seat = None
-    if class_id:
-        canonical_seat = Seat.query.filter_by(student_id=student.id, class_id=class_id).first()
+    # Resolve class label and join_code from ClassEconomy
+    class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+    join_code = class_row.join_code if class_row else None
+    class_label = (class_row.display_name if class_row and class_row.display_name else None) or join_code or class_id
+    canonical_seat = Seat.query.filter_by(student_id=student.id, class_id=class_id).first()
     if not canonical_seat:
         raise ValueError("create_issue requires canonical seat public_id scope.")
 
@@ -144,7 +140,7 @@ def create_issue(student, teacher_id, join_code, category_id, explanation, expec
 
     # Create context snapshot
     context_snapshot = create_context_snapshot(
-        student, join_code, related_transaction_id, related_record_type, related_record_id
+        student, class_id, related_transaction_id, related_record_type, related_record_id
     )
 
     now_utc = utc_now()

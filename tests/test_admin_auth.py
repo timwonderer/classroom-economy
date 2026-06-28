@@ -3,7 +3,7 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.auth import ensure_admin_join_code, get_current_admin
+from app.auth import get_current_user
 from app.models import Admin, IdentityProfile, User, UserRole, Seat
 
 
@@ -37,7 +37,7 @@ def test_admin_login_sets_session_identity(client):
         session["is_admin"] = True
         session["admin_id"] = admin.id
         session["user_id"] = user.id
-        assert get_current_admin().id == admin.id
+        assert get_current_user().id == user.id
 
 
 def test_admin_required_blocks_missing_identity(client):
@@ -51,29 +51,4 @@ def test_admin_required_blocks_missing_identity(client):
     assert "/admin/login" in response.headers.get("Location", "")
 
 
-def test_ensure_admin_join_code_does_not_use_teacher_block_as_authority(client, monkeypatch):
-    admin = make_admin("teacher_fallback", "TESTSECRET123456")
-    db.session.add(admin)
-    db.session.flush()
 
-    identity = IdentityProfile(profile_type="student", first_name="Policy", last_name="S")
-    db.session.add(identity)
-    db.session.flush()
-
-    _tb_seat = Seat(join_code="LEGACY123", block="A", block_identifier="A", role="student")
-
-    db.session.add(_tb_seat)
-
-    db.session.flush()
-
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Policy", last_name="S"))
-    db.session.commit()
-
-    monkeypatch.setattr("app.auth._table_exists", lambda table_name: table_name != "class_memberships")
-
-    with client.application.test_request_context("/"):
-        from flask import session
-
-        ensure_admin_join_code(admin.id)
-
-        assert "current_join_code" not in session

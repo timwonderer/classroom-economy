@@ -101,7 +101,7 @@ def resolve_canonical_context(require_class: bool = True) -> CanonicalContext | 
     if user.current_session_nonce != session_nonce:
         raise ContextMismatch("Session nonce does not match canonical user session.")
 
-    is_sysadmin = session.get("is_system_admin", False)
+    is_sysadmin = getattr(user.user_role, "value", user.user_role) == UserRole.SYSADMIN.value
 
     if is_sysadmin:
         if require_class:
@@ -114,6 +114,7 @@ def resolve_canonical_context(require_class: bool = True) -> CanonicalContext | 
             return None
         if not require_class and getattr(user.user_role, "value", user.user_role) == UserRole.TEACHER.value:
             return BoundaryContext(user_id=user_id, actor_role="teacher")
+        print(f"DEBUG: Missing canonical class_id. user_id={user_id}, require_class={require_class}, user_role={getattr(user.user_role, 'value', user.user_role)}")
         raise ContextInvariantViolation("Missing canonical class_id in user context.")
 
     seat = (
@@ -125,6 +126,7 @@ def resolve_canonical_context(require_class: bool = True) -> CanonicalContext | 
     if not seat:
         if not require_class and getattr(user.user_role, "value", user.user_role) == UserRole.TEACHER.value:
             return BoundaryContext(user_id=user_id, actor_role="teacher")
+        print(f"DEBUG: Seat not found. user_id={user_id}, class_id={class_id}")
         raise ContextNotEstablished("Seat not found.")
         
     if getattr(seat, "role", None) == "student" and getattr(seat, "claimed_at", None) is None:

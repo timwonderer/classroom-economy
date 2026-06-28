@@ -431,14 +431,14 @@ transactions = Transaction.query.filter_by(
 
 # ✅ CORRECT — class membership scope
 students = (
-    get_admin_student_query()
+    Student.query
     .join(ClassMembership, ClassMembership.student_id == Student.id)
     .filter(ClassMembership.join_code == join_code)
     .all()
 )
 
 # ❌ WRONG — teacher/user ownership alone is not class scope
-students = get_admin_student_query().all()
+students = Student.query.all()
 
 # ❌ WRONG — student_id without class scope
 Transaction.query.filter_by(student_id=student_id).all()

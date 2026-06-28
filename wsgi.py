@@ -86,7 +86,6 @@ from app.auth import (
     login_required,
     admin_required,
     system_admin_required,
-    get_logged_in_student
 )
 
 # Utilities (Stage 5)

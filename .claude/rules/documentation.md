@@ -257,12 +257,11 @@ Always include:
 # ✅ GOOD EXAMPLE
 # In app/routes/student.py
 
-from app.auth import get_admin_student_query
 from app.models import ClassMembership, Student
 
 # Get students for current class period
 students = (
-    get_admin_student_query()
+    Student.query
     .join(ClassMembership, ClassMembership.student_id == Student.id)
     .filter(ClassMembership.join_code == current_join_code)
     .all()

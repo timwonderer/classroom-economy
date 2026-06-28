@@ -79,16 +79,18 @@ StudentBlock
 
 ### Pattern 1: Get students for the selected class
 
-Use session-backed helpers for ownership, then add class membership scope.
+Resolve canonical context first, then add class membership scope.
 
 ```python
-from app.auth import get_admin_student_query
 from app.models import ClassMembership, Student
+from app.services.context_resolver import resolve_canonical_context
 
 
 def get_students_for_current_class(join_code):
+    if not resolve_canonical_context():
+        return []
     students = (
-        get_admin_student_query()
+        Student.query
         .join(
             ClassMembership,
             ClassMembership.student_id == Student.id,
@@ -203,17 +205,16 @@ If the route is class-specific, validate the selected `join_code` before perform
 
 ## Scoped Helper Functions
 
-Helpers in `app/auth.py` are session-based.
+Legacy helper names in `app/auth.py` are removed; use canonical context and class joins.
 
-### `get_admin_student_query(include_unassigned=True)`
+### Canonical student query
 
-- Returns students the current admin owns through `StudentTeacher`
-- Does **not** establish class-period scope by itself
-- Must be combined with `join_code` / `ClassMembership` / route-specific class checks when the route is period-specific
+- Returns students only after canonical class scope is established
+- Must still be combined with `join_code` / `ClassMembership` / route-specific class checks when the route is period-specific
 
-### `get_student_for_admin(student_id, include_unassigned=True)`
+### Canonical student lookup
 
-- Returns a single student if the current admin owns that student
+- Returns a single student only after canonical class scope is established
 - For class-specific operations, still validate the selected class context
 
 ---
@@ -224,13 +225,13 @@ Helpers in `app/auth.py` are session-based.
 
 ```python
 # WRONG
-students = get_admin_student_query().all()
+students = Student.query.all()
 ```
 
 ```python
 # CORRECT
 students = (
-    get_admin_student_query()
+    Student.query
     .join(ClassMembership, ClassMembership.student_id == Student.id)
     .filter(ClassMembership.join_code == join_code)
     .all()

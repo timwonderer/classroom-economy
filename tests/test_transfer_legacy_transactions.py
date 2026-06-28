@@ -81,7 +81,7 @@ def setup_student_with_legacy_transactions(client):
         claimed_at=datetime.now(timezone.utc)
     )
     db.session.add(seat)
-    # Create a User for the student (required by get_logged_in_student() → get_current_user())
+    # Create a User for the student (required by canonical context)
     from app.models import User, UserRole
     student_user = User(
         username_hash=student.username_hash,

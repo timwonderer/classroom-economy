@@ -202,11 +202,11 @@ These are **not exempt**. Bridge functions between extinct and canonical identit
 
 | Function | Line(s) | Pattern |
 |----------|---------|---------|
-| `get_current_admin()` | 619–641 | Reads `session.get("admin_id")`, returns legacy `Admin` object |
-| `get_current_system_admin()` | 644–666 | Reads `session.get("sysadmin_id")`, returns legacy `SystemAdmin` |
-| `get_logged_in_student()` | 591–616 | Reads `session.get("student_id")`, returns legacy `Student` |
-| `resolve_admin_shadow_for_user()` | 310–316 | Bridges `User` → `Admin` |
-| `resolve_student_shadow_for_user()` | 329–354 | Bridges `User` → `Student` |
+| `get_current_admin()` | 619–641 | Historical legacy helper (removed) |
+| `get_current_system_admin()` | 644–666 | Historical legacy helper (removed) |
+| `get_logged_in_student()` | 591–616 | Historical legacy helper (removed) |
+| `resolve_admin_shadow_for_user()` | 310–316 | Historical legacy helper (removed) |
+| `resolve_student_shadow_for_user()` | 329–354 | Historical legacy helper (removed) |
 | `resolve_system_admin_shadow_for_user()` | 319–325 | Bridges `User` → `SystemAdmin` |
 
 ---
@@ -460,7 +460,7 @@ Services: **1 violation** in `identity_service.py:93` (Class B — `join_code` f
 | Priority | Class | Scope | Sites | Approach |
 |----------|-------|-------|-------|----------|
 | **P0** | A | Admin routes — extinct identity (`session.get('admin_id')`) | 89 in `admin.py` | Teacher canonical context path; replace all extinct reads |
-| **P0** | A | Auth bridges — legacy shadow resolution | 6 functions in `auth.py` | Remove `get_current_admin()`, `get_logged_in_student()`, all shadow resolvers |
+| **P0** | A | Auth bridges — legacy shadow resolution | 6 functions in `auth.py` | Historical item; helpers removed in the current tree |
 | **P0** | A | Scattered extinct identity across 7 files | 38 across `system_admin.py`, `api.py`, `analytics.py`, `recovery.py`, `main.py`, `docs.py`, `helpers.py`, `operational_event_service.py` | Same pattern — replace with canonical context or user_id |
 | **P1** | B | Domain queries filtered by `join_code` in routes | 39 across `admin.py`, `student.py`, `analytics.py`, `main.py`, `recovery.py` | Replace with `class_id` from canonical context |
 | **P1** | B | `join_code` fallbacks in utils/services | 9 across 5 files | Remove fallback paths; require `class_id` |

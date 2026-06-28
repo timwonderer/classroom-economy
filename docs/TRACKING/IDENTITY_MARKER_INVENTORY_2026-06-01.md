@@ -152,7 +152,7 @@ These are not harmless metadata. Several of them still participate in resolution
 | `class_id` | Alternate class context key | Legacy alias still accepted |
 | `current_join_code` | Active public class alias | Transitional alias |
 | `join_code` | Alternate join-code key | Legacy alias still accepted |
-| `claimed_student_id` / `claimed_seat_id` / `claimed_user_id` | Recovery/claim flow handoff keys | Transitional flow-specific |
+| `onboarding_student_ref` / `onboarding_seat_ref` / `onboarding_user_ref` | Recovery/claim flow handoff keys | Transitional flow-specific |
 | `recovery_student_id` | Recovery flow marker | Transitional |
 
 ### Teacher session keys

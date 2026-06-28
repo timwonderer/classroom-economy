@@ -37,10 +37,16 @@ def _create_admin(username: str) -> tuple[Admin, str]:
         user_role=UserRole.TEACHER,
         username_hash=admin.username_hash,
         username_lookup_hash=admin.username_lookup_hash,
+        current_session_nonce="nonce",
     )
     db.session.add(user)
     db.session.commit()
     return admin, secret
+
+
+def _get_teacher_user_id(teacher: Admin) -> int:
+    user = User.query.filter_by(username_hash=teacher.username_hash).first()
+    return user.id if user else teacher.id
 
 
 def _create_student(first_name: str, primary_teacher: Admin = None, linked_teachers: list[Admin] = None) -> Student:
@@ -67,6 +73,7 @@ def _create_student(first_name: str, primary_teacher: Admin = None, linked_teach
         user_role=UserRole.STUDENT,
         username_hash=student.username_hash,
         pin_hash=student.pin_hash,
+        current_session_nonce="nonce",
     ))
     
     # Add student_teachers links
@@ -81,7 +88,7 @@ def _create_student(first_name: str, primary_teacher: Admin = None, linked_teach
     return student
 
 
-def _login_admin(client, admin: Admin, secret: str):
+def _login_admin(client, admin: Admin, secret: str, join_code: str = None):
     """Login as admin."""
     response = client.post(
         "/admin/login",
@@ -94,6 +101,7 @@ def _login_admin(client, admin: Admin, secret: str):
         sess["admin_id"] = admin.id
         if user:
             sess["user_id"] = user.id
+            sess["current_session_nonce"] = user.current_session_nonce
         if not sess.get("current_join_code"):
             first_membership = (
                 ClassMembership.query.filter_by(admin_id=admin.id, role="admin")
@@ -102,11 +110,18 @@ def _login_admin(client, admin: Admin, secret: str):
             )
             if first_membership and first_membership.join_code:
                 sess["current_join_code"] = first_membership.join_code
+        if join_code:
+            sess["current_join_code"] = join_code
+        
         current_join_code = sess.get("current_join_code")
         if current_join_code:
-            class_row = ClassEconomy.query.filter_by(join_code=current_join_code, user_id=admin.id).first()
+            teacher_user_id = _get_teacher_user_id(admin)
+            class_row = ClassEconomy.query.filter_by(join_code=current_join_code, user_id=teacher_user_id).first()
             if class_row and class_row.class_id:
                 sess["current_class_id"] = class_row.class_id
+                if user:
+                    user.last_active_class_id = class_row.class_id
+                    db.session.commit()
             else:
                 sess.pop("current_class_id", None)
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
@@ -116,7 +131,8 @@ def _login_admin(client, admin: Admin, secret: str):
 def _create_tap_event(student: Student, teacher: Admin, join_code: str, status: str = "active", period: str = "1"):
     """Create a canonical v2 attendance session for testing."""
     _create_class_scope(teacher, student, join_code)
-    class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=teacher.id).first()
+    teacher_user_id = _get_teacher_user_id(teacher)
+    class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=teacher_user_id).first()
     assert class_row is not None and class_row.class_id, "Expected class scope to exist before attendance session creation"
     seat = _get_or_create_student_seat(student, class_row.class_id, join_code)
     now = datetime.now(timezone.utc)
@@ -144,7 +160,8 @@ def _create_claimed_seat(teacher: Admin, student: Student, join_code: str, block
     ).first():
         _create_class_scope(teacher, student, join_code)
 
-    class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=teacher.id).first()
+    teacher_user_id = _get_teacher_user_id(teacher)
+    class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=teacher_user_id).first()
     runtime_seat = _get_or_create_student_seat(student, class_row.class_id, join_code) if class_row else None
     if runtime_seat and not runtime_seat.claimed_at:
         runtime_seat.claimed_at = datetime.now(timezone.utc)
@@ -155,12 +172,11 @@ def _create_claimed_seat(teacher: Admin, student: Student, join_code: str, block
 def _get_or_create_student_seat(student: Student, class_id: str, join_code: str):
     user = User.query.filter_by(username_hash=student.username_hash).first()
     assert user is not None
-    seat = Seat.query.filter_by(student_id=student.id, class_id=class_id).order_by(Seat.id.asc()).first()
+    seat = Seat.query.filter_by(user_id=user.id, class_id=class_id).order_by(Seat.id.asc()).first()
     if seat:
         seat.user_id = user.id
         return seat
     seat = Seat(
-        student_id=student.id,
         user_id=user.id,
         class_id=class_id,
         join_code=join_code,
@@ -181,10 +197,14 @@ def _create_class_scope(teacher: Admin, student: Student, join_code: str):
         admin_id=teacher.id,
         role="admin",
     ).first():
+        teacher_user = User.query.filter_by(username_hash=teacher.username_hash).first()
+        student_user = User.query.filter_by(username_hash=student.username_hash).first()
         create_class_scope(
             teacher=teacher,
             join_code=join_code,
             student=student,
+            teacher_user_id=teacher_user.id if teacher_user else None,
+            student_user_id=student_user.id if student_user else None,
         )
         db.session.flush()
 
@@ -193,7 +213,8 @@ def _create_class_scope(teacher: Admin, student: Student, join_code: str):
         student_id=student.id,
         role="student",
     ).first():
-        class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=teacher.id).first()
+        teacher_user_id = _get_teacher_user_id(teacher)
+        class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=teacher_user_id).first()
         db.session.add(ClassMembership(
             join_code=join_code,
             class_id=class_row.class_id if class_row else None,
@@ -210,6 +231,7 @@ def _login_student(client, student: Student, join_code: str | None = None):
         sess["student_id"] = student.id
         if user:
             sess["user_id"] = user.id
+            sess["current_session_nonce"] = user.current_session_nonce
         sess["login_time"] = now
         sess["last_activity"] = now
         if join_code:
@@ -217,7 +239,10 @@ def _login_student(client, student: Student, join_code: str | None = None):
             class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
             if class_row:
                 sess["current_class_id"] = class_row.class_id
-                seat = Seat.query.filter_by(student_id=student.id, class_id=class_row.class_id).first()
+                if user:
+                    user.last_active_class_id = class_row.class_id
+                    db.session.commit()
+                seat = Seat.query.filter_by(user_id=user.id, class_id=class_row.class_id).first() if user else None
                 if seat:
                     sess["current_seat_id"] = seat.id
                     sess["seat_id"] = seat.id
@@ -272,7 +297,7 @@ def test_attendance_history_api_includes_shared_students(client):
     tap_b = _create_tap_event(exclusive_b, teacher_b, "EXCL_B")
     
     # Login as teacher A
-    _login_admin(client, teacher_a, secret_a)
+    _login_admin(client, teacher_a, secret_a, join_code="SHARED_A")
     
     # Request attendance history
     response = client.get("/api/attendance/history")
@@ -283,6 +308,18 @@ def test_attendance_history_api_includes_shared_students(client):
     # Class-scoped view: current class context is SHARED_A.
     # Taps from other class scopes must not appear.
     record_ids = [r["id"] for r in data["records"]]
+    print(f"DEBUG: tap_shared.id={tap_shared.id}, tap_shared.class_id={tap_shared.class_id}")
+    print(f"DEBUG: tap_a.id={tap_a.id}, tap_a.class_id={tap_a.class_id}")
+    print(f"DEBUG: tap_b.id={tap_b.id}, tap_b.class_id={tap_b.class_id}")
+    
+    with client.session_transaction() as sess:
+        print(f"DEBUG: Session current_join_code={sess.get('current_join_code')}, current_class_id={sess.get('current_class_id')}")
+        
+    user = User.query.filter_by(username_hash=teacher_a.username_hash).first()
+    print(f"DEBUG: teacher_a user.last_active_class_id={user.last_active_class_id}")
+    
+    print(f"DEBUG: record_ids={record_ids}")
+    
     assert tap_shared.id in record_ids
     assert tap_a.id not in record_ids
     assert tap_b.id not in record_ids
@@ -306,9 +343,11 @@ def test_attendance_history_api_filters_work_with_scoping(client):
     _create_class_scope(teacher_a, student_a1, "FILTER_A1")
     _create_class_scope(teacher_a, student_a2, "FILTER_A2")
     _create_class_scope(teacher_b, student_b, "FILTER_B1")
-    class_a1 = ClassEconomy.query.filter_by(join_code="FILTER_A1", user_id=teacher_a.id).first()
-    class_a2 = ClassEconomy.query.filter_by(join_code="FILTER_A2", user_id=teacher_a.id).first()
-    class_b = ClassEconomy.query.filter_by(join_code="FILTER_B1", user_id=teacher_b.id).first()
+    teacher_a_user_id = _get_teacher_user_id(teacher_a)
+    teacher_b_user_id = _get_teacher_user_id(teacher_b)
+    class_a1 = ClassEconomy.query.filter_by(join_code="FILTER_A1", user_id=teacher_a_user_id).first()
+    class_a2 = ClassEconomy.query.filter_by(join_code="FILTER_A2", user_id=teacher_a_user_id).first()
+    class_b = ClassEconomy.query.filter_by(join_code="FILTER_B1", user_id=teacher_b_user_id).first()
     seat_a1 = _get_or_create_student_seat(student_a1, class_a1.class_id, "FILTER_A1")
     seat_a2 = _get_or_create_student_seat(student_a2, class_a2.class_id, "FILTER_A2")
     seat_b = _get_or_create_student_seat(student_b, class_b.class_id, "FILTER_B1")
@@ -319,7 +358,7 @@ def test_attendance_history_api_filters_work_with_scoping(client):
     db.session.commit()
     
     # Login as teacher A
-    _login_admin(client, teacher_a, secret_a)
+    _login_admin(client, teacher_a, secret_a, join_code="FILTER_A1")
     
     # Request attendance history filtered by period 1
     response = client.get("/api/attendance/history?period=1")
@@ -401,7 +440,7 @@ def test_admin_tap_entries_scoped_by_join_code(client):
     db.session.add_all([tap_a, tap_b])
     db.session.commit()
 
-    _login_admin(client, teacher_a, secret_a)
+    _login_admin(client, teacher_a, secret_a, join_code="JOIN_A")
     response = client.get(f"/api/admin/tap-entries/{shared_student.id}")
 
     assert response.status_code == 200
@@ -449,7 +488,7 @@ def test_admin_delete_tap_entry_enforces_join_code_scope(client):
     db.session.add_all([tap_a, tap_b])
     db.session.commit()
 
-    _login_admin(client, teacher_a, secret_a)
+    _login_admin(client, teacher_a, secret_a, join_code="JOIN_A")
 
     deny_response = client.delete(
         f"/api/admin/tap-entries/{tap_b.id}",
@@ -490,7 +529,7 @@ def test_admin_student_block_settings_rejects_out_of_scope_join_code(client):
     db.session.add(block)
     db.session.commit()
 
-    _login_admin(client, teacher_a, secret_a)
+    _login_admin(client, teacher_a, secret_a, join_code="JOIN_A")
     response = client.post(
         "/api/admin/student-block-settings",
         json={"student_id": shared_student.id, "period": "A", "tap_enabled": False},
@@ -517,7 +556,7 @@ def test_admin_student_block_settings_rejects_null_join_code_row(client):
     db.session.add(block)
     db.session.commit()
 
-    _login_admin(client, teacher_a, secret_a)
+    _login_admin(client, teacher_a, secret_a, join_code="JOIN_A")
     response = client.post(
         "/api/admin/student-block-settings",
         json={"student_id": student.id, "period": "A", "tap_enabled": False},
@@ -554,7 +593,7 @@ def test_admin_block_tap_settings_get_ignores_out_of_scope_join_code_row(client)
     )
     db.session.commit()
 
-    _login_admin(client, teacher_a, secret_a)
+    _login_admin(client, teacher_a, secret_a, join_code="JOIN_A")
     response = client.get("/api/admin/block-tap-settings?block=A")
 
     assert response.status_code == 200
@@ -585,7 +624,7 @@ def test_admin_block_tap_settings_post_preserves_out_of_scope_join_code_row(clie
     db.session.add(foreign_row)
     db.session.commit()
 
-    _login_admin(client, teacher_a, secret_a)
+    _login_admin(client, teacher_a, secret_a, join_code="JOIN_A")
     response = client.post(
         "/api/admin/block-tap-settings",
         json={"block": "A", "tap_enabled": False},
@@ -657,9 +696,10 @@ def test_hall_pass_available_types_rejects_out_of_scope_join_code(client):
     _create_claimed_seat(teacher, student, "HALLS1", block="A")
 
     _login_student(client, student, join_code="HALLS1")
+    teacher_user_id = _get_teacher_user_id(teacher)
     other_scope = ClassEconomy(
         join_code="OTHER999",
-        user_id=teacher.id,
+        user_id=teacher_user_id,
         status="active",
         created_by_admin_id=teacher.id,
     )
@@ -676,9 +716,13 @@ def test_student_seat_context_rejects_unclaimed_seat(client):
     teacher, _ = _create_admin("teacher-seat-unclaimed")
     student = _create_student("UnclaimedSeat", primary_teacher=teacher)
     _create_class_scope(teacher, student, "UNCL1")
-    class_row = ClassEconomy.query.filter_by(join_code="UNCL1", user_id=teacher.id).first()
+    teacher_user_id = _get_teacher_user_id(teacher)
+    class_row = ClassEconomy.query.filter_by(join_code="UNCL1", user_id=teacher_user_id).first()
+    
+    student_user = User.query.filter_by(username_hash=student.username_hash).first()
+    
     unclaimed = Seat(
-        student_id=student.id,
+        user_id=student_user.id if student_user else None,
         class_id=class_row.class_id,
         join_code="UNCL1",
         role="student",
@@ -705,10 +749,15 @@ def test_student_seat_context_rejects_cross_user_seat_id(client):
     _create_claimed_seat(teacher_a, alice, "SEATA1", block="A")
     _create_claimed_seat(teacher_b, bob, "SEATB1", block="A")
 
-    bob_class = ClassEconomy.query.filter_by(join_code="SEATB1", user_id=teacher_b.id).first()
-    bob_seat = Seat.query.filter_by(student_id=bob.id, class_id=bob_class.class_id).first()
+    teacher_b_user_id = _get_teacher_user_id(teacher_b)
+    bob_class = ClassEconomy.query.filter_by(join_code="SEATB1", user_id=teacher_b_user_id).first()
+    
+    bob_user = User.query.filter_by(username_hash=bob.username_hash).first()
+    bob_seat = Seat.query.filter_by(user_id=bob_user.id, class_id=bob_class.class_id).first()
     assert bob_seat is not None and bob_seat.claimed_at is not None
-    assert bob_seat.student_id != alice.id
+    
+    alice_user = User.query.filter_by(username_hash=alice.username_hash).first()
+    assert bob_seat.user_id != alice_user.id
 
     from flask import session
     from app.auth import get_current_seat, get_current_student_seat

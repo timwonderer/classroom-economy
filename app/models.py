@@ -820,8 +820,7 @@ class SystemAdminCredential(db.Model):
     __tablename__ = 'system_admin_credentials'
 
     id = db.Column(db.Integer, primary_key=True)
-    sysadmin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id', ondelete='CASCADE'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
 
     # Credential metadata
     credential_id = db.Column(db.Text, unique=False, nullable=True, index=False)  # Optional: not needed for passwordless.dev SaaS
@@ -836,7 +835,7 @@ class SystemAdminCredential(db.Model):
     user = db.relationship('User', backref=db.backref('system_admin_credentials', lazy='dynamic', cascade='all, delete-orphan'))
 
     def __repr__(self):
-        return f'<SystemAdminCredential {self.authenticator_name or "Unnamed"} for SysAdmin {self.sysadmin_id}>'
+        return f'<SystemAdminCredential {self.authenticator_name or "Unnamed"} for User {self.user_id}>'
 
 
 class Transaction(db.Model):
@@ -2517,7 +2516,7 @@ class UserReport(db.Model):
     status = db.Column(db.String(20), default='new', nullable=False)  # 'new', 'reviewed', 'rewarded', 'closed', 'spam'
     admin_notes = db.Column(db.Text, nullable=True)
     reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    reviewed_by_sysadmin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id'), nullable=True)
+    reviewed_by_sysadmin_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
     # Reward tracking (for legitimate bugs)
     reward_amount = db.Column(db.Float, nullable=True, default=0.0)
@@ -2531,7 +2530,7 @@ class UserReport(db.Model):
         foreign_keys=[_student_id],
     )
 
-    reviewed_by = db.relationship('SystemAdmin', backref='reviewed_reports', foreign_keys=[reviewed_by_sysadmin_id])
+    reviewed_by = db.relationship('User', backref='reviewed_reports', foreign_keys=[reviewed_by_sysadmin_id])
 
 
 # ---- Issue Resolution System Models ----
@@ -2629,7 +2628,7 @@ class Issue(db.Model):
     eligible_for_reward = db.Column(db.Boolean, default=False, nullable=False)  # Teacher marks if student may receive reward for legitimate bug
 
     # Sysadmin review and resolution
-    sysadmin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id'), nullable=True)
+    sysadmin_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     sysadmin_reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     sysadmin_notes = db.Column(db.Text, nullable=True)  # Separate from teacher/student content, visible to teacher only
     sysadmin_resolved_at = db.Column(db.DateTime(timezone=True), nullable=True)
@@ -2645,7 +2644,7 @@ class Issue(db.Model):
     # Relationships
     student = db.relationship('Student', backref=db.backref('issues', lazy='dynamic'))
     teacher = db.relationship('User', backref=db.backref('class_issues', lazy='dynamic'))
-    sysadmin = db.relationship('SystemAdmin', backref=db.backref('reviewed_issues', lazy='dynamic'))
+    sysadmin = db.relationship('User', foreign_keys=[sysadmin_id], backref=db.backref('reviewed_issues', lazy='dynamic'))
     related_transaction = db.relationship('Transaction', backref='related_issues')
     status_history = db.relationship('IssueStatusHistory', backref='issue', lazy='dynamic', cascade='all, delete-orphan', order_by='IssueStatusHistory.changed_at.desc()')
     resolution_actions = db.relationship('IssueResolutionAction', backref='issue', lazy='dynamic', cascade='all, delete-orphan', order_by='IssueResolutionAction.created_at.desc()')
@@ -3320,7 +3319,7 @@ class Announcement(db.Model):
 
     # Author (one of these will be set)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
-    system_admin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id', ondelete='CASCADE'), nullable=True)
+    system_admin_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
 
     # Audience targeting
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
@@ -3343,7 +3342,7 @@ class Announcement(db.Model):
 
     # Relationships
     teacher = db.relationship('User', foreign_keys=[user_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
-    system_admin = db.relationship('SystemAdmin', foreign_keys=[system_admin_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
+    system_admin = db.relationship('User', foreign_keys=[system_admin_id], backref=db.backref('sysadmin_announcements', lazy='dynamic', passive_deletes=True))
     target_teacher = db.relationship('User', foreign_keys=[target_teacher_id], backref=db.backref('targeted_announcements', lazy='dynamic', passive_deletes=True))
 
     # Indexes

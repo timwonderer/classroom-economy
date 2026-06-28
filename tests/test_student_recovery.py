@@ -180,8 +180,10 @@ def test_student_lookup_success(client, recovery_data):
     assert "/student/create-username" in resp.location
 
     with client.session_transaction() as sess:
-        assert sess.get("claimed_student_id") == student.id
-        assert "recovery_student_id" not in sess
+        assert sess.get("onboarding_student_ref") == student.id
+        assert sess.get("onboarding_seat_ref") is not None
+        assert sess.get("onboarding_user_ref") is not None
+        assert "recovery_student_ref" not in sess
 
     # Credentials cleared; identity preserved
     db.session.refresh(student)

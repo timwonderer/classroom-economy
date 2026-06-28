@@ -1,10 +1,10 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, g, session, current_app
 from datetime import timedelta
 import secrets
 
 from app.extensions import db, limiter
-from app.models import IdentityProfile, Seat, Student, User
-from app.auth import admin_required, get_student_for_admin
+from app.models import ClassEconomy, IdentityProfile, Seat, Student, User
+from app.auth import admin_required
 from app.utils.time import utc_now, ensure_utc
 
 recovery_bp = Blueprint('recovery', __name__, url_prefix='/recovery')
@@ -64,7 +64,8 @@ def _generate_reset_code_legacy(student_id):
       - Log reset event
     """
     # Verify scoping: admin must have access to this student
-    student = get_student_for_admin(student_id)
+    from app.routes.admin import _scoped_students
+    student = _scoped_students().filter_by(id=student_id).first()
     if not student:
         flash("Student not found.", "error")
         return redirect(url_for('admin.students'))
@@ -79,13 +80,13 @@ def _generate_reset_code_legacy(student_id):
     db.session.flush() # FEAT-LEGACY-WRAP: commit removed
  
     current_app.logger.info(
-        f"Reset code generated for student {student.id} by admin {session.get('admin_id')}"
+        f"Reset code generated for student {student.id} by user {g.canonical_context.user_id}"
     )
- 
+
     flash(f"Reset code generated for {student.full_name} "
           f"Code: {code} — Expires in 10 minutes.", "success")
     from app.routes.admin import _build_student_detail_url
-    detail_url = _build_student_detail_url(student.id, teacher_id=session.get("admin_id"))
+    detail_url = _build_student_detail_url(student.id, teacher_id=g.canonical_context.user_id)
     if not detail_url:
         return redirect(url_for('admin.students'))
     return redirect(detail_url)
@@ -129,13 +130,17 @@ def _account_lookup_legacy():
             flash("Both fields are required.", "error")
             return redirect(url_for('recovery.account_lookup'))
  
-        # Find candidate row by both reset_code and join_code to avoid collisions.
+        # Resolve class_id from user-provided join_code, then query by canonical class_id.
+        class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+        if not class_row:
+            flash("Invalid join code.", "error")
+            return redirect(url_for('recovery.account_lookup'))
         seat = (
             Seat.query
         .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
         .join(Student, Student.identity_id == IdentityProfile.id)
             .filter(
-                Seat.join_code == join_code,
+                Seat.class_id == class_row.class_id,
                 Student.reset_code == reset_code,
             )
             .first()
@@ -159,7 +164,7 @@ def _account_lookup_legacy():
             valid = False
  
         if not valid:
-            session.pop('recovery_student_id', None)
+            session.pop('recovery_student_ref', None)
             flash("Invalid or expired recovery code.", "error")
             return redirect(url_for('recovery.account_lookup'))
  
@@ -197,10 +202,10 @@ def _account_lookup_legacy():
         )
 
         # Set session for credential setup flow
-        session['claimed_student_id'] = student.id
-        session['claimed_seat_id'] = seat.id if seat else None
-        session['claimed_user_id'] = linked_user.id if linked_user else None
-        session.pop('recovery_student_id', None)
+        session['onboarding_student_ref'] = student.id
+        session['onboarding_seat_ref'] = seat.id if seat else None
+        session['onboarding_user_ref'] = linked_user.id if linked_user else None
+        session.pop('recovery_student_ref', None)
 
         flash("Recovery code verified. Please set up your new username and credentials.", "success")
         return redirect(url_for('student.create_username'))

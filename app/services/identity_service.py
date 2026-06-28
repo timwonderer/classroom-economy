@@ -90,7 +90,7 @@ def reconcile_rent_hall_pass_top_off(
         student_block = StudentBlock.query.filter(
             StudentBlock.student_id == student.id,
             StudentBlock.period == (seat.block if seat else None),
-            StudentBlock.join_code == (seat.join_code if seat else None),
+            StudentBlock.class_id == (seat.class_id if seat else None),
         ).order_by(StudentBlock.id.asc()).first()
 
     state_changed = False

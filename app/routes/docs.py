@@ -7,7 +7,7 @@ allowing users to access help without leaving the app or losing their session.
 
 import re
 from pathlib import Path
-from flask import Blueprint, abort, current_app, session, request, url_for, redirect, make_response
+from flask import Blueprint, abort, current_app, g, session, request, url_for, redirect, make_response
 from werkzeug.exceptions import HTTPException
 from werkzeug.utils import safe_join
 import bleach
@@ -364,17 +364,17 @@ def build_breadcrumbs(doc_path, docs_root):
 
 def get_docs_audience():
     """Determine the documentation audience ('user' or 'devops') for the current request."""
-    from app.auth import get_current_admin, get_current_seat, get_current_user
+    from app.auth import get_current_seat, get_current_user
 
     # Sysadmins default to 'devops' — check first so they don't fall into 'user' mode
-    if session.get('is_system_admin') and session.get('sysadmin_id'):
+    ctx = getattr(g, 'canonical_context', None)
+    if ctx and getattr(ctx, 'actor_role', None) == 'sysadmin':
         audience = request.cookies.get('docs_audience')
         return audience if audience in ['user', 'devops'] else 'devops'
 
     # Active teacher/student session enforces 'user' mode
     if (
-        get_current_admin() is not None
-        or get_current_seat() is not None
+        get_current_seat() is not None
         or get_current_user() is not None
     ):
         return 'user'
@@ -614,16 +614,17 @@ def view_doc(doc_path):
         # Note: Role-based filtering is for UI display only, not access control.
         # All documentation is accessible to all users. The 'roles' metadata
         # is used for contextual highlighting and navigation suggestions.
-        from app.auth import get_current_admin, get_current_seat
+        from app.auth import get_current_seat, get_current_user
 
         user_role = None
-        current_admin = get_current_admin()
+        current_user = get_current_user()
         current_seat = get_current_seat()
-        if current_admin is not None:
+        
+        if current_user and getattr(current_user.user_role, "value", current_user.user_role) == 'teacher':
             user_role = 'teacher'
         elif current_seat is not None:
             user_role = 'student'
-        elif session.get('is_system_admin') and session.get('sysadmin_id'):
+        elif getattr(getattr(g, 'canonical_context', None), 'actor_role', None) == 'sysadmin':
             user_role = 'sysadmin'
 
         audience = get_docs_audience()

@@ -165,7 +165,7 @@ available_policies = InsurancePolicy.query.filter(
 ```python
 def get_current_teacher_id():
     """Get the currently selected teacher ID from session."""
-    student = get_logged_in_student()
+    student = get_current_student()
     current_teacher_id = session.get('current_teacher_id')
     # ... defaults to first linked teacher
 ```
@@ -255,7 +255,7 @@ class ClassPeriod(db.Model):
 ```python
 def get_current_class_context():
     """Get currently selected class context (join code, teacher_id, block)."""
-    student = get_logged_in_student()
+    student = get_current_student()
     if not student:
         return None
 

@@ -165,7 +165,7 @@ class ClassroomContext:
             sess["current_class_id"] = self.class_id
             sess["current_seat_id"] = self.teacher_seat.id
             sess["last_activity"] = datetime.now(timezone.utc).isoformat()
-            # Legacy key still checked by get_current_admin()
+            # Legacy compatibility key for older login fixtures
             if self._legacy_admin:
                 sess["admin_id"] = self._legacy_admin.id
 

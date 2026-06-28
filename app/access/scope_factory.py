@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from flask import g, session
 
 from app.access.scope import Scope
-from app.auth import _column_exists, sync_student_session_context
+from app.auth import _column_exists
 from app.extensions import db
 from app.models import ClassEconomy, Seat
 
@@ -195,7 +195,7 @@ def resolve_scope(*, actor, selected_join_code: str | None = None, actor_role: s
         active_seat = claimed_seats[0]
 
     _store_session_class_context(class_id=active_seat.class_id, join_code=None)
-    sync_student_session_context(actor, class_id=active_seat.class_id, seat_id=active_seat.id)
+    g._auth_current_seat_cache = active_seat
 
     class_row = ClassEconomy.query.filter_by(class_id=active_seat.class_id).first()
     if not class_row:
