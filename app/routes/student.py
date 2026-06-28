@@ -552,7 +552,7 @@ def claim_account():
             return redirect(url_for('student.claim_account'))
 
         class_id = class_row.class_id
-        teacher_id = class_row.teacher_id
+        teacher_id = class_row.user_id
 
         # Find all unclaimed seats with this class_id
         unclaimed_seats = (
@@ -877,7 +877,7 @@ def add_class():
             return redirect(_get_return_target())
 
         class_id = class_row.class_id
-        teacher_id = class_row.teacher_id
+        teacher_id = class_row.user_id
 
         # Find all unclaimed seats with this class_id
         unclaimed_seats = (

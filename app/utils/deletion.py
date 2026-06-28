@@ -196,19 +196,6 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         # If they have zero across ALL teachers, fully delete the student record.
         if affected_student_ids:
             for s_id in affected_student_ids:
-                # Does student have any remaining seats in this teacher's other classes?
-                remaining_with_teacher = (
-                    db.session.query(Seat.id)
-                    .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-                    .join(Student, Student.identity_id == IdentityProfile.id)
-                    .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-                    .filter(
-                        Student.id == s_id,
-                        ClassEconomy.user_id == teacher_id,
-                    )
-                    .count()
-                )
-
                 # Full erasure if totally orphaned across all teachers
                 remaining_memberships = db.session.query(ClassMembership.id).filter_by(student_id=s_id).count()
                 remaining_seats = (

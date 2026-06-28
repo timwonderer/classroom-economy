@@ -110,7 +110,10 @@ def settle_balances(seat_id: int, class_id: str) -> None:
             resolved_seat_id = original_scope_id
             seat = db.session.get(Seat, resolved_seat_id)
             if seat:
-                resolved_student_id = seat.student_id
+                from app.models import IdentityProfile, Student
+                ip = IdentityProfile.query.filter_by(seat_id=seat.id).first()
+                student = Student.query.filter_by(identity_id=ip.id).first() if ip else None
+                resolved_student_id = student.id if student else None
                 resolved_join_code = seat.join_code or resolved_join_code
             scope_filter = (Transaction.seat_id == resolved_seat_id)
         else:
@@ -161,25 +164,31 @@ def settle_balances(seat_id: int, class_id: str) -> None:
                 .with_for_update()
                 .first()
             )
-        if not cache and resolved_student_id is not None:
-            cache = (
-                BalanceCache.query
-                .filter_by(student_id=resolved_student_id, class_id=class_id)
-                .with_for_update()
-                .first()
-            )
-        
         if not cache:
             seat = db.session.get(Seat, resolved_seat_id) if resolved_seat_id else None
-            cache = BalanceCache(
-                student_id=(seat.student_id if seat else resolved_student_id),  # Transitional bridge
-                seat_id=resolved_seat_id,
-                class_id=class_id,
-                join_code=(seat.join_code if seat else resolved_join_code),
-            )
-            db.session.add(cache)
-            db.session.flush() # Persist to get ID and lock
-            cache_was_created = True
+            try:
+                with db.session.begin_nested():
+                    cache = BalanceCache(
+                        seat_id=resolved_seat_id,
+                        class_id=class_id,
+                        join_code=(seat.join_code if seat else resolved_join_code),
+                    )
+                    db.session.add(cache)
+                    db.session.flush()
+                    cache_was_created = True
+            except IntegrityError:
+                logger.warning("Race condition creating BalanceCache, retrying fetch")
+                cache = (
+                    BalanceCache.query
+                    .filter(
+                        BalanceCache.class_id == class_id,
+                        BalanceCache.seat_id == resolved_seat_id,
+                    )
+                    .with_for_update()
+                    .first()
+                )
+                if not cache:
+                    raise
 
         # 2. Fetch PENDING transactions
         # ---------------------------------------------------------

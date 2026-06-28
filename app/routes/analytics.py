@@ -572,7 +572,7 @@ def student_drill_down(student_id):
     engine = AnalyticsEngine(class_id)
     cwi = engine._get_cwi()
 
-    seat = Seat.query.filter_by(student_id=student.id, class_id=class_id).first()
+    seat = student_seat
     if not seat:
         return jsonify({'error': 'Student has no canonical seat in selected class'}), 400
     

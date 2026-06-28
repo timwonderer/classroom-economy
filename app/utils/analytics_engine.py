@@ -90,7 +90,7 @@ class AnalyticsEngine:
             raise ValueError(f"Invalid class lookup: class_id={class_id}, join_code={join_code}")
 
         self.class_id = class_row.class_id
-        self.teacher_id = class_row.teacher_id
+        self.teacher_id = class_row.user_id
         self.join_code = class_row.join_code
         self.policy_mode = get_active_policy_mode_for_class(self.class_id)
         self.policy_profile = get_policy_profile(self.policy_mode)

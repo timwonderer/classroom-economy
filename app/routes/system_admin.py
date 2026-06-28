@@ -346,6 +346,9 @@ def passkey_register_finish():
         user = get_current_user()
         if not user or ctx.actor_role != 'sysadmin':
             return jsonify({"error": "Canonical system admin identity is missing"}), 409
+        sysadmin = SystemAdmin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first()
+        if not sysadmin:
+            return jsonify({"error": "System admin record not found"}), 404
         data = request.get_json()
 
         # No token is required in the payload for registration finish; nothing to check here.
@@ -960,6 +963,7 @@ def reset_teacher_totp(admin_id):
 
 @sysadmin_bp.route('/admins/<int:admin_id>/delete', methods=['POST'])
 @system_admin_required
+@feat_shell("FEAT-OPS-001")
 def delete_admin(admin_id):
     """
     Delete an admin account and all students created under that teacher.
@@ -1656,6 +1660,7 @@ def announcements():
 
 @sysadmin_bp.route('/announcements/create', methods=['GET', 'POST'])
 @system_admin_required
+@feat_shell("FEAT-OPS-001")
 def announcement_create():
     """Create a new system-wide announcement."""
     from app.forms import SystemAdminAnnouncementForm

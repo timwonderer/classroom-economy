@@ -553,8 +553,8 @@ def create_app():
             current_class_id = get_current_class_id()
             if current_seat and current_class_id:
                 class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
-                if class_row and class_row.teacher_id:
-                    teacher_id = class_row.teacher_id
+                if class_row and class_row.user_id:
+                    teacher_id = class_row.user_id
 
             # Canonical user currently has no teacher-role mapping in this phase.
             # Keep this lookup to centralize identity dependency for future phases.
@@ -688,11 +688,11 @@ def create_app():
 
             from app.models import ClassEconomy
             class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
-            if not class_row or not class_row.teacher_id:
+            if not class_row or not class_row.user_id:
                 return {'admin_feature_settings': FeatureSettings.get_defaults()}
             return {
                 'admin_feature_settings': get_admin_feature_settings_for_join_code(
-                    class_row.teacher_id,
+                    class_row.user_id,
                     join_code=class_row.join_code,
                 )
             }
