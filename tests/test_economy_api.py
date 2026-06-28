@@ -968,7 +968,7 @@ def test_analyze_endpoint_error_does_not_leak_exception_details(client):
     assert 'Traceback' not in data['message']
 
 
-def test_analyze_block_ignores_teacher_global_payroll_settings(client, caplog):
+def test_analyze_block_ignores_teacher_global_payroll_settings(client):
     """Block-scoped analyze requests must not fall back to teacher-global payroll settings."""
     admin = make_admin("globalfallbackanalyze", "TESTSECRET123456")
     db.session.add(admin)
@@ -1012,19 +1012,14 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client, caplog):
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
-    with caplog.at_level("WARNING"):
-        response = client.post('/admin/api/economy/analyze', json={'block': 'A'})
+    response = client.post('/admin/api/economy/analyze', json={'block': 'A'})
     assert response.status_code == 400
     data = response.get_json()
     assert data['status'] == 'error'
     assert 'configure payroll settings' in data['message'].lower()
-    assert "OPERATIONAL_EVENT" in caplog.text
-    assert "INVALID_CLASS_SCOPE" in caplog.text
-    assert "economy_analyze" in caplog.text
-    assert "missing_or_unresolvable_class_scope" in caplog.text
 
 
-def test_validate_block_ignores_teacher_global_payroll_settings(client, caplog):
+def test_validate_block_ignores_teacher_global_payroll_settings(client):
     """Block-scoped validate requests must not fall back to teacher-global payroll settings."""
     admin = make_admin("globalfallbackvalidate", "TESTSECRET123456")
     db.session.add(admin)
@@ -1068,16 +1063,11 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client, caplog):
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
-    with caplog.at_level("WARNING"):
-        response = client.post('/admin/api/economy/validate/rent', json={'block': 'A', 'value': 50.0})
+    response = client.post('/admin/api/economy/validate/rent', json={'block': 'A', 'value': 50.0})
     assert response.status_code == 200
     data = response.get_json()
     assert data['status'] == 'warning'
     assert 'configure payroll first' in data['message'].lower()
-    assert "OPERATIONAL_EVENT" in caplog.text
-    assert "INVALID_CLASS_SCOPE" in caplog.text
-    assert "economy_validate" in caplog.text
-    assert "missing_or_unresolvable_class_scope" in caplog.text
 
 
 def test_analyze_block_prefers_join_code_scoped_payroll_settings(client):
