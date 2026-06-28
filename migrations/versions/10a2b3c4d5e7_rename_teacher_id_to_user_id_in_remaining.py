@@ -15,15 +15,26 @@ down_revision = 'e68f0effe3c6'
 branch_labels = None
 depends_on = None
 
+
+def column_exists(table_name, column_name):
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    try:
+        columns = [col['name'] for col in inspector.get_columns(table_name)]
+        return column_name in columns
+    except Exception:
+        return False
+
+
+_TABLES = ['ledger_transaction', 'store_items', 'issues', 'announcements']
+
+
 def upgrade():
-    # Rename teacher_id to user_id in 4 tables
-    op.alter_column('ledger_transaction', 'teacher_id', new_column_name='user_id')
-    op.alter_column('store_items', 'teacher_id', new_column_name='user_id')
-    op.alter_column('issues', 'teacher_id', new_column_name='user_id')
-    op.alter_column('announcements', 'teacher_id', new_column_name='user_id')
+    for table in _TABLES:
+        if column_exists(table, 'teacher_id'):
+            op.alter_column(table, 'teacher_id', new_column_name='user_id')
 
 def downgrade():
-    op.alter_column('ledger_transaction', 'user_id', new_column_name='teacher_id')
-    op.alter_column('store_items', 'user_id', new_column_name='teacher_id')
-    op.alter_column('issues', 'user_id', new_column_name='teacher_id')
-    op.alter_column('announcements', 'user_id', new_column_name='teacher_id')
+    for table in _TABLES:
+        if column_exists(table, 'user_id'):
+            op.alter_column(table, 'user_id', new_column_name='teacher_id')
