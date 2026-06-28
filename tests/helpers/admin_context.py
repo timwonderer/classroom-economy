@@ -11,7 +11,7 @@ def login_admin(
     class_id: str | None = None,
     seat_id: int | None = None,
 ) -> None:
-    # Ensure a User exists for this admin (required by get_current_admin() → get_current_user())
+    # Ensure a User exists for this admin (required by canonical context)
     if user_id is None:
         from app.extensions import db
         from app.models import Admin, User, UserRole

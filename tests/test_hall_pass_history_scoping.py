@@ -80,10 +80,10 @@ def setup_multi_teacher_hall_pass_history(client):
     join_code3 = "CLASS-C"
     join_code4 = "CLASS-D"
     db.session.add_all([
-        ClassEconomy(join_code=join_code1, teacher_id=teacher1.id, status="active", created_by_admin_id=teacher1.id),
-        ClassEconomy(join_code=join_code2, teacher_id=teacher1.id, status="active", created_by_admin_id=teacher1.id),
-        ClassEconomy(join_code=join_code3, teacher_id=teacher2.id, status="active", created_by_admin_id=teacher2.id),
-        ClassEconomy(join_code=join_code4, teacher_id=teacher2.id, status="active", created_by_admin_id=teacher2.id),
+        ClassEconomy(join_code=join_code1, user_id=teacher1.id, status="active", created_by_admin_id=teacher1.id),
+        ClassEconomy(join_code=join_code2, user_id=teacher1.id, status="active", created_by_admin_id=teacher1.id),
+        ClassEconomy(join_code=join_code3, user_id=teacher2.id, status="active", created_by_admin_id=teacher2.id),
+        ClassEconomy(join_code=join_code4, user_id=teacher2.id, status="active", created_by_admin_id=teacher2.id),
         ClassMembership(join_code=join_code1, admin_id=teacher1.id, role="admin"),
         ClassMembership(join_code=join_code2, admin_id=teacher1.id, role="admin"),
         ClassMembership(join_code=join_code3, admin_id=teacher2.id, role="admin"),

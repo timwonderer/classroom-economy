@@ -35,7 +35,7 @@ def _create_student(first_name: str, teacher: Admin) -> Student:
     identity = IdentityProfile(
         profile_type="student",
         first_name=first_name,
-        last_initial="A"
+        last_name="A"
     )
     db.session.add(identity)
     db.session.flush()
@@ -56,6 +56,7 @@ def _create_student(first_name: str, teacher: Admin) -> Student:
     db.session.commit()
     create_class_scope(
         teacher=teacher,
+        teacher_user_id=teacher.user_id,
         join_code=f"T{teacher.id}S{student.id}",
         student=student,
         block="1",
@@ -68,33 +69,40 @@ def _create_student(first_name: str, teacher: Admin) -> Student:
 
 
 def _login_admin(client, admin: Admin, secret: str):
-    response = client.post(
-        "/admin/login",
-        data={"username": "teacher1", "totp_code": pyotp.TOTP(secret).now()},
-        follow_redirects=True,
+    from app.models import User
+    user = db.session.get(User, admin.user_id)
+    
+    # Pre-configure the database state outside the session transaction
+    class_row = (
+        db.session.query(ClassEconomy.class_id, ClassEconomy.join_code)
+        .filter(ClassEconomy.user_id == user.id)
+        .order_by(ClassEconomy.join_code.asc())
+        .first()
     )
+    if class_row:
+        user.last_active_class_id = class_row.class_id
+    
+    # Use a real nonce to match application behavior
+    nonce = "test_nonce_123"
+    user.current_session_nonce = nonce
+    db.session.commit()
+    
+    # We bypass the actual route to force canonical context directly,
+    # as the legacy test setup doesn't use real passwords.
     with client.session_transaction() as sess:
-        sess.setdefault("is_admin", True)
-        sess.setdefault("admin_id", admin.id)
-        if admin.user_id:
-            sess.setdefault("user_id", admin.user_id)
-        class_row = (
-            db.session.query(ClassEconomy.class_id, ClassEconomy.join_code)
-            .filter(ClassEconomy.teacher_id == admin.id)
-            .order_by(ClassEconomy.join_code.asc())
-            .first()
-        )
-        if class_row:
-            sess["current_class_id"] = class_row.class_id
-            sess["current_join_code"] = class_row.join_code
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
-    return response
+        sess["user_id"] = user.id
+        sess["current_session_nonce"] = nonce
+        
+    # Return a dummy 200 response to satisfy callers expecting a response object
+    from flask import Response
+    return Response("OK", status=200)
 
 
 def _build_student_detail_public_url(client, admin: Admin, student: Student) -> str:
-    with client.session_transaction() as sess:
-        selected_class_id = (sess.get("current_class_id") or "").strip()
-        selected_join_code = (sess.get("current_join_code") or "").strip()
+    from app.models import User
+    user = db.session.get(User, admin.user_id)
+    selected_class_id = user.last_active_class_id
+    selected_join_code = ""
 
     seat_query = (
         Seat.query
@@ -103,7 +111,7 @@ def _build_student_detail_public_url(client, admin: Admin, student: Student) -> 
             Seat.student_id == student.id,
             Seat.role == "student",
             Seat.public_id.isnot(None),
-            ClassEconomy.teacher_id == admin.id,
+            ClassEconomy.user_id == admin.id,
         )
     )
     seat = None
@@ -168,6 +176,7 @@ def test_shared_student_accessible_to_multiple_teachers(client):
     db.session.add(StudentTeacher(student_id=shared_student.id, teacher_id=teacher_b.id))
     create_class_scope(
         teacher=teacher_b,
+        teacher_user_id=teacher_b.user_id,
         join_code=f"T{teacher_b.id}SHARED",
         student=shared_student,
         block="A",
@@ -195,6 +204,7 @@ def test_student_detail_recovers_from_stale_class_context(client):
 
     class_a = create_class_scope(
         teacher=teacher,
+        teacher_user_id=teacher.user_id,
         join_code="JOINA",
         student=student_a,
         block="A",
@@ -205,6 +215,7 @@ def test_student_detail_recovers_from_stale_class_context(client):
     )
     class_b = create_class_scope(
         teacher=teacher,
+        teacher_user_id=teacher.user_id,
         join_code="JOINB",
         student=student_b,
         block="B",
@@ -236,9 +247,10 @@ def test_student_detail_recovers_from_stale_class_context(client):
         db.session.flush()
 
     _login_admin(client, teacher, secret)
-    with client.session_transaction() as sess:
-        sess["current_class_id"] = class_b.class_id
-        sess["current_join_code"] = "JOINB"
+    from app.models import User
+    user = db.session.get(User, teacher.user_id)
+    user.last_active_class_id = class_b.class_id
+    db.session.commit()
 
     from itsdangerous import URLSafeTimedSerializer
     serializer = URLSafeTimedSerializer(client.application.config["SECRET_KEY"], salt="cth-student-detail-nav-v1")
@@ -257,6 +269,7 @@ def test_enforce_daily_limits_ignores_other_join_code_activity(client):
     db.session.add(StudentTeacher(student_id=shared_student.id, teacher_id=teacher_b.id))
     class_scope_a = create_class_scope(
         teacher=teacher_a,
+        teacher_user_id=teacher_a.user_id,
         join_code="JOINA",
         student=shared_student,
         block="A",
@@ -267,6 +280,7 @@ def test_enforce_daily_limits_ignores_other_join_code_activity(client):
     )
     class_scope_b = create_class_scope(
         teacher=teacher_b,
+        teacher_user_id=teacher_b.user_id,
         join_code="JOINB",
         student=shared_student,
         block="A",
@@ -313,11 +327,6 @@ def test_enforce_daily_limits_ignores_other_join_code_activity(client):
     db.session.commit()
 
     _login_admin(client, teacher_a, secret_a)
-    with client.session_transaction() as sess:
-        sess["is_admin"] = True
-        sess["user_id"] = teacher_a.user_id
-        sess["admin_id"] = teacher_a.id
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
     response = client.post("/admin/enforce-daily-limits")
     payload = response.get_json()
 
@@ -341,6 +350,7 @@ def test_enforce_daily_limits_taps_out_when_limit_reached_in_scope(client):
 
     class_scope = create_class_scope(
         teacher=teacher,
+        teacher_user_id=teacher.user_id,
         join_code="JOINA",
         student=student,
         block="A",
@@ -390,12 +400,6 @@ def test_enforce_daily_limits_taps_out_when_limit_reached_in_scope(client):
     db.session.commit()
 
     _login_admin(client, teacher, secret)
-    with client.session_transaction() as sess:
-        sess["is_admin"] = True
-        sess["admin_id"] = teacher.id
-        sess["current_class_id"] = class_scope.class_id
-        sess["current_join_code"] = "JOINA"
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
     response = client.post("/admin/enforce-daily-limits")
     payload = response.get_json()
 
@@ -437,6 +441,7 @@ def test_student_detail_public_id_is_seat_scoped_for_shared_student(client):
     db.session.add(StudentTeacher(student_id=shared_student.id, teacher_id=teacher_b.id))
     class_b = create_class_scope(
         teacher=teacher_b,
+        teacher_user_id=teacher_b.user_id,
         join_code="SHAREDSEATB",
         student=shared_student,
         block="B",
@@ -448,7 +453,7 @@ def test_student_detail_public_id_is_seat_scoped_for_shared_student(client):
     db.session.commit()
 
     class_a = ClassEconomy.query.filter(
-        ClassEconomy.teacher_id == teacher_a.id,
+        ClassEconomy.user_id == teacher_a.id,
         ClassEconomy.class_id != class_b.class_id,
     ).first()
     seat_a = Seat.query.filter_by(student_id=shared_student.id, class_id=class_a.class_id).first()

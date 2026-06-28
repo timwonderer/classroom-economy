@@ -46,7 +46,7 @@ def setup_rent_with_items(client):
     # Create ClassEconomy first for FK constraint
     economy = ClassEconomy(
         join_code="TESTA",
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         display_name='Test Rent Class',
         status='active',
         created_by_admin_id=teacher.id

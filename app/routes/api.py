@@ -11,7 +11,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from dateutil.relativedelta import relativedelta
 
-from flask import Blueprint, request, jsonify, session, current_app
+from flask import Blueprint, request, jsonify, session, current_app, g
 from sqlalchemy import func, or_
 import sqlalchemy as sa
 from sqlalchemy.orm import aliased
@@ -30,9 +30,7 @@ from app.auth import (
     login_required,
     admin_required,
     get_current_seat,
-    get_logged_in_student,
-    get_current_admin,
-    get_current_system_admin,
+
     get_current_user,
     get_current_class_id,
     SESSION_TIMEOUT_MINUTES,
@@ -406,12 +404,13 @@ def _charge_overdraft_fee_if_needed(student, banking_settings, teacher_id, join_
 @login_required
 @feat_shell("FEAT-STOR-002")
 def purchase_item():
-    student = get_logged_in_student()
     try:
         context = getattr(g, "canonical_context", None)
         if not context:
             raise AccessScopeDenied(reason_code="no_class_scope", message="No class selected. Please select a class to continue.")
-        if not student:
+        
+        user = db.session.get(User, context.user_id)
+        if not user:
             raise AccessScopeDenied(reason_code="missing_actor", message="No active actor is bound to this request.")
     except AccessScopeDenied as exc:
         return jsonify({"status": "error", "message": exc.message}), 403
@@ -434,7 +433,7 @@ def purchase_item():
         return jsonify({"status": "error", "message": "Purchase request ID is too long."}), 400
 
     # 1. Verify passphrase
-    if not check_password_hash(student.passphrase_hash or '', passphrase):
+    if not check_password_hash(user.passphrase_hash or '', passphrase):
         return jsonify({"status": "error", "message": "Incorrect passphrase."}), 403
 
     # CRITICAL FIX v2: Get full class context (class_id is source of truth)
@@ -764,7 +763,15 @@ def purchase_item():
 @login_required
 @feat_shell("FEAT-STOR-005")
 def use_item():
-    student = get_logged_in_student()
+    context = getattr(g, "canonical_context", None)
+    if not context:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
+
+    user = db.session.get(User, context.user_id)
+    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first()
+    
+    if not user or not student:
+        return jsonify({"status": "error", "message": "Unauthorized"}), 401
     data = request.get_json()
     student_item_id = data.get('student_item_id')
     passphrase = data.get('passphrase')
@@ -774,7 +781,7 @@ def use_item():
         return jsonify({"status": "error", "message": "Missing item ID or passphrase."}), 400
 
     # 1. Verify passphrase
-    if not check_password_hash(student.passphrase_hash or '', passphrase):
+    if not check_password_hash(user.passphrase_hash or '', passphrase):
         return jsonify({"status": "error", "message": "Incorrect passphrase."}), 403
 
     # 2. Get the student's item
@@ -927,23 +934,21 @@ def approve_redemption():
     if not purchase or purchase.status != 'processing':
         return jsonify({"status": "error", "message": "Invalid or already processed item."}), 404
 
-    current_admin = get_current_admin()
-    if not current_admin:
-        return jsonify({"status": "error", "message": "Unauthorized."}), 403
+    scoped_admin_id = g.canonical_context.user_id
 
-    has_membership = _admin_has_class_scope(current_admin.id, purchase.class_id)
+    has_membership = _admin_has_class_scope(scoped_admin_id, purchase.class_id)
     if not has_membership:
         return jsonify({"status": "error", "message": "You do not have access to this class."}), 403
 
     if not purchase.store_item.class_id or purchase.store_item.class_id != purchase.class_id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
-    if not _admin_has_class_scope(current_admin.id, purchase.store_item.class_id):
+    if not _admin_has_class_scope(scoped_admin_id, purchase.store_item.class_id):
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
 
     try:
         result = execute_redemption_approval(
             purchase=purchase,
-            actor_teacher_id=current_admin.id,
+            actor_teacher_id=scoped_admin_id,
             notes=None,
         )
     except RedemptionDispositionError as e:
@@ -985,18 +990,16 @@ def reject_redemption():
         return jsonify({"status": "error", "message": "Invalid or already processed item."}), 404
 
     # SECURITY: Verify the current admin has class scope for this store item
-    current_admin = get_current_admin()
-    if not current_admin:
-        return jsonify({"status": "error", "message": "Unauthorized."}), 403
+    scoped_admin_id = g.canonical_context.user_id
     if not purchase.store_item.class_id or purchase.store_item.class_id != purchase.class_id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
-    if not _admin_has_class_scope(current_admin.id, purchase.store_item.class_id):
+    if not _admin_has_class_scope(scoped_admin_id, purchase.store_item.class_id):
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
 
     try:
         result = execute_redemption_rejection(
             purchase=purchase,
-            actor_teacher_id=current_admin.id,
+            actor_teacher_id=scoped_admin_id,
             notes=None,
         )
     except RedemptionDispositionError as e:
@@ -1020,13 +1023,11 @@ def reject_redemption():
 @feat_shell("FEAT-ATTN-001")
 def handle_hall_pass_action(pass_id, action):
     log_entry = db.get_or_404(HallPassLog, pass_id)
-    current_admin = get_current_admin()
-    if not current_admin:
-        return jsonify({"status": "error", "message": "Pass not found."}), 404
+    scoped_admin_id = g.canonical_context.user_id
     if not log_entry.class_id:
         return jsonify({"status": "error", "message": "Pass not found."}), 404
     class_scope = ClassEconomy.query.filter_by(class_id=log_entry.class_id).first()
-    if not class_scope or class_scope.teacher_id != current_admin.id:
+    if not class_scope or class_scope.user_id != scoped_admin_id:
         return jsonify({"status": "error", "message": "Pass not found."}), 404
     now = utc_now()
     try:
@@ -1147,10 +1148,8 @@ def _enforce_hall_pass_student_context(student, log_entry):
 @feat_shell("FEAT-ATTN-002")
 def cancel_hall_pass(pass_id):
     """Allow students to cancel their pending hall pass request"""
-    seat = get_current_seat()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
-    if not student:
-        student = get_logged_in_student()
+    context = getattr(g, "canonical_context", None)
+    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first() if context else None
     log_entry = db.get_or_404(HallPassLog, pass_id)
 
     # Verify this pass belongs to the logged-in student
@@ -1176,10 +1175,8 @@ def cancel_hall_pass(pass_id):
 @feat_shell("FEAT-ATTN-002")
 def checkout_hall_pass():
     """Allow student to check out with their approved hall pass (replaces terminal use)"""
-    seat = get_current_seat()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
-    if not student:
-        student = get_logged_in_student()
+    context = getattr(g, "canonical_context", None)
+    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first() if context else None
     data = request.get_json()
     pass_id = data.get('pass_id')
     
@@ -1246,10 +1243,8 @@ def checkout_hall_pass():
 @feat_shell("FEAT-ATTN-002")
 def checkin_hall_pass():
     """Allow student to check in from their hall pass (replaces terminal return)"""
-    seat = get_current_seat()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
-    if not student:
-        student = get_logged_in_student()
+    context = getattr(g, "canonical_context", None)
+    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first() if context else None
     data = request.get_json()
     pass_id = data.get('pass_id')
     
@@ -1313,9 +1308,7 @@ def checkin_hall_pass():
 @admin_required
 def hall_pass_settings():
     """Get hall pass queue settings (admin only)"""
-    current_admin = get_current_admin()
-    if not current_admin:
-        return jsonify({"status": "error", "message": "Admin ID not found in session"}), 401
+    scoped_admin_id = g.canonical_context.user_id
 
     context = getattr(g, "canonical_context", None)
     class_id = context.class_id if context else None
@@ -1338,10 +1331,7 @@ def hall_pass_settings():
 @feat_shell("FEAT-ATTN-001")
 def update_hall_pass_settings():
     """Update hall pass queue settings (admin only)."""
-    current_admin = get_current_admin()
-    if not current_admin:
-        return jsonify({"status": "error", "message": "Admin ID not found in session"}), 401
-    scoped_admin_id = current_admin.id
+    scoped_admin_id = g.canonical_context.user_id
 
     context = getattr(g, "canonical_context", None)
     class_id = context.class_id if context else None
@@ -1387,32 +1377,12 @@ def hall_pass_history():
         start_date = request.args.get('start_date', '').strip()
         end_date = request.args.get('end_date', '').strip()
 
-        # Import auth helper for tenant scoping
-        from app.auth import get_admin_student_query
-        
-        # Get student IDs that the current admin can access (tenant-scoped)
-        # Includes both primary ownership and shared students
-        student_ids_subquery = (
-            get_admin_student_query(include_unassigned=False)
-            .with_entities(Student.id)
-            .subquery()
-        )
-        # Build query with tenant scoping
-        current_admin = get_current_admin()
-        if not current_admin:
-            return jsonify({"status": "error", "message": "Unauthorized"}), 401
-        scoped_admin_id = current_admin.id
-        query = _apply_admin_class_scope(
-            HallPassLog.query,
-            HallPassLog,
-            scoped_admin_id,
-            sa.select(student_ids_subquery),
-        )
+        current_class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or "").strip()
+        if not current_class_id:
+            return jsonify({"status": "error", "message": "Class context required"}), 400
 
         # Enforce single-class context for admin history views.
-        current_class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or "").strip()
-        if current_class_id:
-            query = query.filter(HallPassLog.class_id == current_class_id)
+        query = HallPassLog.query.filter(HallPassLog.class_id == current_class_id)
 
         # Apply filters
         if period:
@@ -1488,10 +1458,7 @@ def hall_pass_history():
 def get_hall_pass_setup():
     """Get teacher's hall pass configuration"""
     _ = get_current_user()
-    current_admin = get_current_admin()
-    if not current_admin:
-        return jsonify({"status": "error", "message": "Admin ID not found in session"}), 401
-    teacher_id = current_admin.id
+    teacher_id = g.canonical_context.user_id
     context = getattr(g, "canonical_context", None)
     current_class_id = context.class_id if context else None
     if not current_class_id:
@@ -1532,10 +1499,7 @@ def get_hall_pass_setup():
 @feat_shell("FEAT-ATTN-001")
 def save_hall_pass_setup():
     """Save teacher's hall pass configuration"""
-    current_admin = get_current_admin()
-    if not current_admin:
-        return jsonify({"status": "error", "message": "Admin ID not found in session"}), 401
-    scoped_admin_id = current_admin.id
+    scoped_admin_id = g.canonical_context.user_id
     data = request.get_json() or {}
     context = getattr(g, "canonical_context", None)
     current_class_id = context.class_id if context else None
@@ -1629,10 +1593,7 @@ def rotate_hall_pass_verify_token():
     The old token is immediately invalid. Use after a lost pass, suspicious
     traffic, or student screenshot concern.
     """
-    current_admin = get_current_admin()
-    if not current_admin:
-        return jsonify({"status": "error", "message": "Admin ID not found in session"}), 401
-    teacher_id = current_admin.id
+    teacher_id = g.canonical_context.user_id
 
     try:
         token = feat_rotate_teacher_hall_pass_verify_token(teacher_id=teacher_id)
@@ -1765,23 +1726,14 @@ def attendance_history():
         end_date = request.args.get('end_date', '').strip()
 
         # Import auth helper for tenant scoping
-        from app.auth import get_admin_student_query
-        
-        current_admin = get_current_admin()
-        if current_admin is None:
-            return jsonify({"status": "error", "message": "Unauthorized"}), 401
-        scoped_admin_id = current_admin.id
-
-        # Attendance history is seat/class scoped; query canonical session rows directly.
-        query = _apply_admin_class_scope(
-            AttendanceSession.query.filter(AttendanceSession.is_deleted.is_(False)),
-            AttendanceSession,
-            scoped_admin_id,
-            None,
-        )
         current_class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or "").strip()
-        if current_class_id:
-            query = query.filter(AttendanceSession.class_id == current_class_id)
+        if not current_class_id:
+            return jsonify({"status": "error", "message": "Class context required"}), 400
+
+        query = AttendanceSession.query.filter(
+            AttendanceSession.is_deleted.is_(False),
+            AttendanceSession.class_id == current_class_id
+        )
 
         # Suppress duplicate auto tap-outs from known race conditions.
         # Keep only the earliest row when daily-limit inactive events are otherwise identical.
@@ -1877,8 +1829,9 @@ def attendance_history():
         blocks_in_records = set(seats[sid]['block'] for sid in seats if seats[sid]['block'])
         class_labels = {}
         if blocks_in_records:
+            scoped_user_id = getattr(g.canonical_context, "user_id", None)
             classes = ClassEconomy.query.filter(
-                ClassEconomy.teacher_id == scoped_admin_id
+                ClassEconomy.user_id == scoped_user_id
             ).all()
             for c in classes:
                 block_name = (c.display_name or '').strip().upper()
@@ -1932,10 +1885,8 @@ def handle_tap():
     safe_data = {k: ('***' if k == 'pin' else v) for k, v in data.items()}
     current_app.logger.info(f"TAP DEBUG: Received data {safe_data}")
 
-    seat = get_current_seat()
-    student = db.session.get(Student, seat.student_id) if seat and seat.student_id else None
-    if not student:
-        student = get_logged_in_student()
+    context = getattr(g, "canonical_context", None)
+    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first() if context else None
 
     if not student:
         current_app.logger.warning("TAP ERROR: Unauthenticated tap attempt.")
@@ -2177,55 +2128,29 @@ def get_tap_entries(student_id):
     Get all tap entries for a student with pairing validation.
     Returns entries grouped by period with pairing status.
     """
-    admin = get_current_admin()
-    if not admin:
-        return jsonify({"error": "Unauthorized"}), 401
-
-    from app.models import TapEvent
-    from app.auth import get_student_for_admin, get_admin_student_query
-
-    # SECURITY FIX: Use scoped helper to verify admin owns this student
-    student = get_student_for_admin(student_id)
-    if not student:
-        return jsonify({"error": "Student not found or access denied"}), 404
-
     context = getattr(g, "canonical_context", None)
     active_class_id = context.class_id if context else None
     if not active_class_id:
         return jsonify({"error": "Class context unavailable"}), 404
 
-    has_class_scope = _admin_has_class_scope(admin.id, active_class_id)
+    scoped_admin_id = context.user_id if context else None
+    if not scoped_admin_id:
+        return jsonify({"error": "Unauthorized"}), 401
+
+    has_class_scope = _admin_has_class_scope(scoped_admin_id, active_class_id)
     if not has_class_scope:
         return jsonify({"error": "Student not found or access denied"}), 404
 
-    has_student_membership = db.session.query(
-        sa.exists().where(
-            sa.and_(
-                ClassMembership.class_id == active_class_id,
-                ClassMembership.student_id == student_id,
-                ClassMembership.role == 'student',
-            )
-        )
-    ).scalar()
-    if not has_student_membership:
+    from app.utils.seat_scope import get_seat_id_for_class
+    seat_id = get_seat_id_for_class(student_id, active_class_id)
+    if not seat_id:
         return jsonify({"error": "Student not found or access denied"}), 404
 
-    accessible_student_ids_query = get_admin_student_query(include_unassigned=False).with_entities(Student.id)
+    from app.models import TapEvent
 
-    # Get all tap events for this student in active class scope.
-    query = TapEvent.query
-    query = query.filter(TapEvent.student_id == student_id, TapEvent.class_id == active_class_id)
-
-    events = (
-        _apply_admin_class_scope(
-            query,
-            TapEvent,
-            admin.id,
-            accessible_student_ids_query,
-        )
-        .order_by(TapEvent.period, TapEvent.timestamp.asc())
-        .all()
-    )
+    # Get all tap events for this seat in active class scope.
+    query = TapEvent.query.filter(TapEvent.seat_id == seat_id, TapEvent.class_id == active_class_id)
+    events = query.order_by(TapEvent.period, TapEvent.timestamp.asc()).all()
 
     # Group by period and validate pairing
     periods = {}
@@ -2282,18 +2207,17 @@ def delete_tap_entry(event_id):
     Soft-delete a tap entry by marking it as deleted.
     Only allows deletion of unpaired or invalid entries.
     """
-    admin = get_current_admin()
-    if not admin:
+    context = getattr(g, "canonical_context", None)
+    scoped_admin_id = context.user_id if context else None
+    if not scoped_admin_id:
         return jsonify({"error": "Unauthorized"}), 401
 
     from app.models import TapEvent
-    from app.auth import get_student_for_admin, get_admin_student_query
 
     event = TapEvent.query.filter(TapEvent.id == event_id).first()
     if not event:
         return jsonify({"error": "Tap entry not found"}), 404
 
-    context = getattr(g, "canonical_context", None)
     active_class_id = context.class_id if context else None
     if not active_class_id:
         return jsonify({"error": "Class context unavailable"}), 404
@@ -2303,17 +2227,12 @@ def delete_tap_entry(event_id):
     if event.class_id != active_class_id:
         return jsonify({"error": "Access denied"}), 403
 
-    if not _admin_has_class_scope(admin.id, event.class_id):
+    if not _admin_has_class_scope(scoped_admin_id, event.class_id):
         return jsonify({"error": "Tap entry not found"}), 404
-
-    # SECURITY FIX: Use scoped helper to verify admin owns this student
-    student = get_student_for_admin(event.student_id)
-    if not student:
-        return jsonify({"error": "Student not found or access denied"}), 404
 
     event.is_deleted = True
     event.deleted_at = utc_now()
-    event.deleted_by = admin.user_id
+    event.deleted_by = scoped_admin_id
     db.session.flush()
 
     current_app.logger.info(f"Admin {admin.id} deleted tap entry {event_id} for student {event.student_id}")
@@ -2330,8 +2249,9 @@ def update_student_block_settings():
     """
     Update StudentBlock settings (tap_enabled toggle) for a student-period combination.
     """
-    admin = get_current_admin()
-    if not admin:
+    context = getattr(g, "canonical_context", None)
+    scoped_admin_id = context.user_id if context else None
+    if not scoped_admin_id:
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json()
@@ -2342,33 +2262,28 @@ def update_student_block_settings():
     if not student_id or not period or tap_enabled is None:
         return jsonify({"error": "Missing required fields"}), 400
 
-    from app.auth import get_student_for_admin
+    active_class_id = context.class_id if context else None
+    if not active_class_id:
+        return jsonify({"error": "Class context unavailable"}), 404
 
-    # SECURITY FIX: Use scoped helper AND removed deprecated teacher_id check
-    student = get_student_for_admin(student_id)
-    if not student:
+    has_class_scope = _admin_has_class_scope(scoped_admin_id, active_class_id)
+    if not has_class_scope:
+        return jsonify({"error": "Unauthorized"}), 403
+
+    from app.utils.seat_scope import get_seat_id_for_class
+    seat_id = get_seat_id_for_class(student_id, active_class_id)
+    if not seat_id:
         return jsonify({"error": "Student not found or access denied"}), 404
 
-    # Resolve seat_id and class_id for V2 identity
-    seat = (
-        Seat.query
-        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-        .join(Student, Student.identity_id == IdentityProfile.id)
-        .join(ClassEconomy, Seat.class_id == ClassEconomy.class_id)
-        .filter(
-            ClassEconomy.teacher_id == admin.id,
-            Student.id == student_id,
-            Seat.claimed_at.isnot(None),
-            func.upper(Seat.block) == period,
-        )
-        .first()
-    )
-
-    if not seat or not seat.class_id:
+    seat = Seat.query.get(seat_id)
+    if not seat or not seat.claimed_at:
         return jsonify({"error": "Student block not found or access denied"}), 403
 
-    class_id = seat.class_id
-    seat_id = seat.id
+    seat_blocks = [b.strip().upper() for b in (seat.block or "").split(",") if b.strip()]
+    if period not in seat_blocks:
+        return jsonify({"error": "Student block not found or access denied"}), 403
+
+    class_id = active_class_id
 
     try:
         feat_set_student_block_tap_enabled(
@@ -2419,11 +2334,11 @@ def check_and_auto_tapout_if_limit_reached(student, commit=True):
 def student_status():
     from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
 
-    student = get_logged_in_student()
-
     context = resolve_canonical_context()
     if not context:
         return jsonify({"status": "error", "message": "No class selected."}), 400
+
+    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first()
 
     class_id = context.class_id
     if not class_id:
@@ -2449,13 +2364,13 @@ def reconcile_student_status():
     """Apply attendance-side mutations (daily-limit auto tap-out) explicitly via POST."""
     from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
 
-    student = get_logged_in_student()
-    if not student:
-        return jsonify({"status": "error", "message": "Student not found."}), 404
-
     context = resolve_canonical_context()
     if not context:
         return jsonify({"status": "error", "message": "No class selected."}), 400
+
+    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first()
+    if not student:
+        return jsonify({"status": "error", "message": "Student not found."}), 404
 
     check_and_auto_tapout_if_limit_reached(student, commit=True)
     return jsonify({"status": "ok"})
@@ -2466,54 +2381,30 @@ def reconcile_student_status():
 @api_bp.route('/set-timezone', methods=['POST'])
 def set_timezone():
     """Store user's timezone in session for datetime formatting"""
-    # Allow access if user is logged in as student OR admin
     is_authenticated = False
     now = utc_now()
 
-    # Check Admin Session
-    if get_current_admin() is not None:
-        last_activity = session.get('last_activity')
-        if last_activity:
-            try:
-                last_activity_dt = datetime.fromisoformat(last_activity)
-                if (now - last_activity_dt) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-                    is_authenticated = True
-                    session['last_activity'] = now.isoformat()
-            except ValueError:
-                pass # Invalid date format, treat as unauthenticated
-        else:
-             # If no last_activity but is_admin is set, treat as active for now
-             # (matches admin_required logic which would set it if missing)
-             is_authenticated = True
-             session['last_activity'] = now.isoformat()
-
-    # Check System Admin Session (if not already authenticated)
-    if not is_authenticated and get_current_system_admin() is not None:
-        last_activity = session.get('last_activity')
-        if last_activity:
-            try:
-                last_activity_dt = datetime.fromisoformat(last_activity)
-                if (now - last_activity_dt) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-                    is_authenticated = True
-                    session['last_activity'] = now.isoformat()
-            except ValueError:
-                pass
-        else:
-            # If no last_activity but sysadmin_id is set, treat as active
-            is_authenticated = True
-            session['last_activity'] = now.isoformat()
-
-    # Check Student Session (if not already authenticated as admin or sysadmin)
-    if not is_authenticated and get_logged_in_student() is not None:
-        login_time_str = session.get('login_time')
-        if login_time_str:
-            try:
-                login_time = datetime.fromisoformat(login_time_str)
-                if (now - login_time) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
-                    is_authenticated = True
-                    session['last_activity'] = now.isoformat()
-            except ValueError:
-                pass
+    # Check via V2 Canonical Context
+    context = getattr(g, "canonical_context", None)
+    if context:
+        is_authenticated = True
+        session['last_activity'] = now.isoformat()
+    else:
+        # Check System Admin Session
+        ctx = getattr(g, 'canonical_context', None)
+        if ctx and getattr(ctx, 'actor_role', None) == 'sysadmin':
+            last_activity = session.get('last_activity')
+            if last_activity:
+                try:
+                    last_activity_dt = datetime.fromisoformat(last_activity)
+                    if (now - last_activity_dt) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+                        is_authenticated = True
+                        session['last_activity'] = now.isoformat()
+                except ValueError:
+                    pass
+            else:
+                is_authenticated = True
+                session['last_activity'] = now.isoformat()
 
     if not is_authenticated:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
@@ -2542,34 +2433,37 @@ def get_block_tap_settings():
     Get tap_enabled settings for all students in a specific block.
     Returns true if any student has tap enabled, false if all are disabled.
     """
-    admin = get_current_admin()
-    if not admin:
+    context = getattr(g, "canonical_context", None)
+    active_class_id = context.class_id if context else None
+    if not active_class_id:
+        return jsonify({"error": "Class context unavailable"}), 404
+
+    scoped_admin_id = context.user_id if context else None
+    if not scoped_admin_id:
         return jsonify({"error": "Unauthorized"}), 401
+
+    has_class_scope = _admin_has_class_scope(scoped_admin_id, active_class_id)
+    if not has_class_scope:
+        return jsonify({"error": "Unauthorized"}), 403
     
     block = request.args.get('block', '').strip().upper()
     if not block:
         return jsonify({"error": "Block parameter is required"}), 400
     
-    from app.models import Student, StudentBlock
-    from app.auth import get_admin_student_query
+    from app.models import StudentBlock
     
-    # Resolve class_id for this admin and block
-    class_row = ClassEconomy.query.filter(
-        ClassEconomy.teacher_id == admin.id,
-        func.upper(ClassEconomy.display_name) == block,
-    ).first()
-    
-    if not class_row:
-        return jsonify({"tap_enabled": True})
-        
-    class_id = class_row.class_id
+    class_id = active_class_id
 
     # Get all claimed seats for this admin, block, and class
-    seats = Seat.query.filter(
+    all_seats = Seat.query.filter(
         Seat.class_id == class_id,
-        func.upper(Seat.block) == block,
         Seat.claimed_at.isnot(None)
     ).all()
+    
+    seats = [
+        s for s in all_seats
+        if block in [b.strip().upper() for b in (s.block or "").split(",") if b.strip()]
+    ]
 
     if not seats:
         # No claimed seats in this block, default to enabled
@@ -2604,9 +2498,18 @@ def update_block_tap_settings():
     Update tap_enabled settings for all students in a specific block/period.
     This sets the tap_enabled flag for all students in the specified block.
     """
-    admin = get_current_admin()
-    if not admin:
+    context = getattr(g, "canonical_context", None)
+    active_class_id = context.class_id if context else None
+    if not active_class_id:
+        return jsonify({"error": "Class context unavailable"}), 404
+
+    scoped_admin_id = context.user_id if context else None
+    if not scoped_admin_id:
         return jsonify({"error": "Unauthorized"}), 401
+
+    has_class_scope = _admin_has_class_scope(scoped_admin_id, active_class_id)
+    if not has_class_scope:
+        return jsonify({"error": "Unauthorized"}), 403
     
     data = request.get_json()
     block = data.get('block', '').strip().upper()
@@ -2618,23 +2521,18 @@ def update_block_tap_settings():
     from app.models import Student
     
     try:
-        # Resolve class_id for this admin and block
-        class_row = ClassEconomy.query.filter(
-            ClassEconomy.teacher_id == admin.id,
-            func.upper(ClassEconomy.display_name) == block,
-        ).first()
+        class_id = active_class_id
         
-        if not class_row:
-            return jsonify({"status": "error", "message": "Class not found"}), 404
-            
-        class_id = class_row.class_id
-
-        # Get all claimed seats for this admin, block, and class
-        seats = Seat.query.filter(
+        # Get all claimed seats in this block
+        all_seats = Seat.query.filter(
             Seat.class_id == class_id,
-            func.upper(Seat.block) == block,
             Seat.claimed_at.isnot(None)
         ).all()
+        
+        seats = [
+            s for s in all_seats
+            if block in [b.strip().upper() for b in (s.block or "").split(",") if b.strip()]
+        ]
 
         updated_count = 0
         for seat in seats:
@@ -2667,11 +2565,4 @@ def update_block_tap_settings():
         return jsonify({"error": "Failed to update tap settings"}), 500
 
 
-@api_bp.route('/admin/view-as-student-status', methods=['GET'])
-@admin_required
-def view_as_student_status():
-    """Get the current view-as-student mode status"""
-    return jsonify({
-        "status": "success",
-        "view_as_student": session.get('view_as_student', False)
-    })
+    # view_as_student_status endpoint — REMOVED (prohibited feature)

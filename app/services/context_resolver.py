@@ -53,24 +53,40 @@ class CanonicalContext:
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
 
-def resolve_canonical_context() -> CanonicalContext:
+@dataclass(frozen=True)
+class BoundaryContext:
+    user_id: int
+    actor_role: str  # "teacher" or "sysadmin"
+
+    def __getattr__(self, name):
+        if name in {"class_id", "seat_id"}:
+            raise AttributeError(
+                "BoundaryContext has no class scope — resolve class selection first"
+            )
+        forbidden = {"join_code", "teacher_id", "block", "section", "student_id", "admin_id"}
+        if name in forbidden:
+            raise AttributeError(f"Strict context invariant violation: cannot access {name}")
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+
+def resolve_canonical_context(require_class: bool = True) -> CanonicalContext | BoundaryContext:
     """
     Establish the canonical class context for the current actor.
     
+    Args:
+        require_class: If True, demands a full class context. If False, allows returning
+            a BoundaryContext for actors (teachers/sysadmins) without an active class.
+            
     Raises:
-        ContextForbidden: If the actor is a system administrator.
-        ContextNotEstablished: If no valid class_id or seat_id is found.
+        ContextForbidden: If the actor is a system administrator and require_class=True.
+        ContextNotEstablished: If no valid class_id or seat_id is found (when require_class=True).
         ContextMismatch: If the seat does not belong to the class, or the user does not own the seat.
     """
-    if session.get("is_system_admin"):
-        raise ContextForbidden("System administrators cannot possess Class Context.")
-
     user_id = session.get("user_id")
     session_nonce = session.get("current_session_nonce")
 
     if not user_id:
         raise ContextNotEstablished("Missing user_id in session.")
-
     if not session_nonce:
         raise ContextNotEstablished("Missing session nonce.")
 
@@ -85,10 +101,20 @@ def resolve_canonical_context() -> CanonicalContext:
     if user.current_session_nonce != session_nonce:
         raise ContextMismatch("Session nonce does not match canonical user session.")
 
+    is_sysadmin = getattr(user.user_role, "value", user.user_role) == UserRole.SYSADMIN.value
+
+    if is_sysadmin:
+        if require_class:
+            raise ContextForbidden("System administrators cannot possess Class Context.")
+        return BoundaryContext(user_id=user_id, actor_role="sysadmin")
+
     class_id = getattr(user, "last_active_class_id", None)
     if not class_id:
         if _allow_teacher_context_exception(user_id):
             return None
+        if not require_class and getattr(user.user_role, "value", user.user_role) == UserRole.TEACHER.value:
+            return BoundaryContext(user_id=user_id, actor_role="teacher")
+        print(f"DEBUG: Missing canonical class_id. user_id={user_id}, require_class={require_class}, user_role={getattr(user.user_role, 'value', user.user_role)}")
         raise ContextInvariantViolation("Missing canonical class_id in user context.")
 
     seat = (
@@ -98,7 +124,11 @@ def resolve_canonical_context() -> CanonicalContext:
         .first()
     )
     if not seat:
+        if not require_class and getattr(user.user_role, "value", user.user_role) == UserRole.TEACHER.value:
+            return BoundaryContext(user_id=user_id, actor_role="teacher")
+        print(f"DEBUG: Seat not found. user_id={user_id}, class_id={class_id}")
         raise ContextNotEstablished("Seat not found.")
+        
     if getattr(seat, "role", None) == "student" and getattr(seat, "claimed_at", None) is None:
         raise ContextNotEstablished("Seat is not claimed.")
 
@@ -132,3 +162,4 @@ def _allow_teacher_context_exception(user_id: object) -> bool:
         return True
 
     return False
+

@@ -567,7 +567,7 @@ Wave 3 was re-scoped during execution from the full structural auth migration (a
 
 | Original Deliverable | Status |
 |---|---|
-| `User` activated as primary auth principal | ❌ NOT DONE — admin login resolves `Admin` model (via session `admin_id`; legacy `teachers` table); student login authenticates via `Student` model then bridges to `User`/`Seat` via `sync_student_session_context()` at `student.py:4100`; bridge is fail-closed (returns `None` → session cleared → login rejected if no valid claimed `Seat` found) |
+| `User` activated as primary auth principal | ❌ NOT DONE — admin login resolves `Admin` model (via canonical teacher user); student login authenticates via `Student` model and then resolves the associated `User`/`Seat` through the onboarding flow; the bridge is fail-closed (returns `None` → session cleared → login rejected if no valid seat is found) |
 | `0002_identity_domain.py` migration (drop legacy auth tables) | ❌ DOES NOT EXIST |
 | Legacy tables dropped: `teachers`, `students`, `student_teachers`, `student_blocks`, `teacher_blocks`, `class_memberships`, `recovery_requests`, `student_recovery_codes`, `teacher_onboarding`, `teacher_credentials` | ❌ ALL STILL IN SCHEMA AND STILL USED |
 | `tests/domain/test_identity.py` | ❌ DOES NOT EXIST |
@@ -947,7 +947,7 @@ The first report contained several characterizations that this deeper analysis r
 
 5. **FEAT atomicity model** — First report did not distinguish FEAT-commits vs service-flushes. The correct model is confirmed: FEAT context owns the commit; services only flush. This is working correctly.
 
-6. **Student login auth bridge (Revision 3)** — Second report stated student login "resolves `Student` model" without capturing the post-auth bridge. The precise flow is: `Student` model authenticates the PIN, then `sync_student_session_context(student, allow_writes=True)` at `student.py:4100` bridges to `User`/`Seat`. The bridge is fail-closed: if no valid claimed `Seat` is found, the session is cleared and login is rejected rather than proceeding with a legacy-only session.
+6. **Student login auth bridge (Revision 3)** — Second report stated student login "resolves `Student` model" without capturing the post-auth bridge. The precise flow was: `Student` model authenticates the PIN, then the onboarding flow resolves `User`/`Seat`. The bridge was fail-closed: if no valid seat is found, the session is cleared and login is rejected rather than proceeding with a legacy-only session.
 
 7. **`get_current_seat()` fallback precision (Revision 3)** — Second report described this as "falls back to `student_id`-based seat lookup" without capturing the double-gating. The fallback actually requires `class_id` also present in session (lines 363–374 in `auth.py`). A `student_id`-only session cannot use the fallback path; it returns `None` at line 376. Cross-class seat resolution via this path is not possible.
 

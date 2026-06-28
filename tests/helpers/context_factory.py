@@ -165,7 +165,7 @@ class ClassroomContext:
             sess["current_class_id"] = self.class_id
             sess["current_seat_id"] = self.teacher_seat.id
             sess["last_activity"] = datetime.now(timezone.utc).isoformat()
-            # Legacy key still checked by get_current_admin()
+            # Legacy compatibility key for older login fixtures
             if self._legacy_admin:
                 sess["admin_id"] = self._legacy_admin.id
 
@@ -238,7 +238,7 @@ class ClassroomContextFactory:
         economy = ClassEconomy(
             class_id=class_id,
             join_code=join_code,
-            teacher_id=teacher_user.id,
+            user_id=teacher_user.id,
             created_by_user_id=teacher_user.id,
             display_name=f"Test Class {join_code}",
         )

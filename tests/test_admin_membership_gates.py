@@ -402,7 +402,7 @@ def test_add_individual_student_create_new_class_section_mints_new_join_code(cli
 
     linked_seat = (
         Seat.query
-        .filter_by(block="B", join_code=ClassEconomy.query.filter(ClassEconomy.join_code != "CURRA01", ClassEconomy.teacher_id == admin.id).order_by(ClassEconomy.id.desc()).with_entities(ClassEconomy.join_code).scalar_subquery())
+        .filter_by(block="B", join_code=ClassEconomy.query.filter(ClassEconomy.join_code != "CURRA01", ClassEconomy.user_id == admin.id).order_by(ClassEconomy.id.desc()).with_entities(ClassEconomy.join_code).scalar_subquery())
         .filter(Seat.student_id.isnot(None))
         .order_by(Seat.id.desc())
         .first()

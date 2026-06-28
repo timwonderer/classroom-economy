@@ -29,7 +29,7 @@ def test_rent_cycle_idempotency_same_cycle(monkeypatch, app):
 
         class_row = ClassEconomy(
             join_code="RENTCYCLE1",
-            teacher_id=admin.id,
+            user_id=admin.id,
             status="active",
             created_by_admin_id=admin.id,
         )

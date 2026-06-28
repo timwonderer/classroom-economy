@@ -30,7 +30,7 @@ def setup_analytics_test(client):
     block = "A"
     class_row = ClassEconomy(
         join_code=join_code,
-        teacher_id=admin.id,
+        user_id=admin.id,
         status="active",
         created_by_admin_id=admin.id,
     )
@@ -273,7 +273,7 @@ def test_multi_tenancy_scoping(client, setup_analytics_test):
     block2 = "B"
     class_row2 = ClassEconomy(
         join_code=join_code2,
-        teacher_id=admin.id,
+        user_id=admin.id,
         status="active",
         created_by_admin_id=admin.id,
     )
@@ -382,7 +382,7 @@ def test_analytics_pay_cycle_ignores_teacher_global_for_unscoped_join_code(clien
     join_code2 = "NOGLOBAL1"
     class_row2 = ClassEconomy(
         join_code=join_code2,
-        teacher_id=admin.id,
+        user_id=admin.id,
         status="active",
         created_by_admin_id=admin.id,
     )
@@ -398,7 +398,7 @@ def test_analytics_rent_cycle_ignores_teacher_global_for_unscoped_join_code(clie
     join_code2 = "NOGLOBAL2"
     class_row2 = ClassEconomy(
         join_code=join_code2,
-        teacher_id=admin.id,
+        user_id=admin.id,
         status="active",
         created_by_admin_id=admin.id,
     )
@@ -411,7 +411,7 @@ def test_analytics_rent_cycle_ignores_teacher_global_for_unscoped_join_code(clie
 
 def test_analytics_policy_mode_resolves_by_class_id(client, setup_analytics_test):
     admin, join_code, block, students, payroll = setup_analytics_test
-    class_row = ClassEconomy.query.filter_by(join_code=join_code, teacher_id=admin.id).first()
+    class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=admin.id).first()
     assert class_row is not None
 
     db.session.add(FeatureSettings(
@@ -427,7 +427,7 @@ def test_analytics_policy_mode_resolves_by_class_id(client, setup_analytics_test
 
 def test_budget_survival_uses_policy_mode_min_savings_ratio(client, setup_analytics_test, monkeypatch):
     admin, join_code, block, students, payroll = setup_analytics_test
-    class_row = ClassEconomy.query.filter_by(join_code=join_code, teacher_id=admin.id).first()
+    class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=admin.id).first()
     assert class_row is not None
 
     def _set_policy(mode: str) -> None:

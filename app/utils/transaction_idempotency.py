@@ -38,13 +38,13 @@ def store_purchase_refund_key(purchase_id, reason):
     return build_transaction_idempotency_key("refund", "store-purchase", purchase_id, reason)
 
 
-def purchase_transaction_key(student_id, join_code, item_id, client_purchase_id):
+def purchase_transaction_key(student_id, class_id, item_id, client_purchase_id):
     return build_transaction_idempotency_key(
         "purchase",
         "student",
         student_id,
-        "join",
-        join_code,
+        "class",
+        class_id,
         "item",
         item_id,
         client_purchase_id,
@@ -55,15 +55,13 @@ def void_refund_key(transaction_id):
     return build_transaction_idempotency_key("void", "transaction", transaction_id, "refund")
 
 
-def get_idempotent_transaction(idempotency_key, join_code=None, class_id=None, seat_id=None, type=None, feat_code=None):
+def get_idempotent_transaction(idempotency_key, class_id=None, seat_id=None, type=None, feat_code=None):
     if not idempotency_key:
         return None
-    
+
     query = Transaction.query.filter(Transaction.idempotency_key == idempotency_key)
     if class_id:
         query = query.filter(Transaction.class_id == class_id)
-    elif join_code:
-        query = query.filter(Transaction.join_code == join_code)
         
     if seat_id:
         query = query.filter(Transaction.seat_id == seat_id)

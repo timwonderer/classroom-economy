@@ -11,7 +11,7 @@ import sqlalchemy as sa
 from app import app as flask_app
 from app.models import Admin, IdentityProfile, Student, StudentTeacher
 from app.extensions import db
-from app.auth import get_admin_student_query
+from app.routes.admin import _scoped_students
 from app.hash_utils import get_random_salt
 
 
@@ -83,9 +83,12 @@ def test_teacher_can_only_see_own_students(client, multi_teacher_data):
         # Set session directly in request context
         session['is_admin'] = True
         session['admin_id'] = teacher1.id
+        from flask import g
+        from types import SimpleNamespace
+        g.canonical_context = SimpleNamespace(user_id=teacher1.id, class_id=None, seat_id=None)
         
         # Query students as teacher1
-        students = get_admin_student_query().all()
+        students = _scoped_students().all()
         
         # Should only see teacher1's 5 students
         assert len(students) == 5, f"Teacher1 should see 5 students, but saw {len(students)}"
@@ -112,9 +115,12 @@ def test_brand_new_teacher_sees_no_students(client, multi_teacher_data):
         # Set session directly in request context
         session['is_admin'] = True
         session['admin_id'] = new_teacher.id
+        from flask import g
+        from types import SimpleNamespace
+        g.canonical_context = SimpleNamespace(user_id=new_teacher.id, class_id=None, seat_id=None)
         
         # Query students as new teacher
-        students = get_admin_student_query().all()
+        students = _scoped_students().all()
         
         # Should see 0 students
         assert len(students) == 0, \
@@ -132,9 +138,12 @@ def test_teacher2_sees_only_their_students(client, multi_teacher_data):
         # Set session directly in request context
         session['is_admin'] = True
         session['admin_id'] = teacher2.id
+        from flask import g
+        from types import SimpleNamespace
+        g.canonical_context = SimpleNamespace(user_id=teacher2.id, class_id=None, seat_id=None)
         
         # Query students as teacher2
-        students = get_admin_student_query().all()
+        students = _scoped_students().all()
         
         # Should only see teacher2's 3 students
         assert len(students) == 3, f"Teacher2 should see 3 students, but saw {len(students)}"
@@ -174,9 +183,12 @@ def test_students_with_null_teacher_id_not_visible_to_teachers(client):
         # Set session directly in request context
         session['is_admin'] = True
         session['admin_id'] = teacher1.id
+        from flask import g
+        from types import SimpleNamespace
+        g.canonical_context = SimpleNamespace(user_id=teacher1.id, class_id=None, seat_id=None)
         
         # Query students as teacher1
-        students = get_admin_student_query().all()
+        students = _scoped_students().all()
         
         # Teacher should NOT see the orphaned student
         assert len(students) == 0, \
@@ -230,11 +242,14 @@ def test_system_admin_flag_not_set_accidentally(client):
         # Set session as a regular admin (this is what happens in normal login)
         session['is_admin'] = True
         session['admin_id'] = teacher1.id
+        from flask import g
+        from types import SimpleNamespace
+        g.canonical_context = SimpleNamespace(user_id=teacher1.id, class_id=None, seat_id=None)
         # Explicitly ensure is_system_admin is NOT set
         session.pop('is_system_admin', None)
         
         # Query students
-        students = get_admin_student_query().all()
+        students = _scoped_students().all()
         
         # Teacher1 should see 0 students (since they have none)
         assert len(students) == 0, \
@@ -247,10 +262,13 @@ def test_system_admin_flag_not_set_accidentally(client):
         
         session['is_admin'] = True
         session['admin_id'] = teacher1.id
+        from flask import g
+        from types import SimpleNamespace
+        g.canonical_context = SimpleNamespace(user_id=teacher1.id, class_id=None, seat_id=None)
         session['is_system_admin'] = True  # ACCIDENTALLY SET!
         
         # Query students
-        students = get_admin_student_query().all()
+        students = _scoped_students().all()
         
         # With is_system_admin=True, they WOULD see all students
         assert len(students) == 200, \
@@ -351,8 +369,11 @@ def test_orphaned_students_from_deleted_teacher(client):
         from flask import session
         session['is_admin'] = True
         session['admin_id'] = teacher1_id  # Using the reused ID
+        from flask import g
+        from types import SimpleNamespace
+        g.canonical_context = SimpleNamespace(user_id=teacher1_id, class_id=None, seat_id=None)
         
-        students = get_admin_student_query().all()
+        students = _scoped_students().all()
         
         # FIX: Teacher2 should NOT see orphaned students because we now use ONLY StudentTeacher
         # Since there are no StudentTeacher links for teacher2 (ID reuse), they see 0 students

@@ -20,7 +20,7 @@ def test_resolve_actor_context_student_session(app):
     )
     db.session.add(teacher_user)
     db.session.flush()
-    class_row = ClassEconomy(join_code="TLCP-STUDENT", teacher_id=teacher_user.id)
+    class_row = ClassEconomy(join_code="TLCP-STUDENT", user_id=teacher_user.id)
     db.session.add(class_row)
     db.session.flush()
     student_user = User(
@@ -86,7 +86,7 @@ def test_resolve_actor_context_admin_session(app):
     )
     db.session.add(user)
     db.session.flush()
-    class_row = ClassEconomy(join_code="TLCP-ADMIN", teacher_id=user.id)
+    class_row = ClassEconomy(join_code="TLCP-ADMIN", user_id=user.id)
     db.session.add(class_row)
     db.session.flush()
     teacher_seat = Seat(

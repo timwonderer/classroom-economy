@@ -57,7 +57,7 @@ def _make_admin_with_block(join_code="LOCKA1", block="A", suffix="rv"):
 
     db.session.add(ClassEconomy(
         join_code=join_code,
-        teacher_id=admin.id,
+        user_id=admin.id,
         created_by_admin_id=admin.id,
     ))
     db.session.flush()

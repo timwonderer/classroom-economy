@@ -28,7 +28,7 @@ def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
         category_type="general",
         is_active=True,
     )
-    economy = ClassEconomy(join_code="JOINBUG123", teacher_id=teacher.id, status="active")
+    economy = ClassEconomy(join_code="JOINBUG123", user_id=teacher.id, status="active")
     student = Student(
         first_name="Bug",
         last_initial="R",

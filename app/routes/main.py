@@ -32,14 +32,17 @@ def home():
     - If not logged in -> Redirect to Marketing Site (classroomtokenhub.com)
     """
     # Check for user session and redirect accordingly
-    from app.auth import get_current_admin, get_current_seat
+    from app.auth import get_current_user
 
-    if session.get('is_system_admin') and session.get('sysadmin_id'):
-        return redirect(url_for('sysadmin.dashboard'))
-    elif get_current_admin() is not None:
-        return redirect(url_for('admin.dashboard'))
-    elif get_current_seat() is not None:
-        return redirect(url_for('student.dashboard'))
+    user = get_current_user()
+    if user:
+        role = getattr(user.user_role, "value", user.user_role)
+        if role == 'sysadmin':
+            return redirect(url_for('sysadmin.dashboard'))
+        elif role == 'teacher':
+            return redirect(url_for('admin.dashboard'))
+        elif role == 'student':
+            return redirect(url_for('student.dashboard'))
     else:
         # Default: Redirect to marketing site
         # Use environment variable or default to the canonical domain
@@ -235,7 +238,7 @@ def verify_hall_pass(teacher_public_token):
 
     _GENERIC_UNAVAILABLE = "Verification page not available."
 
-    # Look up teacher by token
+    # Look up teacher by token and resolve to canonical User
     teacher = Admin.query.filter_by(hall_pass_verify_token=teacher_public_token).first()
 
     if not teacher:
@@ -245,9 +248,23 @@ def verify_hall_pass(teacher_public_token):
             message=_GENERIC_UNAVAILABLE
         ), 404
 
+    # Resolve Admin → User via username_lookup_hash
+    from app.models import User, UserRole
+    teacher_user = (
+        User.query
+        .filter(User.username_lookup_hash == teacher.username_lookup_hash, User.user_role == UserRole.TEACHER)
+        .first()
+    )
+    if not teacher_user:
+        return render_template(
+            'hall_pass_verify.html',
+            unavailable=True,
+            message=_GENERIC_UNAVAILABLE
+        ), 404
+
     # Get teacher's active classes (distinct join_codes with labels)
     classes_rows = (
-        ClassEconomy.query.filter_by(teacher_id=teacher.id)
+        ClassEconomy.query.filter_by(user_id=teacher_user.id)
         .order_by(ClassEconomy.display_name)
         .all()
     )
@@ -316,7 +333,6 @@ def verify_hall_pass(teacher_public_token):
     # Query today's hall pass records for this class scope.
     # Only include actionable statuses (not pending/rejected).
     passes_query = HallPassLog.query.filter(
-        HallPassLog.join_code == selected_join_code,
         HallPassLog.class_id == selected_class_id,
         HallPassLog.request_time >= today_start_db,
         HallPassLog.request_time <= today_end_db,

@@ -85,7 +85,7 @@ def _link_student_to_teacher(student: Student, admin: Admin, join_code: str, blo
 
 
 def _login_admin(client, admin_id: int) -> None:
-    class_row = ClassEconomy.query.filter_by(teacher_id=admin_id).order_by(ClassEconomy.created_at.asc(), ClassEconomy.join_code.asc()).first()
+    class_row = ClassEconomy.query.filter_by(user_id=admin_id).order_by(ClassEconomy.created_at.asc(), ClassEconomy.join_code.asc()).first()
     if class_row:
         teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").order_by(Seat.id.asc()).first()
         login_admin(

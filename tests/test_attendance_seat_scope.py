@@ -28,7 +28,7 @@ def _ensure_class_scope(join_code: str, class_id: str) -> ClassEconomy:
         db.session.flush()
 
     class_scope = ClassEconomy(
-        teacher_id=admin.id,
+        user_id=admin.id,
         join_code=join_code,
         class_id=class_id,
         display_name=f"Scope {join_code}",

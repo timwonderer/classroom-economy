@@ -10,7 +10,7 @@ from app.utils.banking import settle_balances, settle_pending_transaction_contex
 
 
 def _attach_seat(student, teacher, join_code, block="A"):
-    economy = ClassEconomy(join_code=join_code, teacher_id=teacher.id, created_by_admin_id=teacher.id)
+    economy = ClassEconomy(join_code=join_code, user_id=teacher.id, created_by_admin_id=teacher.id)
     db.session.add(economy)
     db.session.flush()
     seat = Seat(student_id=student.id, class_id=economy.class_id, join_code=join_code, block=block, role="student")

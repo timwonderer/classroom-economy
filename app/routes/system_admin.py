@@ -39,10 +39,7 @@ from app.auth import (
     _expire_system_admin_session,
     _system_admin_timeout_expired,
     find_canonical_user_by_auth_username,
-    get_current_system_admin,
     get_current_user,
-    resolve_system_admin_shadow_for_user,
-    set_canonical_user_session,
 )
 from app.forms import SystemAdminLoginForm, SystemAdminInviteForm
 
@@ -90,13 +87,13 @@ def _teacher_student_counts(teacher_user_ids: list[int]) -> tuple[dict[int, int]
 
     teacher_students = (
         db.session.query(
-            ClassEconomy.teacher_id.label("teacher_user_id"),
+            ClassEconomy.user_id.label("teacher_user_id"),
             Seat.id.label("seat_id"),
             Seat.block.label("block"),
         )
         .join(Seat, Seat.class_id == ClassEconomy.class_id)
         .filter(
-            ClassEconomy.teacher_id.in_(teacher_user_ids),
+            ClassEconomy.user_id.in_(teacher_user_ids),
             Seat.role == "student",
             Seat.user_id.isnot(None),
             Seat.claimed_at.isnot(None),
@@ -197,8 +194,16 @@ def auth_check():
     Note: Do NOT decorate with `@system_admin_required` because that may redirect
     to the login page; `auth_request` needs a clean 2xx/401 signal.
     """
-    sysadmin = get_current_system_admin()
-    if not sysadmin:
+    # Validate sysadmin auth via canonical context instead of extinct bridge
+    from app.services.context_resolver import (
+        resolve_canonical_context, BoundaryContext,
+        ContextNotEstablished, ContextMismatch, ContextForbidden,
+    )
+    try:
+        ctx = resolve_canonical_context(require_class=False)
+    except (ContextNotEstablished, ContextMismatch, ContextForbidden):
+        raise Unauthorized("System admin authentication required")
+    if not isinstance(ctx, BoundaryContext) or ctx.actor_role != 'sysadmin':
         raise Unauthorized("System admin authentication required")
 
     # Enforce session timeout for security, consistent with other decorators.
@@ -218,9 +223,8 @@ def auth_check():
 @limiter.limit("10 per minute", methods=["POST"])
 def login():
     """System admin login with TOTP authentication."""
-    session.pop("is_system_admin", None)
-    session.pop("sysadmin_id", None)
     session.pop("user_id", None)
+    session.pop("current_session_nonce", None)
     session.pop("last_activity", None)
     session.pop("force_sysadmin_username_migration", None)  # noqa: safety — no-op if key absent
     form = SystemAdminLoginForm()
@@ -249,17 +253,11 @@ def login():
                     )
                     totp_valid = False
                 if totp_valid:
-                    admin = resolve_system_admin_shadow_for_user(user)
-                    if not admin:
-                        current_app.logger.error(
-                            "System admin login failed: canonical user_id=%s has no unique legacy route shadow",
-                            user.id,
-                        )
-                        flash("Invalid credentials or TOTP.", "error")
-                        return redirect(url_for("sysadmin.login"))
-                    session["is_system_admin"] = True
-                    session["sysadmin_id"] = admin.id
+                    # Canonical session — no extinct keys
                     session["user_id"] = user.id
+                    nonce = secrets.token_urlsafe(32)
+                    session["current_session_nonce"] = nonce
+                    user.current_session_nonce = nonce
                     session["sysadmin_auth_username"] = username
                     session['last_activity'] = utc_now().isoformat()
                     # Establish global maintenance bypass for subsequent role testing.
@@ -286,9 +284,8 @@ def login():
 @sysadmin_bp.route('/logout')
 def logout():
     """System admin logout."""
-    session.pop("is_system_admin", None)
-    session.pop("sysadmin_id", None)
     session.pop("user_id", None)
+    session.pop("current_session_nonce", None)
     session.pop("last_activity", None)
     session.pop("sysadmin_auth_username", None)
     session.pop("passkey_sysadmin_auth_username", None)
@@ -310,15 +307,15 @@ def passkey_register_start():
     Official SDK Pattern: Create RegisterToken and get token from passwordless.dev
     """
     try:
-        sysadmin = get_current_system_admin()
+        ctx = g.canonical_context
         user = get_current_user()
-        if not sysadmin or not user or getattr(user.user_role, "value", user.user_role) != "sysadmin":
+        if not user or ctx.actor_role != 'sysadmin':
             abort(404)
 
         # Generate registration token using official SDK
         user_id = f"user_{user.id}"
-        username = session.get("sysadmin_auth_username") or sysadmin.get_display_username()
-        displayname = f"System Admin: {sysadmin.get_display_username()}"
+        username = session.get("sysadmin_auth_username") or user.auth_username or f"sysadmin_{user.id}"
+        displayname = f"System Admin: {username}"
 
         token = create_register_token(user_id, username, displayname)
 
@@ -345,10 +342,13 @@ def passkey_register_finish():
     After frontend completes WebAuthn ceremony, store credential metadata.
     """
     try:
-        sysadmin = get_current_system_admin()
+        ctx = g.canonical_context
         user = get_current_user()
-        if not sysadmin or not user or getattr(user.user_role, "value", user.user_role) != "sysadmin":
+        if not user or ctx.actor_role != 'sysadmin':
             return jsonify({"error": "Canonical system admin identity is missing"}), 409
+        sysadmin = SystemAdmin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first()
+        if not sysadmin:
+            return jsonify({"error": "System admin record not found"}), 404
         data = request.get_json()
 
         # No token is required in the payload for registration finish; nothing to check here.
@@ -396,9 +396,6 @@ def passkey_auth_start():
 
         user = find_canonical_user_by_auth_username(username, expected_role="sysadmin")
         if not user:
-            return jsonify({"error": "Invalid credentials"}), 401
-        admin = resolve_system_admin_shadow_for_user(user)
-        if not admin:
             return jsonify({"error": "Invalid credentials"}), 401
 
         # Check if user has passkeys
@@ -452,10 +449,6 @@ def passkey_auth_finish():
         user = db.session.get(User, canonical_user_id)
         if not user or getattr(user.user_role, "value", user.user_role) != "sysadmin":
             return jsonify({"error": "Invalid user ID"}), 401
-        admin = resolve_system_admin_shadow_for_user(user)
-        if not admin:
-            return jsonify({"error": "Admin not found"}), 401
-
         # Update credential last_used timestamp
         # Credentials are stored without credential_id (managed by passwordless.dev),
         # so update last_used for all credentials belonging to this sysadmin.
@@ -467,12 +460,13 @@ def passkey_auth_finish():
 
         db.session.flush()
 
-        # Create session
-        session["is_system_admin"] = True
-        session["sysadmin_id"] = admin.id
+        # Create session — canonical keys only
         session["user_id"] = user.id
+        nonce = secrets.token_urlsafe(32)
+        session["current_session_nonce"] = nonce
+        user.current_session_nonce = nonce
         session["sysadmin_auth_username"] = (
-            session.get("passkey_sysadmin_auth_username") or admin.get_display_username()
+            session.get("passkey_sysadmin_auth_username") or user.auth_username or f"sysadmin_{user.id}"
         )
         session['last_activity'] = now.isoformat()
         session['maintenance_global_bypass'] = True
@@ -546,9 +540,9 @@ def passkey_delete(credential_id):
 @system_admin_required
 def passkey_settings():
     """Passkey management page."""
-    admin = get_current_system_admin()
+    ctx = g.canonical_context
     user = get_current_user()
-    if not admin or not user:
+    if not user or ctx.actor_role != 'sysadmin':
         abort(404)
     credentials = (
         SystemAdminCredential.query
@@ -558,7 +552,7 @@ def passkey_settings():
     )
 
     return render_template("system_admin_passkey_settings.html",
-                         admin=admin,
+                         admin=user,
                          credentials=credentials)
 
 
@@ -969,6 +963,7 @@ def reset_teacher_totp(admin_id):
 
 @sysadmin_bp.route('/admins/<int:admin_id>/delete', methods=['POST'])
 @system_admin_required
+@feat_shell("FEAT-OPS-001")
 def delete_admin(admin_id):
     """
     Delete an admin account and all students created under that teacher.
@@ -983,7 +978,7 @@ def delete_admin(admin_id):
         if teacher_user:
             class_ids = [
                 class_id for (class_id,) in db.session.query(ClassEconomy.class_id)
-                .filter(ClassEconomy.teacher_id == teacher_user.id)
+                .filter(ClassEconomy.user_id == teacher_user.id)
                 .all()
             ]
             deleted_class_count = len(class_ids)
@@ -1370,7 +1365,7 @@ def update_user_report(report_ref):
     report.status = new_status
     report.admin_notes = admin_notes if admin_notes else None
     report.reviewed_at = utc_now()
-    report.reviewed_by_sysadmin_id = session.get('sysadmin_id')
+    report.reviewed_by_sysadmin_id = g.canonical_context.user_id
     
     try:
         db.session.flush()
@@ -1393,8 +1388,15 @@ def grafana_auth_check():
     Exempt from rate limiting to prevent blocking Grafana's multiple auth checks per page.
     """
     from flask import Response
-    sysadmin = get_current_system_admin()
-    if not sysadmin:
+    from app.services.context_resolver import (
+        resolve_canonical_context, BoundaryContext,
+        ContextNotEstablished, ContextMismatch, ContextForbidden,
+    )
+    try:
+        ctx = resolve_canonical_context(require_class=False)
+    except (ContextNotEstablished, ContextMismatch, ContextForbidden):
+        return Response('Unauthorized', 401)
+    if not isinstance(ctx, BoundaryContext) or ctx.actor_role != 'sysadmin':
         return Response('Unauthorized', 401)
 
     # Check session timeout
@@ -1410,7 +1412,7 @@ def grafana_auth_check():
     session["last_activity"] = utc_now().isoformat()
 
     # Sanitize username for header (prevent response splitting)
-    raw_username = session.get("sysadmin_auth_username") or sysadmin.get_display_username()
+    raw_username = session.get("sysadmin_auth_username") or f"sysadmin_{ctx.user_id}"
     username = raw_username.replace('\n', '').replace('\r', '') if raw_username else ''
 
     response = Response('OK', 200)
@@ -1470,12 +1472,11 @@ def grafana_proxy(path):
 
         # Add the authenticated user header for Grafana
         # Fetch admin to get username (Grafana auth proxy expects username, not ID)
-        admin = get_current_system_admin()
-        if not admin:
-            # Stale session - admin was deleted
+        ctx = g.canonical_context
+        if not ctx or ctx.actor_role != 'sysadmin':
             flash("Authentication failed: user not found.", "error")
             return redirect(url_for('sysadmin.dashboard'))
-        headers['X-WEBAUTH-USER'] = session.get("sysadmin_auth_username") or admin.get_display_username()
+        headers['X-WEBAUTH-USER'] = session.get("sysadmin_auth_username") or f"sysadmin_{ctx.user_id}"
 
         # Make the request to Grafana
         resp = requests.request(
@@ -1659,12 +1660,13 @@ def announcements():
 
 @sysadmin_bp.route('/announcements/create', methods=['GET', 'POST'])
 @system_admin_required
+@feat_shell("FEAT-OPS-001")
 def announcement_create():
     """Create a new system-wide announcement."""
     from app.forms import SystemAdminAnnouncementForm
     from app.models import Announcement
 
-    sysadmin_id = session.get('sysadmin_id')
+    sysadmin_id = g.canonical_context.user_id
 
     form = SystemAdminAnnouncementForm()
 
@@ -1714,7 +1716,7 @@ def announcement_edit(announcement_id):
     from app.forms import SystemAdminAnnouncementForm
     from app.models import Announcement
 
-    sysadmin_id = session.get('sysadmin_id')
+    # sysadmin_id not needed here — announcement ownership verified by is_system_admin_announcement()
 
     # Get announcement and verify it's a system admin announcement
     announcement = Announcement.query.filter_by(id=announcement_id).first()
@@ -1921,7 +1923,7 @@ def resolve_escalated_issue(issue_ref):
     resolution_note = request.form.get('resolution_note', '').strip()
     eligible_for_reward = request.form.get('eligible_for_reward') == 'on'
     reward_amount_raw = request.form.get('reward_amount', '').strip()
-    sysadmin_id = session.get('sysadmin_id')
+    sysadmin_id = g.canonical_context.user_id
 
     if not sysadmin_id:
         flash("System admin session is invalid. Please log in again.", "error")

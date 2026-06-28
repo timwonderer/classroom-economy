@@ -6,17 +6,17 @@ from flask import session
 
 
 ADMIN_DISPLAY_NAME_KEY = "admin_display_name"
-ADMIN_DISPLAY_NAME_ID_KEY = "admin_display_name_admin_id"
+ADMIN_DISPLAY_NAME_ID_KEY = "admin_display_name_teacher_user_id"
 TEACHER_DISPLAY_NAME_CACHE_KEY = "teacher_display_name_cache"
 
 
-def set_admin_display_name_cache(*, admin_id: int, display_name: str) -> None:
-    session[ADMIN_DISPLAY_NAME_ID_KEY] = admin_id
+def set_admin_display_name_cache(*, teacher_user_id: int, display_name: str) -> None:
+    session[ADMIN_DISPLAY_NAME_ID_KEY] = teacher_user_id
     session[ADMIN_DISPLAY_NAME_KEY] = display_name
 
 
-def get_admin_display_name_cache(*, admin_id: int) -> str | None:
-    if session.get(ADMIN_DISPLAY_NAME_ID_KEY) != admin_id:
+def get_admin_display_name_cache(*, teacher_user_id: int) -> str | None:
+    if session.get(ADMIN_DISPLAY_NAME_ID_KEY) != teacher_user_id:
         return None
     return session.get(ADMIN_DISPLAY_NAME_KEY)
 

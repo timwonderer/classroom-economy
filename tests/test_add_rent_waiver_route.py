@@ -27,7 +27,7 @@ def _make_admin(suffix):
 
 
 def _make_teacher_block(admin_id, block, join_code):
-    economy = ClassEconomy(join_code=join_code, teacher_id=admin_id, created_by_admin_id=admin_id)
+    economy = ClassEconomy(join_code=join_code, user_id=admin_id, created_by_admin_id=admin_id)
     db.session.add(economy)
     db.session.flush()
     db.session.add(ClassMembership(join_code=join_code, admin_id=admin_id, role="admin"))

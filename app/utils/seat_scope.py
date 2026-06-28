@@ -12,10 +12,9 @@ def get_seat_ids_for_student_join(student_id: int, join_code: str) -> list[int]:
 
     class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
     query = Seat.query.with_entities(Seat.id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).join(Student, Student.identity_id == IdentityProfile.id).filter(Student.id == student_id)
-    if class_row:
-        query = query.filter(Seat.class_id == class_row.class_id)
-    else:
-        query = query.filter(Seat.join_code == join_code)
+    if not class_row:
+        return []
+    query = query.filter(Seat.class_id == class_row.class_id)
     query = query.join(IdentityProfile, IdentityProfile.seat_id == Seat.id).join(Student, Student.identity_id == IdentityProfile.id)
     return [row[0] for row in query.filter(Student.id == student_id).all()]
 

@@ -43,7 +43,7 @@ def student_in_class(client, teacher_admin):
     db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name='TestRejection', last_name='S'))
     db.session.add(seat)
 
-    db.session.add(ClassEconomy(join_code='REJECT123', teacher_id=teacher_admin.id, status="active", created_by_admin_id=teacher_admin.id))
+    db.session.add(ClassEconomy(join_code='REJECT123', user_id=teacher_admin.id, status="active", created_by_admin_id=teacher_admin.id))
     db.session.add(ClassMembership(join_code='REJECT123', admin_id=teacher_admin.id, role="admin"))
     db.session.add(ClassMembership(join_code='REJECT123', student_id=student.id, role="student"))
     db.session.commit()

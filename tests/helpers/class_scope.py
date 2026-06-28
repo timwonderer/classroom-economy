@@ -58,7 +58,7 @@ def create_class_scope(
     class_row = ClassEconomy(
         class_id=str(uuid4()),
         join_code=join_code,
-        teacher_id=resolved_teacher_user_id,
+        user_id=resolved_teacher_user_id,
         display_name=display_name,
         section=block,
         status=class_status,
@@ -66,6 +66,11 @@ def create_class_scope(
     )
     db.session.add(class_row)
     db.session.flush()
+
+    teacher_user_row = db.session.get(User, resolved_teacher_user_id)
+    if teacher_user_row:
+        teacher_user_row.last_active_class_id = class_row.class_id
+        db.session.flush()
 
     if create_teacher_membership:
         db.session.add(ClassMembership(
@@ -110,6 +115,10 @@ def create_class_scope(
         )
         db.session.add(s_seat)
         db.session.flush()
+        student_user_row = db.session.get(User, resolved_student_user_id)
+        if student_user_row:
+            student_user_row.last_active_class_id = class_row.class_id
+            db.session.flush()
         db.session.add(IdentityProfile(
             seat_id=s_seat.id,
             profile_type='student_claimed' if claimed else 'student_unclaimed',

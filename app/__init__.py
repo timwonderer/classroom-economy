@@ -491,9 +491,11 @@ def create_app():
         # Persistent session bypass for admin-enabled testing across other roles.
         global_bypass = session.get("maintenance_global_bypass") is True
         try:
-            from app.auth import get_current_system_admin
+            from app.auth import get_current_user
+            from app.models import UserRole
 
-            is_sysadmin = get_current_system_admin() is not None
+            _user = get_current_user()
+            is_sysadmin = _user is not None and getattr(_user.user_role, "value", _user.user_role) == UserRole.SYSADMIN.value
         except Exception:
             is_sysadmin = False
         token_valid = bool(bypass_token and provided_token and provided_token == bypass_token)
@@ -551,8 +553,8 @@ def create_app():
             current_class_id = get_current_class_id()
             if current_seat and current_class_id:
                 class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
-                if class_row and class_row.teacher_id:
-                    teacher_id = class_row.teacher_id
+                if class_row and class_row.user_id:
+                    teacher_id = class_row.user_id
 
             # Canonical user currently has no teacher-role mapping in this phase.
             # Keep this lookup to centralize identity dependency for future phases.
@@ -654,13 +656,7 @@ def create_app():
             'maintenance_bypass_active': bypass_flag,
         }
 
-    @app.context_processor
-    def inject_view_as_student_status():
-        """Inject view-as-student mode status into all templates."""
-        from app.auth import is_viewing_as_student
-        return {
-            'is_viewing_as_student': is_viewing_as_student()
-        }
+    # inject_view_as_student_status — REMOVED (prohibited feature)
 
     @app.context_processor
     def inject_feature_settings():
@@ -692,11 +688,11 @@ def create_app():
 
             from app.models import ClassEconomy
             class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
-            if not class_row or not class_row.teacher_id:
+            if not class_row or not class_row.user_id:
                 return {'admin_feature_settings': FeatureSettings.get_defaults()}
             return {
                 'admin_feature_settings': get_admin_feature_settings_for_join_code(
-                    class_row.teacher_id,
+                    class_row.user_id,
                     join_code=class_row.join_code,
                 )
             }
@@ -821,19 +817,20 @@ def create_app():
     def inject_current_admin():
         """Inject current admin object into all templates."""
         try:
-            from app.auth import get_current_user, get_current_admin
+            from app.auth import get_current_user
             from app.utils.display_name_session import (
                 get_admin_display_name_cache,
                 set_admin_display_name_cache,
             )
 
-            _ = get_current_user()
-            admin = get_current_admin()
+            user = get_current_user()
+            from app.models import Admin
+            admin = Admin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first() if user else None
             if admin:
-                cached_name = get_admin_display_name_cache(admin_id=admin.id)
+                cached_name = get_admin_display_name_cache(teacher_user_id=admin.id)
                 if not cached_name:
                     cached_name = admin.get_display_name()
-                    set_admin_display_name_cache(admin_id=admin.id, display_name=cached_name)
+                    set_admin_display_name_cache(teacher_user_id=admin.id, display_name=cached_name)
                 return {'current_admin': admin, 'current_admin_display_name': cached_name}
             return {'current_admin': None, 'current_admin_display_name': None}
         except Exception as e:
@@ -842,13 +839,14 @@ def create_app():
 
     @app.context_processor
     def inject_current_sysadmin():
-        """Inject current system admin object into all templates."""
+        """Inject current system admin (User object) into all templates."""
         try:
-            from app.auth import get_current_system_admin
+            from app.auth import get_current_user
+            from app.models import UserRole
 
-            sysadmin = get_current_system_admin()
-            if sysadmin:
-                return {'current_sysadmin': sysadmin}
+            user = get_current_user()
+            if user and getattr(user.user_role, "value", user.user_role) == UserRole.SYSADMIN.value:
+                return {'current_sysadmin': user}
             return {'current_sysadmin': None}
         except Exception as e:
             app.logger.warning(f"Could not load current system admin: {e}")

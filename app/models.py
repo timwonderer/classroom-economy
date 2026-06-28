@@ -643,7 +643,7 @@ class ClassEconomy(db.Model):
     join_code = db.Column(db.String(20), unique=True, nullable=False, index=True)
     join_code_token = db.Column(db.String(20), unique=True, nullable=True, index=True)
     section = db.Column(db.String(50), nullable=True)
-    teacher_id = db.Column(
+    user_id = db.Column(
         db.Integer,
         db.ForeignKey('users.id', ondelete='CASCADE'),
         nullable=False,
@@ -664,7 +664,7 @@ class ClassEconomy(db.Model):
     features = db.relationship('ClassFeature', backref='class_economy', cascade='all, delete-orphan', lazy='dynamic')
     teacher = db.relationship(
         'User',
-        foreign_keys=[teacher_id],
+        foreign_keys=[user_id],
         backref=db.backref('classes', lazy='dynamic', passive_deletes=True),
     )
     created_by_user = db.relationship('User', foreign_keys=[created_by_user_id])
@@ -820,8 +820,7 @@ class SystemAdminCredential(db.Model):
     __tablename__ = 'system_admin_credentials'
 
     id = db.Column(db.Integer, primary_key=True)
-    sysadmin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id', ondelete='CASCADE'), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False, index=True)
 
     # Credential metadata
     credential_id = db.Column(db.Text, unique=False, nullable=True, index=False)  # Optional: not needed for passwordless.dev SaaS
@@ -832,11 +831,10 @@ class SystemAdminCredential(db.Model):
     last_used = db.Column(db.DateTime(timezone=True))
 
     # Relationships
-    sysadmin = db.relationship('SystemAdmin', backref=db.backref('credentials', lazy='dynamic', cascade='all, delete-orphan'))
     user = db.relationship('User', backref=db.backref('system_admin_credentials', lazy='dynamic', cascade='all, delete-orphan'))
 
     def __repr__(self):
-        return f'<SystemAdminCredential {self.authenticator_name or "Unnamed"} for SysAdmin {self.sysadmin_id}>'
+        return f'<SystemAdminCredential {self.authenticator_name or "Unnamed"} for User {self.user_id}>'
 
 
 class Transaction(db.Model):
@@ -844,7 +842,7 @@ class Transaction(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     # student_id has been formally severed in favor of seat_id. 
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
     # CRITICAL: join_code is the source of truth for class isolation
     # Each join code represents a distinct class economy, even if same teacher
@@ -1333,7 +1331,7 @@ class PayrollCache(db.Model):
 class StoreItem(db.Model):
     __tablename__ = 'store_items'
     id = db.Column(db.Integer, primary_key=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
     join_code = db.Column(db.String(20), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     name = db.Column(db.String(100), nullable=False)
@@ -1520,7 +1518,7 @@ class RedemptionAuditLog(db.Model):
         index=True,
     )
     notes = db.Column(db.Text, nullable=True)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=True, index=True)
@@ -1540,7 +1538,7 @@ class RedemptionAuditLog(db.Model):
     teacher = db.relationship('User', backref=db.backref('redemption_audit_logs', lazy='dynamic'))
 
     __table_args__ = (
-        db.Index('ix_redemption_audit_logs_teacher_timestamp', 'teacher_id', 'timestamp'),
+        db.Index('ix_redemption_audit_logs_teacher_timestamp', 'user_id', 'timestamp'),
     )
 
 
@@ -2517,7 +2515,7 @@ class UserReport(db.Model):
     status = db.Column(db.String(20), default='new', nullable=False)  # 'new', 'reviewed', 'rewarded', 'closed', 'spam'
     admin_notes = db.Column(db.Text, nullable=True)
     reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    reviewed_by_sysadmin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id'), nullable=True)
+    reviewed_by_sysadmin_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
     # Reward tracking (for legitimate bugs)
     reward_amount = db.Column(db.Float, nullable=True, default=0.0)
@@ -2531,7 +2529,7 @@ class UserReport(db.Model):
         foreign_keys=[_student_id],
     )
 
-    reviewed_by = db.relationship('SystemAdmin', backref='reviewed_reports', foreign_keys=[reviewed_by_sysadmin_id])
+    reviewed_by = db.relationship('User', backref='reviewed_reports', foreign_keys=[reviewed_by_sysadmin_id])
 
 
 # ---- Issue Resolution System Models ----
@@ -2586,7 +2584,7 @@ class Issue(db.Model):
     actor_public_id = db.Column(db.String(64), nullable=False, index=True)
 
     # Class context
-    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=False, index=True)
@@ -2629,7 +2627,7 @@ class Issue(db.Model):
     eligible_for_reward = db.Column(db.Boolean, default=False, nullable=False)  # Teacher marks if student may receive reward for legitimate bug
 
     # Sysadmin review and resolution
-    sysadmin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id'), nullable=True)
+    sysadmin_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     sysadmin_reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     sysadmin_notes = db.Column(db.Text, nullable=True)  # Separate from teacher/student content, visible to teacher only
     sysadmin_resolved_at = db.Column(db.DateTime(timezone=True), nullable=True)
@@ -2644,8 +2642,8 @@ class Issue(db.Model):
 
     # Relationships
     student = db.relationship('Student', backref=db.backref('issues', lazy='dynamic'))
-    teacher = db.relationship('User', backref=db.backref('class_issues', lazy='dynamic'))
-    sysadmin = db.relationship('SystemAdmin', backref=db.backref('reviewed_issues', lazy='dynamic'))
+    teacher = db.relationship('User', foreign_keys=[user_id], backref=db.backref('class_issues', lazy='dynamic'))
+    sysadmin = db.relationship('User', foreign_keys=[sysadmin_id], backref=db.backref('reviewed_issues', lazy='dynamic'))
     related_transaction = db.relationship('Transaction', backref='related_issues')
     status_history = db.relationship('IssueStatusHistory', backref='issue', lazy='dynamic', cascade='all, delete-orphan', order_by='IssueStatusHistory.changed_at.desc()')
     resolution_actions = db.relationship('IssueResolutionAction', backref='issue', lazy='dynamic', cascade='all, delete-orphan', order_by='IssueResolutionAction.created_at.desc()')
@@ -2658,7 +2656,7 @@ class Issue(db.Model):
 
     # Indexes
     __table_args__ = (
-        db.Index('ix_issues_teacher_status', 'teacher_id', 'status'),
+        db.Index('ix_issues_teacher_status', 'user_id', 'status'),
         db.Index('ix_issues_student_status', 'student_id', 'status'),
         db.Index('ix_issues_join_code_status', 'join_code', 'status'),
     )
@@ -3319,8 +3317,8 @@ class Announcement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
 
     # Author (one of these will be set)
-    teacher_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
-    system_admin_id = db.Column(db.Integer, db.ForeignKey('system_admins.id', ondelete='CASCADE'), nullable=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
+    system_admin_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=True)
 
     # Audience targeting
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
@@ -3342,20 +3340,20 @@ class Announcement(db.Model):
     expires_at = db.Column(db.DateTime(timezone=True), nullable=True)  # Optional expiration
 
     # Relationships
-    teacher = db.relationship('User', foreign_keys=[teacher_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
-    system_admin = db.relationship('SystemAdmin', foreign_keys=[system_admin_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
+    teacher = db.relationship('User', foreign_keys=[user_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
+    system_admin = db.relationship('User', foreign_keys=[system_admin_id], backref=db.backref('sysadmin_announcements', lazy='dynamic', passive_deletes=True))
     target_teacher = db.relationship('User', foreign_keys=[target_teacher_id], backref=db.backref('targeted_announcements', lazy='dynamic', passive_deletes=True))
 
     # Indexes
     __table_args__ = (
         db.Index('ix_announcements_join_code_active', 'join_code', 'is_active'),
-        db.Index('ix_announcements_teacher_join_code', 'teacher_id', 'join_code'),
+        db.Index('ix_announcements_teacher_join_code', 'user_id', 'join_code'),
         db.Index('ix_announcements_audience_type', 'audience_type', 'is_active'),
         db.Index('ix_announcements_system_admin', 'system_admin_id', 'is_active'),
     )
 
     def __repr__(self):
-        author = f"Teacher {self.teacher_id}" if self.teacher_id else f"SysAdmin {self.system_admin_id}"
+        author = f"Teacher {self.user_id}" if self.user_id else f"SysAdmin {self.system_admin_id}"
         return f'<Announcement {self.id} - {self.title[:30]} ({author}, {self.audience_type})>'
 
     def is_expired(self):

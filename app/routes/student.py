@@ -37,11 +37,8 @@ from app.auth import (
     get_current_student_seat,
     find_canonical_user_by_auth_username,
     login_required,
-    get_logged_in_student,
     is_student_account_active,
-    resolve_student_shadow_for_user,
     SESSION_TIMEOUT_MINUTES,
-    sync_student_session_context,
 )
 from app.services.context_resolver import ContextResolutionError, resolve_canonical_context
 from app.forms import (
@@ -138,7 +135,6 @@ def _get_identity_bound_seat_options(user_id: int):
 
 def _reset_student_login_session():
     """Remove transient student login state before redirecting away from auth."""
-    session.pop("student_id", None)
     session.pop("user_id", None)
     session.pop("current_join_code", None)
     session.pop("login_time", None)
@@ -194,7 +190,7 @@ def handle_context_forbidden(e):
 def handle_context_not_established(e):
     current_app.logger.info(f"Class context not established: {e}")
     flash("Please select a class to continue.", "info")
-    return redirect(url_for('student.select_class'))
+    return redirect(url_for('student.select_class_context'))
 
 STUDENT_FEATURE_ENDPOINTS = {
     'student.payroll': 'payroll',
@@ -218,13 +214,14 @@ def enforce_student_feature_gates():
     if not feature_name:
         return None
 
-    # Let auth/session guards run first when no student is logged in.
-    if not get_logged_in_student():
+    # Let auth/session guards run first when no canonical student context exists.
+    context = resolve_canonical_context()
+    if not context or getattr(context, "actor_role", None) != "student":
         return None
 
     # Some legacy tests/flows hydrate seat context lazily during route execution.
     # Only enforce here when class context is already resolvable.
-    if not resolve_canonical_context():
+    if not context:
         return None
 
     if not is_feature_enabled(feature_name):
@@ -254,6 +251,19 @@ def _find_linked_user_for_student(student: Student | None) -> User | None:
             Seat.user_id.isnot(None),
         )
         .order_by(Seat.id.asc())
+        .first()
+    )
+
+
+def _get_canonical_student_from_context() -> Student | None:
+    """Resolve the current student directly from canonical context."""
+    context = resolve_canonical_context()
+    if not context or not getattr(context, "seat_id", None):
+        return None
+    return (
+        Student.query
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .filter(IdentityProfile.seat_id == context.seat_id)
         .first()
     )
 
@@ -298,13 +308,13 @@ def _ensure_student_class_membership(student_id: int | None, join_code: str | No
 
 
 def _get_claimed_setup_state():
-    seat_id = session.get('claimed_seat_id')
-    student_id = session.get('claimed_student_id')
-    user_id = session.get('claimed_user_id')
+    seat_id = session.get('onboarding_seat_ref')
+    student_ref = session.get('onboarding_student_ref')
+    user_ref = session.get('onboarding_user_ref')
 
     seat = db.session.get(Seat, seat_id) if seat_id else None
-    student = db.session.get(Student, student_id) if student_id else None
-    user = db.session.get(User, user_id) if user_id else None
+    student = db.session.get(Student, student_ref) if student_ref else None
+    user = db.session.get(User, user_ref) if user_ref else None
 
     if seat and not student:
         student = (
@@ -336,7 +346,7 @@ def _prime_student_teacher_display_name_cache(student_id: int) -> None:
     teacher_ids = []
     if class_ids:
         classes = ClassEconomy.query.filter(ClassEconomy.class_id.in_(class_ids)).all()
-        teacher_ids = sorted({c.teacher_id for c in classes if c.teacher_id})
+        teacher_ids = sorted({c.user_id for c in classes if c.user_id})
     if not teacher_ids:
         clear_teacher_display_name_cache()
         return
@@ -446,11 +456,6 @@ def get_feature_settings_for_student():
     Returns:
         dict: Feature settings dictionary with enabled/disabled flags
     """
-    student = get_logged_in_student()
-    if not student:
-        # Return defaults if no student logged in
-        return FeatureSettings.get_defaults()
-
     context = resolve_canonical_context()
     if not context:
         return FeatureSettings.get_defaults()
@@ -547,7 +552,7 @@ def claim_account():
             return redirect(url_for('student.claim_account'))
 
         class_id = class_row.class_id
-        teacher_id = class_row.teacher_id
+        teacher_id = class_row.user_id
 
         # Find all unclaimed seats with this class_id
         unclaimed_seats = (
@@ -637,9 +642,9 @@ def claim_account():
         db.session.flush()
 
         # Start setup flow
-        session['claimed_student_id'] = new_student.id
-        session['claimed_seat_id'] = matched_seat.id
-        session['claimed_user_id'] = linked_user.id if linked_user else None
+        session['onboarding_student_ref'] = new_student.id
+        session['onboarding_seat_ref'] = matched_seat.id
+        session['onboarding_user_ref'] = linked_user.id if linked_user else None
         session.pop('generated_username', None)
         session.pop('theme_prompt', None)
         session.pop('theme_slug', None)
@@ -712,7 +717,7 @@ def create_username():
             db.session.rollback()
             flash("That username is unavailable. Please try another word.", "setup")
             return redirect(url_for('student.create_username'))
-        session['claimed_user_id'] = user.id
+        session['onboarding_user_ref'] = user.id
         # Clear theme prompt from session
         session.pop('theme_prompt', None)
         session.pop('theme_slug', None)
@@ -764,9 +769,9 @@ def setup_pin_passphrase():
 
         db.session.flush()
         # Clear session onboarding keys
-        session.pop('claimed_student_id', None)
-        session.pop('claimed_seat_id', None)
-        session.pop('claimed_user_id', None)
+        session.pop('onboarding_student_ref', None)
+        session.pop('onboarding_seat_ref', None)
+        session.pop('onboarding_user_ref', None)
         session.pop('generated_username', None)
         flash("Setup completed successfully!", "setup")
         return redirect(url_for('student.setup_complete'))
@@ -790,7 +795,17 @@ def add_class():
     from app.forms import StudentAddClassForm
     from app.hash_utils import hash_username_lookup
 
-    student = get_logged_in_student()
+    context = resolve_canonical_context()
+    if not context or getattr(context, "actor_role", None) != "student":
+        return redirect(url_for('student.login'))
+    student = (
+        Student.query
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .filter(IdentityProfile.seat_id == context.seat_id)
+        .first()
+    )
+    if not student:
+        return redirect(url_for('student.login'))
     form = StudentAddClassForm()
 
     def _is_safe_url(target: str) -> bool:
@@ -862,7 +877,7 @@ def add_class():
             return redirect(_get_return_target())
 
         class_id = class_row.class_id
-        teacher_id = class_row.teacher_id
+        teacher_id = class_row.user_id
 
         # Find all unclaimed seats with this class_id
         unclaimed_seats = (
@@ -950,10 +965,17 @@ def add_class():
 @login_required
 def dashboard():
     """Student dashboard with balance, attendance, transactions, and quick actions."""
-    student = get_logged_in_student()
+    context = resolve_canonical_context()
+    if not context:
+        raise AccessScopeDenied(reason_code="no_class_scope", message="Please select a class to continue.")
+    student = (
+        Student.query
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .filter(IdentityProfile.seat_id == context.seat_id)
+        .first()
+    )
 
     try:
-        context = resolve_canonical_context()
         scope = resolve_scope(actor=student, selected_join_code=None)
         if context and scope.class_id != context.class_id:
             raise AccessScopeDenied(reason_code="foreign_class_scope", message="Please switch to the selected class.")
@@ -972,10 +994,10 @@ def dashboard():
     current_block = scope.block  # Get current class block
     if not scope.class_id:
         flash("Class context unavailable. Please select a class and retry.", "error")
-        return redirect(url_for("student.select_class"))
+        return redirect(url_for("student.select_class_context"))
     if not scope.seat_id:
         flash("Seat context unavailable. Please select a class and retry.", "error")
-        return redirect(url_for("student.select_class"))
+        return redirect(url_for("student.select_class_context"))
 
     # Canonical ledger scope: seat_id + class_id.
     transactions = Transaction.query.filter_by(
@@ -1219,7 +1241,7 @@ def dashboard():
         ),
         or_(
             # Class-specific announcements
-            Announcement.join_code == join_code,
+            Announcement.class_id == scope.class_id,
             # System-wide announcements
             Announcement.audience_type == 'system_wide',
             # All students announcements
@@ -1279,9 +1301,7 @@ def payroll():
     seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = get_logged_in_student()
-    if not student:
-        student = get_logged_in_student()
+    student = _get_canonical_student_from_context()
 
     context = resolve_canonical_context()
     if not context:
@@ -1366,7 +1386,7 @@ def transfer():
     if not is_feature_enabled('banking'):
         abort(404)
 
-    student = get_logged_in_student()
+    student = _get_canonical_student_from_context()
 
     # CRITICAL FIX v2: Get full class context (join_code, teacher_id, block)
     context = resolve_canonical_context()
@@ -1596,9 +1616,7 @@ def insurance_marketplace():
     seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = get_logged_in_student()
-    if not student:
-        student = get_logged_in_student()
+    student = _get_canonical_student_from_context()
 
     # CRITICAL FIX v2: Get full class context (join_code is source of truth)
     context = resolve_canonical_context()
@@ -1618,13 +1636,13 @@ def insurance_marketplace():
     ).filter(
         InsuranceEnrollment.seat_id == seat.id,
         InsuranceEnrollment.status == 'active',
-        InsuranceEnrollment.join_code == join_code,
+        InsuranceEnrollment.class_id == class_id,
     ).all()
 
     # FIX: Get available policies (only from current teacher)
     available_policies = InsurancePolicy.query.filter(
         InsurancePolicy.is_active == True,
-        InsurancePolicy.join_code == join_code,
+        InsurancePolicy.class_id == class_id,
     ).all()
 
     # Check which policies can be purchased
@@ -1666,7 +1684,7 @@ def insurance_marketplace():
         InsurancePolicy, InsuranceClaim.policy_id == InsurancePolicy.id
     ).filter(
         InsuranceClaim.seat_id == seat.id,
-        InsuranceClaim.join_code == join_code,
+        InsuranceClaim.class_id == class_id,
     ).all()
 
     # Group policies by tier for display
@@ -1709,7 +1727,7 @@ def insurance_marketplace():
 @login_required
 def purchase_insurance(policy_id):
     """Purchase insurance policy."""
-    student = get_logged_in_student()
+    student = _get_canonical_student_from_context()
 
     # CRITICAL FIX v2: Get full class context
     context = resolve_canonical_context()
@@ -1770,7 +1788,7 @@ def purchase_insurance(policy_id):
             InsuranceEnrollment.seat_id == seat.id,
             InsuranceEnrollment.status == 'active',
             InsurancePolicy.tier_category_id == policy.tier_category_id,
-            InsuranceEnrollment.join_code == join_code,
+            InsuranceEnrollment.class_id == class_id,
         ).first()
 
         if existing_tier_enrollment:
@@ -1831,7 +1849,7 @@ def purchase_insurance(policy_id):
 @feat_shell("FEAT-OBL-001")
 def cancel_insurance(enrollment_id):
     """Cancel insurance policy."""
-    student = get_logged_in_student()
+    student = _get_canonical_student_from_context()
     seat = get_current_seat()
     enrollment = db.get_or_404(InsuranceEnrollment, enrollment_id)
 
@@ -1852,7 +1870,7 @@ def cancel_insurance(enrollment_id):
 @login_required
 def file_claim(policy_id):
     """File insurance claim."""
-    student = get_logged_in_student()
+    student = _get_canonical_student_from_context()
     seat = get_current_seat()
     if seat is None:
         flash("No class selected.", "danger")
@@ -1971,8 +1989,8 @@ def file_claim(policy_id):
         if effective_time_limit_days is not None and effective_time_limit_days > 0:
             cutoff_date = now_utc - timedelta(days=effective_time_limit_days)
             tx_query = tx_query.filter(Transaction.timestamp >= cutoff_date)
-        if enrollment.join_code:
-            tx_query = tx_query.filter(Transaction.join_code == enrollment.join_code)
+        if enrollment.class_id:
+            tx_query = tx_query.filter(Transaction.class_id == enrollment.class_id)
         candidate_transactions = tx_query.order_by(Transaction.timestamp.desc()).all()
         claimed_tx_ids = {
             row[0]
@@ -2155,7 +2173,13 @@ def view_policy(enrollment_id):
     seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = get_logged_in_student()
+    context = resolve_canonical_context()
+    student = (
+        Student.query
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .filter(IdentityProfile.seat_id == context.seat_id)
+        .first()
+    ) if context and getattr(context, "seat_id", None) else None
     enrollment = db.get_or_404(InsuranceEnrollment, enrollment_id)
 
     # Verify ownership
@@ -2194,7 +2218,13 @@ def shop():
     seat = get_current_seat()
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = get_logged_in_student()
+    context = resolve_canonical_context()
+    student = (
+        Student.query
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .filter(IdentityProfile.seat_id == context.seat_id)
+        .first()
+    ) if context and getattr(context, "seat_id", None) else None
 
     # CRITICAL FIX v2: Get full class context
     context = resolve_canonical_context()
@@ -2212,7 +2242,7 @@ def shop():
     now = utc_now()
     now_db = normalize_for_db(now)
     items_query = StoreItem.query.filter(
-        StoreItem.join_code == join_code,
+        StoreItem.class_id == class_id,
         StoreItem.is_active == True,
         or_(StoreItem.auto_delist_date == None, StoreItem.auto_delist_date > now_db),
     )
@@ -2342,7 +2372,7 @@ def shop():
             .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
             .join(Student, Student.identity_id == IdentityProfile.id)
             .filter(
-                Seat.join_code == join_code,
+                Seat.class_id == class_id,
                 Seat.claimed_at.isnot(None),
                 Student.is_teacher == False,  # Exclude teacher account from class size
             )
@@ -2753,7 +2783,7 @@ def _match_valid_rent_payments(payments, candidate_txns):
     return valid_payments
 
 
-def _filter_valid_rent_payments(payments, student_id, join_code, seat_ids=None):
+def _filter_valid_rent_payments(payments, student_id, class_id, seat_ids=None):
     """Return payments that have a matching, non-void rent transaction."""
     if not payments:
         return []
@@ -2777,9 +2807,9 @@ def _filter_valid_rent_payments(payments, student_id, join_code, seat_ids=None):
         Transaction.timestamp <= window_end,
         Transaction.amount.in_(payment_amounts)
     )
-    if not join_code:
+    if not class_id:
         return []
-    txn_query = txn_query.filter(Transaction.join_code == join_code)
+    txn_query = txn_query.filter(Transaction.class_id == class_id)
 
     candidate_txns = txn_query.all()
     return _match_valid_rent_payments(payments, candidate_txns)
@@ -2949,7 +2979,7 @@ def _expand_rent_waiver_history(settings, waivers, *, now=None):
             coverage_day = ensure_utc(coverage_due_date).date()
             current_day = ensure_utc(current_coverage_due_date).date() if current_coverage_due_date else None
             seat = getattr(waiver, "seat", None)
-            student = get_logged_in_student() if seat else None
+            student = _get_canonical_student_from_context() if seat else None
 
             if current_day is None or coverage_day > current_day:
                 status = 'upcoming'
@@ -3159,7 +3189,6 @@ def rent():
 
     class_id = get_current_class_id()
     _ = get_current_user()
-    student = get_logged_in_student()
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please choose a class to continue.", "error")
@@ -3352,7 +3381,6 @@ def rent():
 @feat_shell("FEAT-OBL-001")
 def rent_pay(period):
     """Process rent payment for a specific period."""
-    student = get_logged_in_student()
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please choose a class to continue.", "error")
@@ -3652,12 +3680,27 @@ def login():
 
         username = form.username.data.strip()
         pin = form.pin.data.strip()
-        
+
         user = find_canonical_user_by_auth_username(username, expected_role="student")
 
         try:
             pin_valid = bool(user and check_password_hash(user.pin_hash or '', pin))
-            student = resolve_student_shadow_for_user(user) if pin_valid else None
+            student = None
+            if pin_valid:
+                from app.models import Student, Seat, IdentityProfile
+
+                student = (
+                    Student.query
+                    .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+                    .join(Seat, Seat.id == IdentityProfile.seat_id)
+                    .filter(
+                        Seat.user_id == user.id,
+                        Seat.role == "student",
+                        Seat.claimed_at.isnot(None),
+                    )
+                    .distinct()
+                    .first()
+                )
 
             if not student or not pin_valid:
                 if is_json:
@@ -3683,14 +3726,13 @@ def login():
         # Clear old student-specific session keys without wiping the CSRF token
         _reset_student_login_session()
         # Explicitly clear other potential student-related session keys
-        session.pop('claimed_student_id', None)
-        session.pop('claimed_seat_id', None)
-        session.pop('claimed_user_id', None)
+        session.pop('onboarding_student_ref', None)
+        session.pop('onboarding_seat_ref', None)
+        session.pop('onboarding_user_ref', None)
         session.pop('generated_username', None)
         clear_teacher_display_name_cache()
 
 
-        session['student_id'] = student.id
         session['login_time'] = utc_now().isoformat()
         session['last_activity'] = session['login_time']
 
@@ -3733,10 +3775,17 @@ def login():
         if valid_persisted_selection is None:
             return redirect(url_for('student.select_class_context'))
 
-        seat = sync_student_session_context(
-            student,
-            class_id=valid_persisted_selection["class_id"],
-            allow_writes=True,
+        seat = None
+        from app.models import Seat, IdentityProfile
+        seat = (
+            Seat.query
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .filter(
+                IdentityProfile.id == student.identity_id,
+                Seat.class_id == valid_persisted_selection["class_id"],
+                Seat.claimed_at.isnot(None),
+            )
+            .first()
         )
         if seat is None:
             return _student_login_hard_fail(
@@ -3767,7 +3816,7 @@ def login():
 @feat_shell("FEAT-IDEN-001")
 def select_class_context():
     """Explicit class-selection gate when no durable class context exists."""
-    student = get_logged_in_student()
+    student = _get_canonical_student_from_context()
     if not student:
         return redirect(url_for('student.login'))
 
@@ -3802,7 +3851,16 @@ def select_class_context():
                 status_code=302,
             )
 
-        selected_seat = sync_student_session_context(student, class_id=selected_class_id)
+        selected_seat = (
+            Seat.query
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .filter(
+                IdentityProfile.id == student.identity_id,
+                Seat.class_id == selected_class_id,
+                Seat.claimed_at.isnot(None),
+            )
+            .first()
+        )
         if selected_seat is None:
             return _student_login_hard_fail(
                 student_id=student.id,
@@ -3846,7 +3904,7 @@ def switch_class(class_id):
     """Switch to a different class using class_id as the stable backend reference."""
     from app.models import Seat, Admin
 
-    student = get_logged_in_student()
+    student = _get_canonical_student_from_context()
     try:
         resolved_switch = resolve_student_class_switch_scope(actor=student, class_id=class_id)
         access_policy_service.assert_can_switch_class(resolved_switch.scope)
@@ -3912,7 +3970,7 @@ def switch_teacher(teacher_public_id):
 @login_required
 def setup_complete():
     """Setup completion confirmation page."""
-    student = get_logged_in_student()
+    student = _get_canonical_student_from_context()
     return render_template('student_setup_complete.html', student_name=student.display_first_name)
 
 
@@ -3924,8 +3982,13 @@ def help_support():
     """Show the student help and support page with issue tracking."""
     from app.utils.issue_categories import init_default_categories
 
-    student = get_logged_in_student()
     class_context = resolve_canonical_context()
+    student = (
+        Student.query
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .filter(IdentityProfile.seat_id == class_context.seat_id)
+        .first()
+    ) if class_context and getattr(class_context, "seat_id", None) else None
 
     if not class_context:
         flash("Please select a class first.", "warning")
@@ -3956,8 +4019,13 @@ def submit_general_issue():
     from app.utils.issue_helpers import create_issue
     from app.forms import StudentIssueSubmissionForm
 
-    student = get_logged_in_student()
     class_context = resolve_canonical_context()
+    student = (
+        Student.query
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .filter(IdentityProfile.seat_id == class_context.seat_id)
+        .first()
+    ) if class_context and getattr(class_context, "seat_id", None) else None
 
     if not class_context:
         flash("Please select a class first.", "warning")
@@ -3978,7 +4046,7 @@ def submit_general_issue():
             issue = create_issue(
                 student=student,
                 teacher_id=None,
-                join_code=get_display_join_code(class_context.class_id),
+                class_id=class_context.class_id,
                 category_id=form.category_id.data,
                 explanation=form.explanation.data,
                 expected_outcome=form.expected_outcome.data,
@@ -4009,8 +4077,13 @@ def report_transaction_issue(transaction_id):
     from app.utils.issue_helpers import create_issue
     from app.forms import StudentIssueSubmissionForm, TransactionIssueSubmissionForm
 
-    student = get_logged_in_student()
     class_context = resolve_canonical_context()
+    student = (
+        Student.query
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .filter(IdentityProfile.seat_id == class_context.seat_id)
+        .first()
+    ) if class_context and getattr(class_context, "seat_id", None) else None
 
     if not class_context:
         flash("Please select a class first.", "warning")
@@ -4038,7 +4111,7 @@ def report_transaction_issue(transaction_id):
             create_issue(
                 student=student,
                 teacher_id=None,
-                join_code=get_display_join_code(class_context.class_id),
+                class_id=class_context.class_id,
                 category_id=form.category_id.data,
                 explanation=form.explanation.data,
                 expected_outcome=form.expected_outcome.data,
@@ -4072,8 +4145,13 @@ def report_tap_event_issue(tap_event_id):
     from app.utils.issue_helpers import create_issue
     from app.forms import StudentIssueSubmissionForm
 
-    student = get_logged_in_student()
     class_context = resolve_canonical_context()
+    student = (
+        Student.query
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .filter(IdentityProfile.seat_id == class_context.seat_id)
+        .first()
+    ) if class_context and getattr(class_context, "seat_id", None) else None
 
     if not class_context:
         flash("Please select a class first.", "warning")
@@ -4101,7 +4179,7 @@ def report_tap_event_issue(tap_event_id):
             create_issue(
                 student=student,
                 teacher_id=None,
-                join_code=get_display_join_code(class_context.class_id),
+                class_id=class_context.class_id,
                 category_id=form.category_id.data,
                 explanation=form.explanation.data,
                 expected_outcome=form.expected_outcome.data,
@@ -4138,7 +4216,13 @@ def verify_recovery(code_id):
     Student verification page for teacher account recovery.
     Student authenticates with passphrase, then gets a 6-digit code to give to teacher.
     """
-    student = get_logged_in_student()
+    context = resolve_canonical_context()
+    student = (
+        Student.query
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .filter(IdentityProfile.seat_id == context.seat_id)
+        .first()
+    ) if context and getattr(context, "seat_id", None) else None
 
     # Get the recovery code request
     recovery_code = get_recovery_code_for_student(code_id, student.id)
@@ -4207,7 +4291,13 @@ def dismiss_recovery(code_id):
     """
     Dismiss the recovery notification banner.
     """
-    student = get_logged_in_student()
+    context = resolve_canonical_context()
+    student = (
+        Student.query
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .filter(IdentityProfile.seat_id == context.seat_id)
+        .first()
+    ) if context and getattr(context, "seat_id", None) else None
 
     # Get the recovery code request
     recovery_code = get_recovery_code_for_student(code_id, student.id)

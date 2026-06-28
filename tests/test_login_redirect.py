@@ -12,7 +12,7 @@ def test_student_login_next_redirect(client):
     admin = make_admin("login_redirect_teacher", pyotp.random_base32())
     db.session.add(admin)
     db.session.flush()
-    class_row = ClassEconomy(join_code="LOGIN-REDIRECT", teacher_id=admin.id, display_name="Login")
+    class_row = ClassEconomy(join_code="LOGIN-REDIRECT", user_id=admin.id, display_name="Login")
     profile = IdentityProfile(profile_type="student", first_name="Stu", last_initial="S")
     db.session.add_all([class_row, profile])
     db.session.flush()

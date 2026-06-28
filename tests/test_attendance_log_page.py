@@ -33,7 +33,7 @@ def admin_with_data(client):
     # Create class economy
     class_row = ClassEconomy(
         join_code="ATTLOG1",
-        teacher_id=admin.id,
+        user_id=admin.id,
         status="active",
         created_by_admin_id=admin.id,
     )
@@ -176,8 +176,8 @@ def test_attendance_log_tenant_scoping(client):
     _create_user_for_admin(admin2)
 
     # Create class economies
-    class1 = ClassEconomy(join_code="ADM1CLS", teacher_id=admin1.id, status="active", created_by_admin_id=admin1.id)
-    class2 = ClassEconomy(join_code="ADM2CLS", teacher_id=admin2.id, status="active", created_by_admin_id=admin2.id)
+    class1 = ClassEconomy(join_code="ADM1CLS", user_id=admin1.id, status="active", created_by_admin_id=admin1.id)
+    class2 = ClassEconomy(join_code="ADM2CLS", user_id=admin2.id, status="active", created_by_admin_id=admin2.id)
     db.session.add_all([class1, class2])
     db.session.flush()
     db.session.add(ClassMembership(class_id=class1.class_id, join_code="ADM1CLS", admin_id=admin1.id, role="admin"))

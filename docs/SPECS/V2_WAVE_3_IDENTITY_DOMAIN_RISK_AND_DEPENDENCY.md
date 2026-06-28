@@ -129,12 +129,12 @@ All route decorators and helper functions currently depend on **v1 session keys*
 
 | Session Key | Set By | Read By | Count |
 |---|---|---|---|
-| `student_id` | `routes/student.py` login | `auth.login_required`, `auth.get_logged_in_student()`, `routes/student.py`, `routes/api.py`, `routes/docs.py`, `routes/main.py` | **50+ reads** |
-| `admin_id` | `routes/admin.py` login | `auth.admin_required`, `auth.get_current_admin()`, `routes/admin.py` | **20+ reads** |
+| `student_id` | `routes/student.py` login | `auth.login_required`, `routes/student.py`, `routes/api.py`, `routes/docs.py`, `routes/main.py` | **50+ reads** |
+| `admin_id` | `routes/admin.py` login | `auth.admin_required`, `routes/admin.py` | **20+ reads** |
 | `is_admin` | `routes/admin.py` login | `auth.admin_required`, `auth.is_viewing_as_student()`, `routes/` broadly | **15+ reads** |
 | `is_system_admin` | `routes/system_admin.py` | `auth.system_admin_required` | **10+ reads** |
-| `current_seat_id` | `auth.sync_student_session_context()` | Student routes (newer code) | ~5 reads |
-| `current_class_id` | `auth.sync_student_session_context()` | Student routes (newer code) | ~5 reads |
+| `current_seat_id` | canonical student context | Student routes (newer code) | ~5 reads |
+| `current_class_id` | canonical student context | Student routes (newer code) | ~5 reads |
 
 > [!IMPORTANT]
 > The `student_id` key is the **primary gating key** for the `login_required` decorator (L120 of `auth.py`). Changing this to `seat_id` or removing it breaks every student-facing route simultaneously.
@@ -148,10 +148,8 @@ Removing `Student` and `Admin` from `app/models.py` will break:
 - `app/routes/api.py:1646` — lazy import
 - `app/routes/student.py:319,3849,3916,3928` — 4 lazy imports
 - `app/__init__.py:667,851` — app factory
-- `app/auth.py:372` — `get_current_admin()`
 
 **Student (students table) — direct imports:**
-- `app/auth.py:356,414` — `get_logged_in_student()`, `get_admin_student_query()`
 - `app/routes/student.py:501,901,1315,4191,4259` — 5+ lazy imports
 - `app/routes/admin.py:4215,5619` — via `StudentItem`, `RentItem`
 - `app/routes/api.py:1988,2495,2820,2886` — `StudentBlock`
@@ -174,7 +172,7 @@ Removing `Student` and `Admin` from `app/models.py` will break:
 
 ### 2.4 `get_logged_in_student()` → `(User, Seat)` Transition
 
-Current signature returns `Student | None` (legacy — requires `class_id` scope filter in v2). The plan changes this to return a `(User, Seat)` tuple.
+Historical note: the legacy helper has since been removed from `app/`. This section is preserved as migration history.
 
 **Breaking points:**
 - Every caller that does `student = get_logged_in_student()` and then accesses `student.id`, `student.full_name`, `student.checking_balance`, etc.
@@ -184,7 +182,7 @@ Current signature returns `Student | None` (legacy — requires `class_id` scope
 
 ### 2.5 `get_current_admin()` → `User(role=teacher)` Transition
 
-Current returns `Admin | None` (v1 shadow — v2 target: `User` + teacher role) from `db.session.get(Admin, admin_id)`.
+Historical note: the legacy helper has since been removed from `app/`. This section is preserved as migration history.
 
 **Breaking points:**
 - `admin.id` is used as FK value for `teacher_id` across 29 columns — these must resolve to the same integer after migration
@@ -368,7 +366,7 @@ graph TD
 
 1. Switch `login_required` to gate on `seat_id` instead of `student_id`
 2. Switch `admin_required` to gate on new User-based auth
-3. Rewrite `get_logged_in_student()` and `get_current_admin()`
+3. Rewrite `get_logged_in_student()` and `get_current_admin()` (completed; preserved here for history)
 4. Update all route handlers that access Student/Admin properties
 5. Update all templates
 6. **Gate:** Full app operational on User/Seat auth only

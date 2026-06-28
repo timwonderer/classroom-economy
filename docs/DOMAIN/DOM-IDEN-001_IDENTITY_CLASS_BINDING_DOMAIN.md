@@ -158,6 +158,8 @@ principal.
 Binding a global user to a class-local seat is a non-reversible transaction (within the scope of a single class cycle).
 
 - **Claim Logic**: A user provides a `join_code` + `claim_credentials` (e.g. roster name).
+- **`class_id` Resolution**: Resolve `join_code` to `class_id` using the `classes` (or `classEconomy`) table.
+- **`seat_id` claim**: Hash the claim credentials and compare against existing hashed value in `seats.claim_first_name_hash` and `seats.claim_last_name_hash` 
 - **Binding**: On match, the `user_id` is written to the `seats` row. This seat is now "Claimed."
 - **Immutable Association**: Once `claimed_at` is set, the `user_id` on a seat MUST NOT be changed to a different `user_id`.
 - **Credential Activation**: PIN/passphrase setup activates authentication on `users`;

@@ -16,7 +16,7 @@ import json
 import os
 from pathlib import Path
 
-from flask import request, current_app, session, render_template, url_for
+from flask import request, current_app, g, session, render_template, url_for
 # TODO: [DEPENDABOT PR #463] MarkupSafe 3.x introduces breaking changes:
 # - soft_str and soft_unicode removed (deprecated since 2.0)
 # - Markup.striptags() behavior may differ
@@ -78,13 +78,12 @@ def render_template_with_fallback(template_name, **context):
 
 def has_internal_docs_session():
     """Return True when docs should stay inside the Flask app shell."""
-    from app.auth import get_current_admin, get_current_seat, get_current_user
+    from app.auth import get_current_seat, get_current_user
 
     return bool(
-        get_current_admin() is not None
-        or get_current_seat() is not None
+        get_current_seat() is not None
         or get_current_user() is not None
-        or (session.get("is_system_admin") and session.get("sysadmin_id"))
+        or getattr(getattr(g, 'canonical_context', None), 'actor_role', None) == 'sysadmin'
     )
 
 

@@ -18,7 +18,7 @@ def login_admin(client, username='admin'):
         db.session.add(admin)
         db.session.commit()
 
-    # Ensure a User exists for this admin (required by get_current_admin() → get_current_user())
+    # Ensure a User exists for this admin (required by canonical context)
     from app.models import User, UserRole
     user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
     if not user:

@@ -14,7 +14,7 @@ def _setup_scoped_student(with_seat: bool = True):
 
     cls = ClassEconomy(
         join_code="TINV01",
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         status="active",
         created_by_admin_id=teacher.id,
     )

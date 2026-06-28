@@ -258,7 +258,8 @@ def upgrade():
                 ['user_id'], ['id'],
                 ondelete='CASCADE',
             )
-        op.create_unique_constraint('uq_teacher_onboarding_user_id', 'teacher_onboarding', ['user_id'])
+        if not index_exists('teacher_onboarding', 'uq_teacher_onboarding_user_id'):
+            op.create_unique_constraint('uq_teacher_onboarding_user_id', 'teacher_onboarding', ['user_id'])
         print("  ✅ teacher_onboarding.teacher_id → user_id (users.id)")
 
     # ============================================================
@@ -313,13 +314,14 @@ def upgrade():
                 ['user_id'], ['id'],
                 ondelete='CASCADE',
             )
-        # Unique constraint: one user per class
-        op.create_unique_constraint(
-            'uq_class_membership_user',
-            'class_memberships',
-            ['class_id', 'user_id'],
-        )
-        op.create_index('ix_class_memberships_user_id', 'class_memberships', ['user_id'])
+        if not index_exists('class_memberships', 'uq_class_membership_user'):
+            op.create_unique_constraint(
+                'uq_class_membership_user',
+                'class_memberships',
+                ['class_id', 'user_id'],
+            )
+        if not index_exists('class_memberships', 'ix_class_memberships_user_id'):
+            op.create_index('ix_class_memberships_user_id', 'class_memberships', ['user_id'])
         print("  ✅ class_memberships → single user_id (users.id)")
 
     # ============================================================

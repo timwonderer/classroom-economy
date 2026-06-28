@@ -45,7 +45,7 @@ def get_teacher_class_options(teacher_id: int):
     if not teacher_id:
         return []
 
-    classes = ClassEconomy.query.filter_by(teacher_id=teacher_id).order_by(ClassEconomy.display_name).all()
+    classes = ClassEconomy.query.filter_by(user_id=teacher_id).order_by(ClassEconomy.display_name).all()
 
     options = []
     for c in classes:
@@ -249,7 +249,7 @@ def dashboard():
     
     # Get active alerts
     active_alerts = AnalyticsAlert.query.filter(
-        AnalyticsAlert.join_code == join_code,
+        AnalyticsAlert.class_id == class_id,
         AnalyticsAlert.window_type == window_type,
         AnalyticsAlert.window_start == window_start,
         AnalyticsAlert.window_end == window_end,
@@ -263,7 +263,7 @@ def dashboard():
     
     # Get recent events for context
     recent_events = AnalyticsEvent.query.filter(
-        AnalyticsEvent.join_code == join_code,
+        AnalyticsEvent.class_id == class_id,
         AnalyticsEvent.event_date >= window_start,
         AnalyticsEvent.event_date <= window_end
     ).order_by(AnalyticsEvent.event_date.desc()).limit(10).all()
@@ -386,7 +386,7 @@ def api_alerts():
     window_start, window_end = get_time_window(window_type, class_id)
     
     active_alerts = AnalyticsAlert.query.filter(
-        AnalyticsAlert.join_code == join_code,
+        AnalyticsAlert.class_id == class_id,
         AnalyticsAlert.window_type == window_type,
         AnalyticsAlert.window_start == window_start,
         AnalyticsAlert.window_end == window_end,
@@ -435,7 +435,7 @@ def acknowledge_alert(alert_id):
     
     alert = AnalyticsAlert.query.filter(
         AnalyticsAlert.id == alert_id,
-        AnalyticsAlert.join_code == join_code,
+        AnalyticsAlert.class_id == class_id,
         AnalyticsAlert.resolved_at.is_(None)
     ).first()
     
@@ -476,7 +476,7 @@ def events():
     
     # Get all events for this class
     events_list = AnalyticsEvent.query.filter(
-        AnalyticsEvent.join_code == join_code
+        AnalyticsEvent.class_id == class_id
     ).order_by(AnalyticsEvent.event_date.desc()).all()
     
     try:
@@ -511,7 +511,7 @@ def student_drill_down(student_id):
     - Must be contextualized with CWI expectations
     - Must explain why the metric matters
     """
-    teacher_id = session.get('admin_id')
+    teacher_id = g.canonical_context.user_id
     selected_class, available_classes = resolve_current_class_context(teacher_id)
     if not selected_class:
         flash('You need to set up class periods before viewing analytics.', 'warning')
@@ -572,7 +572,7 @@ def student_drill_down(student_id):
     engine = AnalyticsEngine(class_id)
     cwi = engine._get_cwi()
 
-    seat = Seat.query.filter_by(student_id=student.id, class_id=class_id).first()
+    seat = student_seat
     if not seat:
         return jsonify({'error': 'Student has no canonical seat in selected class'}), 400
     

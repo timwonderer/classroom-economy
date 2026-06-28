@@ -42,7 +42,7 @@ def student_in_class(client, teacher_admin):
     db.session.add(seat)
     
     # Setup Class Context
-    class_economy = ClassEconomy(join_code='JOINCODE123', teacher_id=teacher_admin.id, status="active", created_by_admin_id=teacher_admin.id)
+    class_economy = ClassEconomy(join_code='JOINCODE123', user_id=teacher_admin.id, status="active", created_by_admin_id=teacher_admin.id)
     db.session.add(class_economy)
     db.session.flush()
     db.session.add(Seat(
@@ -71,7 +71,7 @@ def admin_class_scope(client, teacher_admin):
 
     class_economy = ClassEconomy(
         join_code='JOINCODE123',
-        teacher_id=teacher_admin.id,
+        user_id=teacher_admin.id,
         status="active",
         created_by_admin_id=teacher_admin.id,
     )
@@ -751,7 +751,7 @@ def test_mid_period_lock_blocks_semantic_changes(client, teacher_admin):
     # Create settings and a rent item
     db.session.add(ClassEconomy(
         join_code='LOCKTEST',
-        teacher_id=teacher_admin.id,
+        user_id=teacher_admin.id,
         status="active",
         created_by_admin_id=teacher_admin.id,
     ))
@@ -838,7 +838,7 @@ def test_mid_period_lock_allows_new_items(client, teacher_admin):
 
     db.session.add(ClassEconomy(
         join_code='LOCKTEST2',
-        teacher_id=teacher_admin.id,
+        user_id=teacher_admin.id,
         status="active",
         created_by_admin_id=teacher_admin.id,
     ))

@@ -1,0 +1,62 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.10.0, pytest-9.0.3, pluggy-1.6.0 -- /Library/Frameworks/Python.framework/Versions/3.10/bin/python3
+cachedir: .pytest_cache
+rootdir: /Users/timothychang/Documents/GitHub/classroom-economy
+configfile: pytest.ini
+plugins: flask-1.3.0, anyio-4.2.0
+collecting ... collected 1 item
+
+tests/test_admin_auth.py::test_admin_login_sets_session_identity FAILED  [100%]
+
+=================================== FAILURES ===================================
+____________________ test_admin_login_sets_session_identity ____________________
+
+client = <FlaskClient <Flask 'app'>>
+
+    def test_admin_login_sets_session_identity(client):
+        secret = pyotp.random_base32()
+        admin = make_admin("teacher1", secret)
+        user = User(
+            user_role=UserRole.TEACHER,
+            username_hash=admin.username_hash,
+            username_lookup_hash=admin.username_lookup_hash,
+            totp_secret_encrypted=admin.totp_secret,
+        )
+        db.session.add_all([admin, user])
+        db.session.commit()
+    
+        response = client.post(
+            "/admin/login",
+            data={"username": "teacher1", "totp_code": pyotp.TOTP(secret).now()},
+            follow_redirects=False,
+        )
+    
+        assert response.status_code == 302
+        with client.session_transaction() as sess:
+>           assert sess.get("is_admin") is True
+E           AssertionError: assert None is True
+E            +  where None = <built-in method get of SecureCookieSession object at 0x108ccaa20>('is_admin')
+E            +    where <built-in method get of SecureCookieSession object at 0x108ccaa20> = <SecureCookieSession {'_flashes': [('message', 'Admin login successful.')], 'admin_auth_username': 'teacher1', 'admin_display_name': 'teacher1', 'admin_display_name_admin_id': 1, 'current_session_nonce': '8VVEAUbwDEftngAb1-G-lLIeQ-uVjtIfk7_lAG2jqeI', 'last_activity': '2026-06-27T20:55:41.430961+00:00', 'login_time': '2026-06-27T20:55:41.430954+00:00', 'user_id': 1}>.get
+
+tests/test_admin_auth.py:30: AssertionError
+---------------------------- Captured stderr setup -----------------------------
+[2026-06-27 13:55:41,308] WARNING in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-INTEGRITY-WARNING: FEATBypass active. Execution integrity is currently unmanaged.
+[2026-06-27 13:55:41,308] WARNING in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-INTEGRITY-WARNING: FEAT FEAT-BYPASS-LEGACY (Blast=LOW) missing idempotency_key.
+[2026-06-27 13:55:41,309] INFO in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-ENTRY: feat=FEAT-BYPASS-LEGACY | correlation_id=bypass_test_dfdacbdf471b45acaa560cb790dc38a6 | idempotency_key=NONE
+------------------------------ Captured log setup ------------------------------
+WARNING  app.feats.base:base.py:334 FEAT-INTEGRITY-WARNING: FEATBypass active. Execution integrity is currently unmanaged.
+WARNING  app.feats.base:base.py:175 FEAT-INTEGRITY-WARNING: FEAT FEAT-BYPASS-LEGACY (Blast=LOW) missing idempotency_key.
+INFO     app.feats.base:base.py:228 FEAT-ENTRY: feat=FEAT-BYPASS-LEGACY | correlation_id=bypass_test_dfdacbdf471b45acaa560cb790dc38a6 | idempotency_key=NONE
+----------------------------- Captured stderr call -----------------------------
+[2026-06-27 13:55:41,409] INFO in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-COMMIT-OWNERSHIP: FEAT-BYPASS-LEGACY | First commit owned by FEAT-BYPASS-LEGACY | Correlation=bypass_test_dfdacbdf471b45acaa560cb790dc38a6
+[2026-06-27 13:55:41,425] ERROR in tlcp [df8bb198009a4cc5a88fa129cdb11877] [actor=-:- class_id=-] [endpoint=/admin/login method=POST] [error_class=InvariantViolation correlation_version=1]: TLCP-INVARIANT-VIOLATION: missing canonical context
+------------------------------ Captured log call -------------------------------
+INFO     app.feats.base:base.py:265 FEAT-COMMIT-OWNERSHIP: FEAT-BYPASS-LEGACY | First commit owned by FEAT-BYPASS-LEGACY | Correlation=bypass_test_dfdacbdf471b45acaa560cb790dc38a6
+ERROR    app:tlcp.py:100 TLCP-INVARIANT-VIOLATION: missing canonical context
+--------------------------- Captured stderr teardown ---------------------------
+[2026-06-27 13:55:41,489] WARNING in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=2. Correlation=bypass_test_dfdacbdf471b45acaa560cb790dc38a6
+---------------------------- Captured log teardown -----------------------------
+WARNING  app.feats.base:base.py:282 FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=2. Correlation=bypass_test_dfdacbdf471b45acaa560cb790dc38a6
+=========================== short test summary info ============================
+FAILED tests/test_admin_auth.py::test_admin_login_sets_session_identity - Ass...
+============================== 1 failed in 2.86s ===============================

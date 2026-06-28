@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from flask import g, session
 
 from app.access.scope import Scope
-from app.auth import _column_exists, sync_student_session_context
+from app.auth import _column_exists
 from app.extensions import db
 from app.models import ClassEconomy, Seat
 
@@ -49,7 +49,7 @@ def _scope_from_runtime_seat(*, actor, selected_class_id: str | None) -> Scope |
         join_code=current_seat.join_code,
         actor_id=actor.id,
         role="student",
-        teacher_id=class_row.teacher_id,
+        teacher_id=class_row.user_id,
         block=current_seat.block_identifier or current_seat.block,
         seat_id=current_seat.id,
     )
@@ -92,7 +92,7 @@ def resolve_student_class_switch_scope(*, actor, class_id: str) -> ResolvedStude
         join_code=seat.join_code,
         actor_id=actor.id,
         role="student",
-        teacher_id=class_row.teacher_id,
+        teacher_id=class_row.user_id,
         block=seat.block_identifier or seat.block,
         seat_id=seat.id,
     )
@@ -106,7 +106,7 @@ def _resolve_teacher_scope(*, actor, selected_class_id: str | None) -> Scope:
         normalized_class_id = getattr(context, "class_id", None)
     if normalized_class_id:
         class_row = ClassEconomy.query.filter_by(
-            teacher_id=actor.id,
+            user_id=actor.id,
             class_id=normalized_class_id,
         ).first()
         if class_row:
@@ -123,7 +123,7 @@ def _resolve_teacher_scope(*, actor, selected_class_id: str | None) -> Scope:
 
     class_query = (
         ClassEconomy.query
-        .filter_by(teacher_id=actor.id)
+        .filter_by(user_id=actor.id)
         .order_by(ClassEconomy.display_name.asc(), ClassEconomy.join_code.asc())
     )
     class_row = None
@@ -195,7 +195,7 @@ def resolve_scope(*, actor, selected_join_code: str | None = None, actor_role: s
         active_seat = claimed_seats[0]
 
     _store_session_class_context(class_id=active_seat.class_id, join_code=None)
-    sync_student_session_context(actor, class_id=active_seat.class_id, seat_id=active_seat.id)
+    g._auth_current_seat_cache = active_seat
 
     class_row = ClassEconomy.query.filter_by(class_id=active_seat.class_id).first()
     if not class_row:
@@ -209,7 +209,7 @@ def resolve_scope(*, actor, selected_join_code: str | None = None, actor_role: s
         join_code=active_seat.join_code,
         actor_id=actor.id,
         role="student",
-        teacher_id=class_row.teacher_id,
+        teacher_id=class_row.user_id,
         block=active_seat.block_identifier or active_seat.block,
         seat_id=active_seat.id,
     )

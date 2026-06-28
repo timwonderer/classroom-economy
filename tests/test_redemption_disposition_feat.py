@@ -73,7 +73,7 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
 
         economy = ClassEconomy(
             join_code=join_code,
-            teacher_id=admin.id,
+            user_id=admin.id,
             status="active",
             created_by_admin_id=admin.id,
         )

@@ -27,7 +27,7 @@ def _login_admin(client):
 
     db.session.add(ClassEconomy(
         class_id="help-support-class",
-        teacher_id=admin.id,
+        user_id=admin.id,
         join_code="ELA123",
         display_name="ELA",
         section="A",

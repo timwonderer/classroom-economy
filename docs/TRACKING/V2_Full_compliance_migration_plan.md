@@ -395,8 +395,8 @@ Operational note:
 
 2. **Activate `User` as primary auth principal:**
    - `app/auth.py`: login → resolve `User` record → resolve/create `Seat` → session gets `seat_id` + `class_id`
-   - `get_logged_in_student()` → returns `(User, Seat)` tuple
-   - `get_current_admin()` → returns `User` with role=`teacher`
+   - `get_logged_in_student()` → historical bridge helper (removed)
+   - `get_current_admin()` → historical bridge helper (removed)
    - Remove all `Admin`/`Student`/`SystemAdmin` session bridges
 
 3. **Port `RecoveryRequest`/`StudentRecoveryCode`** logic → `user_recovery_tokens` table
@@ -541,8 +541,8 @@ Focused validation:
 ### Status Update (2026-06-05): Canonical Resolver Gate Cutover
 
 - `get_current_admin()`, `get_current_system_admin()`, and
-  `get_logged_in_student()` now require a canonical `User` identity before
-  resolving deprecated route shadows.
+  `get_logged_in_student()` are historical bridge helpers in the migration log;
+  canonical route identity now comes directly from `resolve_canonical_context()`.
 - Legacy `admin_id`, `sysadmin_id`, and `student_id` session values are still
   written for route compatibility, but they no longer establish identity when
   `session["user_id"]` is missing.
@@ -1197,8 +1197,8 @@ Focused validation:
 ### Status Update (2026-05-24): Wave 3 Structural Deferment Unblocking — Session Principal Key Reduction (Docs/Main)
 
 - Landed the next low-risk reduction slice by removing direct legacy session-principal checks from public/docs route surfaces:
-  - `app/routes/main.py` home redirect logic now uses explicit resolver checks (`get_current_admin()`, `get_current_seat()`) instead of direct `session['is_admin'/'admin_id'/'student_id']` fallback checks.
-  - `app/routes/docs.py` audience and role determination now uses explicit resolver checks (`get_current_admin()`, `get_current_seat()`, `get_current_user()`) and only treats sysadmin context as valid when both `is_system_admin` and `sysadmin_id` are present.
+  - `app/routes/main.py` home redirect logic now uses explicit resolver checks (`get_current_user()`, `get_current_seat()`) instead of direct `session['is_admin'/'admin_id'/'student_id']` fallback checks.
+  - `app/routes/docs.py` audience and role determination now uses explicit resolver checks (`get_current_user()`, `get_current_seat()`) and only treats sysadmin context as valid when canonical sysadmin context is established.
   - `app/utils/helpers.py` `has_internal_docs_session()` now resolves authenticated state through explicit auth resolvers rather than direct `admin_id` / `student_id` session-key checks.
   - Updated `tests/test_docs_platform_split.py` authentication setup to stay aligned with explicit resolver behavior for internal docs routing.
 - Surface reduction applied and baseline re-cut:
@@ -1217,9 +1217,9 @@ Focused validation:
 ### Status Update (2026-05-24): Wave 3 Structural Deferment Unblocking — Session Principal Key Reduction (API/TLCP/Sysadmin Resolver)
 
 - Landed the next high-impact reduction slice by removing direct legacy session-principal checks from API utility and TLCP actor-resolution surfaces:
-  - Added explicit resolver helper `get_current_system_admin()` in `app/auth.py` (session flag + id + row resolution; no raw key trust).
+  - Added explicit resolver helper `get_current_system_admin()` in `app/auth.py` during the migration, then later removed it once sysadmin auth moved fully to canonical context.
   - `app/routes/api.py`:
-    - `/api/attendance/history` no longer falls back to `session['admin_id']`; it uses `get_current_admin()` as authoritative context.
+    - `/api/attendance/history` no longer falls back to `session['admin_id']`; it uses canonical teacher context instead of the old `get_current_admin()` bridge.
     - `/api/set-timezone` now authenticates admin/sysadmin/student paths via explicit resolver checks (`get_current_admin`, `get_current_system_admin`, `get_logged_in_student`) instead of direct `is_admin`/`admin_id`/`is_system_admin` checks.
   - `app/services/tlcp.py` `resolve_actor_context()` now resolves actor identity from explicit auth helpers (`get_current_seat`, `get_logged_in_student`, `get_current_admin`, `get_current_system_admin`) rather than direct principal-key inference.
   - `app/__init__.py` maintenance bypass and `current_sysadmin` template context now use `get_current_system_admin()` rather than trusting raw sysadmin session keys.
@@ -1816,15 +1816,15 @@ Focused validation:
     - student fallback no longer reconstructs `actor_public_id` from
       `student_id`; it now requires active seat context
   - `app/routes/system_admin.py`
-    - `/sysadmin/auth-check` now trusts `get_current_system_admin()`
-    - `/sysadmin/grafana/auth-check` now trusts `get_current_system_admin()`
+    - `/sysadmin/auth-check` now trusts canonical sysadmin context
+    - `/sysadmin/grafana/auth-check` now trusts canonical sysadmin context
     - sysadmin passkey register/start, register/finish, settings, and Grafana
       proxy header resolution now use canonical resolver identity rather than
       raw `session["sysadmin_id"]` trust
   - `app/routes/admin.py`
     - `/admin/payroll`, `/admin/payroll/settings`, and
-      `/admin/payroll/update-expected-hours` now require canonical admin
-      identity via `get_current_admin()`
+      `/admin/payroll/update-expected-hours` now require canonical teacher
+      identity via `get_current_user()`
     - payroll page student/seat scope now reads directly from canonical
       `Seat(class_id, role='student')` rows instead of using
       `TeacherBlock.teacher_id` as the primary authority anchor

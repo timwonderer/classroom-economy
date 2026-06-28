@@ -37,7 +37,7 @@ def get_join_code_for_student_period(student_id, period, teacher_id=None):
         teacher_class_ids = (
             ClassEconomy.query
             .with_entities(ClassEconomy.class_id)
-            .filter(ClassEconomy.teacher_id == teacher_id)
+            .filter(ClassEconomy.user_id == teacher_id)
             .subquery()
         )
         query = query.filter(Seat.class_id.in_(teacher_class_ids))

@@ -93,10 +93,11 @@ The repository has experienced recurring "multiple heads" errors during deployme
 
 ## Multi-Tenancy Snapshot
 
-- **Join codes are the source of truth for class/period isolation.** Students pick a join code from their claimed seats, and all student-facing balances/transactions are scoped by that join code (see `get_current_class_context` in `app/routes/student.py` and the `Transaction.join_code` comment in `app/models.py`).
-- **Teacher ownership lives in the link table.** Student access for admins is enforced through the `student_teachers` association; class-period scope is handled separately through `join_code` and `class_memberships` (see `get_admin_student_query` in `app/auth.py`).
-- Scoped query helpers like `get_admin_student_query` and `get_student_for_admin` are centralized in `app/auth.py`. Admin routes in `app/routes/admin.py` and system-admin tools in `app/routes/system_admin.py` rely on these—prefer them over direct `Student.query` calls.
-- Student/admin sessions continue to store `admin_id` and `is_system_admin` for authorization checks; student sessions also persist the selected `current_join_code` for per-class context.
+- **`class_id` (UUID) is the canonical source of truth for class isolation.** `join_code` is its public-facing alias — acceptable in user-facing flows but `class_id` is the authority for all domain-level queries and scoping.
+- **`seat_id` anchors per-user activity within a class.** All financial, attendance, and obligation records are scoped by `seat_id` + `class_id`.
+- **Identity is resolved once at the decorator boundary** via `resolve_canonical_context()`, producing an immutable `CanonicalContext(user_id, class_id, seat_id, actor_role)` or `BoundaryContext(user_id, actor_role)` stored in `g.canonical_context`. No handler reads extinct session keys (`admin_id`, `student_id`, `sysadmin_id`).
+- **Teacher-to-class linkage** is through `ClassEconomy` (the `classes` table), not `ClassMembership` (deprecated).
+- Scoped query helpers and bridge functions were removed from `app/auth.py`; all routes use canonical context.
 - Maintenance page and middleware exist to keep downtime user-friendly during migrations.
 
 ## High-Priority Follow-Ups

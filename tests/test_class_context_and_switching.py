@@ -44,10 +44,10 @@ def setup_multi_class_student(client):
     db.session.add(student)
     db.session.flush()
 
-    class_1a = ClassEconomy(join_code="TEACHER1A", teacher_id=teacher1.id, display_name="Class 1A")
-    class_2b = ClassEconomy(join_code="TEACHER2B", teacher_id=teacher2.id, display_name="Class 2B")
-    class_3c = ClassEconomy(join_code="TEACHER3C", teacher_id=teacher3.id, display_name="Class 3C")
-    class_unclaimed = ClassEconomy(join_code="UNCLAIMEDZ", teacher_id=teacher1.id, display_name="Unclaimed Z")
+    class_1a = ClassEconomy(join_code="TEACHER1A", user_id=teacher1.id, display_name="Class 1A")
+    class_2b = ClassEconomy(join_code="TEACHER2B", user_id=teacher2.id, display_name="Class 2B")
+    class_3c = ClassEconomy(join_code="TEACHER3C", user_id=teacher3.id, display_name="Class 3C")
+    class_unclaimed = ClassEconomy(join_code="UNCLAIMEDZ", user_id=teacher1.id, display_name="Unclaimed Z")
     db.session.add_all([class_1a, class_2b, class_3c, class_unclaimed])
     db.session.flush()
 
@@ -97,7 +97,7 @@ def setup_single_class_student(client):
     db.session.add(student)
     db.session.flush()
 
-    class_single = ClassEconomy(join_code="SINGLED", teacher_id=teacher.id, display_name="Single D")
+    class_single = ClassEconomy(join_code="SINGLED", user_id=teacher.id, display_name="Single D")
     db.session.add(class_single)
     db.session.flush()
 

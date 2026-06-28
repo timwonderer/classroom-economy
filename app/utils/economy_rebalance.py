@@ -405,7 +405,7 @@ def activate_due_rebalances(teacher_id, *, class_id=None, reference_time=None, r
     reference_time = ensure_utc(reference_time) if reference_time else utc_now()
     class_ids_subq = (
         db.session.query(ClassEconomy.class_id)
-        .filter(ClassEconomy.teacher_id == teacher_id)
+        .filter(ClassEconomy.user_id == teacher_id)
         .subquery()
     )
     pending_rows_query = FeatureSettings.query.filter(FeatureSettings.class_id.in_(sa.select(class_ids_subq)))

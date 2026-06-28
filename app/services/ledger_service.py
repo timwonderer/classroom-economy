@@ -348,6 +348,9 @@ def _apply_monthly_savings_interest(seat, *, annual_rate=Decimal("0.045")):
         if available_at and (now - to_class_time(available_at, seat.class_id)).days >= 30:
             eligible_balance += _quantize_currency(tx.amount)
 
+    current_savings_balance = get_posted_balance(seat.id, seat.class_id, "savings")
+    eligible_balance = min(eligible_balance, current_savings_balance)
+
     monthly_rate = annual_rate / Decimal("12")
     interest = _quantize_currency(eligible_balance * monthly_rate)
     if interest <= Decimal("0.00"):
@@ -356,7 +359,7 @@ def _apply_monthly_savings_interest(seat, *, annual_rate=Decimal("0.045")):
     return create_pending_transaction(
         seat_id=seat.id,
         class_id=seat.class_id,
-        teacher_id=seat.class_economy.teacher_id,
+        teacher_id=seat.class_economy.user_id,
         amount=interest,
         account_type="savings",
         type="Interest",
