@@ -78,14 +78,19 @@ depends_on = None
 
 def upgrade():
     # Rename teacher_id to user_id
-    op.alter_column('classes', 'teacher_id', new_column_name='user_id')
-    op.drop_index(op.f('ix_classes_teacher_id'), table_name='classes')
-    op.create_index(op.f('ix_classes_user_id'), 'classes', ['user_id'], unique=False)
-
+    if column_exists('classes', 'teacher_id'):
+        op.alter_column('classes', 'teacher_id', new_column_name='user_id')
+    if index_exists('classes', 'ix_classes_teacher_id'):
+        op.drop_index(op.f('ix_classes_teacher_id'), table_name='classes')
+    if not index_exists('classes', 'ix_classes_user_id'):
+        op.create_index(op.f('ix_classes_user_id'), 'classes', ['user_id'], unique=False)
 
 
 def downgrade():
-    op.alter_column('classes', 'user_id', new_column_name='teacher_id')
-    op.drop_index(op.f('ix_classes_user_id'), table_name='classes')
-    op.create_index(op.f('ix_classes_teacher_id'), 'classes', ['teacher_id'], unique=False)
+    if column_exists('classes', 'user_id'):
+        op.alter_column('classes', 'user_id', new_column_name='teacher_id')
+    if index_exists('classes', 'ix_classes_user_id'):
+        op.drop_index(op.f('ix_classes_user_id'), table_name='classes')
+    if not index_exists('classes', 'ix_classes_teacher_id'):
+        op.create_index(op.f('ix_classes_teacher_id'), 'classes', ['teacher_id'], unique=False)
 

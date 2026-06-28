@@ -118,7 +118,7 @@ def upgrade():
                 "without a canonical teacher user."
             )
 
-    if table_exists("system_admin_credentials"):
+    if table_exists("system_admin_credentials") and column_exists("system_admin_credentials", "sysadmin_id"):
         _execute(
             """
             UPDATE system_admin_credentials sac

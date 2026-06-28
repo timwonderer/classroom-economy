@@ -102,14 +102,16 @@ def upgrade():
             print(f"  ✅ Dropped FK {old_fk}")
 
         # Create new FK to users.id
-        fk_kwargs = {}
-        if ondelete:
-            fk_kwargs['ondelete'] = ondelete
-        op.create_foreign_key(
-            f'fk_{table}_{column}_users',
-            table, 'users', [column], ['id'], **fk_kwargs
-        )
-        print(f"  ✅ Created FK fk_{table}_{column}_users → users.id")
+        new_fk_name = f'fk_{table}_{column}_users'
+        if not foreign_key_exists(table, new_fk_name):
+            fk_kwargs = {}
+            if ondelete:
+                fk_kwargs['ondelete'] = ondelete
+            op.create_foreign_key(
+                new_fk_name,
+                table, 'users', [column], ['id'], **fk_kwargs
+            )
+            print(f"  ✅ Created FK {new_fk_name} → users.id")
 
     # 2. Drop system_admin_credentials.sysadmin_id column (user_id already exists)
     if column_exists('system_admin_credentials', 'sysadmin_id'):
@@ -173,9 +175,10 @@ def downgrade():
                 op.drop_constraint(fk['name'], table, type_='foreignkey')
 
         # Restore old FK to system_admins.id
-        fk_kwargs = {}
-        if ondelete:
-            fk_kwargs['ondelete'] = ondelete
-        op.create_foreign_key(
-            old_fk, table, 'system_admins', [column], ['id'], **fk_kwargs
-        )
+        if not foreign_key_exists(table, old_fk):
+            fk_kwargs = {}
+            if ondelete:
+                fk_kwargs['ondelete'] = ondelete
+            op.create_foreign_key(
+                old_fk, table, 'system_admins', [column], ['id'], **fk_kwargs
+            )
