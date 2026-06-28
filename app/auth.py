@@ -123,7 +123,7 @@ def login_required(f):
         except ContextInvariantViolation:
             if request.path.startswith('/api/'):
                 return jsonify({"status": "error", "error": "Please select a class to continue."}), 403
-            return redirect(url_for('student.select_class'))
+            return redirect(url_for('student.select_class_context'))
 
         if not ctx or getattr(ctx, "actor_role", None) != "student":
             if request.path.startswith('/api/'):

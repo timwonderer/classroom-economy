@@ -190,7 +190,7 @@ def handle_context_forbidden(e):
 def handle_context_not_established(e):
     current_app.logger.info(f"Class context not established: {e}")
     flash("Please select a class to continue.", "info")
-    return redirect(url_for('student.select_class'))
+    return redirect(url_for('student.select_class_context'))
 
 STUDENT_FEATURE_ENDPOINTS = {
     'student.payroll': 'payroll',
@@ -994,10 +994,10 @@ def dashboard():
     current_block = scope.block  # Get current class block
     if not scope.class_id:
         flash("Class context unavailable. Please select a class and retry.", "error")
-        return redirect(url_for("student.select_class"))
+        return redirect(url_for("student.select_class_context"))
     if not scope.seat_id:
         flash("Seat context unavailable. Please select a class and retry.", "error")
-        return redirect(url_for("student.select_class"))
+        return redirect(url_for("student.select_class_context"))
 
     # Canonical ledger scope: seat_id + class_id.
     transactions = Transaction.query.filter_by(
