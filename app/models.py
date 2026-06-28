@@ -831,7 +831,6 @@ class SystemAdminCredential(db.Model):
     last_used = db.Column(db.DateTime(timezone=True))
 
     # Relationships
-    sysadmin = db.relationship('SystemAdmin', backref=db.backref('credentials', lazy='dynamic', cascade='all, delete-orphan'))
     user = db.relationship('User', backref=db.backref('system_admin_credentials', lazy='dynamic', cascade='all, delete-orphan'))
 
     def __repr__(self):
