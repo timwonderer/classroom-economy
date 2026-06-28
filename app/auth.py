@@ -361,6 +361,19 @@ def get_current_class_id():
     return getattr(context, "class_id", None) if context else None
 
 
+def set_canonical_user_session(*, username_lookup_hash: str, expected_role: str):
+    """Resolve a User by lookup hash and set session if the role matches."""
+    from app.models import User
+    user = User.query.filter_by(username_lookup_hash=username_lookup_hash).first()
+    if not user:
+        return None
+    role_value = user.user_role.value if hasattr(user.user_role, "value") else str(user.user_role)
+    if role_value != expected_role:
+        return None
+    session["user_id"] = user.id
+    return user
+
+
 def get_current_user():
     """
     Return the current User from session/seat context.
