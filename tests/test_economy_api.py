@@ -907,17 +907,15 @@ def test_check_insurance_balance_uses_frequency_premium_for_limits():
 
 def test_analyze_endpoint_error_does_not_leak_exception_details(client):
     """Test that /api/economy/analyze does not expose exception details in error messages.
-    
+
     This test verifies that when the economy analysis endpoint encounters an error,
     the error message returned to the client is generic and doesn't expose internal
     implementation details, exception types, or stack traces.
     """
-    # Create admin for testing
     admin = make_admin("testadmin_error", "TESTSECRET123456")
     db.session.add(admin)
-    db.session.commit()
+    db.session.flush()
 
-    # Login as admin
     from app.models import User, UserRole
     user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
     if not user:
@@ -927,7 +925,18 @@ def test_analyze_endpoint_error_does_not_leak_exception_details(client):
             user_role=UserRole.TEACHER,
         )
         db.session.add(user)
-        db.session.commit()
+        db.session.flush()
+
+    class_scope = create_class_scope(
+        teacher=admin,
+        join_code="ERRTEST1",
+        block="A",
+        display_name="Error Test",
+        create_claimed_teacher_block=True,
+        teacher_user_id=user.id,
+    )
+    db.session.commit()
+
     with client.session_transaction() as sess:
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
@@ -965,15 +974,6 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client, caplog):
     db.session.add(admin)
     db.session.flush()
 
-    _tb_seat = Seat(join_code="SCOPEA1", block="A", block_identifier="A", role="student")
-
-    db.session.add(_tb_seat)
-
-    db.session.flush()
-
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Taylor"))
-    db.session.commit()
-
     from app.models import User, UserRole
     user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
     if not user:
@@ -983,7 +983,25 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client, caplog):
             user_role=UserRole.TEACHER,
         )
         db.session.add(user)
-        db.session.commit()
+        db.session.flush()
+
+    class_scope = create_class_scope(
+        teacher=admin,
+        join_code="SCOPEA1",
+        block="A",
+        display_name="Scope A",
+        create_claimed_teacher_block=True,
+        teacher_user_id=user.id,
+    )
+    db.session.flush()
+
+    _tb_seat = Seat(join_code="SCOPEA1", class_id=class_scope.class_id, block="A", block_identifier="A", role="student")
+    db.session.add(_tb_seat)
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Taylor"))
+    db.session.commit()
+
     with client.session_transaction() as sess:
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
@@ -1012,15 +1030,6 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client, caplog):
     db.session.add(admin)
     db.session.flush()
 
-    _tb_seat = Seat(join_code="SCOPEV1", block="A", block_identifier="A", role="student")
-
-    db.session.add(_tb_seat)
-
-    db.session.flush()
-
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Vega"))
-    db.session.commit()
-
     from app.models import User, UserRole
     user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
     if not user:
@@ -1030,7 +1039,25 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client, caplog):
             user_role=UserRole.TEACHER,
         )
         db.session.add(user)
-        db.session.commit()
+        db.session.flush()
+
+    class_scope = create_class_scope(
+        teacher=admin,
+        join_code="SCOPEV1",
+        block="A",
+        display_name="Scope V",
+        create_claimed_teacher_block=True,
+        teacher_user_id=user.id,
+    )
+    db.session.flush()
+
+    _tb_seat = Seat(join_code="SCOPEV1", class_id=class_scope.class_id, block="A", block_identifier="A", role="student")
+    db.session.add(_tb_seat)
+    db.session.flush()
+
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Vega"))
+    db.session.commit()
+
     with client.session_transaction() as sess:
         sess['is_admin'] = True
         sess['admin_id'] = admin.id

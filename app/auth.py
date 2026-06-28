@@ -141,6 +141,11 @@ def login_required(f):
 _CLASSLESS_ADMIN_ENDPOINTS = frozenset({
     'admin.create_class',
     'admin.onboarding',
+    'admin.onboarding_status',
+    'admin.onboarding_skip',
+    'admin.onboarding_skip_task',
+    'admin.onboarding_dismiss_widget',
+    'admin.onboarding_undismiss_widget',
     'admin.login',
     'admin.logout',
     'admin.username_migration',
