@@ -1518,7 +1518,7 @@ def _delete_teacher_insurance_rows(teacher_id):
 
 def _delete_teacher_issue_rows(teacher_id):
     """Delete teacher-owned issue records and their dependent rows."""
-    issue_ids_subq = db.session.query(Issue.id).filter(Issue.teacher_id == teacher_id).subquery()
+    issue_ids_subq = db.session.query(Issue.id).filter(Issue.user_id == teacher_id).subquery()
     IssueResolutionAction.query.filter(
         IssueResolutionAction.issue_id.in_(sa.select(issue_ids_subq))
     ).delete(synchronize_session=False)
@@ -1537,7 +1537,7 @@ def _delete_teacher_recovery_and_credentials_rows(teacher_id):
 
 def _delete_teacher_store_rows(teacher_id):
     """Delete store rows owned by teacher, including dependent student items."""
-    store_item_ids_subq = db.session.query(StoreItem.id).filter_by(teacher_id=teacher_id).subquery()
+    store_item_ids_subq = db.session.query(StoreItem.id).filter_by(user_id=teacher_id).subquery()
     StorePurchase.query.filter(
         StorePurchase.store_item_id.in_(sa.select(store_item_ids_subq))
     ).delete(synchronize_session=False)
@@ -5001,7 +5001,7 @@ def edit_student():
 
     if name_changed:
         # Sync name onto IdentityProfile rows linked to Seats for this student in this teacher's classes.
-        class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=current_admin_id).subquery()
+        class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(user_id=current_admin_id).subquery()
         seats_to_update = (
             Seat.query
             .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
@@ -5024,7 +5024,7 @@ def edit_student():
     added_blocks = new_blocks_set - old_blocks
 
     # Check if this student already has Seat entries in any of this teacher's classes.
-    class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=current_admin_id).subquery()
+    class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(user_id=current_admin_id).subquery()
     existing_seat_count = (
         Seat.query
         .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
@@ -7377,7 +7377,7 @@ def _get_tier_namespace_seed(teacher_id):
     """Return a stable seed for tenant-scoped tier IDs using the teacher's join code."""
     join_code_row = (
         db.session.query(ClassEconomy.join_code)
-        .filter_by(teacher_id=teacher_id)
+        .filter_by(user_id=teacher_id)
         .order_by(ClassEconomy.join_code)
         .first()
     )
@@ -9693,7 +9693,7 @@ def payroll_manual_payment():
 def attendance_log():
     """View complete attendance log."""
     # Attendance history is now seat-scoped; derive periods from canonical session rows.
-    class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=g.canonical_context.user_id).subquery()
+    class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(user_id=g.canonical_context.user_id).subquery()
     periods_query = (
         db.session.query(AttendanceSession.period)
         .join(Seat, Seat.id == AttendanceSession.seat_id)
@@ -10388,7 +10388,7 @@ def export_students():
     # Prefetch active insurances to avoid N+1 queries
     active_insurances_map = {}
     if teacher_id and student_ids:
-        class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=teacher_id).subquery()
+        class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(user_id=teacher_id).subquery()
         scoped_insurances = InsuranceEnrollment.query.join(
             InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id
         ).filter(
@@ -11678,7 +11678,7 @@ def announcements():
     # Get announcements for this teacher scoped to the active class context only.
     from app.models import Announcement
     announcements_list = Announcement.query.filter_by(
-        teacher_id=scoped_admin_id,
+        user_id=scoped_admin_id,
         join_code=selected_join_code,
         system_admin_id=None  # Only teacher-created announcements
     ).order_by(Announcement.created_at.desc()).all()
@@ -11726,7 +11726,7 @@ def announcement_create():
     if form.validate_on_submit():
         try:
             announcement = Announcement(
-                teacher_id=scoped_admin_id,
+                user_id=scoped_admin_id,
                 join_code=selected_join_code,
                 title=form.title.data,
                 message=form.message.data,
@@ -11772,7 +11772,7 @@ def announcement_edit(announcement_id):
     # Get announcement and verify ownership in active class context.
     announcement = Announcement.query.filter_by(
         id=announcement_id,
-        teacher_id=scoped_admin_id,
+        user_id=scoped_admin_id,
         join_code=class_context["join_code"],
     ).first()
 
@@ -11833,7 +11833,7 @@ def announcement_delete(announcement_id):
     # Get announcement and verify ownership in active class context.
     announcement = Announcement.query.filter_by(
         id=announcement_id,
-        teacher_id=scoped_admin_id,
+        user_id=scoped_admin_id,
         join_code=class_context["join_code"],
     ).first()
 
@@ -11870,7 +11870,7 @@ def announcement_toggle(announcement_id):
     # Get announcement and verify ownership in active class context.
     announcement = Announcement.query.filter_by(
         id=announcement_id,
-        teacher_id=scoped_admin_id,
+        user_id=scoped_admin_id,
         join_code=class_context["join_code"],
     ).first()
 

@@ -123,7 +123,7 @@ def _resolve_teacher_scope(*, actor, selected_class_id: str | None) -> Scope:
 
     class_query = (
         ClassEconomy.query
-        .filter_by(teacher_id=actor.id)
+        .filter_by(user_id=actor.id)
         .order_by(ClassEconomy.display_name.asc(), ClassEconomy.join_code.asc())
     )
     class_row = None

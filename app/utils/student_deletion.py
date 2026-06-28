@@ -175,7 +175,7 @@ def remove_student_from_teacher_scope(student_id, teacher_id):
     # Detach the student's seats that belong to this teacher's classes.
     # Seats belonging to other teachers' classes are left intact.
     from app.models import ClassEconomy
-    teacher_class_ids = db.session.query(ClassEconomy.class_id).filter_by(teacher_id=teacher_id).subquery()
+    teacher_class_ids = db.session.query(ClassEconomy.class_id).filter_by(user_id=teacher_id).subquery()
     Seat.query.filter(
         Seat.student_id == student_id,
         Seat.class_id.in_(teacher_class_ids),

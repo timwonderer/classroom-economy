@@ -1540,7 +1540,7 @@ class RedemptionAuditLog(db.Model):
     teacher = db.relationship('User', backref=db.backref('redemption_audit_logs', lazy='dynamic'))
 
     __table_args__ = (
-        db.Index('ix_redemption_audit_logs_teacher_timestamp', 'teacher_id', 'timestamp'),
+        db.Index('ix_redemption_audit_logs_teacher_timestamp', 'user_id', 'timestamp'),
     )
 
 
@@ -2658,7 +2658,7 @@ class Issue(db.Model):
 
     # Indexes
     __table_args__ = (
-        db.Index('ix_issues_teacher_status', 'teacher_id', 'status'),
+        db.Index('ix_issues_teacher_status', 'user_id', 'status'),
         db.Index('ix_issues_student_status', 'student_id', 'status'),
         db.Index('ix_issues_join_code_status', 'join_code', 'status'),
     )
@@ -3342,20 +3342,20 @@ class Announcement(db.Model):
     expires_at = db.Column(db.DateTime(timezone=True), nullable=True)  # Optional expiration
 
     # Relationships
-    teacher = db.relationship('User', foreign_keys=[teacher_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
+    teacher = db.relationship('User', foreign_keys=[user_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
     system_admin = db.relationship('SystemAdmin', foreign_keys=[system_admin_id], backref=db.backref('announcements', lazy='dynamic', passive_deletes=True))
     target_teacher = db.relationship('User', foreign_keys=[target_teacher_id], backref=db.backref('targeted_announcements', lazy='dynamic', passive_deletes=True))
 
     # Indexes
     __table_args__ = (
         db.Index('ix_announcements_join_code_active', 'join_code', 'is_active'),
-        db.Index('ix_announcements_teacher_join_code', 'teacher_id', 'join_code'),
+        db.Index('ix_announcements_teacher_join_code', 'user_id', 'join_code'),
         db.Index('ix_announcements_audience_type', 'audience_type', 'is_active'),
         db.Index('ix_announcements_system_admin', 'system_admin_id', 'is_active'),
     )
 
     def __repr__(self):
-        author = f"Teacher {self.teacher_id}" if self.teacher_id else f"SysAdmin {self.system_admin_id}"
+        author = f"Teacher {self.user_id}" if self.user_id else f"SysAdmin {self.system_admin_id}"
         return f'<Announcement {self.id} - {self.title[:30]} ({author}, {self.audience_type})>'
 
     def is_expired(self):
