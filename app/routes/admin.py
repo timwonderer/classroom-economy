@@ -4358,7 +4358,13 @@ def _get_rent_privileges_for_student(student, class_id, join_code):
     store_item_ids = [item['store_item_id'] for item in frozen_privileges if item.get('store_item_id')]
     items_by_student = set()
     if store_item_ids and student.id is not None:
-        seat = Seat.query.filter_by(user_id=student.id, class_id=class_id).first()
+        seat = (
+            Seat.query
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(Student.id == student.id, Seat.class_id == class_id)
+            .first()
+        )
         if seat:
             student_items = StorePurchase.query.filter(
                 StorePurchase.seat_id == seat.id,
@@ -4746,7 +4752,13 @@ def student_detail_public(student_public_id):
 
     class_row = ClassEconomy.query.filter_by(join_code=join_code).first() if join_code else None
     class_id = class_row.class_id if class_row else class_id
-    scoped_seat = Seat.query.filter_by(user_id=student.id, class_id=class_id).first() if class_id else None
+    scoped_seat = (
+        Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
+        .filter(Student.id == student.id, Seat.class_id == class_id)
+        .first()
+    ) if class_id else None
 
     # Get student's active insurance policy scoped to current class.
     active_insurance = student.get_active_insurance(class_id=class_id)
@@ -9672,7 +9684,13 @@ def payroll_manual_payment():
             for student_id in student_ids:
                 student = _get_student_or_404(int(student_id))
                 if student:
-                    seat = Seat.query.filter_by(user_id=student.id, class_id=selected_class_id).first()
+                    seat = (
+                        Seat.query
+                        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+                        .join(Student, Student.identity_id == IdentityProfile.id)
+                        .filter(Student.id == student.id, Seat.class_id == selected_class_id)
+                        .first()
+                    )
                     if not seat:
                         flash('One or more selected students are outside the selected class scope.', 'error')
                         return redirect(url_for('admin.payroll'))

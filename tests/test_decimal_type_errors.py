@@ -16,7 +16,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from app.models import (
-    Admin, Student, Transaction, StudentBlock, RentSettings, RentPayment, BankingSettings, Seat, User, UserRole, _quantize_currency
+    Admin, Student, Transaction, StudentBlock, RentSettings, RentPayment, BankingSettings, Seat, User, UserRole, IdentityProfile, _quantize_currency
 )
 from app.extensions import db
 from tests.helpers.class_scope import create_class_scope
@@ -422,10 +422,20 @@ class TestDecimalTypeErrors:
         db.session.add(st)
         db.session.flush()
 
+        # Create a User record for the teacher (InsurancePolicy.teacher_id -> users.id)
+        teacher_user = User(
+            username_hash=hash_username_lookup(f"teacher-user-claim-cap"),
+            username_lookup_hash=hash_username_lookup(f"teacher-user-claim-cap"),
+            user_role=UserRole.TEACHER,
+            password_hash='pw',
+        )
+        db.session.add(teacher_user)
+        db.session.flush()
+
         # Create policy with max_payout_per_period set (triggers the Decimal path)
         policy = InsurancePolicy(
             policy_code='CAP-POLICY-001',
-            teacher_id=teacher.id,
+            teacher_id=teacher_user.id,
             join_code='CLAIMCAP1',
             title='Cap Test Policy',
             description='',
@@ -452,7 +462,13 @@ class TestDecimalTypeErrors:
         )
         db.session.flush()
 
-        seat = Seat.query.filter_by(student_id=student.id, class_id=class_scope.class_id).first()
+        seat = (
+            Seat.query
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(Student.id == student.id, Seat.class_id == class_scope.class_id)
+            .first()
+        )
         assert seat is not None
         user = User(
             username_hash=hash_username_lookup(f"claim-cap-{student.id}"),

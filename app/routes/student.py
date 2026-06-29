@@ -3052,7 +3052,13 @@ def _ensure_rent_hall_pass_top_off(student, context, settings=None, now=None):
     join_code = get_display_join_code(context.class_id)
     seat = get_current_seat()
     if not seat and student and context:
-        seat = Seat.query.filter_by(user_id=student.id, class_id=context.class_id).first()
+        seat = (
+            Seat.query
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(Student.id == student.id, Seat.class_id == context.class_id)
+            .first()
+        )
     current_block = seat.block.strip().upper() if seat and seat.block else ""
     class_id = context.class_id
     if not class_id:
