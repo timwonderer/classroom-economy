@@ -24,7 +24,7 @@ from app.models import (
     AttendanceReasonCode, TapEventReasonCode, HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
     StudentBlock, StoreItemBlock,
     RedemptionAuditLog, RedemptionAuditAction, RedemptionAuditSource, _quantize_currency,
-    ClassEconomy, ClassMembership, Seat, SeatAttendanceState, IdentityProfile,
+    ClassEconomy, ClassMembership, Seat, SeatAttendanceState, IdentityProfile, User,
 )
 from app.auth import (
     login_required,
@@ -99,12 +99,12 @@ from app.utils.time import (
 # Import external modules
 from app.services.attendance_service import calculate_unpaid_attendance_seconds, get_all_block_statuses
 from app.services.ledger_service import (
-    apply_overdraft_fee_if_needed as apply_ledger_overdraft_fee,
     create_pending_transaction,
     create_pending_transaction_idempotent,
     get_available_balances,
     get_last_payroll_time,
 )
+from app.utils.overdraft import charge_overdraft_fee_if_needed
 from app.payroll import get_pay_rate_for_block
 
 # Create blueprint
@@ -201,12 +201,6 @@ def _resolve_class_display_label(teacher_id, class_id, join_code=None, fallback_
         class_economy = ClassEconomy.query.filter_by(class_id=class_id).first()
         if class_economy:
             return class_economy.display_name or class_economy.join_code
-    
-    if join_code:
-        # Fallback for UI-driven requests
-        class_economy = ClassEconomy.query.filter_by(join_code=join_code).first()
-        if class_economy:
-            return class_economy.display_name or class_economy.join_code
 
     return fallback_block or "Unknown Class"
 
@@ -282,11 +276,10 @@ def _get_or_create_hall_pass_settings(class_id):
 def _get_teacher_class_scope(admin_id):
     """Return (class_id_scope_subquery, has_class_scope) for a teacher admin."""
     class_id_scope = (
-        db.session.query(ClassMembership.class_id)
+        db.session.query(ClassEconomy.class_id)
         .filter(
-            ClassMembership.admin_id == admin_id,
-            ClassMembership.role == 'admin',
-            ClassMembership.class_id.isnot(None),
+            ClassEconomy.user_id == admin_id,
+            ClassEconomy.class_id.isnot(None),
         )
         .distinct()
         .subquery()
@@ -294,9 +287,8 @@ def _get_teacher_class_scope(admin_id):
     has_class_scope = db.session.query(
         sa.exists().where(
             sa.and_(
-                ClassMembership.admin_id == admin_id,
-                ClassMembership.role == 'admin',
-                ClassMembership.class_id.isnot(None),
+                ClassEconomy.user_id == admin_id,
+                ClassEconomy.class_id.isnot(None),
             )
         )
     ).scalar()
@@ -304,16 +296,15 @@ def _get_teacher_class_scope(admin_id):
 
 
 def _admin_has_class_scope(admin_id, class_id):
-    """Return True when admin owns the class_id via active admin membership."""
+    """Return True when admin owns the class_id via canonical class ownership."""
     if not admin_id or not class_id:
         return False
 
     return db.session.query(
         sa.exists().where(
             sa.and_(
-                ClassMembership.admin_id == admin_id,
-                ClassMembership.class_id == class_id,
-                ClassMembership.role == 'admin',
+                ClassEconomy.user_id == admin_id,
+                ClassEconomy.class_id == class_id,
             )
         )
     ).scalar()
@@ -378,26 +369,6 @@ def get_tips(user_type):
 
 
 # -------------------- STORE API --------------------
-
-def _charge_overdraft_fee_if_needed(student, banking_settings, teacher_id, join_code, force=False):
-    """
-    Check if student's checking balance is negative and charge overdraft fee if enabled.
-    Returns (fee_charged, fee_amount) tuple.
-
-    Args:
-        student: Student object
-        banking_settings: BankingSettings object
-        teacher_id: Teacher ID for multi-tenancy isolation
-        join_code: Join code for multi-tenancy isolation
-        force: Charge fee even if balance is non-negative (declined transaction).
-    """
-    return apply_ledger_overdraft_fee(
-        student,
-        banking_settings,
-        teacher_id=teacher_id,
-        join_code=join_code,
-        force=force
-    )
 
 
 @api_bp.route('/purchase-item', methods=['POST'])
@@ -649,10 +620,10 @@ def purchase_item():
             # Allow transaction - overdraft protection will transfer from savings
             pass
         else:
-            fee_charged, fee_amount = apply_ledger_overdraft_fee(
+            fee_charged, fee_amount = charge_overdraft_fee_if_needed(
                 seat,
                 banking_settings,
-                force=True
+                force=True,
             )
 
             if banking_settings and banking_settings.overdraft_protection_enabled:
@@ -1118,13 +1089,12 @@ def _check_simultaneous_pass_limit(log_entry):
     return None
 
 
-def _enforce_hall_pass_student_context(student, log_entry):
+def _enforce_hall_pass_student_context(context, log_entry):
     """
     Enforce active student class context for hall-pass state mutations.
 
     Class context is required and must match the pass class/join scope.
     """
-    context = resolve_canonical_context()
     current_class_id = context.class_id if context else None
     if not current_class_id:
         return jsonify({
@@ -1155,7 +1125,7 @@ def cancel_hall_pass(pass_id):
     # Verify this pass belongs to the logged-in student
     if log_entry.student_id != student.id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
-    context_error = _enforce_hall_pass_student_context(student, log_entry)
+    context_error = _enforce_hall_pass_student_context(context, log_entry)
     if context_error:
         return context_error
 
@@ -1198,7 +1168,7 @@ def checkout_hall_pass():
     # Verify this pass belongs to the logged-in student
     if log_entry.student_id != student.id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
-    context_error = _enforce_hall_pass_student_context(student, log_entry)
+    context_error = _enforce_hall_pass_student_context(context, log_entry)
     if context_error:
         return context_error
 
@@ -1266,7 +1236,7 @@ def checkin_hall_pass():
     # Verify this pass belongs to the logged-in student
     if log_entry.student_id != student.id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
-    context_error = _enforce_hall_pass_student_context(student, log_entry)
+    context_error = _enforce_hall_pass_student_context(context, log_entry)
     if context_error:
         return context_error
     
@@ -2146,7 +2116,19 @@ def get_tap_entries(student_id):
     if not seat_id:
         return jsonify({"error": "Student not found or access denied"}), 404
 
-    from app.models import TapEvent
+    from app.models import IdentityProfile, TapEvent
+    seat = Seat.query.filter_by(id=seat_id, class_id=active_class_id).first()
+    if not seat or not seat.identity_profile:
+        return jsonify({"error": "Student not found or access denied"}), 404
+    student = getattr(seat.identity_profile, "student", None)
+    if not student:
+        student = (
+            Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+            .filter(Student.identity_id == seat.identity_profile.id)
+            .first()
+        )
+    if not student:
+        return jsonify({"error": "Student not found or access denied"}), 404
 
     # Get all tap events for this seat in active class scope.
     query = TapEvent.query.filter(TapEvent.seat_id == seat_id, TapEvent.class_id == active_class_id)
@@ -2235,7 +2217,9 @@ def delete_tap_entry(event_id):
     event.deleted_by = scoped_admin_id
     db.session.flush()
 
-    current_app.logger.info(f"Admin {admin.id} deleted tap entry {event_id} for student {event.student_id}")
+    current_app.logger.info(
+        f"Admin {scoped_admin_id} deleted tap entry {event_id} for seat {event.seat_id}"
+    )
 
     return jsonify({
         "status": "ok",

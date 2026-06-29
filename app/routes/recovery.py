@@ -130,17 +130,18 @@ def _account_lookup_legacy():
             flash("Both fields are required.", "error")
             return redirect(url_for('recovery.account_lookup'))
  
-        # Resolve class_id from user-provided join_code, then query by canonical class_id.
+        # Resolve class_id from the ingress join code, then immediately switch to seat/class scope.
         class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
         if not class_row:
             flash("Invalid join code.", "error")
             return redirect(url_for('recovery.account_lookup'))
         seat = (
             Seat.query
-        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-        .join(Student, Student.identity_id == IdentityProfile.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
             .filter(
                 Seat.class_id == class_row.class_id,
+                Seat.role == "student",
                 Student.reset_code == reset_code,
             )
             .first()

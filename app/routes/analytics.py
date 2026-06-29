@@ -23,6 +23,7 @@ from app.models import (
     Admin, AnalyticsAlert, AnalyticsEvent,
     PayrollSettings, RentSettings, Student, ClassEconomy, Seat
 )
+from app.models import IdentityProfile
 from app.models import Transaction
 
 # Define allowed window types constant
@@ -104,11 +105,6 @@ def _get_payroll_settings_for_class_id(class_id: str):
 
 
 def get_pay_cycle_days(class_id: str | None = None, join_code: str | None = None) -> int:
-    if not class_id and join_code:
-        class_row = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter_by(
-            join_code=join_code,
-        ).first()
-        class_id = class_row[0] if class_row and class_row[0] else None
     payroll_settings = _get_payroll_settings_for_class_id(class_id) if class_id else None
     if payroll_settings and payroll_settings.payroll_frequency_days:
         return payroll_settings.payroll_frequency_days
@@ -130,11 +126,6 @@ def _get_rent_settings_for_class_id(class_id: str):
 
 
 def get_rent_cycle_days(class_id: str | None = None, join_code: str | None = None) -> int:
-    if not class_id and join_code:
-        class_row = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter_by(
-            join_code=join_code,
-        ).first()
-        class_id = class_row[0] if class_row and class_row[0] else None
     rent_settings = _get_rent_settings_for_class_id(class_id) if class_id else None
     if not rent_settings:
         return 30
@@ -518,12 +509,10 @@ def student_drill_down(student_id):
         return redirect(url_for('admin.students'))
     join_code = selected_class['join_code']
     
-    # Get class economy row
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-    if not class_row:
+    class_id = selected_class['class_id']
+    if not class_id:
         flash('Class period not found.', 'warning')
         return redirect(url_for('admin.students'))
-    class_id = class_row.class_id
 
     # Get student with scoping
     student = Student.query.join(

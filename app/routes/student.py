@@ -69,7 +69,6 @@ from app.access import (
 )
 from app.services.attendance_service import get_all_block_statuses
 from app.services.ledger_service import (
-    apply_overdraft_fee_if_needed as apply_ledger_overdraft_fee,
     apply_monthly_savings_interest as post_monthly_savings_interest,
     get_available_balances,
 )
@@ -224,7 +223,7 @@ def enforce_student_feature_gates():
     if not context:
         return None
 
-    if not is_feature_enabled(feature_name):
+    if not is_feature_enabled(context, feature_name):
         abort(404)
     return None
 
@@ -437,17 +436,7 @@ def get_banking_settings_for_context(context):
 
 
 
-def get_current_join_code():
-    """Get the currently selected join code from class context.
-
-    Join code is the absolute source of truth for class association.
-    Returns None if no class context is available.
-    """
-    context = resolve_canonical_context()
-    return get_display_join_code(context.class_id) if context else None
-
-
-def get_feature_settings_for_student():
+def get_feature_settings_for_student(context):
     """
     Get feature settings for the currently logged-in student.
 
@@ -456,7 +445,6 @@ def get_feature_settings_for_student():
     Returns:
         dict: Feature settings dictionary with enabled/disabled flags
     """
-    context = resolve_canonical_context()
     if not context:
         return FeatureSettings.get_defaults()
 
@@ -472,7 +460,7 @@ def get_feature_settings_for_student():
     return FeatureSettings.get_defaults()
 
 
-def is_feature_enabled(feature_name):
+def is_feature_enabled(context, feature_name):
     """
     Check if a specific feature is enabled for the current student context.
 
@@ -482,12 +470,6 @@ def is_feature_enabled(feature_name):
     Returns:
         bool: True if feature is enabled, False otherwise
     """
-    if feature_name == 'rent':
-        rent_settings = get_rent_settings_for_context(resolve_canonical_context())
-        if rent_settings:
-            return bool(rent_settings.is_enabled)
-
-    context = resolve_canonical_context()
     if not context:
         return False
 
@@ -495,21 +477,23 @@ def is_feature_enabled(feature_name):
     if not class_id:
         return False
 
+    if feature_name == 'rent':
+        rent_settings = get_rent_settings_for_context(context)
+        if rent_settings:
+            return bool(rent_settings.is_enabled)
+
     scoped_feature = resolve_feature_class_for_class(class_id, feature_name)
     return bool(scoped_feature["enabled"]) if scoped_feature else False
 
 
-def calculate_scoped_balances(student: 'Student', join_code: str) -> tuple[Decimal, Decimal]:
-    """Compatibility wrapper around the ledger-owned balance query."""
-    if not student or not join_code:
+def calculate_scoped_balances(student: 'Student', class_id: str) -> tuple[Decimal, Decimal]:
+    """Return balances for a student within an already-resolved class scope."""
+    if not student or not class_id:
         return Decimal('0.00'), Decimal('0.00')
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-    if not class_row:
-        return Decimal('0.00'), Decimal('0.00')
-    seat_id = get_seat_id_for_class(student.id, class_row.class_id)
+    seat_id = get_seat_id_for_class(student.id, class_id)
     if not seat_id:
         return Decimal('0.00'), Decimal('0.00')
-    return get_available_balances(seat_id, class_row.class_id)
+    return get_available_balances(seat_id, class_id)
 
 
 
@@ -1074,16 +1058,9 @@ def dashboard():
         recent_deposit = None
 
     # Get student's active insurance policies (scoped to current class)
-    context = {
-        'join_code': scope.join_code,
-        'teacher_id': scope.teacher_id,
-        'class_id': scope.class_id,
-        'block': scope.block,
-        'seat_id': scope.seat_id,
-    }
     teacher_id = scope.teacher_id
     class_id = scope.class_id
-    active_insurance = student.get_active_insurance(class_id=join_code)
+    active_insurance = student.get_active_insurance(class_id=class_id)
 
     rent_status = None
     rent_settings = get_rent_settings_for_context(context)
@@ -1157,7 +1134,7 @@ def dashboard():
     session_remaining_seconds = max(0, int((expiry_time - utc_now()).total_seconds()))
 
     # --- Get feature settings for this student ---
-    feature_settings = get_feature_settings_for_student()
+    feature_settings = get_feature_settings_for_student(context)
 
     # --- Check for pending recovery request ---
     pending_recovery_code = get_pending_recovery_code_for_student(student.id, utc_now())
@@ -1286,7 +1263,7 @@ def dashboard():
         spending_this_month=float(round(spending_this_month, 2)),
         announcements=announcements,
         current_join_code=join_code,
-        scoped_total_earnings=student.get_total_earnings(join_code=join_code),
+        scoped_total_earnings=student.get_total_earnings(class_id=scope.class_id),
     )
 
 
@@ -1294,8 +1271,8 @@ def dashboard():
 @login_required
 def payroll():
     """Student payroll page with attendance record, productivity stats, and projected pay."""
-    # Check if payroll feature is enabled
-    if not is_feature_enabled('payroll'):
+    context = getattr(g, "canonical_context", None)
+    if not is_feature_enabled(context, 'payroll'):
         abort(404)
 
     seat = get_current_seat()
@@ -1303,7 +1280,7 @@ def payroll():
     _ = get_current_user()
     student = _get_canonical_student_from_context()
 
-    context = resolve_canonical_context()
+    # We already have context from above
     if not context:
         flash("No class selected. Please select a class to continue.", "error")
         return redirect(url_for('student.dashboard'))
@@ -1337,13 +1314,13 @@ def payroll():
         for blk, state in period_states.items()
     }
 
-    att_query = _AttSession.query.filter(
-        _AttSession.student_id == student.id,
-        _AttSession.class_id == effective_class_id,
-        _AttSession.period == current_block,
-        _AttSession.is_deleted.is_(False),
+    att_query = AttendanceSession.query.filter(
+        AttendanceSession.student_id == student.id,
+        AttendanceSession.class_id == class_id,
+        AttendanceSession.period == current_block,
+        AttendanceSession.is_deleted.is_(False),
     )
-    recent_sessions = att_query.order_by(_AttSession.started_at.desc()).limit(20).all()
+    recent_sessions = att_query.order_by(AttendanceSession.started_at.desc()).limit(20).all()
     all_tap_events = recent_sessions
     tap_events_by_block = {}
     for sess in recent_sessions:
@@ -1372,7 +1349,7 @@ def payroll():
         ],
         now=utc_now(),
         current_join_code=join_code,
-        scoped_total_earnings=student.get_total_earnings(join_code=join_code),
+        scoped_total_earnings=student.get_total_earnings(class_id=context.class_id),
     )
 
 
@@ -1382,8 +1359,8 @@ def payroll():
 @login_required
 def transfer():
     """Transfer funds between checking and savings accounts."""
-    # Check if banking feature is enabled
-    if not is_feature_enabled('banking'):
+    context = getattr(g, "canonical_context", None)
+    if not is_feature_enabled(context, 'banking'):
         abort(404)
 
     student = _get_canonical_student_from_context()
@@ -1425,7 +1402,7 @@ def transfer():
         amount = _quantize_currency(request.form.get('amount'))
 
         # CRITICAL FIX: Calculate balances using join_code scoping
-        checking_balance, savings_balance = calculate_scoped_balances(student, join_code)
+        checking_balance, savings_balance = calculate_scoped_balances(student, context.class_id)
         banking_settings = get_banking_settings_for_context(context)
 
         if from_account == to_account:
@@ -1438,16 +1415,8 @@ def transfer():
                 return jsonify(status="error", message="Amount must be greater than 0."), 400
             flash("Amount must be greater than 0.", "transfer_error")
             return redirect(url_for("student.transfer"))
-        # Resolve seat_id and class_id for V2 identity
-        from app.models import ClassEconomy
-        economy = ClassEconomy.query.filter_by(join_code=join_code).first()
-        class_id = economy.class_id if economy else None
-        
-        if not class_id:
-            if is_json:
-                return jsonify(status="error", message="Invalid class context."), 400
-            flash("Invalid class context.", "transfer_error")
-            return redirect(url_for("student.transfer"))
+        # Use canonical class context already resolved for the request.
+        class_id = context.class_id
 
         seat_id = get_seat_id_for_class(student.id, class_id)
         if not seat_id:
@@ -1456,12 +1425,14 @@ def transfer():
             flash("No seat assigned in this class.", "transfer_error")
             return redirect(url_for("student.transfer"))
 
+        from app.models import Seat
+        transfer_seat = db.session.get(Seat, seat_id)
+
         if from_account == 'checking' and amount > checking_balance:
-            fee_charged, fee_amount = _charge_overdraft_fee_if_needed(
-                student,
+            fee_charged, fee_amount = charge_overdraft_fee_if_needed(
+                transfer_seat,
                 banking_settings,
-                class_id=class_id,
-                force=True
+                force=True,
             )
 
             message = "Insufficient checking funds."
@@ -1521,8 +1492,8 @@ def transfer():
     compound_frequency = settings.compound_frequency if settings else 'monthly'
 
     # Calculate forecast interest based on settings
-    # CRITICAL FIX v3: Calculate BOTH checking and savings balances using join_code scoping
-    checking_balance, savings_balance = calculate_scoped_balances(student, join_code)
+    # CRITICAL FIX v3: Calculate BOTH checking and savings balances using class_id scoping
+    checking_balance, savings_balance = calculate_scoped_balances(student, context.class_id)
 
     if calculation_type == 'compound':
         if compound_frequency == 'daily':
@@ -1580,7 +1551,7 @@ def transfer():
                          checking_balance=checking_balance,
                          savings_balance=savings_balance,
                          forecast_interest=forecast_interest,
-                         scoped_total_earnings=student.get_total_earnings(join_code=join_code),
+                         scoped_total_earnings=student.get_total_earnings(class_id=context.class_id),
                          settings=settings,
                          calculation_type=calculation_type,
                          compound_frequency=compound_frequency,
@@ -1589,9 +1560,8 @@ def transfer():
                          transfer_token=transfer_token)
 
 
-def apply_savings_interest(student, annual_rate=Decimal('0.045')):
+def apply_savings_interest(context, student, annual_rate=Decimal('0.045')):
     """Compatibility command wrapper that forwards savings-interest writes into the ledger service."""
-    context = resolve_canonical_context()
     if not context:
         return None
     seat = get_current_seat()
@@ -1609,8 +1579,8 @@ def insurance_marketplace():
     """Insurance marketplace - browse and manage policies."""
 
 
-    # Check if insurance feature is enabled
-    if not is_feature_enabled('insurance'):
+    context = getattr(g, "canonical_context", None)
+    if not is_feature_enabled(context, 'insurance'):
         abort(404)
 
     seat = get_current_seat()
@@ -1796,24 +1766,20 @@ def purchase_insurance(policy_id):
             return redirect(url_for('student.student_insurance'))
 
     # CRITICAL FIX v2: Check sufficient funds using seat/class scoped balance
-    checking_balance, savings_balance = calculate_scoped_balances(student, join_code)
+    checking_balance, savings_balance = calculate_scoped_balances(student, context.class_id)
     banking_settings = get_banking_settings_for_context(context)
     overdraft_shortfall = Decimal('0.00')
 
     allowed, shortfall, _, _ = evaluate_overdraft_allowance(
-        student,
+        seat,
         policy.premium,
         banking_settings,
-        # teacher_id removed from route
-        join_code=join_code
     )
     if not allowed:
-        fee_charged, fee_amount = _charge_overdraft_fee_if_needed(
-            student,
+        fee_charged, fee_amount = charge_overdraft_fee_if_needed(
+            seat,
             banking_settings,
-            # teacher_id removed from route
-            join_code=join_code,
-            force=True
+            force=True,
         )
 
         if banking_settings and banking_settings.overdraft_protection_enabled:
@@ -2211,8 +2177,8 @@ def view_policy(enrollment_id):
 @login_required
 def shop():
     """Student shop - browse and purchase items."""
-    # Check if store feature is enabled
-    if not is_feature_enabled('store'):
+    context = getattr(g, "canonical_context", None)
+    if not is_feature_enabled(context, 'store'):
         abort(404)
 
     seat = get_current_seat()
@@ -2389,7 +2355,8 @@ def shop():
                 db.func.count(db.distinct(StorePurchase.seat_id)).label('student_count'),
             )
             .join(Seat, StorePurchase.seat_id == Seat.id)
-            .join(Student, Seat.student_id == Student.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
             .join(StoreItem, StorePurchase.store_item_id == StoreItem.id)
             .filter(
                 StorePurchase.store_item_id.in_(collective_item_ids),
@@ -2428,35 +2395,6 @@ def shop():
 
 
 # -------------------- RENT --------------------
-
-def _charge_overdraft_fee_if_needed(student, banking_settings, class_id=None, join_code=None, force=False):
-    """
-    Check if student's checking balance is negative and charge overdraft fee if enabled.
-    Returns (fee_charged, fee_amount) tuple.
-
-    Args:
-        force: Charge fee even if balance is non-negative (declined transaction).
-    """
-    if not class_id and join_code:
-        from app.models import ClassEconomy
-        ce = ClassEconomy.query.filter_by(join_code=join_code).first()
-        class_id = ce.class_id if ce else None
-
-    if not class_id:
-        return False, Decimal('0.00')
-
-    seat_id = get_seat_id_for_class(student.id, class_id)
-    if not seat_id:
-        return False, Decimal('0.00')
-
-    from app.models import Seat
-    seat = db.session.get(Seat, seat_id)
-
-    return apply_ledger_overdraft_fee(
-        seat,
-        banking_settings,
-        force=force
-    )
 
 
 def _get_rent_timezone(settings):
@@ -2709,9 +2647,7 @@ def _get_locked_rent_amount_for_join_code_cycle(join_code, coverage_due_date):
     class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
     if not class_row:
         return None
-    return get_cycle_rent_amount(
-        class_row.class_id, coverage_due_date.month, coverage_due_date.year,
-    )
+    return get_cycle_rent_amount(class_row.class_id, coverage_due_date.month, coverage_due_date.year)
 
 
 def _get_effective_rent_amount_for_coverage_period(
@@ -2724,9 +2660,8 @@ def _get_effective_rent_amount_for_coverage_period(
     """
     Return the effective base rent for the coverage period.
 
-    If the class rate changed mid-cycle, lock to the first valid payer's base
-    amount for that join code. As a fallback, keep a student's earlier paid
-    base amount when the setting update happened after their first payment.
+    The locked amount comes from the active rent policy version stored in the
+    database. Do not infer it from paid assessments.
     """
     current_amount = settings.rent_amount or Decimal('0.00')
 
@@ -2734,25 +2669,6 @@ def _get_effective_rent_amount_for_coverage_period(
         locked_amount = _get_locked_rent_amount_for_join_code_cycle(join_code, coverage_due_date)
     if locked_amount is not None:
         return locked_amount
-
-    if assessments:
-        updated_at = getattr(settings, 'updated_at', None)
-        if updated_at:
-            satisfied_dates = [
-                ensure_utc(a.satisfaction.satisfied_at)
-                for a in assessments
-                if a.satisfaction and a.satisfaction.satisfied_at
-            ]
-            if satisfied_dates:
-                earliest = min(satisfied_dates)
-                if ensure_utc(updated_at) > earliest:
-                    base_paid = sum(
-                        (a.satisfaction.amount_paid or Decimal('0.00'))
-                        - (a.satisfaction.late_fee_charged or Decimal('0.00'))
-                        for a in assessments if a.satisfaction
-                    )
-                    if base_paid > Decimal('0.00'):
-                        return base_paid
 
     return current_amount
 
@@ -3136,14 +3052,9 @@ def _ensure_rent_hall_pass_top_off(student, context, settings=None, now=None):
     join_code = get_display_join_code(context.class_id)
     seat = get_current_seat()
     if not seat and student and context:
-        seat = Seat.query.filter_by(student_id=student.id, class_id=context.class_id).first()
+        seat = Seat.query.filter_by(user_id=student.id, class_id=context.class_id).first()
     current_block = seat.block.strip().upper() if seat and seat.block else ""
     class_id = context.class_id
-    if not class_id:
-        from app.models import ClassEconomy
-        ce = ClassEconomy.query.filter_by(join_code=join_code).first()
-        class_id = ce.class_id if ce else None
-
     if not class_id:
         return 0, 0, False
 
@@ -3183,8 +3094,8 @@ def _ensure_rent_hall_pass_top_off(student, context, settings=None, now=None):
 @login_required
 def rent():
     """View rent status and payment history (per period)."""
-    # Check if rent feature is enabled
-    if not is_feature_enabled('rent'):
+    context = getattr(g, "canonical_context", None)
+    if not is_feature_enabled(context, 'rent'):
         abort(404)
 
     class_id = get_current_class_id()
@@ -3220,6 +3131,11 @@ def rent():
 
     if not class_id:
         flash("No class context available.", "error")
+        return redirect(url_for('student.dashboard'))
+
+    student = _get_canonical_student_from_context()
+    if not student:
+        flash("No student record found for this seat.", "error")
         return redirect(url_for('student.dashboard'))
 
     # Calculate rent status for each period
@@ -3408,6 +3324,12 @@ def rent_pay(period):
         flash("Rent system is currently disabled.", "error")
         return redirect(url_for('student.dashboard'))
 
+    student = _get_canonical_student_from_context()
+    if not student:
+        current_app.logger.info("rent_pay exit: no canonical student found for seat_id=%s", seat_id)
+        flash("No student record found for this seat.", "error")
+        return redirect(url_for('student.dashboard'))
+
     if not student.is_rent_enabled:
         current_app.logger.info("rent_pay exit: student rent disabled")
         flash("Rent is not enabled for your account.", "error")
@@ -3584,10 +3506,9 @@ def rent_pay(period):
         savings_balance,
     )
     if not allowed:
-        fee_charged, fee_amount = _charge_overdraft_fee_if_needed(
-            student,
+        fee_charged, fee_amount = charge_overdraft_fee_if_needed(
+            seat,
             banking_settings,
-            class_id=class_id,
             force=True,
         )
 
