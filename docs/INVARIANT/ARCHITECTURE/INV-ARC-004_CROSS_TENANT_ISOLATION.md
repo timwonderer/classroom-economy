@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| INV-ARC-004      | 1.0     | 2026-04-13     | N/A        | Foundational    |
+| INV-ARC-004      | 1.1     | 2026-06-29    | N/A        | Foundational    |
 
 ## I. Purpose
 
@@ -26,8 +26,8 @@ Foundational within `INV-ARC`. Derived from `INV-CORE-000` Section III.1, `` `cl
 
 A single request MUST NOT:
 
-- read across multiple `join_code` boundaries
-- write across multiple `join_code` boundaries
+- read across multiple `class_id` boundaries
+- write across multiple `class_id` boundaries
 
 All execution is constrained to a single tenant boundary.
 

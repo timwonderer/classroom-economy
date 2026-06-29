@@ -2,8 +2,12 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-IDEN-001 | 1.5 | 2026-06-05 | 1.4 | Constitutional |
+| DOM-IDEN-001 | 1.5 | 2026-06-05 | 1.4 | Deprecated - Informational |
 
+
+> [!WARNING]
+> 
+> This version of DOM-IDEN-001 is now deprecated and superseded by [DOM-IDEN-001: Canonical Identity Model](./DOM-IDEN-001_CANONICAL_IDENTITY_MODEL.md). This document is kept for historical purposes and SHALL NOT be interpretated as normative.
 ---
 
 ## I. Purpose
@@ -72,17 +76,34 @@ Key metadata:
 
 ## VII. Schema Contract
 
-### 1. `users`
+### `users`
+Purpose: authentication, recovery, and global security state for all principals.
 
-Key fields:
-- `id` (PK)
-- `user_role` — `'teacher'` | `'student'` | `'sysadmin'`
-- `username_lookup_hash` — HMAC-based lookup
-- `totp_secret_encrypted` / `pin_hash` / `passphrase_hash`
-- `username_hash` — canonical credential verifier for username-based login
-- `last_active_class_id` — nullable class-context restoration preference; the login boundary may use it when valid, but it is never runtime authority
-- `current_session_nonce` — binds requests to a specific login event
-- `last_active_seat_id` — nullable FK to `seats`; tracks the last resolved context for multi-device continuity
+The `users` table represents the authenticated principals. It serves as the only bridge between external, human users and internal, role-defined entities.
+
+#### Common Fields (present for all user roles)
+
+| Fields | Usage |
+|---|---|
+| `id` | primary key |
+| `user_role` | Determine permission and visibility within app. Valid options are `teacher`, `student`, `sysadmin` only. |
+| `username_lookup_hash` | HMAC-based look up |
+| `current_session_started_at` | (UTC) explicitly set at authentication time. Does not update until new session. |
+| `current_session_expires_at` | (UTC) explicitly set session expiration time, calculated from `current_session_started_at`. Set to 10 minutes after `current_session_started_at` for student users and 60 minutes for teacher users. Does not update until new session. |
+| `current_session_nonce` | regenerated at each login; binds requests to one session |
+| `last_active_class_id` | store last valid class scope, updates when user change class context via class selector. Invalid or missing entry will redirect user to select class page. |
+| `last_active_seat_id` | store last valid actor, updates when user change class context via class selector. Invalid or missing entry will trigger `invariantViolation` followed by fail closed behavior. |
+
+
+#### Student-Specific Fields (exist only for student users, `NULL` for all other users):
+- `pin_hash` — **student only**; hashed PIN used for login
+- `passphrase_hash` — **student only**; hashed passphrase used to gate financial actions
+- recovery capability — implemented by canonical recovery-token lifecycle state
+- `reset_code_expires_at`
+
+#### Teacher / System Administrator-Specific Fields (exist only for teacher or sysadmin users, `NULL` for all studuent users):
+- `totp_secret_encrypted` - base64-encoded encrypted TOTP seed
+
 
 Rules:
 - One row per human identity.
