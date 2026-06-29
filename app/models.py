@@ -511,12 +511,20 @@ class Student(db.Model):
         return get_available_balance(seat_id, class_id, 'savings')
 
     def get_total_earnings(self, class_id=None):
-        """Get total earnings scoped to a specific class economy."""
+        """Get total earnings scoped to a specific class economy and seat."""
         if not class_id:
+            return 0.0
+
+        seat_id = None
+        if self.identity_profile and self.identity_profile.seat_id:
+            seat_id = self.identity_profile.seat_id
+            
+        if not seat_id:
             return 0.0
 
         total = db.session.query(db.func.sum(Transaction.amount)).filter(
             Transaction.class_id == class_id,
+            Transaction.seat_id == seat_id,
             Transaction.amount > 0,
             Transaction.is_void == False,
             ~Transaction.description.startswith("Transfer")
@@ -2820,10 +2828,13 @@ class Admin(db.Model):
         return f"teacher_{self.id}"
 
     def get_student_count(self):
-        """Return unique students linked via the StudentTeacher join table."""
+        """Return unique students linked via canonical seats."""
         return (
-            db.session.query(StudentTeacher.student_id)
-            .filter(StudentTeacher.teacher_id == self.id)
+            db.session.query(Student.id)
+            .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+            .join(Seat, Seat.id == IdentityProfile.seat_id)
+            .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
+            .filter(ClassEconomy.user_id == self.id)
             .distinct()
             .count()
         )

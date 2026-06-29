@@ -6048,7 +6048,6 @@ def store_management():
             flash("Invalid audit action filter.", "warning")
 
     live_query = RedemptionAuditLog.query.filter(
-        RedemptionAuditLog.teacher_id == admin_id,
         RedemptionAuditLog.source == RedemptionAuditSource.LIVE,
         RedemptionAuditLog.class_id == selected_scope['class_id'],
     )

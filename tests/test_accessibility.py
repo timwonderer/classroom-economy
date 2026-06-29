@@ -211,6 +211,9 @@ def auth_student_context(app, client):
         )
         db.session.add(user)
         db.session.flush()
+        import secrets
+        nonce = secrets.token_urlsafe(32)
+        user.current_session_nonce = nonce
 
         # Link Seat to User
         seat = Seat.query.filter_by(class_id=class_row.class_id, role="student").first()
@@ -243,6 +246,7 @@ def auth_student_context(app, client):
     with client.session_transaction() as sess:
         sess["student_id"] = student_id
         sess["user_id"] = user_id
+        sess["current_session_nonce"] = nonce
         if seat_id:
             sess["current_seat_id"] = seat_id
             sess["seat_id"] = seat_id
@@ -267,24 +271,6 @@ def auth_teacher_context(app, client):
         db.session.add(teacher)
         db.session.flush()
 
-        join_code = "ACCESST2"
-        class_row = create_class_scope(
-            teacher=teacher,
-            join_code=join_code,
-            block="A",
-            display_name="A Period",
-            create_seat=False,
-        )
-
-        # Mark onboarding as completed for this teacher
-        onboarding = TeacherOnboarding(
-            user_id=teacher.id,
-            is_completed=True,
-            completed_at=datetime.now(timezone.utc)
-        )
-        db.session.add(onboarding)
-        db.session.flush()
-
         teacher_salt, teacher_username_hash, teacher_username_lookup_hash = build_hashed_username_fields("access_teacher_t")
         user = User(
             username_hash=teacher_username_hash,
@@ -292,14 +278,40 @@ def auth_teacher_context(app, client):
             password_hash=generate_password_hash("secret"),
             user_role="teacher",
             has_completed_setup=True,
-            last_active_class_id=class_row.class_id,
         )
         db.session.add(user)
+        db.session.flush()
+        import secrets
+        nonce = secrets.token_urlsafe(32)
+        user.current_session_nonce = nonce
+
+        join_code = "ACCESST2"
+        class_row = create_class_scope(
+            teacher=teacher,
+            teacher_user_id=user.id,
+            join_code=join_code,
+            block="A",
+            display_name="A Period",
+            create_seat=True,
+        )
+        user.last_active_class_id = class_row.class_id
+        db.session.flush()
+
+        # Mark onboarding as completed for this teacher
+        onboarding = TeacherOnboarding(
+            user_id=user.id,
+            is_completed=True,
+            completed_at=datetime.now(timezone.utc)
+        )
+        db.session.add(onboarding)
         from app.models import ClassFeature
         for feat in ClassFeature.feature_names():
             exists = ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feat).first()
             if not exists:
                 db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feat))
+
+        # Link Seat to User is no longer needed manually here since create_class_scope links the teacher seat when teacher_user_id is passed
+
         db.session.commit()
 
         teacher_id = teacher.id
@@ -311,10 +323,12 @@ def auth_teacher_context(app, client):
         sess['is_admin'] = True
         sess['admin_id'] = teacher_id
         sess['user_id'] = user_id
+        sess["current_session_nonce"] = nonce
         sess['current_join_code'] = join_code
         sess['current_class_id'] = class_id
         sess['is_system_admin'] = False
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+        sess["login_time"] = sess["last_activity"]
 
     return {
         "teacher_id": teacher_id,
@@ -361,6 +375,8 @@ def test_student_help_support_accessibility(client, auth_student_context):
 
 def test_teacher_dashboard_accessibility(client, auth_teacher_context):
     response = client.get('/admin/')
+    if response.status_code == 302:
+        print(f"REDIRECTED TO: {response.location}")
     assert response.status_code == 200
     audit_html_accessibility(response.data.decode('utf-8'))
 
