@@ -1,5 +1,5 @@
 from app.extensions import db
-from app.models import ClassEconomy, ClassMembership, Seat, IdentityProfile, User
+from app.models import ClassEconomy, Seat, IdentityProfile, Student, User
 from datetime import datetime, timezone
 from uuid import uuid4
 from werkzeug.security import generate_password_hash
@@ -32,8 +32,6 @@ def create_class_scope(
     block="A",
     display_name=None,
     class_status="active",
-    create_teacher_membership=True,
-    create_student_membership=True,
     create_seat=True,
     teacher_user_id=None,
     student_user_id=None,
@@ -53,6 +51,8 @@ def create_class_scope(
     """
     claimed = teacher_block_claimed or create_claimed_teacher_block
 
+    if teacher_user_id is None and getattr(teacher, "user_id", None) is not None:
+        teacher_user_id = teacher.user_id
     resolved_teacher_user_id = _ensure_user(teacher_user_id, role="teacher")
     resolved_teacher_admin_id = getattr(teacher, "id", None) or resolved_teacher_user_id
     class_row = ClassEconomy(
@@ -72,35 +72,23 @@ def create_class_scope(
         teacher_user_row.last_active_class_id = class_row.class_id
         db.session.flush()
 
-    if create_teacher_membership:
-        db.session.add(ClassMembership(
-            class_id=class_row.class_id,
-            join_code=join_code,
-            admin_id=resolved_teacher_admin_id,
-            role="admin",
-        ))
-        t_seat = Seat(
-            user_id=resolved_teacher_user_id,
-            class_id=class_row.class_id,
-            join_code=join_code,
-            role="teacher",
-        )
-        db.session.add(t_seat)
-        db.session.flush()
-        db.session.add(IdentityProfile(
-            seat_id=t_seat.id,
-            profile_type='teacher_primary',
-            first_name='Teacher',
-            last_name='Teacher',
-        ))
-
-    if student is not None and create_student_membership:
-        db.session.add(ClassMembership(
-            class_id=class_row.class_id,
-            join_code=join_code,
-            student_id=student.id,
-            role="student",
-        ))
+    t_seat = Seat(
+        user_id=resolved_teacher_user_id,
+        class_id=class_row.class_id,
+        join_code=join_code,
+        block=block if claimed else None,
+        block_identifier=block if claimed else None,
+        role="teacher",
+        claimed_at=datetime.now(timezone.utc) if claimed else None,
+    )
+    db.session.add(t_seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(
+        seat_id=t_seat.id,
+        profile_type='teacher_primary',
+        first_name='Teacher',
+        last_name='Teacher',
+    ))
 
     if student is not None and create_seat:
         resolved_student_user_id = _ensure_user(student_user_id, role="student")
@@ -119,12 +107,16 @@ def create_class_scope(
         if student_user_row:
             student_user_row.last_active_class_id = class_row.class_id
             db.session.flush()
-        db.session.add(IdentityProfile(
-            seat_id=s_seat.id,
-            profile_type='student_claimed' if claimed else 'student_unclaimed',
-            first_name=getattr(student, 'display_first_name', 'Student'),
-            last_name=getattr(student, 'display_last_name', 'Test'),
-        ))
+        if getattr(student, "identity_profile", None) is not None:
+            student.identity_profile.seat_id = s_seat.id
+            db.session.flush()
+        else:
+            db.session.add(IdentityProfile(
+                seat_id=s_seat.id,
+                profile_type='student_claimed' if claimed else 'student_unclaimed',
+                first_name=getattr(student, 'display_first_name', 'Student'),
+                last_name=getattr(student, 'display_last_name', 'Test'),
+            ))
 
     return class_row
 
@@ -166,3 +158,39 @@ def make_student_seat(
     ))
     db.session.flush()
     return seat
+
+
+def make_student_with_seat(
+    *,
+    class_id=None,
+    join_code=None,
+    block="A",
+    first_name="Student",
+    last_name="Test",
+    user_id=None,
+    claimed=True,
+):
+    """Create a canonical student + seat pair for v2 tests.
+
+    Returns the persisted Student and Seat rows. This keeps test setup on the
+    canonical path while avoiding ad hoc Seat(student_id=...) construction.
+    """
+    seat = make_student_seat(
+        class_id=class_id,
+        join_code=join_code,
+        block=block,
+        user_id=user_id,
+        claimed=claimed,
+        first_name=first_name,
+        last_name=last_name,
+    )
+    student = Student(
+        identity_profile=seat.identity_profile,
+        block=block,
+        class_id=class_id,
+        join_code=join_code,
+        salt=b"test-salt",
+    )
+    db.session.add(student)
+    db.session.flush()
+    return student, seat

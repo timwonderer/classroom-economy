@@ -35,7 +35,6 @@ from app.hash_utils import get_random_salt, hash_username
 
 pytestmark = [
     pytest.mark.regression,
-    pytest.mark.xfail(reason="Legacy /admin/backfill-transactions flow is removed in v2", strict=False),
 ]
 
 

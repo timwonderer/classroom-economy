@@ -28,9 +28,14 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
         'join_code': 'TEST',
         'student_teacher_id': None
     }
+    mock_context = type('MockContext', (), {'class_id': 'TEST', 'seat_id': 1})()
+    
     with app.test_request_context():
-        with patch('app.routes.student.get_current_class_context', return_value=mock_context):
-            apply_savings_interest(test_student)
+        from flask import g
+        g.canonical_context = mock_context
+        g._auth_current_seat_cache = type('MockSeat', (), {'id': 1, 'class_id': 'TEST'})()
+        
+        apply_savings_interest(mock_context, test_student)
 
     interest_tx = (
         Transaction.query.filter_by(

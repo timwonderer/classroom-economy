@@ -39,8 +39,11 @@ def login_admin(
             user = db.session.get(User, user_id)
             if user:
                 user.current_session_nonce = sess["current_session_nonce"]
+                if class_id is not None:
+                    user.last_active_class_id = class_id
                 db.session.commit()
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+        sess["login_time"] = sess["last_activity"]
         if join_code is not None:
             sess["current_join_code"] = join_code
         if class_id is not None:

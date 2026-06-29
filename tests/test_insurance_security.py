@@ -1,4 +1,4 @@
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_admin
 import pytest
 from datetime import datetime, timedelta, timezone
 
@@ -10,7 +10,6 @@ from app.models import (
     InsuranceEnrollment,
     InsurancePolicy,
     Seat,
-    InsuranceEnrollment,
     InsuranceClaim,
     Transaction,
     TransactionStatus,
@@ -19,7 +18,7 @@ from app.models import (
     RentItem,
 )
 from tests.helpers.admin_context import login_admin
-from tests.helpers.class_scope import create_class_scope
+from tests.helpers.class_scope import create_class_scope, make_student_seat
 
 
 @pytest.fixture
@@ -30,10 +29,10 @@ def admin_user():
     return admin
 
 
-def _create_policy(admin_id):
+def _create_policy(teacher_user_id):
     policy = InsurancePolicy(
         policy_code="POLICY-001",
-        teacher_id=admin_id,
+        teacher_id=teacher_user_id,
         title="Test Coverage",
         description="",
         premium=10.0,
@@ -45,28 +44,27 @@ def _create_policy(admin_id):
     return policy
 
 
-def _enroll_student(student_id, policy_id):
-    seat = Seat.query.filter_by(student_id=student_id).first()
-    assert seat is not None, f"No seat for student_id={student_id}"
+def _enroll_seat(seat, policy):
     enrollment = InsuranceEnrollment(
         seat_id=seat.id,
         class_id=seat.class_id,
-        policy_id=policy_id,
+        policy_id=policy.id,
         join_code=seat.join_code,
         status="active",
         coverage_start_date=datetime.now(timezone.utc) - timedelta(days=2),
         payment_current=True,
     )
-    enrollment.freeze_policy_snapshot(db.session.get(InsurancePolicy, policy_id))
+    enrollment.freeze_policy_snapshot(db.session.get(InsurancePolicy, policy.id))
     db.session.add(enrollment)
     db.session.commit()
     return enrollment
 
 
-def _create_transaction(student_id, teacher_id, is_void=False):
+def _create_transaction(seat, is_void=False):
     tx = Transaction(
-        student_id=student_id,
-        teacher_id=teacher_id,
+        seat_id=seat.id,
+        class_id=seat.class_id,
+        join_code=seat.join_code,
         amount=-25.0,
         account_type="checking",
         description="Test purchase",
@@ -78,11 +76,11 @@ def _create_transaction(student_id, teacher_id, is_void=False):
     return tx
 
 
-def _build_claim(enrollment, policy, student_id, transaction):
+def _build_claim(enrollment, policy, seat, transaction):
     return InsuranceClaim(
         enrollment_id=enrollment.id,
         policy_id=policy.id,
-        seat_id=enrollment.seat_id,
+        seat_id=seat.id,
         class_id=enrollment.class_id,
         join_code=enrollment.join_code,
         incident_date=transaction.timestamp,
@@ -93,36 +91,42 @@ def _build_claim(enrollment, policy, student_id, transaction):
     )
 
 
-def _ensure_admin_class_scope(admin, student, join_code="JOIN-INS-SEC", block="A"):
-    from app.models import StudentTeacher
-
-    if not db.session.query(StudentTeacher.id).filter_by(student_id=student.id, teacher_id=admin.id).first():
-        db.session.add(StudentTeacher(student_id=student.id, teacher_id=admin.id))
-    if not db.session.query(InsurancePolicy.id).filter_by(teacher_id=admin.id).first():
-        pass
-    class_row = create_class_scope(teacher=admin, join_code=join_code, student=student, block=block)
+def _setup_scope(admin, join_code="JOIN-INS-SEC", block="A"):
+    """Create a class scope and a student seat, returning (class_row, seat)."""
+    class_row = create_class_scope(teacher=admin, join_code=join_code, block=block)
+    db.session.flush()
+    seat = make_student_seat(
+        class_id=class_row.class_id,
+        join_code=join_code,
+        block=block,
+    )
     db.session.commit()
-    return class_row
+    return class_row, seat
 
 
-def test_duplicate_transaction_claim_blocked(client, test_student, admin_user):
-    from app.models import StudentTeacher
+def _login_admin_to_scope(client, admin_user, class_row, seat):
+    login_admin(
+        client,
+        admin_user.id,
+        "JOIN-INS-SEC",
+        user_id=class_row.user_id,
+        class_id=class_row.class_id,
+        seat_id=seat.id,
+    )
 
-    # Create StudentTeacher association for proper scoping
-    st = StudentTeacher(student_id=test_student.id, teacher_id=admin_user.id)
-    db.session.add(st)
-    db.session.commit()
-    class_row = _ensure_admin_class_scope(admin_user, test_student)
 
-    policy = _create_policy(admin_user.id)
-    enrollment = _enroll_student(test_student.id, policy.id)
-    tx = _create_transaction(test_student.id, admin_user.id)
+def test_duplicate_transaction_claim_blocked(client, admin_user):
+    class_row, seat = _setup_scope(admin_user)
 
-    first_claim = _build_claim(enrollment, policy, test_student.id, tx)
+    policy = _create_policy(class_row.user_id)
+    enrollment = _enroll_seat(seat, policy)
+    tx = _create_transaction(seat)
+
+    first_claim = _build_claim(enrollment, policy, seat, tx)
     db.session.add(first_claim)
     db.session.commit()
 
-    duplicate_claim = _build_claim(enrollment, policy, test_student.id, tx)
+    duplicate_claim = _build_claim(enrollment, policy, seat, tx)
     db.session.add(duplicate_claim)
 
     with pytest.raises(IntegrityError):
@@ -132,24 +136,18 @@ def test_duplicate_transaction_claim_blocked(client, test_student, admin_user):
     assert InsuranceClaim.query.filter_by(transaction_id=tx.id).count() == 1
 
 
-def test_voided_transaction_cannot_be_approved(client, test_student, admin_user):
-    from app.models import StudentTeacher
+def test_voided_transaction_cannot_be_approved(client, admin_user):
+    class_row, seat = _setup_scope(admin_user)
 
-    # Create StudentTeacher association for proper scoping
-    st = StudentTeacher(student_id=test_student.id, teacher_id=admin_user.id)
-    db.session.add(st)
-    db.session.commit()
-    class_row = _ensure_admin_class_scope(admin_user, test_student)
+    policy = _create_policy(class_row.user_id)
+    enrollment = _enroll_seat(seat, policy)
+    tx = _create_transaction(seat, is_void=True)
 
-    policy = _create_policy(admin_user.id)
-    enrollment = _enroll_student(test_student.id, policy.id)
-    tx = _create_transaction(test_student.id, admin_user.id, is_void=True)
-
-    claim = _build_claim(enrollment, policy, test_student.id, tx)
+    claim = _build_claim(enrollment, policy, seat, tx)
     db.session.add(claim)
     db.session.commit()
 
-    login_admin(client, admin_user.id, "JOIN-INS-SEC")
+    _login_admin_to_scope(client, admin_user, class_row, seat)
 
     response = client.post(
         f"/admin/insurance/claim/{claim.id}",
@@ -167,19 +165,15 @@ def test_voided_transaction_cannot_be_approved(client, test_student, admin_user)
     assert b"voided" in response.data
 
 
-def test_hard_deny_transaction_type_cannot_be_approved(client, test_student, admin_user):
-    from app.models import StudentTeacher
+def test_hard_deny_transaction_type_cannot_be_approved(client, admin_user):
+    class_row, seat = _setup_scope(admin_user)
 
-    st = StudentTeacher(student_id=test_student.id, teacher_id=admin_user.id)
-    db.session.add(st)
-    db.session.commit()
-    class_row = _ensure_admin_class_scope(admin_user, test_student)
-
-    policy = _create_policy(admin_user.id)
-    enrollment = _enroll_student(test_student.id, policy.id)
+    policy = _create_policy(class_row.user_id)
+    enrollment = _enroll_seat(seat, policy)
     rent_tx = Transaction(
-        student_id=test_student.id,
-        teacher_id=admin_user.id,
+        seat_id=seat.id,
+        class_id=seat.class_id,
+        join_code=seat.join_code,
         amount=-40.0,
         account_type="checking",
         status=TransactionStatus.POSTED,
@@ -189,11 +183,11 @@ def test_hard_deny_transaction_type_cannot_be_approved(client, test_student, adm
     db.session.add(rent_tx)
     db.session.commit()
 
-    claim = _build_claim(enrollment, policy, test_student.id, rent_tx)
+    claim = _build_claim(enrollment, policy, seat, rent_tx)
     db.session.add(claim)
     db.session.commit()
 
-    login_admin(client, admin_user.id, "JOIN-INS-SEC")
+    _login_admin_to_scope(client, admin_user, class_row, seat)
 
     response = client.post(
         f"/admin/insurance/claim/{claim.id}",
@@ -211,18 +205,14 @@ def test_hard_deny_transaction_type_cannot_be_approved(client, test_student, adm
     assert b"Resolve validation errors before approving or paying out this claim." in response.data
 
 
-def test_duplicate_reimbursement_for_same_source_and_policy_blocked(client, test_student, admin_user):
-    from app.models import StudentTeacher
+def test_duplicate_reimbursement_for_same_source_and_policy_blocked(client, admin_user):
+    class_row, seat = _setup_scope(admin_user)
 
-    st = StudentTeacher(student_id=test_student.id, teacher_id=admin_user.id)
-    db.session.add(st)
-    db.session.commit()
-    class_row = _ensure_admin_class_scope(admin_user, test_student)
-
-    policy = _create_policy(admin_user.id)
+    policy = _create_policy(class_row.user_id)
     source_tx = Transaction(
-        student_id=test_student.id,
-        teacher_id=admin_user.id,
+        seat_id=seat.id,
+        class_id=seat.class_id,
+        join_code=seat.join_code,
         amount=-12.0,
         account_type="checking",
         status=TransactionStatus.PENDING,
@@ -233,8 +223,9 @@ def test_duplicate_reimbursement_for_same_source_and_policy_blocked(client, test
     db.session.commit()
 
     reimbursement_one = Transaction(
-        student_id=test_student.id,
-        teacher_id=admin_user.id,
+        seat_id=seat.id,
+        class_id=seat.class_id,
+        join_code=seat.join_code,
         amount=12.0,
         account_type="checking",
         status=TransactionStatus.PENDING,
@@ -244,8 +235,9 @@ def test_duplicate_reimbursement_for_same_source_and_policy_blocked(client, test
         description="Insurance reimbursement #1",
     )
     reimbursement_two = Transaction(
-        student_id=test_student.id,
-        teacher_id=admin_user.id,
+        seat_id=seat.id,
+        class_id=seat.class_id,
+        join_code=seat.join_code,
         amount=12.0,
         account_type="checking",
         status=TransactionStatus.PENDING,
@@ -264,19 +256,15 @@ def test_duplicate_reimbursement_for_same_source_and_policy_blocked(client, test
     db.session.rollback()
 
 
-def test_pending_transaction_cannot_be_approved(client, test_student, admin_user):
-    from app.models import StudentTeacher
+def test_pending_transaction_cannot_be_approved(client, admin_user):
+    class_row, seat = _setup_scope(admin_user)
 
-    st = StudentTeacher(student_id=test_student.id, teacher_id=admin_user.id)
-    db.session.add(st)
-    db.session.commit()
-    class_row = _ensure_admin_class_scope(admin_user, test_student)
-
-    policy = _create_policy(admin_user.id)
-    enrollment = _enroll_student(test_student.id, policy.id)
+    policy = _create_policy(class_row.user_id)
+    enrollment = _enroll_seat(seat, policy)
     pending_tx = Transaction(
-        student_id=test_student.id,
-        teacher_id=admin_user.id,
+        seat_id=seat.id,
+        class_id=seat.class_id,
+        join_code=seat.join_code,
         amount=-20.0,
         account_type="checking",
         status=TransactionStatus.PENDING,
@@ -286,11 +274,11 @@ def test_pending_transaction_cannot_be_approved(client, test_student, admin_user
     db.session.add(pending_tx)
     db.session.commit()
 
-    claim = _build_claim(enrollment, policy, test_student.id, pending_tx)
+    claim = _build_claim(enrollment, policy, seat, pending_tx)
     db.session.add(claim)
     db.session.commit()
 
-    login_admin(client, admin_user.id, "JOIN-INS-SEC")
+    _login_admin_to_scope(client, admin_user, class_row, seat)
 
     response = client.post(
         f"/admin/insurance/claim/{claim.id}",
@@ -303,19 +291,14 @@ def test_pending_transaction_cannot_be_approved(client, test_student, admin_user
     assert b"Resolve validation errors before approving or paying out this claim." in response.data
 
 
-def test_rent_privilege_purchase_cannot_be_approved(client, test_student, admin_user):
-    from app.models import StudentTeacher
+def test_rent_privilege_purchase_cannot_be_approved(client, admin_user):
+    class_row, seat = _setup_scope(admin_user)
 
-    st = StudentTeacher(student_id=test_student.id, teacher_id=admin_user.id)
-    db.session.add(st)
-    db.session.commit()
-    class_row = _ensure_admin_class_scope(admin_user, test_student)
-
-    policy = _create_policy(admin_user.id)
-    enrollment = _enroll_student(test_student.id, policy.id)
+    policy = _create_policy(class_row.user_id)
+    enrollment = _enroll_seat(seat, policy)
 
     store_item = StoreItem(
-        teacher_id=admin_user.id,
+        user_id=class_row.user_id,
         class_id=class_row.class_id,
         name="Desk Pass",
         price=5.0,
@@ -343,8 +326,7 @@ def test_rent_privilege_purchase_cannot_be_approved(client, test_student, admin_
     )
 
     privilege_purchase = Transaction(
-        student_id=test_student.id,
-        teacher_id=admin_user.id,
+        seat_id=seat.id,
         class_id=class_row.class_id,
         join_code=class_row.join_code,
         amount=-5.0,
@@ -356,11 +338,11 @@ def test_rent_privilege_purchase_cannot_be_approved(client, test_student, admin_
     db.session.add(privilege_purchase)
     db.session.commit()
 
-    claim = _build_claim(enrollment, policy, test_student.id, privilege_purchase)
+    claim = _build_claim(enrollment, policy, seat, privilege_purchase)
     db.session.add(claim)
     db.session.commit()
 
-    login_admin(client, admin_user.id, "JOIN-INS-SEC")
+    _login_admin_to_scope(client, admin_user, class_row, seat)
 
     response = client.post(
         f"/admin/insurance/claim/{claim.id}",

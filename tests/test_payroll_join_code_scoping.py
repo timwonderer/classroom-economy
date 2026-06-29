@@ -1,24 +1,20 @@
 import pytest
 from decimal import Decimal
-from uuid import uuid4
 
 from app.extensions import db
 from app.models import ClassEconomy, PayrollSettings
 from app.payroll import get_daily_limit_seconds, get_pay_rate_for_block
 from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.class_scope import create_class_scope
 
 
-def _create_class(teacher_id: int, join_code: str) -> ClassEconomy:
-    class_row = ClassEconomy(
-        class_id=str(uuid4()),
+def _create_class(admin, join_code: str) -> ClassEconomy:
+    return create_class_scope(
+        teacher=admin,
         join_code=join_code,
-        teacher_id=teacher_id,
+        block="A",
         display_name=join_code,
-        created_by_admin_id=teacher_id,
     )
-    db.session.add(class_row)
-    db.session.flush()
-    return class_row
 
 
 def test_pay_rate_isolation_by_class_id(client):
@@ -27,8 +23,8 @@ def test_pay_rate_isolation_by_class_id(client):
     db.session.add(teacher)
     db.session.flush()
 
-    class_a = _create_class(teacher.id, "CLASS-A")
-    class_b = _create_class(teacher.id, "CLASS-B")
+    class_a = _create_class(teacher, "CLASS-A")
+    class_b = _create_class(teacher, "CLASS-B")
 
     db.session.add(
         PayrollSettings(
@@ -53,8 +49,8 @@ def test_daily_limit_isolation_by_class_id(client):
     db.session.add(teacher)
     db.session.flush()
 
-    class_x = _create_class(teacher.id, "CLASS-X")
-    class_y = _create_class(teacher.id, "CLASS-Y")
+    class_x = _create_class(teacher, "CLASS-X")
+    class_y = _create_class(teacher, "CLASS-Y")
 
     db.session.add(
         PayrollSettings(
@@ -85,7 +81,7 @@ def test_duplicate_active_settings_fail_closed(client):
     db.session.add(teacher)
     db.session.flush()
 
-    class_a = _create_class(teacher.id, "CLASS-DUP")
+    class_a = _create_class(teacher, "CLASS-DUP")
 
     db.session.add_all(
         [

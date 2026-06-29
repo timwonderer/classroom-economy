@@ -358,9 +358,14 @@ class TestDecimalTypeErrors:
 
         # Mock context to return our test data
         # This should NOT raise TypeError
-        with patch('app.routes.student.resolve_canonical_context', return_value=SimpleNamespace(class_id=class_scope.class_id)):
+        mock_context = SimpleNamespace(class_id=class_scope.class_id, seat_id=seat.id)
+        
+        with app.test_request_context():
+            from flask import g
+            g._auth_current_seat_cache = seat
+            g.canonical_context = mock_context
             try:
-                apply_savings_interest(student)
+                apply_savings_interest(mock_context, student)
                 success = True
             except TypeError as e:
                 success = False
@@ -379,7 +384,6 @@ class TestDecimalTypeErrors:
         assert interest_tx is not None or student.get_savings_balance(class_id=class_scope.class_id, seat_id=seat.id) == Decimal('100.00')
 
     @pytest.mark.regression
-    @pytest.mark.xfail(reason="Student insurance claim route is not reachable in the current v2 smoke setup", strict=False)
     def test_file_claim_period_cap_no_prior_payouts_no_type_error(self, client, app):
         """
         Regression test for TypeError in file_claim when max_payout_per_period is set

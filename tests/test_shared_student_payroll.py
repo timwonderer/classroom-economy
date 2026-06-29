@@ -51,8 +51,8 @@ def test_shared_student_diff_teacher_diff_period(client):
         create_seat=True,
     )
     db.session.flush()
-    seat_1 = Seat.query.filter_by(student_id=student.id, class_id=class_1.class_id).first()
-    seat_2 = Seat.query.filter_by(student_id=student.id, class_id=class_2.class_id).first()
+    seat_1 = Seat.query.filter_by(class_id=class_1.class_id, role="student").first()
+    seat_2 = Seat.query.filter_by(class_id=class_2.class_id, role="student").first()
     assert seat_1 is not None
     assert seat_2 is not None
     
@@ -139,8 +139,8 @@ def test_same_teacher_same_block_diff_context(client):
         create_seat=True,
     )
     db.session.flush()
-    seat_1 = Seat.query.filter_by(student_id=student.id, class_id=class_1.class_id).first()
-    seat_2 = Seat.query.filter_by(student_id=student.id, class_id=class_2.class_id).first()
+    seat_1 = Seat.query.filter_by(class_id=class_1.class_id, role="student").first()
+    seat_2 = Seat.query.filter_by(class_id=class_2.class_id, role="student").first()
     assert seat_1 is not None
     assert seat_2 is not None
     
@@ -175,7 +175,7 @@ def test_balance_separation_by_join_code(client):
     representing different class contexts.
     """
     from app.models import Transaction, Admin
-    from app.routes.student import calculate_scoped_balances
+    from app.services.ledger_service import get_available_balances
 
     # 1. Setup Student & Teacher
     t1 = make_admin(f"t1_{uuid.uuid4().hex[:8]}", 'secret')
@@ -188,7 +188,7 @@ def test_balance_separation_by_join_code(client):
     student = Student(identity_profile=profile_bal, block="P1", salt=b'salt')
     db.session.add(student)
     db.session.flush()
-    create_class_scope(
+    class_1 = create_class_scope(
         teacher=t1,
         join_code="JC1",
         student=student,
@@ -198,7 +198,7 @@ def test_balance_separation_by_join_code(client):
         teacher_block_claimed=True,
         create_seat=True,
     )
-    create_class_scope(
+    class_2 = create_class_scope(
         teacher=t1,
         join_code="JC2",
         student=student,
@@ -209,33 +209,33 @@ def test_balance_separation_by_join_code(client):
         create_seat=True,
     )
     db.session.commit()
-    seat_1 = Seat.query.filter_by(student_id=student.id, join_code='JC1').first()
-    seat_2 = Seat.query.filter_by(student_id=student.id, join_code='JC2').first()
+    seat_1 = Seat.query.filter_by(class_id=class_1.class_id, role="student").first()
+    seat_2 = Seat.query.filter_by(class_id=class_2.class_id, role="student").first()
     assert seat_1 is not None
     assert seat_2 is not None
 
     # 2. Add Transactions for JC1
     # Checking: +100
     # Savings: +50
-    db.session.add(Transaction(student_id=student.id, seat_id=seat_1.id, amount=100, account_type='checking', type='deposit', join_code='JC1', teacher_id=t1.id))
-    db.session.add(Transaction(student_id=student.id, seat_id=seat_1.id, amount=50, account_type='savings', type='deposit', join_code='JC1', teacher_id=t1.id))
+    db.session.add(Transaction(seat_id=seat_1.id, class_id=class_1.class_id, amount=100, account_type='checking', type='deposit', join_code='JC1', user_id=t1.id))
+    db.session.add(Transaction(seat_id=seat_1.id, class_id=class_1.class_id, amount=50, account_type='savings', type='deposit', join_code='JC1', user_id=t1.id))
     
     # 3. Add Transactions for JC2
     # Checking: +200
     # Savings: +100
-    db.session.add(Transaction(student_id=student.id, seat_id=seat_2.id, amount=200, account_type='checking', type='deposit', join_code='JC2', teacher_id=t1.id))
-    db.session.add(Transaction(student_id=student.id, seat_id=seat_2.id, amount=100, account_type='savings', type='deposit', join_code='JC2', teacher_id=t1.id))
+    db.session.add(Transaction(seat_id=seat_2.id, class_id=class_2.class_id, amount=200, account_type='checking', type='deposit', join_code='JC2', user_id=t1.id))
+    db.session.add(Transaction(seat_id=seat_2.id, class_id=class_2.class_id, amount=100, account_type='savings', type='deposit', join_code='JC2', user_id=t1.id))
     
     db.session.commit()
 
     # 4. Verify Context for JC1
     # Should ignore JC2 transactions
-    chk1, sav1 = calculate_scoped_balances(student, join_code='JC1', teacher_id=t1.id)
+    chk1, sav1 = get_available_balances(seat_1.id, class_1.class_id)
     assert chk1 == 100.0
     assert sav1 == 50.0
 
     # 5. Verify Context for JC2
     # Should ignore JC1 transactions
-    chk2, sav2 = calculate_scoped_balances(student, join_code='JC2', teacher_id=t1.id)
+    chk2, sav2 = get_available_balances(seat_2.id, class_2.class_id)
     assert chk2 == 200.0
     assert sav2 == 100.0

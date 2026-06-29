@@ -3,47 +3,43 @@ Tests for rent penalty reversal and cycle rate locking.
 """
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
+from uuid import uuid4
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.admin_context import login_admin
+from tests.helpers.class_scope import create_class_scope, make_student_seat
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from app.models import Admin, ClassEconomy, ClassMembership, IdentityProfile, RentPayment, RentSettings, RentWaiver, Seat, Student, Transaction
+from app.models import (
+    Admin, ClassEconomy, IdentityProfile, RentPayment,
+    RentSettings, RentWaiver, Seat, Student, Transaction, TransactionStatus,
+)
+from app.services.obligations_service import record_rent_payment, record_rent_waiver
+from app.services.obligations_service import get_paid_rent_assessments_for_cycle
 from app.routes.student import (
     RENT_PAYMENT_MATCH_TOLERANCE_SECONDS,
     _get_locked_rent_amount_for_join_code_cycle,
     _is_student_coverage_period_paid,
 )
 
-def _has_active_rent_waiver(student_id, join_code, coverage_due_date):
-    from app.models import ClassEconomy, Seat
+def _has_active_rent_waiver(seat_id, class_id, coverage_due_date):
     from app.routes.student import _has_active_rent_waiver_v2
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-    if not class_row:
-        return False
-    seat = Seat.query.filter_by(student_id=student_id, class_id=class_row.class_id).first()
-    if not seat:
-        return False
-    return _has_active_rent_waiver_v2(seat.id, class_row.class_id, coverage_due_date)
+    return _has_active_rent_waiver_v2(seat_id, class_id, coverage_due_date)
 
-def _is_student_coverage_period_paid_wrapper(settings, student_id, block, join_code, coverage_due_date):
-    from app.models import ClassEconomy, Seat
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-    if not class_row:
-        return False
-    seat = Seat.query.filter_by(student_id=student_id, class_id=class_row.class_id).first()
-    if not seat:
-        return False
-    return _is_student_coverage_period_paid(settings, seat.id, class_row.class_id, coverage_due_date)
+def _is_student_coverage_period_paid_wrapper(settings, seat_id, class_id, coverage_due_date):
+    return _is_student_coverage_period_paid(settings, seat_id, class_id, coverage_due_date)
 
 
-
-def _login_admin(client, admin_id, join_code):
-    with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin_id
-        sess['current_join_code'] = join_code
-        sess['is_system_admin'] = False
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+def _login_admin(client, admin, join_code, class_id):
+    from app.models import ClassEconomy
+    class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+    login_admin(
+        client,
+        admin.id,
+        join_code,
+        user_id=class_row.user_id if class_row else None,
+        class_id=class_id,
+    )
 
 
 def _make_admin_with_block(join_code="LOCKA1", block="A", suffix="rv"):
@@ -51,31 +47,16 @@ def _make_admin_with_block(join_code="LOCKA1", block="A", suffix="rv"):
     db.session.add(admin)
     db.session.flush()
 
-    identity = IdentityProfile(profile_type='student', first_name='Teacher', last_initial='T')
-    db.session.add(identity)
-    db.session.flush()
-
-    db.session.add(ClassEconomy(
-        join_code=join_code,
-        user_id=admin.id,
-        created_by_admin_id=admin.id,
-    ))
-    db.session.flush()
-    db.session.add(ClassMembership(join_code=join_code, admin_id=admin.id, role="admin"))
-    class_id = db.session.query(ClassEconomy.class_id).filter_by(join_code=join_code).scalar()
-    seat = Seat(
-        class_id=class_id,
+    class_row = create_class_scope(
+        teacher=admin,
         join_code=join_code,
         block=block,
-        block_identifier=block,
-        role="teacher",
+        create_claimed_teacher_block=True,
     )
-    db.session.add(seat)
     db.session.flush()
-    identity.seat_id = seat.id
+
     settings = RentSettings(
-        teacher_id=admin.id,
-        join_code=join_code,
+        class_id=class_row.class_id,
         block=block,
         is_enabled=True,
         rent_amount=Decimal("100.00"),
@@ -86,116 +67,139 @@ def _make_admin_with_block(join_code="LOCKA1", block="A", suffix="rv"):
     )
     db.session.add(settings)
     db.session.commit()
-    return admin, settings
+    version = settings.create_policy_version()
+    db.session.add(version)
+    db.session.flush()
+    settings.active_version_id = version.id
+    db.session.commit()
+    return admin, settings, class_row
 
 
-def _make_student(suffix="s"):
-    salt = get_random_salt()
-    student = Student(
+def _make_student_seat_in_class(class_row, block="A", suffix="s"):
+    """Create a Seat (with auto-User + IdentityProfile) enrolled in class_row."""
+    seat = make_student_seat(
+        class_id=class_row.class_id,
+        join_code=class_row.join_code,
+        block=block,
         first_name="Test",
-        last_initial="R",
-        block="A",
-        salt=salt,
-        username_hash=hash_username(f"student_{suffix}", salt),
-        pin_hash="test-pin",
+        last_name=suffix.upper(),
+    )
+    student = Student(
+        identity_profile=seat.identity_profile,
+        block=block,
+        salt=get_random_salt(),
+        username_hash=hash_username(f"student_{uuid4().hex[:8]}", get_random_salt()),
+        class_id=class_row.class_id,
+        join_code=class_row.join_code,
     )
     db.session.add(student)
     db.session.flush()
-    return student
+    return seat
 
 
-def _add_payment(student, admin_id, join_code, amount_paid, late_fee, payment_date, coverage_due_date):
-    payment = RentPayment(
-        student_id=student.id,
+def _add_payment(seat, class_row, amount_paid, late_fee, payment_date, coverage_due_date):
+    settings = RentSettings.query.filter_by(class_id=class_row.class_id).first()
+    payment = record_rent_payment(
+        seat_id=seat.id,
+        class_id=class_row.class_id,
         period="A",
-        join_code=join_code,
         amount_paid=amount_paid,
-        late_fee_charged=late_fee,
-        was_late=late_fee > Decimal("0.00"),
-        payment_date=payment_date,
+        period_month=coverage_due_date.month,
+        period_year=coverage_due_date.year,
         coverage_month=coverage_due_date.month,
         coverage_year=coverage_due_date.year,
+        was_late=late_fee > Decimal("0.00"),
+        late_fee_charged=late_fee,
+        coverage_start_time=coverage_due_date,
+        coverage_end_time=coverage_due_date,
+        transaction_id=None,
+        rent_policy_version_id=settings.active_version_id,
     )
-    db.session.add(payment)
+    payment.amount_snap = amount_paid
+    payment.satisfaction.satisfied_at = payment_date
+    db.session.add(payment.satisfaction)
     db.session.add(Transaction(
-        student_id=student.id,
-        teacher_id=admin_id,
-        join_code=join_code,
+        seat_id=seat.id,
+        class_id=class_row.class_id,
+        join_code=class_row.join_code,
         type="Rent Payment",
         amount=-amount_paid,
+        amount_cents=int(-amount_paid * 100),
         timestamp=payment_date,
         description="Rent payment",
+        status=TransactionStatus.POSTED,
+        account_type='checking',
     ))
     db.session.flush()
     return payment
 
 
-def test_locked_rate_uses_first_valid_payer_base(client):
-    admin, _settings = _make_admin_with_block("LOCKR1", suffix="first")
+def test_locked_rate_uses_active_policy_version(client):
+    admin, _settings, class_row = _make_admin_with_block("LOCKR1", suffix="first")
     coverage = datetime(2026, 3, 1, tzinfo=timezone.utc)
-    student_a = _make_student("a")
-    student_b = _make_student("b")
+    seat_a = _make_student_seat_in_class(class_row, suffix="a")
+    seat_b = _make_student_seat_in_class(class_row, suffix="b")
 
-    _add_payment(student_a, admin.id, "LOCKR1", Decimal("100.00"), Decimal("0.00"), datetime(2026, 3, 2, 8, 0, tzinfo=timezone.utc), coverage)
-    _add_payment(student_b, admin.id, "LOCKR1", Decimal("150.00"), Decimal("0.00"), datetime(2026, 3, 10, 8, 0, tzinfo=timezone.utc), coverage)
+    _settings.rent_amount = Decimal("250.00")
+    db.session.commit()
+
+    _add_payment(seat_a, class_row, Decimal("100.00"), Decimal("0.00"), datetime(2026, 3, 2, 8, 0, tzinfo=timezone.utc), coverage)
+    _add_payment(seat_b, class_row, Decimal("150.00"), Decimal("0.00"), datetime(2026, 3, 10, 8, 0, tzinfo=timezone.utc), coverage)
     db.session.commit()
 
     assert _get_locked_rent_amount_for_join_code_cycle("LOCKR1", coverage) == Decimal("100.00")
 
 
 def test_locked_rate_ignores_void_transactions(client):
-    admin, _settings = _make_admin_with_block("LOCKRV", suffix="void")
+    admin, _settings, class_row = _make_admin_with_block("LOCKRV", suffix="void")
     coverage = datetime(2026, 3, 1, tzinfo=timezone.utc)
-    student_a = _make_student("va")
-    student_b = _make_student("vb")
+    seat_a = _make_student_seat_in_class(class_row, suffix="va")
+    seat_b = _make_student_seat_in_class(class_row, suffix="vb")
 
-    _add_payment(student_a, admin.id, "LOCKRV", Decimal("80.00"), Decimal("0.00"), datetime(2026, 3, 2, 8, 0, tzinfo=timezone.utc), coverage)
-    void_txn = Transaction.query.filter_by(student_id=student_a.id, join_code="LOCKRV", type="Rent Payment").first()
+    _add_payment(seat_a, class_row, Decimal("80.00"), Decimal("0.00"), datetime(2026, 3, 2, 8, 0, tzinfo=timezone.utc), coverage)
+    void_txn = Transaction.query.filter_by(seat_id=seat_a.id, join_code="LOCKRV", type="Rent Payment").first()
     void_txn.is_void = True
-    _add_payment(student_b, admin.id, "LOCKRV", Decimal("120.00"), Decimal("0.00"), datetime(2026, 3, 3, 8, 0, tzinfo=timezone.utc), coverage)
+    _add_payment(seat_b, class_row, Decimal("120.00"), Decimal("0.00"), datetime(2026, 3, 3, 8, 0, tzinfo=timezone.utc), coverage)
     db.session.commit()
 
-    assert _get_locked_rent_amount_for_join_code_cycle("LOCKRV", coverage) == Decimal("120.00")
+    assert _get_locked_rent_amount_for_join_code_cycle("LOCKRV", coverage) == Decimal("100.00")
 
 
 def test_waiver_marks_coverage_period_as_paid(client):
-    admin, settings = _make_admin_with_block("WAIV1", suffix="waiver")
-    student = _make_student("waived")
+    admin, settings, class_row = _make_admin_with_block("WAIV1", suffix="waiver")
+    seat = _make_student_seat_in_class(class_row, suffix="waived")
     coverage = datetime(2026, 3, 1, tzinfo=timezone.utc)
-    db.session.add(RentWaiver(
-        student_id=student.id,
-        join_code="WAIV1",
+    record_rent_waiver(
+        seat_id=seat.id,
+        class_id=class_row.class_id,
         waiver_start_date=coverage - timedelta(days=1),
         waiver_end_date=coverage + timedelta(days=5),
         periods_count=1,
-        created_by_teacher_id=admin.id,
-    ))
+    )
     db.session.commit()
 
-    assert _has_active_rent_waiver(student.id, "WAIV1", coverage) is True
-    assert _is_student_coverage_period_paid_wrapper(settings, student.id, "A", "WAIV1", coverage) is True
+    assert _has_active_rent_waiver(seat.id, class_row.class_id, coverage) is True
+    assert _is_student_coverage_period_paid_wrapper(settings, seat.id, class_row.class_id, coverage) is True
 
 
 def test_reverse_cycle_penalties_refunds_only_misapplied_fees(client, monkeypatch):
-    admin, settings = _make_admin_with_block("REVFEE", suffix="reverse")
+    admin, settings, class_row = _make_admin_with_block("REVFEE", suffix="reverse")
     coverage = datetime(2026, 3, 1, tzinfo=timezone.utc)
     monkeypatch.setattr('app.routes.admin.utc_now', lambda: datetime(2026, 3, 15, tzinfo=timezone.utc))
-    on_time_student = _make_student("ontime")
-    late_student = _make_student("late")
+    seat_on_time = _make_student_seat_in_class(class_row, suffix="ontime")
+    seat_late = _make_student_seat_in_class(class_row, suffix="late")
 
     _add_payment(
-        on_time_student,
-        admin.id,
-        "REVFEE",
+        seat_on_time,
+        class_row,
         Decimal("110.00"),
         Decimal("10.00"),
         datetime(2026, 3, 2, 8, 0, tzinfo=timezone.utc),
         coverage,
     )
     _add_payment(
-        late_student,
-        admin.id,
-        "REVFEE",
+        seat_late,
+        class_row,
         Decimal("110.00"),
         Decimal("10.00"),
         datetime(2026, 3, 10, 8, 0, tzinfo=timezone.utc),
@@ -207,7 +211,14 @@ def test_reverse_cycle_penalties_refunds_only_misapplied_fees(client, monkeypatc
     settings.updated_at = datetime(2026, 3, 6, 12, 0, tzinfo=timezone.utc)
     db.session.commit()
 
-    _login_admin(client, admin.id, "REVFEE")
+    with client.session_transaction() as sess:
+        sess['user_id'] = class_row.user_id
+        sess['current_class_id'] = class_row.class_id
+        sess['current_join_code'] = class_row.join_code
+        sess['class_id'] = class_row.class_id
+        sess['is_admin'] = True
+        sess['admin_id'] = admin.id
+    _login_admin(client, admin, "REVFEE", class_row.class_id)
     response = client.post('/admin/rent/reverse-cycle-penalties', data={'settings_block': 'A'})
 
     assert response.status_code == 302
@@ -217,12 +228,28 @@ def test_reverse_cycle_penalties_refunds_only_misapplied_fees(client, monkeypatc
         type="Rent Late Fee Reversal",
     ).all()
     assert len(refund_txns) == 1
-    assert refund_txns[0].student_id == on_time_student.id
+    assert refund_txns[0].seat_id == seat_on_time.id
     assert refund_txns[0].amount == Decimal("10.00")
 
-    on_time_payment = RentPayment.query.filter_by(student_id=on_time_student.id, join_code="REVFEE").first()
-    late_payment = RentPayment.query.filter_by(student_id=late_student.id, join_code="REVFEE").first()
-    assert on_time_payment.late_fee_charged == Decimal("0.00")
-    assert on_time_payment.was_late is False
-    assert late_payment.late_fee_charged == Decimal("10.00")
-    assert late_payment.was_late is True
+    on_time_assessment = next(
+        assessment for assessment in get_paid_rent_assessments_for_cycle(
+            class_row.class_id,
+            coverage.month,
+            coverage.year,
+            seat_ids=[seat_on_time.id],
+        )
+        if assessment.seat_id == seat_on_time.id
+    )
+    late_assessment = next(
+        assessment for assessment in get_paid_rent_assessments_for_cycle(
+            class_row.class_id,
+            coverage.month,
+            coverage.year,
+            seat_ids=[seat_late.id],
+        )
+        if assessment.seat_id == seat_late.id
+    )
+    assert on_time_assessment.satisfaction.late_fee_charged == Decimal("0.00")
+    assert on_time_assessment.satisfaction.was_late is False
+    assert late_assessment.satisfaction.late_fee_charged == Decimal("10.00")
+    assert late_assessment.satisfaction.was_late is True

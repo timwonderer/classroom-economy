@@ -6,76 +6,72 @@ Tests the following features:
 2. Dynamic color coding based on days until rent is due
 3. Status text changes based on payment status and due date proximity
 """
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.class_scope import create_class_scope, make_student_seat
 import pytest
 from datetime import datetime, timezone, timedelta
-import os
-
-from werkzeug.security import generate_password_hash
+from uuid import uuid4
 
 from app import db
-from app.models import Admin, Student, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus, Seat, IdentityProfile
+from app.models import (
+    Admin, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus,
+    Seat, IdentityProfile, Student, User, UserRole,
+)
 from app.hash_utils import get_random_salt, hash_username
+import secrets
 
 
 @pytest.fixture
 def setup_rent_with_items(client):
-    """Create teacher, student, rent settings, and rent items."""
+    """Create teacher, student seat, rent settings, and rent items."""
     teacher = make_admin("test_teacher", "secret123")
     db.session.add(teacher)
-    db.session.commit()
+    db.session.flush()
 
-    salt = get_random_salt()
-    student = Student(
-        first_name="Test",
-        last_initial="S",
+    class_row = create_class_scope(
+        teacher=teacher,
+        join_code="TESTA",
         block="A",
-        salt=salt,
-        username_hash=hash_username("teststudent", salt),
-        pin_hash=generate_password_hash("1234")
+        display_name='Test Rent Class',
+        create_claimed_teacher_block=True,
+    )
+    db.session.flush()
+
+    student_seat = make_student_seat(
+        class_id=class_row.class_id,
+        join_code="TESTA",
+        block="A",
+        first_name="Test",
+        last_name="S",
+    )
+    student_user = User(
+        user_role=UserRole.STUDENT,
+        username_hash=f"student_{uuid4().hex[:8]}",
+        username_lookup_hash=f"student_lookup_{uuid4().hex[:8]}",
+        has_completed_setup=True,
+    )
+    db.session.add(student_user)
+    db.session.flush()
+    student_user.current_session_nonce = secrets.token_urlsafe(32)
+    student_user.last_active_class_id = class_row.class_id
+    student_seat.user_id = student_user.id
+    student_profile = student_seat.identity_profile
+    student = Student(
+        identity_profile=student_profile,
+        block="A",
+        salt=get_random_salt(),
+        username_hash=hash_username("test_student", get_random_salt()),
+        class_id=class_row.class_id,
+        join_code="TESTA",
     )
     db.session.add(student)
-    db.session.commit()
-
-    # Link student to teacher
-    from app.models import StudentTeacher
-    st = StudentTeacher(student_id=student.id, teacher_id=teacher.id)
-    db.session.add(st)
-    db.session.commit()
-
-    # Create ClassEconomy first for FK constraint
-    economy = ClassEconomy(
-        join_code="TESTA",
-        user_id=teacher.id,
-        display_name='Test Rent Class',
-        status='active',
-        created_by_admin_id=teacher.id
-    )
-    db.session.add(economy)
     db.session.flush()
+    student_profile.seat_id = student_seat.id
 
-    seat = Seat(student_id=student.id, join_code="TESTA", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-
-    db.session.add(seat)
-
-    db.session.flush()
-
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Test", last_initial="S"))
-    db.session.add(seat)
-    db.session.add(Seat(
-        student_id=student.id,
-        class_id=economy.class_id,
-        join_code="TESTA",
-        block="A",
-        role="student",
-    ))
-    db.session.commit()
-
-    # Create rent settings (join-code scoped)
+    # Create rent settings (class-scoped)
     now = datetime.now(timezone.utc)
     rent_settings = RentSettings(
-        teacher_id=teacher.id,
-        join_code="TESTA",
+        class_id=class_row.class_id,
         block="A",
         is_enabled=True,
         rent_amount=50.0,
@@ -85,6 +81,11 @@ def setup_rent_with_items(client):
         bill_preview_days=5,
     )
     db.session.add(rent_settings)
+    db.session.commit()
+    version = rent_settings.create_policy_version()
+    db.session.add(version)
+    db.session.flush()
+    rent_settings.active_version_id = version.id
     db.session.commit()
 
     # Create rent items
@@ -111,25 +112,39 @@ def setup_rent_with_items(client):
 
     return {
         'teacher': teacher,
+        'student_seat': student_seat,
         'student': student,
+        'user_id': student_user.id,
         'rent_settings': rent_settings,
         'items': [item1, item2],
-        'join_code': "TESTA"
+        'join_code': "TESTA",
+        'class_row': class_row,
     }
+
+
+def _login_student(client, student_seat, join_code):
+    with client.session_transaction() as sess:
+        sess['seat_id'] = student_seat.id
+        sess['current_seat_id'] = student_seat.id
+        sess['login_time'] = datetime.now(timezone.utc).isoformat()
+        sess['current_join_code'] = join_code
+        if student_seat.user_id:
+            sess['user_id'] = student_seat.user_id
+            user = db.session.get(User, student_seat.user_id)
+            sess['current_session_nonce'] = user.current_session_nonce
+            sess['current_class_id'] = student_seat.class_id
+            sess['class_id'] = student_seat.class_id
 
 
 def test_rent_items_display_before_due_date(client, setup_rent_with_items):
     """Test that rent items are visible even before the rent is due."""
     data = setup_rent_with_items
-    
-    with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+
+    _login_student(client, data['student_seat'], data['join_code'])
 
     response = client.get('/student/rent')
     assert response.status_code == 200
-    
+
     # Check that rent items are displayed
     assert b'Desk' in response.data
     assert b'Locker' in response.data
@@ -140,20 +155,17 @@ def test_rent_items_display_before_due_date(client, setup_rent_with_items):
 def test_rent_items_display_after_due_date(client, setup_rent_with_items):
     """Test that rent items are still visible after the rent is due."""
     data = setup_rent_with_items
-    
+
     # Update rent settings to have due date in the past
     now = datetime.now(timezone.utc)
     data['rent_settings'].first_rent_due_date = now - timedelta(days=2)
     db.session.commit()
-    
-    with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+
+    _login_student(client, data['student_seat'], data['join_code'])
 
     response = client.get('/student/rent')
     assert response.status_code == 200
-    
+
     # Check that rent items are still displayed
     assert b'Desk' in response.data
     assert b'Locker' in response.data
@@ -170,13 +182,13 @@ def test_overdue_rent_payment_uses_coverage_month_in_transaction_description(cli
     data['rent_settings'].bill_preview_days = 14
     data['rent_settings'].late_penalty_amount = 20
     data['rent_settings'].rent_amount = 570
-    data['student'].is_rent_enabled = True
     db.session.add(
         Transaction(
-            student_id=data['student'].id,
-            teacher_id=data['teacher'].id,
+            seat_id=data['student_seat'].id,
+            class_id=data['class_row'].class_id,
             join_code=data['join_code'],
             amount=1000,
+            amount_cents=100000,
             account_type='checking',
             status=TransactionStatus.POSTED,
             type='Deposit',
@@ -187,16 +199,13 @@ def test_overdue_rent_payment_uses_coverage_month_in_transaction_description(cli
 
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
 
-    with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+    _login_student(client, data['student_seat'], data['join_code'])
 
     response = client.post('/student/rent/pay/A', follow_redirects=False)
     assert response.status_code == 302
 
     rent_txn = Transaction.query.filter_by(
-        student_id=data['student'].id,
+        seat_id=data['student_seat'].id,
         join_code=data['join_code'],
         type='Rent Payment',
     ).order_by(Transaction.id.desc()).first()
@@ -215,15 +224,11 @@ def test_overdue_current_period_does_not_show_future_due_countdown(client, setup
     data['rent_settings'].bill_preview_enabled = True
     data['rent_settings'].bill_preview_days = 20
     data['rent_settings'].grace_period_days = 5  # Keep this within grace to isolate due-date selection
-    data['student'].is_rent_enabled = True
     db.session.commit()
 
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
 
-    with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+    _login_student(client, data['student_seat'], data['join_code'])
 
     response = client.get('/student/rent')
     assert response.status_code == 200
@@ -240,15 +245,12 @@ def test_days_until_due_calculation(client, setup_rent_with_items):
     data['rent_settings'].bill_preview_days = 12
     data['rent_settings'].first_rent_due_date = now + timedelta(days=10, hours=1)
     db.session.commit()
-    
-    with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+
+    _login_student(client, data['student_seat'], data['join_code'])
 
     response = client.get('/student/rent')
     assert response.status_code == 200
-    
+
     # Since the rent is due in 10 days (from setup_rent_with_items)
     # We should see some indication that it's more than 7 days away
     # The status should show "Rent will be due in X days" (>7 days uses warning color)
@@ -258,22 +260,19 @@ def test_days_until_due_calculation(client, setup_rent_with_items):
 def test_status_text_more_than_7_days(client, setup_rent_with_items):
     """Test status text when rent is more than 7 days away."""
     data = setup_rent_with_items
-    
+
     # Set rent due date to 8 days from now (within preview period so it's active)
     now = datetime.now(timezone.utc)
     data['rent_settings'].first_rent_due_date = now + timedelta(days=8, hours=1)
     data['rent_settings'].bill_preview_enabled = True
     data['rent_settings'].bill_preview_days = 9  # Activate preview before the due date
     db.session.commit()
-    
-    with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+
+    _login_student(client, data['student_seat'], data['join_code'])
 
     response = client.get('/student/rent')
     assert response.status_code == 200
-    
+
     # Should display "Rent will be due in X days" with warning color
     # Since we're 8 days before due, this should be active and show the countdown
     assert b'Rent will be due in 8 days' in response.data
@@ -282,20 +281,17 @@ def test_status_text_more_than_7_days(client, setup_rent_with_items):
 def test_status_text_between_3_and_7_days(client, setup_rent_with_items):
     """Test status text when rent is between 3 and 7 days away (inclusive)."""
     data = setup_rent_with_items
-    
+
     # Set rent due date to 3 days from now
     now = datetime.now(timezone.utc)
     data['rent_settings'].first_rent_due_date = now + timedelta(days=3, hours=1)
     db.session.commit()
-    
-    with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+
+    _login_student(client, data['student_seat'], data['join_code'])
 
     response = client.get('/student/rent')
     assert response.status_code == 200
-    
+
     # Should display "Rent due in X days" with light red color
     assert b'Rent due in 3 days' in response.data
 
@@ -303,20 +299,17 @@ def test_status_text_between_3_and_7_days(client, setup_rent_with_items):
 def test_status_text_within_2_days(client, setup_rent_with_items):
     """Test status text when rent is within 2 days."""
     data = setup_rent_with_items
-    
+
     # Set rent due date to 2 days from now
     now = datetime.now(timezone.utc)
     data['rent_settings'].first_rent_due_date = now + timedelta(days=2, hours=1)
     db.session.commit()
-    
-    with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+
+    _login_student(client, data['student_seat'], data['join_code'])
 
     response = client.get('/student/rent')
     assert response.status_code == 200
-    
+
     # Should display "Due, pay soon" with crimson color
     assert b'Due, pay soon' in response.data
 
@@ -324,22 +317,19 @@ def test_status_text_within_2_days(client, setup_rent_with_items):
 def test_status_text_past_due(client, setup_rent_with_items):
     """Test status text when rent is past due."""
     data = setup_rent_with_items
-    
+
     # Set rent due date to 5 days ago (past grace period)
     now = datetime.now(timezone.utc)
     due_date = now - timedelta(days=5)
     data['rent_settings'].first_rent_due_date = due_date
     data['rent_settings'].grace_period_days = 0
     db.session.commit()
-    
-    with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+
+    _login_student(client, data['student_seat'], data['join_code'])
 
     response = client.get('/student/rent')
     assert response.status_code == 200
-    
+
     # Should display "Past due, pay now" with black color
     assert b'Past due, pay now' in response.data
 
@@ -347,19 +337,16 @@ def test_status_text_past_due(client, setup_rent_with_items):
 def test_status_text_due_today(client, setup_rent_with_items):
     """Test status text when rent is due today."""
     data = setup_rent_with_items
-    
+
     now = datetime.now(timezone.utc)
     data['rent_settings'].first_rent_due_date = now + timedelta(hours=1)
     db.session.commit()
-    
-    with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+
+    _login_student(client, data['student_seat'], data['join_code'])
 
     response = client.get('/student/rent')
     assert response.status_code == 200
-    
+
     # Due today should show the urgent state
     assert b'Due, pay soon' in response.data
 
@@ -367,7 +354,7 @@ def test_status_text_due_today(client, setup_rent_with_items):
 def test_status_text_no_rent_yet(client, setup_rent_with_items):
     """Test status text when rent is not yet active (before first due date and preview period)."""
     data = setup_rent_with_items
-    
+
     # Set rent due date to 20 days from now with 5-day preview
     # So we're more than 5 days before the due date
     now = datetime.now(timezone.utc)
@@ -375,15 +362,12 @@ def test_status_text_no_rent_yet(client, setup_rent_with_items):
     data['rent_settings'].bill_preview_enabled = True
     data['rent_settings'].bill_preview_days = 5
     db.session.commit()
-    
-    with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+
+    _login_student(client, data['student_seat'], data['join_code'])
 
     response = client.get('/student/rent')
     assert response.status_code == 200
-    
+
     # Should display "No rent is due yet" with blue color
     assert b'No rent is due yet' in response.data or b'Not yet due' in response.data
 
@@ -391,15 +375,12 @@ def test_status_text_no_rent_yet(client, setup_rent_with_items):
 def test_rent_items_show_store_availability(client, setup_rent_with_items):
     """Test that rent items show store availability information."""
     data = setup_rent_with_items
-    
-    with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+
+    _login_student(client, data['student_seat'], data['join_code'])
 
     response = client.get('/student/rent')
     assert response.status_code == 200
-    
+
     # Check that store availability info is shown
     assert b'Available separately in store' in response.data
     assert b'$15.00' in response.data  # Desk price
@@ -417,10 +398,7 @@ def test_incremental_rent_form_shows_even_when_full_balance_is_short(client, set
     data['rent_settings'].allow_incremental_payment = True
     db.session.commit()
 
-    with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+    _login_student(client, data['student_seat'], data['join_code'])
 
     response = client.get('/student/rent')
     assert response.status_code == 200

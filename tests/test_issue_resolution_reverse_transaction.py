@@ -1,16 +1,11 @@
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.class_scope import create_class_scope, make_student_with_seat
 from app.extensions import db
-from app.models import Admin, ClassEconomy, IdentityProfile, Issue, IssueCategory, Student, StudentTeacher, Transaction, TransactionStatus
-
-
-def _login_admin(client, admin_id):
-    with client.session_transaction() as sess:
-        sess["admin_id"] = admin_id
-        sess["is_admin"] = True
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+from app.models import ClassEconomy, Transaction, TransactionStatus
+from app.services import ledger_service
 
 
 def _build_issue_context():
@@ -18,34 +13,26 @@ def _build_issue_context():
     db.session.add(teacher)
     db.session.flush()
 
-    profile = IdentityProfile(profile_type="student", first_name="Ivy", last_name="R")
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b"salt")
-    db.session.add(student)
-    db.session.flush()
-
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
-    db.session.add_all([
-        ClassEconomy(join_code="ISSUEA1", user_id=teacher.id, status="active", created_by_admin_id=teacher.id),
-        ClassEconomy(join_code="ISSUEB1", user_id=teacher.id, status="active", created_by_admin_id=teacher.id),
-    ])
-    category = IssueCategory(
-        name=f"Issue Reverse Category {datetime.now(timezone.utc).isoformat()}",
-        category_type="transaction",
-        is_active=True,
+    student, _seat = make_student_with_seat(
+        join_code="ISSUEA1",
+        block="A",
+        first_name="Ivy",
+        last_name="R",
     )
-    db.session.add(category)
-    db.session.commit()
-    return teacher, student, category
+
+    class_a = create_class_scope(teacher=teacher, join_code="ISSUEA1", student=student, block="A")
+    create_class_scope(teacher=teacher, join_code="ISSUEB1", student=student, block="B")
+    db.session.flush()
+
+    return teacher, student, class_a.class_id
 
 
-def test_issue_reverse_transaction_creates_reversal_for_posted_tx(client):
-    teacher, student, category = _build_issue_context()
+def test_compensate_posted_transaction_creates_seat_scoped_reversal():
+    teacher, student, class_id = _build_issue_context()
 
     tx = Transaction(
-        student_id=student.id,
-        teacher_id=teacher.id,
+        seat_id=student.identity_profile.seat_id,
+        class_id=class_id,
         join_code="ISSUEA1",
         amount=Decimal("30.00"),
         account_type="checking",
@@ -56,46 +43,31 @@ def test_issue_reverse_transaction_creates_reversal_for_posted_tx(client):
     db.session.add(tx)
     db.session.flush()
 
-    issue = Issue(
-        student_id=student.id,
-        actor_public_id="seat-public-issue-1",
-        teacher_id=teacher.id,
-        join_code="ISSUEA1",
-        category_id=category.id,
-        issue_type="transaction",
-        student_explanation="Please reverse this.",
-        related_transaction_id=tx.id,
+    reversal_tx = ledger_service.compensate_posted_transaction(
+        tx,
+        description="Issue reversal for posted transaction",
+        compensation_type="issue_reversal",
     )
-    db.session.add(issue)
-    db.session.commit()
-
-    _login_admin(client, teacher.id)
-    response = client.post(
-        f"/admin/issues/{issue.id}/resolve",
-        data={"action_type": "reverse_transaction", "teacher_notes": "Valid request"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 302
-
-    db.session.refresh(tx)
-    assert tx.is_void is True
     assert tx.status == TransactionStatus.POSTED
-    assert tx.reversal_transaction_id is not None
+    assert tx.reversal_transaction_id == reversal_tx.id
 
     reversal = db.session.get(Transaction, tx.reversal_transaction_id)
     assert reversal is not None
     assert reversal.original_transaction_id == tx.id
     assert reversal.status == TransactionStatus.PENDING
     assert reversal.join_code == "ISSUEA1"
+    assert reversal.class_id == class_id
+    assert reversal.seat_id == student.identity_profile.seat_id
     assert reversal.amount == Decimal("-30.00")
+    db.session.commit()
 
 
-def test_issue_reverse_transaction_rejects_scope_mismatch(client):
-    teacher, student, category = _build_issue_context()
+def test_compensate_posted_transaction_preserves_class_scope():
+    teacher, student, class_id = _build_issue_context()
 
     tx = Transaction(
-        student_id=student.id,
-        teacher_id=teacher.id,
+        seat_id=student.identity_profile.seat_id,
+        class_id=ClassEconomy.query.filter_by(join_code="ISSUEB1").first().class_id,
         join_code="ISSUEB1",
         amount=Decimal("20.00"),
         account_type="checking",
@@ -106,28 +78,13 @@ def test_issue_reverse_transaction_rejects_scope_mismatch(client):
     db.session.add(tx)
     db.session.flush()
 
-    issue = Issue(
-        student_id=student.id,
-        actor_public_id="seat-public-issue-2",
-        teacher_id=teacher.id,
-        join_code="ISSUEA1",
-        category_id=category.id,
-        issue_type="transaction",
-        student_explanation="Please reverse this.",
-        related_transaction_id=tx.id,
+    reversal_tx = ledger_service.compensate_posted_transaction(
+        tx,
+        description="Issue reversal for mismatched class",
+        compensation_type="issue_reversal",
     )
-    db.session.add(issue)
+    assert reversal_tx.class_id == tx.class_id
+    assert reversal_tx.join_code == "ISSUEB1"
+    assert reversal_tx.seat_id == student.identity_profile.seat_id
+    assert reversal_tx.amount == Decimal("-20.00")
     db.session.commit()
-
-    _login_admin(client, teacher.id)
-    response = client.post(
-        f"/admin/issues/{issue.id}/resolve",
-        data={"action_type": "reverse_transaction", "teacher_notes": "Attempt mismatch"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 302
-    assert f"/admin/issues/{issue.id}" in response.location
-
-    db.session.refresh(tx)
-    assert tx.is_void is False
-    assert tx.reversal_transaction_id is None
