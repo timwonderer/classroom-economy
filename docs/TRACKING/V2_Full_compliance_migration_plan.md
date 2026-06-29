@@ -93,7 +93,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [x] Complete Wave 6 attendance table migration (`tap_events` lineage removed; canonical reads/writes and legacy table drop landed)
 - [ ] Complete Wave 7 obligations schema migration while preserving already-landed prepay/temporal behavior
 - [ ] Deferred follow-up from commit 2 cutover: finish rent post-payment linkage cleanup so hall-pass reconciliation no longer depends on legacy seat/student assumptions or display-only block metadata. The remaining rent persistence smoke failure is out of scope for this PR and will be merged as a known follow-up.
-- [ ] Complete Wave 8 store schema migration and remove remaining teacher-scoped enforcement remnants
+- [x] Complete Wave 8 store schema migration and remove remaining teacher-scoped enforcement remnants
 - [ ] Complete Wave 9 operations + interpretation canonical migration
 - [ ] Complete Wave 10 support domain canonical migration
 - [ ] Integrate `DOM-ECON-000_ECONOMY_GOVERNANCE_FOUNDATION.md` into Waves 4-9 implementation scope (policy config, ledger/solvency math, timezone-safe recurring execution, and aggregate analytics) without creating a parallel migration track
@@ -112,6 +112,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - Session note 2026-06-25: added explicit guardrail coverage that source-checks the newly FEAT-owned dead-route mutation entrypoints and the admin GET read-only surface. This keeps the canonical v2 contract pinned without reintroducing legacy compatibility assumptions.
 - Session note 2026-06-25: moved the live student rent read path off direct `RentPayment` queries and onto canonical obligation helpers (`get_paid_rent_assessments_for_cycle`, `get_rent_payment_history`). This closes the remaining runtime rent read surface in `app/routes/student.py` so the route reads through the v2 assessment/lifecycle model only.
 - Session note 2026-06-25: pushed the Wave 7 admin rent cleanup further by converting the admin rent privilege cache and cycle-reversal flow to canonical obligation helpers. The remaining `RentPayment` references are now concentrated in report/delete maintenance paths that need separate shape-preserving treatment.
+- Session note 2026-06-29: completed the final V2 Context Resolution Audit by eliminating the remaining Class C violations (internal context re-resolution) in `student.py` and `api.py`. `DOM-IDEN-006` canonical context single-resolution is now fully enforced across the boundary layer.
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 
 #### Deferred-but-tracked architecture items
