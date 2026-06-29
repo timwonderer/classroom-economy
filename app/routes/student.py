@@ -15,7 +15,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlparse
 
-from flask import Blueprint, redirect, url_for, flash, request, session, jsonify, current_app, has_app_context, abort
+from flask import Blueprint, redirect, url_for, flash, request, session, jsonify, current_app, has_app_context, abort, g
 from sqlalchemy import or_, func, select, and_
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.security import generate_password_hash, check_password_hash
