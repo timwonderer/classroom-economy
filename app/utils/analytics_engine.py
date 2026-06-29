@@ -71,23 +71,17 @@ class AnalyticsEngine:
     - Bias toward actionable interpretation
     """
     
-    def __init__(self, class_id: str, join_code: str = None):
+    def __init__(self, class_id: str):
         """
         Initialize analytics engine for a specific class economy.
 
         Args:
             class_id: The canonical class identifier (UUID).
-                      Legacy callers may pass teacher_id here with join_code —
-                      if join_code is provided, class_id is resolved from it.
-            join_code: Deprecated — if provided, resolves class_id from join_code
         """
         from app.models import ClassEconomy
-        if join_code is not None:
-            class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-        else:
-            class_row = ClassEconomy.query.get(class_id)
+        class_row = ClassEconomy.query.get(class_id)
         if not class_row:
-            raise ValueError(f"Invalid class lookup: class_id={class_id}, join_code={join_code}")
+            raise ValueError(f"Invalid class lookup: class_id={class_id}")
 
         self.class_id = class_row.class_id
         self.teacher_id = class_row.user_id

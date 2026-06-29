@@ -665,7 +665,10 @@ def create_app():
             # Imports are here to avoid circular dependencies
             from app.models import FeatureSettings
             from app.routes.student import get_feature_settings_for_student
-            return {'feature_settings': get_feature_settings_for_student()}
+            from flask import g
+            
+            context = getattr(g, "canonical_context", None)
+            return {'feature_settings': get_feature_settings_for_student(context)}
         except Exception as e:
             # This can happen during `flask db` commands before the table exists.
             # Fallback to defaults to avoid breaking CLI commands.

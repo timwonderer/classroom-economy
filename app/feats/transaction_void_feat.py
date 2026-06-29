@@ -7,7 +7,7 @@ from decimal import Decimal
 from app.extensions import db
 from app.models import InsurancePolicy, InsuranceEnrollment, StoreItem, StorePurchase, Transaction, TransactionStatus
 from app.services import ledger_service, obligations_service
-from app.utils.seat_scope import get_seat_ids_for_student_join, seat_scoped_filter
+from app.utils.seat_scope import seat_scoped_filter
 from app.utils.time import ensure_utc, utc_now
 from app.utils.transaction_idempotency import void_refund_key
 

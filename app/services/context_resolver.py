@@ -46,6 +46,10 @@ class CanonicalContext:
     seat_id: int
     actor_role: str
 
+    @property
+    def role(self):
+        return self.actor_role
+
     def __getattr__(self, name):
         forbidden_attrs = {"join_code", "teacher_id", "block", "section", "student_id"}
         if name in forbidden_attrs:
@@ -57,6 +61,10 @@ class CanonicalContext:
 class BoundaryContext:
     user_id: int
     actor_role: str  # "teacher" or "sysadmin"
+
+    @property
+    def role(self):
+        return self.actor_role
 
     def __getattr__(self, name):
         if name in {"class_id", "seat_id"}:
@@ -162,4 +170,3 @@ def _allow_teacher_context_exception(user_id: object) -> bool:
         return True
 
     return False
-

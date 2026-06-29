@@ -659,10 +659,13 @@ def get_cycle_rent_amount(
 ) -> "Decimal | None":
     """Return the policy-defined rent amount for a cycle.
 
-    Reads from the ``RentPolicyVersion`` attached to any assessment in the
-    cycle.  Returns None only if no assessments exist for the cycle yet.
+    Reads from the class's active ``RentPolicyVersion`` on ``RentSettings``.
+    This is the canonical source of truth for the locked cycle rate.
     """
-    return get_cycle_rent_amount_from_version(class_id, coverage_month, coverage_year)
+    version = resolve_active_rent_policy_version(class_id)
+    if version is None:
+        return None
+    return version.rent_amount
 
 
 # ---------------------------------------------------------------------------
@@ -742,12 +745,7 @@ def get_cycle_rent_amount_from_version(
     coverage_month: int,
     coverage_year: int,
 ) -> "Decimal | None":
-    """Return the policy-defined rent amount for a cycle from assessment versions.
-
-    Looks for any assessment in the cycle that has a ``rent_policy_version_id``
-    and returns the version's ``rent_amount``.  Returns None if no versioned
-    assessments exist (legacy data).
-    """
+    """Backward-compatible helper for deriving a cycle amount from assessments."""
     assessment = (
         ObligationAssessment.query
         .filter(

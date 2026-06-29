@@ -114,7 +114,7 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         )
 
         # 1. Identify affected Seats and Students for this class
-        teacher_id = economy.teacher_id
+        teacher_id = economy.user_id
         affected_seat_blocks = [
             b for (b,) in db.session.query(Seat.block).filter(
                 Seat.class_id == class_id,

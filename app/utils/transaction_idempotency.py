@@ -96,7 +96,6 @@ def create_idempotent_transaction(*, idempotency_key, **transaction_kwargs):
 
     existing = get_idempotent_transaction(
         idempotency_key,
-        join_code=transaction_kwargs.get("join_code"),
         class_id=transaction_kwargs.get("class_id"),
         seat_id=transaction_kwargs.get("seat_id"),
         type=transaction_type,
@@ -116,7 +115,6 @@ def create_idempotent_transaction(*, idempotency_key, **transaction_kwargs):
     except IntegrityError:
         existing = get_idempotent_transaction(
             idempotency_key,
-            join_code=transaction_kwargs.get("join_code"),
             class_id=transaction_kwargs.get("class_id"),
             seat_id=transaction_kwargs.get("seat_id"),
             type=transaction_type,

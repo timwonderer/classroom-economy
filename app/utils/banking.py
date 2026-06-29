@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from app import db
 from app.models import Transaction, TransactionStatus, BalanceCache, AccountType, ClassEconomy, Seat
 from app.utils.time import utc_now
-from app.utils.seat_scope import get_seat_ids_for_student_join, transaction_scope_filter
+from app.utils.seat_scope import get_seat_ids_for_student_class, transaction_scope_filter
 
 logger = logging.getLogger(__name__)
 
@@ -103,49 +103,21 @@ def settle_balances(seat_id: int, class_id: str) -> None:
             .filter_by(class_id=class_id)
             .first()
         )
-        if class_row:
-            # Canonical invocation: settle_balances(seat_id, class_id)
-            canonical_class_id = str(class_row[0])
-            resolved_join_code = class_row[1]
-            resolved_seat_id = original_scope_id
-            seat = db.session.get(Seat, resolved_seat_id)
-            if seat:
-                from app.models import IdentityProfile, Student
-                ip = IdentityProfile.query.filter_by(seat_id=seat.id).first()
-                student = Student.query.filter_by(identity_id=ip.id).first() if ip else None
-                resolved_student_id = student.id if student else None
-                resolved_join_code = seat.join_code or resolved_join_code
-            scope_filter = (Transaction.seat_id == resolved_seat_id)
-        else:
-            # Transitional invocation: settle_balances(student_id, join_code)
-            resolved_student_id = original_scope_id
-            resolved_join_code = class_id
-            seat_ids = get_seat_ids_for_student_join(resolved_student_id, resolved_join_code)
-            resolved_seat_id = seat_ids[0] if seat_ids else None
-            canonical_class_id = None
-            if resolved_seat_id:
-                seat_row = (
-                    Seat.query.with_entities(Seat.class_id, Seat.join_code)
-                    .filter_by(id=resolved_seat_id)
-                    .first()
-                )
-                if seat_row and seat_row[0]:
-                    canonical_class_id = str(seat_row[0])
-                    resolved_join_code = seat_row[1] or resolved_join_code
-            if not canonical_class_id:
-                class_lookup = (
-                    ClassEconomy.query
-                    .with_entities(ClassEconomy.class_id)
-                    .filter_by(join_code=resolved_join_code)
-                    .first()
-                )
-                if class_lookup and class_lookup[0]:
-                    canonical_class_id = str(class_lookup[0])
-            if not canonical_class_id:
-                raise ValueError(
-                    f"settle_balances could not resolve class_id for join_code={resolved_join_code}"
-                )
-            scope_filter = transaction_scope_filter(Transaction, resolved_student_id, seat_ids)
+        if not class_row:
+            raise ValueError(f"settle_balances requires canonical class_id; got {class_id!r}")
+
+        # Canonical invocation: settle_balances(seat_id, class_id)
+        canonical_class_id = str(class_row[0])
+        resolved_join_code = class_row[1]
+        resolved_seat_id = original_scope_id
+        seat = db.session.get(Seat, resolved_seat_id)
+        if seat:
+            from app.models import IdentityProfile, Student
+            ip = IdentityProfile.query.filter_by(seat_id=seat.id).first()
+            student = Student.query.filter_by(identity_id=ip.id).first() if ip else None
+            resolved_student_id = student.id if student else None
+            resolved_join_code = seat.join_code or resolved_join_code
+        scope_filter = (Transaction.seat_id == resolved_seat_id)
 
         class_id = canonical_class_id
         cache_was_created = False

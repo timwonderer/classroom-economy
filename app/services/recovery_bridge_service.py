@@ -278,12 +278,13 @@ def find_recovery_request_by_resume_pin(resume_pin_hash: str, now_utc: datetime)
 
 def delete_recovery_rows_for_teacher(teacher_id: int) -> None:
     requests, codes = _tables()
-    request_ids_subq = sa.select(requests.c.id).where(requests.c.teacher_id == teacher_id)
+    teacher_col = requests.c.teacher_id if "teacher_id" in requests.c else requests.c.user_id
+    request_ids_subq = sa.select(requests.c.id).where(teacher_col == teacher_id)
     db.session.execute(
         sa.delete(codes).where(codes.c.recovery_request_id.in_(request_ids_subq))
     )
     db.session.execute(
-        sa.delete(requests).where(requests.c.teacher_id == teacher_id)
+        sa.delete(requests).where(teacher_col == teacher_id)
     )
 
 

@@ -481,28 +481,20 @@ class Student(db.Model):
     # Student transactions relationship severed in V2.
     # checking_balance and savings_balance properties severed in V2.
 
-    def get_active_insurance(self, teacher_id=None, class_id=None):
-        """
-        Return the active insurance enrollment for this student.
+    def get_active_insurance(self, class_id=None):
+        """Return the active insurance enrollment for this student, scoped by class_id."""
+        if not class_id:
+            return None
 
-        Resolution order:
-        1) class-scoped (`class_id`) when available (canonical)
-        2) teacher-scoped fallback for legacy callers
-        """
-        query = InsuranceEnrollment.query.join(
+        return InsuranceEnrollment.query.join(
             InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id
         ).filter(
             InsuranceEnrollment.seat_id.in_(
                 db.session.query(Seat.id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).filter(IdentityProfile.id == self.identity_id)
             ),
             InsuranceEnrollment.status == 'active',
-        )
-
-        if class_id:
-            return query.filter(InsurancePolicy.class_id == class_id).first()
-        if teacher_id:
-            return query.filter(InsurancePolicy.teacher_id == teacher_id).first()
-        return None
+            InsurancePolicy.class_id == class_id,
+        ).first()
 
     def get_checking_balance(self, class_id: str, seat_id: int):
         """Authoritative checking balance lookup via ledger service."""
@@ -518,47 +510,18 @@ class Student(db.Model):
             raise ValueError("get_savings_balance requires class_id and seat_id.")
         return get_available_balance(seat_id, class_id, 'savings')
 
-    def get_total_earnings(self, class_id=None, join_code=None, teacher_id=None):
-        """
-        Get total earnings scoped to a specific class economy.
+    def get_total_earnings(self, class_id=None):
+        """Get total earnings scoped to a specific class economy."""
+        if not class_id:
+            return 0.0
 
-        CRITICAL: For proper period isolation, callers should pass class_id when available.
-        join_code remains supported for legacy callers that still scope by join code.
-
-        Args:
-            class_id: Canonical class scope identifier
-            join_code: Legacy class identifier for period-level isolation
-            teacher_id: Deprecated — accepted but ignored for backward compatibility
-
-        Returns:
-            float: The total earnings rounded to 2 decimal places
-        """
-        seat_id = None
-        if self.identity_profile and self.identity_profile.seat_id:
-            seat_id = self.identity_profile.seat_id
-
-        if class_id:
-            total = db.session.query(db.func.sum(Transaction.amount)).filter(
-                Transaction.class_id == class_id,
-                Transaction.amount > 0,
-                Transaction.is_void == False,
-                ~Transaction.description.startswith("Transfer")
-            ).scalar()
-            return float(round(_quantize_currency(total), 2)) if total else 0.0
-
-        if join_code:
-            # Legacy scoping by join_code (period-level isolation)
-            total = db.session.query(db.func.sum(Transaction.amount)).filter(
-                Transaction.join_code == join_code,
-                Transaction.amount > 0,
-                Transaction.is_void == False,
-                ~Transaction.description.startswith("Transfer")
-            ).scalar()
-            return float(round(_quantize_currency(total), 2)) if total else 0.0
-
-        # Unscoped totals are disabled under class/join-code scoping to avoid
-        # leaking or conflating balances across distinct class economies.
-        return 0.0
+        total = db.session.query(db.func.sum(Transaction.amount)).filter(
+            Transaction.class_id == class_id,
+            Transaction.amount > 0,
+            Transaction.is_void == False,
+            ~Transaction.description.startswith("Transfer")
+        ).scalar()
+        return float(round(_quantize_currency(total), 2)) if total else 0.0
 
     def get_all_teachers(self):
         """
@@ -571,7 +534,6 @@ class Student(db.Model):
 
     @property
     def total_earnings(self):
-        # Deprecated: Use get_total_earnings(join_code=...) instead for class-scoped aggregation.
         return self.get_total_earnings()
 
     @property
@@ -649,6 +611,7 @@ class ClassEconomy(db.Model):
         nullable=False,
         index=True,
     )
+    teacher_id = db.synonym("user_id")
     display_name = db.Column(db.String(100), nullable=True)
     class_timezone = db.Column(db.String(64), nullable=False, default='UTC', server_default='UTC')
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
@@ -843,6 +806,7 @@ class Transaction(db.Model):
     # student_id has been formally severed in favor of seat_id. 
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
+    teacher_id = db.synonym("user_id")
 
     # CRITICAL: join_code is the source of truth for class isolation
     # Each join code represents a distinct class economy, even if same teacher
@@ -2003,10 +1967,17 @@ def _sync_rent_payment_seat(_mapper, connection, target):
         if seat_class_id:
             target.class_id = str(seat_class_id)
 
-    # Backfill student_id from seat_id if missing (for legacy compatibility)
+    # Backfill student_id from seat_id if missing by traversing the canonical
+    # seat -> identity_profile -> student chain.
     if not getattr(target, "student_id", None) and getattr(target, "seat_id", None):
         seat_student_id = connection.execute(
-            sa.text("SELECT student_id FROM seats WHERE id = :seat_id LIMIT 1"),
+            sa.text(
+                "SELECT students.id "
+                "FROM seats "
+                "JOIN identity_profiles ON identity_profiles.seat_id = seats.id "
+                "JOIN students ON students.identity_id = identity_profiles.id "
+                "WHERE seats.id = :seat_id LIMIT 1"
+            ),
             {"seat_id": target.seat_id},
         ).scalar()
         if seat_student_id:
@@ -2018,6 +1989,19 @@ def _sync_rent_payment_seat(_mapper, connection, target):
 def _sync_rent_waiver_seat(_mapper, connection, target):
     """Dual-write bridge for rent_waivers.seat_id."""
     if getattr(target, "seat_id", None):
+        if not getattr(target, "student_id", None):
+            student_id = connection.execute(
+                sa.text(
+                    "SELECT students.id "
+                    "FROM seats "
+                    "JOIN identity_profiles ON identity_profiles.seat_id = seats.id "
+                    "JOIN students ON students.identity_id = identity_profiles.id "
+                    "WHERE seats.id = :seat_id LIMIT 1"
+                ),
+                {"seat_id": target.seat_id},
+            ).scalar()
+            if student_id:
+                target.student_id = student_id
         return
     
     student_id = getattr(target, "student_id", None)
@@ -2836,13 +2820,10 @@ class Admin(db.Model):
         return f"teacher_{self.id}"
 
     def get_student_count(self):
-        """Return unique students linked via canonical seats."""
+        """Return unique students linked via the StudentTeacher join table."""
         return (
-            db.session.query(Seat.student_id)
-            .filter(
-                Seat.user_id == self.id,
-                Seat.student_id.isnot(None),
-            )
+            db.session.query(StudentTeacher.student_id)
+            .filter(StudentTeacher.teacher_id == self.id)
             .distinct()
             .count()
         )
