@@ -18,9 +18,9 @@ This document is not normative documentation within the CTH documentation namesp
 
 - `INV-CORE-000` (Core Invariants)
 - `INV-ARC-019` (Identity and Ownership Model)
-- `DOM-IDEN-001` (Identity/Class Binding Domain)
-- `DOM-IDEN-002` (Student Account Recovery)
-- `DOM-IDEN-003`/`DOM-IDEN-004` (Teacher Identity and Recovery)
+- `DOM-IDEN-001` (Canonical Identity Model)
+- `DOM-IDEN-002` (Student Identity Architecture — includes student recovery)
+- `DOM-IDEN-003` (Teacher Identity Architecture — includes teacher recovery)
 
 ## 3. Current Architecture
 

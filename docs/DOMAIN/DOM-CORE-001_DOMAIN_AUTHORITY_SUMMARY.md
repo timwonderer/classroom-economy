@@ -42,16 +42,20 @@ All domains listed below are bound by the following structural rules:
 
 ## IV. Domain Summary Matrix
 
-### 1. Identity & Class Binding (`DOM-IDEN-001`)
-- **Authority**: Sovereign over global human identity and class-local actor binding.
-- **Version**: 1.2
+### 1. Canonical Identity Model (`DOM-IDEN-001`)
+- **Authority**: Sovereign over canonical identity objects and participation model.
+- **Version**: 2.0
 - **State Classification**:
   - `users`: Authoritative Global Identity.
   - `seats`: Authoritative Local Binding.
   - `classes`: Authoritative Universe Anchor.
-- **Key Transitions**: `Claim Seat`, `Resolve Context`, `Recover Account`.
+  - `identity_profiles`: Display-only human-facing identity.
 - **Primary Schema**: `users`, `seats`, `identity_profiles`, `classes`.
-- **Informative Map**: [DOM-IDEN-005 (MAP-IDEN-001)](../DOMAIN/DOM-IDEN-005_ACCOUNT_LIFECYCLE_MAP.md).
+- **Companion Documents**:
+  - `DOM-IDEN-002` — Student Identity Architecture (includes student recovery)
+  - `DOM-IDEN-003` — Teacher Identity Architecture (includes teacher recovery)
+  - `DOM-IDEN-005` — Identity Binding and Lifecycle
+  - `DOM-IDEN-006` — Canonical Context Resolution
 
 ### 2. Class Configuration (`DOM-CLASS-001`)
 - **Authority**: Sovereign over "Directives" (Class Law/Policy).

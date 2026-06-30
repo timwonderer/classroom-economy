@@ -12,7 +12,7 @@ Tier 1 — Constitutional. This document defines structural enforcement mechanis
 
 - `INV-CORE-000_CORE_INVARIANTS.md`
 - `DOM-CORE-000_DOMAIN_FOUNDATION.md`
-- `DOM-IDEN-001_IDENTITY_CLASS_BINDING_DOMAIN.md` (class identity anchor `classes`)
+- `DOM-IDEN-001_CANONICAL_IDENTITY_MODEL.md` (class identity anchor `classes`)
 
 ## IV.A Terminology Formalization
 

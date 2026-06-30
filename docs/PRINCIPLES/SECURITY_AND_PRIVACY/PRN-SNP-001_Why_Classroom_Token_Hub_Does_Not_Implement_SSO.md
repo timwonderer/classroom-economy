@@ -31,9 +31,9 @@ This document is not normative documentation within the CTH documentation namesp
 
 - `INV-CORE-000` (Core Invariants)
 - `INV-ARC-019` (Identity and Ownership Model)
-- `DOM-IDEN-001` (Identity/Class Binding Domain)
-- `DOM-IDEN-002` (Student Account Recovery)
-- `DOM-IDEN-003`/`DOM-IDEN-004` (Teacher Identity and Recovery)
+- `DOM-IDEN-001` (Canonical Identity Model)
+- `DOM-IDEN-002` (Student Identity Architecture — includes student recovery)
+- `DOM-IDEN-003` (Teacher Identity Architecture — includes teacher recovery)
 
 
 
@@ -122,9 +122,8 @@ CTH's non-implementation of SSO is a deliberate, documented architectural decisi
 
 - `docs/INVARIANT/CORE/INV-CORE-000_CORE_INVARIANTS.md` — §1 (`class_id`-Centric Isolation), §2 (Minimal Use and Storage of PII)
 - `docs/INVARIANT/ARCHITECTURE/INV-ARC-019_IDENTITY_AND_OWNERSHIP_MODEL.md` — Principal/actor/boundary separation and `seats.public_id` semantics
-- `docs/SPECS/V2_STUDENT_IDENTITY_ARCHITECTURE.md` — No-DOB claim flow, `dedupe_code` disambiguation
-- `docs/DOMAIN/DOM-IDEN-003_TEACHER_IDENTITY_ARCHITECTURE.md` — Unified teacher/student `users`/`seats` model
-- `docs/DOMAIN/DOM-IDEN-002_STUDENT_ACCOUNT_RECOVERY.md`, `DOM-IDEN-004_TEACHER_ACCOUNT_RECOVERY.md` — Identity rebinding without credential federation
+- `docs/DOMAIN/DOM-IDEN-002_STUDENT_IDENTITY_ARCHITECTURE.md` — No-DOB claim flow, `dedupe_code` disambiguation, student recovery
+- `docs/DOMAIN/DOM-IDEN-003_TEACHER_IDENTITY_ARCHITECTURE.md` — Unified teacher/student `users`/`seats` model, teacher recovery
 - `docs/SECURITY/SEC-CORE-000_Security_Foundation.md` — §IV (Security Precepts)
 - `docs/SECURITY/CONTROLS/SEC-CONT-026_Authorization_Architecture.md` — Role-Based Access Control model
 - `docs/SECURITY/INCIDENTS/SEC-INC-013_Critical_Same_Teacher_Leak.md` — Prior incident motivating tenant-isolation-first design
