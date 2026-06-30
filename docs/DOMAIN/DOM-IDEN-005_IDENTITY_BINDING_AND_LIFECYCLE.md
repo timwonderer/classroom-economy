@@ -41,15 +41,15 @@ Tier 1 — Constitutional. This document defines structural enforcement mechanis
 - `INV-ARC-019_IDENTITY_AND_OWNERSHIP_MODEL.md`
 
 ## V. Membership by Existence
-Classroom Token Hub manages multitenancy by strictly isolating each classroom economy instance by `Class`. A `User` SHALL occupy at most one `Seat` within a single `Class`. When a `class` is destroyed, so do all records, including any orphaned `users`. A `user` that exist without valid `seat` assigned is an invariant violation.
+Classroom Token Hub manages multitenancy by strictly isolating each classroom economy instance by `Class`. A `User` SHALL occupy at most one `Seat` within a single `Class`. When a `class` is destroyed, all records scoped to it are also destroyed, including any orphaned `users`. A `User` that exists without a valid `seat` assigned is an invariant violation.
 
 The **Membership-by-Existence** principle can be summarized as:
 1. The existence of `class` and therefore `class_id` signifies that a particular economic universe exists.
 2. The existence of `seat` within the scope of a `class` signifies that a particular actor exists.
 3. The existence of `user` signifies that a particular `seat` exists and has been successfully bound to an authenticated participant.
 4. The removal of a `class` signifies the destruction of `class_id`
-5. The destruction of `class_id` signifies the destruction of all record scoped to that `class_id` including `seats`
-6. The destruction of `seat` signifies the destruction of `user` if there are no more `class_id` that `user` is part of
+5. The destruction of `class_id` signifies the destruction of all records scoped to that `class_id` including `seats`
+6. The destruction of a `seat` signifies the destruction of `user` if there are no other `class_ids` that `user` is part of
 
 Existence within Classroom Token Hub is binary. An identity either exists as an active participant or it does not exist. Intermediate states, soft deletes, archived identities, historical shadows, or dormant participants are constitutionally prohibited. Destruction of a `class` or `user` SHALL mean complete destruction.
 

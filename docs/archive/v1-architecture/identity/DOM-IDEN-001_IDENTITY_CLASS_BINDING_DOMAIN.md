@@ -7,7 +7,7 @@
 
 > [!WARNING]
 > 
-> This version of DOM-IDEN-001 is now deprecated and superseded by [DOM-IDEN-001: Canonical Identity Model](./DOM-IDEN-001_CANONICAL_IDENTITY_MODEL.md). This document is kept for historical purposes and SHALL NOT be interpretated as normative.
+> This version of DOM-IDEN-001 is now deprecated and superseded by [DOM-IDEN-001: Canonical Identity Model](./DOM-IDEN-001_CANONICAL_IDENTITY_MODEL.md). This document is kept for historical purposes and SHALL NOT be interpreted as normative.
 ---
 
 ## I. Purpose
@@ -101,7 +101,7 @@ The `users` table represents the authenticated principals. It serves as the only
 - recovery capability — implemented by canonical recovery-token lifecycle state
 - `reset_code_expires_at`
 
-#### Teacher / System Administrator-Specific Fields (exist only for teacher or sysadmin users, `NULL` for all studuent users):
+#### Teacher / System Administrator-Specific Fields (exist only for teacher or sysadmin users, `NULL` for all student users):
 - `totp_secret_encrypted` - base64-encoded encrypted TOTP seed
 
 

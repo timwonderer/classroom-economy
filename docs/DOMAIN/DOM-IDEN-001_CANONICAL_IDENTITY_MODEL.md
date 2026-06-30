@@ -71,7 +71,7 @@ A `User` is the authenticated principal that owns authentication credentials, ac
 A `Class` defines an isolated classroom universe. Every runtime actor, policy, obligation, ledger event, attendance event, and store interaction SHALL occur within exactly one `Class`.
 
 ### `Seat`
-A `seat` is the canonical runtime actor within a defined `class` It represents the entity that can engage in the classroom economy within the `class`. A `seat` represents a single member within the `class` that's bound to exactly one authenticated `User`.
+A `seat` is the canonical runtime actor within a defined `class`. It represents the entity that can engage in the classroom economy within the `class`. A `seat` represents a single member within the `class` that's bound to exactly one authenticated `User`.
 
 ### `IdentityProfile`
 An `IdentityProfile` represents the human-facing display data associated with a `seat` within a `class`. Its primary function is ease of use and user experience. `IdentityProfile` SHALL NOT participate in authentication, authorization, ownership determination, canonical context construction, or business logic.
@@ -80,7 +80,7 @@ Collectively, these four objects constitute the canonical identity model of Clas
 
 
 ## VI. Participation Model
-Participation is represented exclusively through Seats. `Users` authenticate human entity while `Seats` act within the defined economy of `Classes`. 
+Participation is represented exclusively through Seats. `Users` authenticate the human entity while `Seats` act within the defined economy of `Classes`. 
 
 - `Classes` define the universe in which `Seats` act.
 - A `User` may participate in multiple `classes` through multiple `Seats`.
@@ -94,11 +94,11 @@ Participation is represented exclusively through Seats. `Users` authenticate hum
 4. This rule applies equally to teachers and students.
 
 ### Identity Graph
-The following illustration shows how each identity function within Classroom Token Hub 
+The following illustration shows how each identity function operates within Classroom Token Hub:
 
 <p align="center"><img src="../assets/DOM-IDEN-001_Identity_Graph.svg" alt="Canonical identity graph. Human exists outside the application boundary. User is the authenticated principal. Class defines an isolated economic universe. Seat is the canonical runtime actor within a Class. IdentityProfile provides human-facing display identity for a Seat and does not participate in authentication, authorization, or business logic." width="500"></p>
 
-## VII. Invariants.
+## VII. Invariants
 - Identity is owned by `Users`.
 - Participation is owned by `Seats`.
 - `Classes` define participation boundaries.

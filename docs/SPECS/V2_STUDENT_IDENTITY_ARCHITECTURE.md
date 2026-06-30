@@ -355,7 +355,7 @@ Deprecated identity and membership structures:
 - `student_blocks`
 - `classMemberships`
 
-The use of these tables are strictly forbidden
+The use of these tables is strictly forbidden.
 
 
 
