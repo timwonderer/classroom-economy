@@ -352,37 +352,12 @@ Deprecated identity and membership structures:
 - `teachers` / `admins`
 - `teacher_blocks`
 - `student_teachers`
+- `student_blocks`
+- `classMemberships`
 
-These tables encode older ideas that the redesign is intentionally removing:
+The use of these tables are strictly forbidden
 
-- separate person tables by role
-- separate roster-seat and claimed-student objects
-- teacher-student membership links outside the seat model
 
-### About `student_blocks`
-
-`student_blocks` is not really an identity table.
-
-Conceptually it stores per-participant, per-class or per-period operational state such
-as:
-
-- attendance/tap enablement
-- done-for-day state
-- period-scoped settings
-- other class-local activity state
-
-So in the redesign, `student_blocks` should not be treated as part of the identity
-model.
-
-It should eventually be:
-
-- renamed or reworked into a seat-scoped operational table, or
-- split into more explicit class-activity tables if that makes the domain clearer
-
-The important rule is:
-
-- `student_blocks` may survive as class-local operational state
-- it should not survive as an identity anchor
 
 ## Roster And Claim Identity
 
