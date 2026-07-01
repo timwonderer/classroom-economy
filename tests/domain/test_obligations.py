@@ -7,6 +7,8 @@ ForeignKey targets, and constraints to implement the DOM-OBL-001 spec.
 from sqlalchemy import UniqueConstraint
 
 from app.models import (
+    User,
+    UserRole,
     EntitlementEvent,
     InsuranceEnrollment,
     ObligationAssessment,

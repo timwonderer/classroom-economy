@@ -4,7 +4,6 @@ from app.models import (
     AttendanceSession,
     HallPassLog,
     SeatAttendanceState,
-    StudentBlock,
     Seat,
     IdentityProfile,
     Student,
@@ -45,13 +44,16 @@ def get_all_block_statuses(student, *, class_id: str, payroll_anchor_by_class_id
     if not class_id:
         raise ValueError("get_all_block_statuses requires class_id.")
 
+    from app.models import User
+
     claimed_seats = (
         Seat.query
-        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-        .join(Student, Student.identity_id == IdentityProfile.id)
+        .join(User, User.id == Seat.user_id)
+        .join(Student, Student.username_hash == User.username_hash)
         .filter(
             Student.id == student.id,
             Seat.class_id == class_id,
+            Seat.role == 'student',
             Seat.claimed_at.isnot(None),
         ).all()
     )
@@ -78,15 +80,6 @@ def get_all_block_statuses(student, *, class_id: str, payroll_anchor_by_class_id
         done = False
         if state and state.done_for_day_date == today_local:
             done = True
-        else:
-            student_block = StudentBlock.query.filter_by(
-                seat_id=seat_id,
-                class_id=class_id,
-                period=blk,
-            ).first()
-            if student_block and student_block.done_for_day_date == today_local:
-                done = True
-
         duration = calculate_unpaid_attendance_seconds(
             seat_id,
             class_id,

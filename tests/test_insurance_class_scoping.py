@@ -15,6 +15,8 @@ from datetime import datetime, timedelta, timezone
 
 from app import db
 from app.models import (
+    User,
+    UserRole,
     Admin, ClassEconomy, IdentityProfile, Student, StudentBlock, StudentTeacher,
     InsurancePolicy, InsurancePolicyBlock, InsuranceEnrollment, InsuranceClaim,
     Seat,
@@ -34,6 +36,10 @@ def teacher_with_two_classes(client):
     salt = get_random_salt()
 
     # Create Seat for Period A with join_code JOINA123
+    # Auto-injected Canonical User
+    student_a_user = User(username_hash=f"auto_{student_a.id}", username_lookup_hash=f"auto_l_{student_a.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_a_user)
+    db.session.flush()
     tb_a = Seat(join_code="JOINA123", block="A", block_identifier="A", role="student")
     db.session.add(tb_a)
     db.session.flush()
@@ -70,12 +76,12 @@ def students_in_two_classes(client, teacher_with_two_classes):
     db.session.flush()
 
     # StudentTeacher relationship
-    st_a = StudentTeacher(student_id=student_a.id, teacher_id=teacher.id)
+    st_a = StudentTeacher(user_id=student_a_user.id, teacher_id=teacher.id)
     db.session.add(st_a)
 
     # StudentBlock for Period A with join_code JOINA123
     sb_a = StudentBlock(
-        student_id=student_a.id,
+        user_id=student_a_user.id,
         join_code="JOINA123",
         period="A"
     )
@@ -84,9 +90,7 @@ def students_in_two_classes(client, teacher_with_two_classes):
     # Add transaction to set balance
     from app.models import Transaction
     db.session.add(Transaction(
-        student_id=student_a.id,
-        teacher_id=teacher.id,
-        join_code="JOINA123",
+        user_id=student_a_user.id,join_code="JOINA123",
         amount=100.0,
         type="deposit",
         description="Initial balance",
@@ -106,12 +110,12 @@ def students_in_two_classes(client, teacher_with_two_classes):
     db.session.flush()
 
     # StudentTeacher relationship
-    st_b = StudentTeacher(student_id=student_b.id, teacher_id=teacher.id)
+    st_b = StudentTeacher(user_id=student_b_user.id, teacher_id=teacher.id)
     db.session.add(st_b)
 
     # StudentBlock for Period B with join_code JOINB456
     sb_b = StudentBlock(
-        student_id=student_b.id,
+        user_id=student_b_user.id,
         join_code="JOINB456",
         period="B"
     )
@@ -119,9 +123,7 @@ def students_in_two_classes(client, teacher_with_two_classes):
 
     # Add transaction to set balance
     db.session.add(Transaction(
-        student_id=student_b.id,
-        teacher_id=teacher.id,
-        join_code="JOINB456",
+        user_id=student_b_user.id,join_code="JOINB456",
         amount=200.0,
         type="deposit",
         description="Initial balance",

@@ -19,9 +19,9 @@ from app.models import (
     IssueResolutionAction,
     Transaction,
     Student,
-    StudentBlock,
     ClassEconomy,
     Seat,
+    IdentityProfile,
 )
 from app.utils.ip_handler import get_real_ip
 from app.services.tlcp import create_ticket_correlation_pack
@@ -51,7 +51,12 @@ def create_context_snapshot(student, class_id, related_transaction_id=None, rela
 
     if not class_id:
         raise ValueError("create_context_snapshot requires canonical class_id scope.")
-    seat = Seat.query.filter_by(student_id=student.id, class_id=class_id).first()
+    seat = (
+        Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .filter(IdentityProfile.id == student.identity_id, Seat.class_id == class_id)
+        .first()
+    )
     if not seat:
         raise ValueError("create_context_snapshot requires canonical seat_id scope.")
 
@@ -131,7 +136,12 @@ def create_issue(student, teacher_id, class_id, category_id, explanation, expect
     class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
     join_code = class_row.join_code if class_row else None
     class_label = (class_row.display_name if class_row and class_row.display_name else None) or join_code or class_id
-    canonical_seat = Seat.query.filter_by(student_id=student.id, class_id=class_id).first()
+    canonical_seat = (
+        Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .filter(IdentityProfile.id == student.identity_id, Seat.class_id == class_id)
+        .first()
+    )
     if not canonical_seat:
         raise ValueError("create_issue requires canonical seat public_id scope.")
 

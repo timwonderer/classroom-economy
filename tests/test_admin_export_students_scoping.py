@@ -5,7 +5,7 @@ import io
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
-from app.models import Admin, IdentityProfile, Seat, Student, StudentTeacher, Transaction
+from app.models import User, UserRole, Admin, IdentityProfile, Seat, Student, StudentTeacher, Transaction
 from app.services.ledger_service import get_available_balances
 from app.routes.admin import _sanitize_roster_text
 from tests.helpers.class_scope import create_class_scope
@@ -40,7 +40,7 @@ def test_roster_upload_ignores_balance_columns_and_keeps_ledger_truth(client):
     db.session.commit()
 
     student = _make_student("Original", "N")
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
 
     class_row = create_class_scope(
         teacher=teacher,
@@ -63,11 +63,9 @@ def test_roster_upload_ignores_balance_columns_and_keeps_ledger_truth(client):
 
     db.session.add(
         Transaction(
-            student_id=student.id,
+            user_id=student_user.id,
             seat_id=seat.id,
-            class_id=class_row.class_id,
-            teacher_id=teacher.id,
-            join_code=class_row.join_code,
+            class_id=class_row.class_id,join_code=class_row.join_code,
             amount=Decimal("42.50"),
             account_type="checking",
             type="deposit",

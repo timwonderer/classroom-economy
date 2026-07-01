@@ -2,7 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from app import db
-from app.models import Admin, ClassEconomy, RentPayment, RentSettings, Seat, Student
+from app.models import User, UserRole, Admin, ClassEconomy, RentPayment, RentSettings, Seat, Student
 from app.scheduled_tasks import run_rent_cycle_for_class
 from app.utils.time import utc_now
 from tests.helpers.v2_fixtures import make_admin
@@ -40,8 +40,12 @@ def test_rent_cycle_idempotency_same_cycle(monkeypatch, app):
         db.session.add(student)
         db.session.flush()
 
+        # Auto-injected Canonical User
+        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+        db.session.add(student_user)
+        db.session.flush()
         seat = Seat(
-            student_id=student.id,
+            user_id=student_user.id,
             class_id=class_row.class_id,
             join_code=class_row.join_code,
             block="A",
@@ -53,9 +57,7 @@ def test_rent_cycle_idempotency_same_cycle(monkeypatch, app):
         db.session.flush()
 
         configured_at = utc_now() - timedelta(days=60)
-        settings = RentSettings(
-            teacher_id=admin.id,
-            class_id=class_row.class_id,
+        settings = RentSettings(class_id=class_row.class_id,
             join_code=class_row.join_code,
             block="A",
             is_enabled=True,

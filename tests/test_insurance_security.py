@@ -6,6 +6,8 @@ from sqlalchemy.exc import IntegrityError
 
 from app import db
 from app.models import (
+    User,
+    UserRole,
     Admin,
     InsuranceEnrollment,
     InsurancePolicy,
@@ -65,9 +67,7 @@ def _enroll_student(student_id, policy_id):
 
 def _create_transaction(student_id, teacher_id, is_void=False):
     tx = Transaction(
-        student_id=student_id,
-        teacher_id=teacher_id,
-        amount=-25.0,
+        student_id=student_id,amount=-25.0,
         account_type="checking",
         description="Test purchase",
         type="purchase",
@@ -96,8 +96,8 @@ def _build_claim(enrollment, policy, student_id, transaction):
 def _ensure_admin_class_scope(admin, student, join_code="JOIN-INS-SEC", block="A"):
     from app.models import StudentTeacher
 
-    if not db.session.query(StudentTeacher.id).filter_by(student_id=student.id, teacher_id=admin.id).first():
-        db.session.add(StudentTeacher(student_id=student.id, teacher_id=admin.id))
+    if not db.session.query(StudentTeacher.id).filter_by(user_id=student_user.id, teacher_id=admin.id).first():
+        db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
     if not db.session.query(InsurancePolicy.id).filter_by(teacher_id=admin.id).first():
         pass
     class_row = create_class_scope(teacher=admin, join_code=join_code, student=student, block=block)
@@ -109,7 +109,7 @@ def test_duplicate_transaction_claim_blocked(client, test_student, admin_user):
     from app.models import StudentTeacher
 
     # Create StudentTeacher association for proper scoping
-    st = StudentTeacher(student_id=test_student.id, teacher_id=admin_user.id)
+    st = StudentTeacher(user_id=test_student_user.id, teacher_id=admin_user.id)
     db.session.add(st)
     db.session.commit()
     class_row = _ensure_admin_class_scope(admin_user, test_student)
@@ -136,7 +136,7 @@ def test_voided_transaction_cannot_be_approved(client, test_student, admin_user)
     from app.models import StudentTeacher
 
     # Create StudentTeacher association for proper scoping
-    st = StudentTeacher(student_id=test_student.id, teacher_id=admin_user.id)
+    st = StudentTeacher(user_id=test_student_user.id, teacher_id=admin_user.id)
     db.session.add(st)
     db.session.commit()
     class_row = _ensure_admin_class_scope(admin_user, test_student)
@@ -170,7 +170,7 @@ def test_voided_transaction_cannot_be_approved(client, test_student, admin_user)
 def test_hard_deny_transaction_type_cannot_be_approved(client, test_student, admin_user):
     from app.models import StudentTeacher
 
-    st = StudentTeacher(student_id=test_student.id, teacher_id=admin_user.id)
+    st = StudentTeacher(user_id=test_student_user.id, teacher_id=admin_user.id)
     db.session.add(st)
     db.session.commit()
     class_row = _ensure_admin_class_scope(admin_user, test_student)
@@ -178,9 +178,7 @@ def test_hard_deny_transaction_type_cannot_be_approved(client, test_student, adm
     policy = _create_policy(admin_user.id)
     enrollment = _enroll_student(test_student.id, policy.id)
     rent_tx = Transaction(
-        student_id=test_student.id,
-        teacher_id=admin_user.id,
-        amount=-40.0,
+        user_id=test_student_user.id,amount=-40.0,
         account_type="checking",
         status=TransactionStatus.POSTED,
         type="Rent Payment",
@@ -214,16 +212,14 @@ def test_hard_deny_transaction_type_cannot_be_approved(client, test_student, adm
 def test_duplicate_reimbursement_for_same_source_and_policy_blocked(client, test_student, admin_user):
     from app.models import StudentTeacher
 
-    st = StudentTeacher(student_id=test_student.id, teacher_id=admin_user.id)
+    st = StudentTeacher(user_id=test_student_user.id, teacher_id=admin_user.id)
     db.session.add(st)
     db.session.commit()
     class_row = _ensure_admin_class_scope(admin_user, test_student)
 
     policy = _create_policy(admin_user.id)
     source_tx = Transaction(
-        student_id=test_student.id,
-        teacher_id=admin_user.id,
-        amount=-12.0,
+        user_id=test_student_user.id,amount=-12.0,
         account_type="checking",
         status=TransactionStatus.PENDING,
         type="purchase",
@@ -233,9 +229,7 @@ def test_duplicate_reimbursement_for_same_source_and_policy_blocked(client, test
     db.session.commit()
 
     reimbursement_one = Transaction(
-        student_id=test_student.id,
-        teacher_id=admin_user.id,
-        amount=12.0,
+        user_id=test_student_user.id,amount=12.0,
         account_type="checking",
         status=TransactionStatus.PENDING,
         type="insurance_reimbursement",
@@ -244,9 +238,7 @@ def test_duplicate_reimbursement_for_same_source_and_policy_blocked(client, test
         description="Insurance reimbursement #1",
     )
     reimbursement_two = Transaction(
-        student_id=test_student.id,
-        teacher_id=admin_user.id,
-        amount=12.0,
+        user_id=test_student_user.id,amount=12.0,
         account_type="checking",
         status=TransactionStatus.PENDING,
         type="insurance_reimbursement",
@@ -267,7 +259,7 @@ def test_duplicate_reimbursement_for_same_source_and_policy_blocked(client, test
 def test_pending_transaction_cannot_be_approved(client, test_student, admin_user):
     from app.models import StudentTeacher
 
-    st = StudentTeacher(student_id=test_student.id, teacher_id=admin_user.id)
+    st = StudentTeacher(user_id=test_student_user.id, teacher_id=admin_user.id)
     db.session.add(st)
     db.session.commit()
     class_row = _ensure_admin_class_scope(admin_user, test_student)
@@ -275,9 +267,7 @@ def test_pending_transaction_cannot_be_approved(client, test_student, admin_user
     policy = _create_policy(admin_user.id)
     enrollment = _enroll_student(test_student.id, policy.id)
     pending_tx = Transaction(
-        student_id=test_student.id,
-        teacher_id=admin_user.id,
-        amount=-20.0,
+        user_id=test_student_user.id,amount=-20.0,
         account_type="checking",
         status=TransactionStatus.PENDING,
         type="purchase",
@@ -306,7 +296,7 @@ def test_pending_transaction_cannot_be_approved(client, test_student, admin_user
 def test_rent_privilege_purchase_cannot_be_approved(client, test_student, admin_user):
     from app.models import StudentTeacher
 
-    st = StudentTeacher(student_id=test_student.id, teacher_id=admin_user.id)
+    st = StudentTeacher(user_id=test_student_user.id, teacher_id=admin_user.id)
     db.session.add(st)
     db.session.commit()
     class_row = _ensure_admin_class_scope(admin_user, test_student)
@@ -315,7 +305,7 @@ def test_rent_privilege_purchase_cannot_be_approved(client, test_student, admin_
     enrollment = _enroll_student(test_student.id, policy.id)
 
     store_item = StoreItem(
-        teacher_id=admin_user.id,
+        user_id=admin_user.id,
         class_id=class_row.class_id,
         name="Desk Pass",
         price=5.0,
@@ -343,9 +333,7 @@ def test_rent_privilege_purchase_cannot_be_approved(client, test_student, admin_
     )
 
     privilege_purchase = Transaction(
-        student_id=test_student.id,
-        teacher_id=admin_user.id,
-        class_id=class_row.class_id,
+        user_id=test_student_user.id,class_id=class_row.class_id,
         join_code=class_row.join_code,
         amount=-5.0,
         account_type="checking",

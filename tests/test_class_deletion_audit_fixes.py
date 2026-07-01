@@ -78,8 +78,12 @@ def _create_student(teacher: Admin, first_name: str, block: str, join_code: str)
         block=block,
         display_name=block,
     )
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
-    _tb_seat = Seat(student_id=student.id, class_id=class_row.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    _tb_seat = Seat(user_id=student_user.id, class_id=class_row.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_initial=first_name[0].upper()))
@@ -128,7 +132,7 @@ def test_balance_cache_deleted_when_join_code_deleted(client):
     student = _create_student(teacher, "Alice", "A", "BCDEL1")
 
     cache = BalanceCache(
-        student_id=student.id,
+        user_id=student_user.id,
         join_code="BCDEL1",
         posted_checking_balance_cents=5000,
         posted_savings_balance_cents=1000,
@@ -162,13 +166,13 @@ def test_balance_cache_for_other_join_code_not_deleted(client):
     student_b = _create_student(teacher, "Bob", "B", "BCKEEP2")
 
     cache_del = BalanceCache(
-        student_id=student_a.id,
+        user_id=student_a_user.id,
         join_code="BCDEL2",
         posted_checking_balance_cents=1000,
         posted_savings_balance_cents=0,
     )
     cache_keep = BalanceCache(
-        student_id=student_b.id,
+        user_id=student_b_user.id,
         join_code="BCKEEP2",
         posted_checking_balance_cents=2000,
         posted_savings_balance_cents=500,
@@ -213,8 +217,12 @@ def test_sysadmin_period_deletion_endpoint_is_disabled(client):
     )
     db.session.add(student)
     db.session.flush()
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
-    _tb_seat = Seat(student_id=student.id, join_code="SZJC1", block="Z", block_identifier="Z", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    _tb_seat = Seat(user_id=student_user.id, join_code="SZJC1", block="Z", block_identifier="Z", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name="Zara", last_initial="Z"))
@@ -255,7 +263,7 @@ def test_payroll_settings_deleted_when_last_join_code_for_block_removed(client):
     teacher, secret, teacher_username = _create_teacher("teacher-ps-del")
     _create_student(teacher, "Pam", "A", "PSDEL1")
 
-    ps = PayrollSettings(teacher_id=teacher.id, block="A", pay_rate=0.25)
+    ps = PayrollSettings(block="A", pay_rate=0.25)
     db.session.add(ps)
     db.session.commit()
     ps_id = ps.id
@@ -333,10 +341,10 @@ def test_payroll_settings_deleted_even_if_other_class_shares_block_label(client)
         block="A",
         display_name="A",
     )
-    db.session.add(StudentTeacher(student_id=student2.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student2_user.id, teacher_id=teacher.id))
     db.session.commit()
 
-    ps = PayrollSettings(teacher_id=teacher.id, block="A", pay_rate=0.50)
+    ps = PayrollSettings(block="A", pay_rate=0.50)
     db.session.add(ps)
     db.session.commit()
     ps_id = ps.id

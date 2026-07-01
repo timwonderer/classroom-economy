@@ -7,7 +7,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone
 from app import db
-from app.models import Admin, Student, StudentTeacher
+from app.models import User, UserRole, Admin, Student, StudentTeacher
 from app.hash_utils import hash_username, get_random_salt
 
 
@@ -35,7 +35,7 @@ def admin_with_students(client):
         db.session.flush()
         
         # Add to student_teachers association
-        assoc = StudentTeacher(student_id=student.id, teacher_id=admin.id)
+        assoc = StudentTeacher(user_id=student_user.id, teacher_id=admin.id)
         db.session.add(assoc)
         students.append(student)
     

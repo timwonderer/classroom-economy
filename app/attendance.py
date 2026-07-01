@@ -122,7 +122,7 @@ def get_session_status(seat_id, class_id, period):
     Gets the current session status for a student in a specific period.
     Returns a tuple of (is_active, done, duration).
     """
-    from app.models import SeatAttendanceState, StudentBlock
+    from app.models import SeatAttendanceState
 
     if not seat_id or not class_id:
         raise ValueError("get_session_status requires seat_id and class_id.")
@@ -137,14 +137,6 @@ def get_session_status(seat_id, class_id, period):
     done = False
     if latest_state and latest_state.done_for_day_date == today_local:
         done = True
-    else:
-        block_query = StudentBlock.query.filter(
-            StudentBlock.seat_id == seat_id,
-            StudentBlock.class_id == class_id,
-            StudentBlock.period == period,
-            StudentBlock.done_for_day_date.isnot(None),
-        )
-        done = block_query.filter(StudentBlock.done_for_day_date == today_local).first() is not None
 
     # Calculate unpaid duration
     last_payroll_time = get_last_payroll_time(seat_id=seat_id, class_id=class_id)
@@ -283,7 +275,7 @@ def batch_auto_tapout_students(admin_id):
     Optimized version of auto-tapout that processes all students for an admin in batch.
     Returns the count of students tapped out.
     """
-    from app.models import Student, AttendanceReasonCode, StudentBlock, PayrollSettings, Seat, ClassEconomy, IdentityProfile
+    from app.models import Student, AttendanceReasonCode, SeatAttendanceState, PayrollSettings, Seat, ClassEconomy, IdentityProfile
     from app.extensions import db
 
     # 1. Get all students for this admin via canonical class seats
@@ -419,7 +411,6 @@ def batch_auto_tapout_students(admin_id):
                         student_id=student.id,
                         seat_id=resolved_seat_id,
                         class_id=class_id,
-                        join_code=join_code,
                         period=period,
                         status="inactive",
                         reason=f"Daily limit ({hours_limit:.1f}h) reached",
@@ -429,22 +420,21 @@ def batch_auto_tapout_students(admin_id):
                     tapped_out_count += 1
 
                     # Lock student
-                    sb = StudentBlock.query.filter_by(
+                    state = SeatAttendanceState.query.filter_by(
                         seat_id=resolved_seat_id,
                         class_id=class_id,
                         period=period,
                     ).first()
-                    if not sb:
-                        sb = StudentBlock(
+                    if not state:
+                        state = SeatAttendanceState(
                             seat_id=resolved_seat_id,
                             class_id=class_id,
                             student_id=student.id,
                             period=period,
                             tap_enabled=True,
-                            join_code=join_code
                         )
-                        db.session.add(sb)
-                    sb.done_for_day_date = class_today_by_class_id.get(class_id, default_today_local)
+                        db.session.add(state)
+                    state.done_for_day_date = class_today_by_class_id.get(class_id, default_today_local)
 
     if tapped_out_count > 0:
         try:

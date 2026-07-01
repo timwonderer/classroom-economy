@@ -1,7 +1,7 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from app import db
-from app.models import Admin, IdentityProfile, Student, StudentTeacher
+from app.models import User, UserRole, Admin, IdentityProfile, Student, StudentTeacher
 from app.hash_utils import get_random_salt
 import pyotp
 from flask import session
@@ -34,7 +34,7 @@ def test_new_admin_cannot_see_unassigned_students(client):
     db.session.commit()
 
     # Link to Teacher B (Simulate proper ownership via StudentTeacher)
-    link = StudentTeacher(student_id=student_b.id, teacher_id=teacher_b.id)
+    link = StudentTeacher(user_id=student_b_user.id, teacher_id=teacher_b.id)
     db.session.add(link)
     db.session.commit()
 
@@ -83,7 +83,7 @@ def test_owner_can_see_unassigned_students_if_linked(client):
     db.session.add(student_b)
     db.session.commit()
 
-    link = StudentTeacher(student_id=student_b.id, teacher_id=teacher_b.id)
+    link = StudentTeacher(user_id=student_b_user.id, teacher_id=teacher_b.id)
     db.session.add(link)
     db.session.commit()
 

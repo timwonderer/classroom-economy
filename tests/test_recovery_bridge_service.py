@@ -6,7 +6,7 @@ from werkzeug.security import generate_password_hash
 
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_hmac, hash_username_lookup
-from app.models import RecoveryRequest, Student, StudentRecoveryCode, StudentTeacher
+from app.models import RecoveryRequest, User, UserRole, Student, StudentRecoveryCode, StudentTeacher
 from app.services.recovery_bridge_service import (
     create_recovery_request_with_students,
     delete_recovery_codes_for_student,
@@ -43,7 +43,7 @@ def _seed_teacher_student():
     )
     db.session.add(student)
     db.session.flush()
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.flush()
     return teacher, student
 
@@ -51,7 +51,7 @@ def _seed_teacher_student():
 def test_pending_recovery_code_for_student_filters_active_pending_request(client):
     teacher, student = _seed_teacher_student()
     request_row = RecoveryRequest(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         status="pending",
         expires_at=utc_now() + timedelta(days=1),
     )
@@ -59,7 +59,7 @@ def test_pending_recovery_code_for_student_filters_active_pending_request(client
     db.session.flush()
     code_row = StudentRecoveryCode(
         recovery_request_id=request_row.id,
-        student_id=student.id,
+        user_id=student_user.id,
         dismissed=False,
     )
     db.session.add(code_row)
@@ -75,7 +75,7 @@ def test_pending_recovery_code_for_student_filters_active_pending_request(client
 def test_get_recovery_code_for_student_respects_student_scope(client):
     teacher, student = _seed_teacher_student()
     request_row = RecoveryRequest(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         status="pending",
         expires_at=utc_now() + timedelta(days=1),
     )
@@ -83,7 +83,7 @@ def test_get_recovery_code_for_student_respects_student_scope(client):
     db.session.flush()
     code_row = StudentRecoveryCode(
         recovery_request_id=request_row.id,
-        student_id=student.id,
+        user_id=student_user.id,
         dismissed=False,
     )
     db.session.add(code_row)
@@ -99,7 +99,7 @@ def test_get_recovery_code_for_student_respects_student_scope(client):
 def test_recovery_code_verify_and_dismiss_updates_rows(client):
     teacher, student = _seed_teacher_student()
     request_row = RecoveryRequest(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         status="pending",
         expires_at=utc_now() + timedelta(days=1),
     )
@@ -107,7 +107,7 @@ def test_recovery_code_verify_and_dismiss_updates_rows(client):
     db.session.flush()
     code_row = StudentRecoveryCode(
         recovery_request_id=request_row.id,
-        student_id=student.id,
+        user_id=student_user.id,
         dismissed=False,
     )
     db.session.add(code_row)

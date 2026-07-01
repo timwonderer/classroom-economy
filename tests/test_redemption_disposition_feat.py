@@ -83,8 +83,12 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
             ClassMembership(class_id=economy.class_id, admin_id=admin.id, role="admin")
         )
 
+        # Auto-injected Canonical User
+        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+        db.session.add(student_user)
+        db.session.flush()
         seat = Seat(
-            student_id=student.id,
+            user_id=student_user.id,
             class_id=economy.class_id,
             join_code=join_code,
             block="A",
@@ -96,7 +100,7 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         item = StoreItem(
             name="Prize",
             price=item_price,
-            teacher_id=admin.id,
+            user_id=admin.id,
             class_id=economy.class_id,
             is_active=True,
         )
@@ -106,9 +110,7 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         # Original purchase transaction (the money that left the student's account)
         purchase_tx = Transaction(
             seat_id=seat.id,
-            class_id=economy.class_id,
-            teacher_id=admin.id,
-            amount=-item_price,
+            class_id=economy.class_id,amount=-item_price,
             account_type="checking",
             type="purchase",
             status=TransactionStatus.PENDING,
@@ -121,9 +123,7 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         # Redemption transaction (the held-pending entry created by /use-item)
         redemption_tx = Transaction(
             seat_id=seat.id,
-            class_id=economy.class_id,
-            teacher_id=admin.id,
-            amount=Decimal("0.00"),
+            class_id=economy.class_id,amount=Decimal("0.00"),
             account_type="checking",
             type="redemption",
             status=TransactionStatus.PENDING,
@@ -135,7 +135,7 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
 
         si = StudentItem(
             correlation_id=f"c-{username}",
-            student_id=student.id,
+            user_id=student_user.id,
             seat_id=seat.id,
             class_id=economy.class_id,
             store_item_id=item.id,

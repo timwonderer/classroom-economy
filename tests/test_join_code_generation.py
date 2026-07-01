@@ -9,7 +9,7 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.models import Admin, Student, StudentTeacher
+from app.models import User, UserRole, Admin, Student, StudentTeacher
 from app.hash_utils import get_random_salt, hash_username
 
 
@@ -36,7 +36,7 @@ def _create_student(first_name: str, teacher: Admin, block: str = "A") -> Studen
     db.session.add(student)
     db.session.flush()
     # Create StudentTeacher link (replaces deprecated teacher_id)
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
     return student
 

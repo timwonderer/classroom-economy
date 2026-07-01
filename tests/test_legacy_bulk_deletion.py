@@ -14,7 +14,7 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.models import Admin, Student, StudentTeacher, Transaction
+from app.models import User, UserRole, Admin, Student, StudentTeacher, Transaction
 from app.hash_utils import get_random_salt, hash_hmac
 
 pytestmark = pytest.mark.skip(reason="TeacherBlock removed in Wave 11 decommissioning")
@@ -50,7 +50,7 @@ def _create_legacy_unclaimed_student(first_name: str, teacher: Admin, block: str
     db.session.flush()
     
     # Create StudentTeacher association (replaces deprecated teacher_id)
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     existing_seat = TeacherBlock.query.filter_by(teacher_id=teacher.id, block=block).first()
     join_code = existing_seat.join_code if existing_seat else f"JOIN{teacher.id}{block}"
     db.session.add(TeacherBlock(
@@ -64,7 +64,7 @@ def _create_legacy_unclaimed_student(first_name: str, teacher: Admin, block: str
         first_half_hash=first_half_hash,
         join_code=join_code,
         is_claimed=False,
-        student_id=student.id,
+        user_id=student_user.id,
     ))
     db.session.commit()
     
@@ -115,7 +115,7 @@ def _create_claimed_student(first_name: str, username: str, teacher: Admin, bloc
     db.session.flush()
     
     # Create StudentTeacher association
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     existing_seat = TeacherBlock.query.filter_by(teacher_id=teacher.id, block=block).first()
     join_code = existing_seat.join_code if existing_seat else f"JOIN{teacher.id}{block}"
     db.session.add(TeacherBlock(
@@ -129,7 +129,7 @@ def _create_claimed_student(first_name: str, username: str, teacher: Admin, bloc
         first_half_hash=first_half_hash,
         join_code=join_code,
         is_claimed=True,
-        student_id=student.id,
+        user_id=student_user.id,
     ))
     db.session.commit()
     
@@ -313,9 +313,7 @@ def test_block_deletion_with_improved_transactions(client):
     join_code_f = TeacherBlock.query.filter_by(teacher_id=teacher.id, block="F").first().join_code
     # Add some transactions to ensure join-code-scoped cleanup
     db.session.add(Transaction(
-        student_id=student1.id,
-        teacher_id=teacher.id,
-        join_code=join_code_f,
+        user_id=student1_user.id,join_code=join_code_f,
         amount=100,
         description="Test transaction",
         account_type="checking"

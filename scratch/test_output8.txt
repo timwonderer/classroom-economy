@@ -1,0 +1,68 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.10.0, pytest-9.0.3, pluggy-1.6.0 -- /Library/Frameworks/Python.framework/Versions/3.10/bin/python3
+cachedir: .pytest_cache
+rootdir: /Users/timothychang/Documents/GitHub/classroom-economy
+configfile: pytest.ini
+plugins: flask-1.3.0, anyio-4.2.0
+collecting ... collected 1 item
+
+tests/test_void_transaction_rules.py::test_void_delayed_purchase_removes_item_and_refunds [2026-06-30 22:07:21,204] WARNING in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-INTEGRITY-WARNING: FEATBypass active. Execution integrity is currently unmanaged.
+[2026-06-30 22:07:21,205] WARNING in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-INTEGRITY-WARNING: FEAT FEAT-BYPASS-LEGACY (Blast=LOW) missing idempotency_key.
+[2026-06-30 22:07:21,205] INFO in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-ENTRY: feat=FEAT-BYPASS-LEGACY | correlation_id=bypass_test_3c666dfd3db54ba7be2375919fb69f13 | idempotency_key=NONE
+FAILED[2026-06-30 22:07:21,585] INFO in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-COMMIT-OWNERSHIP: FEAT-BYPASS-LEGACY | First commit owned by FEAT-BYPASS-LEGACY | Correlation=bypass_test_3c666dfd3db54ba7be2375919fb69f13
+
+
+=================================== FAILURES ===================================
+_____________ test_void_delayed_purchase_removes_item_and_refunds ______________
+
+client = <FlaskClient <Flask 'app'>>
+
+    def test_void_delayed_purchase_removes_item_and_refunds(client):
+>       teacher, student_user = _build_teacher_student('VOIDDLY1')
+
+tests/test_void_transaction_rules.py:58: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+tests/test_void_transaction_rules.py:43: in _build_teacher_student
+    _tb_seat = Seat(seat_id=student_user.last_active_seat_id, class_id=economy.class_id, join_code=join_code, block='A', role="student", claimed_at=datetime.now(timezone.utc))
+<string>:4: in __init__
+    ???
+/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/sqlalchemy/orm/state.py:596: in _initialize_instance
+    with util.safe_reraise():
+/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/sqlalchemy/util/langhelpers.py:121: in __exit__
+    raise exc_value.with_traceback(exc_tb)
+/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/sqlalchemy/orm/state.py:594: in _initialize_instance
+    manager.original_init(*mixed[1:], **kwargs)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <Seat (transient 4422950848)>
+kwargs = {'block': 'A', 'claimed_at': datetime.datetime(2026, 7, 1, 5, 7, 21, 485477, tzinfo=datetime.timezone.utc), 'class_id': '8efe0e06-e735-4ca3-b4f9-ade93d018352', 'join_code': 'VOIDDLY1', ...}
+cls_ = <class 'app.models.Seat'>, k = 'seat_id'
+
+    def _declarative_constructor(self: Any, **kwargs: Any) -> None:
+        """A simple constructor that allows initialization from kwargs.
+    
+        Sets attributes on the constructed instance using the names and
+        values in ``kwargs``.
+    
+        Only keys that are present as
+        attributes of the instance's class are allowed. These could be,
+        for example, any mapped columns or relationships.
+        """
+        cls_ = type(self)
+        for k in kwargs:
+            if not hasattr(cls_, k):
+>               raise TypeError(
+                    "%r is an invalid keyword argument for %s" % (k, cls_.__name__)
+                )
+E               TypeError: 'seat_id' is an invalid keyword argument for Seat
+
+/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/sqlalchemy/orm/decl_base.py:2179: TypeError
+------------------------------ Captured log setup ------------------------------
+WARNING  app.feats.base:base.py:334 FEAT-INTEGRITY-WARNING: FEATBypass active. Execution integrity is currently unmanaged.
+WARNING  app.feats.base:base.py:175 FEAT-INTEGRITY-WARNING: FEAT FEAT-BYPASS-LEGACY (Blast=LOW) missing idempotency_key.
+INFO     app.feats.base:base.py:228 FEAT-ENTRY: feat=FEAT-BYPASS-LEGACY | correlation_id=bypass_test_3c666dfd3db54ba7be2375919fb69f13 | idempotency_key=NONE
+---------------------------- Captured log teardown -----------------------------
+INFO     app.feats.base:base.py:265 FEAT-COMMIT-OWNERSHIP: FEAT-BYPASS-LEGACY | First commit owned by FEAT-BYPASS-LEGACY | Correlation=bypass_test_3c666dfd3db54ba7be2375919fb69f13
+=========================== short test summary info ============================
+FAILED tests/test_void_transaction_rules.py::test_void_delayed_purchase_removes_item_and_refunds
+============================== 1 failed in 2.50s ===============================

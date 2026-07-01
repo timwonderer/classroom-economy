@@ -7,7 +7,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone, timedelta
 from app import db
-from app.models import Admin
+from app.models import User, UserRole, Admin
 
 @pytest.fixture
 def admin_user(client):

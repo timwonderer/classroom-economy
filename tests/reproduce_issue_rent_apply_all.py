@@ -4,7 +4,7 @@ from app.models import RentSettings, RentItem, Seat, IdentityProfile
 @pytest.fixture
 def teacher_with_classes(client):
     """Create a teacher with two classes."""
-    from app.models import Admin
+    from app.models import User, UserRole, Admin
     from app import db
     
     # Create teacher

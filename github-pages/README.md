@@ -4,6 +4,7 @@ This directory is the deployable GitHub Pages source for the Classroom Token Hub
 
 It intentionally publishes a narrow static surface:
 
+- `index.html` — root entry point that redirects to the transition page.
 - `v2transition.html` — the v1 end-of-service / v2 transition page.
 - `learnmore.html` — the supporting learn-more page.
 

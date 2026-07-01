@@ -6,7 +6,7 @@ from sqlalchemy import func, or_, case, select
 
 from app.extensions import db
 from app.models import (
-    ClassEconomy, ClassMembership, Seat, Transaction, StudentBlock,
+    ClassEconomy, Seat, Transaction,
     AttendanceSession, HallPassLog, RedemptionAuditLog, StorePurchase, RedemptionEvent, AnalyticsEvent,
     AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
     InsuranceEnrollment, RentPayment, Announcement, StoreItemBlock, StoreItem,
@@ -26,7 +26,6 @@ def _raise_invariant_violation(message: str) -> None:
 def _assert_class_scope_integrity(class_id: str, join_code: str) -> None:
     scoped_models = (
         ("ledger_transaction", Transaction),
-        ("student_blocks", StudentBlock),
         ("hall_pass_logs", HallPassLog),
         ("store_purchases", StorePurchase),
         ("redemption_events", RedemptionEvent),
@@ -48,28 +47,7 @@ def _assert_class_scope_integrity(class_id: str, join_code: str) -> None:
         if count:
             violations.append(f"{label}={count}")
 
-    # Check for StudentBlock rows with null class_id inferred from active seats in this class
-    seat_student_ids = [
-        s_id for (s_id,) in db.session.query(Student.id)
-        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
-        .join(Seat, Seat.id == IdentityProfile.seat_id)
-        .filter(Seat.class_id == class_id)
-        .distinct().all()
-    ]
-    seat_blocks = [
-        b for (b,) in db.session.query(Seat.block).filter(
-            Seat.class_id == class_id,
-            Seat.block.isnot(None),
-        ).distinct().all()
-    ]
-    if seat_student_ids and seat_blocks:
-        inferred_student_block_nulls = db.session.query(StudentBlock).filter(
-            StudentBlock.student_id.in_(seat_student_ids),
-            StudentBlock.period.in_(seat_blocks),
-            StudentBlock.class_id.is_(None),
-        ).count()
-        if inferred_student_block_nulls:
-            violations.append(f"student_blocks_inferred={inferred_student_block_nulls}")
+    pass
 
     if violations:
         _raise_invariant_violation(
@@ -90,7 +68,7 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
     Args:
         class_id: Canonical class boundary to collapse.
         reason: An audit reason for the deletion (logged).
-        actor_membership_id: The ClassMembership ID of the actor performing the deletion.
+        actor_seat_id: The Seat ID of the actor performing the deletion.
         
     Returns:
         True if the universe was collapsed (or didn't exist), False if an error occurred.
@@ -128,16 +106,10 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
             .filter(Seat.class_id == class_id)
             .distinct().all()
         ]
-        affected_student_ids_sb = [
-            s_id for (s_id,) in db.session.query(StudentBlock.student_id).filter(
-                StudentBlock.class_id == class_id,
-                StudentBlock.student_id.isnot(None)
-            ).distinct().all()
-        ]
-        affected_student_ids = list(set(affected_student_ids_seat + affected_student_ids_sb))
+        affected_student_ids = list(set(affected_student_ids_seat))
 
         # Many tables are handled by ON DELETE CASCADE from ClassEconomy
-        # (e.g. BalanceCache, Transaction, StudentBlock, AttendanceSession, RentPayment, ClassMembership, ClassJoinCodeAlias)
+        # (e.g. BalanceCache, Transaction, AttendanceSession, RentPayment, ClassJoinCodeAlias)
         # We explicitly delete the others or things that require manual cleanup first
 
         # 2. Activity / State Logs & Records (Not all have ON DELETE CASCADE yet)
@@ -145,7 +117,7 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         AnalyticsSnapshot.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         AnalyticsEvent.query.filter_by(class_id=class_id).delete(synchronize_session=False)
         Announcement.query.filter_by(class_id=class_id).delete(synchronize_session=False)
-        StudentBlock.query.filter_by(class_id=class_id).delete(synchronize_session=False)
+        pass
 
         # 3. Insurance & Issue Data
         issue_ids_sel = select(Issue.id).filter_by(class_id=class_id)
@@ -197,7 +169,6 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         if affected_student_ids:
             for s_id in affected_student_ids:
                 # Full erasure if totally orphaned across all teachers
-                remaining_memberships = db.session.query(ClassMembership.id).filter_by(student_id=s_id).count()
                 remaining_seats = (
                     db.session.query(Seat.id)
                     .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
@@ -205,7 +176,7 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
                     .filter(Student.id == s_id)
                     .count()
                 )
-                if remaining_memberships == 0 and remaining_seats == 0:
+                if remaining_seats == 0:
                     logger.info(f"Student Erasure Rule triggered for student_id={s_id}")
                     Student.query.filter_by(id=s_id).delete(synchronize_session=False)
 

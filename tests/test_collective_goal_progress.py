@@ -7,7 +7,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import uuid
 
 from app.extensions import db
-from app.models import Admin, ClassMembership, StoreItem, StoreItemBlock, Student, StudentItem, StudentTeacher, Transaction, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, ClassMembership, StoreItem, StoreItemBlock, Student, StudentItem, StudentTeacher, Transaction, Seat, IdentityProfile
 from tests.helpers.class_scope import create_class_scope
 
 
@@ -47,23 +47,25 @@ def _create_student(teacher, first_name, join_code, block='A'):
         db.session.flush()
     elif not db.session.query(ClassMembership.id).filter_by(
         join_code=join_code,
-        student_id=student.id,
+        user_id=student_user.id,
         role='student',
     ).first():
         db.session.add(ClassMembership(
             join_code=join_code,
-            student_id=student.id,
+            user_id=student_user.id,
             role='student',
         ))
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
-    _tb_seat = Seat(student_id=student.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    _tb_seat = Seat(user_id=student_user.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_name='S'))
     db.session.add(Transaction(
-        student_id=student.id,
-        teacher_id=teacher.id,
-        join_code=join_code,
+        user_id=student_user.id,join_code=join_code,
         amount=Decimal('100.00'),
         account_type='checking',
         type='deposit',
@@ -83,7 +85,7 @@ def test_student_shop_collective_progress_counts_current_class_only(client):
     db.session.flush()
 
     item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code='JOINA123',
         name='Class Pizza Party',
         price=Decimal('10.00'),
@@ -98,8 +100,8 @@ def test_student_shop_collective_progress_counts_current_class_only(client):
 
     # One purchaser in class A and one purchaser in class B.
     db.session.add_all([
-        StudentItem(correlation_id='corr_test', student_id=student_a1.id, store_item_id=item.id, join_code='JOINA123', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
-        StudentItem(correlation_id='corr_test', student_id=student_b1.id, store_item_id=item.id, join_code='JOINB456', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
+        StudentItem(correlation_id='corr_test', user_id=student_a1_user.id, store_item_id=item.id, join_code='JOINA123', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
+        StudentItem(correlation_id='corr_test', user_id=student_b1_user.id, store_item_id=item.id, join_code='JOINB456', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
     ])
     db.session.commit()
 
@@ -120,14 +122,14 @@ def test_student_shop_filters_items_by_store_item_block_visibility(client):
     db.session.flush()
 
     a_item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code='JOINA111',
         name='A Only Item',
         price=Decimal('6.00'),
         is_active=True,
     )
     d_item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code='JOIND222',
         name='D Only Item',
         price=Decimal('7.00'),
@@ -136,7 +138,7 @@ def test_student_shop_filters_items_by_store_item_block_visibility(client):
     # QUERY INVERSION v2: Unscoped items (join_code=None) are teacher templates
     # and must NOT appear in student shop.
     unscoped_item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         name='Unscoped Item',
         price=Decimal('5.00'),
         is_active=True,
@@ -167,7 +169,7 @@ def test_purchase_item_rejects_items_not_visible_to_current_block(client):
     db.session.flush()
 
     d_only_item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         name='D Scoped Item',
         price=Decimal('8.00'),
         is_active=True,
@@ -185,7 +187,7 @@ def test_purchase_item_rejects_items_not_visible_to_current_block(client):
     })
     assert resp.status_code == 404
     assert StudentItem.query.filter_by(
-        student_id=student_a.id,
+        user_id=student_a_user.id,
         store_item_id=d_only_item.id,
         join_code='JOINA333',
     ).count() == 0
@@ -203,7 +205,7 @@ def test_purchase_item_allows_unscoped_item_without_block_visibility(client):
 
     # Item is scoped to the student's class (join_code), no block restrictions
     scoped_item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code='JOINA444',
         name='Class Scoped Item',
         price=Decimal('4.00'),
@@ -220,7 +222,7 @@ def test_purchase_item_allows_unscoped_item_without_block_visibility(client):
     })
     assert resp.status_code == 200
     assert StudentItem.query.filter_by(
-        student_id=student_a.id,
+        user_id=student_a_user.id,
         store_item_id=scoped_item.id,
         join_code='JOINA444',
     ).count() == 1
@@ -237,7 +239,7 @@ def test_collective_unlock_scoped_to_join_code_and_goal_type(client):
     db.session.flush()
 
     item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code='JOINA777',
         name='Collective Unlock',
         price=Decimal('10.00'),
@@ -252,8 +254,8 @@ def test_collective_unlock_scoped_to_join_code_and_goal_type(client):
 
     # Existing purchase in class A and class B.
     db.session.add_all([
-        StudentItem(correlation_id='corr_test', student_id=student_a1.id, store_item_id=item.id, join_code='JOINA777', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
-        StudentItem(correlation_id='corr_test', student_id=student_b1.id, store_item_id=item.id, join_code='JOINB999', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
+        StudentItem(correlation_id='corr_test', user_id=student_a1_user.id, store_item_id=item.id, join_code='JOINA777', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
+        StudentItem(correlation_id='corr_test', user_id=student_b1_user.id, store_item_id=item.id, join_code='JOINB999', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
     ])
     db.session.commit()
 
@@ -288,7 +290,7 @@ def test_admin_store_shows_collective_progress(client):
     db.session.flush()
 
     item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code='JOINADMINA',
         name='Admin Progress Item',
         price=Decimal('5.00'),
@@ -300,7 +302,7 @@ def test_admin_store_shows_collective_progress(client):
     )
     db.session.add(item)
     db.session.flush()
-    db.session.add(StudentItem(correlation_id='corr_test', student_id=student_a1.id, store_item_id=item.id, join_code='JOINADMINA', status='pending', collective_goal_instance_code=item.collective_goal_instance_code))
+    db.session.add(StudentItem(correlation_id='corr_test', user_id=student_a1_user.id, store_item_id=item.id, join_code='JOINADMINA', status='pending', collective_goal_instance_code=item.collective_goal_instance_code))
     db.session.commit()
 
     _login_admin(client, teacher.id)
@@ -321,7 +323,7 @@ def test_whole_class_collective_prevents_duplicate_purchase(client):
     db.session.flush()
 
     item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code='JOINWHOLE',
         name='Whole Class Goal Item',
         price=Decimal('10.00'),
@@ -366,7 +368,7 @@ def test_whole_class_collective_goal_uses_correct_class_size(client):
     db.session.flush()
 
     item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code='JOINSIZE',
         name='Whole Class Pizza',
         price=Decimal('5.00'),
@@ -419,7 +421,7 @@ def test_collective_progress_with_correct_roster_count_admin(client):
     db.session.flush()
 
     item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code='JOINADMIN',
         name='Admin Whole Class Item',
         price=Decimal('5.00'),
@@ -432,7 +434,7 @@ def test_collective_progress_with_correct_roster_count_admin(client):
     db.session.flush()
     
     # One student purchases
-    db.session.add(StudentItem(correlation_id='corr_test', student_id=student_a1.id, store_item_id=item.id, join_code='JOINADMIN', status='pending', collective_goal_instance_code=item.collective_goal_instance_code))
+    db.session.add(StudentItem(correlation_id='corr_test', user_id=student_a1_user.id, store_item_id=item.id, join_code='JOINADMIN', status='pending', collective_goal_instance_code=item.collective_goal_instance_code))
     db.session.commit()
 
     _login_admin(client, teacher.id)
@@ -452,7 +454,7 @@ def test_fixed_collective_allows_multiple_purchases(client):
     db.session.flush()
 
     item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code='JOINFIXED',
         name='Fixed Goal Item',
         price=Decimal('5.00'),
@@ -500,14 +502,18 @@ def test_whole_class_goal_with_duplicate_seats_shows_correct_roster(client):
     db.session.flush()
     
     # Add a duplicate TeacherBlock entry for student_a1 (simulating data inconsistency)
-    _tb_seat = Seat(student_id=student_a1.id, join_code='JOINDUP', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_a1_user = User(username_hash=f"auto_{student_a1.id}", username_lookup_hash=f"auto_l_{student_a1.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_a1_user)
+    db.session.flush()
+    _tb_seat = Seat(user_id=student_a1_user.id, join_code='JOINDUP', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Laura', last_name='S'))
     db.session.flush()
 
     item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code='JOINDUP',
         name='Duplicate Seats Test',
         price=Decimal('5.00'),
@@ -543,7 +549,7 @@ def test_whole_class_collective_allows_purchase_per_class_for_same_teacher(clien
     db.session.flush()
 
     item_class1 = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code='JOINMULTI1',
         name='Whole Class Multi-Class Item',
         price=Decimal('10.00'),
@@ -553,7 +559,7 @@ def test_whole_class_collective_allows_purchase_per_class_for_same_teacher(clien
         collective_goal_instance_code=str(uuid.uuid4())
     )
     item_class2 = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code='JOINMULTI2',
         name='Whole Class Multi-Class Item',
         price=Decimal('10.00'),

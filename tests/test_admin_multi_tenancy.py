@@ -9,7 +9,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 import sqlalchemy as sa
 from app import app as flask_app
-from app.models import Admin, IdentityProfile, Student, StudentTeacher
+from app.models import User, UserRole, Admin, IdentityProfile, Student, StudentTeacher
 from app.extensions import db
 from app.routes.admin import _scoped_students
 from app.hash_utils import get_random_salt
@@ -42,7 +42,7 @@ def multi_teacher_data(client):
         
         # Create StudentTeacher association
         db.session.add(StudentTeacher(
-            student_id=student.id,
+            user_id=student_user.id,
             teacher_id=teacher1.id
         ))
     
@@ -63,7 +63,7 @@ def multi_teacher_data(client):
         
         # Create StudentTeacher association
         db.session.add(StudentTeacher(
-            student_id=student.id,
+            user_id=student_user.id,
             teacher_id=teacher2.id
         ))
     
@@ -229,7 +229,7 @@ def test_system_admin_flag_not_set_accidentally(client):
         db.session.add(student)
         db.session.flush()
         db.session.add(StudentTeacher(
-            student_id=student.id,
+            user_id=student_user.id,
             teacher_id=teacher2.id
         ))
     
@@ -310,7 +310,7 @@ def test_orphaned_students_from_deleted_teacher(client):
         
         # Create StudentTeacher association (the ONLY way to link students to teachers)
         db.session.add(StudentTeacher(
-            student_id=student.id,
+            user_id=student_user.id,
             teacher_id=teacher1_id
         ))
     

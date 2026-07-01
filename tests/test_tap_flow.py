@@ -35,7 +35,7 @@ def create_claimed_seat(teacher_id, student_id, block, join_code, salt=None, use
     identity_user = (
         User.query
         .join(Seat, Seat.user_id == User.id)
-        .filter(Seat.student_id == student_id)
+        .filter(Seat.user_id == student_id)
         .order_by(Seat.id.asc())
         .first()
     )
@@ -65,7 +65,6 @@ def create_claimed_seat(teacher_id, student_id, block, join_code, salt=None, use
 
     db.session.add(Seat(
         user_id=identity_user.id,
-        student_id=student_id,
         class_id=class_economy.class_id,
         join_code=join_code,
         block=block,
@@ -99,7 +98,7 @@ def test_dynamic_blocks_and_tap_flow(client):
     db.session.flush()
 
     # Link student to teacher via StudentTeacher
-    st = StudentTeacher(student_id=stu.id, teacher_id=teacher.id)
+    st = StudentTeacher(user_id=stu_user.id, teacher_id=teacher.id)
     db.session.add(st)
 
     # Create TeacherBlocks for the student (required for join_code context)
@@ -157,7 +156,7 @@ def test_invalid_period_and_action(client):
     db.session.add(stu)
     db.session.flush()
 
-    db.session.add(StudentTeacher(student_id=stu.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=stu_user.id, teacher_id=teacher.id))
 
     # Create TeacherBlock
     create_claimed_seat(teacher.id, stu.id, "A", "JOIN-T2", salt, username=username, pin="0000")
@@ -199,7 +198,7 @@ def test_server_state_json(client):
     db.session.flush()
 
     # Link student to teacher via StudentTeacher
-    st = StudentTeacher(student_id=stu.id, teacher_id=teacher.id)
+    st = StudentTeacher(user_id=stu_user.id, teacher_id=teacher.id)
     db.session.add(st)
 
     # Create TeacherBlock
@@ -270,7 +269,7 @@ def test_auto_tapout_noops_without_canonical_seat_scope(client):
     
     # Link to teacher
     from app.models import StudentTeacher
-    st = StudentTeacher(student_id=stu.id, teacher_id=teacher.id)
+    st = StudentTeacher(user_id=stu_user.id, teacher_id=teacher.id)
     db.session.add(st)
     db.session.commit()
 
@@ -301,11 +300,11 @@ def test_student_status_get_is_read_only_and_reconcile_is_explicit_mutation(clie
     db.session.add(stu)
     db.session.flush()
 
-    db.session.add(StudentTeacher(student_id=stu.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=stu_user.id, teacher_id=teacher.id))
     create_claimed_seat(teacher.id, stu.id, "A", "JOIN-A", salt, username=username, pin="0000")
     db.session.commit()
     class_row = ClassEconomy.query.filter_by(join_code="JOIN-A").first()
-    seat = Seat.query.filter_by(student_id=stu.id, class_id=class_row.class_id).first()
+    seat = Seat.query.filter_by(user_id=stu_user.id, class_id=class_row.class_id).first()
     assert class_row is not None
     assert seat is not None
     if not seat.claimed_at:

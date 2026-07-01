@@ -20,7 +20,7 @@ from app.extensions import db, limiter
 from app.feats.base import feat_shell
 from app.auth import admin_required
 from app.models import (
-    Admin, AnalyticsAlert, AnalyticsEvent,
+    AnalyticsAlert, AnalyticsEvent,
     PayrollSettings, RentSettings, Student, ClassEconomy, Seat
 )
 from app.models import Transaction
@@ -218,14 +218,17 @@ def dashboard():
     try:
         from app.services.context_resolver import resolve_canonical_context, ContextResolutionError
         context = resolve_canonical_context()
+        teacher_id = context.user_id
         class_id = context.class_id
         
-        # Get join_code from ClassEconomy
-        from app.models import ClassEconomy
-        class_row = ClassEconomy.query.get(class_id)
+        # Resolve the active class directly from canonical class authority.
+        class_row = db.session.get(ClassEconomy, class_id)
         if not class_row:
             raise ContextResolutionError("Class not found")
         join_code = class_row.join_code
+        selected_class, available_classes = resolve_current_class_context(teacher_id)
+        if not selected_class:
+            raise ContextResolutionError("No class context available")
     except Exception as e:
         flash('You need to set up class periods before viewing analytics.', 'warning')
         return redirect(url_for('admin.students'))
@@ -268,8 +271,6 @@ def dashboard():
         AnalyticsEvent.event_date <= window_end
     ).order_by(AnalyticsEvent.event_date.desc()).limit(10).all()
     
-    # Get teacher info for display
-    teacher = db.session.get(Admin, teacher_id)
     return render_template(
         'admin_analytics_dashboard.html',
         snapshot=snapshot,
@@ -278,7 +279,6 @@ def dashboard():
         window_type=window_type,
         window_start=window_start,
         window_end=window_end,
-        teacher=teacher,
         join_code=join_code,
         available_classes=available_classes,
         current_class_label=selected_class['label'],
@@ -302,7 +302,7 @@ def api_snapshot(window_type):
         
         # Get join_code from ClassEconomy
         from app.models import ClassEconomy
-        class_row = ClassEconomy.query.get(class_id)
+        class_row = db.session.get(ClassEconomy, class_id)
         if not class_row:
             return jsonify({'error': 'No class period selected'}), 400
         join_code = class_row.join_code
@@ -374,7 +374,7 @@ def api_alerts():
         context = resolve_canonical_context()
         class_id = context.class_id
         from app.models import ClassEconomy
-        class_row = ClassEconomy.query.get(class_id)
+        class_row = db.session.get(ClassEconomy, class_id)
         join_code = class_row.join_code if class_row else None
     except Exception:
         return jsonify({'error': 'No class period selected'}), 400
@@ -425,7 +425,7 @@ def acknowledge_alert(alert_id):
         context = resolve_canonical_context()
         class_id = context.class_id
         from app.models import ClassEconomy
-        class_row = ClassEconomy.query.get(class_id)
+        class_row = db.session.get(ClassEconomy, class_id)
         join_code = class_row.join_code if class_row else None
     except Exception:
         return jsonify({'error': 'No class period selected'}), 400
@@ -465,7 +465,7 @@ def events():
         context = resolve_canonical_context()
         class_id = context.class_id
         from app.models import ClassEconomy
-        class_row = ClassEconomy.query.get(class_id)
+        class_row = db.session.get(ClassEconomy, class_id)
         if not class_row:
             raise Exception("No class found")
         join_code = class_row.join_code

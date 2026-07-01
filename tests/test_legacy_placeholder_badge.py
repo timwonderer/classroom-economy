@@ -13,7 +13,7 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.models import Admin, IdentityProfile, Student, StudentTeacher
+from app.models import User, UserRole, Admin, IdentityProfile, Student, StudentTeacher
 from app.hash_utils import get_random_salt, hash_username
 
 pytestmark = pytest.mark.skip(reason="TeacherBlock removed in Wave 11 decommissioning")
@@ -48,7 +48,7 @@ def _create_legacy_student(first_name: str, teacher: Admin, block: str = "A") ->
     )
     db.session.add(student)
     db.session.flush()
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
     return student
 

@@ -41,7 +41,7 @@ def _attach_student_to_class(student, join_code="ATTEND1", block="A"):
     )
     db.session.flush()
 
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     
     student_username = f"user_{join_code}_{student.id}"
     user = User(
@@ -55,7 +55,6 @@ def _attach_student_to_class(student, join_code="ATTEND1", block="A"):
     db.session.add(
         Seat(
             user_id=user.id,
-            student_id=student.id,
             class_id=class_economy.class_id,
             join_code=join_code,
             block=block,
@@ -93,7 +92,7 @@ def test_get_last_payroll_time(client):
     now = datetime.now(timezone.utc)
     # V2 requires seat_id/class_id, but compatibility layer supports join_code
     tx = Transaction(
-        student_id=student.id, 
+        user_id=student_user.id, 
         seat_id=seat_id,
         class_id=class_id,
         amount=10, 
@@ -109,7 +108,7 @@ def test_get_last_payroll_time(client):
     # Manual payments should only change the per-student anchor
     manual_time = now + timedelta(hours=1)
     manual_tx = Transaction(
-        student_id=student.id, 
+        user_id=student_user.id, 
         seat_id=seat_id,
         class_id=class_id,
         amount=5, 
@@ -127,7 +126,7 @@ def test_get_last_payroll_time(client):
     other_seat_id, other_class_id = _resolve_scope(student.id, other_join)
     other_join_time = manual_time + timedelta(hours=1)
     other_join_tx = Transaction(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=other_seat_id,
         class_id=other_class_id,
         amount=7,
@@ -157,7 +156,7 @@ def test_calculate_unpaid_attendance_seconds(client):
 
     db.session.add(
         AttendanceSession(
-            student_id=student.id,
+            user_id=student_user.id,
             seat_id=seat_id,
             class_id=class_id,
             period="A",
@@ -191,7 +190,7 @@ def test_calculate_period_attendance(client):
 
     db.session.add(
         AttendanceSession(
-            student_id=student.id,
+            user_id=student_user.id,
             seat_id=seat_id,
             class_id=class_id,
             period="A",
@@ -221,7 +220,7 @@ def test_get_session_status(client):
     seat_id, class_id = _resolve_scope(student.id, join_code)
 
     session = AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat_id,
         class_id=class_id,
         period="A",
@@ -231,7 +230,7 @@ def test_get_session_status(client):
     db.session.flush()
     db.session.add(
         SeatAttendanceState(
-            student_id=student.id,
+            user_id=student_user.id,
             seat_id=seat_id,
             class_id=class_id,
             period="A",
@@ -263,7 +262,7 @@ def test_get_all_block_statuses(client):
     tap_in_time_a = now - timedelta(minutes=10)
     seat_id_a, class_id_a = _resolve_scope(student.id, join_code_a)
     session_a = AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat_id_a,
         class_id=class_id_a,
         period="A",
@@ -273,7 +272,7 @@ def test_get_all_block_statuses(client):
     db.session.flush()
     db.session.add(
         SeatAttendanceState(
-            student_id=student.id,
+            user_id=student_user.id,
             seat_id=seat_id_a,
             class_id=class_id_a,
             period="A",

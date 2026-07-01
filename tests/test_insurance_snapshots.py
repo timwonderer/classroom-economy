@@ -5,6 +5,8 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
 from app.services import obligations_service
 from app.models import (
+    User,
+    UserRole,
     Admin,
     InsurancePolicy,
     InsuranceClaim,
@@ -106,7 +108,7 @@ def test_admin_claim_approval_uses_frozen_claim_cap(client, test_student):
     db.session.add(admin)
     db.session.flush()
 
-    db.session.add(StudentTeacher(student_id=test_student.id, teacher_id=admin.id))
+    db.session.add(StudentTeacher(user_id=test_student_user.id, teacher_id=admin.id))
     db.session.commit()
     class_row = create_class_scope(teacher=admin, join_code="JOIN-SNAP-1", student=test_student, block="A")
     db.session.commit()
@@ -134,9 +136,7 @@ def test_admin_claim_approval_uses_frozen_claim_cap(client, test_student):
     db.session.flush()
 
     tx = Transaction(
-        student_id=test_student.id,
-        teacher_id=admin.id,
-        join_code="JOIN-SNAP-1",
+        user_id=test_student_user.id,join_code="JOIN-SNAP-1",
         amount=Decimal("-50.00"),
         account_type="checking",
         status=TransactionStatus.POSTED,

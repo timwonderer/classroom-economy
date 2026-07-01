@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, Issue, IssueCategory, Student, Seat, IdentityProfile, ClassEconomy, StudentTeacher
+from app.models import User, UserRole, Admin, Issue, IssueCategory, Student, Seat, IdentityProfile, ClassEconomy, StudentTeacher
 from app.utils.opaque_refs import make_opaque_ref
 
 
@@ -28,14 +28,18 @@ def test_teacher_must_close_issue_after_final_review(client):
     )
     db.session.add_all([student, category])
     db.session.flush()
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id, class_id=class_row.class_id, join_code="JOINLIFE1"))
-    seat = Seat(student_id=student.id, class_id=class_row.class_id, join_code="JOINLIFE1", block="A", block_identifier="A", role="student")
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id, class_id=class_row.class_id, join_code="JOINLIFE1"))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    seat = Seat(user_id=student_user.id, class_id=class_row.class_id, join_code="JOINLIFE1", block="A", block_identifier="A", role="student")
     db.session.add(seat)
     db.session.flush()
     profile.seat_id = seat.id
 
     issue = Issue(
-        student_id=student.id,
+        user_id=student_user.id,
         actor_public_id="seat-public-issue-1",
         teacher_id=teacher.id,
         class_id=class_row.class_id,

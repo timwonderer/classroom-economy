@@ -4,7 +4,7 @@ import os
 
 from werkzeug.security import generate_password_hash
 
-from app.models import Admin, Student, RentSettings, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, Student, RentSettings, Seat, IdentityProfile
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
 
@@ -28,22 +28,28 @@ def test_dashboard_handles_rent_with_multi_block_student(client):
     db.session.add(student)
     db.session.commit()
 
-    seat_a = Seat(student_id=student.id, join_code="JOINA", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    seat_a = Seat(user_id=student_user.id, join_code="JOINA", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(seat_a)
 
     db.session.flush()
 
     db.session.add(IdentityProfile(seat_id=seat_a.id, profile_type='student_claimed', first_name="Rent", last_initial="R"))
-    seat_b = Seat(student_id=student.id, join_code="JOINB", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    seat_b = Seat(user_id=student_user.id, join_code="JOINB", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat_b)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type='student_claimed', first_name="Rent", last_initial="R"))
     db.session.add_all([seat_a, seat_b])
 
-    rent_settings = RentSettings(
-        teacher_id=teacher.id,
-        is_enabled=True,
+    rent_settings = RentSettings(is_enabled=True,
         bill_preview_enabled=True,
         rent_amount=25.0,
     )

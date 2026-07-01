@@ -360,7 +360,7 @@ def student_page(app, client, axe_live_server, browser, axe_script):
             teacher_user_id=teacher_user.id,
             student_user_id=user.id,
         )
-        db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+        db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
 
         teacher_user.last_active_class_id = class_row.class_id
         user.last_active_class_id = class_row.class_id

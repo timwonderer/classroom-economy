@@ -4,7 +4,7 @@ import pytest
 import pyotp
 import uuid
 from app import db
-from app.models import Admin, IdentityProfile, Student, StudentTeacher
+from app.models import User, UserRole, Admin, IdentityProfile, Student, StudentTeacher
 from app.hash_utils import get_random_salt
 
 def test_student_count_relies_only_on_link_table(client):
@@ -36,7 +36,7 @@ def test_student_count_relies_only_on_link_table(client):
     assert initial_count == 0
 
     # 4. Link via StudentTeacher
-    link = StudentTeacher(student_id=student.id, teacher_id=teacher.id)
+    link = StudentTeacher(user_id=student_user.id, teacher_id=teacher.id)
     db.session.add(link)
     db.session.commit()
 
@@ -78,8 +78,8 @@ def test_delete_teacher_cleans_up_links(client):
     student_id = student.id
 
     # Link to BOTH
-    link1 = StudentTeacher(student_id=student.id, teacher_id=teacher.id)
-    link2 = StudentTeacher(student_id=student.id, teacher_id=survivor_teacher.id)
+    link1 = StudentTeacher(user_id=student_user.id, teacher_id=teacher.id)
+    link2 = StudentTeacher(user_id=student_user.id, teacher_id=survivor_teacher.id)
     db.session.add(link1)
     db.session.add(link2)
     db.session.commit()
@@ -119,12 +119,12 @@ def test_student_teacher_unique_constraint(client):
     db.session.commit()
     
     # First Link
-    link1 = StudentTeacher(student_id=s.id, teacher_id=t.id)
+    link1 = StudentTeacher(user_id=s_user.id, teacher_id=t.id)
     db.session.add(link1)
     db.session.commit()
     
     # Duplicate Link
-    link2 = StudentTeacher(student_id=s.id, teacher_id=t.id)
+    link2 = StudentTeacher(user_id=s_user.id, teacher_id=t.id)
     db.session.add(link2)
     
     # Verify IntegrityError
@@ -149,8 +149,8 @@ def test_remove_student_from_teacher_scope_preserves_shared_student(client):
     db.session.commit()
 
     db.session.add_all([
-        StudentTeacher(student_id=s.id, teacher_id=t1.id),
-        StudentTeacher(student_id=s.id, teacher_id=t2.id),
+        StudentTeacher(user_id=s_user.id, teacher_id=t1.id),
+        StudentTeacher(user_id=s_user.id, teacher_id=t2.id),
     ])
     db.session.commit()
 
@@ -161,5 +161,5 @@ def test_remove_student_from_teacher_scope_preserves_shared_student(client):
 
     assert was_deleted is False
     assert db.session.get(Student, s.id) is not None
-    assert StudentTeacher.query.filter_by(student_id=s.id, teacher_id=t1.id).count() == 0
-    assert StudentTeacher.query.filter_by(student_id=s.id, teacher_id=t2.id).count() == 1
+    assert StudentTeacher.query.filter_by(user_id=s_user.id, teacher_id=t1.id).count() == 0
+    assert StudentTeacher.query.filter_by(user_id=s_user.id, teacher_id=t2.id).count() == 1

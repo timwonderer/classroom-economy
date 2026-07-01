@@ -14,7 +14,7 @@ import os
 from werkzeug.security import generate_password_hash
 
 from app import db
-from app.models import Admin, Student, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, Student, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus, Seat, IdentityProfile
 from app.hash_utils import get_random_salt, hash_username
 
 
@@ -38,8 +38,8 @@ def setup_rent_with_items(client):
     db.session.commit()
 
     # Link student to teacher
-    from app.models import StudentTeacher
-    st = StudentTeacher(student_id=student.id, teacher_id=teacher.id)
+    from app.models import User, UserRole, StudentTeacher
+    st = StudentTeacher(user_id=student_user.id, teacher_id=teacher.id)
     db.session.add(st)
     db.session.commit()
 
@@ -54,7 +54,11 @@ def setup_rent_with_items(client):
     db.session.add(economy)
     db.session.flush()
 
-    seat = Seat(student_id=student.id, join_code="TESTA", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    seat = Seat(user_id=student_user.id, join_code="TESTA", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(seat)
 
@@ -63,7 +67,7 @@ def setup_rent_with_items(client):
     db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Test", last_initial="S"))
     db.session.add(seat)
     db.session.add(Seat(
-        student_id=student.id,
+        user_id=student_user.id,
         class_id=economy.class_id,
         join_code="TESTA",
         block="A",
@@ -73,9 +77,7 @@ def setup_rent_with_items(client):
 
     # Create rent settings (join-code scoped)
     now = datetime.now(timezone.utc)
-    rent_settings = RentSettings(
-        teacher_id=teacher.id,
-        join_code="TESTA",
+    rent_settings = RentSettings(join_code="TESTA",
         block="A",
         is_enabled=True,
         rent_amount=50.0,
@@ -173,9 +175,7 @@ def test_overdue_rent_payment_uses_coverage_month_in_transaction_description(cli
     data['student'].is_rent_enabled = True
     db.session.add(
         Transaction(
-            student_id=data['student'].id,
-            teacher_id=data['teacher'].id,
-            join_code=data['join_code'],
+            student_id=data['student'].id,join_code=data['join_code'],
             amount=1000,
             account_type='checking',
             status=TransactionStatus.POSTED,

@@ -1,6 +1,6 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
-from app.models import Admin, Student, Transaction, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, Student, Transaction, Seat, IdentityProfile
 from app import db
 from datetime import datetime, timezone
 
@@ -27,11 +27,19 @@ def test_payroll_visibility_bug(client):
     db.session.commit()
 
     # 3. Setup TeacherBlocks (Class Rosters)
-    tb1 = Seat(student_id=student.id, join_code="JOIN_A", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    tb1 = Seat(user_id=student_user.id, join_code="JOIN_A", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb1)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=tb1.id, profile_type='student_claimed', first_name="Timothy", last_initial="C"))
-    tb2 = Seat(student_id=student.id, join_code="JOIN_G", block="G", block_identifier="G", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    tb2 = Seat(user_id=student_user.id, join_code="JOIN_G", block="G", block_identifier="G", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb2)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=tb2.id, profile_type='student_claimed', first_name="Timothy", last_initial="C"))
@@ -40,18 +48,14 @@ def test_payroll_visibility_bug(client):
 
     # 4. Create Transactions
     tx_a = Transaction(
-        student_id=student.id,
-        teacher_id=teacher1.id,
-        join_code="JOIN_A",
+        user_id=student_user.id,join_code="JOIN_A",
         amount=100.00,
         type='payroll',
         timestamp=datetime.now(timezone.utc),
         description="Payroll for Block A"
     )
     tx_g = Transaction(
-        student_id=student.id,
-        teacher_id=teacher2.id,
-        join_code="JOIN_G",
+        user_id=student_user.id,join_code="JOIN_G",
         amount=100.00,
         type='payroll',
         timestamp=datetime.now(timezone.utc),

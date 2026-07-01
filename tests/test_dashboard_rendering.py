@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
-from app.models import Admin, Student, StudentTeacher, RentSettings, TeacherOnboarding, InsurancePolicy, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, Student, StudentTeacher, RentSettings, TeacherOnboarding, InsurancePolicy, Seat, IdentityProfile
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
 from tests.helpers.class_scope import create_class_scope
@@ -89,10 +89,14 @@ def test_student_dashboard_rendering(client):
     db.session.add(student)
     db.session.flush()
     # Create StudentTeacher link instead of deprecated teacher_id
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
 
-    seat = Seat(student_id=student.id, join_code="RENDER1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    seat = Seat(user_id=student_user.id, join_code="RENDER1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(seat)
 

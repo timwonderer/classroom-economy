@@ -5,7 +5,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
-from app.models import Admin, IdentityProfile, Student, Transaction
+from app.models import User, UserRole, Admin, IdentityProfile, Student, Transaction
 import app.utils.transaction_idempotency as transaction_idempotency
 from app.utils.transaction_idempotency import (
     IDEMPOTENT_TRANSACTION_TYPES,
@@ -39,7 +39,7 @@ def test_create_idempotent_transaction_reuses_existing_row_on_retry(client):
     idempotency_key = insurance_reimbursement_key(123)
     transaction_one, created_one = create_idempotent_transaction(
         idempotency_key=idempotency_key,
-        student_id=student.id,
+        user_id=student_user.id,
         teacher_id=teacher.id,
         join_code="IDEMP123",
         amount=Decimal("10.00"),
@@ -49,7 +49,7 @@ def test_create_idempotent_transaction_reuses_existing_row_on_retry(client):
     )
     transaction_two, created_two = create_idempotent_transaction(
         idempotency_key=idempotency_key,
-        student_id=student.id,
+        user_id=student_user.id,
         teacher_id=teacher.id,
         join_code="IDEMP123",
         amount=Decimal("10.00"),
@@ -75,9 +75,7 @@ def test_create_idempotent_transaction_recovers_from_integrity_race(client, monk
 
     idempotency_key = insurance_reimbursement_key(456)
     winning_tx = Transaction(
-        student_id=student.id,
-        teacher_id=teacher.id,
-        join_code="IDEMP456",
+        user_id=student_user.id,join_code="IDEMP456",
         amount=Decimal("11.00"),
         account_type="checking",
         type="insurance_reimbursement",
@@ -103,7 +101,7 @@ def test_create_idempotent_transaction_recovers_from_integrity_race(client, monk
 
     transaction, created = create_idempotent_transaction(
         idempotency_key=idempotency_key,
-        student_id=student.id,
+        user_id=student_user.id,
         teacher_id=teacher.id,
         join_code="IDEMP456",
         amount=Decimal("11.00"),
@@ -131,7 +129,7 @@ def test_create_idempotent_transaction_rejects_non_idempotent_types(client):
     with pytest.raises(ValueError):
         create_idempotent_transaction(
             idempotency_key="txn:unknown:op",
-            student_id=student.id,
+            user_id=student_user.id,
             teacher_id=teacher.id,
             join_code="IDEMP789",
             amount=Decimal("5.00"),
@@ -154,7 +152,7 @@ def test_create_idempotent_transaction_rejects_empty_keys(client, bad_key):
     with pytest.raises(ValueError):
         create_idempotent_transaction(
             idempotency_key=bad_key,
-            student_id=student.id,
+            user_id=student_user.id,
             teacher_id=teacher.id,
             join_code="IDEMP000",
             amount=Decimal("5.00"),
@@ -176,7 +174,7 @@ def test_create_idempotent_transaction_rejects_oversize_keys(client):
     with pytest.raises(ValueError):
         create_idempotent_transaction(
             idempotency_key="x" * (MAX_IDEMPOTENCY_KEY_LENGTH + 1),
-            student_id=student.id,
+            user_id=student_user.id,
             teacher_id=teacher.id,
             join_code="IDEMP001",
             amount=Decimal("5.00"),

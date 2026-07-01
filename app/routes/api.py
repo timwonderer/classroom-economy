@@ -22,9 +22,9 @@ from app.extensions import db, limiter
 from app.models import (
     Admin, Student, StoreItem, StorePurchase, Transaction, TransactionStatus, TapEvent, AttendanceSession,
     AttendanceReasonCode, TapEventReasonCode, HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
-    StudentBlock, StoreItemBlock,
+    StoreItemBlock, User,
     RedemptionAuditLog, RedemptionAuditAction, RedemptionAuditSource, _quantize_currency,
-    ClassEconomy, ClassMembership, Seat, SeatAttendanceState, IdentityProfile,
+    ClassEconomy, Seat, SeatAttendanceState, IdentityProfile,
 )
 from app.auth import (
     login_required,
@@ -47,13 +47,13 @@ from app.feats.attendance import (
     checkin_hall_pass as feat_checkin_hall_pass,
     checkout_hall_pass as feat_checkout_hall_pass,
     enforce_daily_limits as feat_enforce_daily_limits,
-    get_or_create_student_block as feat_get_or_create_student_block,
+    get_or_create_attendance_state as feat_get_or_create_attendance_state,
     leave_hall_pass as feat_leave_hall_pass,
     reject_hall_pass as feat_reject_hall_pass,
     request_hall_pass as feat_request_hall_pass,
     rotate_teacher_hall_pass_verify_token as feat_rotate_teacher_hall_pass_verify_token,
     save_hall_pass_setup_config as feat_save_hall_pass_setup_config,
-    set_student_block_tap_enabled as feat_set_student_block_tap_enabled,
+    set_attendance_state_tap_enabled as feat_set_attendance_state_tap_enabled,
     soft_delete_session as feat_soft_delete_session,
     update_hall_pass_queue_settings as feat_update_hall_pass_queue_settings,
     return_hall_pass as feat_return_hall_pass,
@@ -282,11 +282,11 @@ def _get_or_create_hall_pass_settings(class_id):
 def _get_teacher_class_scope(admin_id):
     """Return (class_id_scope_subquery, has_class_scope) for a teacher admin."""
     class_id_scope = (
-        db.session.query(ClassMembership.class_id)
+        db.session.query(Seat.class_id)
         .filter(
-            ClassMembership.admin_id == admin_id,
-            ClassMembership.role == 'admin',
-            ClassMembership.class_id.isnot(None),
+            Seat.user_id == admin_id,
+            Seat.role == 'teacher',
+            Seat.class_id.isnot(None),
         )
         .distinct()
         .subquery()
@@ -294,9 +294,9 @@ def _get_teacher_class_scope(admin_id):
     has_class_scope = db.session.query(
         sa.exists().where(
             sa.and_(
-                ClassMembership.admin_id == admin_id,
-                ClassMembership.role == 'admin',
-                ClassMembership.class_id.isnot(None),
+                Seat.user_id == admin_id,
+                Seat.role == 'teacher',
+                Seat.class_id.isnot(None),
             )
         )
     ).scalar()
@@ -311,9 +311,9 @@ def _admin_has_class_scope(admin_id, class_id):
     return db.session.query(
         sa.exists().where(
             sa.and_(
-                ClassMembership.admin_id == admin_id,
-                ClassMembership.class_id == class_id,
-                ClassMembership.role == 'admin',
+                Seat.user_id == admin_id,
+                Seat.class_id == class_id,
+                Seat.role == 'teacher',
             )
         )
     ).scalar()
@@ -1948,7 +1948,7 @@ def handle_tap():
         return jsonify({"error": "No seat assigned in this class."}), 403
 
     # --- Check if tap is enabled for this student in this period ---
-    student_block = feat_get_or_create_student_block(
+    att_state = feat_get_or_create_attendance_state(
         student_id=student.id,
         seat_id=seat_id,
         class_id=class_id,
@@ -1957,7 +1957,7 @@ def handle_tap():
     )
 
     # Check if tap is disabled for this period
-    if not student_block.tap_enabled:
+    if not att_state.tap_enabled:
         return jsonify({"error": "Start Work / Break is currently disabled for this period."}), 403
 
     # --- Check "done for the day" lock ---
@@ -2146,11 +2146,16 @@ def get_tap_entries(student_id):
     if not seat_id:
         return jsonify({"error": "Student not found or access denied"}), 404
 
-    from app.models import TapEvent
+    student = Student.query.filter_by(id=student_id).first()
+    if not student:
+        return jsonify({"error": "Student not found or access denied"}), 404
 
-    # Get all tap events for this seat in active class scope.
-    query = TapEvent.query.filter(TapEvent.seat_id == seat_id, TapEvent.class_id == active_class_id)
-    events = query.order_by(TapEvent.period, TapEvent.timestamp.asc()).all()
+    # Canonical attendance history is AttendanceSession scoped by seat_id + class_id.
+    query = AttendanceSession.query.filter(
+        AttendanceSession.seat_id == seat_id,
+        AttendanceSession.class_id == active_class_id,
+    )
+    events = query.order_by(AttendanceSession.period, AttendanceSession.started_at.asc()).all()
 
     # Group by period and validate pairing
     periods = {}
@@ -2188,7 +2193,7 @@ def get_tap_entries(student_id):
                 unpaired.remove(active_events[-1]['id'])
 
         period_data[period] = {
-            'events': events_list,
+            'sessions': events_list,
             'unpaired_event_ids': unpaired,
             'is_valid': len(unpaired) == 0
         }
@@ -2212,9 +2217,7 @@ def delete_tap_entry(event_id):
     if not scoped_admin_id:
         return jsonify({"error": "Unauthorized"}), 401
 
-    from app.models import TapEvent
-
-    event = TapEvent.query.filter(TapEvent.id == event_id).first()
+    event = AttendanceSession.query.filter(AttendanceSession.id == event_id).first()
     if not event:
         return jsonify({"error": "Tap entry not found"}), 404
 
@@ -2225,17 +2228,21 @@ def delete_tap_entry(event_id):
     if not event.class_id:
         return jsonify({"error": "Tap entry not found"}), 404
     if event.class_id != active_class_id:
-        return jsonify({"error": "Access denied"}), 403
+        return jsonify({"error": "Tap entry not found"}), 404
 
     if not _admin_has_class_scope(scoped_admin_id, event.class_id):
         return jsonify({"error": "Tap entry not found"}), 404
 
     event.is_deleted = True
     event.deleted_at = utc_now()
-    event.deleted_by = scoped_admin_id
     db.session.flush()
 
-    current_app.logger.info(f"Admin {admin.id} deleted tap entry {event_id} for student {event.student_id}")
+    current_app.logger.info(
+        "Admin %s deleted tap entry %s for student %s",
+        scoped_admin_id,
+        event_id,
+        event.student_id,
+    )
 
     return jsonify({
         "status": "ok",
@@ -2247,7 +2254,7 @@ def delete_tap_entry(event_id):
 @feat_shell("FEAT-ATTN-001")
 def update_student_block_settings():
     """
-    Update StudentBlock settings (tap_enabled toggle) for a student-period combination.
+    Update SeatAttendanceState settings (tap_enabled toggle) for a student-period combination.
     """
     context = getattr(g, "canonical_context", None)
     scoped_admin_id = context.user_id if context else None
@@ -2275,7 +2282,7 @@ def update_student_block_settings():
     if not seat_id:
         return jsonify({"error": "Student not found or access denied"}), 404
 
-    seat = Seat.query.get(seat_id)
+    seat = db.session.get(Seat, seat_id)
     if not seat or not seat.claimed_at:
         return jsonify({"error": "Student block not found or access denied"}), 403
 
@@ -2286,8 +2293,7 @@ def update_student_block_settings():
     class_id = active_class_id
 
     try:
-        feat_set_student_block_tap_enabled(
-            student_id=student_id,
+        feat_set_attendance_state_tap_enabled(
             seat_id=seat_id,
             class_id=class_id,
             period=period,
@@ -2296,7 +2302,13 @@ def update_student_block_settings():
     except PermissionError:
         return jsonify({"error": "Student block not found or access denied"}), 403
 
-    current_app.logger.info(f"Admin {admin.id} set tap_enabled={tap_enabled} for student {student_id} period {period}")
+    current_app.logger.info(
+        "Admin %s set tap_enabled=%s for student %s period %s",
+        scoped_admin_id,
+        tap_enabled,
+        student_id,
+        period,
+    )
 
     return jsonify({
         "status": "ok",
@@ -2450,7 +2462,7 @@ def get_block_tap_settings():
     if not block:
         return jsonify({"error": "Block parameter is required"}), 400
     
-    from app.models import StudentBlock
+    from app.models import SeatAttendanceState
     
     class_id = active_class_id
 
@@ -2472,18 +2484,18 @@ def get_block_tap_settings():
     # Check if tap is enabled for any seat in this block
     any_enabled = False
     for seat in seats:
-        student_block = StudentBlock.query.filter_by(
+        state = SeatAttendanceState.query.filter_by(
             seat_id=seat.id,
             class_id=class_id,
             period=block,
         ).first()
         
-        if student_block:
-            if student_block.tap_enabled:
+        if state:
+            if state.tap_enabled:
                 any_enabled = True
                 break
         else:
-            # No StudentBlock record means tap is enabled by default
+            # No SeatAttendanceState record means tap is enabled by default
             any_enabled = True
             break
     
@@ -2537,8 +2549,7 @@ def update_block_tap_settings():
         updated_count = 0
         for seat in seats:
             # Strict v2 scope: seat_id + class_id + period must match.
-            feat_set_student_block_tap_enabled(
-                student_id=seat.student_id,
+            feat_set_attendance_state_tap_enabled(
                 seat_id=seat.id,
                 class_id=class_id,
                 period=block,
@@ -2547,7 +2558,11 @@ def update_block_tap_settings():
             updated_count += 1
 
         current_app.logger.info(
-            f"Admin {admin.id} set tap_enabled={tap_enabled} for {updated_count} students in block {block}"
+            "Admin %s set tap_enabled=%s for %s students in block %s",
+            scoped_admin_id,
+            tap_enabled,
+            updated_count,
+            block,
         )
         
         return jsonify({

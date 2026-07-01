@@ -79,10 +79,10 @@ def _create_student(first_name: str, primary_teacher: Admin = None, linked_teach
     # Add student_teachers links
     if linked_teachers:
         for teacher in linked_teachers:
-            db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+            db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     elif primary_teacher:
         # If no explicit links but has primary, create link
-        db.session.add(StudentTeacher(student_id=student.id, teacher_id=primary_teacher.id))
+        db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=primary_teacher.id))
     
     db.session.commit()
     return student
@@ -137,7 +137,7 @@ def _create_tap_event(student: Student, teacher: Admin, join_code: str, status: 
     seat = _get_or_create_student_seat(student, class_row.class_id, join_code)
     now = datetime.now(timezone.utc)
     tap = AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_row.class_id,
         period=period,
@@ -210,7 +210,7 @@ def _create_class_scope(teacher: Admin, student: Student, join_code: str):
 
     if not db.session.query(ClassMembership.id).filter_by(
         join_code=join_code,
-        student_id=student.id,
+        user_id=student_user.id,
         role="student",
     ).first():
         teacher_user_id = _get_teacher_user_id(teacher)
@@ -218,7 +218,7 @@ def _create_class_scope(teacher: Admin, student: Student, join_code: str):
         db.session.add(ClassMembership(
             join_code=join_code,
             class_id=class_row.class_id if class_row else None,
-            student_id=student.id,
+            user_id=student_user.id,
             role="student",
         ))
     db.session.commit()
@@ -351,9 +351,9 @@ def test_attendance_history_api_filters_work_with_scoping(client):
     seat_a1 = _get_or_create_student_seat(student_a1, class_a1.class_id, "FILTER_A1")
     seat_a2 = _get_or_create_student_seat(student_a2, class_a2.class_id, "FILTER_A2")
     seat_b = _get_or_create_student_seat(student_b, class_b.class_id, "FILTER_B1")
-    tap_a1 = AttendanceSession(student_id=student_a1.id, seat_id=seat_a1.id, class_id=class_a1.class_id, period="1", started_at=datetime.now(timezone.utc))
-    tap_a2 = AttendanceSession(student_id=student_a2.id, seat_id=seat_a2.id, class_id=class_a2.class_id, period="2", started_at=datetime.now(timezone.utc))
-    tap_b = AttendanceSession(student_id=student_b.id, seat_id=seat_b.id, class_id=class_b.class_id, period="1", started_at=datetime.now(timezone.utc))
+    tap_a1 = AttendanceSession(user_id=student_a1_user.id, seat_id=seat_a1.id, class_id=class_a1.class_id, period="1", started_at=datetime.now(timezone.utc))
+    tap_a2 = AttendanceSession(user_id=student_a2_user.id, seat_id=seat_a2.id, class_id=class_a2.class_id, period="2", started_at=datetime.now(timezone.utc))
+    tap_b = AttendanceSession(user_id=student_b_user.id, seat_id=seat_b.id, class_id=class_b.class_id, period="1", started_at=datetime.now(timezone.utc))
     db.session.add_all([tap_a1, tap_a2, tap_b])
     db.session.commit()
     
@@ -424,14 +424,14 @@ def test_admin_tap_entries_scoped_by_join_code(client):
     user_seat_b = _get_or_create_student_seat(shared_student, seat_b.class_id, "JOIN_B")
 
     tap_a = AttendanceSession(
-        student_id=shared_student.id,
+        user_id=shared_student_user.id,
         seat_id=user_seat_a.id,
         class_id=seat_a.class_id,
         period="A",
         started_at=datetime.now(timezone.utc),
     )
     tap_b = AttendanceSession(
-        student_id=shared_student.id,
+        user_id=shared_student_user.id,
         seat_id=user_seat_b.id,
         class_id=seat_b.class_id,
         period="B",
@@ -472,14 +472,14 @@ def test_admin_delete_tap_entry_enforces_join_code_scope(client):
     user_seat_b = _get_or_create_student_seat(shared_student, seat_b.class_id, "JOIN_B")
 
     tap_a = AttendanceSession(
-        student_id=shared_student.id,
+        user_id=shared_student_user.id,
         seat_id=user_seat_a.id,
         class_id=seat_a.class_id,
         period="A",
         started_at=datetime.now(timezone.utc),
     )
     tap_b = AttendanceSession(
-        student_id=shared_student.id,
+        user_id=shared_student_user.id,
         seat_id=user_seat_b.id,
         class_id=seat_b.class_id,
         period="B",
@@ -521,7 +521,7 @@ def test_admin_student_block_settings_rejects_out_of_scope_join_code(client):
     _create_claimed_seat(teacher_b, shared_student, "JOIN_B", block="A")
 
     block = StudentBlock(
-        student_id=shared_student.id,
+        user_id=shared_student_user.id,
         period="A",
         join_code="JOIN_B",
         tap_enabled=True,
@@ -548,7 +548,7 @@ def test_admin_student_block_settings_rejects_null_join_code_row(client):
     _create_claimed_seat(teacher_a, student, "JOIN_A", block="A")
 
     block = StudentBlock(
-        student_id=student.id,
+        user_id=student_user.id,
         period="A",
         join_code=None,
         tap_enabled=True,
@@ -585,7 +585,7 @@ def test_admin_block_tap_settings_get_ignores_out_of_scope_join_code_row(client)
     # Out-of-scope row for teacher A should not drive block-level state.
     db.session.add(
         StudentBlock(
-            student_id=shared_student.id,
+            user_id=shared_student_user.id,
             period="A",
             join_code="JOIN_B",
             tap_enabled=False,
@@ -616,7 +616,7 @@ def test_admin_block_tap_settings_post_preserves_out_of_scope_join_code_row(clie
     _create_claimed_seat(teacher_b, shared_student, "JOIN_B", block="A")
 
     foreign_row = StudentBlock(
-        student_id=shared_student.id,
+        user_id=shared_student_user.id,
         period="A",
         join_code="JOIN_B",
         tap_enabled=True,
@@ -636,7 +636,7 @@ def test_admin_block_tap_settings_post_preserves_out_of_scope_join_code_row(clie
     assert foreign_row.tap_enabled is True
 
     scoped_row = StudentBlock.query.filter_by(
-        student_id=shared_student.id,
+        user_id=shared_student_user.id,
         period="A",
         join_code="JOIN_A",
     ).first()

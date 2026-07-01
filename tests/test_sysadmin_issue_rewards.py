@@ -3,6 +3,8 @@ from decimal import Decimal
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
 from app.models import (
+    User,
+    UserRole,
     Admin,
     ClassEconomy,
     Issue,
@@ -39,8 +41,12 @@ def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
     )
     db.session.add_all([sysadmin, student, category, economy])
     db.session.flush()
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
     seat = Seat(
-        student_id=student.id,
+        user_id=student_user.id,
         class_id=economy.class_id,
         join_code=economy.join_code,
         role="student",
@@ -49,7 +55,7 @@ def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
     db.session.flush()
 
     issue = Issue(
-        student_id=student.id,
+        user_id=student_user.id,
         actor_public_id=seat.public_id,
         teacher_id=teacher.id,
         join_code="JOINBUG123",

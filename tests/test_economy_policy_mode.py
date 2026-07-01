@@ -460,8 +460,12 @@ def test_join_code_cycle_locks_rent_rate_after_first_payment(client):
     )
     db.session.add(payer)
     db.session.flush()
+    # Auto-injected Canonical User
+    payer_user = User(username_hash=f"auto_{payer.id}", username_lookup_hash=f"auto_l_{payer.id}", user_role=UserRole.STUDENT)
+    db.session.add(payer_user)
+    db.session.flush()
     seat = Seat(
-        student_id=payer.id,
+        user_id=payer_user.id,
         class_id=lock_class.class_id,
         join_code=join_code,
         block='A',
@@ -473,7 +477,7 @@ def test_join_code_cycle_locks_rent_rate_after_first_payment(client):
 
     payment_date = datetime(2026, 3, 5, 8, 0, tzinfo=timezone.utc)
     db.session.add(RentPayment(
-        student_id=payer.id,
+        user_id=payer_user.id,
         seat_id=seat.id,
         class_id=lock_class.class_id,
         period="A",
@@ -486,9 +490,7 @@ def test_join_code_cycle_locks_rent_rate_after_first_payment(client):
     ))
     db.session.add(Transaction(
         seat_id=seat.id,
-        student_id=payer.id,
-        teacher_id=admin.id,
-        class_id=lock_class.class_id,
+        user_id=payer_user.id,class_id=lock_class.class_id,
         join_code=join_code,
         type="Rent Payment",
         amount=Decimal("-500.00"),

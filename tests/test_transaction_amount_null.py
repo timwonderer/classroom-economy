@@ -8,7 +8,7 @@ from decimal import Decimal
 from unittest.mock import PropertyMock, patch
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
-from app.models import Student, Transaction, Admin, ClassEconomy
+from app.models import User, UserRole, Student, Transaction, Admin, ClassEconomy
 import sqlalchemy as sa
 
 def test_get_total_earnings_defensive_checks(client, app):
@@ -50,9 +50,7 @@ def test_get_total_earnings_defensive_checks(client, app):
         
         # Create a normal transaction with a valid amount
         valid_tx = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            join_code=join_code,
+            user_id=student_user.id,join_code=join_code,
             amount=Decimal('10.50'),
             description="Valid earning",
             is_void=False
@@ -74,9 +72,7 @@ def test_get_total_earnings_defensive_checks(client, app):
         
         # Add another transaction to verify aggregation still works
         another_tx = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            join_code=join_code,
+            user_id=student_user.id,join_code=join_code,
             amount=Decimal('5.25'),
             description="Another earning",
             is_void=False
@@ -124,17 +120,13 @@ def test_get_total_earnings_with_negative_amounts(client, app):
         
         # Create positive transactions (earnings)
         positive_tx1 = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            join_code=join_code,
+            user_id=student_user.id,join_code=join_code,
             amount=Decimal('15.00'),
             description="Earning 1",
             is_void=False
         )
         positive_tx2 = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            join_code=join_code,
+            user_id=student_user.id,join_code=join_code,
             amount=Decimal('25.50'),
             description="Earning 2",
             is_void=False
@@ -142,9 +134,7 @@ def test_get_total_earnings_with_negative_amounts(client, app):
         
         # Create negative transaction (expense) - should not be counted in earnings
         negative_tx = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            join_code=join_code,
+            user_id=student_user.id,join_code=join_code,
             amount=Decimal('-10.00'),
             description="Expense",
             is_void=False
@@ -152,9 +142,7 @@ def test_get_total_earnings_with_negative_amounts(client, app):
         
         # Create voided transaction - should not be counted
         voided_tx = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            join_code=join_code,
+            user_id=student_user.id,join_code=join_code,
             amount=Decimal('100.00'),
             description="Voided earning",
             is_void=True
@@ -203,9 +191,7 @@ def test_get_total_earnings_with_zero_amount(client, app):
         
         # Create a transaction with zero amount
         zero_tx = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            join_code=join_code,
+            user_id=student_user.id,join_code=join_code,
             amount=Decimal('0.00'),
             description="Zero transaction",
             is_void=False
@@ -213,9 +199,7 @@ def test_get_total_earnings_with_zero_amount(client, app):
         
         # Create a positive transaction
         positive_tx = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            join_code=join_code,
+            user_id=student_user.id,join_code=join_code,
             amount=Decimal('5.00'),
             description="Positive transaction",
             is_void=False

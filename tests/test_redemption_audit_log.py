@@ -7,7 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.security import generate_password_hash
 
 from app.extensions import db
-from app.models import Seat, IdentityProfile, Admin, ClassEconomy, ClassMembership, RedemptionAuditLog, StoreItem, Student, StudentItem, StudentTeacher, Transaction
+from app.models import Seat, IdentityProfile, User, UserRole, Admin, ClassEconomy, ClassMembership, RedemptionAuditLog, StoreItem, Student, StudentItem, StudentTeacher, Transaction
 
 
 @pytest.fixture
@@ -44,12 +44,16 @@ def student_in_class(client, teacher_admin):
     db.session.add(ClassMembership(
         class_id=class_economy.class_id,
         join_code='AUDIT123',
-        student_id=student.id,
+        user_id=student_user.id,
         role='student',
     ))
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher_admin.id, class_id=class_economy.class_id, join_code='AUDIT123'))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher_admin.id, class_id=class_economy.class_id, join_code='AUDIT123'))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
     _tb_seat = Seat(
-        student_id=student.id,
+        user_id=student_user.id,
         class_id=class_economy.class_id,
         join_code='AUDIT123',
         block='A',
@@ -91,7 +95,7 @@ def _fund_and_purchase_delayed_item(client, teacher_admin, student, item_name='A
     class_row = ClassEconomy.query.filter_by(join_code='AUDIT123').first()
     assert class_row is not None
     item = StoreItem(
-        teacher_id=teacher_admin.id,
+        user_id=teacher_admin.id,
         class_id=class_row.class_id,
         join_code='AUDIT123',
         name=item_name,
@@ -102,9 +106,7 @@ def _fund_and_purchase_delayed_item(client, teacher_admin, student, item_name='A
     db.session.add(item)
     db.session.flush()
     db.session.add(Transaction(
-        student_id=student.id,
-        teacher_id=teacher_admin.id,
-        join_code='AUDIT123',
+        user_id=student_user.id,join_code='AUDIT123',
         amount=Decimal('100.00'),
         account_type='checking',
         type='deposit',
@@ -121,7 +123,7 @@ def _fund_and_purchase_delayed_item(client, teacher_admin, student, item_name='A
     assert purchase_resp.status_code == 200
     assert purchase_resp.json['status'] == 'success'
 
-    student_item = StudentItem.query.filter_by(student_id=student.id, store_item_id=item.id).first()
+    student_item = StudentItem.query.filter_by(user_id=student_user.id, store_item_id=item.id).first()
     assert student_item is not None
     return item, student_item
 
@@ -255,7 +257,7 @@ def test_no_mutation_if_audit_insert_fails_approve_reject(client, teacher_admin,
     assert reject_resp.status_code == 500
     db.session.refresh(student_item)
     assert student_item.status == 'processing'
-    assert Transaction.query.filter_by(student_id=student.id, type='refund').count() == 0
+    assert Transaction.query.filter_by(user_id=student_user.id, type='refund').count() == 0
     assert RedemptionAuditLog.query.count() == 0
 
 
@@ -265,7 +267,7 @@ def test_legacy_adapter_shows_inferred_without_persisting(client, teacher_admin,
     class_row = ClassEconomy.query.filter_by(join_code='AUDIT123').first()
     assert class_row is not None
     item = StoreItem(
-        teacher_id=teacher_admin.id,
+        user_id=teacher_admin.id,
         class_id=class_row.class_id,
         join_code='AUDIT123',
         name='Legacy-Like Item',
@@ -276,7 +278,7 @@ def test_legacy_adapter_shows_inferred_without_persisting(client, teacher_admin,
     db.session.add(item)
     db.session.flush()
     db.session.add(StudentItem(correlation_id='corr_test', 
-        student_id=student.id,
+        user_id=student_user.id,
         store_item_id=item.id,
         join_code='AUDIT123',
         status='completed',

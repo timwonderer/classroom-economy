@@ -28,7 +28,7 @@ def _make_class_id():
 
 def _make_admin():
     """Create a minimal Admin row and return it (does not commit)."""
-    from app.models import Admin
+    from app.models import User, UserRole, Admin
     from app.utils.auth_username import build_hashed_username_fields
 
     username = f"auditteacher_{uuid.uuid4().hex[:8]}"

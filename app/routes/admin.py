@@ -61,10 +61,10 @@ from app.models import (
     InsurancePolicy, InsurancePolicyBlock, RentItem, RentPayment, RentSettings, StoreItemBlock,
     InsuranceEnrollment, InsuranceClaim, HallPassLog, HallPassSettings, PayrollSettings, SavedAdjustment,
     BankingSettings,
-    UserReport, FeatureSettings, StudentBlock,
+    UserReport, FeatureSettings,
     Announcement, RedemptionAuditLog, RedemptionAuditAction,
     RedemptionAuditSource, RedemptionEvent, RedemptionEventAction, RedemptionEventSource, Issue, IssueStatusHistory, IssueResolutionAction, AnalyticsSnapshot, AnalyticsEvent, Seat,
-    BalanceCache, ClassMembership, ClassEconomy, EconomySnapshot, User, UserRole, _quantize_currency,
+    BalanceCache, ClassEconomy, EconomySnapshot, User, UserRole, _quantize_currency,
     ObligationAssessment,
     SeatAttendanceState, TapEventReasonCode, IdentityProfile,
 )
@@ -840,8 +840,8 @@ def _scoped_students(include_unassigned=True):
         else:
             teacher_student_ids = (
                 db.session.query(Student.id)
-                .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
-                .join(Seat, Seat.id == IdentityProfile.seat_id)
+                .join(User, User.username_hash == Student.username_hash)
+                .join(Seat, Seat.user_id == User.id)
                 .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
                 .filter(ClassEconomy.user_id == admin_id)
                 .subquery()
@@ -855,8 +855,8 @@ def _scoped_students(include_unassigned=True):
 
     class_scoped_student_ids = (
         db.session.query(Student.id)
-        .join(IdentityProfile, Student.identity_id == IdentityProfile.id)
-        .join(Seat, Seat.id == IdentityProfile.seat_id)
+        .join(User, User.username_hash == Student.username_hash)
+        .join(Seat, Seat.user_id == User.id)
         .filter(Seat.class_id == class_id)
         .subquery()
     )
@@ -1269,7 +1269,6 @@ def _hard_delete_class_scope(class_id, teacher_id):
     invalid_scope_rows = []
     scoped_models = (
         ("ledger_transaction", Transaction),
-        ("student_blocks", StudentBlock),
         ("tap_events", TapEvent),
         ("hall_pass_logs", HallPassLog),
         ("student_items", StorePurchase),
@@ -1330,18 +1329,7 @@ def _hard_delete_class_scope(class_id, teacher_id):
         ).distinct().all()
     ]
     if class_blocks and scoped_student_ids:
-        inferred_student_block_nulls = db.session.query(StudentBlock).filter(
-            StudentBlock.student_id.in_(scoped_student_ids),
-            StudentBlock.period.in_(class_blocks),
-            StudentBlock.class_id.is_(None),
-        ).count()
-        if inferred_student_block_nulls:
-            message = (
-                f"class_id NULL student_blocks detected for class_id={class_id} "
-                f"join_code={join_code}: student_blocks_inferred={inferred_student_block_nulls}"
-            )
-            current_app.logger.critical("P0 INVARIANT VIOLATION: %s", message)
-            raise InvariantViolation(message)
+        pass
 
     # Class-scoped records
     RedemptionEvent.query.filter(
@@ -1351,7 +1339,7 @@ def _hard_delete_class_scope(class_id, teacher_id):
     TapEvent.query.filter(TapEvent.class_id == class_id).delete(synchronize_session=False)
     HallPassLog.query.filter(HallPassLog.class_id == class_id).delete(synchronize_session=False)
     RentPayment.query.filter(RentPayment.class_id == class_id).delete(synchronize_session=False)
-    StudentBlock.query.filter(StudentBlock.class_id == class_id).delete(synchronize_session=False)
+    SeatAttendanceState.query.filter(SeatAttendanceState.class_id == class_id).delete(synchronize_session=False)
     BalanceCache.query.filter(BalanceCache.class_id == class_id).delete(synchronize_session=False)
     AnalyticsSnapshot.query.filter(AnalyticsSnapshot.class_id == class_id).delete(synchronize_session=False)
     AnalyticsEvent.query.filter(AnalyticsEvent.class_id == class_id).delete(synchronize_session=False)
@@ -1431,7 +1419,6 @@ def _hard_delete_class_scope(class_id, teacher_id):
         ).delete(synchronize_session=False)
 
     # Seats/ownership for this class
-    ClassMembership.query.filter(ClassMembership.class_id == class_id).delete(synchronize_session=False)
     Seat.query.filter(Seat.class_id == class_id).delete(synchronize_session=False)
     ClassEconomy.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
@@ -1641,10 +1628,10 @@ def _get_admin_owned_join_codes(admin_id):
 
     return [
         join_code
-        for (join_code,) in db.session.query(ClassMembership.join_code)
+        for (join_code,) in db.session.query(Seat.join_code)
         .filter(
-            ClassMembership.admin_id == admin_id,
-            ClassMembership.role == 'admin',
+            Seat.user_id == admin_id,
+            Seat.role == 'teacher',
         )
         .distinct()
         .all()
@@ -1660,9 +1647,9 @@ def _admin_owns_class(admin_id, class_id):
     return db.session.query(
         sa.exists().where(
             sa.and_(
-                ClassMembership.admin_id == admin_id,
-                ClassMembership.class_id == class_id,
-                ClassMembership.role == 'admin',
+                Seat.user_id == admin_id,
+                Seat.class_id == class_id,
+                Seat.role == 'teacher',
             )
         )
     ).scalar()
@@ -1967,7 +1954,7 @@ def _ensure_join_code_anchors(teacher_id, join_code, class_label=None, return_me
     economy = ClassEconomy.query.filter_by(join_code=join_code).first()
     created = False
     if economy is not None:
-        if economy.teacher_id != teacher_id:
+        if economy.user_id != teacher_id:
             raise ValueError("Join code belongs to a different teacher.")
         if class_label and not economy.display_name:
             economy.display_name = class_label
@@ -1984,19 +1971,6 @@ def _ensure_join_code_anchors(teacher_id, join_code, class_label=None, return_me
         created = True
     if economy.class_id is None:
         db.session.flush()
-
-    admin_membership = ClassMembership.query.filter_by(
-        class_id=economy.class_id,
-        join_code=join_code,
-        admin_id=teacher_id,
-    ).first()
-    if not admin_membership:
-        db.session.add(ClassMembership(
-            class_id=economy.class_id,
-            join_code=join_code,
-            admin_id=teacher_id,
-            role="admin",
-        ))
 
     teacher_seat = Seat.query.filter_by(
         class_id=economy.class_id,
@@ -3000,7 +2974,8 @@ def dashboard():
     pending_redemptions_count = (
         StorePurchase.query
         .join(Seat, StorePurchase.seat_id == Seat.id)
-        .join(Student, Seat.student_id == Student.id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .filter(Student.id.in_(sa.select(student_ids_subq)))
         .filter(StorePurchase.status == 'processing')
         .count()
@@ -3028,7 +3003,8 @@ def dashboard():
     recent_redemptions = (
         StorePurchase.query
         .join(Seat, StorePurchase.seat_id == Seat.id)
-        .join(Student, Seat.student_id == Student.id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .filter(Student.id.in_(sa.select(student_ids_subq)))
         .filter(StorePurchase.status == 'processing')
         .order_by(StorePurchase.purchased_at.desc())
@@ -3591,16 +3567,11 @@ def recover():
             flash(_GENERIC_ERROR, "error")
             return render_template("admin_recover.html", form=form)
 
-        teacher_id = first_class.teacher_id
+        teacher_id = first_class.user_id
 
         # ----------------------------------------------------------------
         # Step 2: Verify submitted join codes exactly match the teacher's active classes
         # ----------------------------------------------------------------
-        teacher = db.session.get(Admin, teacher_id)
-        if not teacher:
-            flash(_GENERIC_ERROR, "error")
-            return render_template("admin_recover.html", form=form)
-
         teacher_classes = ClassEconomy.query.filter_by(user_id=teacher_id).all()
         all_active_join_codes = {c.join_code for c in teacher_classes if c.join_code}
         submitted_join_codes = set(jc for jc, _ in pairs)
@@ -4353,7 +4324,12 @@ def _get_rent_privileges_for_student(student, class_id, join_code):
     store_item_ids = [item['store_item_id'] for item in frozen_privileges if item.get('store_item_id')]
     items_by_student = set()
     if store_item_ids and student.id is not None:
-        seat = Seat.query.filter_by(student_id=student.id, class_id=class_id).first()
+        seat = (
+            Seat.query
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .filter(IdentityProfile.id == student.identity_id, Seat.class_id == class_id)
+            .first()
+        )
         if seat:
             student_items = StorePurchase.query.filter(
                 StorePurchase.seat_id == seat.id,
@@ -4450,27 +4426,35 @@ def students():
     students_by_block = {}
 
     # Claimed students are resolved through Seat rows in the active class.
-    active_student_user_ids = sorted({
-        s.user_id for s in class_seats
+    active_seat_ids = sorted({
+        s.id for s in class_seats
         if s.user_id is not None and s.claimed_at is not None
     })
     all_students = (
         sorted(
-            _scoped_students().filter(Student.id.in_(active_student_user_ids)).all(),
+            _scoped_students().join(User, User.username_hash == Student.username_hash).join(Seat, Seat.user_id == User.id).filter(Seat.id.in_(active_seat_ids)).all(),
             key=lambda student: (((student.block or "").lower()), (student.display_first_name or "").lower(), student.id),
         )
-        if active_student_user_ids else []
+        if active_seat_ids else []
     )
 
     # Group students by block within this class only.
     for block in blocks:
-        block_claimed_ids = {
-            s.user_id for s in class_seats
+        block_claimed_seat_ids = {
+            s.id for s in class_seats
             if (s.block or '').strip().upper() == block
             and s.user_id is not None
             and s.claimed_at is not None
         }
-        students_by_block[block] = [s for s in all_students if s.id in block_claimed_ids]
+        # Find which student has an identity profile matching the seat
+        students_by_block[block] = []
+        for student in all_students:
+            user = User.query.filter_by(username_hash=student.username_hash).first()
+            if user:
+                # Find if any of this user's seats are in block_claimed_seat_ids
+                user_seats = Seat.query.filter_by(user_id=user.id).all()
+                if any(s.id in block_claimed_seat_ids for s in user_seats):
+                    students_by_block[block].append(student)
 
     # Add username_display attribute to each student
     for student in all_students:
@@ -4504,7 +4488,7 @@ def students():
     for s in class_seats:
         block_name = (s.block or '').strip().upper()
         if block_name and block_name in unclaimed_seats_list_by_block:
-            if s.claimed_at is None and s.student_id is None:
+            if s.claimed_at is None and s.user_id is None:
                 unclaimed_seats_list_by_block[block_name].append(s)
                 unclaimed_seats_by_block[block_name] += 1
 
@@ -4658,6 +4642,7 @@ def student_detail_public(student_public_id):
     """View detailed information for a specific student via public-id URL."""
     teacher_id = g.canonical_context.user_id
     current_class_id = g.canonical_context.class_id
+    print(f"DEBUG: student_detail_public called with {student_public_id}, teacher_id={teacher_id}, current_class_id={current_class_id}")
     nav_payload = _read_student_detail_nav_token(request.args.get('nav', ''))
     if not nav_payload:
         abort(404)
@@ -4682,13 +4667,21 @@ def student_detail_public(student_public_id):
         .first()
     )
     if not scoped_seat or not scoped_seat.user_id:
+        print(f"DEBUG ABORT: scoped_seat={scoped_seat} user_id={scoped_seat.user_id if scoped_seat else None}")
         abort(404)
     if expected_student_id and scoped_seat.user_id != expected_student_id:
+        print(f"DEBUG ABORT: scoped_seat.user_id {scoped_seat.user_id} != expected_student_id {expected_student_id}")
         abort(404)
     if expected_class_id and str(scoped_seat.class_id or "") != expected_class_id:
+        print(f"DEBUG ABORT: scoped_seat.class_id {scoped_seat.class_id} != expected_class_id {expected_class_id}")
         abort(404)
 
-    student = _get_student_or_404(scoped_seat.user_id)
+    student_user = db.session.get(User, scoped_seat.user_id)
+    if not student_user:
+        abort(404)
+    student = Student.query.filter_by(username_hash=student_user.username_hash).first()
+    if not student:
+        abort(404)
     class_id = scoped_seat.class_id
     seat_id = scoped_seat.id
 
@@ -4731,17 +4724,22 @@ def student_detail_public(student_public_id):
     store_purchases = (
         StorePurchase.query
         .join(Seat, StorePurchase.seat_id == Seat.id)
-        .filter(Seat.student_id == student.id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .filter(IdentityProfile.id == student.identity_id)
     )
-    if join_code:
+    if class_id:
         store_purchases = store_purchases.filter(StorePurchase.class_id == class_id)
     store_purchases = store_purchases.order_by(StorePurchase.purchased_at.desc()).all()
     # Fetch most recent TapEvent for this student
     latest_tap_event = latest_tap_event_query.order_by(TapEvent.timestamp.desc()).first()
 
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first() if join_code else None
-    class_id = class_row.class_id if class_row else class_id
-    scoped_seat = Seat.query.filter_by(student_id=student.id, class_id=class_id).first() if class_id else None
+    scoped_seat = (
+        Seat.query
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .filter(IdentityProfile.id == student.identity_id, Seat.class_id == class_id)
+        .first()
+        if class_id else None
+    )
 
     # Get student's active insurance policy scoped to current class.
     active_insurance = student.get_active_insurance(class_id=class_id, teacher_id=teacher_id)
@@ -4750,25 +4748,22 @@ def student_detail_public(student_public_id):
     all_students = _scoped_students().all()
     blocks = sorted({b.strip() for s in all_students for b in (s.block or "").split(',') if b.strip()})
 
-    # Get StudentBlock settings for this student
-    from app.models import StudentBlock
+    # Get SeatAttendanceState settings for this student
+    from app.models import SeatAttendanceState
     student_blocks_settings = {}
     student_periods = [b.strip().upper() for b in (student.block or "").split(',') if b.strip()]
     for period in student_periods:
-        if join_code:
-            student_block = StudentBlock.query.filter_by(
-                student_id=student.id,
+        if class_id and scoped_seat:
+            att_state = SeatAttendanceState.query.filter_by(
+                seat_id=scoped_seat.id,
+                class_id=class_id,
                 period=period,
-                join_code=join_code,
             ).first()
         else:
-            student_block = StudentBlock.query.filter_by(
-                student_id=student.id,
-                period=period
-            ).first()
+            att_state = None
         student_blocks_settings[period] = {
-            'tap_enabled': student_block.tap_enabled if student_block else True,
-            'done_for_day_date': student_block.done_for_day_date if student_block else None
+            'tap_enabled': att_state.tap_enabled if att_state else True,
+            'done_for_day_date': att_state.done_for_day_date if att_state else None
         }
 
     # CRITICAL: Get scoped balances for current class_id + seat_id only.
@@ -4779,16 +4774,16 @@ def student_detail_public(student_public_id):
     if class_id and scoped_seat:
         scoped_checking_balance = student.get_checking_balance(class_id=class_id, seat_id=scoped_seat.id)
         scoped_savings_balance = student.get_savings_balance(class_id=class_id, seat_id=scoped_seat.id)
-        scoped_total_earnings = student.get_total_earnings(join_code=join_code)
+        scoped_total_earnings = student.get_total_earnings(class_id=class_id)
     else:
         current_app.logger.warning(
-            "Missing canonical class/seat scope for student_detail student=%s join_code=%s.",
+            "Missing canonical class/seat scope for student_detail student=%s class_id=%s.",
             student.id,
-            join_code,
+            class_id,
         )
 
     # Get active rent privileges (per-period items)
-    rent_privileges = _get_rent_privileges_for_student(student, class_row.class_id if class_row else None, join_code)
+    rent_privileges = _get_rent_privileges_for_student(student, class_id, None)
 
     # CRITICAL: Fetch Join Codes for student's blocks (for Account Recovery display)
     join_codes = {}
@@ -4823,7 +4818,8 @@ def student_detail_public(student_public_id):
                          scoped_checking_balance=scoped_checking_balance,
                          scoped_savings_balance=scoped_savings_balance,
                          scoped_total_earnings=scoped_total_earnings,
-                         current_join_code=join_code,
+                         current_join_code=None,
+                         current_class_id=class_id,
                          rent_privileges=rent_privileges)
 
 
@@ -5902,7 +5898,8 @@ def store_management():
     total_purchases = (
         StorePurchase.query
         .join(Seat, StorePurchase.seat_id == Seat.id)
-        .join(Student, Seat.student_id == Student.id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .filter(Student.id.in_(sa.select(student_ids_subq)))
         .filter(StorePurchase.class_id == selected_scope['class_id'])
         .count()
@@ -5913,7 +5910,8 @@ def store_management():
         StorePurchase.query
         .options(joinedload(StorePurchase.seat), joinedload(StorePurchase.store_item))
         .join(Seat, StorePurchase.seat_id == Seat.id)
-        .join(Student, Seat.student_id == Student.id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .filter(Student.id.in_(sa.select(student_ids_subq)))
         .filter(StorePurchase.class_id == selected_scope['class_id'])
         .filter(StorePurchase.status == 'processing')
@@ -5927,7 +5925,8 @@ def store_management():
         StorePurchase.query
         .options(joinedload(StorePurchase.seat), joinedload(StorePurchase.store_item))
         .join(Seat, StorePurchase.seat_id == Seat.id)
-        .join(Student, Seat.student_id == Student.id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
         .filter(Student.id.in_(sa.select(student_ids_subq)))
         .filter(StorePurchase.class_id == selected_scope['class_id'])
         .order_by(StorePurchase.purchased_at.desc())
@@ -5975,7 +5974,8 @@ def store_management():
                 db.func.count(db.distinct(StorePurchase.seat_id)).label('student_count'),
             )
             .join(Seat, StorePurchase.seat_id == Seat.id)
-            .join(Student, Seat.student_id == Student.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
             .join(StoreItem, StorePurchase.store_item_id == StoreItem.id)
             .filter(
                 Student.id.in_(sa.select(student_ids_subq)),
@@ -9645,7 +9645,12 @@ def payroll_manual_payment():
             for student_id in student_ids:
                 student = _get_student_or_404(int(student_id))
                 if student:
-                    seat = Seat.query.filter_by(student_id=student.id, class_id=selected_class_id).first()
+                    seat = (
+                        Seat.query
+                        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+                        .filter(IdentityProfile.id == student.identity_id, Seat.class_id == selected_class_id)
+                        .first()
+                    )
                     if not seat:
                         flash('One or more selected students are outside the selected class scope.', 'error')
                         return redirect(url_for('admin.payroll'))
@@ -10337,10 +10342,12 @@ def export_students():
     if selected_join_code:
         students_query = students_query.filter(
             Student.id.in_(
-                db.session.query(ClassMembership.student_id).filter(
-                    ClassMembership.class_id == selected_class_id,
-                    ClassMembership.role == 'student',
-                    ClassMembership.student_id.isnot(None),
+                db.session.query(Student.id)
+                .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+                .join(Seat, IdentityProfile.seat_id == Seat.id)
+                .filter(
+                    Seat.class_id == selected_class_id,
+                    Seat.role == 'student',
                 )
             )
         )

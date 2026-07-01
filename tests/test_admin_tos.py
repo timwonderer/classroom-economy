@@ -3,7 +3,7 @@ import unittest
 import pyotp
 
 from app import create_app, db
-from app.models import Admin, AdminInviteCode
+from app.models import User, UserRole, Admin, AdminInviteCode
 from app.hash_utils import hash_username_lookup
 
 

@@ -7,6 +7,8 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
 from app.hash_utils import get_random_salt, hash_username
 from app.models import (
+    User,
+    UserRole,
     Admin,
     ClassMembership,
     Seat,
@@ -41,12 +43,12 @@ def _ensure_class_scope(teacher: Admin, student: Student, join_code: str, block:
         db.session.flush()
     elif not db.session.query(ClassMembership.id).filter_by(
         join_code=join_code,
-        student_id=student.id,
+        user_id=student_user.id,
         role="student",
     ).first():
         db.session.add(ClassMembership(
             join_code=join_code,
-            student_id=student.id,
+            user_id=student_user.id,
             role="student",
         ))
 
@@ -68,18 +70,16 @@ def test_overdue_rent_payment_restores_privileges(client):
     db.session.add(student)
     db.session.commit()
 
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
 
     join_code = "JOINA"
     _ensure_class_scope(teacher, student, join_code, block="A")
-    seat = Seat.query.filter_by(student_id=student.id, join_code=join_code).first()
+    seat = Seat.query.filter_by(user_id=student_user.id, join_code=join_code).first()
     assert seat is not None
 
     now = datetime.now(timezone.utc)
-    rent_settings = RentSettings(
-        teacher_id=teacher.id,
-        block="A",
+    rent_settings = RentSettings(block="A",
         join_code=join_code,
         is_enabled=True,
         rent_amount=Decimal("50.00"),
@@ -92,7 +92,7 @@ def test_overdue_rent_payment_restores_privileges(client):
     db.session.commit()
 
     store_item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code=join_code,
         name="Desk Privilege",
         description="Desk access",
@@ -133,7 +133,7 @@ def test_overdue_rent_payment_restores_privileges(client):
     late_fee_applies = now > grace_for_coverage
     required_amount = rent_settings.rent_amount + (rent_settings.late_fee if late_fee_applies else Decimal("0.00"))
     payment = RentPayment(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat.id,
         period="A",
         join_code=join_code,
@@ -147,10 +147,8 @@ def test_overdue_rent_payment_restores_privileges(client):
         late_fee_charged=rent_settings.late_fee if late_fee_applies else Decimal("0.00"),
     )
     transaction = Transaction(
-        student_id=student.id,
-        seat_id=seat.id,
-        teacher_id=teacher.id,
-        join_code=join_code,
+        user_id=student_user.id,
+        seat_id=seat.id,join_code=join_code,
         amount=-required_amount,
         account_type="checking",
         type="Rent Payment",
@@ -182,18 +180,16 @@ def test_voided_payment_does_not_restore_privileges(client):
     db.session.add(student)
     db.session.commit()
 
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
 
     join_code = "JOINV"
     _ensure_class_scope(teacher, student, join_code, block="A")
-    seat = Seat.query.filter_by(student_id=student.id, join_code=join_code).first()
+    seat = Seat.query.filter_by(user_id=student_user.id, join_code=join_code).first()
     assert seat is not None
 
     now = datetime.now(timezone.utc)
-    rent_settings = RentSettings(
-        teacher_id=teacher.id,
-        block="A",
+    rent_settings = RentSettings(block="A",
         join_code=join_code,
         is_enabled=True,
         rent_amount=Decimal("50.00"),
@@ -206,7 +202,7 @@ def test_voided_payment_does_not_restore_privileges(client):
     db.session.commit()
 
     store_item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code=join_code,
         name="Desk Privilege",
         description="Desk access",
@@ -244,7 +240,7 @@ def test_voided_payment_does_not_restore_privileges(client):
     required_amount = rent_settings.rent_amount + (rent_settings.late_fee if late_fee_applies else Decimal("0.00"))
 
     payment = RentPayment(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat.id,
         period="A",
         join_code=join_code,
@@ -258,10 +254,8 @@ def test_voided_payment_does_not_restore_privileges(client):
         late_fee_charged=rent_settings.late_fee if late_fee_applies else Decimal("0.00"),
     )
     voided_tx = Transaction(
-        student_id=student.id,
-        seat_id=seat.id,
-        teacher_id=teacher.id,
-        join_code=join_code,
+        user_id=student_user.id,
+        seat_id=seat.id,join_code=join_code,
         amount=-required_amount,
         account_type="checking",
         type="Rent Payment",
@@ -277,10 +271,8 @@ def test_voided_payment_does_not_restore_privileges(client):
     assert b"Included in your rent!" not in response.data
 
     valid_tx = Transaction(
-        student_id=student.id,
-        seat_id=seat.id,
-        teacher_id=teacher.id,
-        join_code=join_code,
+        user_id=student_user.id,
+        seat_id=seat.id,join_code=join_code,
         amount=-required_amount,
         account_type="checking",
         type="Rent Payment",
@@ -288,7 +280,7 @@ def test_voided_payment_does_not_restore_privileges(client):
         timestamp=payment_date + timedelta(seconds=10),
     )
     valid_payment = RentPayment(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat.id,
         period="A",
         join_code=join_code,
@@ -327,18 +319,16 @@ def test_overdue_rent_payment_with_timestamp_drift_restores_privileges(client):
     db.session.add(student)
     db.session.commit()
 
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
 
     join_code = "JOIND"
     _ensure_class_scope(teacher, student, join_code, block="A")
-    seat = Seat.query.filter_by(student_id=student.id, join_code=join_code).first()
+    seat = Seat.query.filter_by(user_id=student_user.id, join_code=join_code).first()
     assert seat is not None
 
     now = datetime.now(timezone.utc)
-    rent_settings = RentSettings(
-        teacher_id=teacher.id,
-        block="A",
+    rent_settings = RentSettings(block="A",
         join_code=join_code,
         is_enabled=True,
         rent_amount=Decimal("50.00"),
@@ -351,7 +341,7 @@ def test_overdue_rent_payment_with_timestamp_drift_restores_privileges(client):
     db.session.commit()
 
     store_item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         join_code=join_code,
         name="Desk Privilege Drift",
         description="Desk access",
@@ -388,7 +378,7 @@ def test_overdue_rent_payment_with_timestamp_drift_restores_privileges(client):
     payment_date = now
     txn_timestamp = now + timedelta(seconds=45)  # outside old 5s window; inside new tolerance
     db.session.add(RentPayment(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat.id,
         period="A",
         join_code=join_code,
@@ -402,10 +392,8 @@ def test_overdue_rent_payment_with_timestamp_drift_restores_privileges(client):
         late_fee_charged=rent_settings.late_fee if late_fee_applies else Decimal("0.00"),
     ))
     db.session.add(Transaction(
-        student_id=student.id,
-        seat_id=seat.id,
-        teacher_id=teacher.id,
-        join_code=join_code,
+        user_id=student_user.id,
+        seat_id=seat.id,join_code=join_code,
         amount=-required_amount,
         account_type="checking",
         type="Rent Payment",

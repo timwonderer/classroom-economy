@@ -41,7 +41,6 @@ def test_student_login_next_redirect(client):
     db.session.flush()
     db.session.add(Seat(
         user_id=user.id,
-        student_id=stu.id,
         class_id=class_row.class_id,
         join_code=class_row.join_code,
         role="student",

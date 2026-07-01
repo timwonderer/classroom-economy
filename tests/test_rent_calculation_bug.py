@@ -38,9 +38,7 @@ def admin_with_exact_payroll(client):
     # User's exact settings
     # 75 minutes per period, 3 times a week = 225 minutes total
     # 225 minutes = 3.75 hours
-    payroll_settings = PayrollSettings(
-        teacher_id=admin.id,
-        block="A",
+    payroll_settings = PayrollSettings(block="A",
         pay_rate=1.25,  # $1.25 per minute
         expected_weekly_hours=3.75,  # 225 minutes = 3.75 hours
         payroll_frequency_days=7,
@@ -198,9 +196,7 @@ def test_multi_block_validation_uses_correct_cwi(client):
     db.session.flush()
 
     # Block A: User's exact settings (CWI = $281.25)
-    payroll_a = PayrollSettings(
-        teacher_id=admin.id,
-        block="A",
+    payroll_a = PayrollSettings(block="A",
         pay_rate=1.25,  # $1.25/min
         expected_weekly_hours=3.75,  # 225 min
         payroll_frequency_days=7,
@@ -210,9 +206,7 @@ def test_multi_block_validation_uses_correct_cwi(client):
 
     # Block B: Different settings that would give CWI = $375
     # To get $375/week: 375 / 60 = 6.25 hours at $1/min OR 5 hours at $1.25/min = $375
-    payroll_b = PayrollSettings(
-        teacher_id=admin.id,
-        block="B",
+    payroll_b = PayrollSettings(block="B",
         pay_rate=1.25,  # $1.25/min
         expected_weekly_hours=5.0,  # 300 min × $1.25 = $375
         payroll_frequency_days=7,

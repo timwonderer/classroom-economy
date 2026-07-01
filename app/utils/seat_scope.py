@@ -21,8 +21,23 @@ def get_seat_ids_for_student_join(student_id: int, join_code: str) -> list[int]:
 
 def get_seat_ids_for_student_class(student_id: int, class_id: str) -> list[int]:
     """Return seat IDs bound to a student and class ID."""
-    from app.models import IdentityProfile, Seat, Student
+    from app.models import IdentityProfile, Seat, Student, User
 
+    # Resolve via User (canonical V2 for shared students)
+    v2_seats = Seat.query.with_entities(Seat.id).join(
+        User, User.id == Seat.user_id
+    ).join(
+        Student, Student.username_hash == User.username_hash
+    ).filter(
+        Student.id == student_id,
+        Seat.class_id == class_id,
+        Seat.role == 'student'
+    ).all()
+    
+    if v2_seats:
+        return [row[0] for row in v2_seats]
+
+    # Fallback to direct IdentityProfile link for legacy non-migrated records
     return [
         row[0]
         for row in Seat.query.with_entities(Seat.id).join(
@@ -38,7 +53,20 @@ def get_seat_ids_for_student_class(student_id: int, class_id: str) -> list[int]:
 
 def get_seat_id_for_class(student_id: int, class_id: str) -> int | None:
     """Return the primary seat ID bound to a student and class ID."""
-    from app.models import IdentityProfile, Seat, Student
+    from app.models import IdentityProfile, Seat, Student, User
+    
+    # Try resolving via User link first (canonical V2)
+    seat = (
+        Seat.query
+        .join(User, User.id == Seat.user_id)
+        .join(Student, Student.username_hash == User.username_hash)
+        .filter(Student.id == student_id, Seat.class_id == class_id, Seat.role == 'student')
+        .first()
+    )
+    if seat:
+        return seat.id
+        
+    # Fallback to legacy IdentityProfile direct link
     seat = (
         Seat.query
         .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)

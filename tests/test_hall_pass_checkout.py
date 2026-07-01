@@ -74,7 +74,7 @@ def setup_hall_pass_checkout_test(client):
     db.session.commit()
 
     # Link student to teacher
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
 
     economy = ClassEconomy(
@@ -103,7 +103,6 @@ def setup_hall_pass_checkout_test(client):
     now = datetime.now(timezone.utc)
     seat = Seat(
         user_id=user.id,
-        student_id=student.id,
         class_id=economy.class_id,
         join_code=economy.join_code,
         block="Period1",
@@ -116,7 +115,7 @@ def setup_hall_pass_checkout_test(client):
 
     # Create approved hall pass
     hall_pass = HallPassLog(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat.id,
         class_id=economy.class_id,
         reason="Bathroom",
@@ -129,7 +128,11 @@ def setup_hall_pass_checkout_test(client):
     db.session.add(hall_pass)
 
     # Create claimed seat so current class context can be resolved in student routes.
-    _tb_seat = Seat(student_id=student.id, class_id=economy.class_id, join_code="TEST123", block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    _tb_seat = Seat(user_id=student_user.id, class_id=economy.class_id, join_code="TEST123", block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
@@ -174,7 +177,7 @@ def test_checkout_with_approved_pass(client, setup_hall_pass_checkout_test):
 
     # Verify canonical attendance state/session update
     state = SeatAttendanceState.query.filter_by(
-        student_id=student.id,
+        user_id=student_user.id,
         class_id=hall_pass.class_id,
         period=hall_pass.period,
     ).first()
@@ -184,7 +187,7 @@ def test_checkout_with_approved_pass(client, setup_hall_pass_checkout_test):
     assert state.last_reason == 'Bathroom'
 
     latest_session = AttendanceSession.query.filter_by(
-        student_id=student.id,
+        user_id=student_user.id,
         class_id=hall_pass.class_id,
         period=hall_pass.period,
     ).order_by(AttendanceSession.id.desc()).first()
@@ -252,7 +255,7 @@ def test_checkout_blocked_by_simultaneous_limit(client, setup_hall_pass_checkout
         # Create 'left' hall pass for this student
         now = datetime.now(timezone.utc)
         other_pass = HallPassLog(
-            student_id=other_student.id,
+            user_id=other_student_user.id,
             class_id=hall_pass.class_id,
             reason="Bathroom",
             status="left",
@@ -317,7 +320,7 @@ def test_checkin_with_left_pass(client, setup_hall_pass_checkout_test):
 
     # Verify canonical attendance state/session update
     state = SeatAttendanceState.query.filter_by(
-        student_id=student.id,
+        user_id=student_user.id,
         class_id=hall_pass.class_id,
         period=hall_pass.period,
     ).first()
@@ -366,7 +369,6 @@ def test_checkout_rejects_wrong_student(client, setup_hall_pass_checkout_test):
     db.session.flush()
     other_seat = Seat(
         user_id=other_user.id,
-        student_id=other_student.id,
         class_id=economy.class_id,
         join_code=economy.join_code,
         block="Period1",
@@ -375,7 +377,7 @@ def test_checkout_rejects_wrong_student(client, setup_hall_pass_checkout_test):
         claimed_at=datetime.now(timezone.utc) - timedelta(days=1),
     )
     db.session.add(other_seat)
-    _tb_seat = Seat(student_id=other_student.id, class_id=economy.class_id, join_code=economy.join_code, block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
+    _tb_seat = Seat(user_id=other_student_user.id, class_id=economy.class_id, join_code=economy.join_code, block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=other_student.display_first_name, last_name=other_student.display_last_initial))
@@ -465,7 +467,6 @@ def test_checkout_rejects_mismatched_class_context(client, setup_hall_pass_check
     db.session.flush()
     other_seat = Seat(
         user_id=user.id,
-        student_id=student.id,
         class_id=other_economy.class_id,
         join_code=other_economy.join_code,
         block="Period2",
@@ -474,7 +475,7 @@ def test_checkout_rejects_mismatched_class_context(client, setup_hall_pass_check
         claimed_at=datetime.now(timezone.utc) - timedelta(days=1),
     )
     db.session.add(other_seat)
-    _tb_seat = Seat(student_id=student.id, class_id=other_economy.class_id, join_code="OTHER123", block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
+    _tb_seat = Seat(user_id=student_user.id, class_id=other_economy.class_id, join_code="OTHER123", block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
@@ -515,7 +516,6 @@ def test_cancel_rejects_mismatched_class_context(client, setup_hall_pass_checkou
     db.session.flush()
     other_seat = Seat(
         user_id=user.id,
-        student_id=student.id,
         class_id=other_economy.class_id,
         join_code=other_economy.join_code,
         block="Period2",
@@ -524,7 +524,7 @@ def test_cancel_rejects_mismatched_class_context(client, setup_hall_pass_checkou
         claimed_at=datetime.now(timezone.utc) - timedelta(days=1),
     )
     db.session.add(other_seat)
-    _tb_seat = Seat(student_id=student.id, class_id=other_economy.class_id, join_code="OTHER123", block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
+    _tb_seat = Seat(user_id=student_user.id, class_id=other_economy.class_id, join_code="OTHER123", block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))

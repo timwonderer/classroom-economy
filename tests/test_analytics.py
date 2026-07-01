@@ -11,7 +11,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timedelta, timezone
 from app import db
-from app.models import Seat, IdentityProfile, Admin, Student, StudentBlock, StudentTeacher, ClassEconomy, Transaction, PayrollSettings, RentSettings, AnalyticsAlert, FeatureSettings, ClassMembership, ClassMembershipRole
+from app.models import Seat, IdentityProfile, User, UserRole, Admin, Student, StudentBlock, StudentTeacher, ClassEconomy, Transaction, PayrollSettings, RentSettings, AnalyticsAlert, FeatureSettings, ClassMembership, ClassMembershipRole
 from app.routes.analytics import get_pay_cycle_days, get_rent_cycle_days
 from app.utils.analytics_engine import AnalyticsEngine
 from app.hash_utils import get_random_salt, hash_username
@@ -65,17 +65,17 @@ def setup_analytics_test(client):
         db.session.add(student)
         db.session.flush()
 
-        db.session.add(StudentTeacher(student_id=student.id, teacher_id=admin.id))
+        db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
         db.session.add(ClassMembership(
             class_id=class_row.class_id,
             join_code=join_code,
-            student_id=student.id,
+            user_id=student_user.id,
             role=ClassMembershipRole.STUDENT.value,
         ))
         db.session.add(Seat(
             class_id=class_row.class_id,
             join_code=join_code,
-            student_id=student.id,
+            user_id=student_user.id,
             role='student',
             block=block,
             block_identifier=block,
@@ -83,12 +83,16 @@ def setup_analytics_test(client):
         
         # Link student to period
         student_block = StudentBlock(
-            student_id=student.id,
+            user_id=student_user.id,
             period=block,
             join_code=join_code
         )
         db.session.add(student_block)
-        _tb_seat = Seat(student_id=student.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+        # Auto-injected Canonical User
+        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+        db.session.add(student_user)
+        db.session.flush()
+        _tb_seat = Seat(user_id=student_user.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
         db.session.add(_tb_seat)
         db.session.flush()
         db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
@@ -195,7 +199,7 @@ def test_snapshot_creation(client, setup_analytics_test):
     window_start = now - timedelta(days=7)
     
     for student in students:
-        seat = Seat.query.filter_by(student_id=student.id, class_id=payroll.class_id).order_by(Seat.id.desc()).first()
+        seat = Seat.query.filter_by(user_id=student_user.id, class_id=payroll.class_id).order_by(Seat.id.desc()).first()
         tx = Transaction(
             seat_id=seat.id,
             class_id=seat.class_id,

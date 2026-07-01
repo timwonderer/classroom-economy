@@ -27,7 +27,7 @@ from app.models import (
     Student, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StorePurchase,
     RentSettings, RentPayment, InsurancePolicy, InsuranceEnrollment, InsuranceClaim,
     BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole,
-    ClassMembership, ClassEconomy, IdentityProfile, _quantize_currency
+    ClassEconomy, IdentityProfile, _quantize_currency
 )
 from app.auth import (
     admin_required,
@@ -287,23 +287,6 @@ def _get_or_create_setup_user_for_student(student: Student | None) -> User | Non
 
 
 
-def _ensure_student_class_membership(student_id: int | None, join_code: str | None) -> None:
-    if not student_id or not join_code:
-        return
-
-    existing_membership = ClassMembership.query.filter_by(
-        join_code=join_code,
-        student_id=student_id,
-    ).first()
-    if existing_membership:
-        return
-
-    db.session.add(ClassMembership(
-        join_code=join_code,
-        student_id=student_id,
-        role='student',
-    ))
-
 
 
 
@@ -351,9 +334,7 @@ def _prime_student_teacher_display_name_cache(student_id: int) -> None:
         clear_teacher_display_name_cache()
         return
 
-    cache_updates = {}
-    for teacher in Admin.query.filter(Admin.id.in_(teacher_ids)).all():
-        cache_updates[str(teacher.id)] = teacher.get_display_name()
+    cache_updates = {str(teacher_id): "Teacher" for teacher_id in teacher_ids}
     upsert_teacher_display_name_cache(cache_updates)
 
 
@@ -634,8 +615,6 @@ def claim_account():
 
         # Link seat to student
         matched_seat.claimed_at = utc_now()
-
-        _ensure_student_class_membership(new_student.id, matched_seat.join_code)
         linked_user = _get_or_create_setup_user_for_student(new_student)
         if linked_user:
             matched_seat.user_id = linked_user.id
@@ -935,9 +914,6 @@ def add_class():
         linked_user = _get_or_create_setup_user_for_student(student)
         if linked_user:
             matched_seat.user_id = linked_user.id
-
-        _ensure_student_class_membership(student.id, matched_seat.join_code)
-
         # Update student's block to include the new block if not already there
         current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
         new_block = matched_seat.block.strip().upper()
@@ -2389,7 +2365,8 @@ def shop():
                 db.func.count(db.distinct(StorePurchase.seat_id)).label('student_count'),
             )
             .join(Seat, StorePurchase.seat_id == Seat.id)
-            .join(Student, Seat.student_id == Student.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
             .join(StoreItem, StorePurchase.store_item_id == StoreItem.id)
             .filter(
                 StorePurchase.store_item_id.in_(collective_item_ids),
@@ -3136,7 +3113,7 @@ def _ensure_rent_hall_pass_top_off(student, context, settings=None, now=None):
     join_code = get_display_join_code(context.class_id)
     seat = get_current_seat()
     if not seat and student and context:
-        seat = Seat.query.filter_by(student_id=student.id, class_id=context.class_id).first()
+        seat = db.session.get(Seat, context.seat_id)
     current_block = seat.block.strip().upper() if seat and seat.block else ""
     class_id = context.class_id
     if not class_id:
@@ -3924,14 +3901,10 @@ def switch_class(class_id):
 
     # Get teacher name for response
     teacher_id = resolved_switch.scope.teacher_id
-    teacher = db.session.get(Admin, teacher_id)
     teacher_cache = get_teacher_display_name_cache()
     teacher_name = teacher_cache.get(str(teacher_id))
-    if not teacher_name and teacher:
-        teacher_name = teacher.get_display_name()
-        upsert_teacher_display_name_cache({str(teacher_id): teacher_name})
     if not teacher_name:
-        teacher_name = "Unknown"
+        teacher_name = "Teacher"
 
     # Get block/period info
     block_display = f"Block {seat.block.upper()}" if seat.block else "Unknown Block"
@@ -3958,6 +3931,7 @@ def switch_period(teacher_id):
 
 @student_bp.route('/switch-teacher/<string:teacher_public_id>', methods=['POST'])
 @login_required
+@feat_shell("FEAT-IDEN-001")
 def switch_teacher(teacher_public_id):
     """Reject obsolete role-specific public-ID switching."""
     abort(404)

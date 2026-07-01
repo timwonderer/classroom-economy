@@ -230,7 +230,7 @@ def delete_teacher_onboarding_for_teacher(teacher_id: int) -> None:
 
 def admin_has_passkeys(teacher_id: int) -> bool:
     _onboarding, credentials, _invites = _tables()
-    user_id = _teacher_user_id(teacher_id)
+    user_id = teacher_id
     if user_id is None:
         return False
     stmt = (
@@ -241,24 +241,9 @@ def admin_has_passkeys(teacher_id: int) -> bool:
     return db.session.execute(stmt).first() is not None
 
 
-def _teacher_user_id(teacher_id: int) -> int | None:
-    teachers = db.metadata.tables["teachers"]
-    users = db.metadata.tables["users"]
-    stmt = (
-        sa.select(users.c.id)
-        .select_from(teachers.join(users, users.c.username_lookup_hash == teachers.c.username_lookup_hash))
-        .where(
-            teachers.c.id == teacher_id,
-            users.c.user_role == "teacher",
-        )
-        .limit(1)
-    )
-    return db.session.execute(stmt).scalar_one_or_none()
-
-
 def create_admin_credential(teacher_id: int, authenticator_name: str, credential_id: str | None = None) -> AdminCredentialView:
     _onboarding, credentials, _invites = _tables()
-    user_id = _teacher_user_id(teacher_id)
+    user_id = teacher_id
     if user_id is None:
         raise RuntimeError("Cannot create passkey credential without canonical teacher user")
     insert_stmt = (
@@ -280,7 +265,7 @@ def create_admin_credential(teacher_id: int, authenticator_name: str, credential
 
 def touch_admin_credentials_last_used(teacher_id: int, now: datetime) -> int:
     _onboarding, credentials, _invites = _tables()
-    user_id = _teacher_user_id(teacher_id)
+    user_id = teacher_id
     if user_id is None:
         return 0
     stmt = (
@@ -294,7 +279,7 @@ def touch_admin_credentials_last_used(teacher_id: int, now: datetime) -> int:
 
 def list_admin_credentials(teacher_id: int) -> list[AdminCredentialView]:
     _onboarding, credentials, _invites = _tables()
-    user_id = _teacher_user_id(teacher_id)
+    user_id = teacher_id
     if user_id is None:
         return []
     stmt = (
@@ -307,7 +292,7 @@ def list_admin_credentials(teacher_id: int) -> list[AdminCredentialView]:
 
 def get_admin_credential(credential_id: int, teacher_id: int) -> AdminCredentialView | None:
     _onboarding, credentials, _invites = _tables()
-    user_id = _teacher_user_id(teacher_id)
+    user_id = teacher_id
     if user_id is None:
         return None
     stmt = (
@@ -324,7 +309,7 @@ def get_admin_credential(credential_id: int, teacher_id: int) -> AdminCredential
 
 def delete_admin_credential(credential_id: int, teacher_id: int) -> bool:
     _onboarding, credentials, _invites = _tables()
-    user_id = _teacher_user_id(teacher_id)
+    user_id = teacher_id
     if user_id is None:
         return False
     stmt = sa.delete(credentials).where(
@@ -337,7 +322,7 @@ def delete_admin_credential(credential_id: int, teacher_id: int) -> bool:
 
 def delete_admin_credentials_for_teacher(teacher_id: int) -> None:
     _onboarding, credentials, _invites = _tables()
-    user_id = _teacher_user_id(teacher_id)
+    user_id = teacher_id
     if user_id is None:
         return
     db.session.execute(sa.delete(credentials).where(credentials.c.user_id == user_id))

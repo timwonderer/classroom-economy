@@ -3,7 +3,7 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.models import Seat, IdentityProfile, Admin, ClassMembership, Student, StudentTeacher, Transaction, StoreItem, StoreItemBlock, StudentItem, IssueCategory, Issue
+from app.models import Seat, IdentityProfile, User, UserRole, Admin, ClassMembership, Student, StudentTeacher, Transaction, StoreItem, StoreItemBlock, StudentItem, IssueCategory, Issue
 from app.hash_utils import get_random_salt, hash_hmac
 from tests.helpers.class_scope import create_class_scope
 
@@ -38,8 +38,12 @@ def _create_student(teacher: Admin, first_name: str, block: str, join_code: str)
         block=block,
         display_name=block,
     )
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
-    _tb_seat = Seat(student_id=student.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    _tb_seat = Seat(user_id=student_user.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_initial=first_name[0].upper()))
@@ -65,9 +69,7 @@ def test_delete_student_removes_transactions(client):
     student = _create_student(teacher, "Alice", "A", "ARCHIVE1")
 
     tx = Transaction(
-        student_id=student.id,
-        teacher_id=teacher.id,
-        join_code="ARCHIVE1",
+        user_id=student_user.id,join_code="ARCHIVE1",
         amount=50,
         account_type="checking",
         description="Seed ledger entry",
@@ -94,7 +96,7 @@ def test_deactivate_item_does_not_delete_transactions(client):
     student = _create_student(teacher, "Bob", "A", "ITEMJC1")
 
     item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         name="Sticker",
         price=10,
         item_type="delayed",
@@ -105,9 +107,7 @@ def test_deactivate_item_does_not_delete_transactions(client):
     db.session.add(StoreItemBlock(store_item_id=item.id, block="A"))
 
     tx = Transaction(
-        student_id=student.id,
-        teacher_id=teacher.id,
-        join_code="ITEMJC1",
+        user_id=student_user.id,join_code="ITEMJC1",
         amount=-10,
         account_type="checking",
         type="purchase",
@@ -131,8 +131,8 @@ def test_delete_join_code_removes_only_scoped_records(client):
     student_a = _create_student(teacher, "Cara", "A", "JCDEL1")
     student_b = _create_student(teacher, "Dylan", "B", "JCKEEP2")
 
-    tx_a = Transaction(student_id=student_a.id, teacher_id=teacher.id, join_code="JCDEL1", amount=20, account_type="checking")
-    tx_b = Transaction(student_id=student_b.id, teacher_id=teacher.id, join_code="JCKEEP2", amount=30, account_type="checking")
+    tx_a = Transaction(user_id=student_a_user.id,join_code="JCDEL1", amount=20, account_type="checking")
+    tx_b = Transaction(user_id=student_b_user.id,join_code="JCKEEP2", amount=30, account_type="checking")
     db.session.add_all([tx_a, tx_b])
     db.session.flush()
 
@@ -145,7 +145,7 @@ def test_delete_join_code_removes_only_scoped_records(client):
     db.session.flush()
 
     issue = Issue(
-        student_id=student_a.id,
+        user_id=student_a_user.id,
         actor_public_id="seat-public-join-delete",
         teacher_id=teacher.id,
         join_code="JCDEL1",
@@ -157,14 +157,14 @@ def test_delete_join_code_removes_only_scoped_records(client):
     db.session.add(issue)
 
     item_a = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         name="Class A Item",
         price=5,
         item_type="delayed",
         is_active=True,
     )
     item_b = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         name="Class B Item",
         price=5,
         item_type="delayed",
@@ -178,7 +178,7 @@ def test_delete_join_code_removes_only_scoped_records(client):
     ])
     db.session.flush()
 
-    purchase = StudentItem(correlation_id='corr_test', student_id=student_a.id, store_item_id=item_a.id, join_code="JCDEL1", status="purchased")
+    purchase = StudentItem(correlation_id='corr_test', user_id=student_a_user.id, store_item_id=item_a.id, join_code="JCDEL1", status="purchased")
     db.session.add(purchase)
     db.session.commit()
 

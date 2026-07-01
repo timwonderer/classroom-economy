@@ -9,7 +9,7 @@ import pytest
 import pyotp
 from datetime import datetime, timedelta, timezone
 from app import db
-from app.models import Admin, Announcement, ClassEconomy, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, Announcement, ClassEconomy, Seat, IdentityProfile
 
 
 @pytest.fixture

@@ -12,7 +12,7 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.models import Admin, ClassEconomy
+from app.models import User, UserRole, Admin, ClassEconomy
 from app.hash_utils import get_random_salt, hash_hmac
 
 pytestmark = pytest.mark.skip(reason="TeacherBlock removed in Wave 11 decommissioning")
@@ -135,7 +135,7 @@ def test_delete_pending_student_wrong_teacher(client):
 
 def test_delete_pending_student_already_claimed(client):
     """Cannot delete a TeacherBlock that has already been claimed."""
-    from app.models import Student
+    from app.models import User, UserRole, Student
     from app.hash_utils import hash_username
 
     teacher, secret = _create_admin("teacher-pending3")
@@ -154,8 +154,8 @@ def test_delete_pending_student_already_claimed(client):
     db.session.flush()  # Get the student ID
     
     # Link student to teacher
-    from app.models import StudentTeacher
-    st = StudentTeacher(student_id=student.id, teacher_id=teacher.id)
+    from app.models import User, UserRole, StudentTeacher
+    st = StudentTeacher(user_id=student_user.id, teacher_id=teacher.id)
     db.session.add(st)
 
     # Create ClassEconomy for FK constraint
@@ -186,7 +186,7 @@ def test_delete_pending_student_already_claimed(client):
         first_half_hash=first_half_hash,
         join_code=f"TEST{teacher.id}D",
         is_claimed=True,  # Claimed
-        student_id=student.id,  # Use actual student ID
+        user_id=student_user.id,  # Use actual student ID
     )
     db.session.add(claimed_tb)
     db.session.commit()
@@ -285,7 +285,7 @@ def test_bulk_delete_pending_students_by_block(client):
 
 def test_bulk_delete_skips_claimed_students(client):
     """Bulk delete by IDs should skip any claimed TeacherBlocks."""
-    from app.models import Student
+    from app.models import User, UserRole, Student
     from app.hash_utils import hash_username
 
     teacher, secret = _create_admin("teacher-pending6")
@@ -307,8 +307,8 @@ def test_bulk_delete_skips_claimed_students(client):
     db.session.flush()
 
     # Link student to teacher
-    from app.models import StudentTeacher
-    st = StudentTeacher(student_id=student.id, teacher_id=teacher.id)
+    from app.models import User, UserRole, StudentTeacher
+    st = StudentTeacher(user_id=student_user.id, teacher_id=teacher.id)
     db.session.add(st)
 
 
@@ -328,7 +328,7 @@ def test_bulk_delete_skips_claimed_students(client):
         first_half_hash=first_half_hash,
         join_code=f"TEST{teacher.id}H",
         is_claimed=True,
-        student_id=student.id,
+        user_id=student_user.id,
     )
     db.session.add(claimed_tb)
     db.session.commit()
@@ -356,7 +356,7 @@ def test_bulk_delete_skips_claimed_students(client):
 
 def test_bulk_delete_by_block_only_deletes_unclaimed(client):
     """Bulk delete by block should only delete unclaimed TeacherBlocks."""
-    from app.models import Student
+    from app.models import User, UserRole, Student
     from app.hash_utils import hash_username
 
     teacher, secret = _create_admin("teacher-pending7")
@@ -379,8 +379,8 @@ def test_bulk_delete_by_block_only_deletes_unclaimed(client):
     db.session.flush()
 
     # Link student to teacher
-    from app.models import StudentTeacher
-    st = StudentTeacher(student_id=student.id, teacher_id=teacher.id)
+    from app.models import User, UserRole, StudentTeacher
+    st = StudentTeacher(user_id=student_user.id, teacher_id=teacher.id)
     db.session.add(st)
 
 
@@ -400,7 +400,7 @@ def test_bulk_delete_by_block_only_deletes_unclaimed(client):
         first_half_hash=first_half_hash,
         join_code=f"TEST{teacher.id}I",
         is_claimed=True,
-        student_id=student.id,
+        user_id=student_user.id,
     )
     db.session.add(claimed_tb)
     db.session.commit()

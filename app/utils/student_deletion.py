@@ -16,7 +16,6 @@ from app.models import (
     RentPayment,
     RentWaiver,
     Student,
-    StudentBlock,
     StorePurchase,
     AttendanceSession,
     SeatAttendanceState,
@@ -30,9 +29,16 @@ from app.services.recovery_bridge_service import delete_recovery_codes_for_stude
 
 def _collect_related_ids(student_id):
     """Materialize dependent record IDs once for downstream delete/update queries."""
+    student_identity_id = db.session.query(Student.identity_id).filter(Student.id == student_id).scalar()
     store_purchase_ids = [
         row[0]
-        for row in db.session.query(StorePurchase.id).join(Seat, StorePurchase.seat_id == Seat.id).filter(Seat.student_id == student_id).all()
+        for row in (
+            db.session.query(StorePurchase.id)
+            .join(Seat, StorePurchase.seat_id == Seat.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .filter(IdentityProfile.id == student_identity_id)
+            .all()
+        )
     ]
     issue_ids = [
         row[0]
@@ -50,23 +56,33 @@ def _collect_related_ids(student_id):
         row[0]
         for row in db.session.query(Transaction.id)
         .join(Seat, Transaction.seat_id == Seat.id)
-        .filter(Seat.student_id == student_id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .filter(IdentityProfile.id == student_identity_id)
         .all()
     ]
     seat_ids = [
         row[0]
-        for row in db.session.query(Seat.id).filter(Seat.student_id == student_id).all()
+        for row in (
+            db.session.query(Seat.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .filter(IdentityProfile.id == student_identity_id)
+            .all()
+        )
     ]
     return store_purchase_ids, issue_ids, insurance_ids, tx_ids, seat_ids
 
 
 def _unclaim_all_seats_for_student(student_id):
     """Detach all canonical seats for this student, resetting them to unclaimed."""
+    student_identity_id = db.session.query(Student.identity_id).filter(Student.id == student_id).scalar()
     Seat.query.filter(
-        Seat.student_id == student_id
+        Seat.id.in_(
+            db.session.query(Seat.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .filter(IdentityProfile.id == student_identity_id)
+        )
     ).update(
         {
-            Seat.student_id: None,
             Seat.claimed_at: None,
             Seat.user_id: None,
         },
@@ -119,7 +135,16 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insur
             IssueStatusHistory.issue_id.in_(issue_ids)
         ).delete(synchronize_session=False)
 
-    seat_ids_for_student = [s.id for s in Seat.query.filter_by(student_id=student_id).all()]
+    seat_ids_for_student = [
+        row[0]
+        for row in (
+            db.session.query(Seat.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(Student.id == student_id)
+            .all()
+        )
+    ]
     insurance_claim_filters = [InsuranceClaim.seat_id.in_(seat_ids_for_student)] if seat_ids_for_student else []
     if insurance_ids:
         insurance_claim_filters.append(InsuranceClaim.enrollment_id.in_(insurance_ids))
@@ -145,7 +170,7 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insur
     HallPassLog.query.filter(HallPassLog.student_id == student_id).delete(synchronize_session=False)
     RentPayment.query.filter(RentPayment.student_id == student_id).delete(synchronize_session=False)
     RentWaiver.query.filter(RentWaiver.student_id == student_id).delete(synchronize_session=False)
-    StudentBlock.query.filter(StudentBlock.student_id == student_id).delete(synchronize_session=False)
+    pass
     if seat_ids:
         BalanceCache.query.filter(BalanceCache.seat_id.in_(seat_ids)).delete(synchronize_session=False)
 
@@ -154,7 +179,9 @@ def hard_delete_student_if_orphaned(student_id):
     """Hard-delete a student and dependent rows only when no teacher links remain."""
     has_links = (
         db.session.query(Seat.id)
-        .filter(Seat.student_id == student_id)
+        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+        .join(Student, Student.identity_id == IdentityProfile.id)
+        .filter(Student.id == student_id)
         .all()
     )
     if has_links:
@@ -177,11 +204,15 @@ def remove_student_from_teacher_scope(student_id, teacher_id):
     from app.models import ClassEconomy
     teacher_class_ids = db.session.query(ClassEconomy.class_id).filter_by(user_id=teacher_id).subquery()
     Seat.query.filter(
-        Seat.student_id == student_id,
+        Seat.id.in_(
+            db.session.query(Seat.id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .join(Student, Student.identity_id == IdentityProfile.id)
+            .filter(Student.id == student_id)
+        ),
         Seat.class_id.in_(teacher_class_ids),
     ).update(
         {
-            Seat.student_id: None,
             Seat.claimed_at: None,
             Seat.user_id: None,
         },

@@ -54,7 +54,6 @@ def test_attendance_session_requires_seat_id(client):
 
     seat = Seat(
         user_id=user.id,
-        student_id=student.id,
         class_id=class_scope.class_id,
         join_code="JOIN_TAP",
         block="A",
@@ -63,7 +62,7 @@ def test_attendance_session_requires_seat_id(client):
     db.session.flush()
 
     event = AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_scope.class_id,
         period="A",
@@ -90,7 +89,6 @@ def test_student_block_autofills_seat_id_from_class_scope(client):
 
     seat = Seat(
         user_id=user.id,
-        student_id=student.id,
         class_id=class_scope.class_id,
         join_code="JOIN_SB",
         block="A",
@@ -99,7 +97,7 @@ def test_student_block_autofills_seat_id_from_class_scope(client):
     db.session.flush()
 
     student_block = StudentBlock(
-        student_id=student.id,
+        user_id=student_user.id,
         class_id=class_scope.class_id,
         join_code="JOIN_SB",
         period="A",
@@ -127,7 +125,6 @@ def test_attendance_session_requires_student_id(client):
 
     seat = Seat(
         user_id=user.id,
-        student_id=student.id,
         class_id=class_scope.class_id,
         join_code="JOIN_SCOPE",
         block="A",

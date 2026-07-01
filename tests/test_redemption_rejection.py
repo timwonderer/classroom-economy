@@ -2,7 +2,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
-from app.models import Admin, Student, Transaction, StoreItem, StudentItem, StudentTeacher, ClassEconomy, ClassMembership, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, Student, Transaction, StoreItem, StudentItem, StudentTeacher, ClassEconomy, ClassMembership, Seat, IdentityProfile
 from app.extensions import db
 from werkzeug.security import generate_password_hash
 
@@ -31,10 +31,14 @@ def student_in_class(client, teacher_admin):
     db.session.add(student)
     db.session.flush()
 
-    link = StudentTeacher(student_id=student.id, teacher_id=teacher_admin.id)
+    link = StudentTeacher(user_id=student_user.id, teacher_id=teacher_admin.id)
     db.session.add(link)
 
-    seat = Seat(student_id=student.id, join_code='REJECT123', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    seat = Seat(user_id=student_user.id, join_code='REJECT123', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(seat)
 
@@ -45,7 +49,7 @@ def student_in_class(client, teacher_admin):
 
     db.session.add(ClassEconomy(join_code='REJECT123', user_id=teacher_admin.id, status="active", created_by_admin_id=teacher_admin.id))
     db.session.add(ClassMembership(join_code='REJECT123', admin_id=teacher_admin.id, role="admin"))
-    db.session.add(ClassMembership(join_code='REJECT123', student_id=student.id, role="student"))
+    db.session.add(ClassMembership(join_code='REJECT123', user_id=student_user.id, role="student"))
     db.session.commit()
     return student
 
@@ -55,7 +59,7 @@ def test_reject_redemption_refunds_student(client, teacher_admin, student_in_cla
     student = student_in_class
 
     item = StoreItem(
-        teacher_id=teacher_admin.id,
+        user_id=teacher_admin.id,
         class_id=_class_id_for('REJECT123'),
         join_code='REJECT123',
         name='Refundable Item',
@@ -68,9 +72,7 @@ def test_reject_redemption_refunds_student(client, teacher_admin, student_in_cla
 
     initial_balance = Decimal('100.00')
     tx = Transaction(
-        student_id=student.id,
-        teacher_id=teacher_admin.id,
-        join_code='REJECT123',
+        user_id=student_user.id,join_code='REJECT123',
         amount=initial_balance,
         account_type='checking',
         type='deposit',
@@ -96,7 +98,7 @@ def test_reject_redemption_refunds_student(client, teacher_admin, student_in_cla
     db.session.refresh(student)
     assert student.checking_balance == initial_balance - Decimal('15.00')
 
-    student_item = StudentItem.query.filter_by(student_id=student.id, store_item_id=item.id).first()
+    student_item = StudentItem.query.filter_by(user_id=student_user.id, store_item_id=item.id).first()
     assert student_item is not None
     assert student_item.status == 'purchased'
 
@@ -129,14 +131,14 @@ def test_reject_redemption_refunds_student(client, teacher_admin, student_in_cla
     assert item_check.status == 'rejected'
 
     refund_tx = Transaction.query.filter_by(
-        student_id=student.id,
+        user_id=student_user.id,
         type='refund',
         amount=Decimal('15.00')
     ).first()
     assert refund_tx is not None
     assert "Refund:" in refund_tx.description
     purchase_tx = Transaction.query.filter_by(
-        student_id=student.id,
+        user_id=student_user.id,
         type='purchase',
     ).filter(Transaction.description.like('Purchase: Refundable Item%')).first()
     assert purchase_tx is not None
@@ -148,7 +150,7 @@ def test_reject_redemption_refunds_single_unit_from_multi_quantity_purchase(clie
     student = student_in_class
 
     item = StoreItem(
-        teacher_id=teacher_admin.id,
+        user_id=teacher_admin.id,
         class_id=_class_id_for('REJECT123'),
         join_code='REJECT123',
         name='Bulk Item',
@@ -161,9 +163,7 @@ def test_reject_redemption_refunds_single_unit_from_multi_quantity_purchase(clie
 
     initial_balance = Decimal('100.00')
     db.session.add(Transaction(
-        student_id=student.id,
-        teacher_id=teacher_admin.id,
-        join_code='REJECT123',
+        user_id=student_user.id,join_code='REJECT123',
         amount=initial_balance,
         account_type='checking',
         type='deposit',
@@ -188,7 +188,7 @@ def test_reject_redemption_refunds_single_unit_from_multi_quantity_purchase(clie
     db.session.refresh(student)
     assert student.checking_balance == initial_balance - Decimal('30.00')
 
-    student_item = StudentItem.query.filter_by(student_id=student.id, store_item_id=item.id).first()
+    student_item = StudentItem.query.filter_by(user_id=student_user.id, store_item_id=item.id).first()
     assert student_item is not None
 
     use_resp = client.post('/api/use-item', json={
@@ -215,7 +215,7 @@ def test_reject_redemption_refunds_single_unit_from_multi_quantity_purchase(clie
     assert student.checking_balance == initial_balance - Decimal('20.00')
 
     refund_tx = Transaction.query.filter_by(
-        student_id=student.id,
+        user_id=student_user.id,
         type='refund',
         amount=Decimal('10.00')
     ).first()
@@ -227,7 +227,7 @@ def test_reject_redemption_legacy_item_resolves_join_code(client, teacher_admin,
     student = student_in_class
 
     item = StoreItem(
-        teacher_id=teacher_admin.id,
+        user_id=teacher_admin.id,
         class_id=_class_id_for('REJECT123'),
         join_code='REJECT123',
         name='Legacy Item',
@@ -239,9 +239,7 @@ def test_reject_redemption_legacy_item_resolves_join_code(client, teacher_admin,
     db.session.flush()
 
     purchase_tx = Transaction(
-        student_id=student.id,
-        teacher_id=teacher_admin.id,
-        join_code='REJECT123',
+        user_id=student_user.id,join_code='REJECT123',
         amount=Decimal('-12.00'),
         account_type='checking',
         type='purchase',
@@ -251,7 +249,7 @@ def test_reject_redemption_legacy_item_resolves_join_code(client, teacher_admin,
     db.session.flush()
 
     legacy_item = StudentItem(correlation_id='corr_test',
-        student_id=student.id,
+        user_id=student_user.id,
         store_item_id=item.id,
         join_code='REJECT123',
         status='processing',
@@ -270,7 +268,7 @@ def test_reject_redemption_legacy_item_resolves_join_code(client, teacher_admin,
     assert resp.json['status'] == 'success'
 
     refund_tx = Transaction.query.filter_by(
-        student_id=student.id,
+        user_id=student_user.id,
         type='refund',
         amount=Decimal('12.00')
     ).first()

@@ -1,0 +1,72 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.10.0, pytest-9.0.3, pluggy-1.6.0
+rootdir: /Users/timothychang/Documents/GitHub/classroom-economy
+configfile: pytest.ini
+plugins: flask-1.3.0, anyio-4.2.0
+collected 1 item
+
+tests/test_api_tenancy.py F
+
+=================================== FAILURES ===================================
+_______________ test_switch_teacher_public_id_route_is_disabled ________________
+
+client = <FlaskClient <Flask 'app'>>
+
+    def test_switch_teacher_public_id_route_is_disabled(client):
+        teacher_a, _ = _create_admin("teacher-switch-a")
+        teacher_b, _ = _create_admin("teacher-switch-b")
+        student = _create_student(
+            "SwitchByPublicId",
+            primary_teacher=teacher_a,
+            linked_teachers=[teacher_a, teacher_b],
+        )
+        _create_claimed_seat(teacher_a, student, "SWITCHA1", block="A")
+        _create_claimed_seat(teacher_b, student, "SWITCHB1", block="B")
+    
+        _login_student(client, student, join_code="SWITCHA1")
+        response = client.post("/student/switch-teacher/teacher-switch-b-public")
+    
+>       assert response.status_code == 404
+E       assert 302 == 404
+E        +  where 302 = <WrapperTestResponse streamed [302 FOUND]>.status_code
+
+tests/test_api_tenancy.py:811: AssertionError
+------------------------------ Captured log setup ------------------------------
+WARNING  app.feats.base:base.py:334 FEAT-INTEGRITY-WARNING: FEATBypass active. Execution integrity is currently unmanaged.
+WARNING  app.feats.base:base.py:175 FEAT-INTEGRITY-WARNING: FEAT FEAT-BYPASS-LEGACY (Blast=LOW) missing idempotency_key.
+INFO     app.feats.base:base.py:228 FEAT-ENTRY: feat=FEAT-BYPASS-LEGACY | correlation_id=bypass_test_166edc17ba2144e4a279fb976a05c251 | idempotency_key=NONE
+------------------------------ Captured log call -------------------------------
+INFO     app.feats.base:base.py:265 FEAT-COMMIT-OWNERSHIP: FEAT-BYPASS-LEGACY | First commit owned by FEAT-BYPASS-LEGACY | Correlation=bypass_test_166edc17ba2144e4a279fb976a05c251
+WARNING  app.feats.base:base.py:282 FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=2. Correlation=bypass_test_166edc17ba2144e4a279fb976a05c251
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 6 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 7 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:282 FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=3. Correlation=bypass_test_166edc17ba2144e4a279fb976a05c251
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 8 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 9 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 10 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 11 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 12 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 13 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 14 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:282 FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=4. Correlation=bypass_test_166edc17ba2144e4a279fb976a05c251
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 15 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:282 FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=5. Correlation=bypass_test_166edc17ba2144e4a279fb976a05c251
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 16 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 17 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 18 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 19 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 20 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 21 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 22 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:282 FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=6. Correlation=bypass_test_166edc17ba2144e4a279fb976a05c251
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 23 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:282 FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=7. Correlation=bypass_test_166edc17ba2144e4a279fb976a05c251
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 24 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:282 FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=8. Correlation=bypass_test_166edc17ba2144e4a279fb976a05c251
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 25 flushes. Consider simplifying or batching mutations.
+ERROR    app:tlcp.py:100 TLCP-INVARIANT-VIOLATION: missing canonical context
+---------------------------- Captured log teardown -----------------------------
+WARNING  app.feats.base:base.py:282 FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=9. Correlation=bypass_test_166edc17ba2144e4a279fb976a05c251
+=========================== short test summary info ============================
+FAILED tests/test_api_tenancy.py::test_switch_teacher_public_id_route_is_disabled
+============================== 1 failed in 1.25s ===============================

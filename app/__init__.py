@@ -729,20 +729,17 @@ def create_app():
             current_seat = current_seat_ctx
 
             # Build list of available classes with teacher names.
-            teacher_ids = sorted({row.teacher_id for row in class_rows_by_class_id.values() if row.teacher_id})
+            teacher_ids = sorted({row.user_id for row in class_rows_by_class_id.values() if row.user_id})
             teacher_name_cache = get_teacher_display_name_cache()
             missing_ids = [tid for tid in teacher_ids if str(tid) not in teacher_name_cache]
             if missing_ids:
-                cache_updates = {}
-                for teacher in Admin.query.filter(Admin.id.in_(missing_ids)).all():
-                    cache_updates[str(teacher.id)] = teacher.get_display_name()
-                if cache_updates:
-                    upsert_teacher_display_name_cache(cache_updates)
-                    teacher_name_cache.update(cache_updates)
+                cache_updates = {str(tid): "Teacher" for tid in missing_ids}
+                upsert_teacher_display_name_cache(cache_updates)
+                teacher_name_cache.update(cache_updates)
 
             # Build current class context from cache.
             current_class_row = class_rows_by_class_id.get(current_seat.class_id)
-            current_teacher_id = getattr(current_class_row, 'teacher_id', None)
+            current_teacher_id = getattr(current_class_row, 'user_id', None)
             current_class_label = (
                 current_class_row.display_name
                 if current_class_row and current_class_row.display_name
@@ -824,14 +821,10 @@ def create_app():
             )
 
             user = get_current_user()
-            from app.models import Admin
-            admin = Admin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first() if user else None
-            if admin:
-                cached_name = get_admin_display_name_cache(teacher_user_id=admin.id)
-                if not cached_name:
-                    cached_name = admin.get_display_name()
-                    set_admin_display_name_cache(teacher_user_id=admin.id, display_name=cached_name)
-                return {'current_admin': admin, 'current_admin_display_name': cached_name}
+            if user:
+                cached_name = get_admin_display_name_cache(teacher_user_id=user.id)
+                if cached_name:
+                    return {'current_admin': None, 'current_admin_display_name': cached_name}
             return {'current_admin': None, 'current_admin_display_name': None}
         except Exception as e:
             app.logger.warning(f"Could not load current admin: {e}")

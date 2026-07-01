@@ -2,7 +2,7 @@ import pytest
 pytest.skip('Legacy TeacherBlock test', allow_module_level=True)
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, ClassEconomy, ClassMembership, StoreItem, StoreItemBlock, Seat
+from app.models import User, UserRole, Admin, ClassEconomy, ClassMembership, StoreItem, StoreItemBlock, Seat
 from app.scheduled_tasks import database_maintenance_job
 
 
@@ -45,8 +45,8 @@ def test_database_maintenance_bulk_cleans_only_orphaned_store_item_blocks(app):
         db.session.flush()
         db.session.add(ClassMembership(join_code="JOINA", admin_id=admin.id, role="admin"))
 
-        valid_item = StoreItem(teacher_id=admin.id, class_id=class_economy.class_id, join_code="JOINA", name="Valid", price=1, item_type="delayed")
-        orphan_item = StoreItem(teacher_id=admin.id, class_id=class_economy.class_id, join_code="JOINA", name="Orphan", price=2, item_type="delayed")
+        valid_item = StoreItem(user_id=admin.id, class_id=class_economy.class_id, join_code="JOINA", name="Valid", price=1, item_type="delayed")
+        orphan_item = StoreItem(user_id=admin.id, class_id=class_economy.class_id, join_code="JOINA", name="Orphan", price=2, item_type="delayed")
         db.session.add_all([valid_item, orphan_item])
         db.session.flush()
 

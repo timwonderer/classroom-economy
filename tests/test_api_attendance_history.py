@@ -44,7 +44,7 @@ def admin_with_students(client):
     db.session.flush()
 
     # CRITICAL FIX: Create StudentTeacher association for multi-tenancy
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=admin.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
     db.session.flush()
     class_row = ClassEconomy(
         join_code="ATTEND_A",
@@ -55,8 +55,12 @@ def admin_with_students(client):
     db.session.add(class_row)
     db.session.flush()
     db.session.add(ClassMembership(class_id=class_row.class_id, admin_id=admin.id, role="admin"))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
     seat = Seat(
-        student_id=student.id,
+        user_id=student_user.id,
         class_id=class_row.class_id,
         join_code=class_row.join_code,
         block="A",
@@ -70,7 +74,7 @@ def admin_with_students(client):
     
     # Tap in event (1 hour ago)
     tap_in = AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_row.class_id,
         period='A',
@@ -80,7 +84,7 @@ def admin_with_students(client):
 
     # Tap out event (30 minutes ago)
     tap_out = AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_row.class_id,
         period='A',
@@ -225,8 +229,8 @@ def test_attendance_history_tenant_scoping(client):
     db.session.flush()
 
     # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
-    db.session.add(StudentTeacher(student_id=student1.id, teacher_id=admin1.id))
-    db.session.add(StudentTeacher(student_id=student2.id, teacher_id=admin2.id))
+    db.session.add(StudentTeacher(user_id=student1_user.id, teacher_id=admin1.id))
+    db.session.add(StudentTeacher(user_id=student2_user.id, teacher_id=admin2.id))
     db.session.flush()
     class1 = ClassEconomy(join_code="ATTEND_1", user_id=admin1.id, status="active", created_by_admin_id=admin1.id)
     class2 = ClassEconomy(join_code="ATTEND_2", user_id=admin2.id, status="active", created_by_admin_id=admin2.id)
@@ -236,8 +240,16 @@ def test_attendance_history_tenant_scoping(client):
         ClassMembership(class_id=class1.class_id, admin_id=admin1.id, role="admin"),
         ClassMembership(class_id=class2.class_id, admin_id=admin2.id, role="admin"),
     ])
-    seat1 = Seat(student_id=student1.id, class_id=class1.class_id, join_code=class1.join_code, block="A", role="student")
-    seat2 = Seat(student_id=student2.id, class_id=class2.class_id, join_code=class2.join_code, block="B", role="student")
+    # Auto-injected Canonical User
+    student1_user = User(username_hash=f"auto_{student1.id}", username_lookup_hash=f"auto_l_{student1.id}", user_role=UserRole.STUDENT)
+    db.session.add(student1_user)
+    db.session.flush()
+    seat1 = Seat(user_id=student1_user.id, class_id=class1.class_id, join_code=class1.join_code, block="A", role="student")
+    # Auto-injected Canonical User
+    student2_user = User(username_hash=f"auto_{student2.id}", username_lookup_hash=f"auto_l_{student2.id}", user_role=UserRole.STUDENT)
+    db.session.add(student2_user)
+    db.session.flush()
+    seat2 = Seat(user_id=student2_user.id, class_id=class2.class_id, join_code=class2.join_code, block="B", role="student")
     db.session.add_all([seat1, seat2])
     db.session.flush()
 
@@ -245,14 +257,14 @@ def test_attendance_history_tenant_scoping(client):
     now_utc = datetime.now(timezone.utc)
     
     tap1 = AttendanceSession(
-        student_id=student1.id,
+        user_id=student1_user.id,
         seat_id=seat1.id,
         class_id=class1.class_id,
         period='A',
         started_at=now_utc,
     )
     tap2 = AttendanceSession(
-        student_id=student2.id,
+        user_id=student2_user.id,
         seat_id=seat2.id,
         class_id=class2.class_id,
         period='B',
@@ -292,7 +304,7 @@ def test_attendance_history_excludes_deleted_records(client, admin_with_students
     # Create a new tap event that we'll mark as deleted
     now_utc = datetime.now(timezone.utc)
     deleted_tap = AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=admin_with_students['seat'].id,
         class_id=admin_with_students['class_id'],
         period='B',
@@ -338,7 +350,7 @@ def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_
 
     # Simulate duplicate inserts from concurrent workers.
     db.session.add(AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=admin_with_students['seat'].id,
         class_id=admin_with_students['class_id'],
         period='A',
@@ -349,7 +361,7 @@ def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_
         end_reason_code=AttendanceReasonCode.DAILY_LIMIT,
     ))
     db.session.add(AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=admin_with_students['seat'].id,
         class_id=admin_with_students['class_id'],
         period='A',

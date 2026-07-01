@@ -98,7 +98,7 @@ def create_class_scope(
         db.session.add(ClassMembership(
             class_id=class_row.class_id,
             join_code=join_code,
-            student_id=student.id,
+            user_id=student_user.id,
             role="student",
         ))
 
@@ -143,7 +143,7 @@ def make_student_seat(
 ):
     """Create a Seat + IdentityProfile + auto-created User for tests.
 
-    This replaces the common pattern of ``Seat(student_id=student.id, ...)``,
+    This replaces the common pattern of ``Seat(user_id=student_user.id, ...)``,
     which broke when ``student_id`` was removed from the Seat ORM in v2.
     """
     resolved_user_id = _ensure_user(user_id, role=role)

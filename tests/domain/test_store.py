@@ -185,7 +185,7 @@ def store_test_setup(app):
         db.session.flush()
 
         item = StoreItem(
-            teacher_id=user.id,
+            user_id=user.id,
             class_id=class_id,
             join_code=join_code,
             name="Test Reward",

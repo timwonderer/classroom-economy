@@ -11,7 +11,7 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
 
     past_date = datetime.now(timezone.utc) - timedelta(days=31)
     savings_tx = Transaction(
-        student_id=test_student.id,
+        user_id=test_student_user.id,
         join_code='TEST',
         amount=100.0,
         account_type='savings',
@@ -34,7 +34,7 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
 
     interest_tx = (
         Transaction.query.filter_by(
-            student_id=test_student.id,
+            user_id=test_student_user.id,
             description="Monthly Savings Interest",
             account_type='savings',
         )
@@ -49,7 +49,7 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
 
 
 def test_dashboard_renders_recent_deposit(client, test_student):
-    from app.models import Admin, StudentTeacher, Seat, IdentityProfile
+    from app.models import User, UserRole, Admin, StudentTeacher, Seat, IdentityProfile
 
     # Create a teacher and link the student
     teacher = make_admin("testteacher", "SECRET123")
@@ -61,11 +61,15 @@ def test_dashboard_renders_recent_deposit(client, test_student):
     test_student.join_code = join_code
 
     # Link student to teacher
-    st = StudentTeacher(student_id=test_student.id, teacher_id=teacher.id)
+    st = StudentTeacher(user_id=test_student_user.id, teacher_id=teacher.id)
     db.session.add(st)
 
     # Create TeacherBlock (required for dashboard context)
-    tb = Seat(student_id=test_student.id, join_code=join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    test_student_user = User(username_hash=f"auto_{test_student.id}", username_lookup_hash=f"auto_l_{test_student.id}", user_role=UserRole.STUDENT)
+    db.session.add(test_student_user)
+    db.session.flush()
+    tb = Seat(user_id=test_student_user.id, join_code=join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name=test_student.display_first_name, last_name=test_student.display_last_initial))
@@ -77,7 +81,7 @@ def test_dashboard_renders_recent_deposit(client, test_student):
     mature_savings_time = datetime.now(timezone.utc) - timedelta(days=31)
 
     recent_deposit = Transaction(
-        student_id=test_student.id,
+        user_id=test_student_user.id,
         join_code=join_code,
         amount=50.0,
         account_type='checking',
@@ -86,7 +90,7 @@ def test_dashboard_renders_recent_deposit(client, test_student):
         date_funds_available=recent_deposit_time,
     )
     mature_savings = Transaction(
-        student_id=test_student.id,
+        user_id=test_student_user.id,
         join_code=join_code,
         amount=200.0,
         account_type='savings',
@@ -110,7 +114,7 @@ def test_dashboard_renders_recent_deposit(client, test_student):
     assert b"$50.00" in response.data
 
     interest_tx = Transaction.query.filter_by(
-        student_id=test_student.id,
+        user_id=test_student_user.id,
         description="Monthly Savings Interest",
         account_type='savings',
     ).first()

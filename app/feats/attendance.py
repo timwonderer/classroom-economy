@@ -13,9 +13,11 @@ from app.models import (
     ClassEconomy,
     HallPassLog,
     HallPassSettings,
+    IdentityProfile,
     Seat,
     SeatAttendanceState,
-    StudentBlock,
+    Student,
+    EntitlementEvent,
     AttendanceReasonCode,
 )
 from app.payroll import get_daily_limit_seconds
@@ -26,6 +28,17 @@ from app.attendance import calculate_period_attendance_utc_range
 
 
 HALL_PASS_FREE_REASONS = {"office", "summons", "done for the day"}
+
+
+def _resolve_student_id_for_seat(*, seat_id: int, class_id: str) -> int | None:
+    row = (
+        db.session.query(Student.id)
+        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+        .join(Seat, Seat.id == IdentityProfile.seat_id)
+        .filter(Seat.id == seat_id, Seat.class_id == class_id)
+        .first()
+    )
+    return row[0] if row else None
 
 
 @dataclass
@@ -76,6 +89,7 @@ def student_tap(
     reason: str | None = None,
     reason_code: AttendanceReasonCode | None = None,
     timestamp_utc=None,
+    join_code: str | None = None,
 ) -> AttendanceSession:
     """Create or close canonical attendance sessions and update live state."""
     event_time = timestamp_utc or utc_now()
@@ -202,37 +216,41 @@ def request_hall_pass(
     return entry
 
 
-def get_or_create_student_block(
+def get_or_create_attendance_state(
     *,
     student_id: int,
     seat_id: int,
     class_id: str,
     period: str,
     tap_enabled: bool = True,
-) -> StudentBlock:
-    """Get or create canonical student-block state for one seat/class/period."""
-    student_block = StudentBlock.query.filter_by(
+) -> SeatAttendanceState:
+    """Get or create canonical attendance state for one seat/class/period."""
+    state = SeatAttendanceState.query.filter_by(
         seat_id=seat_id,
         class_id=class_id,
         period=period,
     ).first()
-    if student_block:
-        return student_block
+    if state:
+        return state
+
+    resolved_student_id = student_id or _resolve_student_id_for_seat(seat_id=seat_id, class_id=class_id)
+    if not resolved_student_id:
+        raise PermissionError("Student block not found or access denied.")
 
     try:
-        student_block = StudentBlock(
+        state = SeatAttendanceState(
             seat_id=seat_id,
             class_id=class_id,
             period=period,
-            student_id=student_id,
+            student_id=resolved_student_id,
             tap_enabled=tap_enabled,
         )
-        db.session.add(student_block)
+        db.session.add(state)
         db.session.flush()
-        return student_block
+        return state
     except IntegrityError:
         db.session.rollback()
-        return StudentBlock.query.filter_by(
+        return SeatAttendanceState.query.filter_by(
             seat_id=seat_id,
             class_id=class_id,
             period=period,
@@ -242,7 +260,6 @@ def get_or_create_student_block(
 def apply_standard_tap_mutations(
     *,
     student,
-    student_block: StudentBlock,
     seat_id: int,
     class_id: str,
     period: str,
@@ -351,22 +368,22 @@ def approve_hall_pass(*, log_entry: HallPassLog, now_utc=None) -> HallPassMutati
 
     if should_deduct:
         student.hall_passes -= 1
-        block_period = log_entry.period or student.block
-        student_block = StudentBlock.query.filter_by(
+        rent_balance = db.session.query(
+            sa.func.sum(EntitlementEvent.quantity_delta)
+        ).filter_by(
             seat_id=log_entry.seat_id,
             class_id=log_entry.class_id,
-            period=block_period,
-        ).first()
-        if not student_block:
-            student_block = StudentBlock(
+        ).scalar() or 0
+        if rent_balance > 0:
+            consume_event = EntitlementEvent(
                 seat_id=log_entry.seat_id,
                 class_id=log_entry.class_id,
-                period=block_period,
-                student_id=student.id,
+                quantity_delta=-1,
+                event_type="CONSUME",
+                trigger_id=f"hall_pass_approve_{log_entry.id}",
+                occurred_at=now,
             )
-            db.session.add(student_block)
-        if student_block.rent_hall_passes > 0:
-            student_block.rent_hall_passes -= 1
+            db.session.add(consume_event)
 
     db.session.flush()
     return HallPassMutationResult(message="Pass approved.")
@@ -491,7 +508,7 @@ def checkin_hall_pass(*, student, log_entry: HallPassLog, now_utc=None) -> HallP
 
 def _check_simultaneous_pass_limit(*, log_entry: HallPassLog):
     economy = ClassEconomy.query.filter_by(class_id=log_entry.class_id).first()
-    teacher_id = economy.teacher_id if economy else None
+    teacher_id = economy.user_id if economy else None
     if not teacher_id:
         return None
 
@@ -586,7 +603,7 @@ def check_hall_pass_request_policy(
             message="Unable to resolve class context.",
             status_code=400,
         )
-    teacher_id = economy.teacher_id
+    teacher_id = economy.user_id
 
     feature_scope = resolve_feature_class_for_class(class_id, "hall_pass")
     if feature_scope and not feature_scope["enabled"]:
@@ -754,21 +771,21 @@ def enforce_daily_limits(*, student, commit: bool = True, logger=None):
             reason_code=AttendanceReasonCode.DAILY_LIMIT,
         )
 
-        student_block = StudentBlock.query.filter_by(
+        state = SeatAttendanceState.query.filter_by(
             seat_id=resolved_seat_id,
             class_id=resolved_class_id,
             period=period_upper,
         ).first()
-        if not student_block:
-            student_block = StudentBlock(
+        if not state:
+            state = SeatAttendanceState(
                 seat_id=resolved_seat_id,
                 class_id=resolved_class_id,
                 student_id=student.id,
                 period=period_upper,
                 tap_enabled=True,
             )
-            db.session.add(student_block)
-        student_block.done_for_day_date = today_local
+            db.session.add(state)
+        state.done_for_day_date = today_local
 
     if commit:
         db.session.flush()
@@ -784,50 +801,42 @@ def soft_delete_session(*, session: AttendanceSession, admin_seat_id: int | None
 
 
 
-def set_student_block_tap_enabled(
+def set_attendance_state_tap_enabled(
     *,
-    student_id: int,
     seat_id: int,
     class_id: str,
     period: str,
     tap_enabled: bool,
-) -> StudentBlock:
+) -> SeatAttendanceState:
     """Set tap_enabled for a canonical seat/class/period block row."""
-    conflicting_row = StudentBlock.query.filter(
-        StudentBlock.student_id == student_id,
-        StudentBlock.period == period,
-        sa.or_(
-            StudentBlock.class_id.is_(None),
-            StudentBlock.class_id != class_id,
-        ),
-    ).first()
-    if conflicting_row:
-        raise PermissionError("Student block not found or access denied.")
-
-    student_block = StudentBlock.query.filter_by(
+    state = SeatAttendanceState.query.filter_by(
         seat_id=seat_id,
         class_id=class_id,
         period=period,
     ).first()
-    if student_block:
-        student_block.tap_enabled = tap_enabled
+    if state:
+        state.tap_enabled = tap_enabled
         db.session.flush()
-        return student_block
+        return state
 
-    student_block = StudentBlock(
+    resolved_student_id = _resolve_student_id_for_seat(seat_id=seat_id, class_id=class_id)
+    if not resolved_student_id:
+        raise PermissionError("Student block not found or access denied.")
+
+    state = SeatAttendanceState(
         seat_id=seat_id,
         class_id=class_id,
-        student_id=student_id,
+        student_id=resolved_student_id,
         period=period,
         tap_enabled=tap_enabled,
     )
-    db.session.add(student_block)
+    db.session.add(state)
     try:
         db.session.flush()
     except IntegrityError as exc:
         db.session.rollback()
         raise PermissionError("Student block not found or access denied.") from exc
-    return student_block
+    return state
 
 
 def admin_tap_out(

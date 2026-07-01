@@ -131,7 +131,7 @@ class TestDecimalTypeErrors:
                 # Positive earning - should count
                 Transaction(
                     seat_id=seat.id,
-                    student_id=student.id,
+                    user_id=student_user.id,
                     class_id=class_scope.class_id,
                     amount=Decimal('100.00'),
                     account_type='checking',
@@ -141,7 +141,7 @@ class TestDecimalTypeErrors:
                 # Zero amount - should not count
                 Transaction(
                     seat_id=seat.id,
-                    student_id=student.id,
+                    user_id=student_user.id,
                     class_id=class_scope.class_id,
                     amount=Decimal('0.00'),
                     account_type='checking',
@@ -151,7 +151,7 @@ class TestDecimalTypeErrors:
                 # Negative amount - should not count
                 Transaction(
                     seat_id=seat.id,
-                    student_id=student.id,
+                    user_id=student_user.id,
                     class_id=class_scope.class_id,
                     amount=Decimal('-50.00'),
                     account_type='checking',
@@ -161,7 +161,7 @@ class TestDecimalTypeErrors:
                 # Transfer - should not count even if positive
                 Transaction(
                     seat_id=seat.id,
-                    student_id=student.id,
+                    user_id=student_user.id,
                     class_id=class_scope.class_id,
                     amount=Decimal('25.00'),
                     account_type='checking',
@@ -171,7 +171,7 @@ class TestDecimalTypeErrors:
                 # Another positive earning
                 Transaction(
                     seat_id=seat.id,
-                    student_id=student.id,
+                    user_id=student_user.id,
                     class_id=class_scope.class_id,
                     amount=Decimal('75.50'),
                     account_type='checking',
@@ -332,7 +332,7 @@ class TestDecimalTypeErrors:
         with FEATContext("FEAT-ADMN-001"):
             deposit = Transaction(
                 seat_id=seat.id,
-                student_id=student.id,
+                user_id=student_user.id,
                 class_id=class_scope.class_id,
                 amount=Decimal('100.00'),
                 account_type='savings',
@@ -414,7 +414,7 @@ class TestDecimalTypeErrors:
         db.session.flush()
 
         # Associate student with teacher
-        st = StudentTeacher(student_id=student.id, teacher_id=teacher.id)
+        st = StudentTeacher(user_id=student_user.id, teacher_id=teacher.id)
         db.session.add(st)
         db.session.flush()
 
@@ -448,7 +448,7 @@ class TestDecimalTypeErrors:
         )
         db.session.flush()
 
-        seat = Seat.query.filter_by(student_id=student.id, class_id=class_scope.class_id).first()
+        seat = Seat.query.filter_by(user_id=student_user.id, class_id=class_scope.class_id).first()
         assert seat is not None
         user = User(
             username_hash=hash_username_lookup(f"claim-cap-{student.id}"),

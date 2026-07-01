@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, IdentityProfile, Student, StudentTeacher, Transaction, TransactionStatus
+from app.models import User, UserRole, Admin, IdentityProfile, Student, StudentTeacher, Transaction, TransactionStatus
 from tests.helpers.class_scope import create_class_scope
 
 
@@ -27,14 +27,12 @@ def _build_multi_class_student():
     db.session.add(student)
     db.session.flush()
 
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     class_a = create_class_scope(teacher=teacher, join_code="STUDSC1", student=student, block="A", display_name="A")
     class_b = create_class_scope(teacher=teacher, join_code="STUDSC2", student=student, block="B", display_name="B")
     db.session.add_all([
         Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            join_code="STUDSC1",
+            user_id=student_user.id,join_code="STUDSC1",
             amount=Decimal("10.00"),
             account_type="checking",
             status=TransactionStatus.PENDING,
@@ -42,9 +40,7 @@ def _build_multi_class_student():
             description="Class A earnings",
         ),
         Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            join_code="STUDSC2",
+            user_id=student_user.id,join_code="STUDSC2",
             amount=Decimal("200.00"),
             account_type="checking",
             status=TransactionStatus.PENDING,

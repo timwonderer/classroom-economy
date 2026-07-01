@@ -7,11 +7,10 @@ and never infers or reconstructs context.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
-from flask import has_request_context, request, session
+from flask import session
 from app.extensions import db
-from app.models import Seat, ClassEconomy, User, UserRole
+from app.models import Seat, User, UserRole
 
 
 class ContextResolutionError(Exception):
@@ -47,7 +46,7 @@ class CanonicalContext:
     actor_role: str
 
     def __getattr__(self, name):
-        forbidden_attrs = {"join_code", "teacher_id", "block", "section", "student_id"}
+        forbidden_attrs = {"join_code", "teacher_id", "block", "section", "student_id", "admin_id"}
         if name in forbidden_attrs:
             raise AttributeError(f"Strict context invariant violation: cannot access {name}")
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
@@ -83,12 +82,8 @@ def resolve_canonical_context(require_class: bool = True) -> CanonicalContext | 
         ContextMismatch: If the seat does not belong to the class, or the user does not own the seat.
     """
     user_id = session.get("user_id")
-    session_nonce = session.get("current_session_nonce")
-
     if not user_id:
         raise ContextNotEstablished("Missing user_id in session.")
-    if not session_nonce:
-        raise ContextNotEstablished("Missing session nonce.")
 
     try:
         user_id = int(user_id)
@@ -98,8 +93,6 @@ def resolve_canonical_context(require_class: bool = True) -> CanonicalContext | 
     user = db.session.get(User, user_id)
     if not user:
         raise ContextNotEstablished("User not found.")
-    if user.current_session_nonce != session_nonce:
-        raise ContextMismatch("Session nonce does not match canonical user session.")
 
     is_sysadmin = getattr(user.user_role, "value", user.user_role) == UserRole.SYSADMIN.value
 
@@ -110,27 +103,43 @@ def resolve_canonical_context(require_class: bool = True) -> CanonicalContext | 
 
     class_id = getattr(user, "last_active_class_id", None)
     if not class_id:
-        if _allow_teacher_context_exception(user_id):
-            return None
         if not require_class and getattr(user.user_role, "value", user.user_role) == UserRole.TEACHER.value:
             return BoundaryContext(user_id=user_id, actor_role="teacher")
-        print(f"DEBUG: Missing canonical class_id. user_id={user_id}, require_class={require_class}, user_role={getattr(user.user_role, 'value', user.user_role)}")
+        print(f"DEBUG: Missing class_id! user_id={user_id}, last_active_class_id={getattr(user, 'last_active_class_id', 'NOT SET')}")
         raise ContextInvariantViolation("Missing canonical class_id in user context.")
 
-    seat = (
-        db.session.query(Seat)
-        .filter(Seat.user_id == user_id, Seat.class_id == class_id)
-        .order_by(Seat.id.asc())
-        .first()
-    )
-    if not seat:
-        if not require_class and getattr(user.user_role, "value", user.user_role) == UserRole.TEACHER.value:
-            return BoundaryContext(user_id=user_id, actor_role="teacher")
-        print(f"DEBUG: Seat not found. user_id={user_id}, class_id={class_id}")
-        raise ContextNotEstablished("Seat not found.")
-        
+    seat_id = getattr(user, "last_active_seat_id", None)
+    seat = None
+    if seat_id:
+        try:
+            seat_id = int(seat_id)
+        except (ValueError, TypeError):
+            print("DEBUG: Invalid canonical seat pointer.")
+            raise ContextInvariantViolation("Invalid canonical seat pointer.")
+        seat = db.session.get(Seat, seat_id)
+        if not seat:
+            print("DEBUG: Missing or deleted last_active_seat_id.")
+            raise ContextInvariantViolation("Missing or deleted last_active_seat_id.")
+        if seat.class_id != class_id:
+            print(f"DEBUG: last_active_seat_id {seat_id} does not belong to last_active_class_id {class_id}.")
+            raise ContextMismatch("last_active_seat_id does not belong to last_active_class_id.")
+        if seat.user_id != user_id:
+            print("DEBUG: last_active_seat_id does not belong to authenticated user.")
+            raise ContextMismatch("last_active_seat_id does not belong to authenticated user.")
+    else:
+        seat = (
+            db.session.query(Seat)
+            .filter(Seat.user_id == user_id, Seat.class_id == class_id)
+            .order_by(Seat.id.asc())
+            .first()
+        )
+        if not seat:
+            print(f"DEBUG: Seat not found for canonical class context. user_id={user_id}, class_id={class_id}")
+            raise ContextNotEstablished("Seat not found for canonical class context.")
+
     if getattr(seat, "role", None) == "student" and getattr(seat, "claimed_at", None) is None:
-        raise ContextNotEstablished("Seat is not claimed.")
+        print("DEBUG: Student seat is not claimed.")
+        raise ContextInvariantViolation("Student seat is not claimed.")
 
     return CanonicalContext(
         user_id=user_id,
@@ -138,28 +147,3 @@ def resolve_canonical_context(require_class: bool = True) -> CanonicalContext | 
         seat_id=seat.id,
         actor_role=seat.role,
     )
-
-
-def _allow_teacher_context_exception(user_id: object) -> bool:
-    """Allow the teacher-only pre-class or create-class pages to resolve with user_id only."""
-    if not has_request_context():
-        return False
-
-    try:
-        normalized_user_id = int(user_id)
-    except (TypeError, ValueError):
-        return False
-
-    user = db.session.get(User, normalized_user_id)
-    if not user or getattr(user.user_role, "value", user.user_role) != UserRole.TEACHER.value:
-        return False
-
-    endpoint = request.endpoint or ""
-    path = request.path or ""
-    if endpoint == "admin.onboarding":
-        return True
-    if path == "/admin/onboarding":
-        return True
-
-    return False
-

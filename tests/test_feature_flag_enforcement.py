@@ -77,7 +77,7 @@ def setup_student_with_disabled_banking(client):
     
     # Link student to teacher
     from app.models import StudentTeacher
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
 
     join_code = "MATH1B"
@@ -93,7 +93,11 @@ def setup_student_with_disabled_banking(client):
     db.session.flush()
     
     # Create TeacherBlock entry (claimed seat)
-    seat = Seat(student_id=student.id, class_id=economy.class_id, join_code=join_code, block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    seat = Seat(user_id=student_user.id, class_id=economy.class_id, join_code=join_code, block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Bob", last_initial="B"))
@@ -102,7 +106,6 @@ def setup_student_with_disabled_banking(client):
         class_id=economy.class_id,
         role='student',
         join_code=join_code,
-        student_id=student.id,
         user_id=user.id,
         block="Period1",
         block_identifier="Period1",
@@ -112,9 +115,7 @@ def setup_student_with_disabled_banking(client):
     db.session.commit()
 
     # Add some money to checking account
-    tx = Transaction(
-        teacher_id=teacher.id,
-        join_code=join_code,
+    tx = Transaction(join_code=join_code,
         class_id=economy.class_id,
         seat_id=student_seat.id,
         amount=100.0,
@@ -213,7 +214,7 @@ def setup_student_with_enabled_banking(client):
 
     # Link student to teacher
     from app.models import StudentTeacher
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
 
     join_code = "MATH2C"
@@ -229,7 +230,11 @@ def setup_student_with_enabled_banking(client):
     db.session.flush()
     
     # Create TeacherBlock entry (claimed seat)
-    seat = Seat(student_id=student.id, class_id=economy.class_id, join_code=join_code, block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    seat = Seat(user_id=student_user.id, class_id=economy.class_id, join_code=join_code, block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Carol", last_initial="C"))
@@ -238,7 +243,6 @@ def setup_student_with_enabled_banking(client):
         class_id=economy.class_id,
         role='student',
         join_code=join_code,
-        student_id=student.id,
         user_id=user.id,
         block="Period2",
         block_identifier="Period2",
@@ -248,9 +252,7 @@ def setup_student_with_enabled_banking(client):
     db.session.commit()
 
     # Add some money to checking account
-    tx = Transaction(
-        teacher_id=teacher.id,
-        join_code=join_code,
+    tx = Transaction(join_code=join_code,
         class_id=economy.class_id,
         seat_id=student_seat.id,
         amount=100.0,
@@ -482,7 +484,7 @@ def test_admin_store_delete_rejects_disabled_class_scope(client):
     _create_admin_feature_scope(teacher, join_code="STD1", block="1", feature_name="store", enabled=True)
     disabled_economy = _create_admin_feature_scope(teacher, join_code="STD2", block="2", feature_name="store", enabled=False)
     store_item = StoreItem(
-        teacher_id=teacher.id,
+        user_id=teacher.id,
         class_id=disabled_economy.class_id,
         name="Pencil",
         description="Simple item",
@@ -533,7 +535,7 @@ def test_student_rent_rejects_disabled_feature_scope(client):
     user = _bind_canonical_student(student)
 
     from app.models import StudentTeacher
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
 
     join_code = "RENT03"
     economy = ClassEconomy(
@@ -545,7 +547,11 @@ def test_student_rent_rejects_disabled_feature_scope(client):
     db.session.add(economy)
     db.session.flush()
 
-    _tb_seat = Seat(student_id=student.id, join_code=join_code, block="Period3", block_identifier="Period3", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    _tb_seat = Seat(user_id=student_user.id, join_code=join_code, block="Period3", block_identifier="Period3", role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(_tb_seat)
 
@@ -556,7 +562,6 @@ def test_student_rent_rejects_disabled_feature_scope(client):
         class_id=economy.class_id,
         join_code=join_code,
         role='student',
-        student_id=student.id,
         user_id=user.id,
         block='Period3',
         block_identifier='Period3',

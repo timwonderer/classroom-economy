@@ -28,7 +28,7 @@ from app.extensions import db
 from app.models import (
     Student, Transaction, AttendanceSession, PayrollSettings,
     RentSettings, AnalyticsSnapshot, AnalyticsAlert, ClassEconomy,
-    ClassMembership, ClassMembershipRole, Seat, IdentityProfile
+    Seat, IdentityProfile
 )
 from app.utils.economy_balance import EconomyBalanceChecker
 from app.utils.economy_policy import (
@@ -85,7 +85,7 @@ class AnalyticsEngine:
         if join_code is not None:
             class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
         else:
-            class_row = ClassEconomy.query.get(class_id)
+            class_row = db.session.get(ClassEconomy, class_id)
         if not class_row:
             raise ValueError(f"Invalid class lookup: class_id={class_id}, join_code={join_code}")
 
@@ -108,10 +108,11 @@ class AnalyticsEngine:
             return []
         return (
             Student.query
-            .join(ClassMembership, ClassMembership.student_id == Student.id)
+            .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
+            .join(Seat, Seat.id == IdentityProfile.seat_id)
             .filter(
-                ClassMembership.class_id == self.class_id,
-                ClassMembership.role == ClassMembershipRole.STUDENT.value,
+                Seat.class_id == self.class_id,
+                Seat.role == 'student',
                 Student.is_teacher.is_(False),
             )
             .all()
@@ -122,7 +123,6 @@ class AnalyticsEngine:
             return {}
         rows = (
             Seat.query.with_entities(Seat.id, Student.id)
-            .join(ClassMembership, ClassMembership.student_id == Student.id)
             .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
             .join(Student, Student.identity_id == IdentityProfile.id)
             .filter(

@@ -2,7 +2,7 @@ import os
 import pytest
 from datetime import datetime, timezone
 from app.extensions import db
-from app.models import TeacherOnboarding, Student, StudentTeacher, Seat, IdentityProfile
+from app.models import TeacherOnboarding, User, UserRole, Student, StudentTeacher, Seat, IdentityProfile
 from app.hash_utils import get_random_salt, hash_username
 from app.utils.economy_policy import replace_enabled_class_features
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
@@ -56,8 +56,12 @@ def test_teacher_navigation_integrity(client, integrity_tester):
     )
     db.session.add(student)
     db.session.flush()
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=admin.id))
-    _tb_seat = Seat(student_id=student.id, class_id=class_row.class_id, join_code="NAVTECH1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    _tb_seat = Seat(user_id=student_user.id, class_id=class_row.class_id, join_code="NAVTECH1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name="Nav", last_initial="T"))
@@ -101,10 +105,14 @@ def test_student_navigation_integrity(client, integrity_tester):
     )
     db.session.add(student)
     db.session.flush()
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
 
-    seat = Seat(student_id=student.id, class_id=class_row.class_id, join_code="NAVSTU1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    seat = Seat(user_id=student_user.id, class_id=class_row.class_id, join_code="NAVSTU1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(seat)
 

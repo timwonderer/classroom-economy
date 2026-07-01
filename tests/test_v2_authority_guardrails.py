@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 
 from app.extensions import db
-from app.models import IdentityProfile, Student, StudentTeacher, Transaction
+from app.models import IdentityProfile, User, UserRole, Student, StudentTeacher, Transaction
 from app.routes import student as student_routes
 from app.services import attendance_service
 from tests.helpers.class_scope import create_class_scope
@@ -273,12 +273,10 @@ def test_dashboard_read_is_interest_mutation_free(client):
         create_claimed_teacher_block=True,
         teacher_block_claimed=True,
     )
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     mature_savings_time = datetime.now(timezone.utc) - timedelta(days=31)
     db.session.add(Transaction(
-        student_id=student.id,
-        teacher_id=teacher.id,
-        join_code=join_code,
+        user_id=student_user.id,join_code=join_code,
         amount=100.0,
         account_type="savings",
         description="Savings Seed",
@@ -287,16 +285,16 @@ def test_dashboard_read_is_interest_mutation_free(client):
     ))
     db.session.commit()
 
-    before_count = Transaction.query.filter_by(student_id=student.id).count()
+    before_count = Transaction.query.filter_by(user_id=student_user.id).count()
     _login_student(client, student.id, join_code)
 
     response = client.get("/student/dashboard")
 
     assert response.status_code == 200
-    after_count = Transaction.query.filter_by(student_id=student.id).count()
+    after_count = Transaction.query.filter_by(user_id=student_user.id).count()
     assert after_count == before_count
     assert Transaction.query.filter_by(
-        student_id=student.id,
+        user_id=student_user.id,
         description="Monthly Savings Interest",
         account_type="savings",
     ).first() is None
@@ -332,7 +330,7 @@ def test_dashboard_access_policy_fail_closed_invalid_join_code(client):
         create_claimed_teacher_block=True,
         teacher_block_claimed=True,
     )
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
 
     _login_student(client, student.id, "MISSING")

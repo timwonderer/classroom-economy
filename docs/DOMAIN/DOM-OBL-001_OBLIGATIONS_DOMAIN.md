@@ -60,14 +60,14 @@ separate final-schema tables.
 | **Satisfaction Event** | Authoritative Event | Immutable record of debt resolution (Payment/Waiver). |
 | **Reversal Event** | Authoritative Event | Immutable record of an assessment nullification. |
 | **Entitlement Event** | Authoritative Event | Immutable stream of grants, consumptions, and revocations. |
-| **Entitlement Balance** | Derived State | Strictly derived from the Entitlement Event stream. |
+| **Active Entitlement Grant** | Derived State | Strictly derived from the Entitlement Event stream. |
 | **Seat Obligation Status** | Derived State | Intersection of Assessment, Satisfaction, and Reversal events. |
 | **Due Date (`due_at`)** | Authoritative Event State | Snapshotted at assessment time from policy + calendar logic. |
 
 ## VII. Invariants
 
 - **INV-OBL-001: Seat-Scoped Isolation**. All obligation state shall be anchored to a `seat_id`. Economic reality is class-bound; debt shall not follow a student across classes.
-- **INV-OBL-002: Event-Only Entitlements**. Entitlement balances MUST NOT be stored as authoritative state; they are views derived from the `entitlement_events` stream.
+- **INV-OBL-002: Event-Only Entitlements**. Entitlement grants MUST NOT be stored as authoritative scalar state (e.g., no "balances"); they are strictly derived views of active grants calculated from the `entitlement_events` stream.
 - **INV-OBL-003: Consumption Idempotency**. Entitlement consumption triggers MUST be idempotent. A duplicate `trigger_id` shall never result in multiple decrements.
 - **INV-OBL-004: Assessment Idempotency**. A policy-period assessment MUST be idempotent. A duplicate trigger for the same `(seat_id, policy_id, period_key)` shall never create multiple assessments.
 - **INV-OBL-005: Reversal Primacy**. A reversed assessment shall be treated as non-existent for all downstream interpretations (delinquency, reporting), overriding any prior satisfaction events. **Reversal wins.**
@@ -134,7 +134,7 @@ Append-only stream of obligation-linked perks (e.g., hall pass quota).
 
 - **Status Hierarchy**: Status is derived as: `REVERSED` > `WAIVED` > `PAID` > `OVERDUE` (if `now > due_at`) > `DUE`.
 - **Entitlement Sovereignty**: Obligations owns **obligation-linked** entitlements (e.g., rent-linked hall passes). Store owns **store-purchased** items.
-- **Consumption Flow**: Attendance emits `ConsumptionIntent`. Obligations validates against the derived balance and records the `CONSUMPTION` event.
+- **Consumption Flow**: Attendance emits `ConsumptionIntent`. Obligations validates against the active grant and records the `CONSUMPTION` event.
 - **Ledger Coordination**: All assessment and satisfaction events shall emit `PostingRequests` to Ledger via FEAT. Obligations does not own ledger rows.
 
 ## X. Operational Boundary Authority

@@ -29,7 +29,7 @@ from app.feats.base import feat_shell
 from app.models import (
     Seat, SystemAdmin, SystemAdminCredential, Admin, Student, ErrorLog,
     Transaction, TransactionStatus, TapEvent, HallPassLog, RentPayment,
-    InsuranceClaim, StudentBlock, UserReport,
+    InsuranceClaim, UserReport,
     FeatureSettings, RentSettings, BankingSettings,
     HallPassSettings, SavedAdjustment, ClassEconomy, User,
     PayrollSettings, StoreItem, Announcement, Issue, IssueStatusHistory, IssueResolutionAction

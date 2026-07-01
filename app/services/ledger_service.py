@@ -119,7 +119,7 @@ def create_pending_transaction(
     *,
     seat_id: int,
     class_id: str,
-    teacher_id: int | None = None,
+    user_id: int | None = None,
     amount,
     account_type: str,
     type: str,
@@ -135,7 +135,7 @@ def create_pending_transaction(
     transaction = Transaction(  # FEAT-AUTHORIZED-DIRECT-TX
         seat_id=seat_id,
         class_id=class_id,
-        teacher_id=teacher_id,
+        user_id=user_id,
         amount=_quantize_currency(amount),
         account_type=account_type,
         status=TransactionStatus.PENDING,
@@ -157,7 +157,7 @@ def create_pending_transaction_idempotent(
     idempotency_key: str,
     seat_id: int,
     class_id: str,
-    teacher_id: int | None = None,
+    user_id: int | None = None,
     amount,
     account_type: str,
     type: str,
@@ -170,7 +170,7 @@ def create_pending_transaction_idempotent(
         idempotency_key=idempotency_key,
         seat_id=seat_id,
         class_id=class_id,
-        teacher_id=teacher_id,
+        user_id=user_id,
         amount=_quantize_currency(amount),
         account_type=account_type,
         status=TransactionStatus.PENDING,
@@ -203,7 +203,7 @@ def compensate_posted_transaction(
             idempotency_key=idempotency_key,
             seat_id=transaction.seat_id,
             class_id=transaction.class_id,
-            teacher_id=transaction.teacher_id,
+            user_id=transaction.user_id,
             amount=compensation_amount,
             account_type=transaction.account_type or "checking",
             status=TransactionStatus.PENDING,
@@ -216,7 +216,7 @@ def compensate_posted_transaction(
         reversal_tx = create_pending_transaction(
             seat_id=transaction.seat_id,
             class_id=transaction.class_id,
-            teacher_id=transaction.teacher_id,
+            user_id=transaction.user_id,
             amount=compensation_amount,
             account_type=transaction.account_type or "checking",
             type=compensation_type,
@@ -227,6 +227,7 @@ def compensate_posted_transaction(
     db.session.flush()
     transaction.reversal_transaction_id = reversal_tx.id
     transaction.is_void = True
+    db.session.flush()
     return reversal_tx
 
 
@@ -234,7 +235,7 @@ def create_transfer_pair(
     *,
     seat_id: int,
     class_id: str,
-    teacher_id: int | None = None,
+    user_id: int | None = None,
     amount,
     from_account: str,
     to_account: str,
@@ -246,7 +247,7 @@ def create_transfer_pair(
     withdraw_tx = create_pending_transaction(
         seat_id=seat_id,
         class_id=class_id,
-        teacher_id=teacher_id,
+        user_id=user_id,
         amount=-quantized_amount,
         account_type=from_account,
         type="Withdrawal",
@@ -255,7 +256,7 @@ def create_transfer_pair(
     deposit_tx = create_pending_transaction(
         seat_id=seat_id,
         class_id=class_id,
-        teacher_id=teacher_id,
+        user_id=user_id,
         amount=quantized_amount,
         account_type=to_account,
         type="Deposit",
@@ -359,7 +360,7 @@ def _apply_monthly_savings_interest(seat, *, annual_rate=Decimal("0.045")):
     return create_pending_transaction(
         seat_id=seat.id,
         class_id=seat.class_id,
-        teacher_id=seat.class_economy.user_id,
+        user_id=seat.class_economy.user_id,
         amount=interest,
         account_type="savings",
         type="Interest",

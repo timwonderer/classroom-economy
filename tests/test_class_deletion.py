@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 from app.extensions import db
 from app.feats.base import InvariantViolation
 from app.models import (
+    User,
+    UserRole,
     Admin, IdentityProfile, ClassEconomy, ClassMembership, Transaction, StudentBlock,
     TapEvent, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
     AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
@@ -43,7 +45,7 @@ def test_collapse_universe_cascades_and_cleans_up(client):
         create_claimed_teacher_block=True,
         teacher_block_claimed=True,
     )
-    db.session.add(ClassMembership(join_code=join_code, student_id=student_b.id, role="student"))
+    db.session.add(ClassMembership(join_code=join_code, user_id=student_b_user.id, role="student"))
     db.session.flush()
     membership = ClassMembership.query.filter_by(join_code=join_code, admin_id=admin.id, role="admin").first()
     
@@ -55,22 +57,22 @@ def test_collapse_universe_cascades_and_cleans_up(client):
         create_teacher_membership=False,
         create_student_membership=False,
     )
-    db.session.add(ClassMembership(join_code=join_code_survive, student_id=student_b.id, role="student"))
+    db.session.add(ClassMembership(join_code=join_code_survive, user_id=student_b_user.id, role="student"))
     
     # Bridge row
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=admin.id))
-    db.session.add(StudentTeacher(student_id=student_b.id, teacher_id=admin.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
+    db.session.add(StudentTeacher(user_id=student_b_user.id, teacher_id=admin.id))
 
     # TeacherBlock
     # Settings
-    db.session.add(PayrollSettings(teacher_id=admin.id, block="A"))
-    db.session.add(RentSettings(teacher_id=admin.id, block="A"))
+    db.session.add(PayrollSettings(block="A"))
+    db.session.add(RentSettings(block="A"))
 
     # Transaction
-    db.session.add(Transaction(student_id=student.id, teacher_id=admin.id, join_code=join_code, amount=10, account_type="checking", type="deposit", is_void=False))
+    db.session.add(Transaction(user_id=student_user.id,join_code=join_code, amount=10, account_type="checking", type="deposit", is_void=False))
     
     # Store Item and Block
-    store_item = StoreItem(teacher_id=admin.id, join_code=join_code, name="Item", price=10, item_type='immediate')
+    store_item = StoreItem(user_id=admin.id, join_code=join_code, name="Item", price=10, item_type='immediate')
     db.session.add(store_item)
     db.session.flush()
     
@@ -82,7 +84,7 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     db.session.flush()
     
     issue = Issue(
-        student_id=student.id, 
+        user_id=student_user.id, 
         actor_public_id="ref",
         class_label="A",
         teacher_id=admin.id, 
@@ -187,7 +189,7 @@ def test_collapse_universe_raises_on_null_class_id_scope_rows(client):
     ).first()
     db.session.add(
         StudentBlock(
-            student_id=student.id,
+            user_id=student_user.id,
             period="A",
             join_code="INV001",
             class_id=None,

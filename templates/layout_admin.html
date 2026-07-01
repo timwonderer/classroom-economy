@@ -98,8 +98,8 @@
                 data-empty-message="No classes yet. Official class time will appear after class creation."
                 data-unset-message="Official class time zone not set yet.">
             </div>
-            {% if current_admin %}
-            <div class="sidebar-scope-name">{{ (current_admin_display_name or current_admin.get_display_name())|upper }}</div>
+            {% if current_admin_display_name %}
+            <div class="sidebar-scope-name">{{ current_admin_display_name|upper }}</div>
             {% endif %}
             {% if admin_current_class_context %}
             <div class="sidebar-scope-context sidebar-scope-class-line">

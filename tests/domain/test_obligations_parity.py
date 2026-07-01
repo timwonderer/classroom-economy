@@ -52,7 +52,7 @@ def _make_env(client):
     )
     db.session.add(student)
     db.session.flush()
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=admin.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
 
     class_row = create_class_scope(
         teacher=admin,

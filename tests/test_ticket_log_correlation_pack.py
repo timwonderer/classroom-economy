@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
-from app.models import Seat, IdentityProfile, Admin, ActorRequestTrace, ErrorEvent, IssueCategory, ClassEconomy, Student
+from app.models import Seat, IdentityProfile, User, UserRole, Admin, ActorRequestTrace, ErrorEvent, IssueCategory, ClassEconomy, Student
 from app.utils.issue_helpers import create_issue
 from app.utils.time import utc_now
 
@@ -28,7 +28,11 @@ def _create_student_issue_context():
     db.session.add(student)
     db.session.flush()
 
-    teacher_block = Seat(student_id=student.id, class_id=join_code.class_id, join_code=join_code.join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    teacher_block = Seat(user_id=student_user.id, class_id=join_code.class_id, join_code=join_code.join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(teacher_block)
 
@@ -37,8 +41,12 @@ def _create_student_issue_context():
     db.session.add(IdentityProfile(seat_id=teacher_block.id, profile_type='student_claimed', first_name="Student", last_initial="S"))
     db.session.add(teacher_block)
 
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
     seat = Seat(
-        student_id=student.id,
+        user_id=student_user.id,
         class_id=join_code.class_id,
         join_code=join_code.join_code,
         role="student",

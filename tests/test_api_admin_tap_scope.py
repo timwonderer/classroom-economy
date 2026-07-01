@@ -49,29 +49,37 @@ def _setup_shared_student_with_split_membership():
 
     # Shared student-teacher association but student class membership only in TAPB01.
     db.session.add_all([
-        StudentTeacher(student_id=student.id, teacher_id=admin_a.id),
-        StudentTeacher(student_id=student.id, teacher_id=admin_b.id),
+        StudentTeacher(user_id=student_user.id, teacher_id=admin_a.id),
+        StudentTeacher(user_id=student_user.id, teacher_id=admin_b.id),
         ClassMembership(join_code="TAPA01", class_id=class_a.class_id, admin_id=admin_a.id, role="admin"),
         ClassMembership(join_code="TAPB01", class_id=class_b.class_id, admin_id=admin_b.id, role="admin"),
-        ClassMembership(join_code="TAPB01", class_id=class_b.class_id, student_id=student.id, role="student"),
+        ClassMembership(join_code="TAPB01", class_id=class_b.class_id, user_id=student_user.id, role="student"),
     ])
     db.session.flush()
     seat = Seat.query.filter_by(
-        student_id=student.id,
+        user_id=student_user.id,
         join_code="TAPB01",
     ).first()
     if not seat:
-        seat = Seat(student_id=student.id, class_id=class_b.class_id, join_code="TAPB01", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+        # Auto-injected Canonical User
+        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+        db.session.add(student_user)
+        db.session.flush()
+        seat = Seat(user_id=student_user.id, class_id=class_b.class_id, join_code="TAPB01", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
         db.session.add(seat)
         db.session.flush()
         db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
         db.session.add(seat)
         db.session.flush()
 
-    seat_row = Seat.query.filter_by(student_id=student.id, class_id=seat.class_id).first()
+    seat_row = Seat.query.filter_by(user_id=student_user.id, class_id=seat.class_id).first()
     if not seat_row:
+        # Auto-injected Canonical User
+        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+        db.session.add(student_user)
+        db.session.flush()
         seat_row = Seat(
-            student_id=student.id,
+            user_id=student_user.id,
             class_id=seat.class_id,
             join_code="TAPB01",
             role="student",
@@ -82,7 +90,7 @@ def _setup_shared_student_with_split_membership():
         db.session.flush()
 
     tap_event = AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat_row.id,
         class_id=seat.class_id,
         period="A",

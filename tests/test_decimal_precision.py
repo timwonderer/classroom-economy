@@ -10,18 +10,24 @@ import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
 from app.models import (
-    Admin, ClassEconomy, IdentityProfile, Seat, Student, StudentTeacher, Transaction, StudentBlock, RentSettings, RentPayment, BankingSettings, _quantize_currency
+    User, UserRole, Admin, ClassEconomy, IdentityProfile, Seat, Student, Transaction, RentSettings, RentPayment, BankingSettings, _quantize_currency
 )
 from app.extensions import db
 from app.utils.overdraft import charge_overdraft_fee_if_needed
 
 
 def _attach_class_scope(teacher, student, join_code, block='A'):
-    economy = ClassEconomy(join_code=join_code, user_id=teacher.id, created_by_admin_id=teacher.id)
+    economy = ClassEconomy(join_code=join_code, user_id=teacher.id, )
     db.session.add(economy)
     db.session.flush()
+    # Auto-injected Canonical User
+    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
+    if not student_user:
+        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
+        db.session.add(student_user)
+        db.session.flush()
     seat = Seat(
-        student_id=student.id,
+        user_id=student_user.id,
         class_id=economy.class_id,
         join_code=join_code,
         block=block,
@@ -66,10 +72,16 @@ class TestDecimalPrecision:
         db.session.flush()
 
         join_code = 'OVERDRAFT_TEST'
+        # Auto-injected Canonical User
+        student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
+        if not student_user:
+            student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
+            db.session.add(student_user)
+            db.session.flush()
         block = Seat(join_code=join_code, block='A', block_identifier='A', role="student")
         db.session.add(block)
         db.session.flush()
-        db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Test', last_initial='S'))
+        db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Test', last_name='S'))
         db.session.add(block)
 
         # Create student
@@ -83,12 +95,6 @@ class TestDecimalPrecision:
         db.session.add(student)
         db.session.flush()
 
-        student_block = StudentBlock(
-            student_id=student.id,
-            period='A',
-            join_code=join_code
-        )
-        db.session.add(student_block)
         class_id, seat_id = _attach_class_scope(teacher, student, join_code, block='A')
         banking_settings = BankingSettings(
             class_id=class_id,
@@ -102,9 +108,7 @@ class TestDecimalPrecision:
 
         # Give student $100.00 in checking
         initial_deposit = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            class_id=class_id,
+            user_id=student_user.id,class_id=class_id,
             join_code=join_code,
             amount=Decimal('100.00'),
             account_type='checking',
@@ -123,9 +127,7 @@ class TestDecimalPrecision:
 
         # Withdrawal from checking
         withdrawal_tx = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            class_id=class_id,
+            user_id=student_user.id,class_id=class_id,
             join_code=join_code,
             amount=-transfer_amount,
             account_type='checking',
@@ -136,9 +138,7 @@ class TestDecimalPrecision:
 
         # Deposit to savings
         deposit_tx = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            class_id=class_id,
+            user_id=student_user.id,class_id=class_id,
             join_code=join_code,
             amount=transfer_amount,
             account_type='savings',
@@ -168,7 +168,7 @@ class TestDecimalPrecision:
 
         # Verify no overdraft fee transaction was created
         overdraft_txs = Transaction.query.filter_by(
-            student_id=student.id,
+            user_id=student_user.id,
             join_code=join_code,
             type='overdraft_fee'
         ).all()
@@ -194,16 +194,20 @@ class TestDecimalPrecision:
         db.session.flush()
 
         join_code = 'RENT_TEST'
+        # Auto-injected Canonical User
+        student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
+        if not student_user:
+            student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
+            db.session.add(student_user)
+            db.session.flush()
         block = Seat(join_code=join_code, block='A', block_identifier='A', role="student")
         db.session.add(block)
         db.session.flush()
-        db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Rent', last_initial='T'))
+        db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Rent', last_name='T'))
         db.session.add(block)
 
         # Create rent settings with incremental payments enabled
-        rent_settings = RentSettings(
-            teacher_id=teacher.id,
-            block='A',
+        rent_settings = RentSettings(block='A',
             is_enabled=True,
             rent_amount=Decimal('50.00'),  # Total rent
             allow_incremental_payment=True
@@ -221,19 +225,11 @@ class TestDecimalPrecision:
         db.session.add(student)
         db.session.flush()
 
-        student_block = StudentBlock(
-            student_id=student.id,
-            period='A',
-            join_code=join_code
-        )
-        db.session.add(student_block)
         class_id, seat_id = _attach_class_scope(teacher, student, join_code, block='A')
 
         # Give student money to pay rent
         initial_deposit = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            class_id=class_id,
+            user_id=student_user.id,class_id=class_id,
             join_code=join_code,
             amount=Decimal('60.00'),
             account_type='checking',
@@ -252,7 +248,7 @@ class TestDecimalPrecision:
         payment1_amount = Decimal('33.33')
 
         payment1 = RentPayment(
-            student_id=student.id,
+            user_id=student_user.id,
             period='A',
             join_code=join_code,
             amount_paid=payment1_amount,
@@ -263,9 +259,7 @@ class TestDecimalPrecision:
         db.session.add(payment1)
 
         rent_tx1 = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            class_id=class_id,
+            user_id=student_user.id,class_id=class_id,
             join_code=join_code,
             amount=-payment1_amount,
             account_type='checking',
@@ -287,7 +281,7 @@ class TestDecimalPrecision:
         payment2_amount = remaining
 
         payment2 = RentPayment(
-            student_id=student.id,
+            user_id=student_user.id,
             period='A',
             join_code=join_code,
             amount_paid=payment2_amount,
@@ -298,9 +292,7 @@ class TestDecimalPrecision:
         db.session.add(payment2)
 
         rent_tx2 = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            class_id=class_id,
+            user_id=student_user.id,class_id=class_id,
             join_code=join_code,
             amount=-payment2_amount,
             account_type='checking',
@@ -312,7 +304,7 @@ class TestDecimalPrecision:
 
         # Calculate total paid
         all_payments = RentPayment.query.filter_by(
-            student_id=student.id,
+            user_id=student_user.id,
             period='A',
             join_code=join_code,
             period_month=current_month,
@@ -341,10 +333,16 @@ class TestDecimalPrecision:
         db.session.flush()
 
         join_code = 'ZERO_TEST'
+        # Auto-injected Canonical User
+        student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
+        if not student_user:
+            student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
+            db.session.add(student_user)
+            db.session.flush()
         block = Seat(join_code=join_code, block='A', block_identifier='A', role="student")
         db.session.add(block)
         db.session.flush()
-        db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Zero', last_initial='T'))
+        db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Zero', last_name='T'))
         db.session.add(block)
 
         # Create student
@@ -358,12 +356,6 @@ class TestDecimalPrecision:
         db.session.add(student)
         db.session.flush()
 
-        student_block = StudentBlock(
-            student_id=student.id,
-            period='A',
-            join_code=join_code
-        )
-        db.session.add(student_block)
         class_id, seat_id = _attach_class_scope(teacher, student, join_code, block='A')
         banking_settings = BankingSettings(
             class_id=class_id,
@@ -388,9 +380,7 @@ class TestDecimalPrecision:
         for near_zero_amount in test_cases:
             # Create transaction with near-zero amount
             tx = Transaction(
-                student_id=student.id,
-                teacher_id=teacher.id,
-                class_id=class_id,
+                user_id=student_user.id,class_id=class_id,
                 join_code=join_code,
                 amount=near_zero_amount,
                 account_type='checking',
@@ -426,10 +416,16 @@ class TestDecimalPrecision:
         db.session.flush()
 
         join_code = 'NEG_TEST'
+        # Auto-injected Canonical User
+        student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
+        if not student_user:
+            student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
+            db.session.add(student_user)
+            db.session.flush()
         block = Seat(join_code=join_code, block='A', block_identifier='A', role="student")
         db.session.add(block)
         db.session.flush()
-        db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Negative', last_initial='T'))
+        db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Negative', last_name='T'))
         db.session.add(block)
 
         # Create student
@@ -443,12 +439,6 @@ class TestDecimalPrecision:
         db.session.add(student)
         db.session.flush()
 
-        student_block = StudentBlock(
-            student_id=student.id,
-            period='A',
-            join_code=join_code
-        )
-        db.session.add(student_block)
         class_id, seat_id = _attach_class_scope(teacher, student, join_code, block='A')
         banking_settings = BankingSettings(
             class_id=class_id,
@@ -461,9 +451,7 @@ class TestDecimalPrecision:
 
         # Create a genuinely negative balance (-$10.00)
         negative_tx = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            class_id=class_id,
+            user_id=student_user.id,class_id=class_id,
             join_code=join_code,
             amount=Decimal('-10.00'),
             account_type='checking',
@@ -491,7 +479,7 @@ class TestDecimalPrecision:
 
         # Verify fee transaction was created
         overdraft_txs = Transaction.query.filter_by(
-            student_id=student.id,
+            user_id=student_user.id,
             join_code=join_code,
             type='overdraft_fee'
         ).all()
@@ -518,24 +506,28 @@ class TestDecimalPrecision:
         db.session.add(student)
         db.session.flush()
 
-        identity = IdentityProfile(profile_type="roster", first_name="Late", last_initial="F")
+        identity = IdentityProfile(profile_type="roster", first_name="Late", last_name="F")
         db.session.add(identity)
         db.session.flush()
-        economy = ClassEconomy(join_code=join_code, user_id=teacher.id, created_by_admin_id=teacher.id)
+        economy = ClassEconomy(join_code=join_code, user_id=teacher.id, )
         db.session.add(economy)
         db.session.flush()
 
-        _tb_seat = Seat(student_id=student.id, class_id=economy.class_id, join_code=join_code, block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
+        # Auto-injected Canonical User
+        student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
+        if not student_user:
+            student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
+            db.session.add(student_user)
+            db.session.flush()
+        _tb_seat = Seat(user_id=student_user.id, class_id=economy.class_id, join_code=join_code, block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
 
         db.session.add(_tb_seat)
 
         db.session.flush()
 
-        db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Late', last_initial='F'))
+        db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Late', last_name='F'))
 
-        db.session.add(RentSettings(
-            teacher_id=teacher.id,
-            join_code=join_code,
+        db.session.add(RentSettings(join_code=join_code,
             class_id=economy.class_id,
             block='A',
             is_enabled=True,
@@ -548,14 +540,15 @@ class TestDecimalPrecision:
             late_penalty_type='once',
         ))
 
-        db.session.add(StudentBlock(
-            student_id=student.id,
-            period='A',
-            join_code=join_code
-        ))
+        # Auto-injected Canonical User
+        student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
+        if not student_user:
+            student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
+            db.session.add(student_user)
+            db.session.flush()
         db.session.add(
             Seat(
-                student_id=student.id,
+                user_id=student_user.id,
                 class_id=economy.class_id,
                 join_code=join_code,
                 block='A',
@@ -563,26 +556,17 @@ class TestDecimalPrecision:
                 claimed_at=datetime.now(timezone.utc),
             )
         )
-        db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
         db.session.flush()
-        seat = Seat.query.filter_by(student_id=student.id, class_id=economy.class_id).first()
-        assert seat is not None
-        db.session.add(Transaction(
-            seat_id=seat.id,
-            student_id=student.id,
-            teacher_id=teacher.id,
-            class_id=economy.class_id,
-            join_code=join_code,
-            amount=Decimal('600.00'),
-            account_type='checking',
-            status='posted',
-            type='Initial Deposit',
-            description='Starting balance'
-        ))
+        seat = Seat.query.filter_by(user_id=student_user.id).first()
+
+        db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
+
         db.session.commit()
 
         with client.session_transaction() as sess:
-            sess['student_id'] = student.id
+            sess['user_id'] = student_user.id
+
+            sess['current_session_nonce'] = student_user.current_session_nonce
             sess['current_join_code'] = join_code
             sess['current_class_id'] = economy.class_id
             sess['current_seat_id'] = seat.id
@@ -598,7 +582,7 @@ class TestDecimalPrecision:
         assert response.status_code in (302, 303)
 
         rent_payment = RentPayment.query.filter_by(
-            student_id=student.id,
+            user_id=student_user.id,
             join_code=join_code,
         ).order_by(RentPayment.id.desc()).first()
         assert rent_payment is not None

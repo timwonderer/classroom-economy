@@ -26,12 +26,12 @@ def test_hall_pass_log_autofills_seat_id_from_join_scope(client):
     db.session.add(user)
     db.session.flush()
 
-    seat = Seat(user_id=user.id, student_id=student.id, join_code="JOIN_HALL", block="A")
+    seat = Seat(user_id=user.id, join_code="JOIN_HALL", block="A")
     db.session.add(seat)
     db.session.flush()
 
     hall_pass = HallPassLog(
-        student_id=student.id,
+        user_id=student_user.id,
         join_code="JOIN_HALL",
         reason="Bathroom",
         period="A",
@@ -52,12 +52,12 @@ def test_rent_payment_autofills_seat_id_from_join_scope(client):
     db.session.add(user)
     db.session.flush()
 
-    seat = Seat(user_id=user.id, student_id=student.id, join_code="JOIN_RENT", block="A")
+    seat = Seat(user_id=user.id, join_code="JOIN_RENT", block="A")
     db.session.add(seat)
     db.session.flush()
 
     rent_payment = RentPayment(
-        student_id=student.id,
+        user_id=student_user.id,
         join_code="JOIN_RENT",
         period="A",
         amount_paid=Decimal("10.00"),
@@ -78,13 +78,13 @@ def test_rent_waiver_autofills_seat_id_from_join_scope(client):
     db.session.add(user)
     db.session.flush()
 
-    seat = Seat(user_id=user.id, student_id=student.id, join_code="JOIN_WAIVE", block="A")
+    seat = Seat(user_id=user.id, join_code="JOIN_WAIVE", block="A")
     db.session.add(seat)
     db.session.flush()
 
     now = datetime.now(timezone.utc)
     waiver = RentWaiver(
-        student_id=student.id,
+        user_id=student_user.id,
         join_code="JOIN_WAIVE",
         waiver_start_date=now,
         waiver_end_date=now + timedelta(days=30),

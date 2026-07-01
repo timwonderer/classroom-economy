@@ -464,10 +464,14 @@ def resolve_class_scope(
     if not normalized_join_code or not normalized_block:
         return None
 
-    class_row = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter_by(
-        join_code=normalized_join_code,
-        teacher_id=teacher_id,
-    ).first()
+    class_row = (
+        ClassEconomy.query.with_entities(ClassEconomy.class_id)
+        .filter(
+            ClassEconomy.join_code == normalized_join_code,
+            ClassEconomy.user_id == teacher_id,
+        )
+        .first()
+    )
     if not class_row or not class_row[0]:
         return None
 

@@ -113,7 +113,7 @@ def _void_purchase(tx: Transaction) -> None:
     ledger_service.create_pending_transaction(
         seat_id=tx.seat_id,
         class_id=tx.class_id,
-        teacher_id=tx.teacher_id,
+        user_id=tx.user_id,
         amount=Decimal('0.00'),
         account_type=tx.account_type or 'checking',
         type='void_item_removed',

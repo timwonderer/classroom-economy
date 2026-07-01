@@ -64,26 +64,34 @@ def admin_with_data(client):
     db.session.flush()
 
     # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
-    db.session.add(StudentTeacher(student_id=student1.id, teacher_id=admin.id))
-    db.session.add(StudentTeacher(student_id=student2.id, teacher_id=admin.id))
+    db.session.add(StudentTeacher(user_id=student1_user.id, teacher_id=admin.id))
+    db.session.add(StudentTeacher(user_id=student2_user.id, teacher_id=admin.id))
     db.session.flush()
 
     # Create seats
-    seat1 = Seat(student_id=student1.id, class_id=class_row.class_id, join_code="ATTLOG1", block="PERIOD1", role="student")
-    seat2 = Seat(student_id=student2.id, class_id=class_row.class_id, join_code="ATTLOG1", block="PERIOD3", role="student")
+    # Auto-injected Canonical User
+    student1_user = User(username_hash=f"auto_{student1.id}", username_lookup_hash=f"auto_l_{student1.id}", user_role=UserRole.STUDENT)
+    db.session.add(student1_user)
+    db.session.flush()
+    seat1 = Seat(user_id=student1_user.id, class_id=class_row.class_id, join_code="ATTLOG1", block="PERIOD1", role="student")
+    # Auto-injected Canonical User
+    student2_user = User(username_hash=f"auto_{student2.id}", username_lookup_hash=f"auto_l_{student2.id}", user_role=UserRole.STUDENT)
+    db.session.add(student2_user)
+    db.session.flush()
+    seat2 = Seat(user_id=student2_user.id, class_id=class_row.class_id, join_code="ATTLOG1", block="PERIOD3", role="student")
     db.session.add_all([seat1, seat2])
     db.session.flush()
 
     # Create attendance sessions with different periods
     tap1 = AttendanceSession(
-        student_id=student1.id,
+        user_id=student1_user.id,
         seat_id=seat1.id,
         class_id=class_row.class_id,
         period='PERIOD1',
         started_at=datetime.now(timezone.utc),
     )
     tap2 = AttendanceSession(
-        student_id=student1.id,
+        user_id=student1_user.id,
         seat_id=seat1.id,
         class_id=class_row.class_id,
         period='PERIOD2',
@@ -92,7 +100,7 @@ def admin_with_data(client):
         duration_seconds=0,
     )
     tap3 = AttendanceSession(
-        student_id=student2.id,
+        user_id=student2_user.id,
         seat_id=seat2.id,
         class_id=class_row.class_id,
         period='PERIOD3',
@@ -206,26 +214,34 @@ def test_attendance_log_tenant_scoping(client):
     db.session.flush()
 
     # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
-    db.session.add(StudentTeacher(student_id=student1.id, teacher_id=admin1.id))
-    db.session.add(StudentTeacher(student_id=student2.id, teacher_id=admin2.id))
+    db.session.add(StudentTeacher(user_id=student1_user.id, teacher_id=admin1.id))
+    db.session.add(StudentTeacher(user_id=student2_user.id, teacher_id=admin2.id))
     db.session.flush()
 
     # Create seats
-    seat1 = Seat(student_id=student1.id, class_id=class1.class_id, join_code="ADM1CLS", block="ADM1PER", role="student")
-    seat2 = Seat(student_id=student2.id, class_id=class2.class_id, join_code="ADM2CLS", block="ADM2PER", role="student")
+    # Auto-injected Canonical User
+    student1_user = User(username_hash=f"auto_{student1.id}", username_lookup_hash=f"auto_l_{student1.id}", user_role=UserRole.STUDENT)
+    db.session.add(student1_user)
+    db.session.flush()
+    seat1 = Seat(user_id=student1_user.id, class_id=class1.class_id, join_code="ADM1CLS", block="ADM1PER", role="student")
+    # Auto-injected Canonical User
+    student2_user = User(username_hash=f"auto_{student2.id}", username_lookup_hash=f"auto_l_{student2.id}", user_role=UserRole.STUDENT)
+    db.session.add(student2_user)
+    db.session.flush()
+    seat2 = Seat(user_id=student2_user.id, class_id=class2.class_id, join_code="ADM2CLS", block="ADM2PER", role="student")
     db.session.add_all([seat1, seat2])
     db.session.flush()
 
     # Create attendance sessions
     tap1 = AttendanceSession(
-        student_id=student1.id,
+        user_id=student1_user.id,
         seat_id=seat1.id,
         class_id=class1.class_id,
         period='ADM1PER',
         started_at=datetime.now(timezone.utc),
     )
     tap2 = AttendanceSession(
-        student_id=student2.id,
+        user_id=student2_user.id,
         seat_id=seat2.id,
         class_id=class2.class_id,
         period='ADM2PER',

@@ -1,0 +1,135 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.10.0, pytest-9.0.3, pluggy-1.6.0 -- /Library/Frameworks/Python.framework/Versions/3.10/bin/python3
+cachedir: .pytest_cache
+rootdir: /Users/timothychang/Documents/GitHub/classroom-economy
+configfile: pytest.ini
+plugins: flask-1.3.0, anyio-4.2.0
+collecting ... collected 1 item
+
+tests/test_void_transaction_rules.py::test_void_delayed_purchase_removes_item_and_refunds [2026-06-30 22:05:27,527] WARNING in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-INTEGRITY-WARNING: FEATBypass active. Execution integrity is currently unmanaged.
+[2026-06-30 22:05:27,527] WARNING in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-INTEGRITY-WARNING: FEAT FEAT-BYPASS-LEGACY (Blast=LOW) missing idempotency_key.
+[2026-06-30 22:05:27,528] INFO in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-ENTRY: feat=FEAT-BYPASS-LEGACY | correlation_id=bypass_test_b3453eaf64794cffbe5b4dfc60f5bd06 | idempotency_key=NONE
+[2026-06-30 22:05:27,769] INFO in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-COMMIT-OWNERSHIP: FEAT-BYPASS-LEGACY | First commit owned by FEAT-BYPASS-LEGACY | Correlation=bypass_test_b3453eaf64794cffbe5b4dfc60f5bd06
+[2026-06-30 22:05:27,769] WARNING in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 6 flushes. Consider simplifying or batching mutations.
+[2026-06-30 22:05:27,783] WARNING in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=2. Correlation=bypass_test_b3453eaf64794cffbe5b4dfc60f5bd06
+[2026-06-30 22:05:27,783] WARNING in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 7 flushes. Consider simplifying or batching mutations.
+[2026-06-30 22:05:27,808] WARNING in base [72efb5249b424117bb69baaeb44d5e0c] [actor=student:fe522a02-89c8-42ef-a45a-2f125518361c class_id=1f88e77e-f081-4d46-8d8e-558c132921c2] [endpoint=/api/purchase-item method=POST] [error_class=- correlation_version=1]: FEAT-SHELL-DIRTY: Executing legacy logic in shell FEAT-STOR-002. Function=purchase_item. Correlation=GENERATE
+[2026-06-30 22:05:27,815] WARNING in base [72efb5249b424117bb69baaeb44d5e0c] [actor=student:fe522a02-89c8-42ef-a45a-2f125518361c class_id=1f88e77e-f081-4d46-8d8e-558c132921c2] [endpoint=/api/purchase-item method=POST] [error_class=- correlation_version=1]: FEAT-INTEGRITY-WARNING: FEAT FEAT-STOR-002 (Blast=MED) missing idempotency_key.
+[2026-06-30 22:05:27,815] INFO in base [72efb5249b424117bb69baaeb44d5e0c] [actor=student:fe522a02-89c8-42ef-a45a-2f125518361c class_id=1f88e77e-f081-4d46-8d8e-558c132921c2] [endpoint=/api/purchase-item method=POST] [error_class=- correlation_version=1]: FEAT-ENTRY: feat=FEAT-STOR-002 | correlation_id=bypass_test_b3453eaf64794cffbe5b4dfc60f5bd06 | idempotency_key=NONE
+[2026-06-30 22:05:27,904] WARNING in base [72efb5249b424117bb69baaeb44d5e0c] [actor=student:fe522a02-89c8-42ef-a45a-2f125518361c class_id=1f88e77e-f081-4d46-8d8e-558c132921c2] [endpoint=/api/purchase-item method=POST] [error_class=- correlation_version=1]: FEAT-INTEGRITY-WARNING: FEAT FEAT-STOR-002 (Blast=MED) missing idempotency_key.
+[2026-06-30 22:05:27,904] INFO in base [72efb5249b424117bb69baaeb44d5e0c] [actor=student:fe522a02-89c8-42ef-a45a-2f125518361c class_id=1f88e77e-f081-4d46-8d8e-558c132921c2] [endpoint=/api/purchase-item method=POST] [error_class=- correlation_version=1]: FEAT-ENTRY: feat=FEAT-STOR-002 | correlation_id=bypass_test_b3453eaf64794cffbe5b4dfc60f5bd06 | idempotency_key=NONE
+[2026-06-30 22:05:27,904] ERROR in __init__ [72efb5249b424117bb69baaeb44d5e0c] [actor=student:fe522a02-89c8-42ef-a45a-2f125518361c class_id=1f88e77e-f081-4d46-8d8e-558c132921c2] [endpoint=/api/purchase-item method=POST] [error_class=TypeError correlation_version=1]: Unhandled exception
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+  File "/Users/timothychang/Documents/GitHub/classroom-economy/app/auth.py", line 133, in decorated_function
+    return f(*args, **kwargs)
+  File "/Users/timothychang/Documents/GitHub/classroom-economy/app/feats/base.py", line 433, in decorated_function
+    return f(*args, **kwargs)
+  File "/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/api.py", line 733, in purchase_item
+    result = execute_store_purchase(
+  File "/Users/timothychang/Documents/GitHub/classroom-economy/app/feats/base.py", line 398, in decorated_function
+    return f(*args, **kwargs)
+  File "/Users/timothychang/Documents/GitHub/classroom-economy/app/feats/store_purchase_feat.py", line 122, in execute_store_purchase
+    purchase_tx = ledger_service.create_pending_transaction(
+  File "/Users/timothychang/Documents/GitHub/classroom-economy/app/services/ledger_service.py", line 135, in create_pending_transaction
+    transaction = Transaction(  # FEAT-AUTHORIZED-DIRECT-TX
+  File "<string>", line 4, in __init__
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/sqlalchemy/orm/state.py", line 596, in _initialize_instance
+    with util.safe_reraise():
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/sqlalchemy/util/langhelpers.py", line 121, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/sqlalchemy/orm/state.py", line 594, in _initialize_instance
+    manager.original_init(*mixed[1:], **kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/sqlalchemy/orm/decl_base.py", line 2179, in _declarative_constructor
+    raise TypeError(
+TypeError: 'teacher_id' is an invalid keyword argument for Transaction
+SEAT ID: 1
+FAILED[2026-06-30 22:05:27,986] WARNING in base [-] [actor=-:- class_id=-] [endpoint=/ method=GET] [error_class=- correlation_version=1]: FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=3. Correlation=bypass_test_b3453eaf64794cffbe5b4dfc60f5bd06
+
+
+=================================== FAILURES ===================================
+_____________ test_void_delayed_purchase_removes_item_and_refunds ______________
+
+client = <FlaskClient <Flask 'app'>>
+
+    def test_void_delayed_purchase_removes_item_and_refunds(client):
+        teacher, student_user = _build_teacher_student('VOIDDLY1')
+    
+        print('SEAT ID:', student_user.last_active_seat_id); delayed_item = StoreItem(
+            user_id=teacher.id,
+            join_code='VOIDDLY1',
+            name='Delayed Reward',
+            price=Decimal('25.00'),
+            item_type='delayed',
+            is_active=True,
+        )
+        db.session.add(delayed_item)
+        db.session.add(Transaction(user_id=student_user.id, seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id, join_code='VOIDDLY1',
+            amount=Decimal('100.00'),
+            account_type='checking',
+            type='deposit',
+            description='Initial funds',
+        ))
+        db.session.commit()
+    
+        _login_student(client, student_user, 'VOIDDLY1')
+        purchase_resp = client.post('/api/purchase-item', json={
+            'item_id': delayed_item.id,
+            'passphrase': 'password',
+            'quantity': 1,
+        })
+>       assert purchase_resp.status_code == 200
+E       assert 500 == 200
+E        +  where 500 = <WrapperTestResponse streamed [500 INTERNAL SERVER ERROR]>.status_code
+
+tests/test_void_transaction_rules.py:83: AssertionError
+------------------------------ Captured log setup ------------------------------
+WARNING  app.feats.base:base.py:334 FEAT-INTEGRITY-WARNING: FEATBypass active. Execution integrity is currently unmanaged.
+WARNING  app.feats.base:base.py:175 FEAT-INTEGRITY-WARNING: FEAT FEAT-BYPASS-LEGACY (Blast=LOW) missing idempotency_key.
+INFO     app.feats.base:base.py:228 FEAT-ENTRY: feat=FEAT-BYPASS-LEGACY | correlation_id=bypass_test_b3453eaf64794cffbe5b4dfc60f5bd06 | idempotency_key=NONE
+------------------------------ Captured log call -------------------------------
+INFO     app.feats.base:base.py:265 FEAT-COMMIT-OWNERSHIP: FEAT-BYPASS-LEGACY | First commit owned by FEAT-BYPASS-LEGACY | Correlation=bypass_test_b3453eaf64794cffbe5b4dfc60f5bd06
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 6 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:282 FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=2. Correlation=bypass_test_b3453eaf64794cffbe5b4dfc60f5bd06
+WARNING  app.feats.base:base.py:289 FEAT-FLUSH-COMPLEXITY: FEAT-BYPASS-LEGACY has triggered 7 flushes. Consider simplifying or batching mutations.
+WARNING  app.feats.base:base.py:413 FEAT-SHELL-DIRTY: Executing legacy logic in shell FEAT-STOR-002. Function=purchase_item. Correlation=GENERATE
+WARNING  app.feats.base:base.py:175 FEAT-INTEGRITY-WARNING: FEAT FEAT-STOR-002 (Blast=MED) missing idempotency_key.
+INFO     app.feats.base:base.py:228 FEAT-ENTRY: feat=FEAT-STOR-002 | correlation_id=bypass_test_b3453eaf64794cffbe5b4dfc60f5bd06 | idempotency_key=NONE
+WARNING  app.feats.base:base.py:175 FEAT-INTEGRITY-WARNING: FEAT FEAT-STOR-002 (Blast=MED) missing idempotency_key.
+INFO     app.feats.base:base.py:228 FEAT-ENTRY: feat=FEAT-STOR-002 | correlation_id=bypass_test_b3453eaf64794cffbe5b4dfc60f5bd06 | idempotency_key=NONE
+ERROR    app:__init__.py:162 Unhandled exception
+Traceback (most recent call last):
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/flask/app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/flask/app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+  File "/Users/timothychang/Documents/GitHub/classroom-economy/app/auth.py", line 133, in decorated_function
+    return f(*args, **kwargs)
+  File "/Users/timothychang/Documents/GitHub/classroom-economy/app/feats/base.py", line 433, in decorated_function
+    return f(*args, **kwargs)
+  File "/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/api.py", line 733, in purchase_item
+    result = execute_store_purchase(
+  File "/Users/timothychang/Documents/GitHub/classroom-economy/app/feats/base.py", line 398, in decorated_function
+    return f(*args, **kwargs)
+  File "/Users/timothychang/Documents/GitHub/classroom-economy/app/feats/store_purchase_feat.py", line 122, in execute_store_purchase
+    purchase_tx = ledger_service.create_pending_transaction(
+  File "/Users/timothychang/Documents/GitHub/classroom-economy/app/services/ledger_service.py", line 135, in create_pending_transaction
+    transaction = Transaction(  # FEAT-AUTHORIZED-DIRECT-TX
+  File "<string>", line 4, in __init__
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/sqlalchemy/orm/state.py", line 596, in _initialize_instance
+    with util.safe_reraise():
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/sqlalchemy/util/langhelpers.py", line 121, in __exit__
+    raise exc_value.with_traceback(exc_tb)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/sqlalchemy/orm/state.py", line 594, in _initialize_instance
+    manager.original_init(*mixed[1:], **kwargs)
+  File "/Library/Frameworks/Python.framework/Versions/3.10/lib/python3.10/site-packages/sqlalchemy/orm/decl_base.py", line 2179, in _declarative_constructor
+    raise TypeError(
+TypeError: 'teacher_id' is an invalid keyword argument for Transaction
+---------------------------- Captured log teardown -----------------------------
+WARNING  app.feats.base:base.py:282 FEAT-INTEGRITY-WARNING: MULTIPLE-COMMIT-ATTEMPT in FEAT-BYPASS-LEGACY. Count=3. Correlation=bypass_test_b3453eaf64794cffbe5b4dfc60f5bd06
+=========================== short test summary info ============================
+FAILED tests/test_void_transaction_rules.py::test_void_delayed_purchase_removes_item_and_refunds
+============================== 1 failed in 1.33s ===============================

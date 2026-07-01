@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, ClassEconomy, IdentityProfile, Issue, IssueCategory, Student, StudentTeacher, Transaction, TransactionStatus
+from app.models import User, UserRole, Admin, ClassEconomy, IdentityProfile, Issue, IssueCategory, Student, StudentTeacher, Transaction, TransactionStatus
 
 
 def _login_admin(client, admin_id):
@@ -25,7 +25,7 @@ def _build_issue_context():
     db.session.add(student)
     db.session.flush()
 
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.add_all([
         ClassEconomy(join_code="ISSUEA1", user_id=teacher.id, status="active", created_by_admin_id=teacher.id),
         ClassEconomy(join_code="ISSUEB1", user_id=teacher.id, status="active", created_by_admin_id=teacher.id),
@@ -44,9 +44,7 @@ def test_issue_reverse_transaction_creates_reversal_for_posted_tx(client):
     teacher, student, category = _build_issue_context()
 
     tx = Transaction(
-        student_id=student.id,
-        teacher_id=teacher.id,
-        join_code="ISSUEA1",
+        user_id=student_user.id,join_code="ISSUEA1",
         amount=Decimal("30.00"),
         account_type="checking",
         status=TransactionStatus.POSTED,
@@ -57,7 +55,7 @@ def test_issue_reverse_transaction_creates_reversal_for_posted_tx(client):
     db.session.flush()
 
     issue = Issue(
-        student_id=student.id,
+        user_id=student_user.id,
         actor_public_id="seat-public-issue-1",
         teacher_id=teacher.id,
         join_code="ISSUEA1",
@@ -94,9 +92,7 @@ def test_issue_reverse_transaction_rejects_scope_mismatch(client):
     teacher, student, category = _build_issue_context()
 
     tx = Transaction(
-        student_id=student.id,
-        teacher_id=teacher.id,
-        join_code="ISSUEB1",
+        user_id=student_user.id,join_code="ISSUEB1",
         amount=Decimal("20.00"),
         account_type="checking",
         status=TransactionStatus.POSTED,
@@ -107,7 +103,7 @@ def test_issue_reverse_transaction_rejects_scope_mismatch(client):
     db.session.flush()
 
     issue = Issue(
-        student_id=student.id,
+        user_id=student_user.id,
         actor_public_id="seat-public-issue-2",
         teacher_id=teacher.id,
         join_code="ISSUEA1",

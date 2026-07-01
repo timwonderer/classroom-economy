@@ -272,7 +272,7 @@ def test_switch_class_nonexistent_join_code(client, setup_multi_class_student):
 
 def test_switch_class_unclaimed_seat(client, setup_multi_class_student):
     student = setup_multi_class_student["student"]
-    unclaimed_seat = Seat(student_id=student.id, class_id=setup_multi_class_student["classes"]["UNCLAIMEDZ"].class_id, join_code="UNCLAIMEDZ", block="Z", block_identifier="Z", role="student")
+    unclaimed_seat = Seat(user_id=student_user.id, class_id=setup_multi_class_student["classes"]["UNCLAIMEDZ"].class_id, join_code="UNCLAIMEDZ", block="Z", block_identifier="Z", role="student")
     db.session.add(unclaimed_seat)
     db.session.commit()
     with client.session_transaction() as sess:

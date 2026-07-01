@@ -69,7 +69,11 @@ def recovery_data(client):
     db.session.add_all([student, user])
     db.session.flush()
 
-    tb = Seat(student_id=student.id, class_id=class_row.class_id, join_code=join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    tb = Seat(user_id=student_user.id, class_id=class_row.class_id, join_code=join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(tb)
 
@@ -78,7 +82,6 @@ def recovery_data(client):
     db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Original", last_name="O"))
     seat = Seat(
         user_id=user.id,
-        student_id=student.id,
         class_id=class_row.class_id,
         join_code=join_code,
         role="student",
@@ -88,7 +91,7 @@ def recovery_data(client):
         tb,
         seat,
         StudentTeacher(
-            student_id=student.id,
+            user_id=student_user.id,
             teacher_id=teacher.id,
             class_id=class_row.class_id,
             join_code=join_code,
@@ -321,7 +324,7 @@ def test_recovery_preserves_teacher_block_claimed(client, recovery_data):
 
     assert resp.status_code == 302
 
-    seat = Seat.query.filter_by(student_id=student.id, join_code=join_code, block='A').first()
+    seat = Seat.query.filter_by(user_id=student_user.id, join_code=join_code, block='A').first()
     assert seat is not None
     assert seat.claimed_at is not None
 
@@ -359,14 +362,12 @@ def test_recovery_preserves_balance_and_transactions(client, recovery_data):
 
     # Give student a balance
     db.session.add(StudentBlock(
-        student_id=student.id,
+        user_id=student_user.id,
         period="A",
         join_code=join_code,
     ))
     tx = Transaction(
-        student_id=student.id,
-        teacher_id=teacher.id,
-        amount=200.0,
+        user_id=student_user.id,amount=200.0,
         type='deposit',
         description='Initial deposit',
         account_type='checking',

@@ -105,7 +105,7 @@ def resolve_actor_context(context: CanonicalContext | None) -> dict | None:
     if not has_request_context():
         return None
     if context is None:
-        endpoint = request.url_rule.rule if request.url_rule and request.url_rule.rule else request.endpoint
+        endpoint = request.endpoint
         if request.endpoint in DEFAULT_NO_CONTEXT_ENDPOINTS:
             return None
         if _is_public_request(endpoint, request.path):

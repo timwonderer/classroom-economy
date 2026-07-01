@@ -12,7 +12,7 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.models import Admin, Student, StudentTeacher, SystemAdmin
+from app.models import User, UserRole, Admin, Student, StudentTeacher, SystemAdmin
 from app.hash_utils import get_random_salt, hash_hmac
 from tests.helpers.class_scope import create_class_scope
 
@@ -54,7 +54,7 @@ def _create_student_with_teacher_block(first_name: str, teacher: Admin, block: s
     db.session.flush()
     
     # Create StudentTeacher link
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     
     join_code = f"TEST{teacher.id}{block}"
     if not TeacherBlock.query.filter_by(join_code=join_code).first():
@@ -81,7 +81,7 @@ def _create_student_with_teacher_block(first_name: str, teacher: Admin, block: s
         first_half_hash=first_half_hash,
         join_code=join_code,
         is_claimed=False,
-        student_id=student.id,
+        user_id=student_user.id,
     )
     db.session.add(teacher_block)
     db.session.commit()

@@ -3,7 +3,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import uuid
 from datetime import datetime, timezone
 from app import db
-from app.models import AttendanceSession, ClassEconomy, Seat, SeatAttendanceState, Student, StudentTeacher
+from app.models import AttendanceSession, ClassEconomy, Seat, SeatAttendanceState, User, UserRole, Student, StudentTeacher
 from app.attendance import get_all_block_statuses
 from tests.helpers.class_scope import create_class_scope
 
@@ -29,8 +29,8 @@ def test_attendance_status_isolation(client):
     db.session.commit()
 
     # 3. Create Links & Seats
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=t1.id))
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=t2.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=t1.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=t2.id))
     create_class_scope(
         teacher=t1,
         join_code="JC1",
@@ -52,7 +52,7 @@ def test_attendance_status_isolation(client):
         create_seat=True,
     )
     db.session.commit()
-    seat = Seat.query.filter_by(student_id=student.id, join_code="JC1").first()
+    seat = Seat.query.filter_by(user_id=student_user.id, join_code="JC1").first()
     assert seat is not None
 
     # 4. Mark active attendance for T1 class scope only.
@@ -60,7 +60,7 @@ def test_attendance_status_isolation(client):
     class_t1 = ClassEconomy.query.filter_by(join_code="JC1").first()
     assert class_t1 is not None
     session = AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_t1.class_id,
         period="PERIOD 1",
@@ -70,7 +70,7 @@ def test_attendance_status_isolation(client):
     db.session.flush()
     db.session.add(
         SeatAttendanceState(
-            student_id=student.id,
+            user_id=student_user.id,
             seat_id=seat.id,
             class_id=class_t1.class_id,
             period="PERIOD 1",

@@ -42,7 +42,7 @@ def setup_student_with_legacy_transactions(client):
 
     # Link student to teacher
     from app.models import StudentTeacher
-    st = StudentTeacher(student_id=student.id, teacher_id=teacher.id)
+    st = StudentTeacher(user_id=student_user.id, teacher_id=teacher.id)
     db.session.add(st)
     db.session.commit()
 
@@ -76,7 +76,7 @@ def setup_student_with_legacy_transactions(client):
         salt=salt,
         first_half_hash="hash1",
         join_code=join_code,
-        student_id=student.id,
+        user_id=student_user.id,
         is_claimed=True,
         claimed_at=datetime.now(timezone.utc)
     )
@@ -91,8 +91,12 @@ def setup_student_with_legacy_transactions(client):
     db.session.add(student_user)
     db.session.flush()
 
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
     seat_record = Seat(
-        student_id=student.id,
+        user_id=student_user.id,
         class_id=economy.class_id,
         join_code=join_code,
         block="Period1",
@@ -113,8 +117,12 @@ def setup_student_with_legacy_transactions(client):
     )
     db.session.add(other_economy)
     
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
     other_seat = Seat(
-        student_id=student.id,
+        user_id=student_user.id,
         class_id=other_class_id,
         join_code="OTHER1",
         block="Period2",
@@ -128,9 +136,7 @@ def setup_student_with_legacy_transactions(client):
     # It should be excluded from current class-scoped balance calculations.
     tx1 = Transaction(
         seat_id=other_seat.id,
-        class_id=other_class_id,
-        teacher_id=teacher.id,
-        amount=100.0,
+        class_id=other_class_id,amount=100.0,
         account_type='checking',
         status=TransactionStatus.POSTED,
         type='Initial',
@@ -139,10 +145,8 @@ def setup_student_with_legacy_transactions(client):
     
     # Add second transaction with current class join_code.
     tx2 = Transaction(
-        student_id=student.id,
-        seat_id=seat_record.id,
-        teacher_id=teacher.id,
-        join_code=join_code,
+        user_id=student_user.id,
+        seat_id=seat_record.id,join_code=join_code,
         amount=50.0,
         account_type='checking',
         status=TransactionStatus.PENDING,

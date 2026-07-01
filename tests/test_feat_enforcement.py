@@ -1,6 +1,6 @@
 import pytest
 from app.extensions import db
-from app.models import Student
+from app.models import User, UserRole, Student
 from app.feats.base import FEATContextError, requires_feat_context, is_feat_active
 
 def test_commit_fails_outside_feat_context(app):

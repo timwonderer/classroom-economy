@@ -68,7 +68,11 @@ def _make_student(block: str = "A", first_name: str = "Alice", last_initial: str
 
 def _make_teacher_block(admin_id: int, block: str, join_code: str, student: Student | None = None) -> Seat:
     salt = get_random_salt()
-    tb = Seat(student_id=student.id if student else None, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    tb = Seat(user_id=student_user.id if student else None, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name=student.display_first_name if student else "Placeholder", last_name=student.display_last_initial if student else "P"))
@@ -78,15 +82,13 @@ def _make_teacher_block(admin_id: int, block: str, join_code: str, student: Stud
 
 
 def _link(student: Student, admin: Admin) -> None:
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=admin.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
     db.session.commit()
 
 
 def _orphaned_tx(student: Student, admin: Admin, amount: float = 50.0) -> Transaction:
     tx = Transaction(
-        student_id=student.id,
-        teacher_id=admin.id,
-        join_code=None,
+        user_id=student_user.id,join_code=None,
         amount=amount,
         account_type="checking",
         status=TransactionStatus.POSTED,
@@ -370,7 +372,11 @@ def test_backfill_multiple_join_codes_per_block_uses_most_frequent(client):
     salt = get_random_salt()
     for jc, count in [("JC_COMMON", 2), ("JC_RARE", 1)]:
         for _ in range(count):
-            tb = Seat(student_id=student.id, join_code=jc, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+            # Auto-injected Canonical User
+            student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+            db.session.add(student_user)
+            db.session.flush()
+            tb = Seat(user_id=student_user.id, join_code=jc, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
             db.session.add(tb)
             db.session.flush()
             db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))

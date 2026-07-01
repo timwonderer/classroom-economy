@@ -7,7 +7,7 @@ from decimal import Decimal
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from app.models import Admin, ClassEconomy, ClassMembership, IdentityProfile, RentPayment, RentSettings, RentWaiver, Seat, Student, Transaction
+from app.models import User, UserRole, Admin, ClassEconomy, ClassMembership, IdentityProfile, RentPayment, RentSettings, RentWaiver, Seat, Student, Transaction
 from app.routes.student import (
     RENT_PAYMENT_MATCH_TOLERANCE_SECONDS,
     _get_locked_rent_amount_for_join_code_cycle,
@@ -63,6 +63,10 @@ def _make_admin_with_block(join_code="LOCKA1", block="A", suffix="rv"):
     db.session.flush()
     db.session.add(ClassMembership(join_code=join_code, admin_id=admin.id, role="admin"))
     class_id = db.session.query(ClassEconomy.class_id).filter_by(join_code=join_code).scalar()
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
     seat = Seat(
         class_id=class_id,
         join_code=join_code,
@@ -73,9 +77,7 @@ def _make_admin_with_block(join_code="LOCKA1", block="A", suffix="rv"):
     db.session.add(seat)
     db.session.flush()
     identity.seat_id = seat.id
-    settings = RentSettings(
-        teacher_id=admin.id,
-        join_code=join_code,
+    settings = RentSettings(join_code=join_code,
         block=block,
         is_enabled=True,
         rent_amount=Decimal("100.00"),
@@ -106,7 +108,7 @@ def _make_student(suffix="s"):
 
 def _add_payment(student, admin_id, join_code, amount_paid, late_fee, payment_date, coverage_due_date):
     payment = RentPayment(
-        student_id=student.id,
+        user_id=student_user.id,
         period="A",
         join_code=join_code,
         amount_paid=amount_paid,
@@ -118,9 +120,7 @@ def _add_payment(student, admin_id, join_code, amount_paid, late_fee, payment_da
     )
     db.session.add(payment)
     db.session.add(Transaction(
-        student_id=student.id,
-        teacher_id=admin_id,
-        join_code=join_code,
+        user_id=student_user.id,join_code=join_code,
         type="Rent Payment",
         amount=-amount_paid,
         timestamp=payment_date,
@@ -150,7 +150,7 @@ def test_locked_rate_ignores_void_transactions(client):
     student_b = _make_student("vb")
 
     _add_payment(student_a, admin.id, "LOCKRV", Decimal("80.00"), Decimal("0.00"), datetime(2026, 3, 2, 8, 0, tzinfo=timezone.utc), coverage)
-    void_txn = Transaction.query.filter_by(student_id=student_a.id, join_code="LOCKRV", type="Rent Payment").first()
+    void_txn = Transaction.query.filter_by(user_id=student_a_user.id, join_code="LOCKRV", type="Rent Payment").first()
     void_txn.is_void = True
     _add_payment(student_b, admin.id, "LOCKRV", Decimal("120.00"), Decimal("0.00"), datetime(2026, 3, 3, 8, 0, tzinfo=timezone.utc), coverage)
     db.session.commit()
@@ -163,7 +163,7 @@ def test_waiver_marks_coverage_period_as_paid(client):
     student = _make_student("waived")
     coverage = datetime(2026, 3, 1, tzinfo=timezone.utc)
     db.session.add(RentWaiver(
-        student_id=student.id,
+        user_id=student_user.id,
         join_code="WAIV1",
         waiver_start_date=coverage - timedelta(days=1),
         waiver_end_date=coverage + timedelta(days=5),
@@ -220,8 +220,8 @@ def test_reverse_cycle_penalties_refunds_only_misapplied_fees(client, monkeypatc
     assert refund_txns[0].student_id == on_time_student.id
     assert refund_txns[0].amount == Decimal("10.00")
 
-    on_time_payment = RentPayment.query.filter_by(student_id=on_time_student.id, join_code="REVFEE").first()
-    late_payment = RentPayment.query.filter_by(student_id=late_student.id, join_code="REVFEE").first()
+    on_time_payment = RentPayment.query.filter_by(user_id=on_time_student_user.id, join_code="REVFEE").first()
+    late_payment = RentPayment.query.filter_by(user_id=late_student_user.id, join_code="REVFEE").first()
     assert on_time_payment.late_fee_charged == Decimal("0.00")
     assert on_time_payment.was_late is False
     assert late_payment.late_fee_charged == Decimal("10.00")

@@ -65,7 +65,11 @@ def test_calculate_payroll(client):
     )
 
     # CRITICAL: Link student to claimed seat scope for payroll.
-    tb = Seat(student_id=student.id, class_id=class_economy.class_id, join_code="JOIN123", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    tb = Seat(user_id=student_user.id, class_id=class_economy.class_id, join_code="JOIN123", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Test", last_name="S"))
@@ -73,7 +77,7 @@ def test_calculate_payroll(client):
     db.session.commit()
 
     from app.models import Seat
-    seat = Seat.query.filter_by(student_id=student.id, class_id=class_economy.class_id).first()
+    seat = Seat.query.filter_by(user_id=student_user.id, class_id=class_economy.class_id).first()
     assert seat is not None
 
     # Create attendance session to simulate attendance.
@@ -81,7 +85,7 @@ def test_calculate_payroll(client):
     session_start = now - timedelta(minutes=60)
     session_end = now - timedelta(minutes=30)
     attendance_session = AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_economy.class_id,
         period="A",
@@ -121,7 +125,7 @@ def test_calculate_payroll(client):
     # Manual payments after the last payroll should clear projected pay for that student
     manual_time = now - timedelta(minutes=5)
     manual_tx = Transaction(
-        student_id=student.id,
+        user_id=student_user.id,
         amount=3,
         type="manual_payment",
         timestamp=manual_time,
@@ -169,14 +173,22 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
     )
     db.session.flush()
 
-    tb_a = Seat(student_id=student.id, class_id=class_a.class_id, join_code="PAYA01", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    tb_a = Seat(user_id=student_user.id, class_id=class_a.class_id, join_code="PAYA01", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(tb_a)
 
     db.session.flush()
 
     db.session.add(IdentityProfile(seat_id=tb_a.id, profile_type='student_claimed', first_name="Multi", last_name="S"))
-    tb_b = Seat(student_id=student.id, class_id=class_b.class_id, join_code="PAYB01", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    tb_b = Seat(user_id=student_user.id, class_id=class_b.class_id, join_code="PAYB01", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb_b)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=tb_b.id, profile_type='student_claimed', first_name="Multi", last_name="S"))
@@ -184,15 +196,15 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
     db.session.flush()
 
     from app.models import Seat
-    seat_a = Seat.query.filter_by(student_id=student.id, class_id=class_a.class_id).first()
-    seat_b = Seat.query.filter_by(student_id=student.id, class_id=class_b.class_id).first()
+    seat_a = Seat.query.filter_by(user_id=student_user.id, class_id=class_a.class_id).first()
+    seat_b = Seat.query.filter_by(user_id=student_user.id, class_id=class_b.class_id).first()
     assert seat_a is not None
     assert seat_b is not None
 
     now = datetime.now(timezone.utc)
     db.session.add_all([
         AttendanceSession(
-            student_id=student.id,
+            user_id=student_user.id,
             seat_id=seat_a.id,
             class_id=class_a.class_id,
             period="A",
@@ -201,7 +213,7 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
             duration_seconds=600,
         ),
         AttendanceSession(
-            student_id=student.id,
+            user_id=student_user.id,
             seat_id=seat_a.id,
             class_id=class_a.class_id,
             period="A",
@@ -210,7 +222,7 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
             duration_seconds=240,
         ),
         AttendanceSession(
-            student_id=student.id,
+            user_id=student_user.id,
             seat_id=seat_b.id,
             class_id=class_b.class_id,
             period="B",
@@ -219,7 +231,7 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
             duration_seconds=900,
         ),
         Transaction(
-            student_id=student.id,
+            user_id=student_user.id,
             seat_id=seat_a.id,
             class_id=class_a.class_id,
             amount=3,
@@ -450,7 +462,11 @@ def test_get_cached_payroll_with_meta(client):
     db.session.commit()
 
     # Link
-    tb = Seat(student_id=student.id, class_id=class_economy.class_id, join_code="CACHE1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    tb = Seat(user_id=student_user.id, class_id=class_economy.class_id, join_code="CACHE1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="CacheUser", last_name="T"))
@@ -458,13 +474,13 @@ def test_get_cached_payroll_with_meta(client):
     db.session.commit()
 
     from app.models import Seat
-    seat = Seat.query.filter_by(student_id=student.id, class_id=class_economy.class_id).first()
+    seat = Seat.query.filter_by(user_id=student_user.id, class_id=class_economy.class_id).first()
     assert seat is not None
 
     # Add attendance session (1 hour at default rate).
     now = datetime.now(timezone.utc)
     session_one = AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_economy.class_id,
         period="A",
@@ -495,7 +511,7 @@ def test_get_cached_payroll_with_meta(client):
     # Add more attendance events that SHOULD increase payroll if recalculated
     # Adding another 15 minutes
     session_two = AttendanceSession(
-        student_id=student.id,
+        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_economy.class_id,
         period="A",

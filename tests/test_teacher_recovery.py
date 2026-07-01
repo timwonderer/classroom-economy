@@ -52,7 +52,7 @@ def create_student(teacher, username="student1", block="A"):
     db.session.flush()
 
     # Link
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     
     join_code = f"JOIN{teacher.id}{block}"
     class_economy = ClassEconomy.query.filter_by(join_code=join_code).first()
@@ -61,7 +61,11 @@ def create_student(teacher, username="student1", block="A"):
         db.session.add(class_economy)
         db.session.flush()
 
-    _tb_seat = Seat(student_id=student.id, class_id=class_economy.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    _tb_seat = Seat(user_id=student_user.id, class_id=class_economy.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(_tb_seat)
 

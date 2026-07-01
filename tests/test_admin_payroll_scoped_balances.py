@@ -50,8 +50,8 @@ def test_admin_payroll_displays_scoped_balances_only(client):
     class_a = create_class_scope(teacher=teacher_a, join_code="PAYA01", student=student, block="A", display_name="A")
     class_b = create_class_scope(teacher=teacher_b, join_code="PAYB01", student=student, block="A", display_name="A")
     db.session.flush()
-    seat_a = Seat.query.filter_by(class_id=class_a.class_id, student_id=student.id, role="student").first()
-    seat_b = Seat.query.filter_by(class_id=class_b.class_id, student_id=student.id, role="student").first()
+    seat_a = Seat.query.filter_by(class_id=class_a.class_id, user_id=student_user.id, role="student").first()
+    seat_b = Seat.query.filter_by(class_id=class_b.class_id, user_id=student_user.id, role="student").first()
     assert seat_a is not None and seat_b is not None
     seat_a.claimed_at = datetime.now(timezone.utc)
     seat_b.claimed_at = datetime.now(timezone.utc)
@@ -59,13 +59,13 @@ def test_admin_payroll_displays_scoped_balances_only(client):
     from app.feats.base import FEATContext
     with FEATContext("FEAT-ADMN-001"):
         db.session.add_all([
-            StudentTeacher(student_id=student.id, teacher_id=teacher_a.id),
-            StudentTeacher(student_id=student.id, teacher_id=teacher_b.id)(
+            StudentTeacher(user_id=student_user.id, teacher_id=teacher_a.id),
+            StudentTeacher(user_id=student_user.id, teacher_id=teacher_b.id)(
                 teacher_id=teacher_a.id,
                 block="A",
                 join_code="PAYA01",
                 class_id=class_a.class_id,
-                student_id=student.id,
+                user_id=student_user.id,
                 is_claimed=True,
                 first_name=student.display_first_name,
                 last_initial=student.display_last_initial,
@@ -78,7 +78,7 @@ def test_admin_payroll_displays_scoped_balances_only(client):
                 block="A",
                 join_code="PAYB01",
                 class_id=class_b.class_id,
-                student_id=student.id,
+                user_id=student_user.id,
                 is_claimed=True,
                 first_name=student.display_first_name,
                 last_initial=student.display_last_initial,
@@ -88,9 +88,7 @@ def test_admin_payroll_displays_scoped_balances_only(client):
                 first_half_hash="hash-b",
             ),
                 Transaction(
-                    student_id=student.id,
-                    teacher_id=teacher_a.id,
-                    join_code="PAYA01",
+                    user_id=student_user.id,join_code="PAYA01",
                     class_id=class_a.class_id,
                     seat_id=seat_a.id,
                     amount=Decimal("111.11"),
@@ -100,9 +98,7 @@ def test_admin_payroll_displays_scoped_balances_only(client):
                 description="Teacher A balance",
             ),
                 Transaction(
-                    student_id=student.id,
-                    teacher_id=teacher_b.id,
-                    join_code="PAYB01",
+                    user_id=student_user.id,join_code="PAYB01",
                     class_id=class_b.class_id,
                     seat_id=seat_b.id,
                     amount=Decimal("222.22"),

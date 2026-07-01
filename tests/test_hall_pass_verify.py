@@ -17,7 +17,7 @@ import unicodedata
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
-from app.models import Admin, Student, StudentTeacher, HallPassLog, Seat, IdentityProfile, ClassEconomy
+from app.models import User, UserRole, Admin, Student, StudentTeacher, HallPassLog, Seat, IdentityProfile, ClassEconomy
 from app.hash_utils import get_random_salt, hash_username
 
 
@@ -49,6 +49,10 @@ def hp_student(client, hp_teacher):
     db.session.add(class_row)
     db.session.flush()
 
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
     block = Seat(
         class_id=class_row.class_id,
         join_code="jc_chem3",
@@ -74,7 +78,7 @@ def hp_student(client, hp_teacher):
     db.session.flush()
 
     block.student_id = student.id
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=hp_teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=hp_teacher.id))
     db.session.add(block)
     db.session.commit()
     return student
@@ -85,7 +89,7 @@ def hp_pass_today(client, hp_student):
     """Create a 'left' hall pass for today for Maria G."""
     now = datetime.now(timezone.utc)
     log = HallPassLog(
-        student_id=hp_student.id,
+        user_id=hp_student_user.id,
         class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
         reason="Bathroom",
         status="left",
@@ -191,7 +195,7 @@ def test_post_verify_match_returned(client, hp_teacher, hp_student):
     """POST matching a student who has returned shows returned status."""
     now = datetime.now(timezone.utc)
     log = HallPassLog(
-        student_id=hp_student.id,
+        user_id=hp_student_user.id,
         class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
         reason="Office",
         status="returned",
@@ -232,12 +236,12 @@ def test_post_verify_ambiguous(client, hp_teacher, hp_student):
     )
     db.session.add(student2)
     db.session.flush()
-    db.session.add(StudentTeacher(student_id=student2.id, teacher_id=hp_teacher.id))
+    db.session.add(StudentTeacher(user_id=student2_user.id, teacher_id=hp_teacher.id))
 
     now = datetime.now(timezone.utc)
     for s in [hp_student, student2]:
         db.session.add(HallPassLog(
-            student_id=s.id,
+            user_id=s_user.id,
             class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
             reason="Bathroom",
             status="left",
@@ -301,7 +305,7 @@ def test_post_verify_old_pass_not_shown(client, hp_teacher, hp_student):
     """Passes from yesterday are not returned by today-scoped query."""
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
     old_log = HallPassLog(
-        student_id=hp_student.id,
+        user_id=hp_student_user.id,
         class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
         reason="Bathroom",
         status="left",
@@ -348,9 +352,9 @@ def test_post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_
         )
         db.session.add(other)
         db.session.flush()
-        db.session.add(StudentTeacher(student_id=other.id, teacher_id=hp_teacher.id))
+        db.session.add(StudentTeacher(user_id=other_user.id, teacher_id=hp_teacher.id))
         db.session.add(HallPassLog(
-            student_id=other.id,
+            user_id=other_user.id,
             class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
             reason="Office",
             status="left",
@@ -363,7 +367,7 @@ def test_post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_
 
     # Add the target match as an older same-day record.
     db.session.add(HallPassLog(
-        student_id=hp_student.id,
+        user_id=hp_student_user.id,
         class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
         reason="Bathroom",
         status="left",

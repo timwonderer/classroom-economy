@@ -134,15 +134,23 @@ def test_issues_queue_respects_current_join_code_membership_scope(client):
     student = Student(identity_profile=profile, block="A", class_id=class_a.class_id, join_code="ISSGA1", salt=b"salt")
     db.session.add(student)
     db.session.flush()
-    seat_a = Seat(student_id=student.id, class_id=class_a.class_id, join_code="ISSGA1", block="A", block_identifier="A", role="student")
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, join_code="ISSGA1", block="A", block_identifier="A", role="student")
     db.session.add(seat_a)
     db.session.flush()
     profile.seat_id = seat_a.id
-    seat_b = Seat(student_id=student.id, class_id=class_b.class_id, join_code="ISSGB1", block="A", block_identifier="A", role="student")
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
+    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, join_code="ISSGB1", block="A", block_identifier="A", role="student")
     db.session.add(seat_b)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type="student_claimed", first_name="Gate", last_name="Stone"))
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=admin.id, class_id=class_a.class_id, join_code="ISSGA1"))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id, class_id=class_a.class_id, join_code="ISSGA1"))
 
     category = IssueCategory(
         name=f"Issue Gate Category {datetime.now(timezone.utc).isoformat()}",
@@ -154,7 +162,7 @@ def test_issues_queue_respects_current_join_code_membership_scope(client):
 
     db.session.add_all([
         Issue(
-            student_id=student.id,
+            user_id=student_user.id,
             actor_public_id="seat-public-issue-gate-a",
             teacher_id=admin.id,
             class_id=class_a.class_id,
@@ -165,7 +173,7 @@ def test_issues_queue_respects_current_join_code_membership_scope(client):
             student_explanation="Issue for class A",
         ),
         Issue(
-            student_id=student.id,
+            user_id=student_user.id,
             actor_public_id="seat-public-issue-gate-b",
             teacher_id=admin.id,
             class_id=class_b.class_id,
@@ -237,7 +245,7 @@ def test_add_individual_student_creates_single_student_seat_for_new_student(clie
     initial_student_count = Student.query.count()
     initial_link_count = StudentTeacher.query.filter_by(teacher_id=admin.id).count()
     class_row = ClassEconomy.query.filter_by(join_code="SING001").first()
-    initial_student_seat_count = Seat.query.filter_by(class_id=class_row.class_id, block="A").filter(Seat.student_id.isnot(None)).count()
+    initial_student_seat_count = Seat.query.filter_by(class_id=class_row.class_id, block="A").filter(Seat.user_id.isnot(None)).count()
 
     response = client.post(
         "/admin/student/add-individual",
@@ -253,9 +261,9 @@ def test_add_individual_student_creates_single_student_seat_for_new_student(clie
     assert response.status_code == 302
     assert Student.query.count() == initial_student_count + 1
     assert StudentTeacher.query.filter_by(teacher_id=admin.id).count() == initial_link_count + 1
-    assert Seat.query.filter_by(class_id=class_row.class_id, block="A").filter(Seat.student_id.isnot(None)).count() == initial_student_seat_count + 1
+    assert Seat.query.filter_by(class_id=class_row.class_id, block="A").filter(Seat.user_id.isnot(None)).count() == initial_student_seat_count + 1
 
-    linked_seats = Seat.query.filter_by(class_id=class_row.class_id, block="A").filter(Seat.student_id.isnot(None)).all()
+    linked_seats = Seat.query.filter_by(class_id=class_row.class_id, block="A").filter(Seat.user_id.isnot(None)).all()
     assert len(linked_seats) == 1
     assert linked_seats[0].claimed_at is None
     assert linked_seats[0].join_code == "SING001"
@@ -284,7 +292,7 @@ def test_add_manual_student_creates_single_student_seat_for_new_student(client):
     initial_student_count = Student.query.count()
     initial_link_count = StudentTeacher.query.filter_by(teacher_id=admin.id).count()
     class_row = ClassEconomy.query.filter_by(join_code="MANU001").first()
-    initial_student_seat_count = Seat.query.filter_by(class_id=class_row.class_id, block="B").filter(Seat.student_id.isnot(None)).count()
+    initial_student_seat_count = Seat.query.filter_by(class_id=class_row.class_id, block="B").filter(Seat.user_id.isnot(None)).count()
 
     response = client.post(
         "/admin/student/add-manual",
@@ -304,9 +312,9 @@ def test_add_manual_student_creates_single_student_seat_for_new_student(client):
     assert response.status_code == 302
     assert Student.query.count() == initial_student_count + 1
     assert StudentTeacher.query.filter_by(teacher_id=admin.id).count() == initial_link_count + 1
-    assert Seat.query.filter_by(class_id=class_row.class_id, block="B").filter(Seat.student_id.isnot(None)).count() == initial_student_seat_count + 1
+    assert Seat.query.filter_by(class_id=class_row.class_id, block="B").filter(Seat.user_id.isnot(None)).count() == initial_student_seat_count + 1
 
-    linked_seats = Seat.query.filter_by(class_id=class_row.class_id, block="B").filter(Seat.student_id.isnot(None)).all()
+    linked_seats = Seat.query.filter_by(class_id=class_row.class_id, block="B").filter(Seat.user_id.isnot(None)).all()
     assert len(linked_seats) == 1
     assert linked_seats[0].claimed_at is None
     assert linked_seats[0].join_code == "MANU001"
@@ -356,7 +364,7 @@ def test_add_individual_student_uses_selected_class_join_code_when_block_has_oth
     linked_seat = (
         Seat.query
         .filter_by(class_id=class_row.class_id, block="A")
-        .filter(Seat.student_id.isnot(None))
+        .filter(Seat.user_id.isnot(None))
         .order_by(Seat.id.desc())
         .first()
     )
@@ -403,7 +411,7 @@ def test_add_individual_student_create_new_class_section_mints_new_join_code(cli
     linked_seat = (
         Seat.query
         .filter_by(block="B", join_code=ClassEconomy.query.filter(ClassEconomy.join_code != "CURRA01", ClassEconomy.user_id == admin.id).order_by(ClassEconomy.id.desc()).with_entities(ClassEconomy.join_code).scalar_subquery())
-        .filter(Seat.student_id.isnot(None))
+        .filter(Seat.user_id.isnot(None))
         .order_by(Seat.id.desc())
         .first()
     )

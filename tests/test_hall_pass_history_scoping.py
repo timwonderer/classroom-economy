@@ -9,6 +9,8 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone, timedelta
 from app.models import (
+    User,
+    UserRole,
     Student, Admin, HallPassLog, StudentTeacher
 )
 from app.extensions import db
@@ -68,10 +70,10 @@ def setup_multi_teacher_hall_pass_history(client):
     db.session.flush()
 
     # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
-    db.session.add(StudentTeacher(student_id=student1.id, teacher_id=teacher1.id))
-    db.session.add(StudentTeacher(student_id=student2.id, teacher_id=teacher1.id))
-    db.session.add(StudentTeacher(student_id=student3.id, teacher_id=teacher2.id))
-    db.session.add(StudentTeacher(student_id=student4.id, teacher_id=teacher2.id))
+    db.session.add(StudentTeacher(user_id=student1_user.id, teacher_id=teacher1.id))
+    db.session.add(StudentTeacher(user_id=student2_user.id, teacher_id=teacher1.id))
+    db.session.add(StudentTeacher(user_id=student3_user.id, teacher_id=teacher2.id))
+    db.session.add(StudentTeacher(user_id=student4_user.id, teacher_id=teacher2.id))
     db.session.commit()
 
     # Create Class Contexts
@@ -88,10 +90,10 @@ def setup_multi_teacher_hall_pass_history(client):
         ClassMembership(join_code=join_code2, admin_id=teacher1.id, role="admin"),
         ClassMembership(join_code=join_code3, admin_id=teacher2.id, role="admin"),
         ClassMembership(join_code=join_code4, admin_id=teacher2.id, role="admin"),
-        ClassMembership(join_code=join_code1, student_id=student1.id, role="student"),
-        ClassMembership(join_code=join_code2, student_id=student2.id, role="student"),
-        ClassMembership(join_code=join_code3, student_id=student3.id, role="student"),
-        ClassMembership(join_code=join_code4, student_id=student4.id, role="student"),
+        ClassMembership(join_code=join_code1, user_id=student1_user.id, role="student"),
+        ClassMembership(join_code=join_code2, user_id=student2_user.id, role="student"),
+        ClassMembership(join_code=join_code3, user_id=student3_user.id, role="student"),
+        ClassMembership(join_code=join_code4, user_id=student4_user.id, role="student"),
     ])
     db.session.flush()
 
@@ -101,7 +103,7 @@ def setup_multi_teacher_hall_pass_history(client):
     # Multiple hall pass logs for student1 (teacher1)
     # Timeline: request -> decision (5 min later) -> left (10 min later) -> return (15 min later)
     pass1 = HallPassLog(
-        student_id=student1.id,
+        user_id=student1_user.id,
         reason="Restroom",
         status="returned",
         join_code=join_code1,
@@ -113,7 +115,7 @@ def setup_multi_teacher_hall_pass_history(client):
     )
     
     pass2 = HallPassLog(
-        student_id=student2.id,
+        user_id=student2_user.id,
         reason="Office",
         status="returned",
         join_code=join_code2,
@@ -126,7 +128,7 @@ def setup_multi_teacher_hall_pass_history(client):
 
     # Create hall pass history for teacher2's students
     pass3 = HallPassLog(
-        student_id=student3.id,
+        user_id=student3_user.id,
         reason="Nurse",
         status="returned",
         join_code=join_code3,
@@ -138,7 +140,7 @@ def setup_multi_teacher_hall_pass_history(client):
     )
     
     pass4 = HallPassLog(
-        student_id=student4.id,
+        user_id=student4_user.id,
         reason="Locker",
         status="returned",
         join_code=join_code4,

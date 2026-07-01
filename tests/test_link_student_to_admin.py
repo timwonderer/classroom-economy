@@ -4,7 +4,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 
 from app import db
-from app.models import Admin, Student, StudentTeacher
+from app.models import User, UserRole, Admin, Student, StudentTeacher
 from app.routes.admin import _link_student_to_admin
 from app.utils.join_code import generate_join_code
 from app.hash_utils import get_random_salt, hash_username
@@ -43,7 +43,7 @@ def _create_teacher_block(admin_id: int, block: str, join_code: str, class_label
         class_label=class_label,
         join_code=join_code,
         is_claimed=claimed,
-        student_id=student.id if student else None,
+        user_id=student_user.id if student else None,
         first_name=(student.display_first_name if student else "Placeholder"),
         last_initial=(student.display_last_initial if student else "P"),
         last_name_hash_by_part=None,
@@ -63,8 +63,8 @@ def test_link_student_creates_relationships_and_teacher_block(client):
     _link_student_to_admin(student, admin.id)
     db.session.commit()
 
-    assert StudentTeacher.query.filter_by(student_id=student.id, teacher_id=admin.id).count() == 1
-    teacher_block = TeacherBlock.query.filter_by(student_id=student.id, teacher_id=admin.id, block=student.block).one()
+    assert StudentTeacher.query.filter_by(user_id=student_user.id, teacher_id=admin.id).count() == 1
+    teacher_block = TeacherBlock.query.filter_by(user_id=student_user.id, teacher_id=admin.id, block=student.block).one()
     assert teacher_block.join_code is not None
     assert teacher_block.is_claimed is True
 
@@ -78,7 +78,7 @@ def test_link_student_reuses_existing_join_code_and_label(client):
     _link_student_to_admin(student, admin.id)
     db.session.commit()
 
-    teacher_block = TeacherBlock.query.filter_by(student_id=student.id, teacher_id=admin.id, block="B").one()
+    teacher_block = TeacherBlock.query.filter_by(user_id=student_user.id, teacher_id=admin.id, block="B").one()
     assert teacher_block.join_code == existing_join_code
     assert teacher_block.get_class_label() == "Biology"
 
@@ -104,5 +104,5 @@ def test_link_student_skips_when_block_missing(client, caplog):
     with caplog.at_level("WARNING"):
         _link_student_to_admin(student, admin.id)
 
-    assert StudentTeacher.query.filter_by(student_id=student.id, teacher_id=admin.id).count() == 0
+    assert StudentTeacher.query.filter_by(user_id=student_user.id, teacher_id=admin.id).count() == 0
     assert TeacherBlock.query.filter_by(teacher_id=admin.id).count() == 0

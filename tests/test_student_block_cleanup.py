@@ -13,6 +13,8 @@ from datetime import datetime, timezone
 
 from app import db
 from app.models import (
+    User,
+    UserRole,
     Admin,
     Student,
     StudentTeacher,
@@ -63,7 +65,7 @@ def _create_student_with_student_block(first_name: str, teacher: Admin, block: s
     db.session.flush()
     
     # Create StudentTeacher link
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
 
     join_code = f"JOIN{teacher.id}{block}"
     class_economy = ClassEconomy.query.filter_by(join_code=join_code).first()
@@ -84,12 +86,12 @@ def _create_student_with_student_block(first_name: str, teacher: Admin, block: s
         join_code=join_code,
         class_id=class_economy.class_id,
         is_claimed=True,
-        student_id=student.id,
+        user_id=student_user.id,
     ))
     
     # Create StudentBlock entry
     student_block = StudentBlock(
-        student_id=student.id,
+        user_id=student_user.id,
         period=period,
         join_code=join_code,
         class_id=class_economy.class_id,
@@ -240,11 +242,11 @@ def test_bulk_delete_legacy_unclaimed_deletes_students(client):
     db.session.flush()
     
     # Create StudentTeacher link
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     
     # Create StudentBlock for this student
     student_block = StudentBlock(
-        student_id=student.id,
+        user_id=student_user.id,
         period="1",
         tap_enabled=True,
     )
@@ -314,9 +316,7 @@ def test_delete_student_clears_cross_issue_transaction_references(client):
     join_code = s_sb.join_code
 
     tx = Transaction(
-        student_id=student_to_delete.id,
-        teacher_id=teacher.id,
-        amount=25,
+        user_id=student_to_delete_user.id,amount=25,
         account_type="checking",
         description="Seed transaction for FK regression",
         join_code=join_code,
@@ -333,7 +333,7 @@ def test_delete_student_clears_cross_issue_transaction_references(client):
     db.session.flush()
 
     issue = Issue(
-        student_id=reporter_student.id,
+        user_id=reporter_student_user.id,
         actor_public_id="seat-public-ref-123",
         teacher_id=teacher.id,
         join_code=join_code,

@@ -49,7 +49,7 @@ def _create_legacy_student(first_name: str, teacher: Admin, block: str = "A") ->
     )
     db.session.add(student)
     db.session.flush()
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
     return student
 
@@ -252,7 +252,7 @@ def test_claim_succeeds_when_seat_uses_last_initial_hash(client):
     student = db.session.get(Student, refreshed_seat.student_id)
     assert student is not None
     assert student.first_half_hash == hash_hmac("H2030".encode(), salt)
-    assert StudentTeacher.query.filter_by(student_id=student.id, teacher_id=teacher.id).count() == 1
+    assert StudentTeacher.query.filter_by(user_id=student_user.id, teacher_id=teacher.id).count() == 1
 
 
 def test_students_page_normalizes_legacy_claim_hashes(client):
@@ -289,7 +289,7 @@ def test_students_page_normalizes_legacy_claim_hashes(client):
     )
     db.session.add_all([seat, student])
     db.session.flush()
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     from app.routes.admin import _ensure_join_code_anchors
     class_id = _ensure_join_code_anchors(teacher.id, "LEGACY1", class_label="C")
     seat.class_id = class_id

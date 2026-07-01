@@ -155,8 +155,12 @@ def test_teacher_student_lifecycle(client, teacher, app):
 
         from app.models import ClassEconomy
         class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+        # Auto-injected Canonical User
+        regular_student_user = User(username_hash=f"auto_{regular_student.id}", username_lookup_hash=f"auto_l_{regular_student.id}", user_role=UserRole.STUDENT)
+        db.session.add(regular_student_user)
+        db.session.flush()
         regular_seat = Seat(
-            student_id=regular_student.id,
+            user_id=regular_student_user.id,
             class_id=class_row.class_id if class_row else None,
             join_code=join_code,
             block="Z",
@@ -170,7 +174,7 @@ def test_teacher_student_lifecycle(client, teacher, app):
 
         # Add StudentTeacher link
         from app.models import StudentTeacher
-        st1 = StudentTeacher(student_id=regular_student.id, teacher_id=teacher.id)
+        st1 = StudentTeacher(user_id=regular_student_user.id, teacher_id=teacher.id)
         db.session.add(st1)
 
         db.session.commit()
@@ -179,18 +183,14 @@ def test_teacher_student_lifecycle(client, teacher, app):
 
         # Teacher Student transaction
         t1 = Transaction(
-            student_id=student.id,
-            teacher_id=teacher.id,
-            join_code=join_code,
+            user_id=student_user.id,join_code=join_code,
             amount=100,
             type='deposit',
             timestamp=now_ts
         )
         # Regular Student transaction
         t2 = Transaction(
-            student_id=regular_student.id,
-            teacher_id=teacher.id,
-            join_code=join_code,
+            user_id=regular_student_user.id,join_code=join_code,
             amount=100,
             type='deposit',
             timestamp=now_ts
@@ -211,8 +211,12 @@ def test_teacher_student_lifecycle(client, teacher, app):
         db.session.add(lazy_student)
         db.session.commit()
 
+        # Auto-injected Canonical User
+        lazy_student_user = User(username_hash=f"auto_{lazy_student.id}", username_lookup_hash=f"auto_l_{lazy_student.id}", user_role=UserRole.STUDENT)
+        db.session.add(lazy_student_user)
+        db.session.flush()
         lazy_seat = Seat(
-            student_id=lazy_student.id,
+            user_id=lazy_student_user.id,
             class_id=class_row.class_id if class_row else None,
             join_code=join_code,
             block="Z",
@@ -225,7 +229,7 @@ def test_teacher_student_lifecycle(client, teacher, app):
         db.session.add(IdentityProfile(seat_id=lazy_seat.id, profile_type="student_claimed", first_name="Lazy", last_name="Lane"))
 
         # Add StudentTeacher link
-        st2 = StudentTeacher(student_id=lazy_student.id, teacher_id=teacher.id)
+        st2 = StudentTeacher(user_id=lazy_student_user.id, teacher_id=teacher.id)
         db.session.add(st2)
 
         db.session.commit()
@@ -251,7 +255,7 @@ def test_teacher_student_lifecycle(client, teacher, app):
 
         # 5. Collective Goal Exclusion
         goal_item = StoreItem(
-            teacher_id=teacher.id,
+            user_id=teacher.id,
             name="Pizza Party",
             price=1000,
             item_type='collective',
@@ -262,7 +266,7 @@ def test_teacher_student_lifecycle(client, teacher, app):
 
         # Teacher student buys it (should NOT contribute)
         si_teacher = StudentItem(correlation_id='corr_test', 
-            student_id=student.id,
+            user_id=student_user.id,
             store_item_id=goal_item.id,
             join_code=join_code,
             status='purchased'
@@ -278,7 +282,7 @@ def test_teacher_student_lifecycle(client, teacher, app):
 
         # Regular student buys it (should contribute)
         si_regular = StudentItem(correlation_id='corr_test', 
-            student_id=regular_student.id,
+            user_id=regular_student_user.id,
             store_item_id=goal_item.id,
             join_code=join_code,
             status='purchased'
@@ -333,15 +337,15 @@ def test_teacher_student_reuses_identity_across_join_codes(client, teacher, app)
         })
 
         student_link_count_after_a = StudentTeacher.query.filter_by(
-            student_id=student_a.id,
+            user_id=student_a_user.id,
             teacher_id=teacher.id,
         ).count()
         membership_count_after_a = ClassMembership.query.filter_by(
-            student_id=student_a.id,
+            user_id=student_a_user.id,
         ).count()
         user_a = (
             User.query.join(Seat, Seat.user_id == User.id)
-            .filter(Seat.student_id == student_a.id)
+            .filter(Seat.user_id == student_a.id)
             .first()
         )
         assert user_a is not None
@@ -365,7 +369,7 @@ def test_teacher_student_reuses_identity_across_join_codes(client, teacher, app)
 
         user_b = (
             User.query.join(Seat, Seat.user_id == User.id)
-            .filter(Seat.student_id == student_b.id)
+            .filter(Seat.user_id == student_b.id)
             .first()
         )
         assert user_b is not None
@@ -374,15 +378,15 @@ def test_teacher_student_reuses_identity_across_join_codes(client, teacher, app)
         assert student_a.id == student_b.id
         assert user_a.id == user_b.id
         assert StudentTeacher.query.filter_by(
-            student_id=student_a.id,
+            user_id=student_a_user.id,
             teacher_id=teacher.id,
         ).count() == student_link_count_after_a
         assert ClassMembership.query.filter_by(
-            student_id=student_a.id,
+            user_id=student_a_user.id,
         ).count() == membership_count_after_a + 1
 
         teacher_seats = (
-            Seat.query.filter_by(student_id=student_a.id, user_id=user_a.id)
+            Seat.query.filter_by(user_id=student_a_user.id, user_id=user_a.id)
             .order_by(Seat.join_code.asc())
             .all()
         )

@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 from dotenv import dotenv_values
 from app import create_app, db
-from app.models import Admin
+from app.models import User, UserRole, Admin
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DOTENV_PATH = PROJECT_ROOT / ".env"

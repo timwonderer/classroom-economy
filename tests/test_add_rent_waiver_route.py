@@ -6,6 +6,8 @@ from app import db
 from app.hash_utils import hash_username, get_random_salt
 from app.services import obligations_service
 from app.models import (
+    User,
+    UserRole,
     AnalyticsEvent,
     ClassEconomy,
     ClassMembership,
@@ -31,6 +33,10 @@ def _make_teacher_block(admin_id, block, join_code):
     db.session.add(economy)
     db.session.flush()
     db.session.add(ClassMembership(join_code=join_code, admin_id=admin_id, role="admin"))
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
     seat = Seat(
         class_id=economy.class_id,
         join_code=join_code,
@@ -78,15 +84,19 @@ def _make_student(suffix, block="A"):
 
 
 def _link_student(student, admin):
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=admin.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
     db.session.flush()
 
 
 def _make_student_seat(student, class_id, join_code, block="A"):
+    # Auto-injected Canonical User
+    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
+    db.session.flush()
     seat = Seat(
         class_id=class_id,
         join_code=join_code,
-        student_id=student.id,
+        user_id=student_user.id,
         role="student",
         block=block,
         block_identifier=block,

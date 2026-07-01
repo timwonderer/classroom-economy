@@ -197,7 +197,7 @@ def auth_student_context(app, client):
             teacher_block_claimed=True,
             create_seat=True,
         )
-        db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+        db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
 
         student_salt, student_username_hash, student_username_lookup_hash = build_hashed_username_fields("access_student")
         user = User(

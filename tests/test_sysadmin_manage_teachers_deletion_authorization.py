@@ -8,7 +8,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pyotp
 
 from app import db
-from app.models import Admin, Student, StudentTeacher, SystemAdmin
+from app.models import User, UserRole, Admin, Student, StudentTeacher, SystemAdmin
 from app.hash_utils import get_random_salt, hash_hmac
 
 
@@ -39,7 +39,7 @@ def _create_student_for_teacher(teacher: Admin, block: str = "A", first_name: st
     )
     db.session.add(student)
     db.session.flush()
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
     return student
 

@@ -51,8 +51,8 @@ def _create_student(first_name: str, teacher: Admin) -> Student:
     )
     db.session.add(student)
     db.session.flush()
-    db.session.add(StudentTeacher(student_id=student.id, teacher_id=teacher.id))
-    db.session.add(StudentBlock(student_id=student.id, period="1", join_code=f"T{teacher.id}S{student.id}"))
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+    db.session.add(StudentBlock(user_id=student_user.id, period="1", join_code=f"T{teacher.id}S{student.id}"))
     db.session.commit()
     create_class_scope(
         teacher=teacher,
@@ -108,7 +108,7 @@ def _build_student_detail_public_url(client, admin: Admin, student: Student) -> 
         Seat.query
         .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
         .filter(
-            Seat.student_id == student.id,
+            Seat.user_id == student.id,
             Seat.role == "student",
             Seat.public_id.isnot(None),
             ClassEconomy.user_id == admin.id,
@@ -173,7 +173,7 @@ def test_shared_student_accessible_to_multiple_teachers(client):
     shared_student = _create_student("Shared", teacher_a)
 
     # Grant teacher B access to the shared student without changing the primary teacher
-    db.session.add(StudentTeacher(student_id=shared_student.id, teacher_id=teacher_b.id))
+    db.session.add(StudentTeacher(user_id=shared_student_user.id, teacher_id=teacher_b.id))
     create_class_scope(
         teacher=teacher_b,
         teacher_user_id=teacher_b.user_id,
@@ -225,16 +225,16 @@ def test_student_detail_recovers_from_stale_class_context(client):
         create_seat=True,
     )
     db.session.flush()
-    seat_a = Seat.query.filter_by(student_id=student_a.id, join_code="JOINA", class_id=class_a.class_id).first()
+    seat_a = Seat.query.filter_by(user_id=student_a_user.id, join_code="JOINA", class_id=class_a.class_id).first()
     assert seat_a is not None
-    Seat.query.filter_by(student_id=student_b.id, join_code="JOINB", class_id=class_b.class_id).first()
+    Seat.query.filter_by(user_id=student_b_user.id, join_code="JOINB", class_id=class_b.class_id).first()
 
     # Teacher has two class contexts; stale session context points to the other student.
     from app.feats.base import FEATContext
     with FEATContext("FEAT-ADMN-001"):
         db.session.add(
             Transaction(
-                student_id=student_a.id,
+                user_id=student_a_user.id,
                 seat_id=seat_a.id,
                 amount=25,
                 type="bonus",
@@ -266,7 +266,7 @@ def test_enforce_daily_limits_ignores_other_join_code_activity(client):
     teacher_a, secret_a = _create_admin("teacher-a")
     teacher_b, _ = _create_admin("teacher-b")
     shared_student = _create_student("SharedLimit", teacher_a)
-    db.session.add(StudentTeacher(student_id=shared_student.id, teacher_id=teacher_b.id))
+    db.session.add(StudentTeacher(user_id=shared_student_user.id, teacher_id=teacher_b.id))
     class_scope_a = create_class_scope(
         teacher=teacher_a,
         teacher_user_id=teacher_a.user_id,
@@ -301,16 +301,16 @@ def test_enforce_daily_limits_ignores_other_join_code_activity(client):
             payroll_frequency_days=14,
         ),
         AttendanceSession(
-            student_id=shared_student.id,
-            seat_id=Seat.query.filter_by(student_id=shared_student.id, class_id=class_scope_b.class_id).first().id,
+            user_id=shared_student_user.id,
+            seat_id=Seat.query.filter_by(user_id=shared_student_user.id, class_id=class_scope_b.class_id).first().id,
             class_id=class_scope_b.class_id,
             period="A",
             started_at=datetime.now(timezone.utc) - timedelta(hours=2),
             start_reason="Start work",
         ),
         SeatAttendanceState(
-            student_id=shared_student.id,
-            seat_id=Seat.query.filter_by(student_id=shared_student.id, class_id=class_scope_b.class_id).first().id,
+            user_id=shared_student_user.id,
+            seat_id=Seat.query.filter_by(user_id=shared_student_user.id, class_id=class_scope_b.class_id).first().id,
             class_id=class_scope_b.class_id,
             period="A",
             is_active=True,
@@ -318,7 +318,7 @@ def test_enforce_daily_limits_ignores_other_join_code_activity(client):
 
         ),
         StudentBlock(
-            student_id=shared_student.id,
+            user_id=shared_student_user.id,
             period="A",
             join_code="JOINA",
             tap_enabled=True,
@@ -361,7 +361,7 @@ def test_enforce_daily_limits_taps_out_when_limit_reached_in_scope(client):
         create_student_membership=True,
     )
     db.session.flush()
-    seat = Seat.query.filter_by(student_id=student.id, join_code="JOINA", class_id=class_scope.class_id).first()
+    seat = Seat.query.filter_by(user_id=student_user.id, join_code="JOINA", class_id=class_scope.class_id).first()
     assert seat is not None
 
     db.session.add_all([
@@ -375,7 +375,7 @@ def test_enforce_daily_limits_taps_out_when_limit_reached_in_scope(client):
             payroll_frequency_days=14,
         ),
         AttendanceSession(
-            student_id=student.id,
+            user_id=student_user.id,
             seat_id=seat.id,
             class_id=class_scope.class_id,
             period="A",
@@ -383,7 +383,7 @@ def test_enforce_daily_limits_taps_out_when_limit_reached_in_scope(client):
             start_reason="Start work",
         ),
         SeatAttendanceState(
-            student_id=student.id,
+            user_id=student_user.id,
             seat_id=seat.id,
             class_id=class_scope.class_id,
             period="A",
@@ -391,7 +391,7 @@ def test_enforce_daily_limits_taps_out_when_limit_reached_in_scope(client):
             last_event_at=datetime.now(timezone.utc) - timedelta(hours=2),
         ),
         StudentBlock(
-            student_id=student.id,
+            user_id=student_user.id,
             period="A",
             join_code="JOINA",
             tap_enabled=True,
@@ -438,7 +438,7 @@ def test_student_detail_public_id_is_seat_scoped_for_shared_student(client):
     teacher_a, secret_a = _create_admin("teacher-seat-scope-a")
     teacher_b, _ = _create_admin("teacher-seat-scope-b")
     shared_student = _create_student("SharedSeatScope", teacher_a)
-    db.session.add(StudentTeacher(student_id=shared_student.id, teacher_id=teacher_b.id))
+    db.session.add(StudentTeacher(user_id=shared_student_user.id, teacher_id=teacher_b.id))
     class_b = create_class_scope(
         teacher=teacher_b,
         teacher_user_id=teacher_b.user_id,
@@ -456,8 +456,8 @@ def test_student_detail_public_id_is_seat_scoped_for_shared_student(client):
         ClassEconomy.user_id == teacher_a.id,
         ClassEconomy.class_id != class_b.class_id,
     ).first()
-    seat_a = Seat.query.filter_by(student_id=shared_student.id, class_id=class_a.class_id).first()
-    seat_b = Seat.query.filter_by(student_id=shared_student.id, class_id=class_b.class_id).first()
+    seat_a = Seat.query.filter_by(user_id=shared_student_user.id, class_id=class_a.class_id).first()
+    seat_b = Seat.query.filter_by(user_id=shared_student_user.id, class_id=class_b.class_id).first()
     assert seat_a is not None
     assert seat_b is not None
     assert seat_a.public_id != seat_b.public_id
