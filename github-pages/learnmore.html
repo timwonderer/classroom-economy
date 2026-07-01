@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Classroom Token Hub - V2 Architecture & Philosophy">
+    <title>Learn More - Classroom Token Hub</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,100..900;1,14..32,100..900&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" rel="stylesheet" >
+    <link href="./style.css" rel="stylesheet">
+    <style>
+        .v2-feature-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+            display: grid;
+            gap: 2rem;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+        }
+        .v2-feature-card {
+            background-color: var(--surface);
+            padding: 2.25rem;
+            border-radius: 2px;
+            box-shadow: var(--shadow);
+            border-top: 6px solid var(--secondary-color);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        .v2-feature-card .material-symbols-outlined {
+            color: var(--primary);
+            font-size: 2.5rem;
+            margin-bottom: 1.25rem;
+        }
+        .v2-feature-card h3 {
+            color: var(--text-primary);
+            font-size: 1.35rem;
+            margin-bottom: 0.85rem;
+            font-weight: 600;
+        }
+        .v2-feature-card p {
+            color: var(--text-secondary);
+            font-size: 1.05rem;
+            line-height: 1.6;
+            margin: 0 0 0.5rem 0;
+        }
+        .v2-feature-card .dev-note {
+            font-size: 0.9rem;
+            color: var(--text-light);
+            font-style: italic;
+            border-top: 1px solid var(--border-subtle);
+            padding-top: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        .philosophy-section {
+            margin-bottom: 4.5rem;
+        }
+        .philosophy-heading {
+            color: var(--guardian-gray);
+            font-size: 2.25rem;
+            margin-bottom: 1rem;
+            font-weight: 600;
+            border-bottom: 2px solid var(--border-subtle);
+            
+        }
+        .philosophy-text p {
+            font-size: 1.15rem;
+            color: var(--text-primary);
+            line-height: 1.75;
+            margin-bottom: 1.5rem;
+        }
+        .v2-badge {
+            background-color: var(--secondary-color);
+            color: var(--secondary-text);
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-full);
+            font-size: 0.9rem;
+            font-weight: 600;
+            margin-left: 0.75rem;
+            vertical-align: middle;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .tab-container {
+            margin-top: 1.5rem;
+        }
+        .tab-buttons {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            border-bottom: 2px solid var(--border-subtle);
+        }
+        .tab-btn {
+            background: transparent;
+            border: none;
+            font-size: 1.25rem;
+            font-weight: 400;
+            color: var(--text-secondary);
+            padding: 0.75rem 1.5rem;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.2s;
+            font-family: inherit;
+        }
+        .tab-btn#student-tab:hover {
+            background-color: var(--steward-blue);
+            color: white;
+        }
+
+        .tab-btn#teacher-tab:hover {
+            background-color: var(--advisor-green);
+            color: white;
+        }
+        .tab-btn#teacher-tab.active {
+            background-color: var(--advisor-green);
+            color: white;
+        }
+        .tab-btn#teacher-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background-color: var(--advisor-green);
+            border-radius: 4px 4px 0 0;
+        }
+        .tab-btn#student-tab.active {
+            background-color: var(--steward-blue);
+            color: white;
+        }
+        .tab-btn#student-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background-color: var(--steward-blue);
+            border-radius: 4px 4px 0 0;
+        }
+        
+        #teacher-features .v2-feature-card {
+            border-top-color: var(--advisor-green);
+        }
+        #teacher-features .v2-feature-card .material-symbols-outlined {
+            color: var(--advisor-green);
+        }
+        
+        #student-features .v2-feature-card {
+            border-top-color: var(--steward-blue);
+        }
+        #student-features .v2-feature-card .material-symbols-outlined {
+            color: var(--steward-blue);
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .v2-feature-list.grid-2x2 {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        @media (max-width: 768px) {
+            .v2-feature-list.grid-2x2 {
+                grid-template-columns: 1fr;
+            }
+        }
+        .floating-back-widget {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            z-index: 1000;
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 0.75rem 1.25rem;
+            border-radius: 50px;
+            box-shadow: var(--shadow-lg);
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            text-decoration: none;
+            font-weight: 500;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .floating-back-widget:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 15px 25px -5px rgba(0, 0, 0, 0.2);
+            color: white;
+        }
+        .floating-back-widget .material-symbols-outlined {
+            font-size: 1.5rem;
+        }
+    </style>
+</head>
+<body class="landing-page">
+    <main>
+        <section class="landing-hero">
+            <div class="landing-shell landing-hero-grid">
+                <div class="landing-brand">
+                    <div class="landing-brand-row">
+                        <span class="material-symbols-outlined" aria-hidden="true">local_atm</span>
+                        <span>Classroom</span>
+                    </div>
+                    <div class="landing-brand-row">
+                        <span class="material-symbols-outlined" aria-hidden="true">storefront</span>
+                        <span>Token</span>
+                    </div>
+                    <div class="landing-brand-row">
+                        <span class="material-symbols-outlined" aria-hidden="true">monitoring</span>
+                        <span>Hub</span>
+                    </div>
+                </div>
+                <div class="landing-welcome">
+                    <h1>Learn More</h1>
+                    <p>Explore what we have built and why we built it that way.</p>
+                  
+                    <a href="v2transition.html" target="_self" class="floating-back-widget">
+                        <span class="material-symbols-outlined" aria-hidden="true">arrow_circle_left</span>
+                        <span>Return to Transition Page</span>
+                    </a>
+                </div>
+            </div>
+        </section>
+
+        <section class="landing-content">
+            <div class="landing-shell">
+                <div class="philosophy-section">
+                    <h2 class="philosophy-heading">Why Classroom Token Hub was built</h2>
+                    <div class="philosophy-text">
+                        <p>Classroom Token Hub was originally developed in 2024 as a personal project to manage our classroom economy. While there are a few other existing platforms, we could not find one that had all the features we needed along with the transparency we wanted our students to see. We also found most platforms designed their user interface to be either too childish or too sterile.</p>
+                        <p>We started with a simple question: <em>How can we design a classroom economy system that respects teacher agency, follows clear and explicit rules, provides meaningful guidance, and protects user privacy?</em></p>
+                        <p>That question turned out to be more challenging to solve than we had anticipated. That question is also what guides the development of Classroom Token Hub.</p>
+                       
+                    </div>
+                </div>
+
+                <div class="philosophy-section">
+                    <h2 class="philosophy-heading">Design Principles</h2>
+                    <div class="philosophy-text">
+                        <p>Our design is guided by three core principles that ensure a balance between educational value and operational reliability.</p>
+                    </div>
+                    <ul class="v2-feature-list mt-4">
+                        <li class="v2-feature-card" style="background-color: var(--advisor-green);">
+                            <h3 class="text-light">Privacy First</h3>
+                            <p class="text-light">If we don't need it, we don't ask for it. If we don't use it, we remove it. Classroom Token Hub is designed to operate with the least amount of personal data as possible while maintaining its usability.</p>
+                        </li>
+                        <li class="v2-feature-card" style="background-color: var(--steward-blue);">
+                            <h3 class="text-light">Teacher Agency</h3>
+                            <p class="text-light">Teachers are the sole authority within a classroom. Classroom Token Hub is designed to support teachers' decision-making by providing recommended values and suggestions. However, it does not apply those decisions for the teachers, nor does it override their decisions.</p>
+                        </li>
+                        <li class="v2-feature-card" style="background-color: var(--guardian-gray);">
+                            <h3 class="text-light">Deterministic Architecture</h3>
+                            <p class="text-light">We don't believe in mutations without trace or reason. When something changes, it is always logged, tagged, and explained in Classroom Token Hub. This means you will be able to explain to your students why their account balance has changed.</p>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="philosophy-section">
+                    <h2 class="philosophy-heading">Core Features</h2>
+                    <div class="philosophy-text">
+                        <p>Just because a feature can exist doesn't mean it should exist. Classroom Token Hub designed the system to be deterministic and transparent. This means teachers can spend more time teaching and less time figuring out what went wrong.</p>
+                    </div>
+                    
+                    <div class="tab-container">
+                        <div class="tab-buttons" role="tablist">
+                            <button class="tab-btn active" role="tab" aria-selected="true" aria-controls="teacher-features" id="teacher-tab">For Teachers</button>
+                            <button class="tab-btn" role="tab" aria-selected="false" aria-controls="student-features" id="student-tab">For Students</button>
+                        </div>
+
+                        <div class="tab-content active" id="teacher-features" role="tabpanel" aria-labelledby="teacher-tab">
+                            <ul class="v2-feature-list mt-4">
+                                <li class="v2-feature-card">
+                                    <span class="material-symbols-outlined " aria-hidden="true">payments</span>
+                                    <h3 style="color: var(--advisor-green);">Attendance-Based Payroll System</h3>
+                                    <p>Configure pay rate, frequency, and limits. Run payroll automatically or manually based on recorded active time.</p>
+                                </li>
+                                <li class="v2-feature-card">
+                                    <span class="material-symbols-outlined" aria-hidden="true">insights</span>
+                                    <h3 style="color: var(--advisor-green);">Economic Balance and Insight</h3>
+                                    <p>Helpful metrics to understand the health of your classroom economy. Adjust economic pressure and rebalance pricing with one click.</p>
+                                </li>
+                                <li class="v2-feature-card">
+                                    <span class="material-symbols-outlined" aria-hidden="true">home</span>
+                                    <h3 style="color: var(--advisor-green);">Obligations Management</h3>
+                                    <p>Set up recurring rent and optional insurance products to bundle class perks, manage risks, and encourage prioritization.</p>
+                                </li>
+                                
+                                <li class="v2-feature-card">
+                                    <span class="material-symbols-outlined" aria-hidden="true">storefront</span>
+                                    <h3 style="color: var(--advisor-green);">Classroom Stores</h3>
+                                    <p>Create and manage different types of store items. Set expirations for limited-time offers and track all redemptions.</p>
+                                </li>
+                                <li class="v2-feature-card">
+                                    <span class="material-symbols-outlined" aria-hidden="true">badge</span>
+                                    <h3 style="color: var(--advisor-green);">Hall Pass Management</h3>
+                                    <p>Assign starting hall pass, set limits on queue and simultaneous passes, monitor student status and movements, provide external verification.</p>
+                                </li>
+                                <li class="v2-feature-card">
+                                    <span class="material-symbols-outlined" aria-hidden="true">monitoring</span>
+                                    <h3 style="color: var(--advisor-green);">Banking and Transactions</h3>
+                                    <p>Manage savings interest rates, set rules on fees and penalties, and examine and manage all transactions.</p>
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div class="tab-content" id="student-features" role="tabpanel" aria-labelledby="student-tab">
+                            <ul class="v2-feature-list mt-4">
+                                <li class="v2-feature-card">
+                                    <span class="material-symbols-outlined" aria-hidden="true">account_balance</span>
+                                    <h3 style="color: var(--steward-blue);">Individual Bank Accounts</h3>
+                                    <p>Receive payroll, transfer between accounts, earn interest, and examine transaction history. The savings account also acts as overdraft protection, if enabled.</p>
+                                </li>
+                                <li class="v2-feature-card">
+                                    <span class="material-symbols-outlined" aria-hidden="true">schedule</span>
+                                    <h3 style="color: var(--steward-blue);">Work and Productivity</h3>
+                                    <p>Clock in daily to receive your classroom currency at a set interval set by your teacher. You can also manage your hall pass usage and request to use a hall pass.</p>
+                                </li>
+                                <li class="v2-feature-card">
+                                    <span class="material-symbols-outlined" aria-hidden="true">storefront</span>
+                                    <h3 style="color: var(--steward-blue);">Classroom Store</h3>
+                                    <p>Use your earned classroom currency to purchase items, pay for obligations, or even pitch in to unlock a collective goal item.</p>
+                                </li>
+                                <li class="v2-feature-card">
+                                    <span class="material-symbols-outlined" aria-hidden="true">shield</span>
+                                    <h3 style="color: var(--steward-blue);">Insurance & Claims</h3>
+                                    <p>Learn real-world risk management by purchasing optional insurance policies to cover unexpected classroom fines.</p>  
+                                </li>
+                                <li class="v2-feature-card">
+                                    <span class="material-symbols-outlined" aria-hidden="true">phone_iphone</span>
+                                    <h3 style="color: var(--steward-blue);">Mobile Friendly App</h3>
+                                    <p>Installable directly on iOS and Android devices. Keep track of your finances on the go with a seamless mobile experience.</p>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="philosophy-section">
+                    <h2 class="philosophy-heading">Under the Surface</h2>
+                    <div class="philosophy-text">
+                            <p>Surprises are great for parties, but not for software that classrooms depend on. Born out of real-world classroom settings with hundreds of curious minds, we have designed our system to expect chaos while staying calm. We accomplish this by enforcing the mantra "One domain, one authority" so every action has an actor.</p>
+                        </div>
+
+                    <ul class="v2-feature-list mt-4">
+                        <li class="v2-feature-card">
+                            <span class="material-symbols-outlined" aria-hidden="true">add_row_above</span>
+                            <h3>Ledger-Based Records</h3>
+                            <p>Every transaction is recorded permanently and can be traced back to its source. Records are protected against accidental modification and unauthorized tampering.</p>
+
+                        </li>
+                        <li class="v2-feature-card">
+                            <span class="material-symbols-outlined" aria-hidden="true">fence</span>
+                            <h3>Strict Classroom Boundaries</h3>
+                            <p>When a teacher creates a class, a unique Class ID is generated as the canonical reference for the class. This Class ID acts as a world barrier that defines the scope of the class. In effect, each class acts as an independent economic universe that has no outside awareness.</p>
+                        </li>
+                        <li class="v2-feature-card">
+                            <span class="material-symbols-outlined" aria-hidden="true">identity_platform</span>
+                            <h3>Capabilities-Based Access Control</h3>
+                            <p>In Classroom Token Hub, all actions require explicit context to be present before proceeding. If the context lookup fails, the action is rejected. We do not infer user identity from other data sources.</p>
+                        </li>
+                        <li class="v2-feature-card">
+                            <span class="material-symbols-outlined" aria-hidden="true">lock_person</span>
+                            <h3>Single-Session Enforcement</h3>
+                            <p>Classroom Token Hub is designed to only allow one active session at a time by assigning each new session a nonce. When a student attempts to open a session on another device or window, the previous session nonce is automatically invalidated.</p>
+                        </li>
+                        <li class="v2-feature-card">
+                            <span class="material-symbols-outlined" aria-hidden="true">delete_history</span>
+                            <h3>No Archival Records</h3>
+                            <p>When a teacher deletes their class, all data associated with that class is permanently deleted. We do not keep any records of past classes or transactions. Students will continue to have access in the app through other classes. If the student loses their last associated class, their account will be automatically deleted.</p>
+                        </li>
+                        <li class="v2-feature-card">
+                            <span class="material-symbols-outlined" aria-hidden="true">verified_user</span>
+                            <h3>One Account, Multiple Classes</h3>
+                            <p>Students only need a single login account to join multiple classes with different teachers. Each class economy runs independently, but logging in is simple.</p>
+
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="philosophy-section">
+                    <h2 class="philosophy-heading">Yes, you too can troubleshoot</h2>
+                    <div class="philosophy-text">
+                        <p>Classroom Token Hub operates closer to a self-serve system than a typical educational technology platform. While we do not have a dedicated customer support team like other platforms, we have built the tools you need to troubleshoot efficiently and effectively.</p>
+                    </div>
+                    <ul class="v2-feature-list mt-4">
+                        <li class="v2-feature-card">
+                            <span class="material-symbols-outlined" aria-hidden="true">right_panel_open</span>
+                            <h3>Feature-Specific Help Drawer</h3>
+                            <p>All major feature pages have a Need Help button that opens a right drawer with context-specific help. This drawer is designed for quick reference and troubleshooting. A full guide for each feature is available and reachable via the link attached to the page.</p>
+                        </li>   
+                        <li class="v2-feature-card">
+                            <span class="material-symbols-outlined" aria-hidden="true">quick_reference</span>
+                            <h3>Complete User Documentation Site</h3>
+                            <p>In addition to help drawers, we maintain a comprehensive documentation site that covers every feature in detail. This site is regularly updated to reflect new features and improvements. The documentation site is also routinely tested for broken links and outdated information.</p>
+                        </li>
+                        <li class="v2-feature-card">
+                            <span class="material-symbols-outlined" aria-hidden="true">bug_report</span>
+                            <h3>Teacher-Mediated Ticket Escalation</h3>
+                            <p>When students encounter issues, they will first file a support ticket. The support ticket is routed to the teacher for triage first. If the teacher cannot resolve the issue, they can then escalate the ticket to our support team. This ensures that the teacher is always in the loop and protects student privacy.</p>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="philosophy-section">
+                    <h2 class="philosophy-heading">Centralized Economic Engine</h2>
+                    <div class="philosophy-text">
+                        <p>Classroom economies naturally drift as attendance patterns, spending habits, pricing, and participation change. The Centralized Economic Engine helps teachers monitor economic health, identify imbalances, and maintain a fair and sustainable classroom economy.</p>
+                    </div>
+                    <ul class="v2-feature-list grid-2x2 mt-4">
+                        <li class="v2-feature-card">
+                            <span class="material-symbols-outlined" aria-hidden="true">rocket_launch</span>
+                            <h3 class="mb-0">Classroom Wage Index (CWI)<sup>TM</sup></h3>
+                            <p class="mt-1 fw-bold" style="font-size:1rem; color:var(--advisor-green)">What is the maximum earning potential per week?</p>
+                            <p>CWI is the economic reference point for your classroom economy. It measures the weekly earning potential of a student with perfect attendance and provides a consistent benchmark for pricing, rent, rewards, and financial planning.</p>
+                            <p>This concept was developed to address one of the most challenging aspects of managing a dynamic classroom economy: <em><strong>How much do I charge for certain things? What does a dollar actually represent in my classroom economy?</strong></em> </p>
+                            <p>Because worrying about pricing is the last thing a teacher wants to do.</p>
+                        </li>
+                        <li class="v2-feature-card">
+                            <span class="material-symbols-outlined" aria-hidden="true">manage_history</span>
+                            <h3 class="mb-0">Economic Policy and Balancer Tool</h3>
+                             <p class="mt-1 fw-bold" style="font-size:1rem; color:var(--advisor-green)">How much economic pressure should students feel?</p>
+                            <p>Riding on the foundation of CWI, the Economic Policy tool allows teachers to set the macroeconomic pressure of the economy by adjusting the ratio of spending to CWI to create a comfortable, default, and tight economy.</p>
+                            <p>In addition, the Balance Tool helps teacher fix any pricing that were out of alignment with the current economic pressure to ensure the functioning of the economy.</p>
+                        </li>
+                        <li class="v2-feature-card">
+                            <span class="material-symbols-outlined" aria-hidden="true">data_thresholding</span>
+                            <h3 class="mb-0">Classroom Economics Indicators</h3>
+                            <p class="mt-1 fw-bold" style="font-size:1rem; color:var(--advisor-green)">Is my economy thriving, struggling, or stalling?</p>
+                            <p>If CWI and Economic Policy represents the monetary dimension of the economy, the Economic Indicators surface student behaviors as a result of those policies.</p>
+                            <p>Teacher can view indicators such as participation rate, money velocity, earning potential, and budget survival rates with clear explanations on why they matter, and suggested actions.</p>
+                        </li>
+                        <li class="v2-feature-card">
+                            <span class="material-symbols-outlined" aria-hidden="true">verified_user</span>
+                            <h3 class="mb-0">Economic Invariant Checker</h3>
+                            <p class="mt-1 fw-bold" style="font-size:1rem; color:var(--advisor-green)">Can we trace all the money in the economy?</p>
+                            <p>Some might call this overkill, but Classroom Token Hub treats transaction records and transactional lineage very seriously. We have developed a tool that runs an automated suite of deterministic checks to guarantee the mathematical and logical integrity of your classroom economy.</p>
+                            <p>When inconsistencies are detected, the system will automatically report them visibly and publicly on our status page.</p>
+                        </li>
+                    </ul>
+                </div>
+                <div class="philosophy-section">
+                    <h2 class="philosophy-heading mb-0">We are not an edtech company</h2>
+                     
+                    
+                    <div class="philosophy-text">
+                        <p class="mt-1 fw-bold"><em>"We" is just a single full-time classroom teacher who believes in making something better for other teachers.<br> The royal "We" is just convention.</em></p>
+                        <p>Classroom Token Hub came into existence because a full-time high school teacher got annoyed with the existing classroom economy ecosystem and thought, <em>"fine, I will build one myself."</em></p>
+                        <p>During the first year of development, this platform was tested in real classrooms with real students. We encountered countless edge cases, failed assumptions, migration challenges, and more than a few bugs. Each one helped shape the system into what it is today. At the same time, our architectural sense got stronger, cleaner, and more refined. All the features you see today are the product of real-world student adversarial testing in a high school setting.</p>
+                        <p>We hope you find this tool useful for your own classroom use. We built Classroom Token Hub to be <strong><em>your classroom economy system, reimagined.</em></strong></p>
+                    </div>
+                </div>
+                </div>
+
+            </div>
+        </section>
+    </main>
+
+    <footer class="landing-footer">
+        <div class="landing-shell landing-footer-grid">
+            <div class="landing-footer-links">
+                <a href="https://github.com/timwonderer/classroom-economy" target="_blank" rel="noopener noreferrer">Project Repository</a>
+                <a href="https://github.com/timwonderer/classroom-economy/blob/main/CHANGELOG.md" target="_blank" rel="noopener noreferrer">Changelog</a>
+            </div>
+            <div class="landing-footer-links">
+                <a href="https://github.com/timwonderer/classroom-economy/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener noreferrer">Contributing</a>
+                <a href="https://polyformproject.org/licenses/noncommercial/1.0.0" target="_blank" rel="noopener noreferrer">License</a>
+                <a href="https://github.com/timwonderer/classroom-economy/issues" target="_blank" rel="noopener noreferrer">Issue Tracker</a>
+            </div>
+            <div class="landing-footer-meta">
+                <p>&copy; <span id="current-year"></span> Classroom Token Hub. Licensed under PolyForm Noncommercial v1.0.0</p>
+                <p><em>This app is developed, operated, maintained, and self-funded by a full-time high school teacher. As such, we do not display advertisements, use third-party tracking tools, or collect information about you unless it is necessary for the operation of the platform.</em></p>
+            </div>
+        </div>
+    </footer>
+    <script>
+        (function () {
+            var yearElement = document.getElementById('current-year');
+            if (yearElement) {
+                yearElement.textContent = new Date().getFullYear();
+            }
+        })();
+
+        // Tab Switching Logic
+        document.addEventListener('DOMContentLoaded', function() {
+            const tabs = document.querySelectorAll('.tab-btn');
+            const contents = document.querySelectorAll('.tab-content');
+
+            tabs.forEach(tab => {
+                tab.addEventListener('click', () => {
+                    // Remove active class from all tabs and contents
+                    tabs.forEach(t => {
+                        t.classList.remove('active');
+                        t.setAttribute('aria-selected', 'false');
+                    });
+                    contents.forEach(c => {
+                        c.classList.remove('active');
+                    });
+
+                    // Add active class to clicked tab and its target content
+                    tab.classList.add('active');
+                    tab.setAttribute('aria-selected', 'true');
+                    const targetId = tab.getAttribute('aria-controls');
+                    document.getElementById(targetId).classList.add('active');
+                });
+            });
+        });
+    </script>
+</body>
+</html>
