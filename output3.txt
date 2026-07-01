@@ -1,4 +1,0 @@
-tests/test_api_tenancy.py DEBUG get_tap_entries: context=CanonicalContext(user_id=1, class_id='ba6deccd-a71b-4ec9-9ad8-20bcf5669690', seat_id=1, actor_role='teacher'), active_class_id=ba6deccd-a71b-4ec9-9ad8-20bcf5669690
-DEBUG get_tap_entries: scoped_admin_id=1
-DEBUG get_tap_entries: has_class_scope=True
-DEBUG get_tap_entries: seat_id=2
