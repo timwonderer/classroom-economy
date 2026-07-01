@@ -8,7 +8,7 @@ A classroom management platform that uses a simulated token economy to drive stu
 
 > [!IMPORTANT]
 >
-> Current deployed version is v1.10, which will reach end-of-service on June 30, 2026. The target public release for v2.0 is scheduled for late July 2026 or early August 2026.
+> Classroom Token Hub v1 is now deprecated. The current web app is inaccessible until official v2.0 launch in August 2026.
 >
 > This branch represents the most up to date v2.0 development. For v1 Legacy codes, see branch [legacy_v1.10.0](https://github.com/timwonderer/classroom-token-hub/tree/legacy_v1.10.0)
 
@@ -146,7 +146,7 @@ Navigate to `http://localhost:5000`.
 ./scripts/setup-hooks.sh
 ```
 
-Enables branch-aware database switching (`codex/v2.0` / `codex/v2-*` → `classroom_economy`, other branches → `production_dev`) and pre-push migration-head safety checks.
+pre-push migration-head safety checks.
 
 ---
 
