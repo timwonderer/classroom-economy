@@ -14,8 +14,8 @@ Status legend:
 - [ ] Delete dead legacy student-only helpers in [`app/routes/recovery.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/recovery.py)
 - [ ] Delete legacy Student-table-only branches in [`app/routes/student.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/student.py)
 - [ ] Delete dead legacy query helpers in [`app/routes/admin.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/admin.py)
-- [~] Delete legacy-compatibility-only tests in [`tests/test_multi_teacher_hardening.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_multi_teacher_hardening.py)
-- [~] Delete legacy-compatibility-only tests in [`tests/test_admin_multi_tenancy.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_admin_multi_tenancy.py)
+- [x] Delete legacy-compatibility-only tests in [`tests/test_multi_teacher_hardening.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_multi_teacher_hardening.py)
+- [x] Delete legacy-compatibility-only tests in [`tests/test_admin_multi_tenancy.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_admin_multi_tenancy.py)
 - [ ] Delete legacy-compatibility-only tests in [`tests/test_query_inversion_guard.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_query_inversion_guard.py)
 
 ## Swap
@@ -48,9 +48,9 @@ Status legend:
 
 ## Rewrite
 
-- [ ] Redesign schema-backed `student_id` columns/relationships in [`app/models.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/models.py)
-- [ ] Rewrite deletion pipeline around Seat/IdentityProfile ownership in [`app/utils/student_deletion.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/utils/student_deletion.py)
-- [ ] Rewrite deletion orchestration around canonical identity in [`app/utils/deletion.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/utils/deletion.py)
+- [~] Redesign schema-backed `student_id` columns/relationships in [`app/models.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/models.py)
+- [~] Rewrite deletion pipeline around Seat/IdentityProfile ownership in [`app/utils/student_deletion.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/utils/student_deletion.py)
+- [~] Rewrite deletion orchestration around canonical identity in [`app/utils/deletion.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/utils/deletion.py)
 - [ ] Rewrite student-contract tests that still depend on legacy schema semantics in [`tests/test_rent_item_types.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_rent_item_types.py)
 - [ ] Rewrite student-contract tests that still depend on `StudentBlock` in [`tests/test_class_deletion.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_class_deletion.py)
 - [ ] Rewrite tests that still call `Student` methods directly in [`tests/test_transaction_amount_null.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_transaction_amount_null.py)
