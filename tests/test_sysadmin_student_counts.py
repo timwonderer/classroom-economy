@@ -11,7 +11,6 @@ import pyotp
 
 from app import app, db
 from app.models import User, UserRole, Admin, Student, StudentTeacher, SystemAdmin
-from app.hash_utils import get_random_salt, hash_username
 
 
 def _create_sysadmin(username: str = "sysadmin"):
@@ -42,6 +41,8 @@ def _create_student(first_name: str, primary_teacher: Admin = None, linked_teach
         linked_teachers: List of teachers to link via student_teachers
     """
     student = make_student_identity(block="A", first_name=first_name, last_name="X")
+    student_user = db.session.get(User, student.user_id)
+    assert student_user is not None
     
     # Add student_teachers links
     if linked_teachers:
@@ -127,6 +128,8 @@ def test_sysadmin_counts_students_with_only_links(client):
     
     # Create student with link but no teacher_id (future state after migration)
     student = make_student_identity(block="A", first_name="NoOwner", last_name="X")
+    student_user = db.session.get(User, student.user_id)
+    assert student_user is not None
     
     # Add link to teacher_a
     db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher_a.id))
