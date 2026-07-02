@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.extensions import db
-from app.models import ClassEconomy, ClassMembership, Seat, IdentityProfile, User, UserRole, Student, StudentTeacher, TapEvent
+from app.models import ClassEconomy, ClassMembership, Seat, IdentityProfile, User, UserRole, StudentTeacher, TapEvent
 from tests.helpers.v2_fixtures import make_admin
 from tests.helpers.class_scope import make_student_identity
 
@@ -35,6 +35,13 @@ def _setup_scoped_student(with_seat: bool = True):
     db.session.add(profile)
     db.session.flush()
     student = make_student_identity(first_name="Tap", last_name="I", block="A", claimed=True)
+    student_user = User(
+        username_hash=f"tap_{student.id}",
+        username_lookup_hash=f"tap_lookup_{student.id}",
+        user_role=UserRole.STUDENT,
+    )
+    db.session.add(student_user)
+    db.session.flush()
 
     db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.add(
@@ -48,10 +55,6 @@ def _setup_scoped_student(with_seat: bool = True):
 
     seat = None
     if with_seat:
-        # Auto-injected Canonical User
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-        db.session.add(student_user)
-        db.session.flush()
         seat = Seat(
             user_id=student_user.id,
             class_id=cls.class_id,
