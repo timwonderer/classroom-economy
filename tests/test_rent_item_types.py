@@ -1698,7 +1698,7 @@ def test_use_item_converts_legacy_hall_pass_inventory_row(client, teacher_admin,
 def test_shop_displays_rent_perk_price_as_free(client, teacher_admin, student_in_class):
     """Rent perk items with active free uses should display $0 pricing in the student shop."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
 
@@ -1715,7 +1715,7 @@ def test_shop_displays_rent_perk_price_as_free(client, teacher_admin, student_in
     db.session.flush()
 
     # Active rent-granted uses for this item
-    db.session.add(StudentItem(seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, correlation_id='corr_test', 
+    db.session.add(StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id,
         store_item_id=store_item.id,
         status='purchased',
@@ -1724,9 +1724,6 @@ def test_shop_displays_rent_perk_price_as_free(client, teacher_admin, student_in
         join_code='JOINCODE123',
     ))
     db.session.commit()
-
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
@@ -1750,7 +1747,7 @@ def test_shop_displays_rent_perk_price_as_free(client, teacher_admin, student_in
 def test_shop_displays_rent_perk_price_as_free_when_rent_paid_without_grant_row(client, teacher_admin, student_in_class):
     """Shop should display per-use rent perk as $0 for paid-rent students even when grant row is missing."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     
     class_econ = ClassEconomy.query.first()
@@ -1811,9 +1808,6 @@ def test_shop_displays_rent_perk_price_as_free_when_rent_paid_without_grant_row(
     ))
     db.session.commit()
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1835,7 +1829,9 @@ def test_shop_displays_rent_perk_price_as_free_when_rent_paid_without_grant_row(
 
 def test_admin_store_hides_delete_button_for_rent_linked_items(client, teacher_admin, admin_class_scope):
     """Rent-linked items should hide delete even when legacy is_rent_linked flag is stale."""
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
+    seat = Seat.query.filter_by(class_id=admin_class_scope.class_id).first()
+    student_user = db.session.get(User, seat.user_id) if seat else None
+    assert seat is not None and student_user is not None
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
@@ -2298,7 +2294,7 @@ def test_rent_payment_hall_pass_top_off_recovers_from_stale_counter(client, teac
 def test_waiver_does_not_grant_rent_perks_in_shop(client, teacher_admin, student_in_class, monkeypatch):
     """A waiver allows access but should not grant paid-rent perks."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     fixed_now = datetime.now(timezone.utc)
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
@@ -2369,9 +2365,6 @@ def test_waiver_does_not_grant_rent_perks_in_shop(client, teacher_admin, student
     ))
     db.session.commit()
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -2407,7 +2400,7 @@ def test_waiver_does_not_grant_rent_perks_in_shop(client, teacher_admin, student
 def test_shop_keeps_rent_perks_when_payment_exists_alongside_waiver(client, teacher_admin, student_in_class, monkeypatch):
     """A real payment should still grant perks even if a waiver also exists."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     fixed_now = datetime.now(timezone.utc)
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
 
@@ -2479,9 +2472,6 @@ def test_shop_keeps_rent_perks_when_payment_exists_alongside_waiver(client, teac
         periods_count=1,
     ))
     db.session.commit()
-
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
