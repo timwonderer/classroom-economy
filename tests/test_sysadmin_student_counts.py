@@ -36,7 +36,7 @@ def _create_student(first_name: str, primary_teacher: Admin = None, linked_teach
     Create a student for testing.
     
     Args:
-        first_name: Student's first name
+        first_name: seat-scoped identity's first name
         primary_teacher: Primary owner (sets teacher_id)
         linked_teachers: List of teachers to link via student_teachers
     """

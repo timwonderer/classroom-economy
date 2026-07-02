@@ -3,10 +3,10 @@ Tests for the student account recovery flow.
 
 The simplified recovery flow:
   Step 1 — Teacher generates a reset code for the student
-  Step 2 — Student enters join_code + reset_code at /recovery/lookup
+  Step 2 — seat-scoped identity enters join_code + reset_code at /recovery/lookup
             (credentials cleared here; first_name/last_initial unchanged)
-  Step 3 — Student creates a new username at /student/create-username
-  Step 4 — Student sets new PIN + passphrase at /student/setup-pin-passphrase
+  Step 3 — seat-scoped identity creates a new username at /student/create-username
+  Step 4 — seat-scoped identity sets new PIN + passphrase at /student/setup-pin-passphrase
 
 No PII re-entry is required. Identity (first_name, last_initial) is preserved
 from the teacher-managed roster and is not editable by the student.
@@ -88,7 +88,7 @@ def recovery_data(client):
 # ------------------------------------------------------------------
 
 def test_teacher_generates_reset_code(client, recovery_data):
-    """Teacher clicks 'Reset Student Account' -> system generates code."""
+    """Teacher clicks reset account -> system generates code."""
     teacher = recovery_data["teacher"]
     student = recovery_data["student"]
 
@@ -136,7 +136,7 @@ def test_multiple_resets_invalidate_prior_codes(client, recovery_data):
 
 
 # ------------------------------------------------------------------
-# Step 2 — Student Enters Join Code + Reset Code
+# Step 2 — seat-scoped identity Enters Join Code + Reset Code
 # ------------------------------------------------------------------
 
 def test_student_lookup_success(client, recovery_data):
