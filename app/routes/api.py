@@ -318,7 +318,7 @@ def _admin_has_class_scope(admin_id, class_id):
     ).scalar()
 
 
-def _apply_admin_class_scope(query, model, admin_id, accessible_student_ids_query=None):
+def _apply_admin_class_scope(query, model, admin_id):
     """Apply class_id tenant scoping. In V2, class_id is the primary anchor."""
     class_id_scope, has_class_scope = _get_teacher_class_scope(admin_id)
     if has_class_scope:
@@ -326,8 +326,6 @@ def _apply_admin_class_scope(query, model, admin_id, accessible_student_ids_quer
             model.class_id.isnot(None),
             model.class_id.in_(sa.select(class_id_scope)),
         )
-    if accessible_student_ids_query is not None:
-        return query.filter(model.student_id.in_(accessible_student_ids_query))
     return query
 
 
