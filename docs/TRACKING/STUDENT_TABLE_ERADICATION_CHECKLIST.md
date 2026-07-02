@@ -64,7 +64,7 @@ Status legend:
 - [ ] Rewrite sysadmin student counting tests in [`tests/test_sysadmin_student_counts.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_sysadmin_student_counts.py)
 - [ ] Rewrite admin tenancy tests that still rely on student-shaped fixtures in [`tests/test_admin_tenancy.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_admin_tenancy.py)
 - [ ] Rewrite attendance/history tests that still use legacy `student_id` contracts in [`tests/test_api_attendance_history.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_api_attendance_history.py)
-- [ ] Rewrite namespace-shared student tests that still encode multi-link semantics in [`tests/test_navigation_integrity.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_navigation_integrity.py)
+- [x] Rewrite namespace-shared student tests that still encode multi-link semantics in [`tests/test_navigation_integrity.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_navigation_integrity.py)
 
 ## Progress Checks
 
