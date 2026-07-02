@@ -5,7 +5,7 @@ from itsdangerous import URLSafeTimedSerializer
 
 from app import db
 from app.models import (
-    Admin, Student, Transaction, AttendanceSession,
+    Admin, Transaction, AttendanceSession,
     PayrollSettings, Seat, ClassEconomy, SeatAttendanceState,
     IdentityProfile, User,
 )
@@ -35,34 +35,19 @@ def _create_admin(username: str) -> tuple:
 
 
 def _create_student(first_name: str, teacher_user: User) -> tuple:
-    """Create Student + User + class scope. Returns (student, student_user, class_row)."""
-    salt = get_random_salt()
-    shared_hash = hash_username(first_name.lower(), salt)
+    """Create canonical student identity + class scope. Returns (seat, student_user, class_row)."""
     student_user = User(
         user_role="student",
-        username_hash=shared_hash,
-        username_lookup_hash=f"stu_l_{first_name}_{salt[:8]}",
+        username_hash=f"student_{first_name.lower()}_hash",
+        username_lookup_hash=f"student_{first_name.lower()}_lookup",
     )
     db.session.add(student_user)
     db.session.flush()
 
-    student = Student(
-        first_name=first_name,
-        last_initial="A",
-        block="A",
-        salt=salt,
-        username_hash=shared_hash,
-        pin_hash="pin",
-    )
-    db.session.add(student)
-    db.session.flush()
-
-    join_code = f"T{teacher_user.id}S{student.id}"
     class_row = create_class_scope(
         teacher=None,
         teacher_user_id=teacher_user.id,
-        join_code=join_code,
-        student=student,
+        join_code=f"T{teacher_user.id}S{student_user.id}",
         student_user_id=student_user.id,
         block="A",
         display_name="A",
@@ -70,20 +55,17 @@ def _create_student(first_name: str, teacher_user: User) -> tuple:
         create_claimed_teacher_block=True,
         teacher_block_claimed=True,
     )
-    db.session.flush()
 
-    # Link student.identity_id to the seat's IdentityProfile
     seat = Seat.query.filter_by(
         user_id=student_user.id, class_id=class_row.class_id, role="student"
     ).first()
     if seat:
         profile = IdentityProfile.query.filter_by(seat_id=seat.id).first()
         if profile:
-            student.identity_id = profile.id
             db.session.flush()
 
     db.session.commit()
-    return student, student_user, class_row
+    return seat, student_user, class_row
 
 
 def _login_admin(client, user: User):

@@ -27,7 +27,7 @@ import pyotp
 from app.extensions import db, limiter
 from app.feats.base import feat_shell
 from app.models import (
-    Seat, SystemAdmin, SystemAdminCredential, Admin, Student, ErrorLog,
+    Seat, SystemAdmin, SystemAdminCredential, Admin, ErrorLog,
     Transaction, TransactionStatus, TapEvent, HallPassLog, RentPayment,
     InsuranceClaim, UserReport,
     FeatureSettings, RentSettings, BankingSettings,
@@ -567,7 +567,7 @@ def dashboard():
     """
     # Gather statistics
     total_teachers = Admin.query.count()
-    total_students = Student.query.count()
+    total_students = Seat.query.filter(Seat.role == 'student').count()
     active_invites = count_active_admin_invite_codes()
     system_admin_count = SystemAdmin.query.count()
 

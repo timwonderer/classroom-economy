@@ -268,16 +268,14 @@ def batch_auto_tapout_students(admin_id):
     Optimized version of auto-tapout that processes all students for an admin in batch.
     Returns the count of students tapped out.
     """
-    from app.models import Student, AttendanceReasonCode, SeatAttendanceState, PayrollSettings, Seat, ClassEconomy, IdentityProfile
+    from app.models import AttendanceReasonCode, SeatAttendanceState, PayrollSettings, Seat, ClassEconomy, IdentityProfile
     from app.extensions import db
 
     # 1. Get all students for this admin via canonical class seats
     student_ids = [
-        row[0] for row in db.session.query(Student.id)
-        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
-        .join(Seat, Seat.id == IdentityProfile.seat_id)
+        row[0] for row in db.session.query(Seat.user_id)
         .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-        .filter(ClassEconomy.user_id == admin_id)
+        .filter(ClassEconomy.user_id == admin_id, Seat.user_id.isnot(None))
         .distinct()
         .all()
     ]
@@ -313,13 +311,11 @@ def batch_auto_tapout_students(admin_id):
         )
     default_today_local = class_date(timestamp_utc=now_utc)
 
-    claimed_seats = (
-        Seat.query
-        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-        .join(Student, Student.identity_id == IdentityProfile.id)
-        .filter(Seat.class_id.in_(admin_class_ids), Student.id.in_(student_ids), Seat.claimed_at.isnot(None))
-        .all()
-    )
+    claimed_seats = Seat.query.filter(
+        Seat.class_id.in_(admin_class_ids),
+        Seat.user_id.in_(student_ids),
+        Seat.claimed_at.isnot(None),
+    ).all()
     if not claimed_seats:
         return 0
     seat_ids = [seat.id for seat in claimed_seats]
@@ -362,7 +358,7 @@ def batch_auto_tapout_students(admin_id):
                 limits_map[s.block.upper()] = limit
 
     # 5. Batch fetch Students to get their blocks
-    students = Student.query.filter(Student.id.in_(student_ids)).all()
+    students = Seat.query.filter(Seat.user_id.in_(student_ids)).all()
 
     # 6. Iterate and check
     tapped_out_count = 0
@@ -371,7 +367,7 @@ def batch_auto_tapout_students(admin_id):
         student_blocks = [b.strip().upper() for b in (student.block or "").split(',') if b.strip()]
 
         for period in student_blocks:
-            seat_rows = seats_by_student_period.get(student.id, {}).get(period, [])
+            seat_rows = seats_by_student_period.get(student.user_id, {}).get(period, [])
             for seat_row in seat_rows:
                 class_id = seat_row.class_id
                 resolved_seat_id = seat_row.id

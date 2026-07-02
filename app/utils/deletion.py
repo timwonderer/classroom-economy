@@ -10,7 +10,7 @@ from app.models import (
     AttendanceSession, HallPassLog, RedemptionAuditLog, StorePurchase, RedemptionEvent, AnalyticsEvent,
     AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
     InsuranceEnrollment, RentPayment, Announcement, StoreItemBlock, StoreItem,
-    Student, PayrollSettings, RentSettings, IdentityProfile,
+    PayrollSettings, RentSettings,
     InsurancePolicyBlock,
 )
 from app.feats.base import feat_shell, InvariantViolation
@@ -100,10 +100,8 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
             ).distinct().all()
         ]
         affected_student_ids_seat = [
-            s_id for (s_id,) in db.session.query(Student.id)
-            .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
-            .join(Seat, Seat.id == IdentityProfile.seat_id)
-            .filter(Seat.class_id == class_id)
+            s_id for (s_id,) in db.session.query(Seat.user_id)
+            .filter(Seat.class_id == class_id, Seat.user_id.isnot(None))
             .distinct().all()
         ]
         affected_student_ids = list(set(affected_student_ids_seat))
@@ -169,16 +167,9 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         if affected_student_ids:
             for s_id in affected_student_ids:
                 # Full erasure if totally orphaned across all teachers
-                remaining_seats = (
-                    db.session.query(Seat.id)
-                    .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-                    .join(Student, Student.identity_id == IdentityProfile.id)
-                    .filter(Student.id == s_id)
-                    .count()
-                )
+                remaining_seats = db.session.query(Seat.id).filter(Seat.user_id == s_id).count()
                 if remaining_seats == 0:
                     logger.info(f"Student Erasure Rule triggered for student_id={s_id}")
-                    Student.query.filter_by(id=s_id).delete(synchronize_session=False)
 
         # 8. Post-collapse: Settings Cleanup
         # If no remaining Seat exists for that block name in this teacher's other classes, delete insurance policy blocks.

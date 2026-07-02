@@ -754,7 +754,7 @@
                     <div class="card-body">
                         <p><strong>Current Balance:</strong> <span class="badge bg-primary fs-5">{{ student.hall_passes
                                 }}</span></p>
-                        <form action="{{ url_for('admin.set_hall_passes', student_id=student.id) }}" method="post"
+                        <form action="{{ url_for('admin.set_hall_passes', seat_id=student.id) }}" method="post"
                             class="row g-3 align-items-end">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                             <div class="col-md-6">
@@ -795,7 +795,7 @@
                 </div>
                 <div class="modal-body">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-                    <input type="hidden" name="student_id" value="{{ student.id }}">
+                    <input type="hidden" name="seat_id" value="{{ student.id }}">
 
                     <!-- Basic Information -->
                     <div class="card border-primary mb-3">

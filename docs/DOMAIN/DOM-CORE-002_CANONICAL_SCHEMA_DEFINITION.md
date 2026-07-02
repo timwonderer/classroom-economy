@@ -145,21 +145,20 @@ The system guarantees:
 - `classes` — class universe anchor; `class_id` (UUID) is the canonical boundary
 - `identity_profiles` — display identity; one-to-one with `seats`
 
-**Composition tables** (owned by DOM-IDEN-001; no independent authority):
+**Composition tables** (EXTINCT TABLES - FOR REMOVAL):
 
 - `user_invite_tokens` — short-lived provisioning tokens for teacher account creation; CASCADE-deleted on first use
+> In V2, teacher self create accounts without invite code. This table is now obsolete.
+
 - `user_recovery_tokens` — time-limited credential recovery tokens; CASCADE-deleted on redemption
+> In V2, teacher account is recovered by student consensus model per DOM-IDEN-003_TEACHER_IDENTITY_ARCHITECTURE. Student account is recovered by teacher-issued recovery code per DOM-IDEN-002_STUDENT_IDENTITY_ARCHITECTURE. This table is now obsolete
 
 **Invariant:** `User.user_role = SYSADMIN` is the sole expression of system-administrator
 identity. No separate `system_admins`, `admin_credentials`, or
 `system_admin_credentials` table may define identity authority.
 
 **Compatibility bridge rule:** During the v1-to-v2 runtime cutover, implementation
-tables such as `teacher_credentials` and `system_admin_credentials` may remain as
-passkey metadata stores only when they carry canonical `user_id` ownership. Their
-legacy role-specific principal columns are route compatibility shadows and do not
-grant identity, class, recovery, or credential authority. Any bridge table without a
-canonical `user_id` owner is non-compliant.
+tables such as `teacher_credentials` and `system_admin_credentials` SHALL be unified as one table `passkey_credential` that carry `user_id` ownership. Any found instances that uses the legacy table must be fixed in place before moving on.
 
 ---
 

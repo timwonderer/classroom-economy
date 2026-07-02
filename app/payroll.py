@@ -1,6 +1,6 @@
 import sqlalchemy as sa
 from app.extensions import db
-from app.models import Student, Transaction, PayrollSettings, ClassEconomy
+from app.models import Transaction, PayrollSettings, ClassEconomy
 from app.utils.time import ensure_utc
 from app.attendance import (
     get_batch_attendance_events,

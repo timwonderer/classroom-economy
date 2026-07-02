@@ -21,7 +21,7 @@ from app.feats.base import feat_shell
 from app.auth import admin_required
 from app.models import (
     AnalyticsAlert, AnalyticsEvent,
-    PayrollSettings, RentSettings, Student, ClassEconomy, Seat
+    PayrollSettings, RentSettings, ClassEconomy, Seat
 )
 from app.models import Transaction
 
@@ -526,13 +526,9 @@ def student_drill_down(student_id):
     class_id = class_row.class_id
 
     # Get student with scoping
-    student = Student.query.join(
-        IdentityProfile, IdentityProfile.id == Student.identity_id
-    ).join(
-        Seat, Seat.id == IdentityProfile.seat_id
-    ).filter(
-        Student.id == student_id,
-        Seat.class_id == class_id
+    student = Seat.query.filter(
+        Seat.id == student_id,
+        Seat.class_id == class_id,
     ).first()
     if student is None:
         flash('Student not found for this class period.', 'warning')
@@ -541,13 +537,7 @@ def student_drill_down(student_id):
     weeks_enrolled = 18  # default/fallback for legacy behavior
 
     # Try to determine when the student enrolled in this class period
-    student_seat = (
-        Seat.query
-        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-        .join(Student, Student.identity_id == IdentityProfile.id)
-        .filter(Student.id == student.id, Seat.class_id == class_id)
-        .first()
-    )
+    student_seat = student
 
     enrollment_start = None
     if student_seat is not None and student_seat.claimed_at:

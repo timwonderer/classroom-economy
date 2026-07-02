@@ -20,7 +20,7 @@ from werkzeug.security import check_password_hash
 
 from app.extensions import db, limiter
 from app.models import (
-    Admin, Student, StoreItem, StorePurchase, Transaction, TransactionStatus, TapEvent, AttendanceSession,
+    Admin, StoreItem, StorePurchase, Transaction, TransactionStatus, TapEvent, AttendanceSession,
     AttendanceReasonCode, TapEventReasonCode, HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
     StoreItemBlock, User,
     RedemptionAuditLog, RedemptionAuditAction, RedemptionAuditSource, _quantize_currency,
@@ -77,7 +77,6 @@ from app.services import store_service
 from app.utils.economy_policy import resolve_class_scope, resolve_feature_class, resolve_feature_class_for_class
 from app.utils.join_code import get_display_join_code
 from app.utils.overdraft import charge_overdraft_fee_if_needed
-from app.utils.seat_scope import get_seat_id_for_class
 from app.utils.transaction_idempotency import (
     MAX_IDEMPOTENCY_KEY_LENGTH,
     get_idempotent_transaction,
@@ -768,7 +767,7 @@ def use_item():
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
 
     user = db.session.get(User, context.user_id)
-    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first()
+    student = db.session.get(Seat, context.seat_id)
     
     if not user or not student:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
@@ -787,7 +786,7 @@ def use_item():
     # 2. Get the student's item
     student_item = db.session.get(StorePurchase, student_item_id)
 
-    if not student_item or student_item.seat_id != student.seat_id:
+    if not student_item or student_item.seat_id != student.id:
         return jsonify({"status": "error", "message": "Invalid item."}), 404
 
     # Special handling for hall_pass items in inventory (legacy or bundle)
@@ -1149,11 +1148,11 @@ def _enforce_hall_pass_student_context(student, log_entry):
 def cancel_hall_pass(pass_id):
     """Allow students to cancel their pending hall pass request"""
     context = getattr(g, "canonical_context", None)
-    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first() if context else None
+    student = db.session.get(Seat, context.seat_id) if context else None
     log_entry = db.get_or_404(HallPassLog, pass_id)
 
     # Verify this pass belongs to the logged-in student
-    if log_entry.student_id != student.id:
+    if not student or log_entry.seat_id != student.id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
     context_error = _enforce_hall_pass_student_context(student, log_entry)
     if context_error:
@@ -1176,7 +1175,7 @@ def cancel_hall_pass(pass_id):
 def checkout_hall_pass():
     """Allow student to check out with their approved hall pass (replaces terminal use)"""
     context = getattr(g, "canonical_context", None)
-    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first() if context else None
+    student = db.session.get(Seat, context.seat_id) if context else None
     data = request.get_json()
     pass_id = data.get('pass_id')
     
@@ -1244,7 +1243,7 @@ def checkout_hall_pass():
 def checkin_hall_pass():
     """Allow student to check in from their hall pass (replaces terminal return)"""
     context = getattr(g, "canonical_context", None)
-    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first() if context else None
+    student = db.session.get(Seat, context.seat_id) if context else None
     data = request.get_json()
     pass_id = data.get('pass_id')
     
@@ -1883,7 +1882,7 @@ def handle_tap():
     current_app.logger.info(f"TAP DEBUG: Received data {safe_data}")
 
     context = getattr(g, "canonical_context", None)
-    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first() if context else None
+    student = db.session.get(Seat, context.seat_id) if context else None
 
     if not student:
         current_app.logger.warning("TAP ERROR: Unauthenticated tap attempt.")
@@ -1926,7 +1925,7 @@ def handle_tap():
         current_app.logger.warning("TAP ERROR: Missing class_id context for student_id=%s", student.id)
         return jsonify({"error": "Unable to resolve class context for this period."}), 400
 
-    seat_id = seat.id if seat and seat.class_id == class_id else get_seat_id_for_class(student.id, class_id)
+    seat_id = seat.id if seat and seat.class_id == class_id else (student.identity_profile.seat_id if student and student.identity_profile else None)
     if not seat_id:
         return jsonify({"error": "No seat assigned in this class."}), 403
 
@@ -2122,14 +2121,10 @@ def get_tap_entries(student_id):
     if not has_class_scope:
         return jsonify({"error": "Student not found or access denied"}), 404
 
-    from app.utils.seat_scope import get_seat_id_for_class
-    seat_id = get_seat_id_for_class(student_id, active_class_id)
-    if not seat_id:
+    student = db.session.get(Seat, student_id)
+    if not student or student.class_id != active_class_id:
         return jsonify({"error": "Student not found or access denied"}), 404
-
-    student = Student.query.filter_by(id=student_id).first()
-    if not student:
-        return jsonify({"error": "Student not found or access denied"}), 404
+    seat_id = student.id
 
     # Canonical attendance history is AttendanceSession scoped by seat_id + class_id.
     query = AttendanceSession.query.filter(
@@ -2317,7 +2312,7 @@ def student_status():
     if not context:
         return jsonify({"status": "error", "message": "No class selected."}), 400
 
-    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first()
+    student = db.session.get(Seat, context.seat_id)
 
     class_id = context.class_id
     if not class_id:

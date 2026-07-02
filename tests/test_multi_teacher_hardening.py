@@ -1,5 +1,6 @@
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 import pyotp
 import uuid
@@ -20,15 +21,7 @@ def test_student_count_relies_only_on_link_table(client):
 
     # Create Student (with NO teacher_id)
     s_firstname = f"Hardened_{uuid.uuid4().hex[:8]}"
-    profile = IdentityProfile(profile_type='student', first_name=s_firstname, last_name='S')
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(
-        identity_profile=profile,
-        block='Period 1',
-        salt=get_random_salt()
-    )
-    db.session.add(student)
+    student = make_student_identity(block='Period 1', first_name=s_firstname, last_name='S')
     db.session.commit()
 
     # 3. Verify count is 0 initially
@@ -65,15 +58,7 @@ def test_delete_teacher_cleans_up_links(client):
 
     # Create Student
     s_firstname = f"Survivor_{uuid.uuid4().hex[:8]}"
-    profile2 = IdentityProfile(profile_type='student', first_name=s_firstname, last_name='S')
-    db.session.add(profile2)
-    db.session.flush()
-    student = Student(
-        identity_profile=profile2,
-        block='Period 1',
-        salt=get_random_salt()
-    )
-    db.session.add(student)
+    student = make_student_identity(block='Period 1', first_name=s_firstname, last_name='S')
     db.session.commit()
     student_id = student.id
 
@@ -93,8 +78,7 @@ def test_delete_teacher_cleans_up_links(client):
     assert db.session.get(Admin, teacher_id) is None
 
     # Verify Student Still Exists (because linked to survivor_teacher)
-    s = db.session.get(Student, student_id)
-    assert s is not None
+    assert db.session.get(IdentityProfile, s.identity_id) is not None
     
     # Verify link to deleted teacher is gone
     assert StudentTeacher.query.filter_by(student_id=student_id, teacher_id=teacher_id).count() == 0
@@ -111,11 +95,8 @@ def test_student_teacher_unique_constraint(client):
     
     # Setup
     t = make_admin(f"unique_t_{uuid.uuid4().hex}", 's')
-    p = IdentityProfile(profile_type='student', first_name='Unique', last_name='S')
-    db.session.add(p)
-    db.session.flush()
-    s = Student(identity_profile=p, block="B", salt=b's')
-    db.session.add_all([t, s])
+    s = make_student_identity(block="B", first_name="Unique", last_name="S")
+    db.session.add(t)
     db.session.commit()
     
     # First Link
@@ -141,11 +122,8 @@ def test_remove_student_from_teacher_scope_preserves_shared_student(client):
     """
     t1 = make_admin(f"t1_{uuid.uuid4().hex[:8]}", 's')
     t2 = make_admin(f"t2_{uuid.uuid4().hex[:8]}", 's2')
-    p_shared = IdentityProfile(profile_type='student', first_name='Shared', last_name='S')
-    db.session.add(p_shared)
-    db.session.flush()
-    s = Student(identity_profile=p_shared, block="B", salt=get_random_salt())
-    db.session.add_all([t1, t2, s])
+    s = make_student_identity(block="B", first_name="Shared", last_name="S")
+    db.session.add_all([t1, t2])
     db.session.commit()
 
     db.session.add_all([
@@ -160,6 +138,6 @@ def test_remove_student_from_teacher_scope_preserves_shared_student(client):
     db.session.commit()
 
     assert was_deleted is False
-    assert db.session.get(Student, s.id) is not None
+    assert db.session.get(IdentityProfile, s.identity_id) is not None
     assert StudentTeacher.query.filter_by(user_id=s_user.id, teacher_id=t1.id).count() == 0
     assert StudentTeacher.query.filter_by(user_id=s_user.id, teacher_id=t2.id).count() == 1

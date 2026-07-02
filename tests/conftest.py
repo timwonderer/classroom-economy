@@ -48,7 +48,7 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy import event, text
 from sqlalchemy.exc import IntegrityError
-from app import app as flask_app, db, Student
+from app import app as flask_app, db
 from flask import current_app
 from app.extensions import limiter
 from app.models import Transaction, Seat, IdentityProfile
@@ -293,7 +293,7 @@ def _auto_bypass_feat(request, app):
 def test_student():
     from app.hash_utils import hash_username, get_random_salt
     from app.feats.base import FEATBypass
-    from app.models import User, UserRole, Seat
+    from app.models import User, UserRole
     from app.utils.auth_username import build_hashed_username_fields
     salt = get_random_salt()
     _, username_hash, username_lookup_hash = build_hashed_username_fields("test_student")
@@ -311,18 +311,10 @@ def test_student():
     )
     db.session.add(profile)
     db.session.flush()
-    stu = Student(
-        identity_profile=profile,
-        block="A",
-        salt=salt,
-        username_hash=hash_username("test", salt),
-        pin_hash="fake-hash",
-    )
-    db.session.add(stu)
     seat = Seat(
         user_id=user.id,
-        class_id=stu.class_id,
-        join_code=stu.join_code or "TESTSTUDENT",
+        class_id=None,
+        join_code="TESTSTUDENT",
         role="student",
     )
     db.session.add(seat)
@@ -330,7 +322,7 @@ def test_student():
     profile.seat_id = seat.id
     with FEATBypass():
         db.session.commit()
-    return stu
+    return seat
 
 
 @pytest.fixture

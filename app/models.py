@@ -256,6 +256,9 @@ class IdentityProfile(db.Model):
     first_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
     last_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
     notes = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=True)
+    reset_code = db.Column(db.String(8), nullable=True, unique=True)
+    reset_code_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    recovery_status = db.Column(db.String(20), default='active', nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
@@ -457,6 +460,29 @@ class Student(db.Model):
     def opaque_id(self):
         """Opaque reference safe for sysadmin views and non-PII logs."""
         return self.opaque_reference
+
+
+@sa.event.listens_for(Student, "before_insert")
+@sa.event.listens_for(Student, "before_update")
+def _sync_student_recovery_scope(_mapper, connection, target):
+    identity_id = getattr(target, "identity_id", None)
+    if not identity_id:
+        return
+    connection.execute(
+        sa.text(
+            "UPDATE identity_profiles "
+            "SET reset_code = :reset_code, "
+            "reset_code_expires_at = :reset_code_expires_at, "
+            "recovery_status = :recovery_status "
+            "WHERE id = :identity_id"
+        ),
+        {
+            "reset_code": getattr(target, "reset_code", None),
+            "reset_code_expires_at": getattr(target, "reset_code_expires_at", None),
+            "recovery_status": getattr(target, "recovery_status", "active"),
+            "identity_id": identity_id,
+        },
+    )
 
     def get_sysadmin_reference(self):
         return self.opaque_reference
@@ -2057,17 +2083,12 @@ class InsuranceClaim(db.Model):
     @property
     def student(self):
         """Resolve student through seat for template compatibility."""
-        if not self.seat or not self.seat.user_id:
-            return None
-        if self.seat.identity_profile:
-            return Student.query.filter_by(identity_id=self.seat.identity_profile.id).first()
-        return None
+        return self.seat.identity_profile if self.seat and self.seat.identity_profile else None
 
     @property
     def student_id(self):
         """Resolve the canonical student id through the seat binding."""
-        student = self.student
-        return student.id if student else None
+        return self.seat.user_id if self.seat else None
 
 
 
@@ -2242,11 +2263,7 @@ class InsuranceEnrollment(db.Model):
     @property
     def student(self):
         """Resolve student through seat for template compatibility."""
-        if not self.seat or not self.seat.user_id:
-            return None
-        if self.seat.identity_profile:
-            return Student.query.filter_by(identity_id=self.seat.identity_profile.id).first()
-        return None
+        return self.seat.identity_profile if self.seat and self.seat.identity_profile else None
 
 
 class EntitlementEvent(db.Model):

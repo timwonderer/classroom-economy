@@ -1,4 +1,5 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone
 
@@ -22,19 +23,8 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     db.session.add(admin)
     db.session.flush()
 
-    profile_a = IdentityProfile(profile_type="student", first_name="Collapse", last_name="S")
-    db.session.add(profile_a)
-    db.session.flush()
-    student = Student(identity_profile=profile_a, block="A", salt=b"salt")
-    db.session.add(student)
-    db.session.flush()
-    
-    profile_b = IdentityProfile(profile_type="student", first_name="Survive", last_name="B")
-    db.session.add(profile_b)
-    db.session.flush()
-    student_b = Student(identity_profile=profile_b, block="A", salt=b"salt")
-    db.session.add(student_b)
-    db.session.flush()
+    student = make_student_identity(block="A", first_name="Collapse", last_name="S")
+    student_b = make_student_identity(block="A", first_name="Survive", last_name="B")
 
     join_code = "COLL01"
     
@@ -103,8 +93,8 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     assert db.session.query(Transaction).filter_by(join_code=join_code).count() == 1
     assert db.session.query(StoreItemBlock).filter_by(store_item_id=store_item.id).count() == 1
     assert db.session.query(StoreItem).filter_by(id=store_item.id).count() == 1
-    assert db.session.get(Student, student.id) is not None
-    assert db.session.get(Student, student_b.id) is not None
+    assert db.session.query(Seat).filter_by(user_id=student.id).first() is not None
+    assert db.session.query(Seat).filter_by(user_id=student_b.id).first() is not None
 
     store_item_id_val = store_item.id
     student_id_val = student.id
@@ -133,10 +123,10 @@ def test_collapse_universe_cascades_and_cleans_up(client):
 
     db.session.expire_all()
     # Student A should be entirely deleted because they have no other classes
-    assert db.session.get(Student, student_id_val) is None
+    assert db.session.query(Seat).filter_by(user_id=student_id_val).first() is None
     
     # Student B should survive because they have another class
-    assert db.session.get(Student, student_b_id_val) is not None
+    assert db.session.query(Seat).filter_by(user_id=student_b_id_val).first() is not None
 
 
 def test_admin_join_code_delete_route(client):
@@ -168,12 +158,7 @@ def test_collapse_universe_raises_on_null_class_id_scope_rows(client):
     db.session.add(admin)
     db.session.flush()
 
-    profile = IdentityProfile(profile_type="student", first_name="Invalid", last_name="S")
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b"salt")
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(block="A", first_name="Invalid", last_name="S")
 
     economy = create_class_scope(
         teacher=admin,

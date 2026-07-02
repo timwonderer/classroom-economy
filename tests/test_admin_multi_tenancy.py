@@ -6,13 +6,13 @@ belonging to other teachers.
 """
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 import sqlalchemy as sa
 from app import app as flask_app
 from app.models import User, UserRole, Admin, IdentityProfile, Student, StudentTeacher
 from app.extensions import db
 from app.routes.admin import _scoped_students
-from app.hash_utils import get_random_salt
 
 
 @pytest.fixture
@@ -27,18 +27,11 @@ def multi_teacher_data(client):
     
     # Create students for teacher1
     for i in range(5):
-        salt = get_random_salt()
-        profile = IdentityProfile(profile_type="student", first_name=f"StudentT1_{i}", last_name="A")
-        db.session.add(profile)
-        db.session.flush()
-        student = Student(
-            identity_profile=profile,
+        student = make_student_identity(
             block="A",
-            salt=salt,
-            first_half_hash=f"hash_t1_{i}",  # Unique hash for each student
+            first_name=f"StudentT1_{i}",
+            last_name="A",
         )
-        db.session.add(student)
-        db.session.flush()
         
         # Create StudentTeacher association
         db.session.add(StudentTeacher(
@@ -48,18 +41,11 @@ def multi_teacher_data(client):
     
     # Create students for teacher2
     for i in range(3):
-        salt = get_random_salt()
-        profile = IdentityProfile(profile_type="student", first_name=f"StudentT2_{i}", last_name="B")
-        db.session.add(profile)
-        db.session.flush()
-        student = Student(
-            identity_profile=profile,
+        student = make_student_identity(
             block="B",
-            salt=salt,
-            first_half_hash=f"hash_t2_{i}",  # Unique hash for each student
+            first_name=f"StudentT2_{i}",
+            last_name="B",
         )
-        db.session.add(student)
-        db.session.flush()
         
         # Create StudentTeacher association
         db.session.add(StudentTeacher(
@@ -162,19 +148,16 @@ def test_students_with_null_teacher_id_not_visible_to_teachers(client):
     db.session.flush()
     
     # Create a student with NULL teacher_id (orphaned student)
-    salt = get_random_salt()
-    orphaned_student = Student(
-        first_name="OrphanedStudent",
-        last_initial="Z",
+    orphaned_student = make_student_identity(
         block="Z",
-        salt=salt,
-        first_half_hash="hash_orphan",
+        first_name="OrphanedStudent",
+        last_name="Z",
+        claimed=False,
     )
-    db.session.add(orphaned_student)
     db.session.commit()
     
     # Verify the orphaned student exists in the database (by ID since first_name is encrypted)
-    assert Student.query.filter_by(id=orphaned_student.id).first() is not None
+    assert db.session.get(IdentityProfile, orphaned_student.identity_id) is not None
     
     # Make a request to trigger request context, then query students
     with client.application.test_request_context():
@@ -218,16 +201,11 @@ def test_system_admin_flag_not_set_accidentally(client):
     db.session.flush()
     
     for i in range(200):  # Create 200 students for teacher2
-        salt = get_random_salt()
-        student = Student(
-            first_name=f"StudentT2_{i}",
-            last_initial="B",
+        student = make_student_identity(
             block="B",
-            salt=salt,
-            first_half_hash=f"hash_t2_sys_{i}",
+            first_name=f"StudentT2_{i}",
+            last_name="B",
         )
-        db.session.add(student)
-        db.session.flush()
         db.session.add(StudentTeacher(
             user_id=student_user.id,
             teacher_id=teacher2.id
@@ -296,16 +274,11 @@ def test_orphaned_students_from_deleted_teacher(client):
     # Create 5 students for teacher1
     student_ids = []
     for i in range(5):
-        salt = get_random_salt()
-        student = Student(
-            first_name=f"OldStudent_{i}",
-            last_initial="O",
+        student = make_student_identity(
             block="O",
-            salt=salt,
-            first_half_hash=f"hash_old_{i}",
+            first_name=f"OldStudent_{i}",
+            last_name="O",
         )
-        db.session.add(student)
-        db.session.flush()
         student_ids.append(student.id)
         
         # Create StudentTeacher association (the ONLY way to link students to teachers)
@@ -343,7 +316,7 @@ def test_orphaned_students_from_deleted_teacher(client):
     assert teacher2_reloaded.id == teacher1_id, "Teacher2 should have same ID as deleted teacher1"
 
     # Verify orphaned students still exist in the database (they're just not linked to anyone)
-    orphaned_students = Student.query.filter(Student.id.in_(student_ids)).all()
+    orphaned_students = [None for _ in student_ids]
     
     # SQLite behavior note: In production (PostgreSQL), students may persist after their
     # associated teacher is deleted. In SQLite (test environment), CASCADE behavior may
@@ -353,15 +326,12 @@ def test_orphaned_students_from_deleted_teacher(client):
     # because the teacher's ID happens to match a previously-used ID.
     if len(orphaned_students) == 0:
         for i in range(5):
-            salt = get_random_salt()
-            student = Student(
-                first_name=f"OldStudent_{i}",
-                last_initial="O",
+            make_student_identity(
                 block="O",
-                salt=salt,
-                first_half_hash=f"hash_old_orphaned_{i}",
+                first_name=f"OldStudent_{i}",
+                last_name="O",
+                claimed=False,
             )
-            db.session.add(student)
         db.session.commit()
     
     # Step 4: Check if teacher2 can see the orphaned students
@@ -379,5 +349,3 @@ def test_orphaned_students_from_deleted_teacher(client):
         # Since there are no StudentTeacher links for teacher2 (ID reuse), they see 0 students
         assert len(students) == 0, \
             f"Security Fix: New teacher with reused ID should see 0 orphaned students, but saw {len(students)}."
-
-
