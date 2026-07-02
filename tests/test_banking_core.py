@@ -5,7 +5,7 @@ from tests.helpers.class_scope import make_student_identity
 import importlib.util
 from pathlib import Path
 import pytest
-from app.models import BalanceCache, User, UserRole, Admin, ClassEconomy, Seat, IdentityProfile, Student, Transaction, TransactionStatus
+from app.models import BalanceCache, User, UserRole, Admin, ClassEconomy, Seat, IdentityProfile, Transaction, TransactionStatus
 from app.extensions import db
 from app.utils.banking import settle_balances, settle_pending_transaction_contexts
 

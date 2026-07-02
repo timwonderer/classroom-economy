@@ -2,7 +2,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from tests.helpers.class_scope import make_student_identity
 import pytest
 from app import db
-from app.models import User, UserRole, Admin, IdentityProfile, Student, StudentTeacher
+from app.models import User, UserRole, Admin, IdentityProfile, StudentTeacher
 from app.hash_utils import get_random_salt
 import pyotp
 from flask import session

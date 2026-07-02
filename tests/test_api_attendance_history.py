@@ -6,7 +6,7 @@ from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone, timedelta
 from app import app, db
-from app.models import Admin, Student, AttendanceSession, AttendanceReasonCode, StudentTeacher, ClassEconomy, ClassMembership, Seat
+from app.models import Admin, AttendanceSession, AttendanceReasonCode, StudentTeacher, ClassEconomy, ClassMembership, Seat
 from app.hash_utils import hash_username, get_random_salt
 from werkzeug.security import generate_password_hash
 from tests.helpers.canonical_session import set_canonical_context

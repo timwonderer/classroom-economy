@@ -2,7 +2,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
-from app.models import User, UserRole, Admin, Student, Transaction, StoreItem, StudentItem, StudentTeacher, ClassEconomy, ClassMembership, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, Transaction, StoreItem, StudentItem, StudentTeacher, ClassEconomy, ClassMembership, Seat, IdentityProfile
 from app.extensions import db
 from werkzeug.security import generate_password_hash
 from tests.helpers.canonical_session import set_canonical_context
