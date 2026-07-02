@@ -382,7 +382,7 @@ def _charge_overdraft_fee_if_needed(student, banking_settings, teacher_id, join_
     Returns (fee_charged, fee_amount) tuple.
 
     Args:
-        student: Student object
+        student: seat-scoped identity object
         banking_settings: BankingSettings object
         teacher_id: Teacher ID for multi-tenancy isolation
         join_code: Join code for multi-tenancy isolation

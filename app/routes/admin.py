@@ -1959,7 +1959,7 @@ def _resolve_student_add_class_context(admin_id: int | None, block: str) -> dict
 
 
 def _link_student_to_admin(
-    student: Student,
+    student,
     admin_id,
     *,
     join_code: str | None = None,
