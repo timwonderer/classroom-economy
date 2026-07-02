@@ -64,19 +64,15 @@ def test_shared_student_diff_teacher_diff_period(client):
     # 2. Attendance sessions
     now = datetime.now(timezone.utc)
     db.session.add(AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat_1.id,
         class_id=class_1.class_id,
-        period="P1",
         started_at=now - timedelta(hours=2),
         ended_at=now - timedelta(hours=1),
         duration_seconds=3600,
     ))
     db.session.add(AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat_2.id,
         class_id=class_2.class_id,
-        period="P2",
         started_at=now - timedelta(minutes=30),
         ended_at=now,
         duration_seconds=1800,
@@ -152,10 +148,8 @@ def test_same_teacher_same_block_diff_context(client):
     # 2. Attendance in JC1 only.
     now = datetime.now(timezone.utc)
     db.session.add(AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat_1.id,
         class_id=class_1.class_id,
-        period="P1",
         started_at=now - timedelta(hours=1),
         ended_at=now,
         duration_seconds=3600,

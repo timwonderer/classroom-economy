@@ -156,10 +156,8 @@ def test_calculate_unpaid_attendance_seconds(client):
 
     db.session.add(
         AttendanceSession(
-            user_id=student_user.id,
             seat_id=seat_id,
             class_id=class_id,
-            period="A",
             started_at=tap_in_time,
             ended_at=tap_out_time,
             duration_seconds=900,
@@ -168,7 +166,7 @@ def test_calculate_unpaid_attendance_seconds(client):
     db.session.commit()
 
     last_payroll_time = now - timedelta(days=1)
-    unpaid_seconds = calculate_unpaid_attendance_seconds(seat_id, class_id, "A", last_payroll_time)
+    unpaid_seconds = calculate_unpaid_attendance_seconds(seat_id, class_id, last_payroll_time)
 
     # 15 minutes of attendance = 900 seconds
     assert unpaid_seconds == 900
@@ -190,10 +188,8 @@ def test_calculate_period_attendance(client):
 
     db.session.add(
         AttendanceSession(
-            user_id=student_user.id,
             seat_id=seat_id,
             class_id=class_id,
-            period="A",
             started_at=tap_in_time,
             ended_at=tap_out_time,
             duration_seconds=600,
@@ -201,7 +197,7 @@ def test_calculate_period_attendance(client):
     )
     db.session.commit()
 
-    period_attendance = calculate_period_attendance(seat_id, class_id, "A", today)
+    period_attendance = calculate_period_attendance(seat_id, class_id, today)
 
     # 10 minutes of attendance = 600 seconds
     assert period_attendance == 600
@@ -220,10 +216,8 @@ def test_get_session_status(client):
     seat_id, class_id = _resolve_scope(student.id, join_code)
 
     session = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat_id,
         class_id=class_id,
-        period="A",
         started_at=tap_in_time,
     )
     db.session.add(session)
@@ -233,7 +227,6 @@ def test_get_session_status(client):
             user_id=student_user.id,
             seat_id=seat_id,
             class_id=class_id,
-            period="A",
             is_active=True,
             open_session_id=session.id,
             last_event_at=tap_in_time,
@@ -243,7 +236,7 @@ def test_get_session_status(client):
     )
     db.session.commit()
 
-    is_active, done, duration = get_session_status(seat_id, class_id, "A")
+    is_active, done, duration = get_session_status(seat_id, class_id)
     assert is_active is True
     assert done is False
     assert duration > 0
@@ -262,10 +255,8 @@ def test_get_all_block_statuses(client):
     tap_in_time_a = now - timedelta(minutes=10)
     seat_id_a, class_id_a = _resolve_scope(student.id, join_code_a)
     session_a = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat_id_a,
         class_id=class_id_a,
-        period="A",
         started_at=tap_in_time_a,
     )
     db.session.add(session_a)
@@ -275,7 +266,6 @@ def test_get_all_block_statuses(client):
             user_id=student_user.id,
             seat_id=seat_id_a,
             class_id=class_id_a,
-            period="A",
             is_active=True,
             open_session_id=session_a.id,
             last_event_at=tap_in_time_a,

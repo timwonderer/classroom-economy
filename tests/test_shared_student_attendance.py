@@ -60,10 +60,8 @@ def test_attendance_status_isolation(client):
     class_t1 = ClassEconomy.query.filter_by(join_code="JC1").first()
     assert class_t1 is not None
     session = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_t1.class_id,
-        period="PERIOD 1",
         started_at=now,
     )
     db.session.add(session)
@@ -73,7 +71,6 @@ def test_attendance_status_isolation(client):
             user_id=student_user.id,
             seat_id=seat.id,
             class_id=class_t1.class_id,
-            period="PERIOD 1",
             is_active=True,
             open_session_id=session.id,
             last_event_at=now,

@@ -29,21 +29,20 @@ def get_last_payroll_time(*, seat_id: int, class_id: str):
 
 
 
-def calculate_unpaid_attendance_seconds(seat_id, class_id, period, last_payroll_time):
-    """Calculate unpaid attendance seconds for one canonical seat/class/period scope."""
+def calculate_unpaid_attendance_seconds(seat_id, class_id, last_payroll_time):
+    """Calculate unpaid attendance seconds for one canonical seat/class scope."""
     if not seat_id or not class_id:
         raise ValueError("calculate_unpaid_attendance_seconds requires seat_id and class_id.")
     return _calculate_unpaid_attendance_seconds(
         seat_id,
         class_id,
-        period,
         last_payroll_time,
     )
 
 
-def calculate_period_attendance(seat_id, class_id, period, date):
+def calculate_period_attendance(seat_id, class_id, date):
     """
-    Calculates total attendance seconds for a student in a specific period
+    Calculates total attendance seconds for a seat in a class
     on a specific date. Used for daily attendance reporting.
     NOTE: This uses UTC day boundaries.
     For class-timezone daily limits, use calculate_period_attendance_utc_range instead.
@@ -61,7 +60,6 @@ def calculate_period_attendance(seat_id, class_id, period, date):
     sessions = AttendanceSession.query.filter(
         AttendanceSession.seat_id == seat_id,
         AttendanceSession.class_id == class_id,
-        AttendanceSession.period == period,
         AttendanceSession.started_at < end_db,
         sa.or_(AttendanceSession.ended_at.is_(None), AttendanceSession.ended_at > start_db),
     ).all()
@@ -77,17 +75,16 @@ def calculate_period_attendance(seat_id, class_id, period, date):
     return int(total_seconds)
 
 
-def calculate_period_attendance_utc_range(seat_id, class_id, period, start_utc, end_utc):
+def calculate_period_attendance_utc_range(seat_id, class_id, start_utc, end_utc):
     """
-    Calculates total attendance seconds for a student in a specific period
+    Calculates total attendance seconds for a seat in a class
     within a UTC datetime range. Use this for timezone-aware daily limits.
 
     Args:
         seat_id: The seat's ID
         class_id: The class's ID
-        period: The block/period identifier
-        start_utc: Start of period (UTC datetime, inclusive)
-        end_utc: End of period (UTC datetime, exclusive)
+        start_utc: Start of range (UTC datetime, inclusive)
+        end_utc: End of range (UTC datetime, exclusive)
 
     Returns:
         int: Total seconds of attendance in the range
@@ -101,7 +98,6 @@ def calculate_period_attendance_utc_range(seat_id, class_id, period, start_utc, 
     sessions = AttendanceSession.query.filter(
         AttendanceSession.seat_id == seat_id,
         AttendanceSession.class_id == class_id,
-        AttendanceSession.period == period,
         AttendanceSession.started_at < end_db,
         sa.or_(AttendanceSession.ended_at.is_(None), AttendanceSession.ended_at > start_db),
     ).all()
@@ -117,9 +113,9 @@ def calculate_period_attendance_utc_range(seat_id, class_id, period, start_utc, 
     return int(total_seconds)
 
 
-def get_session_status(seat_id, class_id, period):
+def get_session_status(seat_id, class_id):
     """
-    Gets the current session status for a student in a specific period.
+    Gets the current session status for a seat in a class.
     Returns a tuple of (is_active, done, duration).
     """
     from app.models import SeatAttendanceState
@@ -129,7 +125,6 @@ def get_session_status(seat_id, class_id, period):
     latest_state = SeatAttendanceState.query.filter_by(
         seat_id=seat_id,
         class_id=class_id,
-        period=period,
     ).order_by(SeatAttendanceState.updated_at.desc()).first()
     is_active = latest_state.is_active if latest_state else False
 
@@ -140,7 +135,7 @@ def get_session_status(seat_id, class_id, period):
 
     # Calculate unpaid duration
     last_payroll_time = get_last_payroll_time(seat_id=seat_id, class_id=class_id)
-    duration = calculate_unpaid_attendance_seconds(seat_id, class_id, period, last_payroll_time)
+    duration = calculate_unpaid_attendance_seconds(seat_id, class_id, last_payroll_time)
 
     return is_active, done, duration
 
@@ -158,7 +153,7 @@ def get_all_block_statuses(student, *, class_id: str):
 def get_batch_attendance_events(seat_ids, min_anchor, allowed_class_ids):
     """
     Fetch attendance transitions from canonical attendance sessions.
-    Returns a dict: (seat_id, period_upper, class_id) -> list of event-like rows
+    Returns a dict: (seat_id, class_id) -> list of event-like rows
     with ``status`` and ``timestamp`` fields.
 
     SECURITY: ``allowed_class_ids`` is required to restrict results to explicit
@@ -198,12 +193,11 @@ def get_batch_attendance_events(seat_ids, min_anchor, allowed_class_ids):
         else:
             active_at = start_time
 
-        key = (session.seat_id, (session.period or "").upper(), session.class_id)
+        key = (session.seat_id, session.class_id)
         grouped.setdefault(key, []).append(
             SimpleNamespace(
                 student_id=session.student_id,
                 seat_id=session.seat_id,
-                period=session.period,
                 class_id=session.class_id,
                 status="active",
                 timestamp=active_at,
@@ -215,7 +209,6 @@ def get_batch_attendance_events(seat_ids, min_anchor, allowed_class_ids):
                 SimpleNamespace(
                     student_id=session.student_id,
                     seat_id=session.seat_id,
-                    period=session.period,
                     class_id=session.class_id,
                     status="inactive",
                     timestamp=end_time,
@@ -332,7 +325,7 @@ def batch_auto_tapout_students(admin_id):
     seat_ids = [seat.id for seat in claimed_seats]
 
     # 3. Batch fetch events for today, scoped to this admin's class_ids only.
-    # events_map: (seat_id, period, class_id) -> list[event-like]
+    # events_map: (seat_id, class_id) -> list[event-like]
     events_map = get_batch_attendance_events(seat_ids, start_of_day_utc, allowed_class_ids=admin_class_ids)
 
     # Lookup by canonical actor scope for fast iteration
@@ -382,7 +375,7 @@ def batch_auto_tapout_students(admin_id):
             for seat_row in seat_rows:
                 class_id = seat_row.class_id
                 resolved_seat_id = seat_row.id
-                events = events_map.get((resolved_seat_id, period, class_id), [])
+                events = events_map.get((resolved_seat_id, class_id), [])
                 if not events:
                     continue
 
@@ -408,10 +401,8 @@ def batch_auto_tapout_students(admin_id):
                         continue
                     join_code = join_code_by_class_id.get(class_id)
                     student_tap(
-                        student_id=student.id,
                         seat_id=resolved_seat_id,
                         class_id=class_id,
-                        period=period,
                         status="inactive",
                         reason=f"Daily limit ({hours_limit:.1f}h) reached",
                         reason_code=AttendanceReasonCode.DAILY_LIMIT,
@@ -423,14 +414,11 @@ def batch_auto_tapout_students(admin_id):
                     state = SeatAttendanceState.query.filter_by(
                         seat_id=resolved_seat_id,
                         class_id=class_id,
-                        period=period,
                     ).first()
                     if not state:
                         state = SeatAttendanceState(
                             seat_id=resolved_seat_id,
                             class_id=class_id,
-                            student_id=student.id,
-                            period=period,
                             tap_enabled=True,
                         )
                         db.session.add(state)

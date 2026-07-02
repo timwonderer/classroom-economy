@@ -90,10 +90,8 @@ def _setup_shared_student_with_split_membership():
         db.session.flush()
 
     tap_event = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat_row.id,
         class_id=seat.class_id,
-        period="A",
         started_at=datetime.now(timezone.utc),
     )
     db.session.add(tap_event)

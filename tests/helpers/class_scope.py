@@ -1,5 +1,5 @@
 from app.extensions import db
-from app.models import ClassEconomy, ClassMembership, Seat, IdentityProfile, User
+from app.models import ClassEconomy, Seat, IdentityProfile, User
 from datetime import datetime, timezone
 from uuid import uuid4
 from werkzeug.security import generate_password_hash
@@ -73,12 +73,6 @@ def create_class_scope(
         db.session.flush()
 
     if create_teacher_membership:
-        db.session.add(ClassMembership(
-            class_id=class_row.class_id,
-            join_code=join_code,
-            admin_id=resolved_teacher_admin_id,
-            role="admin",
-        ))
         t_seat = Seat(
             user_id=resolved_teacher_user_id,
             class_id=class_row.class_id,
@@ -92,14 +86,6 @@ def create_class_scope(
             profile_type='teacher_primary',
             first_name='Teacher',
             last_name='Teacher',
-        ))
-
-    if student is not None and create_student_membership:
-        db.session.add(ClassMembership(
-            class_id=class_row.class_id,
-            join_code=join_code,
-            user_id=student_user.id,
-            role="student",
         ))
 
     if student is not None and create_seat:

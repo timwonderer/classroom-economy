@@ -988,14 +988,12 @@ class BalanceCache(db.Model):
 
 
 class AttendanceSession(db.Model):
-    """Canonical attendance session windows per seat/class/period."""
+    """Canonical attendance session windows per seat/class."""
     __tablename__ = 'attendance_sessions'
 
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
-    period = db.Column(db.String(10), nullable=False, index=True)
 
     started_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
     ended_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
@@ -1012,7 +1010,6 @@ class AttendanceSession(db.Model):
     deleted_at = db.Column(db.DateTime(timezone=True), nullable=True)
     deleted_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True)
 
-    student = db.relationship("Student", backref=db.backref("attendance_sessions", passive_deletes=True))
     seat = db.relationship("Seat", foreign_keys=[seat_id], backref=db.backref("attendance_sessions", passive_deletes=True))
 
     @property
@@ -1028,19 +1025,17 @@ class AttendanceSession(db.Model):
         return self.end_reason or self.start_reason
 
     __table_args__ = (
-        db.Index('ix_attendance_sessions_seat_class_period_start', 'seat_id', 'class_id', 'period', 'started_at'),
+        db.Index('ix_attendance_sessions_seat_class_start', 'seat_id', 'class_id', 'started_at'),
     )
 
 
 class SeatAttendanceState(db.Model):
-    """Canonical latest attendance state per seat/class/period."""
+    """Canonical latest attendance state per seat/class."""
     __tablename__ = 'seat_attendance_state'
 
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
-    period = db.Column(db.String(10), nullable=False, index=True)
 
     is_active = db.Column(db.Boolean, default=False, nullable=False)
     open_session_id = db.Column(db.Integer, db.ForeignKey('attendance_sessions.id', ondelete='SET NULL'), nullable=True)
@@ -1051,12 +1046,10 @@ class SeatAttendanceState(db.Model):
     last_reason = db.Column(db.String(50), nullable=True)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
-    student = db.relationship("Student", backref=db.backref("attendance_states", passive_deletes=True))
     seat = db.relationship("Seat", backref=db.backref("attendance_states", passive_deletes=True))
 
     __table_args__ = (
-        db.UniqueConstraint('seat_id', 'class_id', 'period', name='uq_attendance_state_scope'),
-        db.Index('ix_attendance_state_student_period', 'student_id', 'period'),
+        db.UniqueConstraint('seat_id', 'class_id', name='uq_attendance_state_scope'),
     )
 
 

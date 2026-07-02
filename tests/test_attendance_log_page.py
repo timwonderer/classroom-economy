@@ -84,26 +84,20 @@ def admin_with_data(client):
 
     # Create attendance sessions with different periods
     tap1 = AttendanceSession(
-        user_id=student1_user.id,
         seat_id=seat1.id,
         class_id=class_row.class_id,
-        period='PERIOD1',
         started_at=datetime.now(timezone.utc),
     )
     tap2 = AttendanceSession(
-        user_id=student1_user.id,
         seat_id=seat1.id,
         class_id=class_row.class_id,
-        period='PERIOD2',
         started_at=datetime.now(timezone.utc),
         ended_at=datetime.now(timezone.utc),
         duration_seconds=0,
     )
     tap3 = AttendanceSession(
-        user_id=student2_user.id,
         seat_id=seat2.id,
         class_id=class_row.class_id,
-        period='PERIOD3',
         started_at=datetime.now(timezone.utc),
     )
     db.session.add_all([tap1, tap2, tap3])
@@ -234,17 +228,13 @@ def test_attendance_log_tenant_scoping(client):
 
     # Create attendance sessions
     tap1 = AttendanceSession(
-        user_id=student1_user.id,
         seat_id=seat1.id,
         class_id=class1.class_id,
-        period='ADM1PER',
         started_at=datetime.now(timezone.utc),
     )
     tap2 = AttendanceSession(
-        user_id=student2_user.id,
         seat_id=seat2.id,
         class_id=class2.class_id,
-        period='ADM2PER',
         started_at=datetime.now(timezone.utc),
     )
     db.session.add_all([tap1, tap2])

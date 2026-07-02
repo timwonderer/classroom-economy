@@ -146,16 +146,12 @@ def test_tenant_isolation_attendance_history(client):
     seat_a = Seat.query.filter_by(class_id=economy_a.class_id, join_code="JOIN-A", role="student").first()
     seat_b = Seat.query.filter_by(class_id=economy_b.class_id, join_code="JOIN-B", role="student").first()
     tap_a = AttendanceSession(
-        user_id=student_a_user.id,
         seat_id=seat_a.id,
-        period="A",
         started_at=datetime.now(timezone.utc),
         class_id=economy_a.class_id if economy_a else None,
     )
     tap_b = AttendanceSession(
-        user_id=student_b_user.id,
         seat_id=seat_b.id,
-        period="A",
         started_at=datetime.now(timezone.utc),
         class_id=economy_b.class_id if economy_b else None,
     )
@@ -183,10 +179,8 @@ def test_payroll_run_creates_payroll_transaction(client):
     from app.models import AttendanceSession
     db.session.add(
         AttendanceSession(
-            user_id=student_user.id,
             seat_id=Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-PAY", role="student").first().id,
             class_id=economy.class_id,
-            period="A",
             started_at=now - timedelta(minutes=60),
             ended_at=now - timedelta(minutes=30),
             duration_seconds=1800,

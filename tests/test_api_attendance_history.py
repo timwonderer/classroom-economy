@@ -74,20 +74,16 @@ def admin_with_students(client):
     
     # Tap in event (1 hour ago)
     tap_in = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_row.class_id,
-        period='A',
         started_at=now_utc - timedelta(hours=1),
     )
     db.session.add(tap_in)
 
     # Tap out event (30 minutes ago)
     tap_out = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_row.class_id,
-        period='A',
         started_at=now_utc - timedelta(minutes=30),
         ended_at=now_utc - timedelta(minutes=30),
         duration_seconds=0,
@@ -257,17 +253,13 @@ def test_attendance_history_tenant_scoping(client):
     now_utc = datetime.now(timezone.utc)
     
     tap1 = AttendanceSession(
-        user_id=student1_user.id,
         seat_id=seat1.id,
         class_id=class1.class_id,
-        period='A',
         started_at=now_utc,
     )
     tap2 = AttendanceSession(
-        user_id=student2_user.id,
         seat_id=seat2.id,
         class_id=class2.class_id,
-        period='B',
         started_at=now_utc,
     )
     db.session.add_all([tap1, tap2])
@@ -304,10 +296,8 @@ def test_attendance_history_excludes_deleted_records(client, admin_with_students
     # Create a new tap event that we'll mark as deleted
     now_utc = datetime.now(timezone.utc)
     deleted_tap = AttendanceSession(
-        user_id=student_user.id,
         seat_id=admin_with_students['seat'].id,
         class_id=admin_with_students['class_id'],
-        period='B',
         started_at=now_utc - timedelta(minutes=15),
         is_deleted=True,
         deleted_at=now_utc - timedelta(minutes=5),
@@ -350,10 +340,8 @@ def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_
 
     # Simulate duplicate inserts from concurrent workers.
     db.session.add(AttendanceSession(
-        user_id=student_user.id,
         seat_id=admin_with_students['seat'].id,
         class_id=admin_with_students['class_id'],
-        period='A',
         started_at=duplicate_ts,
         ended_at=duplicate_ts,
         duration_seconds=0,
@@ -361,10 +349,8 @@ def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_
         end_reason_code=AttendanceReasonCode.DAILY_LIMIT,
     ))
     db.session.add(AttendanceSession(
-        user_id=student_user.id,
         seat_id=admin_with_students['seat'].id,
         class_id=admin_with_students['class_id'],
-        period='A',
         started_at=duplicate_ts,
         ended_at=duplicate_ts,
         duration_seconds=0,

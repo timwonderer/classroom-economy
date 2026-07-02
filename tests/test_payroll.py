@@ -85,10 +85,8 @@ def test_calculate_payroll(client):
     session_start = now - timedelta(minutes=60)
     session_end = now - timedelta(minutes=30)
     attendance_session = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_economy.class_id,
-        period="A",
         started_at=session_start,
         ended_at=session_end,
         duration_seconds=1800,
@@ -204,28 +202,22 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
     now = datetime.now(timezone.utc)
     db.session.add_all([
         AttendanceSession(
-            user_id=student_user.id,
             seat_id=seat_a.id,
             class_id=class_a.class_id,
-            period="A",
             started_at=now - timedelta(minutes=50),
             ended_at=now - timedelta(minutes=40),
             duration_seconds=600,
         ),
         AttendanceSession(
-            user_id=student_user.id,
             seat_id=seat_a.id,
             class_id=class_a.class_id,
-            period="A",
             started_at=now - timedelta(minutes=39),
             ended_at=now - timedelta(minutes=35),
             duration_seconds=240,
         ),
         AttendanceSession(
-            user_id=student_user.id,
             seat_id=seat_b.id,
             class_id=class_b.class_id,
-            period="B",
             started_at=now - timedelta(minutes=30),
             ended_at=now - timedelta(minutes=15),
             duration_seconds=900,
@@ -480,10 +472,8 @@ def test_get_cached_payroll_with_meta(client):
     # Add attendance session (1 hour at default rate).
     now = datetime.now(timezone.utc)
     session_one = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_economy.class_id,
-        period="A",
         started_at=now - timedelta(hours=2),
         ended_at=now - timedelta(hours=1),
         duration_seconds=3600,
@@ -511,10 +501,8 @@ def test_get_cached_payroll_with_meta(client):
     # Add more attendance events that SHOULD increase payroll if recalculated
     # Adding another 15 minutes
     session_two = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_economy.class_id,
-        period="A",
         started_at=now - timedelta(minutes=30),
         ended_at=now - timedelta(minutes=15),
         duration_seconds=900,

@@ -829,7 +829,11 @@ def _build_admin_auth_fields(username: str, *, existing_salt: bytes | None = Non
 
 
 def _scoped_students(include_unassigned=True):
-    """Return a query for students the current admin can access."""
+    """Return a query for students the current admin can access.
+
+    LEGACY BRIDGE — callers that still need Student objects go through here.
+    Prefer ``_scoped_seats()`` for new code.
+    """
     ctx = getattr(g, 'canonical_context', None)
     if ctx and getattr(ctx, 'actor_role', None) == 'sysadmin':
         query = Student.query
@@ -849,7 +853,7 @@ def _scoped_students(include_unassigned=True):
             query = Student.query.filter(Student.id.in_(sa.select(teacher_student_ids)))
 
     class_id = getattr(g, "admin_class_id", None) or (getattr(getattr(g, "canonical_context", None), "class_id", None) or "").strip() or None
-    
+
     if not class_id:
         return query
 
@@ -861,6 +865,7 @@ def _scoped_students(include_unassigned=True):
         .subquery()
     )
     return query.filter(Student.id.in_(sa.select(class_scoped_student_ids)))
+
 
 
 def _get_teacher_blocks():
@@ -4757,7 +4762,6 @@ def student_detail_public(student_public_id):
             att_state = SeatAttendanceState.query.filter_by(
                 seat_id=scoped_seat.id,
                 class_id=class_id,
-                period=period,
             ).first()
         else:
             att_state = None
@@ -9703,12 +9707,11 @@ def attendance_log():
     # Attendance history is now seat-scoped; derive periods from canonical session rows.
     class_ids_subq = db.session.query(ClassEconomy.class_id).filter_by(user_id=g.canonical_context.user_id).subquery()
     periods_query = (
-        db.session.query(AttendanceSession.period)
-        .join(Seat, Seat.id == AttendanceSession.seat_id)
+        db.session.query(Seat.block)
         .filter(Seat.class_id.in_(sa.select(class_ids_subq)))
-        .filter(AttendanceSession.is_deleted.is_not(True))
+        .filter(Seat.block.isnot(None))
         .distinct()
-        .order_by(AttendanceSession.period)
+        .order_by(Seat.block)
     )
     periods = [p[0] for p in periods_query.all() if p[0]]
 
@@ -10488,91 +10491,81 @@ def export_students():
 @feat_shell("FEAT-ADMN-001")
 def enforce_daily_limits():
     """
-    Manually trigger auto tap-out for all students who have exceeded their daily limit.
-    Returns a report of students who were auto-tapped out.
+    Manually trigger auto tap-out for all active seats that exceeded their daily limit.
+    Scoped to the teacher's classes via ClassEconomy.
     """
     from app.payroll import get_daily_limit_seconds
     from app.attendance import calculate_period_attendance_utc_range
 
-    students = _scoped_students().all()
+    teacher_user_id = g.canonical_context.user_id
+    now_utc = utc_now()
+
+    # Get all classes owned by this teacher
+    teacher_classes = ClassEconomy.query.filter_by(user_id=teacher_user_id).all()
+    if not teacher_classes:
+        return jsonify({"status": "success", "message": "No active classes.", "checked": 0, "tapped_out": [], "errors": []})
+
+    class_map = {c.class_id: c for c in teacher_classes}
+
+    # Find all active attendance states across teacher's classes
+    active_states = SeatAttendanceState.query.filter(
+        SeatAttendanceState.class_id.in_(class_map.keys()),
+        SeatAttendanceState.is_active.is_(True),
+    ).all()
+
     tapped_out = []
     checked = 0
     errors = []
-    current_admin_id = g.canonical_context.user_id
 
-    now_utc = utc_now()
-    today_local = class_date(timestamp_utc=now_utc)
-    start_of_day_utc, end_of_day_utc = day_bounds_utc(timestamp_utc=now_utc)
-
-    for student in students:
-        period_upper = None
+    for att_state in active_states:
         try:
-            student_blocks = [b.strip() for b in student.block.split(',') if b.strip()]
-            for block_original in student_blocks:
-                period_upper = block_original.upper()
-                join_code = get_join_code_for_student_period(student.id, period_upper, teacher_id=current_admin_id)
-                if not join_code:
-                    continue
-                class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-                class_id = class_row.class_id if class_row else None
-                if not class_id:
-                    continue
-                seat_id = get_seat_id_for_class(student.id, class_id)
-                if not seat_id:
-                    continue
-                att_state = SeatAttendanceState.query.filter_by(
-                    seat_id=seat_id,
-                    class_id=class_id,
-                    period=period_upper,
-                ).first()
+            checked += 1
+            class_row = class_map[att_state.class_id]
+            seat_id = att_state.seat_id
+            class_id = att_state.class_id
+            section = class_row.section
 
-                if not att_state or not att_state.is_active:
-                    continue
+            daily_limit = get_daily_limit_seconds(section, class_id=class_id) if section else None
+            if not daily_limit:
+                continue
 
-                checked += 1
-                daily_limit = get_daily_limit_seconds(
-                    block_original,
-                    class_id=class_id,
-                )
-                if not daily_limit:
-                    continue
-
-                today_attendance = calculate_period_attendance_utc_range(
-                    seat_id, class_id, period_upper, start_of_day_utc, end_of_day_utc
-                )
-                if att_state.last_event_at:
-                    last_tap_in_utc = ensure_utc(att_state.last_event_at)
-                    if start_of_day_utc <= last_tap_in_utc < end_of_day_utc:
-                        today_attendance += (now_utc - last_tap_in_utc).total_seconds()
-
-                if today_attendance < daily_limit:
-                    continue
-
-                student_tap(
-                    student_id=student.id,
-                    seat_id=seat_id,
-                    class_id=class_id,
-                    join_code=join_code,
-                    period=period_upper,
-                    status="inactive",
-                    reason=f"Daily limit reached ({daily_limit / 3600:.1f}h)",
-                    reason_code=TapEventReasonCode.DAILY_LIMIT,
-                    timestamp_utc=now_utc,
-                )
-                att_state.done_for_day_date = today_local
-                tapped_out.append(f"{student.full_name} (Period {period_upper})")
-                break
-        except Exception as e:
-            errors.append(
-                f"Error when executing auto-timeout for {student.full_name} (ID {student.id}, Period {period_upper or 'unknown'})"
+            start_of_day_utc, end_of_day_utc = day_bounds_utc(timestamp_utc=now_utc)
+            today_attendance = calculate_period_attendance_utc_range(
+                seat_id, class_id, start_of_day_utc, end_of_day_utc
             )
+            if att_state.last_event_at:
+                last_tap_in_utc = ensure_utc(att_state.last_event_at)
+                if start_of_day_utc <= last_tap_in_utc < end_of_day_utc:
+                    today_attendance += (now_utc - last_tap_in_utc).total_seconds()
+
+            if today_attendance < daily_limit:
+                continue
+
+            student_tap(
+                seat_id=seat_id,
+                class_id=class_id,
+                status="inactive",
+                reason=f"Daily limit reached ({daily_limit / 3600:.1f}h)",
+                reason_code=TapEventReasonCode.DAILY_LIMIT,
+                timestamp_utc=now_utc,
+            )
+            today_local = class_date(timestamp_utc=now_utc)
+            att_state.done_for_day_date = today_local
+
+            # Resolve display name from IdentityProfile for the response
+            seat = db.session.get(Seat, seat_id)
+            profile = IdentityProfile.query.filter_by(seat_id=seat_id).first() if seat else None
+            display_name = f"{profile.first_name} {profile.last_name}" if profile else f"Seat {seat_id}"
+            tapped_out.append(f"{display_name} ({class_row.display_name or class_row.section or class_id})")
+        except Exception as e:
+            errors.append(f"Error enforcing limit for seat {att_state.seat_id} in class {att_state.class_id}")
             current_app.logger.error(
-                f"Error enforcing limits for student {student.id} ({student.full_name}) in period {period_upper or 'unknown'}",
+                "Error enforcing limits for seat %s in class %s", att_state.seat_id, att_state.class_id,
                 exc_info=True,
             )
             continue
 
-    message = f"Checked {checked} active students. Auto-tapped out {len(tapped_out)} student(s)."
+    message = f"Checked {checked} active seat(s). Auto-tapped out {len(tapped_out)} seat(s)."
 
     return jsonify({
         "status": "success",
@@ -10588,118 +10581,66 @@ def enforce_daily_limits():
 @feat_shell("FEAT-ADMN-001")
 def tap_out_students():
     """
-    Admin endpoint to tap out one or more students from a specific period.
-    Supports single student, multiple students, or entire block tap-out.
+    Admin endpoint to tap out one or more seats.
+    Accepts seat_ids or tap_out_all (taps out all active seats in teacher's classes).
     """
     data = request.get_json()
 
-    # Get parameters
-    student_ids = data.get('student_ids', [])  # List of student IDs, or 'all' for entire block
-    period = data.get('period', '').strip().upper()
+    seat_ids = data.get('seat_ids', [])
     reason = data.get('reason', 'Teacher tap-out')
-    tap_out_all = data.get('tap_out_all', False)  # If true, tap out all active students in this period
+    tap_out_all = data.get('tap_out_all', False)
 
-    if not period:
-        return jsonify({"status": "error", "message": "Period is required."}), 400
-
-    if not tap_out_all and not student_ids:
-        return jsonify({"status": "error", "message": "Either student_ids or tap_out_all must be provided."}), 400
+    if not tap_out_all and not seat_ids:
+        return jsonify({"status": "error", "message": "Either seat_ids or tap_out_all must be provided."}), 400
 
     now_utc = utc_now()
     tapped_out = []
     already_inactive = []
     errors = []
-    current_admin_id = g.canonical_context.user_id
+    teacher_user_id = g.canonical_context.user_id
 
     try:
-        # If tap_out_all is true, get all students with this period who are currently active
+        # Get teacher's class_ids for authorization
+        teacher_class_ids = [
+            c.class_id for c in
+            ClassEconomy.query.filter_by(user_id=teacher_user_id).all()
+        ]
+
         if tap_out_all:
-            # Find all students in this block
-            students = _scoped_students().all()
-            for student in students:
-                student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-                if period not in student_blocks:
-                    continue
+            # Find all active seats across teacher's classes
+            active_states = SeatAttendanceState.query.filter(
+                SeatAttendanceState.class_id.in_(teacher_class_ids),
+                SeatAttendanceState.is_active.is_(True),
+            ).all()
+            seat_ids = [s.seat_id for s in active_states]
 
-                join_code = get_join_code_for_student_period(student.id, period, teacher_id=current_admin_id)
-                if not join_code:
-                    continue
-
-                class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-                class_id_for_state = class_row.class_id if class_row else None
-                if not class_id_for_state:
-                    continue
-                seat_id_for_state = get_seat_id_for_class(student.id, class_id_for_state)
-                if not seat_id_for_state:
-                    continue
-
-                att_state = SeatAttendanceState.query.filter_by(
-                    seat_id=seat_id_for_state,
-                    class_id=class_id_for_state,
-                    period=period,
-                ).first()
-
-                if att_state and att_state.is_active:
-                    student_ids.append(student.id)
-
-        # Process each student ID
-        for student_id in student_ids:
-            student = _get_student_or_404(student_id)
-
-            if not student:
-                errors.append(f"Student ID {student_id} not found")
-                continue
-
-            # Verify the student has this period in their block
-            student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-            if period not in student_blocks:
-                errors.append(f"{student.full_name} is not enrolled in period {period}")
-                continue
-
-            join_code = get_join_code_for_student_period(student.id, period, teacher_id=current_admin_id)
-            if not join_code:
-                errors.append(f"{student.full_name} has no join code for period {period} in this class scope")
-                continue
-
-            class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-            class_id = class_row.class_id if class_row else None
-            if not class_id:
-                errors.append(f"{student.full_name} has no class record for join code {join_code}")
-                continue
-            seat_id = get_seat_id_for_class(student.id, class_id)
-            if not seat_id:
-                errors.append(f"{student.full_name} has no seat in class {class_id}")
-                continue
-
-            att_state = SeatAttendanceState.query.filter_by(
-                seat_id=seat_id,
-                class_id=class_id,
-                period=period,
+        for seat_id in seat_ids:
+            att_state = SeatAttendanceState.query.filter(
+                SeatAttendanceState.seat_id == seat_id,
+                SeatAttendanceState.class_id.in_(teacher_class_ids),
             ).first()
 
             if not att_state or not att_state.is_active:
-                already_inactive.append(student.full_name)
+                profile = IdentityProfile.query.filter_by(seat_id=seat_id).first()
+                name = f"{profile.first_name} {profile.last_name}" if profile else f"Seat {seat_id}"
+                already_inactive.append(name)
                 continue
 
             student_tap(
-                student_id=student.id,
                 seat_id=seat_id,
-                class_id=class_id,
-                join_code=join_code,
-                period=period,
+                class_id=att_state.class_id,
                 status="inactive",
                 reason=reason,
                 timestamp_utc=now_utc,
             )
             att_state.done_for_day_date = class_date(timestamp_utc=now_utc)
 
-            tapped_out.append(student.full_name)
+            profile = IdentityProfile.query.filter_by(seat_id=seat_id).first()
+            name = f"{profile.first_name} {profile.last_name}" if profile else f"Seat {seat_id}"
+            tapped_out.append(name)
 
-            current_app.logger.info(
-                f"Admin tapped out student {student.id} ({student.full_name}) from period {period}, locked until midnight"
-            )
+            current_app.logger.info("Admin tapped out seat %s in class %s", seat_id, att_state.class_id)
 
-        # Build response message
         message_parts = []
         if tapped_out:
             message_parts.append(f"Successfully tapped out {len(tapped_out)} student(s)")
@@ -10730,83 +10671,60 @@ def tap_out_students():
 @feat_shell("FEAT-ADMN-001")
 def tap_in_students():
     """
-    Admin endpoint to tap in one or more students for a specific period.
+    Admin endpoint to tap in one or more seats.
+    Accepts seat_ids list.
     """
     data = request.get_json()
 
-    # Get parameters
-    student_ids = data.get('student_ids', [])
-    period = data.get('period', '').strip().upper()
+    seat_ids = data.get('seat_ids', [])
 
-    if not period:
-        return jsonify({"status": "error", "message": "Period is required."}), 400
-
-    if not student_ids:
-        return jsonify({"status": "error", "message": "student_ids must be provided."}), 400
+    if not seat_ids:
+        return jsonify({"status": "error", "message": "seat_ids must be provided."}), 400
 
     now_utc = utc_now()
     tapped_in = []
     already_active = []
     errors = []
-    current_admin_id = g.canonical_context.user_id
+    teacher_user_id = g.canonical_context.user_id
 
     try:
-        # Process each student ID
-        for student_id in student_ids:
-            student = _get_student_or_404(student_id)
+        # Get teacher's class_ids for authorization
+        teacher_class_ids = [
+            c.class_id for c in
+            ClassEconomy.query.filter_by(user_id=teacher_user_id).all()
+        ]
 
-            if not student:
-                errors.append(f"Student ID {student_id} not found")
-                continue
-
-            # Verify the student has this period in their block
-            student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-            if period not in student_blocks:
-                errors.append(f"{student.full_name} is not enrolled in period {period}")
-                continue
-
-            join_code = get_join_code_for_student_period(student.id, period, teacher_id=current_admin_id)
-            if not join_code:
-                errors.append(f"{student.full_name} has no join code for period {period} in this class scope")
-                continue
-
-            class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-            class_id = class_row.class_id if class_row else None
-            if not class_id:
-                errors.append(f"{student.full_name} has no class record for join code {join_code}")
-                continue
-            seat_id = get_seat_id_for_class(student.id, class_id)
-            if not seat_id:
-                errors.append(f"{student.full_name} has no seat in class {class_id}")
+        for seat_id in seat_ids:
+            seat = db.session.get(Seat, seat_id)
+            if not seat or seat.class_id not in teacher_class_ids:
+                errors.append(f"Seat {seat_id} not found or not in teacher's classes")
                 continue
 
             att_state = SeatAttendanceState.query.filter_by(
                 seat_id=seat_id,
-                class_id=class_id,
-                period=period,
+                class_id=seat.class_id,
             ).first()
 
             if att_state and att_state.is_active:
-                already_active.append(student.full_name)
+                profile = IdentityProfile.query.filter_by(seat_id=seat_id).first()
+                name = f"{profile.first_name} {profile.last_name}" if profile else f"Seat {seat_id}"
+                already_active.append(name)
                 continue
 
             student_tap(
-                student_id=student.id,
                 seat_id=seat_id,
-                class_id=class_id,
-                join_code=join_code,
-                period=period,
+                class_id=seat.class_id,
                 status="active",
                 reason="Teacher tap-in",
                 timestamp_utc=now_utc,
             )
-            tapped_in.append(student.full_name)
 
-            current_app.logger.info(
-                f"Admin tapped in student {student.id} ({student.full_name}) for period {period}"
-            )
+            profile = IdentityProfile.query.filter_by(seat_id=seat_id).first()
+            name = f"{profile.first_name} {profile.last_name}" if profile else f"Seat {seat_id}"
+            tapped_in.append(name)
 
-        # Build response message
+            current_app.logger.info("Admin tapped in seat %s in class %s", seat_id, seat.class_id)
+
         message_parts = []
         if tapped_in:
             message_parts.append(f"Successfully tapped in {len(tapped_in)} student(s)")
