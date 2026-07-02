@@ -31,7 +31,7 @@ def admin_with_students(client):
     db.session.add(user)
     db.session.flush()
 
-    # Create student owned by this admin
+    # Create seat-owned student identity for this admin
     student = make_student_identity(block='A', first_name='Test', last_name='S')
 
     # CRITICAL FIX: Create StudentTeacher association for multi-tenancy

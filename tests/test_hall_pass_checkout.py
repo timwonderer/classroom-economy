@@ -9,7 +9,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone, timedelta
-from app.models import Seat, IdentityProfile, Student, Admin, HallPassLog, StudentTeacher, HallPassSettings, ClassEconomy, AttendanceSession, SeatAttendanceState, User, UserRole
+from app.models import Seat, IdentityProfile, Admin, HallPassLog, StudentTeacher, HallPassSettings, ClassEconomy, AttendanceSession, SeatAttendanceState, User, UserRole
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
 from app.utils.auth_username import build_hashed_username_fields
@@ -28,7 +28,7 @@ def _make_canonical_user(*, username: str, role: UserRole) -> User:
     return user
 
 
-def _login_student_context(client, *, student: Student, user: User, seat: Seat, login_time: str | None = None) -> None:
+def _login_student_context(client, *, user: User, seat: Seat, login_time: str | None = None) -> None:
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,

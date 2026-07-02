@@ -63,7 +63,7 @@ def setup_student_with_disabled_banking(client):
     db.session.add(teacher)
     db.session.commit()
 
-    # Create student
+    # Create seat-owned student identity
     student = make_student_identity(block="Period1", first_name="Bob", last_name="B")
     user = _bind_canonical_student(student)
     

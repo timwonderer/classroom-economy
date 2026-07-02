@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import User, UserRole, Admin, IdentityProfile, Student, StudentTeacher, Transaction, TransactionStatus
+from app.models import User, UserRole, Admin, IdentityProfile, StudentTeacher, Transaction, TransactionStatus
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.class_scope import make_student_identity
