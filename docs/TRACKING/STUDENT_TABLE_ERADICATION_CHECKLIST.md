@@ -16,7 +16,7 @@ Status legend:
 - [ ] Delete dead legacy query helpers in [`app/routes/admin.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/admin.py)
 - [x] Delete legacy-compatibility-only tests in [`tests/test_multi_teacher_hardening.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_multi_teacher_hardening.py)
 - [x] Delete legacy-compatibility-only tests in [`tests/test_admin_multi_tenancy.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_admin_multi_tenancy.py)
-- [ ] Delete legacy-compatibility-only tests in [`tests/test_query_inversion_guard.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_query_inversion_guard.py)
+- [x] Delete legacy-compatibility-only tests in [`tests/test_query_inversion_guard.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_query_inversion_guard.py)
 
 ## Swap
 
