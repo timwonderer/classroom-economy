@@ -5410,34 +5410,28 @@ def add_individual_student():
             last_name=last_name,
             notes=additional_notes or None,
         )
-
-        # Create student
-        new_student = Student(
-            first_name=first_name,
-            last_initial=last_initial,
-            identity_profile=profile,
-            block=block,
-            join_code=join_code,
-            class_id=class_id,
-            salt=salt,
-            first_half_hash=first_half_hash,
-            second_half_hash=second_half_hash,
+        provisional_user = User(
+            username_hash=hash_username_lookup(f"{class_id}:{dedupe_key}:{secrets.token_hex(8)}"),
+            username_lookup_hash=hash_username_lookup(f"{class_id}:{dedupe_key}:{secrets.token_hex(8)}:lookup"),
+            password_hash=None,
+            pin_hash=None,
+            passphrase_hash=None,
             has_completed_setup=False,
         )
-
-        db.session.add(new_student)
+        db.session.add(provisional_user)
         db.session.flush()
 
         # Ensure ClassEconomy record exists before creating Seat
         _ensure_join_code_anchors(current_admin_id, join_code)
 
         new_seat = Seat(
-            user_id=None,
+            user_id=provisional_user.id,
             class_id=class_id,
             join_code=join_code,
             block=block,
             dedupe_code=dedupe_key,
             claimed_at=None,  # Student hasn't set up username yet
+            hall_passes=3,
         )
         db.session.add(new_seat)
         db.session.flush()
@@ -5565,37 +5559,15 @@ def add_manual_student():
             first_name=first_name,
             last_name=last_name,
         )
-
-        # Create student
-        new_student = Student(
-            first_name=first_name,
-            last_initial=last_initial,
-            identity_profile=profile,
-            block=block,
-            join_code=join_code,
-            class_id=class_id,
-            salt=salt,
-            first_half_hash=first_half_hash,
-            second_half_hash=second_half_hash,
-            hall_passes=hall_passes,
-            is_rent_enabled=rent_enabled,
-            has_completed_setup=setup_complete,
+        auth_user = User(
+            username_hash=hash_username_lookup(username) if username else hash_username_lookup(f"{class_id}:{dedupe_key}:{secrets.token_hex(8)}"),
+            username_lookup_hash=hash_username_lookup(username) if username else hash_username_lookup(f"{class_id}:{dedupe_key}:{secrets.token_hex(8)}:lookup"),
+            password_hash=generate_password_hash(pin) if pin else None,
+            pin_hash=None,
+            passphrase_hash=generate_password_hash(passphrase) if passphrase else None,
+            has_completed_setup=setup_complete or bool(username),
         )
-
-        # Set username if provided
-        if username:
-            new_student.username_hash = hash_username(username, salt)
-            new_student.username_lookup_hash = hash_username_lookup(username)
-
-        # Set PIN if provided
-        if pin:
-            new_student.pin_hash = generate_password_hash(pin)
-
-        # Set passphrase if provided
-        if passphrase:
-            new_student.passphrase_hash = generate_password_hash(passphrase)
-
-        db.session.add(new_student)
+        db.session.add(auth_user)
         db.session.flush()
 
         # Ensure ClassEconomy record exists before creating Seat
@@ -5605,12 +5577,14 @@ def add_manual_student():
         is_claimed = bool(username)
 
         new_seat = Seat(
-            user_id=None,
+            user_id=auth_user.id,
             class_id=class_id,
             join_code=join_code,
             block=block,
             dedupe_code=dedupe_key,
             claimed_at=utc_now() if is_claimed else None,
+            hall_passes=hall_passes,
+            has_received_rent_exemption=not rent_enabled,
         )
         db.session.add(new_seat)
         db.session.flush()

@@ -460,31 +460,6 @@ class Student(db.Model):
     def opaque_id(self):
         """Opaque reference safe for sysadmin views and non-PII logs."""
         return self.opaque_reference
-
-
-@sa.event.listens_for(Student, "before_insert")
-@sa.event.listens_for(Student, "before_update")
-def _sync_student_recovery_scope(_mapper, connection, target):
-    identity_id = getattr(target, "identity_id", None)
-    if not identity_id:
-        return
-    connection.execute(
-        sa.text(
-            "UPDATE identity_profiles "
-            "SET reset_code = :reset_code, "
-            "reset_code_expires_at = :reset_code_expires_at, "
-            "recovery_status = :recovery_status "
-            "WHERE id = :identity_id"
-        ),
-        {
-            "reset_code": getattr(target, "reset_code", None),
-            "reset_code_expires_at": getattr(target, "reset_code_expires_at", None),
-            "recovery_status": getattr(target, "recovery_status", "active"),
-            "identity_id": identity_id,
-        },
-    )
-
-
 class AdminInviteCode(db.Model):
     # V1 LEGACY — replaced in v2 by open teacher signup (Turnstile-gated form → TOTP → passkey → done)
     __tablename__ = 'teacher_invite_codes'
