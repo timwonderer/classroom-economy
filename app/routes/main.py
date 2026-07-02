@@ -69,7 +69,7 @@ def health_check_deep():
 
     Checks:
     - Database connectivity
-    - Student table accessibility
+    - Seat table accessibility
     - Admin table accessibility
     - Hall passes table accessibility (if accessible)
 
@@ -89,15 +89,15 @@ def health_check_deep():
         checks['database'] = 'error'
         overall_status = 'degraded'
 
-    # Check if student table is accessible
+    # Check if seat table is accessible
     try:
         with db.engine.connect() as conn:
-            student_count = conn.execute(text('SELECT COUNT(*) FROM students')).scalar()
-        checks['students_table'] = 'accessible'
-        checks['student_count'] = student_count
+            seat_count = conn.execute(text('SELECT COUNT(*) FROM seats')).scalar()
+        checks['seats_table'] = 'accessible'
+        checks['seat_count'] = seat_count
     except SQLAlchemyError as e:
-        current_app.logger.warning('Students table check failed: %s', str(e))
-        checks['students_table'] = 'error'
+        current_app.logger.warning('Seats table check failed: %s', str(e))
+        checks['seats_table'] = 'error'
         overall_status = 'degraded'
 
     # Check if admin table is accessible
