@@ -1,6 +1,6 @@
 import pytest
 from app.extensions import db
-from app.models import User, UserRole, Student
+from app.models import User, UserRole
 from app.feats.base import FEATContextError, requires_feat_context, is_feat_active
 from tests.helpers.class_scope import make_student_identity
 

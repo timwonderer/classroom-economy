@@ -1,7 +1,7 @@
 from flask import session
 
 from app import db
-from app.models import ClassEconomy, Seat, Student, User, UserRole
+from app.models import ClassEconomy, Seat, User, UserRole
 from app.services.context_resolver import resolve_canonical_context
 from app.services.tlcp import resolve_actor_context
 from app.utils.time import utc_now

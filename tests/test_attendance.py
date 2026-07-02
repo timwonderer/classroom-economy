@@ -2,7 +2,6 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from tests.helpers.class_scope import make_student_identity
 import pytest
 from app import db, Transaction
-from app.models import Student
 from app.attendance import (
     get_last_payroll_time,
     calculate_unpaid_attendance_seconds,
