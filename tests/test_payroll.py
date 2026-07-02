@@ -418,7 +418,7 @@ def test_get_cached_payroll_with_meta(client):
     db.session.add(teacher)
     db.session.commit()
 
-    # Setup Student
+    # Setup seat-scoped student identity
     student = make_student_identity(block="A", first_name="CacheUser", last_name="T")
     db.session.flush()
     class_economy = create_class_scope(

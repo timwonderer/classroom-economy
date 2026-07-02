@@ -168,7 +168,7 @@ def test_approve_redemption_requires_membership(client):
 
 def test_file_claim_scoped_to_class(client):
     """Test that insurance claims are scoped to the class of the policy."""
-    # Setup: Admin with 2 classes, Student in both.
+    # Setup: Admin with 2 classes, seat-scoped student in both.
     admin = make_admin("claim_admin", "secret")
     db.session.add(admin)
     db.session.flush()

@@ -19,7 +19,7 @@ def test_attendance_status_isolation(client):
     db.session.add_all([t1, t2])
     db.session.commit()
 
-    # 2. Setup Student
+    # 2. Setup seat-scoped student identity
     student = make_student_identity(first_name="Shared", last_name="S", block="PERIOD 1", claimed=True)
 
     # 3. Create Links & Seats
