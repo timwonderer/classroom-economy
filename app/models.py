@@ -2371,7 +2371,6 @@ class Issue(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     # Relationships
-    student = db.relationship('Student', backref=db.backref('issues', lazy='dynamic'))
     teacher = db.relationship('User', foreign_keys=[user_id], backref=db.backref('class_issues', lazy='dynamic'))
     sysadmin = db.relationship('User', foreign_keys=[sysadmin_id], backref=db.backref('reviewed_issues', lazy='dynamic'))
     related_transaction = db.relationship('Transaction', backref='related_issues')
