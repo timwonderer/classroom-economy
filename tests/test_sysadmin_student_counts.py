@@ -10,7 +10,7 @@ from tests.helpers.class_scope import make_student_identity
 import pyotp
 
 from app import app, db
-from app.models import User, UserRole, Admin, Student, StudentTeacher, SystemAdmin
+from app.models import User, UserRole, Admin, StudentTeacher, SystemAdmin
 
 
 def _create_sysadmin(username: str = "sysadmin"):
@@ -31,7 +31,7 @@ def _create_admin(username: str) -> tuple[Admin, str]:
     return admin, secret
 
 
-def _create_student(first_name: str, primary_teacher: Admin = None, linked_teachers: list[Admin] = None) -> Student:
+def _create_student(first_name: str, primary_teacher: Admin = None, linked_teachers: list[Admin] = None):
     """
     Create a student for testing.
     

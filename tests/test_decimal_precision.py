@@ -11,7 +11,7 @@ import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
 from app.models import (
-    User, UserRole, Admin, ClassEconomy, IdentityProfile, Seat, Student, Transaction, RentSettings, RentPayment, BankingSettings, _quantize_currency
+    User, UserRole, Admin, ClassEconomy, IdentityProfile, Seat, Transaction, RentSettings, RentPayment, BankingSettings, _quantize_currency
 )
 from app.extensions import db
 from app.utils.overdraft import charge_overdraft_fee_if_needed

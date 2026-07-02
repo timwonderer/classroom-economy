@@ -1,6 +1,5 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
-from app.models import Student
 from werkzeug.security import generate_password_hash
 from app.hash_utils import hash_username, hash_username_lookup, get_random_salt
 from bs4 import BeautifulSoup

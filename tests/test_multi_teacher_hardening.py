@@ -5,7 +5,7 @@ import pytest
 import pyotp
 import uuid
 from app import db
-from app.models import User, UserRole, Admin, IdentityProfile, Student, StudentTeacher
+from app.models import User, UserRole, Admin, IdentityProfile, StudentTeacher
 from app.hash_utils import get_random_salt
 
 def test_student_count_relies_only_on_link_table(client):
