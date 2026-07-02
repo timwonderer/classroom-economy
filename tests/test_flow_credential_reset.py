@@ -10,7 +10,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from werkzeug.security import generate_password_hash
 from app import db
-from app.models import User, UserRole, Admin, Transaction, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, Transaction, Seat, IdentityProfile, ClassEconomy
 from app.hash_utils import hash_username, hash_username_lookup, get_random_salt
 from app.utils.name_utils import hash_last_name_parts
 from app.utils.claim_credentials import compute_primary_claim_hash
@@ -25,6 +25,10 @@ def test_data(app):
         admin = make_admin('admin_flow2', 'dummy_secret')
         db.session.add(admin)
         db.session.commit()
+
+        class_row = ClassEconomy(join_code='FLOW2A', user_id=admin.id, display_name='Flow Reset Class')
+        db.session.add(class_row)
+        db.session.flush()
 
         salt = get_random_salt()
         dob_sum = 20100101
