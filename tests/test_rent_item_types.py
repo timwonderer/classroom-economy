@@ -1955,7 +1955,7 @@ def test_late_fee_only_when_unpaid_by_grace(client, teacher_admin, student_in_cl
     from app.routes.student import utc_now, _total_paid_by_grace
     
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     
     # Set up rent settings with late fee
     now = utc_now()
@@ -2117,7 +2117,7 @@ def test_late_fee_only_when_unpaid_by_grace(client, teacher_admin, student_in_cl
 def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(client, teacher_admin, student_in_class, monkeypatch):
     """Paid-rent students should not be charged if a stale exhausted grant row is the only row present."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
 
@@ -2183,7 +2183,7 @@ def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(
     ))
 
     # Stale legacy row: exhausted grant still present
-    db.session.add(StudentItem(seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, correlation_id='corr_test', 
+    db.session.add(StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id,
         store_item_id=store_item.id,
         join_code='JOINCODE123',
@@ -2202,9 +2202,6 @@ def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(
     db.session.commit()
 
     starting_balance = student.checking_balance
-
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
