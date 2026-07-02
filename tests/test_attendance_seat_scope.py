@@ -6,7 +6,7 @@ from app.models import Admin, ClassEconomy, Seat, StudentBlock, AttendanceSessio
 from tests.helpers.class_scope import make_student_identity
 
 
-def _student() -> Student:
+def _student():
     return make_student_identity(block="A", first_name="Attend", last_name="A")
 
 

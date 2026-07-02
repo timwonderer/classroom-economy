@@ -4,7 +4,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from tests.helpers.class_scope import make_student_identity
 import pytest
 from app.extensions import db
-from app.models import User, UserRole, Admin, ClassEconomy, ClassMembership, Student, Transaction, TransactionStatus, StoreItem, StudentItem, IssueCategory, Issue, Seat, ClassFeature, IdentityProfile
+from app.models import User, UserRole, Admin, ClassEconomy, ClassMembership, Transaction, TransactionStatus, StoreItem, StudentItem, IssueCategory, Issue, Seat, ClassFeature, IdentityProfile
 from tests.helpers.canonical_session import set_canonical_context
 
 def _login_admin(client, admin_id):

@@ -7,7 +7,7 @@ from decimal import Decimal
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from app.models import User, UserRole, Admin, ClassEconomy, ClassMembership, IdentityProfile, RentPayment, RentSettings, RentWaiver, Seat, Student, Transaction
+from app.models import User, UserRole, Admin, ClassEconomy, ClassMembership, IdentityProfile, RentPayment, RentSettings, RentWaiver, Seat, Transaction
 from app.routes.student import (
     RENT_PAYMENT_MATCH_TOLERANCE_SECONDS,
     _get_locked_rent_amount_for_join_code_cycle,

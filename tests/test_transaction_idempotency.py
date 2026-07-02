@@ -6,7 +6,7 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
-from app.models import User, UserRole, Admin, IdentityProfile, Student, Transaction
+from app.models import User, UserRole, Admin, IdentityProfile, Transaction
 import app.utils.transaction_idempotency as transaction_idempotency
 from app.utils.transaction_idempotency import (
     IDEMPOTENT_TRANSACTION_TYPES,
