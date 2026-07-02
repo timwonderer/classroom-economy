@@ -214,7 +214,7 @@ def test_deleted_students_are_excluded_from_teacher_counts(client):
 
     _create_student("ActiveStudent", primary_teacher=teacher)
     deleted_student = _create_student("DeletedStudent", primary_teacher=teacher)
-    StudentTeacher.query.filter_by(user_id=deleted_student_user.id, teacher_id=teacher.id).delete()
+    StudentTeacher.query.filter_by(user_id=deleted_student.user_id, teacher_id=teacher.id).delete()
     db.session.delete(deleted_student)
     db.session.commit()
 
