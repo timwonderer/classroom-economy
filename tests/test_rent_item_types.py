@@ -3,7 +3,7 @@ from tests.helpers.class_scope import make_student_identity
 import pytest
 import re
 from decimal import Decimal
-from app.models import User, UserRole, RentItem, RentSettings, RentPayment, RentWaiver, StoreItem, StudentItem, Student, Transaction, Admin, ClassEconomy, Seat, IdentityProfile
+from app.models import User, RentItem, RentSettings, RentPayment, RentWaiver, StoreItem, StudentItem, Student, Transaction, Admin, ClassEconomy, Seat, IdentityProfile
 from app.extensions import db
 from datetime import datetime, timezone, timedelta
 
@@ -380,15 +380,11 @@ def test_prevent_deletion_of_linked_items(client, teacher_admin, admin_class_sco
 def test_hall_pass_topoff_replenishes_rent_portion_only(client, teacher_admin, student_in_class):
     """Test hall pass top-off only replenishes the rent-granted portion, not purchased passes."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
-
-    # Create student block with join_code
-    sb = StudentBlock.query.filter_by(student_id=student.id).first()
-    if not sb:
-        db.session.flush()
+    student_user, seat = _student_user_and_seat(student)
+    assert seat is not None
 
     # Scenario: rent grants 3, student has 1 rent + 2 purchased = 3 total
-    sb.rent_hall_passes = 1
+    seat.hall_passes = 1
     student.hall_passes = 3  # 1 rent + 2 purchased
     db.session.commit()
 
@@ -412,101 +408,95 @@ def test_hall_pass_topoff_replenishes_rent_portion_only(client, teacher_admin, s
 
     # Simulate the top-off logic directly (same as student.py rent_pay)
     total_grant = sum(item.hall_pass_count for item in [hall_pass_item] if item.hall_pass_count)
-    current_rent_passes = sb.rent_hall_passes
+    current_rent_passes = seat.hall_passes
     top_off = max(0, total_grant - current_rent_passes)
 
     student.hall_passes = (student.hall_passes or 0) + top_off
-    sb.rent_hall_passes = total_grant
+    seat.hall_passes = total_grant
     db.session.commit()
 
     db.session.refresh(student)
-    db.session.refresh(sb)
+    db.session.refresh(seat)
 
     # Expected: 3(original) + 2(top-off of rent portion: 3-1=2) = 5 total
     assert student.hall_passes == 5
     # rent_hall_passes should now be 3 (the full grant amount)
-    assert sb.rent_hall_passes == 3
+    assert seat.hall_passes == 3
 
 
 def test_hall_pass_topoff_zero_existing(client, teacher_admin, student_in_class):
     """Test hall pass top-off when student has 0 passes grants full amount."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
+    assert seat is not None
 
-    sb = StudentBlock.query.filter_by(student_id=student.id).first()
-    if not sb:
-        db.session.flush()
-
-    sb.rent_hall_passes = 0
+    seat.hall_passes = 0
     student.hall_passes = 0
     db.session.commit()
 
     # Top-off with grant of 3
     total_grant = 3
-    current_rent_passes = sb.rent_hall_passes
+    current_rent_passes = seat.hall_passes
     top_off = max(0, total_grant - current_rent_passes)
 
     student.hall_passes = (student.hall_passes or 0) + top_off
-    sb.rent_hall_passes = total_grant
+    seat.hall_passes = total_grant
     db.session.commit()
 
     db.session.refresh(student)
-    db.session.refresh(sb)
+    db.session.refresh(seat)
 
     assert student.hall_passes == 3
-    assert sb.rent_hall_passes == 3
+    assert seat.hall_passes == 3
 
 
 def test_hall_pass_consumption_decrements_rent_passes_first(client, teacher_admin, student_in_class):
     """Test that using a hall pass decrements rent_hall_passes before purchased passes."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
-
-    sb = StudentBlock.query.filter_by(student_id=student.id).first()
-    if not sb:
-        db.session.flush()
+    student_user, seat = _student_user_and_seat(student)
+    assert seat is not None
 
     # Student has 3 rent + 2 purchased = 5 total
-    sb.rent_hall_passes = 3
+    seat.hall_passes = 3
     student.hall_passes = 5
     db.session.commit()
 
     # Simulate hall pass consumption (same as api.py hall pass approval)
     student.hall_passes -= 1
-    if sb.rent_hall_passes > 0:
-        sb.rent_hall_passes -= 1
+    if seat.hall_passes > 0:
+        seat.hall_passes -= 1
     db.session.commit()
 
     db.session.refresh(student)
     db.session.refresh(sb)
 
     assert student.hall_passes == 4
-    assert sb.rent_hall_passes == 2  # Rent pass consumed first
+    assert seat.hall_passes == 2  # Rent pass consumed first
 
     # Consume 2 more rent passes
     for _ in range(2):
         student.hall_passes -= 1
-        if sb.rent_hall_passes > 0:
-            sb.rent_hall_passes -= 1
+        if seat.hall_passes > 0:
+            seat.hall_passes -= 1
     db.session.commit()
 
     db.session.refresh(student)
     db.session.refresh(sb)
 
     assert student.hall_passes == 2
-    assert sb.rent_hall_passes == 0  # All rent passes consumed
+    assert seat.hall_passes == 0  # All rent passes consumed
 
-    # Next pass consumed is from purchased (rent_hall_passes stays 0)
+    # Next pass consumed is from purchased (seat-hall-pass grant stays 0)
     student.hall_passes -= 1
-    if sb.rent_hall_passes > 0:
-        sb.rent_hall_passes -= 1
+    if seat.hall_passes > 0:
+        seat.hall_passes -= 1
     db.session.commit()
 
     db.session.refresh(student)
     db.session.refresh(sb)
 
     assert student.hall_passes == 1
-    assert sb.rent_hall_passes == 0  # Still 0, purchased pass consumed
+    assert seat.hall_passes == 0  # Still 0, purchased pass consumed
 
 
 def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately(client, teacher_admin, student_in_class):
@@ -514,7 +504,7 @@ def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately
     from app.routes.student import _ensure_rent_hall_pass_top_off
 
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     
     class_econ = ClassEconomy.query.first()
@@ -539,10 +529,8 @@ def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately
     ))
 
     # Student starts new period with 3 rent-granted + 2 purchased passes.
-    sb = StudentBlock.query.filter_by(student_id=student.id, period='A').first()
-    if not sb:
-        db.session.flush()
-    sb.rent_hall_passes = 3
+    assert seat is not None
+    seat.hall_passes = 3
     student.hall_passes = 5
     db.session.commit()
 
@@ -556,9 +544,9 @@ def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately
 
     db.session.commit()
     db.session.refresh(student)
-    db.session.refresh(sb)
+    db.session.refresh(seat)
     assert student.hall_passes == 2
-    assert sb.rent_hall_passes == 0
+    assert seat.hall_passes == 0
 
     # Pay rent for current coverage period and reconcile again immediately.
     db.session.add(RentPayment(
@@ -594,9 +582,9 @@ def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately
 
     db.session.commit()
     db.session.refresh(student)
-    db.session.refresh(sb)
+    db.session.refresh(seat)
     assert student.hall_passes == 5
-    assert sb.rent_hall_passes == 3
+    assert seat.hall_passes == 3
 
 
 def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(client, teacher_admin, student_in_class):
@@ -604,7 +592,7 @@ def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(
     from app.routes.student import _ensure_rent_hall_pass_top_off
 
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     
     class_econ = ClassEconomy.query.first()
@@ -628,10 +616,8 @@ def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(
         hall_pass_count=3,
     ))
 
-    sb = StudentBlock.query.filter_by(student_id=student.id, period='A').first()
-    if not sb:
-        db.session.flush()
-    sb.rent_hall_passes = 0
+    assert seat is not None
+    seat.hall_passes = 0
     student.hall_passes = 2
     db.session.commit()
 
@@ -674,9 +660,9 @@ def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(
 
     db.session.commit()
     db.session.refresh(student)
-    db.session.refresh(sb)
+    db.session.refresh(seat)
     assert student.hall_passes == 5
-    assert sb.rent_hall_passes == 3
+    assert seat.hall_passes == 3
 
 
 def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(client, teacher_admin, student_in_class):
@@ -684,7 +670,7 @@ def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(client, teach
     from app.routes.student import _ensure_rent_hall_pass_top_off
 
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     
     class_econ = ClassEconomy.query.first()
@@ -708,10 +694,8 @@ def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(client, teach
         hall_pass_count=3,
     ))
 
-    sb = StudentBlock.query.filter_by(student_id=student.id, period='A').first()
-    if not sb:
-        db.session.flush()
-    sb.rent_hall_passes = 0
+    assert seat is not None
+    seat.hall_passes = 0
     student.hall_passes = 0
     db.session.commit()
 
@@ -752,9 +736,9 @@ def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(client, teach
 
     db.session.commit()
     db.session.refresh(student)
-    db.session.refresh(sb)
+    db.session.refresh(seat)
     assert student.hall_passes == 3
-    assert sb.rent_hall_passes == 3
+    assert seat.hall_passes == 3
 
 
 def test_mid_period_lock_blocks_semantic_changes(client, teacher_admin, admin_class_scope):
@@ -2276,7 +2260,7 @@ def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(
 def test_rent_payment_hall_pass_top_off_recovers_from_stale_counter(client, teacher_admin, student_in_class, monkeypatch):
     """Hall-pass grant should still top-off when rent_hall_passes counter drifted above actual passes."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     fixed_now = datetime(2026, 2, 10, 12, 0, tzinfo=timezone.utc)
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
 
@@ -2314,9 +2298,6 @@ def test_rent_payment_hall_pass_top_off_recovers_from_stale_counter(client, teac
     ))
     db.session.commit()
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -2336,9 +2317,8 @@ def test_rent_payment_hall_pass_top_off_recovers_from_stale_counter(client, teac
     db.session.refresh(student)
     assert student.hall_passes == 3
 
-    sb = StudentBlock.query.filter_by(student_id=student.id, period='A').first()
-    assert sb is not None
-    assert sb.rent_hall_passes == 3
+    assert seat is not None
+    assert seat.hall_passes == 3
 
 
 def test_waiver_does_not_grant_rent_perks_in_shop(client, teacher_admin, student_in_class, monkeypatch):
