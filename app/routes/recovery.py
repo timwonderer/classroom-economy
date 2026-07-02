@@ -207,11 +207,3 @@ def _account_lookup_legacy():
 
     return render_template('student/recovery/account_lookup.html')
 
-
-@recovery_bp.route('/verify-identity', methods=['GET', 'POST'])
-def verify_identity():
-    """Deprecated — identity re-entry is no longer required for recovery.
-
-    Redirects to account_lookup so students with bookmarked URLs land somewhere useful.
-    """
-    return redirect(url_for('recovery.account_lookup'))

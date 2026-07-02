@@ -237,28 +237,6 @@ def test_student_lookup_nonexistent_code(client, recovery_data):
     assert b"Invalid or expired recovery code" in resp.data
 
 
-# ------------------------------------------------------------------
-# Verify Identity Route (deprecated — now just redirects)
-# ------------------------------------------------------------------
-
-def test_verify_identity_redirects_to_lookup(client, recovery_data):
-    """GET /recovery/verify-identity redirects to account_lookup (deprecated route)."""
-    resp = client.get("/recovery/verify-identity", follow_redirects=False)
-    assert resp.status_code == 302
-    assert "/recovery/lookup" in resp.location
-
-
-def test_verify_identity_post_redirects_to_lookup(client, recovery_data):
-    """POST /recovery/verify-identity also redirects (no longer processes PII)."""
-    resp = client.post("/recovery/verify-identity", data={
-        "first_name": "Test",
-        "last_name": "User",
-        "dob": "2015-06-15",
-    }, follow_redirects=False)
-    assert resp.status_code == 302
-    assert "/recovery/lookup" in resp.location
-
-
 def test_recovery_does_not_create_new_student_row(client, recovery_data):
     """Recovering an account must not create a new student row."""
     student = recovery_data["student"]
@@ -284,7 +262,6 @@ def test_recovery_does_not_create_new_student_row(client, recovery_data):
 def test_recovery_preserves_teacher_block_claimed(client, recovery_data):
     """Recovery lookup must not disturb claimed seat status."""
     student = recovery_data["student"]
-    teacher = recovery_data["teacher"]
     join_code = recovery_data["join_code"]
 
     student.reset_code = "KEEPCLM1"
@@ -299,7 +276,7 @@ def test_recovery_preserves_teacher_block_claimed(client, recovery_data):
 
     assert resp.status_code == 302
 
-    seat = Seat.query.filter_by(user_id=student_user.id, join_code=join_code, block='A').first()
+    seat = Seat.query.filter_by(user_id=student.user_id, join_code=join_code, block='A').first()
     assert seat is not None
     assert seat.claimed_at is not None
 
