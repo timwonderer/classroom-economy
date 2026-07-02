@@ -1054,7 +1054,7 @@ def test_per_use_charges_when_uses_exhausted(client, teacher_admin, student_in_c
 def test_per_use_free_purchase_without_precreated_grant_when_rent_paid(client, teacher_admin, student_in_class):
     """Paid-rent students should still get $0 per-use purchases when grant rows are missing."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
 
@@ -1123,9 +1123,6 @@ def test_per_use_free_purchase_without_precreated_grant_when_rent_paid(client, t
 
     starting_balance = student.checking_balance
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1150,7 +1147,7 @@ def test_per_use_free_purchase_without_precreated_grant_when_rent_paid(client, t
 def test_shop_only_disables_privilege_items_when_rent_paid(client, teacher_admin, student_in_class):
     """When rent is paid, privilege items are included/disabled but per-use items remain purchasable."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
 
@@ -1235,9 +1232,6 @@ def test_shop_only_disables_privilege_items_when_rent_paid(client, teacher_admin
     ))
     db.session.commit()
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1274,7 +1268,7 @@ def test_shop_only_disables_privilege_items_when_rent_paid(client, teacher_admin
 def test_shop_keeps_item_purchasable_when_per_use_and_privilege_links_overlap(client, teacher_admin, student_in_class):
     """If legacy data creates mixed rent item types for one store item, per-use access should remain purchasable."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     anchor_now = datetime.now(timezone.utc)
 
     
@@ -1347,9 +1341,6 @@ def test_shop_keeps_item_purchasable_when_per_use_and_privilege_links_overlap(cl
     ))
     db.session.commit()
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1374,7 +1365,7 @@ def test_shop_keeps_item_purchasable_when_per_use_and_privilege_links_overlap(cl
 def test_shop_treats_legacy_privilege_with_per_use_duration_as_per_use(client, teacher_admin, student_in_class):
     """Legacy privilege+per_use-duration rows should render as purchasable rent perks, not included/disabled."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     anchor_now = datetime.now(timezone.utc)
 
     
@@ -1439,9 +1430,6 @@ def test_shop_treats_legacy_privilege_with_per_use_duration_as_per_use(client, t
     ))
     db.session.commit()
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1467,7 +1455,7 @@ def test_shop_treats_legacy_privilege_with_per_use_duration_as_per_use(client, t
 def test_api_allows_zero_cost_rent_linked_purchase_when_paid_without_per_use_mapping(client, teacher_admin, student_in_class):
     """Paid-rent students can still buy non-privilege rent-linked perks for $0 when mapping rows are missing."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
     anchor_now = datetime.now(timezone.utc)
@@ -1532,9 +1520,6 @@ def test_api_allows_zero_cost_rent_linked_purchase_when_paid_without_per_use_map
 
     starting_balance = student.checking_balance
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1559,7 +1544,7 @@ def test_api_allows_zero_cost_rent_linked_purchase_when_paid_without_per_use_map
 def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(client, teacher_admin, student_in_class):
     """Hall-pass items should always purchase directly and never create rent-perk inventory rows."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     from app.routes.student import _calculate_rent_coverage_due_date
 
@@ -1625,9 +1610,6 @@ def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(client, teacher_admin
     starting_balance = student.checking_balance
     starting_hall_passes = student.hall_passes
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1656,7 +1638,7 @@ def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(client, teacher_admin
 def test_use_item_converts_legacy_hall_pass_inventory_row(client, teacher_admin, student_in_class):
     """Legacy hall-pass StudentItem rows should redeem into hall-pass balance immediately."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
 
     student.passphrase_hash = generate_password_hash('password')
@@ -1671,7 +1653,7 @@ def test_use_item_converts_legacy_hall_pass_inventory_row(client, teacher_admin,
     db.session.add(hall_pass_item)
     db.session.flush()
 
-    legacy_row = StudentItem(seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, correlation_id='corr_test', 
+    legacy_row = StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id,
         store_item_id=hall_pass_item.id,
         join_code='JOINCODE123',
@@ -1682,9 +1664,6 @@ def test_use_item_converts_legacy_hall_pass_inventory_row(client, teacher_admin,
     db.session.commit()
 
     starting_hall_passes = student.hall_passes
-
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
