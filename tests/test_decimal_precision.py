@@ -61,7 +61,7 @@ class TestDecimalPrecision:
         """
         CRITICAL BUG FIX TEST: Transfer that zeros out checking should not trigger overdraft fee.
 
-        Bug: Student transfers exact checking balance to savings, balance becomes -0.00 due to
+        Bug: seat-scoped identity transfers exact checking balance to savings, balance becomes -0.00 due to
         floating-point errors, triggering $35 overdraft fee.
 
         Fix: Use Decimal for exact representation and normalize near-zero balances.
@@ -174,7 +174,7 @@ class TestDecimalPrecision:
         """
         CRITICAL BUG FIX TEST: Partial rent payments with float-problematic values should pay off completely.
 
-        Bug: Student pays rent in multiple payments. Due to float precision errors, a tiny
+        Bug: seat-scoped identity pays rent in multiple payments. Due to float precision errors, a tiny
         unpayable balance remains (e.g., $0.0000001).
 
         Fix: Use Decimal for exact representation in rent calculations.
@@ -303,7 +303,7 @@ class TestDecimalPrecision:
         remaining_final = _quantize_currency(total_due - total_paid)
         assert remaining_final == Decimal('0.00')
 
-        # Student should have exactly $10.00 left in checking (60 - 50)
+        # Seat-scoped identity should have exactly $10.00 left in checking (60 - 50)
         final_checking = student.get_checking_balance(class_id=class_id, seat_id=seat_id)
         assert final_checking == Decimal('10.00')
 

@@ -107,7 +107,7 @@ def test_credential_reset_flow(client, test_data):
     assert reset_code.encode() in resp.data
     assert b"FLOW2A" in resp.data
 
-    # ── Step 3: Student enters join_code + reset_code ──
+    # ── Step 3: seat-scoped identity enters join_code + reset_code ──
     # (Clear admin session first)
     client.get('/logout')
 
