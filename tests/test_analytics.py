@@ -416,7 +416,7 @@ def test_budget_survival_uses_policy_mode_min_savings_ratio(client, setup_analyt
         db.session.commit()
 
     # Use fixed balances to isolate threshold behavior.
-    monkeypatch.setattr(Student, "get_checking_balance", lambda self, class_id, seat_id: 12.0)
+    monkeypatch.setattr(Seat, "get_checking_balance", lambda self, class_id, seat_id: 12.0)
 
     _set_policy('tight')  # min savings ratio = 0.05
     tight_engine = AnalyticsEngine(ClassEconomy.query.filter_by(join_code=join_code).first().class_id)

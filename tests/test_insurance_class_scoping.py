@@ -17,7 +17,7 @@ from app import db
 from app.models import (
     User,
     UserRole,
-    Admin, ClassEconomy, IdentityProfile, Student, StudentBlock, StudentTeacher,
+    Admin, ClassEconomy, IdentityProfile, StudentBlock, StudentTeacher,
     InsurancePolicy, InsurancePolicyBlock, InsuranceEnrollment, InsuranceClaim,
     Seat,
 )
