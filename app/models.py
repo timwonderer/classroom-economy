@@ -1016,7 +1016,6 @@ class HallPassLog(db.Model):
     left_time = db.Column(db.DateTime(timezone=True), nullable=True)
     return_time = db.Column(db.DateTime(timezone=True), nullable=True)
 
-    student = db.relationship('Student', backref='hall_pass_logs')
     seat = db.relationship('Seat', backref='hall_pass_logs')
 
 
@@ -3342,4 +3341,3 @@ class IntegrityStatus(db.Model):
     def __repr__(self):
         state = "PASSING" if self.passing else "DEGRADED"
         return f'<IntegrityStatus {state} checked={self.last_checked_utc}>'
-

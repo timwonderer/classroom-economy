@@ -343,11 +343,11 @@ def verify_hall_pass(teacher_public_token):
     # Stop at 2 matches: enough to distinguish unique vs ambiguous.
     matched = []
     for entry in passes_query.yield_per(100):
-        student = entry.student
-        if not student:
+        seat = entry.seat
+        if not seat or not seat.identity_profile:
             continue
-        stored_norm = _normalize_first_name(student.display_first_name)
-        stored_last_name = _normalize_last_name(student.display_last_name)
+        stored_norm = _normalize_first_name(seat.display_first_name)
+        stored_last_name = _normalize_last_name(seat.display_last_initial)
         if stored_norm == first_name_norm and stored_last_name == last_name_norm:
             matched.append(entry)
         if len(matched) >= 2:
@@ -360,7 +360,6 @@ def verify_hall_pass(teacher_public_token):
         result = {'outcome': 'ambiguous'}
     else:
         entry = matched[0]
-        student = entry.student
         class_label = next((c['label'] for c in classes if c['join_code'] == selected_join_code), selected_join_code)
 
         # Format time_out in school timezone

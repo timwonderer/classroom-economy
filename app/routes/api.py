@@ -1426,9 +1426,10 @@ def hall_pass_history():
         # Format records for response
         records_data = []
         for record in records:
+            seat = record.seat
             records_data.append({
                 "id": record.id,
-                "student_name": record.student.full_name if record.student else "Unknown",
+                "student_name": seat.identity_profile.full_name if seat and seat.identity_profile else "Unknown",
                 "period": record.period,
                 "reason": record.reason,
                 "status": record.status,
