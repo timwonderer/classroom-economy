@@ -85,7 +85,7 @@ def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
     assert issue.sysadmin_resolved_at is not None
 
     reward_tx = Transaction.query.filter(
-        Transaction.student_id == student.id,
+        Transaction.seat_id == seat.id,
         Transaction.teacher_id == teacher.id,
         Transaction.join_code == "JOINBUG123",
         Transaction.type == "bug_reward",
