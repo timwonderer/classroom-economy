@@ -10,7 +10,16 @@ from datetime import datetime, timezone, timedelta
 
 def _student_user_and_seat(student):
     student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
-    seat = Seat.query.filter_by(user_id=student_user.id).first() if student_user else None
+    if not student_user:
+        student_user = User(
+            username_hash=f"auto_{student.id}",
+            username_lookup_hash=f"auto_l_{student.id}",
+            user_role=UserRole.STUDENT,
+            current_session_nonce='test_nonce_123',
+        )
+        db.session.add(student_user)
+        db.session.flush()
+    seat = Seat.query.filter_by(user_id=student_user.id).first()
     return student_user, seat
 
 @pytest.fixture
@@ -35,12 +44,7 @@ def student_in_class(client, teacher_admin):
     # Link to teacher
 
     # Create seat
-    # Auto-injected Canonical User
-    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
-    if not student_user:
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
-        db.session.add(student_user)
-        db.session.flush()
+    student_user, _ = _student_user_and_seat(student)
     # Setup Class Context
     class_economy = ClassEconomy.query.filter_by(join_code='JOINCODE123').first()
     if not class_economy:
@@ -79,12 +83,7 @@ def admin_class_scope(client, teacher_admin):
     db.session.add(class_economy)
     db.session.flush()
 
-    # Auto-injected Canonical User
-    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
-    if not student_user:
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
-        db.session.add(student_user)
-        db.session.flush()
+    student_user, _ = _student_user_and_seat(student)
 
     db.session.add_all([
         
@@ -807,12 +806,7 @@ def test_mid_period_lock_blocks_semantic_changes(client, teacher_admin, admin_cl
     db.session.flush()
 
     # Create a TeacherBlock with join_code
-    # Auto-injected Canonical User
-    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
-    if not student_user:
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
-        db.session.add(student_user)
-        db.session.flush()
+    student_user, _ = _student_user_and_seat(student)
     tb = Seat(join_code='LOCKTEST', block='A', block_identifier='A', role="student")
     db.session.add(tb)
     db.session.flush()
@@ -891,12 +885,7 @@ def test_mid_period_lock_allows_new_items(client, teacher_admin, admin_class_sco
     db.session.add(settings)
     db.session.flush()
 
-    # Auto-injected Canonical User
-    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
-    if not student_user:
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
-        db.session.add(student_user)
-        db.session.flush()
+    student_user, _ = _student_user_and_seat(student)
     tb = Seat(join_code='LOCKTEST2', block='A', block_identifier='A', role="student")
 
     db.session.add(tb)
