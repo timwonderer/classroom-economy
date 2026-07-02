@@ -9,8 +9,7 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.models import User, UserRole, Admin, Student, StudentTeacher
-from app.hash_utils import get_random_salt, hash_username
+from app.models import User, UserRole, Admin, Seat, IdentityProfile, StudentTeacher
 
 
 def _create_admin(username: str) -> tuple[Admin, str]:
@@ -22,23 +21,28 @@ def _create_admin(username: str) -> tuple[Admin, str]:
     return admin, secret
 
 
-def _create_student(first_name: str, teacher: Admin, block: str = "A") -> Student:
-    """Helper to create a student."""
-    salt = get_random_salt()
-    student = Student(
-        first_name=first_name,
-        last_initial="A",
-        block=block,
-        salt=salt,
-        username_hash=hash_username(first_name.lower(), salt),
-        pin_hash="pin",
+def _create_student(first_name: str, teacher: Admin, block: str = "A") -> Seat:
+    """Helper to create a canonical student seat."""
+    student_user = User(
+        user_role=UserRole.STUDENT,
+        username_hash=f"{first_name.lower()}_{block.lower()}_hash",
+        username_lookup_hash=f"{first_name.lower()}_{block.lower()}_lookup",
     )
-    db.session.add(student)
+    db.session.add(student_user)
     db.session.flush()
-    # Create StudentTeacher link (replaces deprecated teacher_id)
+    seat = Seat(
+        user_id=student_user.id,
+        block=block,
+        block_identifier=block,
+        role="student",
+        claimed_at=datetime.now(timezone.utc),
+    )
+    db.session.add(seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name=first_name, last_initial="A"))
     db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
-    return student
+    return seat
 
 
 def _login_admin(client, admin: Admin, secret: str):

@@ -21,6 +21,7 @@ from app.models import (
 )
 from app.utils.time import utc_now
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 
 
 def test_migrated_teacher_login_sets_canonical_user_id(client):
@@ -145,20 +146,7 @@ def test_student_login_verifies_user_pin_and_resolves_shadow_through_claimed_sea
     db.session.flush()
 
     username = "canonical_student"
-    salt = get_random_salt()
-    student = Student(
-        first_name="Canonical",
-        last_initial="S",
-        identity_id=profile.id,
-        block="A",
-        join_code=class_row.join_code,
-        class_id=class_row.class_id,
-        salt=salt,
-        username_hash=hash_username(username, salt),
-        username_lookup_hash=hash_username_lookup(username),
-        pin_hash=generate_password_hash("legacy-pin"),
-        has_completed_setup=True,
-    )
+    student = make_student_identity(block="A", first_name="Canonical", last_name="S")
     user = User(
         user_role=UserRole.STUDENT,
         username_hash=hash_username_lookup(username),
@@ -213,20 +201,7 @@ def test_student_login_missing_last_active_class_shows_selector(client, monkeypa
     db.session.flush()
 
     username = "selector_student"
-    salt = get_random_salt()
-    student = Student(
-        first_name="Select",
-        last_initial="A",
-        identity_id=profile.id,
-        block="A",
-        join_code=class_row.join_code,
-        class_id=class_row.class_id,
-        salt=salt,
-        username_hash=hash_username(username, salt),
-        username_lookup_hash=hash_username_lookup(username),
-        pin_hash=generate_password_hash("legacy-pin"),
-        has_completed_setup=True,
-    )
+    student = make_student_identity(block="A", first_name="Select", last_name="A")
     user = User(
         user_role=UserRole.STUDENT,
         username_hash=hash_username_lookup(username),
@@ -284,20 +259,7 @@ def test_student_login_no_valid_class_seats_hard_fails(client, monkeypatch):
     db.session.flush()
 
     username = "hardfail_student"
-    salt = get_random_salt()
-    student = Student(
-        first_name="Hard",
-        last_initial="F",
-        identity_id=profile.id,
-        block="A",
-        join_code=class_row.join_code,
-        class_id=class_row.class_id,
-        salt=salt,
-        username_hash=hash_username(username, salt),
-        username_lookup_hash=hash_username_lookup(username),
-        pin_hash=generate_password_hash("legacy-pin"),
-        has_completed_setup=True,
-    )
+    student = make_student_identity(block="A", first_name="Hard", last_name="F")
     user = User(
         user_role=UserRole.STUDENT,
         username_hash=hash_username_lookup(username),

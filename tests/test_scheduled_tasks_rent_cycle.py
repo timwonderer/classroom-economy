@@ -2,23 +2,33 @@ from datetime import timedelta
 from decimal import Decimal
 
 from app import db
-from app.models import User, UserRole, Admin, ClassEconomy, RentPayment, RentSettings, Seat, Student
+from app.models import User, UserRole, Admin, ClassEconomy, RentPayment, RentSettings, Seat, IdentityProfile
 from app.scheduled_tasks import run_rent_cycle_for_class
 from app.utils.time import utc_now
 from tests.helpers.v2_fixtures import make_admin
 
 
-def _make_student() -> Student:
-    from app.hash_utils import get_random_salt
-
-    return Student(
-        first_name="Rent",
-        last_initial="R",
-        block="A",
-        salt=get_random_salt(),
-        first_half_hash=None,
-        second_half_hash=None,
+def _make_student() -> Seat:
+    student_user = User(
+        user_role=UserRole.STUDENT,
+        username_hash="rent_cycle_student_hash",
+        username_lookup_hash="rent_cycle_student_lookup",
     )
+    db.session.add(student_user)
+    db.session.flush()
+    seat = Seat(
+        user_id=student_user.id,
+        join_code="RENTCYCLE1",
+        block="A",
+        block_identifier="A",
+        role="student",
+        claimed_at=utc_now() - timedelta(days=45),
+        has_received_rent_exemption=True,
+    )
+    db.session.add(seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name="Rent", last_initial="R"))
+    return seat
 
 
 def test_rent_cycle_idempotency_same_cycle(monkeypatch, app):
@@ -36,24 +46,9 @@ def test_rent_cycle_idempotency_same_cycle(monkeypatch, app):
         db.session.add(class_row)
         db.session.flush()
 
-        student = _make_student()
-        db.session.add(student)
-        db.session.flush()
-
-        # Auto-injected Canonical User
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-        db.session.add(student_user)
-        db.session.flush()
-        seat = Seat(
-            user_id=student_user.id,
-            class_id=class_row.class_id,
-            join_code=class_row.join_code,
-            block="A",
-            role="student",
-            claimed_at=utc_now() - timedelta(days=45),
-            has_received_rent_exemption=True,
-        )
-        db.session.add(seat)
+        seat = _make_student()
+        seat.class_id = class_row.class_id
+        seat.join_code = class_row.join_code
         db.session.flush()
 
         configured_at = utc_now() - timedelta(days=60)
@@ -71,7 +66,7 @@ def test_rent_cycle_idempotency_same_cycle(monkeypatch, app):
 
         def _fake_charge(*, seat, settings, class_id, execution_time, idempotency_key):
             payment = RentPayment(
-                student_id=seat.student_id,
+                student_id=seat.user_id,
                 seat_id=seat.id,
                 class_id=class_id,
                 join_code=seat.join_code,
@@ -96,4 +91,3 @@ def test_rent_cycle_idempotency_same_cycle(monkeypatch, app):
             seat_id=seat.id,
         ).all()
         assert len(payments) == 1
-

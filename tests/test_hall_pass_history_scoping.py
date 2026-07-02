@@ -6,6 +6,7 @@ hall pass data by teacher to prevent cross-teacher data leakage.
 """
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone, timedelta
 from app.models import (
@@ -29,42 +30,12 @@ def setup_multi_teacher_hall_pass_history(client):
     db.session.commit()
 
     # Create students for teacher1
-    salt1 = get_random_salt()
-    student1 = Student(
-        first_name="Alice",
-        last_initial="A",
-        block="A",
-        salt=salt1,
-        username_hash=hash_username("alice_a", salt1)
-    )
-    
-    salt2 = get_random_salt()
-    student2 = Student(
-        first_name="Bob",
-        last_initial="B",
-        block="B",
-        salt=salt2,
-        username_hash=hash_username("bob_b", salt2)
-    )
+    student1 = make_student_identity(block="A", first_name="Alice", last_name="A")
+    student2 = make_student_identity(block="B", first_name="Bob", last_name="B")
 
     # Create students for teacher2
-    salt3 = get_random_salt()
-    student3 = Student(
-        first_name="Charlie",
-        last_initial="C",
-        block="C",
-        salt=salt3,
-        username_hash=hash_username("charlie_c", salt3)
-    )
-    
-    salt4 = get_random_salt()
-    student4 = Student(
-        first_name="Diana",
-        last_initial="D",
-        block="D",
-        salt=salt4,
-        username_hash=hash_username("diana_d", salt4)
-    )
+    student3 = make_student_identity(block="C", first_name="Charlie", last_name="C")
+    student4 = make_student_identity(block="D", first_name="Diana", last_name="D")
 
     db.session.add_all([student1, student2, student3, student4])
     db.session.flush()

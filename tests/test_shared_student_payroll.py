@@ -1,5 +1,6 @@
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import uuid
 from datetime import datetime, timedelta, timezone
 from app import db
@@ -20,11 +21,7 @@ def test_shared_student_diff_teacher_diff_period(client):
     db.session.add_all([t1, t2])
     db.session.commit()
 
-    profile_a = IdentityProfile(profile_type='student', first_name='ScenarioA', last_name='S')
-    db.session.add(profile_a)
-    db.session.flush()
-    student = Student(identity_profile=profile_a, block="P1,P2", salt=b's')
-    db.session.add(student)
+    student = make_student_identity(block="P1,P2", first_name="ScenarioA", last_name="S")
     db.session.commit()
 
     # Links & canonical class scopes
@@ -105,11 +102,7 @@ def test_same_teacher_same_block_diff_context(client):
     db.session.add(t1)
     db.session.commit()
 
-    profile_b = IdentityProfile(profile_type='student', first_name='ScenarioB', last_name='S')
-    db.session.add(profile_b)
-    db.session.flush()
-    student = Student(identity_profile=profile_b, block="P1", salt=b's')
-    db.session.add(student)
+    student = make_student_identity(block="P1", first_name="ScenarioB", last_name="S")
     db.session.commit()
 
     # Links & canonical class scopes
@@ -176,11 +169,7 @@ def test_balance_separation_by_join_code(client):
     db.session.add(t1)
     db.session.commit()
 
-    profile_bal = IdentityProfile(profile_type='student', first_name='BalanceTest', last_name='B')
-    db.session.add(profile_bal)
-    db.session.flush()
-    student = Student(identity_profile=profile_bal, block="P1", salt=b'salt')
-    db.session.add(student)
+    student = make_student_identity(block="P1", first_name="BalanceTest", last_name="B")
     db.session.flush()
     create_class_scope(
         teacher=t1,

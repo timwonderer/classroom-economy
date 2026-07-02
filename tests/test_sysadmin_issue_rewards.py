@@ -17,6 +17,7 @@ from app.models import (
     TransactionStatus,
 )
 from app.utils.opaque_refs import make_opaque_ref
+from tests.helpers.class_scope import make_student_identity
 
 
 def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
@@ -31,31 +32,20 @@ def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
         is_active=True,
     )
     economy = ClassEconomy(join_code="JOINBUG123", user_id=teacher.id, status="active")
-    student = Student(
+    student = make_student_identity(
         first_name="Bug",
-        last_initial="R",
+        last_name="R",
         block="A",
         join_code=economy.join_code,
         class_id=economy.class_id,
-        salt=b"salt",
     )
     db.session.add_all([sysadmin, student, category, economy])
     db.session.flush()
     # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    seat = Seat(
-        user_id=student_user.id,
-        class_id=economy.class_id,
-        join_code=economy.join_code,
-        role="student",
-    )
-    db.session.add(seat)
-    db.session.flush()
+    seat = student
 
     issue = Issue(
-        user_id=student_user.id,
+        user_id=student.user_id,
         actor_public_id=seat.public_id,
         teacher_id=teacher.id,
         join_code="JOINBUG123",

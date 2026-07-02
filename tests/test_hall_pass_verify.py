@@ -17,8 +17,9 @@ import unicodedata
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
-from app.models import User, UserRole, Admin, Student, StudentTeacher, HallPassLog, Seat, IdentityProfile, ClassEconomy
+from app.models import User, UserRole, Admin, StudentTeacher, HallPassLog, Seat, ClassEconomy
 from app.hash_utils import get_random_salt, hash_username
+from tests.helpers.class_scope import make_student_identity
 
 
 # ---------------------------------------------------------------------------
@@ -38,7 +39,6 @@ def hp_teacher(client):
 @pytest.fixture
 def hp_student(client, hp_teacher):
     """Create a student with a TeacherBlock and StudentTeacher link."""
-    salt = get_random_salt()
     class_row = ClassEconomy(
         join_code="jc_chem3",
         user_id=hp_teacher.id,
@@ -48,38 +48,8 @@ def hp_student(client, hp_teacher):
     )
     db.session.add(class_row)
     db.session.flush()
-
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    block = Seat(
-        class_id=class_row.class_id,
-        join_code="jc_chem3",
-        block="Period3",
-        block_identifier="Period3",
-        role="student",
-    )
-
-    db.session.add(block)
-
-    db.session.flush()
-
-    profile = IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name="Maria", last_name="Garcia")
-    student = Student(
-        first_name="Maria",
-        last_initial="G",
-        identity_profile=profile,
-        block="Period3",
-        salt=salt,
-        username_hash=hash_username("maria_g", salt),
-    )
-    db.session.add_all([profile, student])
-    db.session.flush()
-
-    block.student_id = student.id
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=hp_teacher.id))
-    db.session.add(block)
+    student = make_student_identity(first_name="Maria", last_name="Garcia", block="Period3", class_id=class_row.class_id, join_code="jc_chem3")
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=hp_teacher.id))
     db.session.commit()
     return student
 
@@ -89,7 +59,7 @@ def hp_pass_today(client, hp_student):
     """Create a 'left' hall pass for today for Maria G."""
     now = datetime.now(timezone.utc)
     log = HallPassLog(
-        user_id=hp_student_user.id,
+        user_id=hp_student.user_id,
         class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
         reason="Bathroom",
         status="left",
@@ -225,23 +195,13 @@ def test_post_verify_match_returned(client, hp_teacher, hp_student):
 
 def test_post_verify_ambiguous(client, hp_teacher, hp_student):
     """POST matching multiple students returns ambiguous response."""
-    salt2 = get_random_salt()
-    student2 = Student(
-        first_name="Maria",
-        last_initial="G",
-        identity_profile=IdentityProfile(profile_type="student", first_name="Maria", last_name="Garcia"),
-        block="Period3",
-        salt=salt2,
-        username_hash=hash_username("maria_g_2", salt2),
-    )
-    db.session.add(student2)
-    db.session.flush()
-    db.session.add(StudentTeacher(user_id=student2_user.id, teacher_id=hp_teacher.id))
+    student2 = make_student_identity(first_name="Maria", last_name="Garcia", block="Period3", class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id, join_code="jc_chem3")
+    db.session.add(StudentTeacher(user_id=student2.user_id, teacher_id=hp_teacher.id))
 
     now = datetime.now(timezone.utc)
     for s in [hp_student, student2]:
         db.session.add(HallPassLog(
-            user_id=s_user.id,
+            user_id=s.user_id,
             class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
             reason="Bathroom",
             status="left",
@@ -305,7 +265,7 @@ def test_post_verify_old_pass_not_shown(client, hp_teacher, hp_student):
     """Passes from yesterday are not returned by today-scoped query."""
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
     old_log = HallPassLog(
-        user_id=hp_student_user.id,
+        user_id=hp_student.user_id,
         class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
         reason="Bathroom",
         status="left",
@@ -337,24 +297,10 @@ def test_post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_
 
     # Insert many newer non-matching records for the same class/day.
     for i in range(25):
-        salt = get_random_salt()
-        other = Student(
-            first_name=f"Other{i}",
-            last_initial="Z",
-            identity_profile=IdentityProfile(
-                profile_type="student",
-                first_name=f"Other{i}",
-                last_name="Zimmer",
-            ),
-            block="Period3",
-            salt=salt,
-            username_hash=hash_username(f"other_{i}", salt),
-        )
-        db.session.add(other)
-        db.session.flush()
-        db.session.add(StudentTeacher(user_id=other_user.id, teacher_id=hp_teacher.id))
+        other = make_student_identity(first_name=f"Other{i}", last_name="Zimmer", block="Period3", class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id, join_code="jc_chem3")
+        db.session.add(StudentTeacher(user_id=other.user_id, teacher_id=hp_teacher.id))
         db.session.add(HallPassLog(
-            user_id=other_user.id,
+            user_id=other.user_id,
             class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
             reason="Office",
             status="left",
@@ -367,7 +313,7 @@ def test_post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_
 
     # Add the target match as an older same-day record.
     db.session.add(HallPassLog(
-        user_id=hp_student_user.id,
+        user_id=hp_student.user_id,
         class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
         reason="Bathroom",
         status="left",

@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import Transaction, apply_savings_interest, db
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def test_apply_savings_interest_with_naive_datetimes(client, test_student):
@@ -11,7 +12,7 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
 
     past_date = datetime.now(timezone.utc) - timedelta(days=31)
     savings_tx = Transaction(
-        user_id=test_student_user.id,
+        user_id=test_student.user_id,
         join_code='TEST',
         amount=100.0,
         account_type='savings',
@@ -34,7 +35,7 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
 
     interest_tx = (
         Transaction.query.filter_by(
-            user_id=test_student_user.id,
+            user_id=test_student.user_id,
             description="Monthly Savings Interest",
             account_type='savings',
         )
@@ -49,7 +50,7 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
 
 
 def test_dashboard_renders_recent_deposit(client, test_student):
-    from app.models import User, UserRole, Admin, StudentTeacher, Seat, IdentityProfile
+    from app.models import Admin, StudentTeacher
 
     # Create a teacher and link the student
     teacher = make_admin("testteacher", "SECRET123")
@@ -61,27 +62,15 @@ def test_dashboard_renders_recent_deposit(client, test_student):
     test_student.join_code = join_code
 
     # Link student to teacher
-    st = StudentTeacher(user_id=test_student_user.id, teacher_id=teacher.id)
+    st = StudentTeacher(user_id=test_student.user_id, teacher_id=teacher.id)
     db.session.add(st)
-
-    # Create TeacherBlock (required for dashboard context)
-    # Auto-injected Canonical User
-    test_student_user = User(username_hash=f"auto_{test_student.id}", username_lookup_hash=f"auto_l_{test_student.id}", user_role=UserRole.STUDENT)
-    db.session.add(test_student_user)
-    db.session.flush()
-    tb = Seat(user_id=test_student_user.id, join_code=join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(tb)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name=test_student.display_first_name, last_name=test_student.display_last_initial))
-    db.session.add(tb)
-
     db.session.commit()
 
     recent_deposit_time = datetime.now(timezone.utc) - timedelta(hours=12)
     mature_savings_time = datetime.now(timezone.utc) - timedelta(days=31)
 
     recent_deposit = Transaction(
-        user_id=test_student_user.id,
+        user_id=test_student.user_id,
         join_code=join_code,
         amount=50.0,
         account_type='checking',
@@ -90,7 +79,7 @@ def test_dashboard_renders_recent_deposit(client, test_student):
         date_funds_available=recent_deposit_time,
     )
     mature_savings = Transaction(
-        user_id=test_student_user.id,
+        user_id=test_student.user_id,
         join_code=join_code,
         amount=200.0,
         account_type='savings',
@@ -103,9 +92,14 @@ def test_dashboard_renders_recent_deposit(client, test_student):
     db.session.commit()
 
     with client.session_transaction() as session:
-        session['student_id'] = test_student.id
-        session['login_time'] = datetime.now(timezone.utc).isoformat()
-        session['current_join_code'] = join_code
+        set_canonical_context(
+            session,
+            user_id=test_student.user_id,
+            class_id=test_student.class_id,
+            seat_id=test_student.id,
+            role="student",
+            join_code=join_code,
+        )
 
     response = client.get('/student/dashboard')
 
@@ -114,7 +108,7 @@ def test_dashboard_renders_recent_deposit(client, test_student):
     assert b"$50.00" in response.data
 
     interest_tx = Transaction.query.filter_by(
-        user_id=test_student_user.id,
+        user_id=test_student.user_id,
         description="Monthly Savings Interest",
         account_type='savings',
     ).first()

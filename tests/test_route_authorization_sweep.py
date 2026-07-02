@@ -1,9 +1,11 @@
 
 from datetime import datetime, timezone, timedelta
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 from app.extensions import db
 from app.models import User, UserRole, Admin, ClassEconomy, ClassMembership, Student, Transaction, TransactionStatus, StoreItem, StudentItem, IssueCategory, Issue, Seat, ClassFeature, IdentityProfile
+from tests.helpers.canonical_session import set_canonical_context
 
 def _login_admin(client, admin_id):
     with client.session_transaction() as sess:
@@ -13,9 +15,15 @@ def _login_admin(client, admin_id):
 
 def _login_student(client, student_id):
     with client.session_transaction() as sess:
-        sess["student_id"] = student_id
-        sess["login_time"] = datetime.now(timezone.utc).isoformat()
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+        seat = Seat.query.filter_by(user_id=student_id).order_by(Seat.id.asc()).first()
+        if seat:
+            set_canonical_context(
+                sess,
+                user_id=student_id,
+                class_id=seat.class_id,
+                seat_id=seat.id,
+                role="student",
+            )
 
 def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_class(client):
     """Verification display should require one class-bound teacher seat public ID."""
@@ -25,14 +33,8 @@ def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_clas
     db.session.add(other_admin)
     db.session.flush()
 
-    profile_a = IdentityProfile(profile_type='student', first_name='Alpha', last_name='A')
-    profile_b = IdentityProfile(profile_type='student', first_name='Bravo', last_name='B')
-    db.session.add_all([profile_a, profile_b])
-    db.session.flush()
-    student_a = Student(identity_profile=profile_a, block="A", salt=b"salt")
-    student_b = Student(identity_profile=profile_b, block="B", salt=b"salt")
-    db.session.add_all([student_a, student_b])
-    db.session.flush()
+    student_a = make_student_identity(block="A", first_name="Alpha", last_name="A")
+    student_b = make_student_identity(block="B", first_name="Bravo", last_name="B")
 
     class_a = ClassEconomy(join_code="HPASS01", user_id=admin.id, status="active", created_by_admin_id=admin.id)
     class_b = ClassEconomy(join_code="HPASS02", user_id=admin.id, status="active", created_by_admin_id=admin.id)
@@ -121,12 +123,7 @@ def test_approve_redemption_requires_membership(client):
     db.session.add_all([admin_owner, admin_intruder])
     db.session.flush()
 
-    profile_redeem = IdentityProfile(profile_type='student', first_name='Redeem', last_name='S')
-    db.session.add(profile_redeem)
-    db.session.flush()
-    student = Student(identity_profile=profile_redeem, block="A", salt=b"salt")
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(block="A", first_name="Redeem", last_name="S")
 
     db.session.add(ClassEconomy(join_code="REDEEM1", user_id=admin_owner.id, status="active", created_by_admin_id=admin_owner.id))
     db.session.flush()
@@ -176,12 +173,7 @@ def test_file_claim_scoped_to_class(client):
     db.session.add(admin)
     db.session.flush()
     
-    profile_claimer = IdentityProfile(profile_type='student', first_name='Claimer', last_name='S')
-    db.session.add(profile_claimer)
-    db.session.flush()
-    student = Student(identity_profile=profile_claimer, block="A", salt=b"salt")
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(block="A", first_name="Claimer", last_name="S")
 
     # Class A and Class B
     db.session.add_all([
@@ -274,9 +266,17 @@ def test_file_claim_scoped_to_class(client):
 
     _login_student(client, student.id)
     # Set class context so get_current_class_context() resolves correctly
+    class_seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_a.class_id).first()
+    assert class_seat is not None
     with client.session_transaction() as sess:
-        sess["current_join_code"] = "CLAIM_A"
-        sess["current_class_id"] = class_a.class_id
+        set_canonical_context(
+            sess,
+            user_id=student.user_id,
+            class_id=class_a.class_id,
+            seat_id=class_seat.id,
+            role="student",
+            join_code="CLAIM_A",
+        )
     
     # 1. Try to claim Class B transaction on Policy A
     # The form submission takes transaction_id

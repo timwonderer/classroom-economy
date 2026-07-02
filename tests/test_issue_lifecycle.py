@@ -2,8 +2,9 @@ from datetime import datetime, timezone
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import User, UserRole, Admin, Issue, IssueCategory, Student, Seat, IdentityProfile, ClassEconomy, StudentTeacher
+from app.models import User, UserRole, Admin, Issue, IssueCategory, Seat, ClassEconomy, StudentTeacher
 from app.utils.opaque_refs import make_opaque_ref
+from tests.helpers.class_scope import make_student_identity
 
 
 def test_teacher_must_close_issue_after_final_review(client):
@@ -19,8 +20,7 @@ def test_teacher_must_close_issue_after_final_review(client):
     )
     db.session.add(class_row)
     db.session.flush()
-    profile = IdentityProfile(profile_type="student", first_name="Casey", last_name="Lopez")
-    student = Student(identity_profile=profile, block="A", join_code="JOINLIFE1", class_id=class_row.class_id, salt=b"salt")
+    student = make_student_identity(block="A", first_name="Casey", last_name="Lopez", join_code="JOINLIFE1", class_id=class_row.class_id)
     category = IssueCategory(
         name="Lifecycle Category",
         category_type="general",
@@ -28,18 +28,11 @@ def test_teacher_must_close_issue_after_final_review(client):
     )
     db.session.add_all([student, category])
     db.session.flush()
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id, class_id=class_row.class_id, join_code="JOINLIFE1"))
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    seat = Seat(user_id=student_user.id, class_id=class_row.class_id, join_code="JOINLIFE1", block="A", block_identifier="A", role="student")
-    db.session.add(seat)
-    db.session.flush()
-    profile.seat_id = seat.id
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=teacher.id, class_id=class_row.class_id, join_code="JOINLIFE1"))
+    seat = db.session.get(Seat, student.id)
 
     issue = Issue(
-        user_id=student_user.id,
+        user_id=student.user_id,
         actor_public_id="seat-public-issue-1",
         teacher_id=teacher.id,
         class_id=class_row.class_id,

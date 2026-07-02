@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import User, UserRole, Admin, ClassEconomy, IdentityProfile, Issue, IssueCategory, Student, StudentTeacher, Transaction, TransactionStatus
+from app.models import User, UserRole, Admin, ClassEconomy, IdentityProfile, Issue, IssueCategory, Seat, Transaction, TransactionStatus
 
 
 def _login_admin(client, admin_id):
@@ -18,14 +18,27 @@ def _build_issue_context():
     db.session.add(teacher)
     db.session.flush()
 
-    profile = IdentityProfile(profile_type="student", first_name="Ivy", last_name="R")
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b"salt")
-    db.session.add(student)
+    student_user = User(
+        user_role=UserRole.STUDENT,
+        username_hash="student-issue-hash",
+        username_lookup_hash="student-issue-lookup",
+    )
+    db.session.add(student_user)
     db.session.flush()
 
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+    seat = Seat(
+        user_id=student_user.id,
+        join_code="ISSUEA1",
+        role="student",
+        claimed_at=datetime.now(timezone.utc),
+    )
+    db.session.add(seat)
+    db.session.flush()
+
+    profile = IdentityProfile(profile_type="student", first_name="Ivy", last_name="R")
+    profile.seat_id = seat.id
+    db.session.add(profile)
+    db.session.flush()
     db.session.add_all([
         ClassEconomy(join_code="ISSUEA1", user_id=teacher.id, status="active", created_by_admin_id=teacher.id),
         ClassEconomy(join_code="ISSUEB1", user_id=teacher.id, status="active", created_by_admin_id=teacher.id),
@@ -37,14 +50,15 @@ def _build_issue_context():
     )
     db.session.add(category)
     db.session.commit()
-    return teacher, student, category
+    return teacher, student_user, seat, category
 
 
 def test_issue_reverse_transaction_creates_reversal_for_posted_tx(client):
-    teacher, student, category = _build_issue_context()
+    teacher, student_user, seat, category = _build_issue_context()
 
     tx = Transaction(
-        user_id=student_user.id,join_code="ISSUEA1",
+        user_id=student_user.id,
+        join_code="ISSUEA1",
         amount=Decimal("30.00"),
         account_type="checking",
         status=TransactionStatus.POSTED,
@@ -56,7 +70,7 @@ def test_issue_reverse_transaction_creates_reversal_for_posted_tx(client):
 
     issue = Issue(
         user_id=student_user.id,
-        actor_public_id="seat-public-issue-1",
+        actor_public_id=seat.public_id,
         teacher_id=teacher.id,
         join_code="ISSUEA1",
         category_id=category.id,
@@ -89,10 +103,11 @@ def test_issue_reverse_transaction_creates_reversal_for_posted_tx(client):
 
 
 def test_issue_reverse_transaction_rejects_scope_mismatch(client):
-    teacher, student, category = _build_issue_context()
+    teacher, student_user, seat, category = _build_issue_context()
 
     tx = Transaction(
-        user_id=student_user.id,join_code="ISSUEB1",
+        user_id=student_user.id,
+        join_code="ISSUEB1",
         amount=Decimal("20.00"),
         account_type="checking",
         status=TransactionStatus.POSTED,
@@ -104,7 +119,7 @@ def test_issue_reverse_transaction_rejects_scope_mismatch(client):
 
     issue = Issue(
         user_id=student_user.id,
-        actor_public_id="seat-public-issue-2",
+        actor_public_id=seat.public_id,
         teacher_id=teacher.id,
         join_code="ISSUEA1",
         category_id=category.id,

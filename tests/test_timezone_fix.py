@@ -8,6 +8,7 @@ import pytest
 from datetime import datetime, timezone, timedelta
 from app import db
 from app.models import User, UserRole, Admin
+from tests.helpers.canonical_session import set_canonical_context
 
 @pytest.fixture
 def admin_user(client):
@@ -59,8 +60,13 @@ def test_set_timezone_student(client, test_student):
 
     # Login as student
     with client.session_transaction() as sess:
-        sess['student_id'] = test_student.id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=test_student.user_id,
+            class_id=test_student.class_id,
+            seat_id=test_student.id,
+            role="student",
+        )
 
     # Test timezone sync
     response = client.post(
@@ -96,8 +102,13 @@ def test_set_timezone_expired(client, test_student):
 
     # Login as student with old time
     with client.session_transaction() as sess:
-        sess['student_id'] = test_student.id
-        sess['login_time'] = (datetime.now(timezone.utc) - timedelta(minutes=20)).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=test_student.user_id,
+            class_id=test_student.class_id,
+            seat_id=test_student.id,
+            role="student",
+        )
 
     response = client.post(
         '/api/set-timezone',

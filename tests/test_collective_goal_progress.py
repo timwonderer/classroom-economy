@@ -8,14 +8,22 @@ import uuid
 
 from app.extensions import db
 from app.models import User, UserRole, Admin, ClassMembership, StoreItem, StoreItemBlock, Student, StudentItem, StudentTeacher, Transaction, Seat, IdentityProfile
-from tests.helpers.class_scope import create_class_scope
+from tests.helpers.class_scope import create_class_scope, make_student_identity
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def _login_student(client, student_id, join_code):
     with client.session_transaction() as sess:
-        sess['student_id'] = student_id
-        sess['current_join_code'] = join_code
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
+        seat = Seat.query.filter_by(user_id=student_id).order_by(Seat.id.asc()).first()
+        if seat:
+            set_canonical_context(
+                sess,
+                user_id=student_id,
+                class_id=seat.class_id,
+                seat_id=seat.id,
+                role="student",
+                join_code=join_code,
+            )
 
 
 def _login_admin(client, admin_id):
@@ -25,13 +33,8 @@ def _login_admin(client, admin_id):
 
 
 def _create_student(teacher, first_name, join_code, block='A'):
-    profile = IdentityProfile(profile_type='student', first_name=first_name, last_name='S')
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block=block, salt=b'salt')
+    student = make_student_identity(block=block, first_name=first_name, last_name='S', join_code=join_code)
     student.passphrase_hash = generate_password_hash('password')
-    db.session.add(student)
-    db.session.flush()
     if not db.session.query(ClassMembership.id).filter_by(
         join_code=join_code,
         admin_id=teacher.id,
@@ -45,27 +48,9 @@ def _create_student(teacher, first_name, join_code, block='A'):
             display_name=block,
         )
         db.session.flush()
-    elif not db.session.query(ClassMembership.id).filter_by(
-        join_code=join_code,
-        user_id=student_user.id,
-        role='student',
-    ).first():
-        db.session.add(ClassMembership(
-            join_code=join_code,
-            user_id=student_user.id,
-            role='student',
-        ))
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    _tb_seat = Seat(user_id=student_user.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(_tb_seat)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_name='S'))
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=teacher.id))
     db.session.add(Transaction(
-        user_id=student_user.id,join_code=join_code,
+        user_id=student.user_id,join_code=join_code,
         amount=Decimal('100.00'),
         account_type='checking',
         type='deposit',

@@ -17,12 +17,12 @@ from app.models import (
     RentPayment,
     RentSettings,
     Seat,
-    Student,
     Transaction,
     User,
     UserRole,
 )
 from app.hash_utils import get_random_salt, hash_username
+from tests.helpers.class_scope import make_student_identity
 from app.routes.student import (
     _get_effective_rent_amount_for_coverage_period,
     _is_coverage_period_paid,
@@ -449,35 +449,11 @@ def test_join_code_cycle_locks_rent_rate_after_first_payment(client):
     db.session.flush()
     coverage_due_date = datetime(2026, 3, 1, 0, 0, tzinfo=timezone.utc)
 
-    salt = get_random_salt()
-    payer = Student(
-        first_name="Rate",
-        last_initial="L",
-        block="A",
-        salt=salt,
-        username_hash=hash_username("rate-lock-payer", salt),
-        pin_hash="test-pin",
-    )
-    db.session.add(payer)
-    db.session.flush()
-    # Auto-injected Canonical User
-    payer_user = User(username_hash=f"auto_{payer.id}", username_lookup_hash=f"auto_l_{payer.id}", user_role=UserRole.STUDENT)
-    db.session.add(payer_user)
-    db.session.flush()
-    seat = Seat(
-        user_id=payer_user.id,
-        class_id=lock_class.class_id,
-        join_code=join_code,
-        block='A',
-        role='student',
-        claimed_at=datetime.now(timezone.utc),
-    )
-    db.session.add(seat)
-    db.session.flush()
+    seat = make_student_identity(first_name="Rate", last_name="L", block="A", join_code=join_code, class_id=lock_class.class_id)
 
     payment_date = datetime(2026, 3, 5, 8, 0, tzinfo=timezone.utc)
     db.session.add(RentPayment(
-        user_id=payer_user.id,
+        user_id=seat.user_id,
         seat_id=seat.id,
         class_id=lock_class.class_id,
         period="A",

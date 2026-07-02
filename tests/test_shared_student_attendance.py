@@ -6,6 +6,7 @@ from app import db
 from app.models import AttendanceSession, ClassEconomy, Seat, SeatAttendanceState, User, UserRole, Student, StudentTeacher
 from app.attendance import get_all_block_statuses
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.class_scope import make_student_identity
 
 def test_attendance_status_isolation(client):
     """
@@ -19,14 +20,7 @@ def test_attendance_status_isolation(client):
     db.session.commit()
 
     # 2. Setup Student
-    student = Student(
-        first_name="Shared",
-        last_initial="S",
-        block="PERIOD 1",
-        salt=b'salt'
-    )
-    db.session.add(student)
-    db.session.commit()
+    student = make_student_identity(first_name="Shared", last_name="S", block="PERIOD 1", claimed=True)
 
     # 3. Create Links & Seats
     db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=t1.id))

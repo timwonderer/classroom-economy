@@ -1,6 +1,6 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
-from app.models import User, UserRole, Admin, Student, Transaction, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, Transaction, Seat, IdentityProfile
 from app import db
 from datetime import datetime, timezone
 
@@ -14,48 +14,36 @@ def test_payroll_visibility_bug(client):
     db.session.add_all([teacher1, teacher2])
     db.session.commit()
 
-    # 2. Setup Student
-    student = Student(
-        first_name="Timothy",
-        last_initial="C",
-        block="A,G",
-        salt=b'123',
-        first_half_hash="hash1",
-        second_half_hash="hash2",
+    # 2. Setup canonical student identity
+    student_user = User(
+        username_hash="student-payroll-hash",
+        username_lookup_hash="student-payroll-lookup",
+        user_role=UserRole.STUDENT,
     )
-    db.session.add(student)
-    db.session.commit()
-
-    # 3. Setup TeacherBlocks (Class Rosters)
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
     tb1 = Seat(user_id=student_user.id, join_code="JOIN_A", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb1)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=tb1.id, profile_type='student_claimed', first_name="Timothy", last_initial="C"))
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
     tb2 = Seat(user_id=student_user.id, join_code="JOIN_G", block="G", block_identifier="G", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb2)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=tb2.id, profile_type='student_claimed', first_name="Timothy", last_initial="C"))
-    db.session.add_all([tb1, tb2])
     db.session.commit()
 
-    # 4. Create Transactions
+    # 3. Create Transactions
     tx_a = Transaction(
-        user_id=student_user.id,join_code="JOIN_A",
+        user_id=student_user.id,
+        join_code="JOIN_A",
         amount=100.00,
         type='payroll',
         timestamp=datetime.now(timezone.utc),
         description="Payroll for Block A"
     )
     tx_g = Transaction(
-        user_id=student_user.id,join_code="JOIN_G",
+        user_id=student_user.id,
+        join_code="JOIN_G",
         amount=100.00,
         type='payroll',
         timestamp=datetime.now(timezone.utc),
@@ -64,7 +52,7 @@ def test_payroll_visibility_bug(client):
     db.session.add_all([tx_a, tx_g])
     db.session.commit()
 
-    # 5. Simulate Teacher 1's view
+    # 4. Simulate Teacher 1's view
     # We query as if we are Teacher 1 (filtered by join_code as per our fix)
     # Teacher 1 has join code "JOIN_A"
     
@@ -75,7 +63,7 @@ def test_payroll_visibility_bug(client):
         .all()
     )
     
-    # 6. Verify
+    # 5. Verify
     # Teacher 1 should ONLY see transactions they created (JOIN_A)
     # Teacher 1 should NOT see transactions from Teacher 2 (JOIN_G)
     

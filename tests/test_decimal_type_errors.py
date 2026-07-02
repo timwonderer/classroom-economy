@@ -21,6 +21,8 @@ from app.models import (
 from app.extensions import db
 from tests.helpers.class_scope import create_class_scope
 from app.hash_utils import hash_username_lookup
+from tests.helpers.canonical_session import set_canonical_context
+from tests.helpers.class_scope import make_student_identity
 
 
 class TestDecimalTypeErrors:
@@ -100,15 +102,11 @@ class TestDecimalTypeErrors:
         db.session.flush()
 
         # Create student
-        student = Student(
+        student = make_student_identity(
             first_name='Earnings',
-            last_initial='T',
+            last_name='T',
             block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash'
         )
-        db.session.add(student)
-        db.session.flush()
 
         join_code = 'EARNINGS_TEST'
         class_scope = create_class_scope(
@@ -303,15 +301,11 @@ class TestDecimalTypeErrors:
         join_code = 'INTEREST_TEST'
 
         # Build the canonical v2 class fixture; the transaction should key off class_id/seat_id.
-        student = Student(
+        student = make_student_identity(
             first_name='Interest',
-            last_initial='T',
+            last_name='T',
             block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash',
         )
-        db.session.add(student)
-        db.session.flush()
 
         class_scope = create_class_scope(
             teacher=teacher,
@@ -403,15 +397,11 @@ class TestDecimalTypeErrors:
         db.session.flush()
 
         # Create student
-        student = Student(
+        student = make_student_identity(
             first_name='ClaimCap',
-            last_initial='T',
+            last_name='T',
             block='A',
-            salt=b'test_salt_cap',
-            passphrase_hash='test_hash',
         )
-        db.session.add(student)
-        db.session.flush()
 
         # Associate student with teacher
         st = StudentTeacher(user_id=student_user.id, teacher_id=teacher.id)
@@ -476,14 +466,14 @@ class TestDecimalTypeErrors:
 
         # Log in as student
         with client.session_transaction() as sess:
-            sess['student_id'] = student.id
-            sess['user_id'] = user.id
-            sess['current_join_code'] = 'CLAIMCAP1'
-            sess['current_class_id'] = class_scope.class_id
-            sess['current_seat_id'] = seat.id
-            sess['seat_id'] = seat.id
-            sess['class_id'] = class_scope.class_id
-            sess['login_time'] = datetime.now(timezone.utc).isoformat()
+            set_canonical_context(
+                sess,
+                user_id=user.id,
+                class_id=class_scope.class_id,
+                seat_id=seat.id,
+                role="student",
+                join_code='CLAIMCAP1',
+            )
 
         # GET the file_claim route — must not raise TypeError
         # (no prior InsuranceClaim rows exist, so scalar() returns None)

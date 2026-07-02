@@ -23,7 +23,7 @@ from wsgiref.simple_server import make_server, WSGIRequestHandler
 
 from app.extensions import db
 from app.models import (
-    Admin, Student, StudentTeacher, ClassEconomy, ClassMembership,
+    Admin, StudentTeacher, ClassEconomy, ClassMembership,
     Seat, IdentityProfile, RentSettings, User, TeacherOnboarding, ClassFeature,
 )
 from tests.helpers.class_scope import create_class_scope
@@ -31,6 +31,7 @@ from tests.helpers.v2_fixtures import make_admin
 from app.hash_utils import hash_username
 from app.utils.auth_username import build_hashed_username_fields
 from werkzeug.security import generate_password_hash
+from tests.helpers.canonical_session import set_canonical_context
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -314,17 +315,6 @@ def student_page(app, client, axe_live_server, browser, axe_script):
         db.session.add(teacher)
         db.session.flush()
 
-        student = Student(
-            first_name="AxeTest",
-            last_initial="S",
-            block="A",
-            salt=b"axesalt1",
-            has_completed_setup=True,
-            username_hash=hash_username("axe_student", b"axesalt1"),
-        )
-        db.session.add(student)
-        db.session.flush()
-
         _, teacher_username_hash, teacher_username_lookup_hash = build_hashed_username_fields("axe_teacher_s")
         teacher_user = User(
             username_hash=teacher_username_hash,
@@ -346,12 +336,26 @@ def student_page(app, client, axe_live_server, browser, axe_script):
         )
         db.session.add(user)
         db.session.flush()
+        profile = IdentityProfile(profile_type="student", first_name="AxeTest", last_name="S")
+        db.session.add(profile)
+        db.session.flush()
+        seat = Seat(
+            user_id=user.id,
+            class_id=None,
+            join_code="AXES01",
+            block="A",
+            block_identifier="A",
+            role="student",
+            claimed_at=datetime.now(timezone.utc),
+        )
+        db.session.add(seat)
+        db.session.flush()
+        profile.seat_id = seat.id
 
         join_code = "AXES01"
         class_row = create_class_scope(
             teacher=teacher,
             join_code=join_code,
-            student=student,
             block="A",
             display_name="Axe Student Period",
             create_claimed_teacher_block=True,
@@ -360,7 +364,7 @@ def student_page(app, client, axe_live_server, browser, axe_script):
             teacher_user_id=teacher_user.id,
             student_user_id=user.id,
         )
-        db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+        db.session.add(StudentTeacher(user_id=user.id, teacher_id=teacher.id))
 
         teacher_user.last_active_class_id = class_row.class_id
         user.last_active_class_id = class_row.class_id
@@ -384,15 +388,14 @@ def student_page(app, client, axe_live_server, browser, axe_script):
         seat_id = seat.id if seat else None
 
     with client.session_transaction() as sess:
-        sess["student_id"] = student_id
-        sess["user_id"] = user_id
-        if seat_id:
-            sess["current_seat_id"] = seat_id
-            sess["seat_id"] = seat_id
-        sess["current_join_code"] = join_code
-        sess["current_class_id"] = str(class_id)
-        sess["class_id"] = str(class_id)
-        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=user_id,
+            class_id=str(class_id),
+            seat_id=seat_id or 0,
+            role="student",
+            join_code=join_code,
+        )
         sess["last_activity"] = sess["login_time"]
 
     context = browser.new_context()

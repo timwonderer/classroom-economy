@@ -7,45 +7,25 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone
 from app import db
-from app.models import User, UserRole, Admin, Student, StudentTeacher
-from app.hash_utils import hash_username, get_random_salt
+from app.models import Admin
+from tests.helpers.canonical_session import set_canonical_context
 
 
 @pytest.fixture
 def admin_with_students(client):
-    """Create an admin with students for testing."""
+    """Create an admin for testing."""
     # Create admin
     admin = make_admin("testadmin", "TESTSECRET123456")
     db.session.add(admin)
     db.session.flush()
-    
-    # Create students
-    students = []
-    for i in range(3):
-        salt = get_random_salt()
-        student = Student(
-            first_name=f"Student{i}",
-            last_initial="T",
-            block="A",
-            salt=salt,
-            username_hash=hash_username(f"student{i}", salt),
-            pin_hash="fake-hash"
-        )
-        db.session.add(student)
-        db.session.flush()
-        
-        # Add to student_teachers association
-        assoc = StudentTeacher(user_id=student_user.id, teacher_id=admin.id)
-        db.session.add(assoc)
-        students.append(student)
-    
+
     db.session.commit()
-    return admin, students
+    return admin
 
 
 def test_block_tap_settings_get_endpoint(client, admin_with_students):
     """Test that /api/admin/block-tap-settings GET endpoint works with correct import."""
-    admin, students = admin_with_students
+    admin = admin_with_students
     
     # Login as admin
     with client.session_transaction() as sess:
@@ -71,7 +51,7 @@ def test_block_tap_settings_get_endpoint(client, admin_with_students):
 
 def test_block_tap_settings_post_endpoint(client, admin_with_students):
     """Test that /api/admin/block-tap-settings POST endpoint works with correct import."""
-    admin, students = admin_with_students
+    admin = admin_with_students
     
     # Login as admin
     with client.session_transaction() as sess:
@@ -114,8 +94,13 @@ def test_timezone_sync_with_student_session(client, test_student):
     """Test timezone sync with authenticated student session."""
     # Login as student with proper datetime
     with client.session_transaction() as sess:
-        sess['student_id'] = test_student.id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=test_student.user_id,
+            class_id=test_student.class_id,
+            seat_id=test_student.id,
+            role="student",
+        )
     
     # Test timezone sync
     response = client.post(

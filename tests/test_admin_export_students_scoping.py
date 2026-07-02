@@ -4,11 +4,11 @@ import io
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.hash_utils import get_random_salt, hash_username
-from app.models import User, UserRole, Admin, IdentityProfile, Seat, Student, StudentTeacher, Transaction
+from app.models import User, UserRole, Admin, IdentityProfile, Seat, StudentTeacher, Transaction
 from app.services.ledger_service import get_available_balances
 from app.routes.admin import _sanitize_roster_text
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def _login_admin(client, admin_id):
@@ -18,20 +18,35 @@ def _login_admin(client, admin_id):
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
 
 
-def _make_student(first_name: str, last_initial: str = "A", block: str = "A") -> Student:
-    salt = get_random_salt()
-    student = Student(
+def _make_student(first_name: str, last_initial: str = "A", block: str = "A"):
+    user = User(
+        user_role=UserRole.STUDENT,
+        username_hash=f"{first_name.lower()}-{block.lower()}-hash",
+        username_lookup_hash=f"{first_name.lower()}-{block.lower()}-lookup",
+    )
+    db.session.add(user)
+    db.session.flush()
+
+    seat = Seat(
+        user_id=user.id,
+        role="student",
+        join_code="ROSTERSYNC1",
+        block=block,
+        block_identifier=block,
+        claimed_at=datetime.now(timezone.utc),
+    )
+    db.session.add(seat)
+    db.session.flush()
+
+    profile = IdentityProfile(
+        seat_id=seat.id,
+        profile_type="student",
         first_name=first_name,
         last_initial=last_initial,
-        block=block,
-        salt=salt,
-        first_half_hash=f"{first_name[:1].upper()}2000",
-        username_hash=hash_username(f"{first_name.lower()}-{block.lower()}", salt),
-        pin_hash="test-pin",
     )
-    db.session.add(student)
+    db.session.add(profile)
     db.session.flush()
-    return student
+    return user, seat, profile
 
 
 def test_roster_upload_ignores_balance_columns_and_keeps_ledger_truth(client):
@@ -39,13 +54,13 @@ def test_roster_upload_ignores_balance_columns_and_keeps_ledger_truth(client):
     db.session.add(teacher)
     db.session.commit()
 
-    student = _make_student("Original", "N")
+    student_user, seat, profile = _make_student("Original", "N")
     db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
 
     class_row = create_class_scope(
         teacher=teacher,
         join_code="ROSTERSYNC1",
-        student=student,
+        student=seat,
         block="A",
         display_name="Roster Sync",
         create_claimed_teacher_block=True,
@@ -65,7 +80,8 @@ def test_roster_upload_ignores_balance_columns_and_keeps_ledger_truth(client):
         Transaction(
             user_id=student_user.id,
             seat_id=seat.id,
-            class_id=class_row.class_id,join_code=class_row.join_code,
+            class_id=class_row.class_id,
+            join_code=class_row.join_code,
             amount=Decimal("42.50"),
             account_type="checking",
             type="deposit",
@@ -80,10 +96,14 @@ def test_roster_upload_ignores_balance_columns_and_keeps_ledger_truth(client):
 
     _login_admin(client, teacher.id)
     with client.session_transaction() as sess:
-        sess["user_id"] = teacher_seat.user_id
-        sess["current_class_id"] = class_row.class_id
-        sess["current_join_code"] = class_row.join_code
-        sess["current_seat_id"] = teacher_seat.id
+        set_canonical_context(
+            sess,
+            user_id=teacher_seat.user_id,
+            class_id=class_row.class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
+            join_code=class_row.join_code,
+        )
 
     csv_body = (
         "join_code,actor_public_id,first_name,last_name,notes,checking_balance,savings_balance\n"

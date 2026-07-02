@@ -2,12 +2,14 @@
 Tests for the /api/attendance/history endpoint to ensure it returns attendance records.
 """
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone, timedelta
 from app import app, db
 from app.models import Admin, Student, AttendanceSession, AttendanceReasonCode, StudentTeacher, ClassEconomy, ClassMembership, Seat
 from app.hash_utils import hash_username, get_random_salt
 from werkzeug.security import generate_password_hash
+from tests.helpers.canonical_session import set_canonical_context
 
 
 @pytest.fixture
@@ -30,22 +32,9 @@ def admin_with_students(client):
     db.session.flush()
 
     # Create student owned by this admin
-    salt = get_random_salt()
-    student = Student(
-        first_name='Test',
-        last_initial='S',
-        block='A',
-        salt=salt,
-        username_hash=hash_username('teststudent', salt),
-        pin_hash=generate_password_hash('1234'),
-        has_completed_setup=True
-    )
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(block='A', first_name='Test', last_name='S')
 
     # CRITICAL FIX: Create StudentTeacher association for multi-tenancy
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
-    db.session.flush()
     class_row = ClassEconomy(
         join_code="ATTEND_A",
         user_id=admin.id,
@@ -55,19 +44,17 @@ def admin_with_students(client):
     db.session.add(class_row)
     db.session.flush()
     db.session.add(ClassMembership(class_id=class_row.class_id, admin_id=admin.id, role="admin"))
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    seat = Seat(
-        user_id=student_user.id,
+    teacher_seat = Seat(
+        user_id=user.id,
         class_id=class_row.class_id,
         join_code=class_row.join_code,
+        role="teacher",
         block="A",
-        role="student",
+        block_identifier="A",
     )
-    db.session.add(seat)
-    db.session.flush()
+    db.session.add(teacher_seat)
+    seat = student
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=admin.id))
 
     # Create some tap events for this student
     now_utc = datetime.now(timezone.utc)
@@ -98,6 +85,7 @@ def admin_with_students(client):
         'user': user,
         'student': student,
         'seat': seat,
+        'teacher_seat': teacher_seat,
         'class_id': class_row.class_id,
         'join_code': class_row.join_code,
         'tap_events': [tap_in, tap_out]
@@ -112,10 +100,14 @@ def test_attendance_history_returns_records(client, admin_with_students):
     with client.session_transaction() as sess:
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
-        sess['user_id'] = admin_with_students['user'].id
-        sess['current_class_id'] = admin_with_students['class_id']
-        sess['current_join_code'] = admin_with_students['join_code']
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=admin_with_students['user'].id,
+            class_id=admin_with_students['class_id'],
+            seat_id=admin_with_students['seat'].id,
+            role="teacher",
+            join_code=admin_with_students['join_code'],
+        )
     
     # Call the API endpoint
     response = client.get('/api/attendance/history')
@@ -146,10 +138,14 @@ def test_attendance_history_with_date_filters(client, admin_with_students):
     with client.session_transaction() as sess:
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
-        sess['user_id'] = admin_with_students['user'].id
-        sess['current_class_id'] = admin_with_students['class_id']
-        sess['current_join_code'] = admin_with_students['join_code']
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=admin_with_students['user'].id,
+            class_id=admin_with_students['class_id'],
+            seat_id=admin_with_students['seat'].id,
+            role="teacher",
+            join_code=admin_with_students['join_code'],
+        )
     
     # Use the tap event date to avoid timezone-boundary flakiness.
     # Always convert to UTC first because psycopg2 may return timestamps
@@ -199,28 +195,8 @@ def test_attendance_history_tenant_scoping(client):
     db.session.flush()
 
     # Create student for admin1
-    salt1 = get_random_salt()
-    student1 = Student(
-        first_name='Student',
-        last_initial='1',
-        block='A',
-        salt=salt1,
-        username_hash=hash_username('student1', salt1),
-        pin_hash=generate_password_hash('1234'),
-        has_completed_setup=True
-    )
-    
-    # Create student for admin2
-    salt2 = get_random_salt()
-    student2 = Student(
-        first_name='Student',
-        last_initial='2',
-        block='B',
-        salt=salt2,
-        username_hash=hash_username('student2', salt2),
-        pin_hash=generate_password_hash('1234'),
-        has_completed_setup=True
-    )
+    student1 = make_student_identity(block='A', first_name='Student', last_name='1')
+    student2 = make_student_identity(block='B', first_name='Student', last_name='2')
     db.session.add_all([student1, student2])
     db.session.flush()
 
@@ -267,12 +243,15 @@ def test_attendance_history_tenant_scoping(client):
 
     # Log in as admin1
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
+        set_canonical_context(
+            sess,
+            user_id=user1.id,
+            class_id=class1.class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
+            join_code=class1.join_code,
+        )
         sess['admin_id'] = admin1.id
-        sess['user_id'] = user1.id
-        sess['current_class_id'] = class1.class_id
-        sess['current_join_code'] = class1.join_code
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
     
     # Call the API endpoint as admin1
     response = client.get('/api/attendance/history')
@@ -307,12 +286,15 @@ def test_attendance_history_excludes_deleted_records(client, admin_with_students
     
     # Log in as the admin
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
+        set_canonical_context(
+            sess,
+            user_id=admin_with_students['user'].id,
+            class_id=admin_with_students['class_id'],
+            seat_id=admin_with_students['teacher_seat'].id,
+            role="teacher",
+            join_code=admin_with_students['join_code'],
+        )
         sess['admin_id'] = admin.id
-        sess['user_id'] = admin_with_students['user'].id
-        sess['current_class_id'] = admin_with_students['class_id']
-        sess['current_join_code'] = admin_with_students['join_code']
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
     
     # Call the API endpoint
     response = client.get('/api/attendance/history')
@@ -360,12 +342,15 @@ def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_
     db.session.commit()
 
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
+        set_canonical_context(
+            sess,
+            user_id=admin_with_students['user'].id,
+            class_id=admin_with_students['class_id'],
+            seat_id=admin_with_students['teacher_seat'].id,
+            role="teacher",
+            join_code=admin_with_students['join_code'],
+        )
         sess['admin_id'] = admin.id
-        sess['user_id'] = admin_with_students['user'].id
-        sess['current_class_id'] = admin_with_students['class_id']
-        sess['current_join_code'] = admin_with_students['join_code']
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
     response = client.get('/api/attendance/history')
     assert response.status_code == 200

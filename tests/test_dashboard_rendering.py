@@ -4,7 +4,8 @@ import pytest
 from app.models import User, UserRole, Admin, Student, StudentTeacher, RentSettings, TeacherOnboarding, InsurancePolicy, Seat, IdentityProfile
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
-from tests.helpers.class_scope import create_class_scope
+from tests.helpers.class_scope import create_class_scope, make_student_identity
+from tests.helpers.canonical_session import set_canonical_context
 import os
 
 def test_admin_dashboard_rendering(client):
@@ -78,38 +79,26 @@ def test_student_dashboard_rendering(client):
     db.session.add(teacher)
     db.session.commit()
 
-    salt = get_random_salt()
-    student = Student(
-        first_name="Render",
-        last_initial="S",
+    seat = make_student_identity(
+        join_code="RENDER1",
         block="A",
-        salt=salt,
-        username_hash=hash_username("render_student", salt),
+        first_name="Render",
+        last_name="S",
+        claimed=True,
     )
-    db.session.add(student)
-    db.session.flush()
-    # Create StudentTeacher link instead of deprecated teacher_id
+    student_user = db.session.get(User, seat.user_id)
     db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
 
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    seat = Seat(user_id=student_user.id, join_code="RENDER1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-
-    db.session.add(seat)
-
-    db.session.flush()
-
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Render", last_initial="S"))
-    db.session.add(seat)
-    db.session.commit()
-
     with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = "RENDER1"
+        set_canonical_context(
+            sess,
+            user_id=student_user.id,
+            class_id=seat.class_id,
+            seat_id=seat.id,
+            role="student",
+            join_code="RENDER1",
+        )
 
     response = client.get('/student/dashboard')
     assert response.status_code == 200

@@ -2,18 +2,12 @@ from datetime import datetime, timezone
 
 from app import db
 from app.hash_utils import get_random_salt, hash_username_lookup
-from app.models import Admin, ClassEconomy, Seat, Student, StudentBlock, AttendanceSession, User
+from app.models import Admin, ClassEconomy, Seat, StudentBlock, AttendanceSession, User
+from tests.helpers.class_scope import make_student_identity
 
 
 def _student() -> Student:
-    return Student(
-        first_name="Attend",
-        last_initial="A",
-        block="A",
-        salt=get_random_salt(),
-        first_half_hash=None,
-        second_half_hash=None,
-    )
+    return make_student_identity(block="A", first_name="Attend", last_name="A")
 
 
 def _ensure_class_scope(join_code: str, class_id: str) -> ClassEconomy:
@@ -94,7 +88,7 @@ def test_student_block_autofills_seat_id_from_class_scope(client):
     db.session.flush()
 
     student_block = StudentBlock(
-        user_id=student_user.id,
+        user_id=student.user_id,
         class_id=class_scope.class_id,
         join_code="JOIN_SB",
         period="A",

@@ -1,4 +1,5 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 from app import db
 from app.models import User, UserRole, Admin, IdentityProfile, Student, StudentTeacher
@@ -19,18 +20,7 @@ def test_new_admin_cannot_see_unassigned_students(client):
     db.session.commit()
 
     # Create Student B (Unassigned)
-    salt = get_random_salt()
-    profile_b = IdentityProfile(profile_type="student", first_name="UnassignedStudent", last_name="B")
-    db.session.add(profile_b)
-    db.session.flush()
-    student_b = Student(
-        identity_profile=profile_b,
-        block="A",
-        salt=salt,
-        first_half_hash="hash_unassigned",
-        has_completed_setup=False
-    )
-    db.session.add(student_b)
+    student_b = make_student_identity(block="A", first_name="UnassignedStudent", last_name="B", claimed=False)
     db.session.commit()
 
     # Link to Teacher B (Simulate proper ownership via StudentTeacher)
@@ -69,18 +59,7 @@ def test_owner_can_see_unassigned_students_if_linked(client):
     db.session.add(teacher_b)
     db.session.commit()
 
-    salt = get_random_salt()
-    profile_b = IdentityProfile(profile_type="student", first_name="OwnerTestStudent", last_name="B")
-    db.session.add(profile_b)
-    db.session.flush()
-    student_b = Student(
-        identity_profile=profile_b,
-        block="A",
-        salt=salt,
-        first_half_hash="hash_owner",
-        has_completed_setup=False
-    )
-    db.session.add(student_b)
+    student_b = make_student_identity(block="A", first_name="OwnerTestStudent", last_name="B", claimed=False)
     db.session.commit()
 
     link = StudentTeacher(user_id=student_b_user.id, teacher_id=teacher_b.id)

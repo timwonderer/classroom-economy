@@ -7,6 +7,7 @@ when a transaction has a NULL amount value.
 from decimal import Decimal
 from unittest.mock import PropertyMock, patch
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 from app import db
 from app.models import User, UserRole, Student, Transaction, Admin, ClassEconomy
 import sqlalchemy as sa
@@ -37,15 +38,7 @@ def test_get_total_earnings_defensive_checks(client, app):
         db.session.flush()
         
         # Create a student
-        from app.hash_utils import get_random_salt
-        student = Student(
-            first_name="TestStudent",
-            last_initial="A",
-            block="Period 1",
-            salt=get_random_salt(),
-            first_half_hash="test_hash_1",
-        )
-        db.session.add(student)
+        student = make_student_identity(block="Period 1", first_name="TestStudent", last_name="A")
         db.session.commit()
         
         # Create a normal transaction with a valid amount
@@ -107,15 +100,7 @@ def test_get_total_earnings_with_negative_amounts(client, app):
         db.session.flush()
         
         # Create a student
-        from app.hash_utils import get_random_salt
-        student = Student(
-            first_name="TestStudent2",
-            last_initial="B",
-            block="Period 2",
-            salt=get_random_salt(),
-            first_half_hash="test_hash_2",
-        )
-        db.session.add(student)
+        student = make_student_identity(block="Period 2", first_name="TestStudent2", last_name="B")
         db.session.commit()
         
         # Create positive transactions (earnings)
@@ -178,15 +163,7 @@ def test_get_total_earnings_with_zero_amount(client, app):
         db.session.flush()
         
         # Create a student
-        from app.hash_utils import get_random_salt
-        student = Student(
-            first_name="TestStudent3",
-            last_initial="C",
-            block="Period 3",
-            salt=get_random_salt(),
-            first_half_hash="test_hash_3",
-        )
-        db.session.add(student)
+        student = make_student_identity(block="Period 3", first_name="TestStudent3", last_name="C")
         db.session.commit()
         
         # Create a transaction with zero amount
@@ -211,5 +188,4 @@ def test_get_total_earnings_with_zero_amount(client, app):
         # Earnings should not include zero amounts (> 0 condition)
         earnings = student.get_total_earnings(join_code=join_code, teacher_id=teacher.id)
         assert earnings == 5.00
-
 

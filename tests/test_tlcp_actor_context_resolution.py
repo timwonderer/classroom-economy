@@ -6,6 +6,8 @@ from app.services.context_resolver import resolve_canonical_context
 from app.services.tlcp import resolve_actor_context
 from app.utils.time import utc_now
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.canonical_session import set_canonical_context
+from tests.helpers.class_scope import make_student_identity
 
 
 def test_resolve_actor_context_student_session(app):
@@ -30,46 +32,35 @@ def test_resolve_actor_context_student_session(app):
     )
     db.session.add(student_user)
     db.session.flush()
-    student = Student(
-        first_name="TLCP",
-        last_initial="S",
+    seat = make_student_identity(
+        class_id=class_row.class_id,
+        join_code=class_row.join_code,
         block="A",
-        join_code=class_row.join_code,
-        class_id=class_row.class_id,
-        salt=b"1234567890123456",
-        pin_hash="pin",
-    )
-    db.session.add(student)
-    db.session.flush()
-    student_id = student.id
-    seat = Seat(
         user_id=student_user.id,
-        class_id=class_row.class_id,
-        join_code=class_row.join_code,
-        role="student",
-        claimed_at=utc_now(),
+        first_name="TLCP",
+        last_name="S",
     )
-    db.session.add(seat)
-    db.session.flush()
-    seat_id = seat.id
-    seat_user_id = seat.user_id
     seat_public_id = seat.public_id
     class_id = class_row.class_id
     db.session.commit()
     db.session.remove()
 
     with app.test_request_context("/student/help-support/submit-issue", method="POST"):
-        session["student_id"] = student_id
-        session["user_id"] = seat_user_id
-        session["current_class_id"] = class_id
-        session["current_seat_id"] = seat_id
+        set_canonical_context(
+            session,
+            user_id=seat.user_id,
+            class_id=class_id,
+            seat_id=seat.id,
+            role="student",
+            join_code=class_row.join_code,
+        )
 
         canonical_context = resolve_canonical_context()
         context = resolve_actor_context(canonical_context)
 
     assert context is not None
     assert context["actor_type"] == "student"
-    assert context["actor_id"] == seat_user_id
+    assert context["actor_id"] == seat.user_id
     assert context["actor_public_id"] == seat_public_id
     assert context["class_id"] == class_id
 
@@ -106,11 +97,13 @@ def test_resolve_actor_context_admin_session(app):
     db.session.remove()
 
     with app.test_request_context("/admin/dashboard", method="GET"):
-        session["is_admin"] = True
-        session["admin_id"] = admin_id
-        session["user_id"] = user_id
-        session["current_class_id"] = class_id
-        session["current_seat_id"] = teacher_seat_id
+        set_canonical_context(
+            session,
+            user_id=user_id,
+            class_id=class_id,
+            seat_id=teacher_seat_id,
+            role="teacher",
+        )
 
         canonical_context = resolve_canonical_context()
         context = resolve_actor_context(canonical_context)

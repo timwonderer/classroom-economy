@@ -1,6 +1,8 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
-from app import db, Student, Transaction
+from app import db, Transaction
+from app.models import Student
 from app.attendance import (
     get_last_payroll_time,
     calculate_unpaid_attendance_seconds,
@@ -9,7 +11,6 @@ from app.attendance import (
     get_all_block_statuses
 )
 from app.models import AttendanceSession, ClassEconomy, IdentityProfile, SeatAttendanceState
-from app.utils.seat_scope import get_seat_id_for_class
 from datetime import datetime, timedelta, timezone
 
 
@@ -70,7 +71,8 @@ def _attach_student_to_class(student, join_code="ATTEND1", block="A"):
 def _resolve_scope(student_id, join_code):
     class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
     assert class_row is not None
-    seat_id = get_seat_id_for_class(student_id, class_row.class_id)
+    seat = db.session.query(Seat).filter(Seat.user_id == student_id, Seat.class_id == class_row.class_id).first()
+    seat_id = seat.id if seat else None
     assert seat_id is not None
     return seat_id, class_row.class_id
 
@@ -79,11 +81,7 @@ def test_get_last_payroll_time(client):
         get_last_payroll_time(seat_id=None, class_id=None)
 
     # Create a student first
-    profile = IdentityProfile(profile_type="student", first_name="Test", last_name="S")
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b'salt', has_completed_setup=True)
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Test", last_name="S")
     db.session.commit()
     join_code = _attach_student_to_class(student, join_code="PAYROLL1", block="A")
     seat_id, class_id = _resolve_scope(student.id, join_code)
@@ -141,11 +139,7 @@ def test_get_last_payroll_time(client):
     assert get_last_payroll_time(seat_id=seat_id, class_id=class_id) == manual_time
 
 def test_calculate_unpaid_attendance_seconds(client):
-    profile = IdentityProfile(profile_type="student", first_name="Test", last_name="S")
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b'salt', has_completed_setup=True)
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Test", last_name="S")
     db.session.commit()
     join_code = _attach_student_to_class(student, join_code="ATTEND2", block="A")
 
@@ -172,11 +166,7 @@ def test_calculate_unpaid_attendance_seconds(client):
     assert unpaid_seconds == 900
 
 def test_calculate_period_attendance(client):
-    profile = IdentityProfile(profile_type="student", first_name="Test", last_name="S")
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b'salt', has_completed_setup=True)
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Test", last_name="S")
     db.session.commit()
 
     join_code = _attach_student_to_class(student, join_code="ATTEND6", block="A")
@@ -203,11 +193,7 @@ def test_calculate_period_attendance(client):
     assert period_attendance == 600
 
 def test_get_session_status(client):
-    profile = IdentityProfile(profile_type="student", first_name="Test", last_name="S")
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b'salt', has_completed_setup=True)
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Test", last_name="S")
     db.session.commit()
     join_code = _attach_student_to_class(student, join_code="ATTEND3", block="A")
 
@@ -242,11 +228,7 @@ def test_get_session_status(client):
     assert duration > 0
 
 def test_get_all_block_statuses(client):
-    profile = IdentityProfile(profile_type="student", first_name="Test", last_name="S")
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block="A,B", salt=b'salt', has_completed_setup=True)
-    db.session.add(student)
+    student = make_student_identity(block="A,B", first_name="Test", last_name="S")
     db.session.commit()
     join_code_a = _attach_student_to_class(student, join_code="ATTEND4", block="A")
     join_code_b = _attach_student_to_class(student, join_code="ATTEND5", block="B")

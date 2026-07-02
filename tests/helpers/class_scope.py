@@ -115,7 +115,7 @@ def create_class_scope(
     return class_row
 
 
-def make_student_seat(
+def make_student_identity(
     *,
     class_id=None,
     join_code=None,
@@ -125,30 +125,35 @@ def make_student_seat(
     claimed=True,
     first_name="Student",
     last_name="Test",
-    profile_type="student_claimed",
+    profile_type=None,
+    seat_kwargs=None,
 ):
-    """Create a Seat + IdentityProfile + auto-created User for tests.
+    """Create the canonical student identity shape for tests.
 
-    This replaces the common pattern of ``Seat(user_id=student_user.id, ...)``,
-    which broke when ``student_id`` was removed from the Seat ORM in v2.
+    This is the single helper for student identity construction in the test
+    suite. It creates the authoritative v2 identity shape:
+    ``User -> Seat -> IdentityProfile``.
     """
     resolved_user_id = _ensure_user(user_id, role=role)
+    seat_data = dict(seat_kwargs or {})
+    seat_data.setdefault("user_id", resolved_user_id)
+    seat_data.setdefault("class_id", class_id)
+    seat_data.setdefault("join_code", join_code)
+    seat_data.setdefault("block", block)
+    seat_data.setdefault("block_identifier", block)
+    seat_data.setdefault("role", role)
+    seat_data.setdefault("claimed_at", datetime.now(timezone.utc) if claimed else None)
     seat = Seat(
-        user_id=resolved_user_id,
-        class_id=class_id,
-        join_code=join_code,
-        block=block,
-        block_identifier=block,
-        role=role,
-        claimed_at=datetime.now(timezone.utc) if claimed else None,
+        **seat_data,
     )
     db.session.add(seat)
     db.session.flush()
     db.session.add(IdentityProfile(
         seat_id=seat.id,
-        profile_type=profile_type if claimed else "student_unclaimed",
+        profile_type=profile_type or ("student_claimed" if claimed else "student_unclaimed"),
         first_name=first_name,
         last_name=last_name,
     ))
     db.session.flush()
     return seat
+

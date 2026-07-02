@@ -16,13 +16,13 @@ from app.models import (
     ObligationAssessment,
     RentSettings,
     Seat,
-    Student,
     StudentTeacher,
     User,
 )
-from app.hash_utils import hash_username, get_random_salt
+from app.hash_utils import get_random_salt
 from app.services import obligations_service
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.class_scope import make_student_identity
 from tests.helpers.v2_fixtures import make_admin
 
 _counter = 0
@@ -37,22 +37,8 @@ def _make_env(client):
     db.session.add(admin)
     db.session.flush()
 
-    user = User(username_hash=hash_username(f"{tag}-user", get_random_salt()))
-    db.session.add(user)
-    db.session.flush()
-
-    salt = get_random_salt()
-    student = Student(
-        first_name="Canonical",
-        last_initial="T",
-        block="A",
-        salt=salt,
-        username_hash=hash_username(f"{tag}-student", salt),
-        pin_hash="fake-hash",
-    )
-    db.session.add(student)
-    db.session.flush()
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
+    student = make_student_identity(first_name="Canonical", last_name="T", block="A")
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=admin.id))
 
     class_row = create_class_scope(
         teacher=admin,

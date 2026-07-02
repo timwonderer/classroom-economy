@@ -15,10 +15,10 @@ from app.models import (
     IdentityProfile,
     RentSettings,
     Seat,
-    Student,
     StudentTeacher,
     )
 from tests.helpers.admin_context import login_admin
+from tests.helpers.class_scope import make_student_identity
 
 
 def _make_admin(suffix):
@@ -33,10 +33,6 @@ def _make_teacher_block(admin_id, block, join_code):
     db.session.add(economy)
     db.session.flush()
     db.session.add(ClassMembership(join_code=join_code, admin_id=admin_id, role="admin"))
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
     seat = Seat(
         class_id=economy.class_id,
         join_code=join_code,
@@ -69,41 +65,32 @@ def _make_rent_settings(block, first_due, class_id=None, frequency_type="weekly"
 
 
 def _make_student(suffix, block="A"):
-    salt = get_random_salt()
-    student = Student(
-        first_name="Test",
-        last_initial="W",
-        block=block,
-        salt=salt,
-        username_hash=hash_username(f"student_arw_{suffix}", salt),
-        pin_hash="test-pin",
+    student_user = User(
+        user_role=UserRole.STUDENT,
+        username_hash=f"student_arw_{suffix}_hash",
+        username_lookup_hash=f"student_arw_{suffix}_lookup",
     )
-    db.session.add(student)
-    db.session.flush()
-    return student
-
-
-def _link_student(student, admin):
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
-    db.session.flush()
-
-
-def _make_student_seat(student, class_id, join_code, block="A"):
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
+    profile = IdentityProfile(profile_type="student", first_name="Test", last_initial="W")
+    db.session.add(profile)
+    db.session.flush()
     seat = Seat(
-        class_id=class_id,
-        join_code=join_code,
         user_id=student_user.id,
         role="student",
         block=block,
         block_identifier=block,
+        claimed_at=datetime.now(timezone.utc),
     )
     db.session.add(seat)
     db.session.flush()
-    return seat
+    profile.seat_id = seat.id
+    return student_user, seat
+
+
+def _link_student(student, admin):
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=admin.id))
+    db.session.flush()
 
 
 def _login_admin(client, admin_id, join_code):
@@ -121,7 +108,14 @@ def test_past_due_scope_creates_one_waiver_per_date(client, app):
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("pd1_s")
         _link_student(student, admin)
-        student_seat = _make_student_seat(student, tb.class_id, join_code)
+        student_seat = make_student_identity(
+            class_id=tb.class_id,
+            join_code=join_code,
+            block="A",
+            user_id=student.user_id,
+            first_name="Test",
+            last_name="W",
+        )
         db.session.commit()
 
         _login_admin(client, admin.id, join_code)
@@ -161,7 +155,14 @@ def test_current_scope_creates_waiver_for_current_period(client, app):
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("cur1_s")
         _link_student(student, admin)
-        student_seat = _make_student_seat(student, tb.class_id, join_code)
+        student_seat = make_student_identity(
+            class_id=tb.class_id,
+            join_code=join_code,
+            block="A",
+            user_id=student.user_id,
+            first_name="Test",
+            last_name="W",
+        )
         db.session.commit()
 
         _login_admin(client, admin.id, join_code)
@@ -195,7 +196,14 @@ def test_future_scope_creates_waiver_spanning_n_periods(client, app):
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("fut1_s")
         _link_student(student, admin)
-        student_seat = _make_student_seat(student, tb.class_id, join_code)
+        student_seat = make_student_identity(
+            class_id=tb.class_id,
+            join_code=join_code,
+            block="A",
+            user_id=student.user_id,
+            first_name="Test",
+            last_name="W",
+        )
         db.session.commit()
 
         _login_admin(client, admin.id, join_code)
@@ -229,7 +237,14 @@ def test_invalid_future_periods_count_flashes_error(client, app):
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("fp1_s")
         _link_student(student, admin)
-        _make_student_seat(student, tb.class_id, join_code)
+        make_student_identity(
+            class_id=tb.class_id,
+            join_code=join_code,
+            block="A",
+            user_id=student.user_id,
+            first_name="Test",
+            last_name="W",
+        )
         db.session.commit()
 
         _login_admin(client, admin.id, join_code)
@@ -257,7 +272,14 @@ def test_missing_join_code_flashes_error(client, app):
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("nojc1_s")
         _link_student(student, admin)
-        _make_student_seat(student, tb.class_id, "ARW_NOJC")
+        make_student_identity(
+            class_id=tb.class_id,
+            join_code="ARW_NOJC",
+            block="A",
+            user_id=student.user_id,
+            first_name="Test",
+            last_name="W",
+        )
         db.session.commit()
 
         with client.session_transaction() as sess:
@@ -290,7 +312,14 @@ def test_invalid_past_due_dates_skipped_count_reflects_actual(client, app):
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("pd2_s")
         _link_student(student, admin)
-        student_seat = _make_student_seat(student, tb.class_id, join_code)
+        student_seat = make_student_identity(
+            class_id=tb.class_id,
+            join_code=join_code,
+            block="A",
+            user_id=student.user_id,
+            first_name="Test",
+            last_name="W",
+        )
         db.session.commit()
 
         _login_admin(client, admin.id, join_code)
@@ -327,7 +356,14 @@ def test_add_rent_waiver_logs_analytics_event(client, app, monkeypatch):
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("evt1_s")
         _link_student(student, admin)
-        _make_student_seat(student, tb.class_id, join_code)
+        make_student_identity(
+            class_id=tb.class_id,
+            join_code=join_code,
+            block="A",
+            user_id=student.user_id,
+            first_name="Test",
+            last_name="W",
+        )
         db.session.commit()
 
         fixed_now = datetime(2026, 2, 1, tzinfo=timezone.utc)
@@ -358,7 +394,14 @@ def test_remove_rent_waiver_logs_analytics_event(client, app):
         _make_rent_settings("A", first_due, class_id=tb.class_id)
         student = _make_student("rem1_s")
         _link_student(student, admin)
-        seat = _make_student_seat(student, tb.class_id, join_code)
+        seat = make_student_identity(
+            class_id=tb.class_id,
+            join_code=join_code,
+            block="A",
+            user_id=student.user_id,
+            first_name="Test",
+            last_name="W",
+        )
         waiver = obligations_service.record_rent_waiver(
             seat_id=seat.id,
             class_id=tb.class_id,

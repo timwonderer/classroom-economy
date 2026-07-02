@@ -27,7 +27,6 @@ from app.models import (
     RedemptionAuditLog,
     Seat,
     StoreItem,
-    Student,
     StudentItem,
     Transaction,
     TransactionStatus,
@@ -67,8 +66,13 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         profile = IdentityProfile(profile_type="student", first_name="X", last_name="S")
         db.session.add(profile)
         db.session.flush()
-        student = Student(identity_profile=profile, block="A", salt=b"salt")
-        db.session.add(student)
+        student_user = User(
+            username_hash="redemption_student_hash",
+            username_lookup_hash="redemption_student_lookup",
+            password_hash="x",
+            user_role=UserRole.STUDENT,
+        )
+        db.session.add(student_user)
         db.session.flush()
 
         economy = ClassEconomy(
@@ -83,10 +87,6 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
             ClassMembership(class_id=economy.class_id, admin_id=admin.id, role="admin")
         )
 
-        # Auto-injected Canonical User
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-        db.session.add(student_user)
-        db.session.flush()
         seat = Seat(
             user_id=student_user.id,
             class_id=economy.class_id,
@@ -96,6 +96,7 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         )
         db.session.add(seat)
         db.session.flush()
+        profile.seat_id = seat.id
 
         item = StoreItem(
             name="Prize",
@@ -110,7 +111,8 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         # Original purchase transaction (the money that left the student's account)
         purchase_tx = Transaction(
             seat_id=seat.id,
-            class_id=economy.class_id,amount=-item_price,
+            class_id=economy.class_id,
+            amount=-item_price,
             account_type="checking",
             type="purchase",
             status=TransactionStatus.PENDING,

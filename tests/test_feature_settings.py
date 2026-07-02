@@ -11,6 +11,7 @@ from app import app, db
 from app.models import Admin, ClassEconomy, ClassFeature, FeatureSettings, Seat, TeacherOnboarding, User, UserRole
 from app.routes.admin import get_admin_feature_join_code_options, is_admin_feature_enabled
 from tests.helpers.admin_context import login_admin
+from tests.helpers.canonical_session import set_canonical_context
 from app.utils.economy_policy import (
     get_class_feature_settings_for_class,
     resolve_feature_class_for_class,
@@ -193,9 +194,27 @@ class TestClassFeatures:
         db.session.add(ClassFeature(class_id=economy_a.class_id, feature_name='insurance'))
         db.session.commit()
 
+        teacher_seat = Seat(
+            class_id=economy_b.class_id,
+            user_id=test_admin.user_id,
+            join_code=economy_b.join_code,
+            role='teacher',
+            block='B',
+            block_identifier='B',
+        )
+        db.session.add(teacher_seat)
+        db.session.flush()
+
         with app.test_request_context('/admin/insurance'):
+            set_canonical_context(
+                session,
+                user_id=test_admin.user_id,
+                class_id=economy_b.class_id,
+                seat_id=teacher_seat.id,
+                role="teacher",
+                join_code=economy_b.join_code,
+            )
             session['admin_id'] = test_admin.id
-            session['current_class_id'] = economy_b.class_id
             assert is_admin_feature_enabled(
                 'insurance',
                 admin_id=test_admin.id,

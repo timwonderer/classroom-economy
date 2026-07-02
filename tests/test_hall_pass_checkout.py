@@ -6,12 +6,14 @@ without using the terminal, with proper limit enforcement.
 """
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone, timedelta
 from app.models import Seat, IdentityProfile, Student, Admin, HallPassLog, StudentTeacher, HallPassSettings, ClassEconomy, AttendanceSession, SeatAttendanceState, User, UserRole
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
 from app.utils.auth_username import build_hashed_username_fields
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def _make_canonical_user(*, username: str, role: UserRole) -> User:
@@ -28,23 +30,27 @@ def _make_canonical_user(*, username: str, role: UserRole) -> User:
 
 def _login_student_context(client, *, student: Student, user: User, seat: Seat, login_time: str | None = None) -> None:
     with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        sess['user_id'] = user.id
-        sess['current_seat_id'] = seat.id
-        sess['current_class_id'] = seat.class_id
-        sess['current_join_code'] = seat.join_code
-        sess['is_student'] = True
-        sess['login_time'] = login_time or datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=user.id,
+            class_id=seat.class_id,
+            seat_id=seat.id,
+            role="student",
+            join_code=seat.join_code,
+        )
 
 
 def _login_admin_context(client, *, teacher: Admin, user: User, class_id: str, join_code: str) -> None:
+    teacher_seat = Seat.query.filter_by(class_id=class_id, role="teacher").first()
     with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = teacher.id
-        sess['user_id'] = user.id
-        sess['current_class_id'] = class_id
-        sess['current_join_code'] = join_code
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=user.id,
+            class_id=class_id,
+            seat_id=teacher_seat.id if teacher_seat else user.id,
+            role="teacher",
+            join_code=join_code,
+        )
 
 
 @pytest.fixture
@@ -60,21 +66,11 @@ def setup_hall_pass_checkout_test(client):
 
     # Create student
     user = _make_canonical_user(username="alice_a", role=UserRole.STUDENT)
-
-    salt = get_random_salt()
-    student = Student(
-        first_name="Alice",
-        last_initial="A",
-        block="Period1",
-        salt=salt,
-        username_hash=hash_username("alice_a", salt),
-        pin_hash="$2b$12$test_hash"  # Mock hash
-    )
-    db.session.add(student)
+    student = make_student_identity(block="Period1", first_name="Alice", last_name="A")
     db.session.commit()
 
     # Link student to teacher
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=teacher.id))
     db.session.commit()
 
     economy = ClassEconomy(
@@ -115,7 +111,7 @@ def setup_hall_pass_checkout_test(client):
 
     # Create approved hall pass
     hall_pass = HallPassLog(
-        user_id=student_user.id,
+        user_id=student.user_id,
         seat_id=seat.id,
         class_id=economy.class_id,
         reason="Bathroom",
@@ -241,15 +237,7 @@ def test_checkout_blocked_by_simultaneous_limit(client, setup_hall_pass_checkout
 
     # Create 2 other students already out for bathroom (limit is 2)
     for i in range(2):
-        salt = get_random_salt()
-        other_student = Student(
-            first_name=f"Student{i}",
-            last_initial="S",
-            block="Period1",
-            salt=salt,
-            username_hash=hash_username(f"student{i}_s", salt)
-        )
-        db.session.add(other_student)
+        other_student = make_student_identity(block="Period1", first_name=f"Student{i}", last_name="S")
         db.session.commit()
 
         # Create 'left' hall pass for this student
@@ -357,16 +345,7 @@ def test_checkout_rejects_wrong_student(client, setup_hall_pass_checkout_test):
 
     # Create another student
     other_user = _make_canonical_user(username="bob_b", role=UserRole.STUDENT)
-    salt = get_random_salt()
-    other_student = Student(
-        first_name="Bob",
-        last_initial="B",
-        block="Period1",
-        salt=salt,
-        username_hash=hash_username("bob_b", salt)
-    )
-    db.session.add(other_student)
-    db.session.flush()
+    other_student = make_student_identity(block="Period1", first_name="Bob", last_name="B")
     other_seat = Seat(
         user_id=other_user.id,
         class_id=economy.class_id,

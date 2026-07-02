@@ -1,4 +1,5 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 import re
 from decimal import Decimal
@@ -22,11 +23,7 @@ def teacher_admin(client):
 @pytest.fixture
 def student_in_class(client, teacher_admin):
     """Create a student in the teacher's class."""
-    profile = IdentityProfile(profile_type='student', first_name='Test', last_name='S')
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b'salt')
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Test", last_name="S")
     db.session.flush()
 
     # Link to teacher
@@ -64,11 +61,7 @@ def student_in_class(client, teacher_admin):
 @pytest.fixture
 def admin_class_scope(client, teacher_admin):
     """Create a class-scoped seat so admin feature routes can resolve scope."""
-    profile = IdentityProfile(profile_type='student', first_name='Scope', last_name='S')
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b"scope-salt")
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Scope", last_name="S")
     db.session.flush()
 
     class_economy = ClassEconomy(
@@ -826,11 +819,7 @@ def test_mid_period_lock_blocks_semantic_changes(client, teacher_admin, admin_cl
     db.session.flush()
 
     # Create a student who has paid rent for the current coverage period
-    profile_payer = IdentityProfile(profile_type='student', first_name='Payer', last_name='P')
-    db.session.add(profile_payer)
-    db.session.flush()
-    student = Student(identity_profile=profile_payer, block="A", salt=b'salt')
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Payer", last_name="P")
     db.session.flush()
 
 
@@ -916,11 +905,7 @@ def test_mid_period_lock_allows_new_items(client, teacher_admin, admin_class_sco
     db.session.add(tb)
     db.session.flush()
 
-    profile_payer = IdentityProfile(profile_type='student', first_name='Payer', last_name='P')
-    db.session.add(profile_payer)
-    db.session.flush()
-    student = Student(identity_profile=profile_payer, block="A", salt=b'salt')
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Payer", last_name="P")
     db.session.flush()
 
 

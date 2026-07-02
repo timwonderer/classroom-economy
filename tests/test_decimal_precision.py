@@ -6,6 +6,7 @@ These tests verify that the fixes for floating-point rounding bugs work correctl
 2. Partial rent payments with problematic float values can be fully paid off
 """
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
@@ -84,16 +85,7 @@ class TestDecimalPrecision:
         db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Test', last_name='S'))
         db.session.add(block)
 
-        # Create student
-        student = Student(
-            first_name='Test',
-            last_initial='S',
-            block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash'
-        )
-        db.session.add(student)
-        db.session.flush()
+        student = make_student_identity(block='A', first_name='Test', last_name='S')
 
         class_id, seat_id = _attach_class_scope(teacher, student, join_code, block='A')
         banking_settings = BankingSettings(
@@ -214,16 +206,7 @@ class TestDecimalPrecision:
         )
         db.session.add(rent_settings)
 
-        # Create student
-        student = Student(
-            first_name='Rent',
-            last_initial='T',
-            block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash'
-        )
-        db.session.add(student)
-        db.session.flush()
+        student = make_student_identity(block='A', first_name='Rent', last_name='T')
 
         class_id, seat_id = _attach_class_scope(teacher, student, join_code, block='A')
 
@@ -346,15 +329,7 @@ class TestDecimalPrecision:
         db.session.add(block)
 
         # Create student
-        student = Student(
-            first_name='Zero',
-            last_initial='T',
-            block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash'
-        )
-        db.session.add(student)
-        db.session.flush()
+        student = make_student_identity(block='A', first_name='Zero', last_name='T')
 
         class_id, seat_id = _attach_class_scope(teacher, student, join_code, block='A')
         banking_settings = BankingSettings(
@@ -429,15 +404,7 @@ class TestDecimalPrecision:
         db.session.add(block)
 
         # Create student
-        student = Student(
-            first_name='Negative',
-            last_initial='T',
-            block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash'
-        )
-        db.session.add(student)
-        db.session.flush()
+        student = make_student_identity(block='A', first_name='Negative', last_name='T')
 
         class_id, seat_id = _attach_class_scope(teacher, student, join_code, block='A')
         banking_settings = BankingSettings(
@@ -496,15 +463,7 @@ class TestDecimalPrecision:
         db.session.flush()
 
         join_code = 'LATE_FEE_Q'
-        student = Student(
-            first_name='Late',
-            last_initial='F',
-            block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash'
-        )
-        db.session.add(student)
-        db.session.flush()
+        student = make_student_identity(block='A', first_name='Late', last_name='F')
 
         identity = IdentityProfile(profile_type="roster", first_name="Late", last_name="F")
         db.session.add(identity)
@@ -568,8 +527,15 @@ class TestDecimalPrecision:
 
             sess['current_session_nonce'] = student_user.current_session_nonce
             sess['current_join_code'] = join_code
-            sess['current_class_id'] = economy.class_id
-            sess['current_seat_id'] = seat.id
+            from tests.helpers.canonical_session import set_canonical_context
+            set_canonical_context(
+                sess,
+                user_id=student_user.id,
+                class_id=economy.class_id,
+                seat_id=seat.id,
+                role="student",
+                join_code=join_code,
+            )
             sess['login_time'] = datetime.now(timezone.utc).isoformat()
             sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 

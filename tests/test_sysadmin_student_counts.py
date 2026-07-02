@@ -6,6 +6,7 @@ and that counts properly account for multi-teacher relationships.
 """
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pyotp
 
 from app import app, db
@@ -40,17 +41,7 @@ def _create_student(first_name: str, primary_teacher: Admin = None, linked_teach
         primary_teacher: Primary owner (sets teacher_id)
         linked_teachers: List of teachers to link via student_teachers
     """
-    salt = get_random_salt()
-    student = Student(
-        first_name=first_name,
-        last_initial="X",
-        block="A",
-        salt=salt,
-        username_hash=hash_username(first_name.lower(), salt),
-        pin_hash="pin",
-    )
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(block="A", first_name=first_name, last_name="X")
     
     # Add student_teachers links
     if linked_teachers:
@@ -135,17 +126,7 @@ def test_sysadmin_counts_students_with_only_links(client):
     teacher_a, _ = _create_admin("teacher-a")
     
     # Create student with link but no teacher_id (future state after migration)
-    salt = get_random_salt()
-    student = Student(
-        first_name="NoOwner",
-        last_initial="X",
-        block="A",
-        salt=salt,
-        username_hash=hash_username("noowner", salt),
-        pin_hash="pin",
-    )
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(block="A", first_name="NoOwner", last_name="X")
     
     # Add link to teacher_a
     db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher_a.id))
@@ -231,7 +212,7 @@ def test_deleted_students_are_excluded_from_teacher_counts(client):
     _create_student("ActiveStudent", primary_teacher=teacher)
     deleted_student = _create_student("DeletedStudent", primary_teacher=teacher)
     StudentTeacher.query.filter_by(user_id=deleted_student_user.id, teacher_id=teacher.id).delete()
-    Student.query.filter_by(id=deleted_student.id).delete()
+    db.session.delete(deleted_student)
     db.session.commit()
 
     assert teacher.get_student_count() == 1

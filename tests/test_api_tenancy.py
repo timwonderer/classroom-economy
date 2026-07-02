@@ -17,14 +17,14 @@ from app.models import (
     ClassMembership,
     HallPassSettings,
     Seat,
-    Student,
     StudentBlock,
     StudentTeacher,
     AttendanceSession,
+    IdentityProfile,
     User,
 )
-from app.hash_utils import get_random_salt, hash_username
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def _create_admin(username: str) -> tuple[Admin, str]:
@@ -49,34 +49,33 @@ def _get_teacher_user_id(teacher: Admin) -> int:
     return user.id if user else teacher.id
 
 
-def _create_student(first_name: str, primary_teacher: Admin = None, linked_teachers: list[Admin] = None) -> Student:
+def _create_student(first_name: str, primary_teacher: Admin = None, linked_teachers: list[Admin] = None):
     """
-    Create a student for testing.
+    Create a canonical student identity for testing.
     
     Args:
         first_name: Student's first name
         primary_teacher: Primary owner (sets teacher_id)
         linked_teachers: List of teachers to link via student_teachers
     """
-    salt = get_random_salt()
-    student = Student(
-        first_name=first_name,
-        last_initial="X",
-        block="A",
-        salt=salt,
-        username_hash=hash_username(first_name.lower(), salt),
-        pin_hash="pin",
-    )
-    db.session.add(student)
-    db.session.flush()
-    db.session.add(User(
+    student_user = User(
         user_role=UserRole.STUDENT,
-        username_hash=student.username_hash,
-        pin_hash=student.pin_hash,
-        current_session_nonce="nonce",
-    ))
-    
-    # Add student_teachers links
+        username_hash=f"{first_name.lower()}_hash",
+        username_lookup_hash=f"{first_name.lower()}_lookup",
+    )
+    db.session.add(student_user)
+    db.session.flush()
+    seat = Seat(
+        user_id=student_user.id,
+        role="student",
+        block="A",
+        block_identifier="A",
+        claimed_at=datetime.now(timezone.utc),
+    )
+    db.session.add(seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name=first_name, last_initial="X"))
+
     if linked_teachers:
         for teacher in linked_teachers:
             db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
@@ -85,7 +84,7 @@ def _create_student(first_name: str, primary_teacher: Admin = None, linked_teach
         db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=primary_teacher.id))
     
     db.session.commit()
-    return student
+    return seat
 
 
 def _login_admin(client, admin: Admin, secret: str, join_code: str = None):
@@ -96,34 +95,36 @@ def _login_admin(client, admin: Admin, secret: str, join_code: str = None):
         follow_redirects=False,
     )
     user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
+    teacher_user_id = _get_teacher_user_id(admin)
     with client.session_transaction() as sess:
         sess["is_admin"] = True
         sess["admin_id"] = admin.id
         if user:
-            sess["user_id"] = user.id
             sess["current_session_nonce"] = user.current_session_nonce
-        if not sess.get("current_join_code"):
+        resolved_join_code = join_code
+        if not resolved_join_code:
             first_membership = (
                 ClassMembership.query.filter_by(admin_id=admin.id, role="admin")
                 .order_by(ClassMembership.id.asc())
                 .first()
             )
-            if first_membership and first_membership.join_code:
-                sess["current_join_code"] = first_membership.join_code
-        if join_code:
-            sess["current_join_code"] = join_code
-        
-        current_join_code = sess.get("current_join_code")
-        if current_join_code:
-            teacher_user_id = _get_teacher_user_id(admin)
-            class_row = ClassEconomy.query.filter_by(join_code=current_join_code, user_id=teacher_user_id).first()
-            if class_row and class_row.class_id:
-                sess["current_class_id"] = class_row.class_id
-                if user:
+            resolved_join_code = first_membership.join_code if first_membership and first_membership.join_code else None
+        if resolved_join_code:
+            class_row = ClassEconomy.query.filter_by(join_code=resolved_join_code, user_id=teacher_user_id).first()
+            if class_row and class_row.class_id and user:
+                from tests.helpers.canonical_session import set_canonical_context
+                teacher_seat = Seat.query.filter_by(user_id=teacher_user_id, class_id=class_row.class_id, role="teacher").first()
+                if teacher_seat:
+                    set_canonical_context(
+                        sess,
+                        user_id=user.id,
+                        class_id=class_row.class_id,
+                        seat_id=teacher_seat.id,
+                        role="teacher",
+                        join_code=resolved_join_code,
+                    )
                     user.last_active_class_id = class_row.class_id
                     db.session.commit()
-            else:
-                sess.pop("current_class_id", None)
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
     return response
 
@@ -223,28 +224,26 @@ def _create_class_scope(teacher: Admin, student: Student, join_code: str):
 
 
 def _login_student(client, student: Student, join_code: str | None = None):
-    now = datetime.now(timezone.utc).isoformat()
     user = User.query.filter_by(username_hash=student.username_hash).first()
     with client.session_transaction() as sess:
-        sess["student_id"] = student.id
         if user:
-            sess["user_id"] = user.id
             sess["current_session_nonce"] = user.current_session_nonce
-        sess["login_time"] = now
-        sess["last_activity"] = now
         if join_code:
-            sess["current_join_code"] = join_code
             class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
             if class_row:
-                sess["current_class_id"] = class_row.class_id
+                seat = Seat.query.filter_by(user_id=user.id if user else None, class_id=class_row.class_id).first() if user else None
+                if seat is not None and user is not None:
+                    set_canonical_context(
+                        sess,
+                        user_id=user.id,
+                        class_id=class_row.class_id,
+                        seat_id=seat.id,
+                        role="student",
+                        join_code=join_code,
+                    )
                 if user:
                     user.last_active_class_id = class_row.class_id
                     db.session.commit()
-                seat = Seat.query.filter_by(user_id=user.id, class_id=class_row.class_id).first() if user else None
-                if seat:
-                    sess["current_seat_id"] = seat.id
-                    sess["seat_id"] = seat.id
-                    sess["class_id"] = class_row.class_id
 
 
 def test_attendance_history_api_scoped_to_teacher(client):
@@ -310,9 +309,6 @@ def test_attendance_history_api_includes_shared_students(client):
     print(f"DEBUG: tap_a.id={tap_a.id}, tap_a.class_id={tap_a.class_id}")
     print(f"DEBUG: tap_b.id={tap_b.id}, tap_b.class_id={tap_b.class_id}")
     
-    with client.session_transaction() as sess:
-        print(f"DEBUG: Session current_join_code={sess.get('current_join_code')}, current_class_id={sess.get('current_class_id')}")
-        
     user = User.query.filter_by(username_hash=teacher_a.username_hash).first()
     print(f"DEBUG: teacher_a user.last_active_class_id={user.last_active_class_id}")
     
@@ -725,7 +721,14 @@ def test_student_seat_context_rejects_unclaimed_seat(client):
 
     _login_student(client, student, join_code="UNCL1")
     with client.session_transaction() as sess:
-        sess["current_seat_id"] = unclaimed.id
+        set_canonical_context(
+            sess,
+            user_id=student_user.id,
+            class_id=student_seat.class_id,
+            seat_id=unclaimed.id,
+            role="student",
+            join_code="UNCL1",
+        )
 
     response = client.get("/student/payroll", follow_redirects=False)
     assert response.status_code != 200
@@ -751,14 +754,17 @@ def test_student_seat_context_rejects_cross_user_seat_id(client):
 
     from flask import session
     from app.auth import get_current_seat, get_current_student_seat
+    from tests.helpers.canonical_session import set_canonical_context
 
     with app.test_request_context("/student/payroll"):
-        session["student_id"] = alice.id
-        session["current_seat_id"] = bob_seat.id
-        session["seat_id"] = bob_seat.id
-        session["current_class_id"] = bob_class.class_id
-        session["class_id"] = bob_class.class_id
-        session["current_join_code"] = "SEATB1"
+        set_canonical_context(
+            session,
+            user_id=alice_user.id,
+            class_id=bob_class.class_id,
+            seat_id=bob_seat.id,
+            role="student",
+            join_code="SEATB1",
+        )
 
         assert get_current_student_seat() is None
         assert get_current_seat() is None

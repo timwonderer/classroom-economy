@@ -1,4 +1,5 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 import pyotp
 import bcrypt
@@ -29,30 +30,10 @@ def create_teacher(username="teacher1"):
 
 # Helper to create student
 def create_student(teacher, username="student1", block="A"):
-    passphrase = "secret"
-    from werkzeug.security import generate_password_hash
-    passphrase_hash = generate_password_hash(passphrase)
-    from app.hash_utils import hash_username_lookup, get_random_salt, hash_hmac
-    
-    first_name = "Test"
-    last_initial = "S"
-    salt = get_random_salt()
-    
-    student = Student(
-        salt=salt,
-        username_hash=hash_hmac(username.encode(), salt),
-        username_lookup_hash=hash_username_lookup(username),
-        first_name=first_name,
-        last_initial=last_initial,
-        block=block,
-        passphrase_hash=passphrase_hash,
-        has_completed_setup=True
-    )
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(block=block, first_name="Test", last_name="S")
 
     # Link
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=teacher.id))
     
     join_code = f"JOIN{teacher.id}{block}"
     class_economy = ClassEconomy.query.filter_by(join_code=join_code).first()

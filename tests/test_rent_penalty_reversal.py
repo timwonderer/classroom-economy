@@ -13,6 +13,7 @@ from app.routes.student import (
     _get_locked_rent_amount_for_join_code_cycle,
     _is_student_coverage_period_paid,
 )
+from tests.helpers.class_scope import make_student_identity
 
 def _has_active_rent_waiver(student_id, join_code, coverage_due_date):
     from app.models import ClassEconomy, Seat
@@ -63,10 +64,6 @@ def _make_admin_with_block(join_code="LOCKA1", block="A", suffix="rv"):
     db.session.flush()
     db.session.add(ClassMembership(join_code=join_code, admin_id=admin.id, role="admin"))
     class_id = db.session.query(ClassEconomy.class_id).filter_by(join_code=join_code).scalar()
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
     seat = Seat(
         class_id=class_id,
         join_code=join_code,
@@ -92,23 +89,12 @@ def _make_admin_with_block(join_code="LOCKA1", block="A", suffix="rv"):
 
 
 def _make_student(suffix="s"):
-    salt = get_random_salt()
-    student = Student(
-        first_name="Test",
-        last_initial="R",
-        block="A",
-        salt=salt,
-        username_hash=hash_username(f"student_{suffix}", salt),
-        pin_hash="test-pin",
-    )
-    db.session.add(student)
-    db.session.flush()
-    return student
+    return make_student_identity(first_name="Test", last_name="R", block="A")
 
 
 def _add_payment(student, admin_id, join_code, amount_paid, late_fee, payment_date, coverage_due_date):
     payment = RentPayment(
-        user_id=student_user.id,
+        user_id=student.user_id,
         period="A",
         join_code=join_code,
         amount_paid=amount_paid,
@@ -120,7 +106,7 @@ def _add_payment(student, admin_id, join_code, amount_paid, late_fee, payment_da
     )
     db.session.add(payment)
     db.session.add(Transaction(
-        user_id=student_user.id,join_code=join_code,
+        user_id=student.user_id,join_code=join_code,
         type="Rent Payment",
         amount=-amount_paid,
         timestamp=payment_date,

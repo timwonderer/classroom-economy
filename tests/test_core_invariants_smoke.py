@@ -10,8 +10,9 @@ from app.hash_utils import get_random_salt, hash_username
 from app.models import Seat, IdentityProfile, Admin, ClassMembership, ClassFeature, InsuranceClaim, InsuranceEnrollment, InsurancePolicy, RentPayment, RentSettings, StoreItem, Student, StudentTeacher, AttendanceSession, Transaction, TransactionStatus, ClassEconomy, User, UserRole
 from app.services import ledger_service, obligations_service
 from tests.helpers.admin_context import login_admin
-from tests.helpers.class_scope import create_class_scope, make_student_seat, _ensure_user
+from tests.helpers.class_scope import create_class_scope, make_student_identity, make_student_seat, _ensure_user
 from app.hash_utils import hash_username_lookup
+from tests.helpers.canonical_session import set_canonical_context
 
 
 pytestmark = pytest.mark.critical
@@ -25,19 +26,12 @@ def _create_admin(username: str) -> Admin:
 
 
 def _create_student(first_name: str, block: str = "A") -> Student:
-    salt = get_random_salt()
-    student = Student(
+    return make_student_identity(
         first_name=first_name,
-        last_initial="T",
+        last_name="Test",
         block=block,
-        salt=salt,
-        username_hash=hash_username(first_name.lower(), salt),
-        pin_hash="pin-hash",
-        passphrase_hash=generate_password_hash("password"),
+        claimed=True,
     )
-    db.session.add(student)
-    db.session.flush()
-    return student
 
 
 def _link_student_to_teacher(student: Student, admin: Admin, join_code: str, block: str = "A") -> None:
@@ -117,19 +111,14 @@ def _login_student(client, student_id: int, join_code: str) -> None:
         db.session.flush()
         user_id = user.id
     with client.session_transaction() as sess:
-        sess["student_id"] = student_id
-        if user_id:
-            sess["user_id"] = user_id
-        sess["current_join_code"] = join_code
-        if class_id:
-            sess["current_class_id"] = class_id
-        if seat_id:
-            sess["current_seat_id"] = seat_id
-            sess["seat_id"] = seat_id
-        if class_id:
-            sess["class_id"] = class_id
-        sess["login_time"] = datetime.now(timezone.utc).isoformat()
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=user_id or student_id,
+            class_id=class_id or "",
+            seat_id=seat_id or 0,
+            role="student",
+            join_code=join_code,
+        )
 
 
 def test_tenant_isolation_attendance_history(client):
@@ -197,7 +186,8 @@ def test_payroll_run_creates_payroll_transaction(client):
     )
     db.session.add(
         Transaction(
-            user_id=student_user.id,join_code="JOIN-PAY",
+            user_id=student_user.id,
+            join_code="JOIN-PAY",
             amount=Decimal("1.00"),
             account_type="checking",
             status=TransactionStatus.POSTED,

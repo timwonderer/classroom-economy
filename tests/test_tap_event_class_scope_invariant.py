@@ -5,6 +5,7 @@ import pytest
 from app.extensions import db
 from app.models import ClassEconomy, ClassMembership, Seat, IdentityProfile, User, UserRole, Student, StudentTeacher, TapEvent
 from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.class_scope import make_student_identity
 
 
 def _setup_scoped_student(with_seat: bool = True):
@@ -33,9 +34,7 @@ def _setup_scoped_student(with_seat: bool = True):
     profile = IdentityProfile(profile_type="student", first_name="Tap", last_name="I")
     db.session.add(profile)
     db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b"salt")
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(first_name="Tap", last_name="I", block="A", claimed=True)
 
     db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.add(

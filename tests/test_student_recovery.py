@@ -16,10 +16,11 @@ import re
 import pytest
 from datetime import datetime, timedelta, timezone
 from app import db
-from app.models import Seat, IdentityProfile, ClassEconomy, Student, Admin, StudentTeacher, Transaction, StudentBlock, User, UserRole
+from app.models import Seat, IdentityProfile, ClassEconomy, Admin, StudentTeacher, Transaction, StudentBlock, User, UserRole
 from app.hash_utils import get_random_salt, hash_username, hash_username_lookup
 from app.utils.money_guard import check_financial_cooldown
 from app.utils.time import ensure_utc, utc_now
+from tests.helpers.class_scope import make_student_identity
 
 # ----------------------------------------------------------------------
 # FIXTURES
@@ -48,17 +49,13 @@ def recovery_data(client):
     db.session.add_all([class_row, profile])
     db.session.flush()
 
-    salt = get_random_salt()
-    student = Student(
-        identity_profile=profile,
-        block="A",
-        join_code=join_code,
+    student = make_student_identity(
         class_id=class_row.class_id,
-        salt=salt,
-        username_hash=hash_username("orig_user", salt),
-        username_lookup_hash=hash_username_lookup("orig_user"),
-        first_half_hash="hash1",
-        recovery_status='active',
+        join_code=join_code,
+        block="A",
+        first_name="Original",
+        last_name="O",
+        claimed=True,
     )
     user = User(
         user_role=UserRole.STUDENT,
@@ -66,37 +63,15 @@ def recovery_data(client):
         username_lookup_hash=hash_username_lookup("orig_user"),
         has_completed_setup=True,
     )
-    db.session.add_all([student, user])
+    db.session.add_all([user])
     db.session.flush()
-
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    tb = Seat(user_id=student_user.id, class_id=class_row.class_id, join_code=join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-
-    db.session.add(tb)
-
-    db.session.flush()
-
-    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Original", last_name="O"))
-    seat = Seat(
-        user_id=user.id,
+    seat = student
+    db.session.add(StudentTeacher(
+        user_id=student.user_id,
+        teacher_id=teacher.id,
         class_id=class_row.class_id,
         join_code=join_code,
-        role="student",
-        claimed_at=utc_now(),
-    )
-    db.session.add_all([
-        tb,
-        seat,
-        StudentTeacher(
-            user_id=student_user.id,
-            teacher_id=teacher.id,
-            class_id=class_row.class_id,
-            join_code=join_code,
-        ),
-    ])
+    ))
     db.session.commit()
 
     return {
@@ -289,7 +264,7 @@ def test_recovery_does_not_create_new_student_row(client, recovery_data):
     student = recovery_data["student"]
     join_code = recovery_data["join_code"]
     original_id = student.id
-    original_count = Student.query.count()
+    original_count = IdentityProfile.query.count()
 
     student.reset_code = "ROWTEST1"
     student.reset_code_expires_at = utc_now() + timedelta(minutes=10)
@@ -301,7 +276,7 @@ def test_recovery_does_not_create_new_student_row(client, recovery_data):
         "reset_code": "ROWTEST1",
     }, follow_redirects=True)
 
-    assert Student.query.count() == original_count
+    assert IdentityProfile.query.count() == original_count
     db.session.refresh(student)
     assert student.id == original_id
 
@@ -469,7 +444,7 @@ def test_only_one_active_reset_code_per_student(client, recovery_data):
 
     assert student.reset_code != first_code
     # Only one reset_code stored
-    students_with_first = Student.query.filter_by(reset_code=first_code).count()
+    students_with_first = IdentityProfile.query.filter_by(reset_code=first_code).count()
     assert students_with_first == 0
 
 
