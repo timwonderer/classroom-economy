@@ -50,15 +50,15 @@ def _link_student_to_teacher(student: Student, admin: Admin, join_code: str, blo
         db.session.flush()
     elif not db.session.query(ClassMembership.id).filter_by(
         join_code=join_code,
-        user_id=student_user.id,
+        user_id=student.user_id,
         role="student",
     ).first():
         db.session.add(ClassMembership(
             join_code=join_code,
-            user_id=student_user.id,
+            user_id=student.user_id,
             role="student",
         ))
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=admin.id))
     class_row = db.session.query(ClassMembership.join_code).filter_by(
         join_code=join_code,
         admin_id=admin.id,
@@ -186,7 +186,7 @@ def test_payroll_run_creates_payroll_transaction(client):
     )
     db.session.add(
         Transaction(
-            user_id=student_user.id,
+            user_id=student.user_id,
             join_code="JOIN-PAY",
             amount=Decimal("1.00"),
             account_type="checking",
@@ -267,7 +267,7 @@ def test_insurance_approval_creates_reimbursement_transaction(client):
 
     purchase_tx = Transaction(
         seat_id=seat.id,
-        user_id=student_user.id,class_id=economy.class_id,
+        user_id=student.user_id, class_id=economy.class_id,
         join_code="JOIN-INS",
         amount=Decimal("-30.00"),
         account_type="checking",
@@ -334,7 +334,7 @@ def test_store_purchase_deducts_balance_and_records_transaction(client):
     db.session.add(
         Transaction(
             seat_id=seat.id,
-            user_id=student_user.id,class_id=economy.class_id,
+            user_id=student.user_id, class_id=economy.class_id,
             join_code="JOIN-STORE",
             amount=Decimal("25.00"),
             account_type="checking",
@@ -461,7 +461,7 @@ def test_store_purchase_bulk_discount_uses_quantized_total_for_funds_check(clien
     db.session.add(
         Transaction(
             seat_id=seat.id,
-            user_id=student_user.id,class_id=economy.class_id,
+            user_id=student.user_id, class_id=economy.class_id,
             join_code="JOIN-DISC",
             amount=Decimal("0.04"),
             account_type="checking",
@@ -540,7 +540,7 @@ def test_rent_payment_creates_rent_obligation_record(client):
     db.session.add(
         Transaction(
             seat_id=seat.id,
-            user_id=student_user.id,class_id=economy.class_id,
+            user_id=student.user_id, class_id=economy.class_id,
             join_code="JOIN-RENT",
             amount=Decimal("40.00"),
             account_type="checking",
