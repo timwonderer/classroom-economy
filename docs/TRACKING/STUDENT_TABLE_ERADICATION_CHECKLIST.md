@@ -10,7 +10,7 @@ Status legend:
 ## Remove
 
 - [ ] Delete legacy `Student` model and compatibility branches in [`app/models.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/models.py)
-- [ ] Delete legacy student bootstrap / shim logic in [`tests/conftest.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/conftest.py)
+- [x] Delete legacy student bootstrap / shim logic in [`tests/conftest.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/conftest.py)
 - [x] Delete dead legacy student-only helpers in [`app/routes/recovery.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/recovery.py)
 - [ ] Delete legacy Student-table-only branches in [`app/routes/student.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/student.py)
 - [x] Delete dead legacy query helpers in [`app/routes/admin.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/admin.py)
