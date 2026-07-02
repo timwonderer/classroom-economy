@@ -21,7 +21,7 @@ def _has_active_rent_waiver(student_id, join_code, coverage_due_date):
     class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
     if not class_row:
         return False
-    seat = Seat.query.filter_by(student_id=student_id, class_id=class_row.class_id).first()
+    seat = Seat.query.filter_by(user_id=student_id, class_id=class_row.class_id).first()
     if not seat:
         return False
     return _has_active_rent_waiver_v2(seat.id, class_row.class_id, coverage_due_date)
@@ -31,7 +31,7 @@ def _is_student_coverage_period_paid_wrapper(settings, student_id, block, join_c
     class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
     if not class_row:
         return False
-    seat = Seat.query.filter_by(student_id=student_id, class_id=class_row.class_id).first()
+    seat = Seat.query.filter_by(user_id=student_id, class_id=class_row.class_id).first()
     if not seat:
         return False
     return _is_student_coverage_period_paid(settings, seat.id, class_row.class_id, coverage_due_date)

@@ -75,7 +75,7 @@ def test_tap_event_rejects_missing_class_id_and_seat_id():
 
     db.session.add(
         TapEvent(
-            student_id=student_id,
+            seat_id=seat.id if seat else None,
             period="A",
             status="active",
             timestamp=datetime.now(timezone.utc),
@@ -93,7 +93,7 @@ def test_tap_event_requires_seat_even_when_class_is_present():
 
     db.session.add(
         TapEvent(
-            student_id=student_id,
+            seat_id=seat.id if seat else None,
             class_id=class_id,
             period="A",
             status="active",

@@ -81,10 +81,10 @@ def test_delete_teacher_cleans_up_links(client):
     assert db.session.get(IdentityProfile, s.identity_id) is not None
     
     # Verify link to deleted teacher is gone
-    assert StudentTeacher.query.filter_by(student_id=student_id, teacher_id=teacher_id).count() == 0
+    assert StudentTeacher.query.filter_by(user_id=student_id, teacher_id=teacher_id).count() == 0
     
     # Verify link to survivor teacher remains
-    assert StudentTeacher.query.filter_by(student_id=student_id, teacher_id=survivor_teacher_id).count() == 1
+    assert StudentTeacher.query.filter_by(user_id=student_id, teacher_id=survivor_teacher_id).count() == 1
 
 
 def test_student_teacher_unique_constraint(client):

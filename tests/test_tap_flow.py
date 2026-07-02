@@ -55,7 +55,7 @@ def create_claimed_seat(teacher_id, student_id, block, join_code, salt=None, use
     elif not identity_user.last_active_class_id:
         identity_user.last_active_class_id = class_economy.class_id
 
-    tb = Seat(student_id=student_id, class_id=class_economy.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    tb = Seat(user_id=identity_user.id, class_id=class_economy.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(tb)
 

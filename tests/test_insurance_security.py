@@ -48,7 +48,7 @@ def _create_policy(admin_id):
 
 
 def _enroll_student(student_id, policy_id):
-    seat = Seat.query.filter_by(student_id=student_id).first()
+    seat = Seat.query.filter_by(user_id=student_id).first()
     assert seat is not None, f"No seat for student_id={student_id}"
     enrollment = InsuranceEnrollment(
         seat_id=seat.id,
@@ -67,7 +67,9 @@ def _enroll_student(student_id, policy_id):
 
 def _create_transaction(student_id, teacher_id, is_void=False):
     tx = Transaction(
-        student_id=student_id,amount=-25.0,
+        seat_id=Seat.query.filter_by(user_id=student_id).first().id,
+        user_id=student_id,
+        amount=-25.0,
         account_type="checking",
         description="Test purchase",
         type="purchase",

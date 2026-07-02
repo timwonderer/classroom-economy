@@ -330,7 +330,7 @@ def batch_auto_tapout_students(admin_id):
         blk = (seat.block or "").strip().upper()
         if not blk:
             continue
-        seats_by_student_period.setdefault(seat.student_id, {}).setdefault(blk, []).append(seat)
+        seats_by_student_period.setdefault(seat.user_id, {}).setdefault(blk, []).append(seat)
 
     # 4. Batch fetch PayrollSettings
     payroll_settings = PayrollSettings.query.filter(

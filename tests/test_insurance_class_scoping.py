@@ -257,8 +257,8 @@ def test_student_insurance_enrollments_filtered_by_join_code(
     policies = policies_for_two_classes
 
     # Create enrollment for student A in Period A
-    seat_a = Seat.query.filter_by(student_id=students['student_a'].id).first()
-    seat_b = Seat.query.filter_by(student_id=students['student_b'].id).first()
+    seat_a = Seat.query.filter_by(user_id=students['student_a'].user_id).first()
+    seat_b = Seat.query.filter_by(user_id=students['student_b'].user_id).first()
     assert seat_a is not None
     assert seat_b is not None
     enrollment_a = InsuranceEnrollment(
@@ -295,7 +295,7 @@ def test_student_insurance_enrollments_filtered_by_join_code(
 
     # Should only include enrollment_a
     assert len(period_a_enrollments) == 1
-    assert period_a_enrollments[0].student_id == students['student_a'].id
+    assert period_a_enrollments[0].seat_id == seat_a.id
 
     # Query enrollments for Period B only
     period_b_enrollments = (
@@ -307,7 +307,7 @@ def test_student_insurance_enrollments_filtered_by_join_code(
 
     # Should only include enrollment_b
     assert len(period_b_enrollments) == 1
-    assert period_b_enrollments[0].student_id == students['student_b'].id
+    assert period_b_enrollments[0].seat_id == seat_b.id
 
 
 def test_claims_filtered_by_join_code(
@@ -327,8 +327,8 @@ def test_claims_filtered_by_join_code(
         class_b = create_class_scope(teacher=teacher, join_code="JOINB456", student=students['student_b'], block="B")
     db.session.flush()
 
-    seat_a = Seat.query.filter_by(student_id=students['student_a'].id, class_id=class_a.class_id).first()
-    seat_b = Seat.query.filter_by(student_id=students['student_b'].id, class_id=class_b.class_id).first()
+    seat_a = Seat.query.filter_by(user_id=students['student_a'].user_id, class_id=class_a.class_id).first()
+    seat_b = Seat.query.filter_by(user_id=students['student_b'].user_id, class_id=class_b.class_id).first()
 
     enrollment_a = InsuranceEnrollment(
         seat_id=seat_a.id,

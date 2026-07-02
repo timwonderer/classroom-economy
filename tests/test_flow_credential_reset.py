@@ -167,13 +167,13 @@ def test_credential_reset_flow(client, test_data):
 
         # Economic data preserved
         tx_count = Transaction.query.filter_by(
-            student_id=student_id, join_code=join_code,
+            user_id=student.user_id, join_code=join_code,
         ).count()
         assert tx_count == 1
 
         checking = sum(
             t.amount for t in Transaction.query.filter_by(
-                student_id=student_id,
+                user_id=student.user_id,
                 join_code=join_code,
                 account_type='checking',
             ).all()
