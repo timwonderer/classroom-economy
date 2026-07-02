@@ -1184,10 +1184,9 @@ def checkout_hall_pass():
     
     log_entry = db.get_or_404(HallPassLog, pass_id)
     current_app.logger.info(
-        "HALL_PASS_CHECKOUT_DEBUG: student_id=%s pass_id=%s pass_student_id=%s pass_seat_id=%s pass_class_id=%s pass_join_code=%s session_class_id=%s",
+        "HALL_PASS_CHECKOUT_DEBUG: student_id=%s pass_id=%s pass_seat_id=%s pass_class_id=%s pass_join_code=%s session_class_id=%s",
         getattr(student, "id", None),
         pass_id,
-        log_entry.student_id,
         log_entry.seat_id,
         log_entry.class_id,
         log_entry.join_code,
@@ -1195,7 +1194,7 @@ def checkout_hall_pass():
     )
     
     # Verify this pass belongs to the logged-in student
-    if log_entry.student_id != student.id:
+    if log_entry.seat_id != student.id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
     context_error = _enforce_hall_pass_student_context(student, log_entry)
     if context_error:
@@ -1252,10 +1251,9 @@ def checkin_hall_pass():
     
     log_entry = db.get_or_404(HallPassLog, pass_id)
     current_app.logger.info(
-        "HALL_PASS_CHECKIN_DEBUG: student_id=%s pass_id=%s pass_student_id=%s pass_seat_id=%s pass_class_id=%s pass_join_code=%s session_class_id=%s",
+        "HALL_PASS_CHECKIN_DEBUG: student_id=%s pass_id=%s pass_seat_id=%s pass_class_id=%s pass_join_code=%s session_class_id=%s",
         getattr(student, "id", None),
         pass_id,
-        log_entry.student_id,
         log_entry.seat_id,
         log_entry.class_id,
         log_entry.join_code,
@@ -1263,7 +1261,7 @@ def checkin_hall_pass():
     )
     
     # Verify this pass belongs to the logged-in student
-    if log_entry.student_id != student.id:
+    if log_entry.seat_id != student.id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
     context_error = _enforce_hall_pass_student_context(student, log_entry)
     if context_error:

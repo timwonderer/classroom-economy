@@ -1001,7 +1001,6 @@ def _validate_tap_event_scope(_mapper, connection, target):
 class HallPassLog(db.Model):
     __tablename__ = 'hall_pass_logs'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     reason = db.Column(db.String(50), nullable=False)
     status = db.Column(db.String(20), default='pending', nullable=False) # pending, approved, rejected, left, returned
