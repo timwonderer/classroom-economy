@@ -7,6 +7,12 @@ from app.models import User, UserRole, RentItem, RentSettings, RentPayment, Rent
 from app.extensions import db
 from datetime import datetime, timezone, timedelta
 
+
+def _student_user_and_seat(student):
+    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
+    seat = Seat.query.filter_by(user_id=student_user.id).first() if student_user else None
+    return student_user, seat
+
 @pytest.fixture
 def teacher_admin(client):
     """Create a teacher admin user."""
@@ -96,7 +102,8 @@ def admin_class_scope(client, teacher_admin):
 
 def test_admin_configure_rent_item_types(client, teacher_admin, admin_class_scope):
     """Test that admin can configure different rent item types."""
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
+    seat = Seat.query.filter_by(class_id=admin_class_scope.class_id).order_by(Seat.id.asc()).first()
+    student_user = User.query.get(seat.user_id) if seat and seat.user_id else None
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
@@ -222,7 +229,7 @@ def test_store_sync_logic(client, teacher_admin, admin_class_scope):
 def test_student_purchase_per_use_item(client, teacher_admin, student_in_class):
     """Test student purchasing a multi-use item."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     # 1. Setup Item
     store_item = StoreItem(
@@ -248,13 +255,11 @@ def test_student_purchase_per_use_item(client, teacher_admin, student_in_class):
     db.session.add(rent_item)
 
     # Give student money
-    tx = Transaction(user_id=student_user.id, seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, amount=100, account_type='checking',join_code='JOINCODE123')
+    tx = Transaction(user_id=student_user.id, seat_id=seat.id, amount=100, account_type='checking',join_code='JOINCODE123')
     db.session.add(tx)
     db.session.commit()
 
     # Login as student
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
     db.session.commit()
@@ -292,14 +297,14 @@ def test_student_purchase_per_use_item(client, teacher_admin, student_in_class):
 def test_student_use_per_use_item(client, teacher_admin, student_in_class):
     """Test decrementing uses for a multi-use item."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     # Setup StudentItem directly (simulate previous purchase)
     store_item = StoreItem(user_id=teacher_admin.id, name='Pencil', price=5, is_active=True)
     db.session.add(store_item)
     db.session.flush()
 
-    student_item = StudentItem(seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, correlation_id='corr_test', 
+    student_item = StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id, store_item_id=store_item.id,
         status='purchased', uses_remaining=3,
         join_code='JOINCODE123'
@@ -310,9 +315,6 @@ def test_student_use_per_use_item(client, teacher_admin, student_in_class):
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
     db.session.commit()
-
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
