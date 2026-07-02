@@ -69,7 +69,7 @@ def test_teacher_student_lifecycle(client, teacher, app):
         # Verify Seat is claimed and linked
         db.session.refresh(tb)
         assert tb.claimed_at is not None
-        assert tb.student_id is not None
+        assert tb.user_id is not None
 
         student = db.session.get(Seat, tb.id)
         assert student is not None
