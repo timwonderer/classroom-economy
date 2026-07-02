@@ -14,7 +14,6 @@ from app.models import (
     ClassEconomy,
     IdentityProfile,
     Seat,
-    Student,
     SystemAdminCredential,
     User,
     UserRole,

@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
-from app.models import User, UserRole, Admin, Student, StudentTeacher, RentSettings, TeacherOnboarding, InsurancePolicy, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, StudentTeacher, RentSettings, TeacherOnboarding, InsurancePolicy, Seat, IdentityProfile
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
 from tests.helpers.class_scope import create_class_scope, make_student_identity
