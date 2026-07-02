@@ -61,7 +61,7 @@ Status legend:
 - [x] Rewrite tests that still use `student_id` as a runtime anchor in [`tests/test_tap_event_class_scope_invariant.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_tap_event_class_scope_invariant.py)
 - [x] Rewrite recovery flow tests that still assume student-centric behavior in [`tests/test_flow_credential_reset.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_flow_credential_reset.py)
 - [ ] Rewrite student recovery flow tests in [`tests/test_student_recovery.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_student_recovery.py)
-- [ ] Rewrite teacher recovery flow tests in [`tests/test_teacher_recovery.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_teacher_recovery.py)
+- [x] Rewrite teacher recovery flow tests in [`tests/test_teacher_recovery.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_teacher_recovery.py)
 - [x] Rewrite sysadmin student counting tests in [`tests/test_sysadmin_student_counts.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_sysadmin_student_counts.py)
 - [ ] Rewrite admin tenancy tests that still rely on student-shaped fixtures in [`tests/test_admin_tenancy.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_admin_tenancy.py)
 - [x] Rewrite attendance/history tests that still use legacy `student_id` contracts in [`tests/test_api_attendance_history.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_api_attendance_history.py)
