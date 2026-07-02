@@ -10,7 +10,7 @@ from tests.helpers.class_scope import make_student_identity
 import pytest
 import sqlalchemy as sa
 from app import app as flask_app
-from app.models import User, UserRole, Admin, IdentityProfile, Student, StudentTeacher
+from app.models import User, UserRole, Admin, IdentityProfile, StudentTeacher
 from app.extensions import db
 from app.routes.admin import _scoped_students
 

@@ -2,7 +2,6 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from tests.helpers.class_scope import make_student_identity
 import pytest
 from app import db, Transaction
-from app.models import Student
 from app.payroll import calculate_payroll_breakdown
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -14,7 +13,7 @@ FLOAT_TOLERANCE = 0.0001
 @pytest.fixture
 def test_teacher(client):
     """Fixture to create a test teacher for payroll tests."""
-    from app.models import Admin, Seat, IdentityProfile, Student
+    from app.models import Admin, Seat, IdentityProfile
     teacher = make_admin("test_teacher", "s")
     db.session.add(teacher)
     db.session.commit()
@@ -37,7 +36,7 @@ def test_class(test_teacher):
     return class_economy
 
 def test_calculate_payroll(client):
-    from app.models import AttendanceSession, Student
+    from app.models import AttendanceSession
     from tests.helpers.class_scope import create_class_scope
 
     # Create Teacher
@@ -128,7 +127,7 @@ def test_calculate_payroll(client):
 
 
 def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
-    from app.models import AttendanceSession, Admin, Student
+    from app.models import AttendanceSession, Admin
     from tests.helpers.class_scope import create_class_scope
 
     teacher = make_admin("prof_multiclass", "s")
@@ -410,7 +409,7 @@ def test_get_pay_rate_for_block_requires_class_scope(client):
 def test_get_cached_payroll_with_meta(client):
     """Test the caching logic for payroll."""
     from app.payroll import get_cached_payroll_with_meta
-    from app.models import Admin, Seat, IdentityProfile, AttendanceSession, Student, PayrollCache
+    from app.models import Admin, Seat, IdentityProfile, AttendanceSession, PayrollCache
     from tests.helpers.class_scope import create_class_scope
     from datetime import datetime, timedelta, timezone
 
