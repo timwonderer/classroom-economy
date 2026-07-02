@@ -482,17 +482,11 @@ def is_feature_enabled(feature_name):
     return bool(scoped_feature["enabled"]) if scoped_feature else False
 
 
-def calculate_scoped_balances(student: 'Student', join_code: str) -> tuple[Decimal, Decimal]:
-    """Compatibility wrapper around the ledger-owned balance query."""
-    if not student or not join_code:
+def calculate_scoped_balances(seat_id: int | None, class_id: str | None) -> tuple[Decimal, Decimal]:
+    """Return seat-scoped balances from the ledger service."""
+    if not seat_id or not class_id:
         return Decimal('0.00'), Decimal('0.00')
-    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-    if not class_row:
-        return Decimal('0.00'), Decimal('0.00')
-    seat_id = student.identity_profile.seat_id if student and student.identity_profile else None
-    if not seat_id:
-        return Decimal('0.00'), Decimal('0.00')
-    return get_available_balances(seat_id, class_row.class_id)
+    return get_available_balances(seat_id, class_id)
 
 
 
@@ -1392,8 +1386,8 @@ def transfer():
         from app.models import _quantize_currency
         amount = _quantize_currency(request.form.get('amount'))
 
-        # CRITICAL FIX: Calculate balances using join_code scoping
-        checking_balance, savings_balance = calculate_scoped_balances(student, join_code)
+        # CRITICAL FIX: Calculate balances using canonical seat/class scoping
+        checking_balance, savings_balance = calculate_scoped_balances(context.seat_id, context.class_id)
         banking_settings = get_banking_settings_for_context(context)
 
         if from_account == to_account:
@@ -1489,8 +1483,8 @@ def transfer():
     compound_frequency = settings.compound_frequency if settings else 'monthly'
 
     # Calculate forecast interest based on settings
-    # CRITICAL FIX v3: Calculate BOTH checking and savings balances using join_code scoping
-    checking_balance, savings_balance = calculate_scoped_balances(student, join_code)
+    # CRITICAL FIX v3: Calculate BOTH checking and savings balances using canonical seat/class scoping
+    checking_balance, savings_balance = calculate_scoped_balances(context.seat_id, context.class_id)
 
     if calculation_type == 'compound':
         if compound_frequency == 'daily':
@@ -1763,8 +1757,8 @@ def purchase_insurance(policy_id):
             flash(f"You already have a policy from the '{policy.tier_name or 'this'}' tier. You can only have one policy per tier.", "warning")
             return redirect(url_for('student.student_insurance'))
 
-    # CRITICAL FIX v2: Check sufficient funds using seat/class scoped balance
-    checking_balance, savings_balance = calculate_scoped_balances(student, join_code)
+    # CRITICAL FIX v2: Check sufficient funds using canonical seat/class scoped balance
+    checking_balance, savings_balance = calculate_scoped_balances(context.seat_id, context.class_id)
     banking_settings = get_banking_settings_for_context(context)
     overdraft_shortfall = Decimal('0.00')
 

@@ -213,12 +213,12 @@ def test_balance_separation_by_join_code(client):
 
     # 4. Verify Context for JC1
     # Should ignore JC2 transactions
-    chk1, sav1 = calculate_scoped_balances(student, join_code='JC1', teacher_id=t1.id)
+    chk1, sav1 = calculate_scoped_balances(seat_1.id, class_scope_a.class_id)
     assert chk1 == 100.0
     assert sav1 == 50.0
 
     # 5. Verify Context for JC2
     # Should ignore JC1 transactions
-    chk2, sav2 = calculate_scoped_balances(student, join_code='JC2', teacher_id=t1.id)
+    chk2, sav2 = calculate_scoped_balances(seat_2.id, class_scope_b.class_id)
     assert chk2 == 200.0
     assert sav2 == 100.0
