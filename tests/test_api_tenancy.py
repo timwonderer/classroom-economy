@@ -129,7 +129,7 @@ def _login_admin(client, admin: Admin, secret: str, join_code: str = None):
     return response
 
 
-def _create_tap_event(student: Student, teacher: Admin, join_code: str, status: str = "active", period: str = "1"):
+def _create_tap_event(student: Seat, teacher: Admin, join_code: str, status: str = "active", period: str = "1"):
     """Create a canonical v2 attendance session for testing."""
     _create_class_scope(teacher, student, join_code)
     teacher_user_id = _get_teacher_user_id(teacher)
@@ -150,7 +150,7 @@ def _create_tap_event(student: Student, teacher: Admin, join_code: str, status: 
     return tap
 
 
-def _create_claimed_seat(teacher: Admin, student: Student, join_code: str, block: str = "A"):
+def _create_claimed_seat(teacher: Admin, student: Seat, join_code: str, block: str = "A"):
     """Create a claimed teacher block (seat) for join-code scoped tests."""
     if not db.session.query(ClassMembership.id).filter_by(
         join_code=join_code,
@@ -168,7 +168,7 @@ def _create_claimed_seat(teacher: Admin, student: Student, join_code: str, block
     return runtime_seat
 
 
-def _get_or_create_student_seat(student: Student, class_id: str, join_code: str):
+def _get_or_create_student_seat(student: Seat, class_id: str, join_code: str):
     user = User.query.filter_by(username_hash=student.username_hash).first()
     assert user is not None
     seat = Seat.query.filter_by(user_id=user.id, class_id=class_id).order_by(Seat.id.asc()).first()
@@ -189,7 +189,7 @@ def _get_or_create_student_seat(student: Student, class_id: str, join_code: str)
     return seat
 
 
-def _create_class_scope(teacher: Admin, student: Student, join_code: str):
+def _create_class_scope(teacher: Admin, student: Seat, join_code: str):
     """Create the v2 class economy and memberships for a teacher/student pair."""
     if not db.session.query(ClassMembership.id).filter_by(
         join_code=join_code,
@@ -223,7 +223,7 @@ def _create_class_scope(teacher: Admin, student: Student, join_code: str):
     db.session.commit()
 
 
-def _login_student(client, student: Student, join_code: str | None = None):
+def _login_student(client, student: Seat, join_code: str | None = None):
     user = User.query.filter_by(username_hash=student.username_hash).first()
     with client.session_transaction() as sess:
         if user:

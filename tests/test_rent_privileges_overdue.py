@@ -13,7 +13,6 @@ from app.models import (
     Admin,
     ClassMembership,
     Seat,
-    Student,
     StudentTeacher,
     RentSettings,
     RentItem,
@@ -26,7 +25,7 @@ from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
 
 
-def _ensure_class_scope(teacher: Admin, student: Student, join_code: str, block: str = "A") -> None:
+def _ensure_class_scope(teacher: Admin, student, join_code: str, block: str = "A") -> None:
     if not db.session.query(ClassMembership.id).filter_by(
         join_code=join_code,
         admin_id=teacher.id,

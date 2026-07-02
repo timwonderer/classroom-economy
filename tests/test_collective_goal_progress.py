@@ -7,7 +7,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import uuid
 
 from app.extensions import db
-from app.models import User, UserRole, Admin, ClassMembership, StoreItem, StoreItemBlock, Student, StudentItem, StudentTeacher, Transaction, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, ClassMembership, StoreItem, StoreItemBlock, StudentItem, StudentTeacher, Transaction, Seat, IdentityProfile
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
 
