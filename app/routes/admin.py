@@ -7077,10 +7077,10 @@ def remove_rent_waiver(waiver_id):
     waiver = db.session.get(ObligationAssessment, waiver_id)
     if waiver is None or waiver.obligation_type != "RENT_WAIVER":
         abort(404)
-    student = waiver.seat.student if waiver.seat and waiver.seat.user_id else None
-    if student is None:
+    seat = waiver.seat
+    if seat is None or not seat.identity_profile:
         abort(404)
-    student_name = student.full_name
+    student_name = seat.identity_profile.full_name
     obligations_service.remove_rent_waiver_assessment(waiver.id)
     # TODO(v2): Re-add a canonical analytics event once analytics_events is seat-scoped.
     flash(f"Rent waiver removed for {student_name}.", "success")

@@ -1610,7 +1610,6 @@ class RentPayment(db.Model):
     was_late = db.Column(db.Boolean, default=False)
     late_fee_charged = db.Column(db.Numeric(precision=12, scale=2), default=Decimal('0.00'))
 
-    student = db.relationship('Student', backref='rent_payments')
     seat = db.relationship('Seat', backref='rent_payments')
 
     __table_args__ = (
@@ -1637,7 +1636,6 @@ class RentWaiver(db.Model):
     created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
 
-    student = db.relationship('Student', backref='rent_waivers')
     seat = db.relationship('Seat', backref='rent_waivers')
     created_by = db.relationship('User', backref='rent_waivers_created')
 
