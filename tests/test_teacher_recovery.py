@@ -42,8 +42,8 @@ def create_student(teacher, username="student1", block="A"):
         db.session.add(class_economy)
         db.session.flush()
 
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    # Canonical user for the student seat
+    student_user = User(user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
     _tb_seat = Seat(user_id=student_user.id, class_id=class_economy.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
@@ -52,7 +52,7 @@ def create_student(teacher, username="student1", block="A"):
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_initial=last_initial))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Test', last_name='S'))
     db.session.flush()
 
     return student

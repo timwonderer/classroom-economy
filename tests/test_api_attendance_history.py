@@ -212,13 +212,11 @@ def test_attendance_history_tenant_scoping(client):
         ClassMembership(class_id=class1.class_id, admin_id=admin1.id, role="admin"),
         ClassMembership(class_id=class2.class_id, admin_id=admin2.id, role="admin"),
     ])
-    # Auto-injected Canonical User
-    student1_user = User(username_hash=f"auto_{student1.id}", username_lookup_hash=f"auto_l_{student1.id}", user_role=UserRole.STUDENT)
+    student1_user = User(user_role=UserRole.STUDENT)
     db.session.add(student1_user)
     db.session.flush()
     seat1 = Seat(user_id=student1_user.id, class_id=class1.class_id, join_code=class1.join_code, block="A", role="student")
-    # Auto-injected Canonical User
-    student2_user = User(username_hash=f"auto_{student2.id}", username_lookup_hash=f"auto_l_{student2.id}", user_role=UserRole.STUDENT)
+    student2_user = User(user_role=UserRole.STUDENT)
     db.session.add(student2_user)
     db.session.flush()
     seat2 = Seat(user_id=student2_user.id, class_id=class2.class_id, join_code=class2.join_code, block="B", role="student")
