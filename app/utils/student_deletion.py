@@ -46,7 +46,7 @@ def _collect_related_ids(student_id):
     ]
     issue_ids = [
         row[0]
-        for row in db.session.query(Issue.id).filter(Issue.student_id == student_id).all()
+        for row in db.session.query(Issue.id).filter(Issue.seat_id.in_(seat_ids_for_student)).all()
     ]
     insurance_ids = [
         row[0]
@@ -134,7 +134,8 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insur
         insurance_claim_filters.append(InsuranceClaim.transaction_id.in_(tx_ids))
     InsuranceClaim.query.filter(sa.or_(*insurance_claim_filters)).delete(synchronize_session=False)
 
-    Issue.query.filter(Issue.student_id == student_id).delete(synchronize_session=False)
+    if seat_ids_for_student:
+        Issue.query.filter(Issue.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
     InsuranceEnrollment.query.filter(
         InsuranceEnrollment.seat_id.in_(seat_ids_for_student)
     ).delete(synchronize_session=False)
@@ -145,9 +146,10 @@ def _delete_student_scoped_rows(student_id, store_purchase_ids, issue_ids, insur
     if seat_ids_for_student:
         SeatAttendanceState.query.filter(SeatAttendanceState.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
         AttendanceSession.query.filter(AttendanceSession.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
-    HallPassLog.query.filter(HallPassLog.student_id == student_id).delete(synchronize_session=False)
-    RentPayment.query.filter(RentPayment.student_id == student_id).delete(synchronize_session=False)
-    RentWaiver.query.filter(RentWaiver.student_id == student_id).delete(synchronize_session=False)
+    if seat_ids_for_student:
+        HallPassLog.query.filter(HallPassLog.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
+        RentPayment.query.filter(RentPayment.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
+        RentWaiver.query.filter(RentWaiver.seat_id.in_(seat_ids_for_student)).delete(synchronize_session=False)
     if seat_ids:
         BalanceCache.query.filter(BalanceCache.seat_id.in_(seat_ids)).delete(synchronize_session=False)
 
