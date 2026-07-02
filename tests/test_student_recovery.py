@@ -158,31 +158,29 @@ def test_student_lookup_success(client, recovery_data):
     assert "/student/create-username" in resp.location
 
     with client.session_transaction() as sess:
-        assert sess.get("onboarding_student_ref") == student.id
         assert sess.get("onboarding_seat_ref") is not None
         assert sess.get("onboarding_user_ref") is not None
         assert "recovery_student_ref" not in sess
 
     # Credentials cleared; identity preserved
     db.session.refresh(student)
-    assert student.username_hash is None
-    assert student.pin_hash is None
-    assert student.passphrase_hash is None
-    assert student.has_completed_setup is False
+    assert student.identity_profile is not None
+    assert student.identity_profile.reset_code == "RESET123"
+    assert student.identity_profile.recovery_status == 'to_be_claimed'
     assert student.display_first_name == "Original"
     assert student.display_last_initial == "O"
     # Reset code still active until credential setup completes
-    assert student.reset_code == "RESET123"
-    assert student.recovery_status == 'to_be_claimed'
+    assert student.identity_profile.reset_code == "RESET123"
+    assert student.identity_profile.recovery_status == 'to_be_claimed'
 
 
 def test_student_lookup_wrong_join_code(client, recovery_data):
     """Reset code valid but join_code doesn't match -> generic error."""
     student = recovery_data["student"]
 
-    student.reset_code = "RESET123"
-    student.reset_code_expires_at = utc_now() + timedelta(minutes=10)
-    student.recovery_status = 'to_be_claimed'
+    student.identity_profile.reset_code = "RESET123"
+    student.identity_profile.reset_code_expires_at = utc_now() + timedelta(minutes=10)
+    student.identity_profile.recovery_status = 'to_be_claimed'
     db.session.commit()
 
     resp = client.post("/recovery/lookup", data={
@@ -197,9 +195,9 @@ def test_student_lookup_expired_code(client, recovery_data):
     """Expired reset_code -> generic error."""
     student = recovery_data["student"]
 
-    student.reset_code = "RESET123"
-    student.reset_code_expires_at = utc_now() - timedelta(minutes=1)
-    student.recovery_status = 'to_be_claimed'
+    student.identity_profile.reset_code = "RESET123"
+    student.identity_profile.reset_code_expires_at = utc_now() - timedelta(minutes=1)
+    student.identity_profile.recovery_status = 'to_be_claimed'
     db.session.commit()
 
     resp = client.post("/recovery/lookup", data={
@@ -214,9 +212,9 @@ def test_student_lookup_wrong_status(client, recovery_data):
     """Reset code present but student not in to_be_claimed -> fail."""
     student = recovery_data["student"]
 
-    student.reset_code = "RESET123"
-    student.reset_code_expires_at = utc_now() + timedelta(minutes=10)
-    student.recovery_status = 'active'   # Not to_be_claimed
+    student.identity_profile.reset_code = "RESET123"
+    student.identity_profile.reset_code_expires_at = utc_now() + timedelta(minutes=10)
+    student.identity_profile.recovery_status = 'active'   # Not to_be_claimed
     db.session.commit()
 
     resp = client.post("/recovery/lookup", data={
@@ -244,9 +242,9 @@ def test_recovery_does_not_create_new_student_row(client, recovery_data):
     original_id = student.id
     original_count = IdentityProfile.query.count()
 
-    student.reset_code = "ROWTEST1"
-    student.reset_code_expires_at = utc_now() + timedelta(minutes=10)
-    student.recovery_status = 'to_be_claimed'
+    student.identity_profile.reset_code = "ROWTEST1"
+    student.identity_profile.reset_code_expires_at = utc_now() + timedelta(minutes=10)
+    student.identity_profile.recovery_status = 'to_be_claimed'
     db.session.commit()
 
     client.post("/recovery/lookup", data={

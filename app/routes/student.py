@@ -24,7 +24,7 @@ from dateutil.relativedelta import relativedelta
 
 from app.extensions import db, limiter
 from app.models import (
-    Student, Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StorePurchase,
+    Transaction, TransactionStatus, AttendanceSession, StoreItem, StoreItemBlock, StorePurchase,
     RentSettings, RentPayment, InsurancePolicy, InsuranceEnrollment, InsuranceClaim,
     BankingSettings, UserReport, FeatureSettings, Issue, Seat, User, UserRole,
     ClassEconomy, IdentityProfile, _quantize_currency
@@ -61,7 +61,7 @@ from app.utils.economy_policy import (
     resolve_feature_class,
     resolve_feature_class_for_class,
 )
-from app.hash_utils import get_random_salt, hash_hmac, hash_username, hash_username_lookup
+from app.hash_utils import hash_username_lookup
 from app.access import (
     AccessScopeDenied,
     resolve_scope,
@@ -304,17 +304,15 @@ def _get_total_earnings_for_seat(seat_id: int | None, *, class_id: str | None = 
 
 def _get_claimed_setup_state():
     seat_id = session.get('onboarding_seat_ref')
-    student_ref = session.get('onboarding_student_ref')
     user_ref = session.get('onboarding_user_ref')
 
     seat = db.session.get(Seat, seat_id) if seat_id else None
-    student = db.session.get(Seat, student_ref) if student_ref else None
     user = db.session.get(User, user_ref) if user_ref else None
 
     if seat and not user and seat.user_id:
         user = db.session.get(User, seat.user_id)
 
-    return seat, student, user
+    return seat, user
 
 
 
@@ -507,7 +505,7 @@ def claim_account():
     6. Links Seat to Student
     7. Creates the canonical student-seat linkage
     """
-    from app.models import ClassEconomy, Seat, IdentityProfile, Student
+    from app.models import ClassEconomy, Seat, IdentityProfile
     from app.hash_utils import hash_username_lookup
     from app.utils.join_code import format_join_code
 
@@ -591,33 +589,14 @@ def claim_account():
         )
 
 
-        # New student - create Student record
-        salt = get_random_salt()
-        import secrets
-        first_half_hash = hash_hmac(secrets.token_bytes(16), salt)
-        second_half_hash = hash_hmac(secrets.token_bytes(16), salt)
-
-        new_student = Student(
-            identity_profile=matched_seat.identity_profile,
-            block=matched_seat.block or "",
-            salt=salt,
-            first_half_hash=first_half_hash,
-            second_half_hash=second_half_hash,
-            has_completed_setup=False,
-            is_teacher=is_teacher,
-        )
-        db.session.add(new_student)
-        db.session.flush()  # Get student ID
-
         # Link seat to student
         matched_seat.claimed_at = utc_now()
-        linked_user = _get_or_create_setup_user_for_student(new_student)
+        linked_user = _get_or_create_setup_user_for_student(matched_seat)
         if linked_user:
             matched_seat.user_id = linked_user.id
         db.session.flush()
 
         # Start setup flow
-        session['onboarding_student_ref'] = new_student.id
         session['onboarding_seat_ref'] = matched_seat.id
         session['onboarding_user_ref'] = linked_user.id if linked_user else None
         session.pop('generated_username', None)
@@ -634,11 +613,11 @@ def claim_account():
 def create_username():
     """PAGE 2: Create Username - Generate themed username."""
     # Only allow if claimed
-    seat, student, user = _get_claimed_setup_state()
-    if not student:
+    seat, user = _get_claimed_setup_state()
+    if not seat:
         flash("Please claim your account first.", "setup")
         return redirect(url_for('student.claim_account'))
-    if not student or student.has_completed_setup:
+    if seat.identity_profile and seat.identity_profile.recovery_status == 'active' and user and user.has_completed_setup:
         flash("Invalid or already setup account.", "setup")
         return redirect(url_for('student.login'))
     # Assign a random theme prompt if not yet in session
@@ -660,12 +639,12 @@ def create_username():
         # Username generation uses a transient backend-generated 4-digit
         # segment so setup never derives usernames from DOB or stable IDs.
         numeric_segment = random.randint(1000, 9999)
-        last_name_initial = (student.display_last_name or "")[:1].upper()
-        initials = f"{student.display_first_name[0].upper()}{last_name_initial}"
+        last_name_initial = (seat.display_last_initial or "")[:1].upper()
+        initials = f"{seat.display_first_name[0].upper()}{last_name_initial}"
         username = f"{adjective}{write_in_word}{numeric_segment}{initials}"
         # Save username plaintext in session for display
         session['generated_username'] = username
-        user = user or _find_linked_user_for_student(student)
+        user = user or _find_linked_user_for_student(seat)
         if not user:
             user = User(
                 user_role=UserRole.STUDENT,
@@ -683,9 +662,6 @@ def create_username():
             seat.user_id = user.id
             seat.claimed_at = seat.claimed_at or utc_now()
 
-        # Hash and store in legacy student auth fields during the bridge period.
-        student.username_hash = hash_username(username, student.salt)
-        student.username_lookup_hash = hash_username_lookup(username)
         try:
             db.session.flush()
         except IntegrityError:
@@ -705,12 +681,12 @@ def create_username():
 def setup_pin_passphrase():
     """PAGE 3: Setup PIN & Passphrase - Secure the account."""
     # Only allow if claimed and username generated
-    seat, student, user = _get_claimed_setup_state()
+    seat, user = _get_claimed_setup_state()
     username = session.get('generated_username')
-    if not student or not username:
+    if not seat or not username:
         flash("Please complete previous steps.", "setup")
         return redirect(url_for('student.claim_account'))
-    if not student or student.has_completed_setup:
+    if user and user.has_completed_setup:
         flash("Invalid or already setup account.", "setup")
         return redirect(url_for('student.login'))
     form = StudentPinPassphraseForm()
@@ -721,30 +697,24 @@ def setup_pin_passphrase():
             flash("PIN and passphrase are required.", "setup")
             return redirect(url_for('student.setup_pin_passphrase'))
         # Save credentials (store passphrase as hash)
-        student.pin_hash = generate_password_hash(pin)
-        student.passphrase_hash = generate_password_hash(passphrase)
-        student.has_completed_setup = True
         if user:
             user.password_hash = generate_password_hash(passphrase)
-            user.pin_hash = student.pin_hash
-            user.passphrase_hash = student.passphrase_hash
+            user.pin_hash = generate_password_hash(pin)
+            user.passphrase_hash = generate_password_hash(passphrase)
             user.has_completed_setup = True
         if seat and user and seat.user_id != user.id:
             seat.user_id = user.id
         if seat and not seat.claimed_at:
             seat.claimed_at = utc_now()
-        if student.recovery_status == 'to_be_claimed':
+        identity = seat.identity_profile if seat else None
+        if identity and identity.recovery_status == 'to_be_claimed':
             # Complete recovery only after credentials are successfully re-established.
-            student.reset_code = None
-            student.reset_code_expires_at = None
-            student.recovery_status = 'active'
-
-        # Mark profile migration complete; claim verification data is stored only on seats.
-        student.has_completed_profile_migration = True
+            identity.reset_code = None
+            identity.reset_code_expires_at = None
+            identity.recovery_status = 'active'
 
         db.session.flush()
         # Clear session onboarding keys
-        session.pop('onboarding_student_ref', None)
         session.pop('onboarding_seat_ref', None)
         session.pop('onboarding_user_ref', None)
         session.pop('generated_username', None)
@@ -3668,7 +3638,6 @@ def login():
         # Clear old student-specific session keys without wiping the CSRF token
         _reset_student_login_session()
         # Explicitly clear other potential student-related session keys
-        session.pop('onboarding_student_ref', None)
         session.pop('onboarding_seat_ref', None)
         session.pop('onboarding_user_ref', None)
         session.pop('generated_username', None)
