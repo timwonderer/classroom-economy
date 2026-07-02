@@ -12,7 +12,7 @@ from datetime import datetime, timezone, timedelta
 from app.models import (
     User,
     UserRole,
-    Student, Admin, HallPassLog, StudentTeacher
+    Admin, HallPassLog, StudentTeacher
 )
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username

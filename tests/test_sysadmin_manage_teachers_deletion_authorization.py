@@ -8,7 +8,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pyotp
 
 from app import db
-from app.models import User, UserRole, Admin, Student, StudentTeacher, SystemAdmin
+from app.models import User, UserRole, Admin, StudentTeacher, SystemAdmin
 from tests.helpers.class_scope import make_student_identity
 
 
@@ -27,7 +27,7 @@ def _create_teacher(username: str) -> Admin:
     return teacher
 
 
-def _create_student_for_teacher(teacher: Admin, block: str = "A", first_name: str = "Alex") -> Student:
+def _create_student_for_teacher(teacher: Admin, block: str = "A", first_name: str = "Alex"):
     student_seat = make_student_identity(
         block=block,
         first_name=first_name,
