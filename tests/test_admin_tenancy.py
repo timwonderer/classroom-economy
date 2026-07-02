@@ -111,7 +111,6 @@ def _build_student_detail_public_url(client, teacher_user: User, student_user: U
         client.application.config["SECRET_KEY"], salt="cth-student-detail-nav-v1"
     )
     nav = serializer.dumps({
-        "student_id": int(student_user.id),
         "seat_public_id": str(seat.public_id),
         "class_id": str(seat.class_id) if seat.class_id else None,
         "admin_id": int(teacher_user.id),
@@ -242,7 +241,6 @@ def test_student_detail_recovers_from_stale_class_context(client):
         client.application.config["SECRET_KEY"], salt="cth-student-detail-nav-v1"
     )
     nav = serializer.dumps({
-        "student_id": int(student_a_user.id),
         "seat_public_id": str(seat_a.public_id),
         "class_id": str(class_a.class_id),
         "admin_id": int(teacher_user.id),
@@ -452,7 +450,6 @@ def test_student_detail_public_id_is_seat_scoped_for_shared_student(client):
         client.application.config["SECRET_KEY"], salt="cth-student-detail-nav-v1"
     )
     forged_nav = serializer.dumps({
-        "student_id": int(shared_student_user.id),
         "seat_public_id": str(seat_b.public_id),
         "class_id": str(seat_b.class_id),
         "admin_id": int(teacher_a_user.id),
