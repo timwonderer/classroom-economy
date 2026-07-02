@@ -3902,7 +3902,7 @@ def help_support():
 
     # Get student's issues for current class (last 20)
     my_issues = Issue.query.filter_by(
-        student_id=student.id,
+        seat_id=student.id,
         join_code=get_display_join_code(class_context.class_id)
     ).order_by(Issue.submitted_at.desc()).limit(20).all()
 
@@ -3942,7 +3942,7 @@ def submit_general_issue():
         include_recent_error = request.form.get('include_recent_error') == 'on' if show_recent_error_option else True
         try:
             issue = create_issue(
-                student=student,
+                actor=student,
                 teacher_id=None,
                 class_id=class_context.class_id,
                 category_id=form.category_id.data,
@@ -3985,7 +3985,7 @@ def report_transaction_issue(transaction_id):
     # Get the transaction and verify it belongs to this student and class
     transaction = Transaction.query.filter_by(
         id=transaction_id,
-        student_id=student.id,
+        seat_id=student.id,
         join_code=get_display_join_code(class_context.class_id)
     ).first_or_404()
 
@@ -4002,7 +4002,7 @@ def report_transaction_issue(transaction_id):
         include_recent_error = request.form.get('include_recent_error') == 'on' if show_recent_error_option else True
         try:
             create_issue(
-                student=student,
+                actor=student,
                 teacher_id=None,
                 class_id=class_context.class_id,
                 category_id=form.category_id.data,
@@ -4048,7 +4048,7 @@ def report_tap_event_issue(tap_event_id):
     # Get the tap event and verify it belongs to this student and class
     tap_event = AttendanceSession.query.filter_by(
         id=tap_event_id,
-        student_id=student.id,
+        seat_id=student.id,
         class_id=class_context.class_id,
     ).first_or_404()
 
@@ -4065,7 +4065,7 @@ def report_tap_event_issue(tap_event_id):
         include_recent_error = request.form.get('include_recent_error') == 'on' if show_recent_error_option else True
         try:
             create_issue(
-                student=student,
+                actor=student,
                 teacher_id=None,
                 class_id=class_context.class_id,
                 category_id=form.category_id.data,

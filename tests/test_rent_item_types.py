@@ -279,7 +279,7 @@ def test_student_purchase_per_use_item(client, teacher_admin, student_in_class):
     assert resp.status_code == 200
 
     # 3. Verify StudentItem State
-    student_item = StudentItem.query.filter_by(student_id=student.id, store_item_id=store_item.id).first()
+    student_item = StudentItem.query.filter_by(seat_id=seat.id, store_item_id=store_item.id).first()
     assert student_item is not None
     assert student_item.status == 'purchased' # Should be 'purchased' to show in inventory
     assert student_item.uses_remaining is None  # Paid purchases are single-use, not rent free uses
@@ -295,7 +295,7 @@ def test_student_use_per_use_item(client, teacher_admin, student_in_class):
     db.session.flush()
 
     student_item = StudentItem(seat_id=seat.id, correlation_id='corr_test', 
-        student_id=student.id, store_item_id=store_item.id,
+        store_item_id=store_item.id,
         status='purchased', uses_remaining=3,
         join_code='JOINCODE123'
     )
@@ -1631,7 +1631,7 @@ def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(client, teacher_admin
     assert student.hall_passes == starting_hall_passes + 1
     assert student.checking_balance == starting_balance - Decimal('5.00')
 
-    created_rows = StudentItem.query.filter_by(student_id=student.id, store_item_id=hall_pass_item.id).all()
+    created_rows = StudentItem.query.filter_by(seat_id=seat.id, store_item_id=hall_pass_item.id).all()
     assert len(created_rows) == 0
 
 

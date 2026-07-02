@@ -1176,7 +1176,6 @@ class StoreItemBlock(db.Model):
 class StudentItem(db.Model):
     __tablename__ = 'student_items'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     store_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id'), nullable=False)
 
     # CRITICAL: class_id is the source of truth for class isolation
@@ -1203,38 +1202,6 @@ class StudentItem(db.Model):
     uses_remaining = db.Column(db.Integer, nullable=True) # For per-use items with > 1 use limit
 
     collective_goal_instance_code = db.Column(db.String(36), nullable=True, index=True)
-
-
-@sa.event.listens_for(StudentItem, "before_insert")
-@sa.event.listens_for(StudentItem, "before_update")
-def _sync_student_item_scope(_mapper, connection, target):
-    """Dual-write bridge for student_items seat/class scope."""
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-    student_id = getattr(target, "student_id", None)
-
-    if not class_id and join_code:
-        class_id = connection.execute(
-            sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-            {"join_code": join_code},
-        ).scalar()
-        if class_id:
-            target.class_id = str(class_id)
-
-    if not getattr(target, "seat_id", None) and student_id:
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-        if seat_id:
-            target.seat_id = seat_id
-
-    if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
-        seat_class_id = connection.execute(
-            sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_class_id:
-            target.class_id = str(seat_class_id)
-
-
 class RedemptionAuditAction(enum.Enum):
     REQUEST = 'request'
     APPROVED = 'approved'
@@ -1580,8 +1547,6 @@ class RentPolicyVersion(db.Model):
 class RentPayment(db.Model):
     __tablename__ = 'rent_payments'
     id = db.Column(db.Integer, primary_key=True)
-    # student_id is DEPRECATED in favor of seat_id.
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
     period = db.Column(db.String(10), nullable=False)  # Block/Period (e.g., 'A', 'B', 'C')
@@ -1622,7 +1587,6 @@ class RentPayment(db.Model):
 class RentWaiver(db.Model):
     __tablename__ = 'rent_waivers'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=True, index=True)
@@ -1635,37 +1599,6 @@ class RentWaiver(db.Model):
 
     seat = db.relationship('Seat', backref='rent_waivers')
     created_by = db.relationship('User', backref='rent_waivers_created')
-
-
-
-@sa.event.listens_for(RentWaiver, "before_insert")
-@sa.event.listens_for(RentWaiver, "before_update")
-def _sync_rent_waiver_scope(_mapper, connection, target):
-    """Dual-write bridge for rent_waivers.seat_id and class_id."""
-    student_id = getattr(target, "student_id", None)
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-
-    if not class_id and join_code:
-        class_id = connection.execute(
-            sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-            {"join_code": join_code},
-        ).scalar()
-        if class_id:
-            target.class_id = str(class_id)
-
-    if not getattr(target, "seat_id", None) and student_id:
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-        if seat_id:
-            target.seat_id = seat_id
-
-    if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
-        seat_class_id = connection.execute(
-            sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_class_id:
-            target.class_id = str(seat_class_id)
 
 @sa.event.listens_for(HallPassLog, "before_insert")
 @sa.event.listens_for(HallPassLog, "before_update")
@@ -1686,81 +1619,6 @@ def _sync_hall_pass_seat(_mapper, connection, target):
         ).scalar()
         if seat_class_id:
             target.class_id = str(seat_class_id)
-
-
-@sa.event.listens_for(RentPayment, "before_insert")
-@sa.event.listens_for(RentPayment, "before_update")
-def _sync_rent_payment_seat(_mapper, connection, target):
-    """Dual-write bridge for rent_payments.seat_id and rent_payments.class_id."""
-    student_id = getattr(target, "student_id", None)
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-
-    if not class_id and join_code:
-        class_id = connection.execute(
-            sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-            {"join_code": join_code},
-        ).scalar()
-        if class_id:
-            target.class_id = str(class_id)
-
-    if not getattr(target, "seat_id", None) and student_id:
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-        if seat_id:
-            target.seat_id = seat_id
-
-    if not getattr(target, "seat_id", None) and student_id:
-        legacy_join_code = join_code or f"LEGACY_{student_id}"
-        legacy_block = connection.execute(
-            sa.text("SELECT COALESCE(block, 'A') FROM students WHERE id = :student_id LIMIT 1"),
-            {"student_id": student_id},
-        ).scalar() or "A"
-        legacy_seat_id = connection.execute(
-            sa.text(
-                "INSERT INTO seats (public_id, user_id, class_id, role, block_identifier, roster_fingerprint, dedupe_code, claimed_at, has_received_rent_exemption, join_code, student_id, block, created_at, updated_at) "
-                "VALUES (:public_id, NULL, :class_id, :role, :block_identifier, NULL, NULL, NULL, :has_received_rent_exemption, :join_code, :student_id, :block, :created_at, :updated_at) "
-                "RETURNING id"
-            ),
-            {
-                "public_id": str(uuid.uuid4()),
-                "class_id": str(class_id) if class_id else None,
-                "role": "student",
-                "block_identifier": legacy_block,
-                "has_received_rent_exemption": False,
-                "join_code": legacy_join_code,
-                "student_id": student_id,
-                "block": legacy_block,
-                "created_at": utc_now(),
-                "updated_at": utc_now(),
-            },
-        ).scalar()
-        if legacy_seat_id:
-            target.seat_id = int(legacy_seat_id)
-
-    if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
-        seat_class_id = connection.execute(
-            sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_class_id:
-            target.class_id = str(seat_class_id)
-
-
-
-@sa.event.listens_for(RentWaiver, "before_insert")
-@sa.event.listens_for(RentWaiver, "before_update")
-def _sync_rent_waiver_seat(_mapper, connection, target):
-    """Dual-write bridge for rent_waivers.seat_id."""
-    if getattr(target, "seat_id", None):
-        return
-    
-    student_id = getattr(target, "student_id", None)
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-    
-    seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-    if seat_id:
-        target.seat_id = seat_id
 
 
 class RentItem(db.Model):
@@ -2246,14 +2104,6 @@ class UserReport(db.Model):
     reward_amount = db.Column(db.Float, nullable=True, default=0.0)
     reward_sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
-    # Internal student ID (hidden from sysadmin, used only for reward routing)
-    _student_id = db.Column('student_id', db.Integer, db.ForeignKey('students.id'), nullable=True)
-    student = db.relationship(
-        'Student',
-        backref=db.backref('reports', cascade='all, delete-orphan'),
-        foreign_keys=[_student_id],
-    )
-
     reviewed_by = db.relationship('User', backref='reviewed_reports', foreign_keys=[reviewed_by_sysadmin_id])
 
 
@@ -2300,8 +2150,7 @@ class Issue(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # Student display cache and actor reference
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    # Seat display cache and actor reference
     student_first_name = db.Column(db.String(100), nullable=False)  # Cached for display
     student_last_initial = db.Column(db.String(1), nullable=False)
 
@@ -2381,7 +2230,7 @@ class Issue(db.Model):
     # Indexes
     __table_args__ = (
         db.Index('ix_issues_teacher_status', 'user_id', 'status'),
-        db.Index('ix_issues_student_status', 'student_id', 'status'),
+        db.Index('ix_issues_student_status', 'seat_id', 'status'),
         db.Index('ix_issues_join_code_status', 'join_code', 'status'),
     )
 
