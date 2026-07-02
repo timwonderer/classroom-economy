@@ -194,6 +194,13 @@ def test_attendance_history_tenant_scoping(client):
     db.session.add_all([user1, user2])
     db.session.flush()
 
+    student1_user = User(user_role=UserRole.STUDENT)
+    db.session.add(student1_user)
+    db.session.flush()
+    student2_user = User(user_role=UserRole.STUDENT)
+    db.session.add(student2_user)
+    db.session.flush()
+
     # Create student for admin1
     student1 = make_student_identity(block='A', first_name='Student', last_name='1')
     student2 = make_student_identity(block='B', first_name='Student', last_name='2')
@@ -212,13 +219,7 @@ def test_attendance_history_tenant_scoping(client):
         ClassMembership(class_id=class1.class_id, admin_id=admin1.id, role="admin"),
         ClassMembership(class_id=class2.class_id, admin_id=admin2.id, role="admin"),
     ])
-    student1_user = User(user_role=UserRole.STUDENT)
-    db.session.add(student1_user)
-    db.session.flush()
     seat1 = Seat(user_id=student1_user.id, class_id=class1.class_id, join_code=class1.join_code, block="A", role="student")
-    student2_user = User(user_role=UserRole.STUDENT)
-    db.session.add(student2_user)
-    db.session.flush()
     seat2 = Seat(user_id=student2_user.id, class_id=class2.class_id, join_code=class2.join_code, block="B", role="student")
     db.session.add_all([seat1, seat2])
     db.session.flush()
@@ -245,7 +246,7 @@ def test_attendance_history_tenant_scoping(client):
             sess,
             user_id=user1.id,
             class_id=class1.class_id,
-            seat_id=teacher_seat.id,
+            seat_id=seat1.id,
             role="teacher",
             join_code=class1.join_code,
         )
