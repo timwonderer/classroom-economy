@@ -9,17 +9,8 @@ from datetime import datetime, timezone, timedelta
 
 
 def _student_user_and_seat(student):
-    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
-    if not student_user:
-        student_user = User(
-            username_hash=f"auto_{student.id}",
-            username_lookup_hash=f"auto_l_{student.id}",
-            user_role=UserRole.STUDENT,
-            current_session_nonce='test_nonce_123',
-        )
-        db.session.add(student_user)
-        db.session.flush()
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
+    student_user = db.session.get(User, student.user_id) if student and student.user_id else None
+    seat = db.session.get(Seat, student.id) if student else None
     return student_user, seat
 
 @pytest.fixture
@@ -102,8 +93,8 @@ def admin_class_scope(client, teacher_admin):
 def test_admin_configure_rent_item_types(client, teacher_admin, admin_class_scope):
     """Test that admin can configure different rent item types."""
     seat = Seat.query.filter_by(class_id=admin_class_scope.class_id).order_by(Seat.id.asc()).first()
-    student_user = User.query.get(seat.user_id) if seat and seat.user_id else None
-
+    student_user = db.session.get(User, seat.user_id) if seat and seat.user_id else None
+    assert student_user is not None
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
     db.session.commit()

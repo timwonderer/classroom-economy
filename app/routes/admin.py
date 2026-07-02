@@ -1056,23 +1056,6 @@ def _seat_scope_subquery_for_class(class_id: str, *, include_unassigned: bool = 
     return query.subquery()
 
 
-def _get_claimed_teacher_block_for_class(student_id: int, teacher_id: int, class_id: str):
-    """Return the claimed Seat for one student in one class scope."""
-    if not student_id or not teacher_id or not class_id:
-        return None
-        return (
-            Seat.query
-            .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
-            .filter(
-                Seat.user_id == student_id,
-                ClassEconomy.user_id == teacher_id,
-                Seat.class_id == class_id,
-                Seat.claimed_at.isnot(None),
-            )
-            .first()
-        )
-
-
 def _require_payroll_feature_scope_from_request(
     class_id: str | None = None,
     seat_id: int | None = None,
