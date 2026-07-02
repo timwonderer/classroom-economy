@@ -1203,8 +1203,6 @@ class StudentItem(db.Model):
     # Multi-use item tracking
     uses_remaining = db.Column(db.Integer, nullable=True) # For per-use items with > 1 use limit
 
-    # Relationships
-    student = db.relationship('Student', backref=db.backref('items', lazy='dynamic'))
     collective_goal_instance_code = db.Column(db.String(36), nullable=True, index=True)
 
 
