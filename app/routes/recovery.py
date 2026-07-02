@@ -44,11 +44,7 @@ from app.feats.base import feat_shell
 @recovery_bp.route('/admin/generate-code/<int:seat_id>', methods=['POST'])
 @admin_required
 @feat_shell("FEAT-IDEN-002")
-def generate_reset_code(*args, **kwargs):
-    """FEAT-Shell for recovery code generation."""
-    return _generate_reset_code_legacy(*args, **kwargs)
-
-def _generate_reset_code_legacy(seat_id):
+def generate_reset_code(seat_id):
     """
     Step 1 — Teacher Initiates Reset (LEGACY).
 
@@ -104,11 +100,7 @@ def landing():
 @recovery_bp.route('/lookup', methods=['GET', 'POST'])
 @limiter.limit(_recovery_rate_limit)
 @feat_shell("FEAT-IDEN-002")
-def account_lookup(*args, **kwargs):
-    """FEAT-Shell for student account lookup."""
-    return _account_lookup_legacy(*args, **kwargs)
-
-def _account_lookup_legacy():
+def account_lookup():
     """
     Step 2 — Student Enters Join Code + Reset Code (LEGACY).
 
@@ -206,4 +198,3 @@ def _account_lookup_legacy():
         return redirect(url_for('student.create_username'))
 
     return render_template('student/recovery/account_lookup.html')
-
