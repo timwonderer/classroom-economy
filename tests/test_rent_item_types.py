@@ -934,7 +934,7 @@ def test_legacy_rent_items_default_to_privilege(client, teacher_admin, admin_cla
 def test_per_use_free_purchase_from_rent(client, teacher_admin, student_in_class):
     """Test that a student with rent-granted uses_remaining can purchase for $0."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
 
@@ -947,7 +947,7 @@ def test_per_use_free_purchase_from_rent(client, teacher_admin, student_in_class
     db.session.flush()
 
     # Give student a rent-granted StudentItem with 3 uses remaining
-    rent_granted = StudentItem(seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, correlation_id='corr_test', 
+    rent_granted = StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id, store_item_id=store_item.id,
         status='purchased', uses_remaining=3,
         purchase_date=datetime.now(timezone.utc),
@@ -956,15 +956,13 @@ def test_per_use_free_purchase_from_rent(client, teacher_admin, student_in_class
     db.session.add(rent_granted)
 
     # Give student some money
-    tx = Transaction(user_id=student_user.id, seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, amount=100, account_type='checking',join_code='JOINCODE123')
+    tx = Transaction(user_id=student_user.id, seat_id=seat.id, amount=100, account_type='checking',join_code='JOINCODE123')
     db.session.add(tx)
     db.session.commit()
 
     original_balance = student.checking_balance
 
     # Login as student
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
     db.session.commit()
@@ -1003,7 +1001,7 @@ def test_per_use_free_purchase_from_rent(client, teacher_admin, student_in_class
 def test_per_use_charges_when_uses_exhausted(client, teacher_admin, student_in_class):
     """Test that after free uses are exhausted, the student pays regular price."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
 
@@ -1015,7 +1013,7 @@ def test_per_use_charges_when_uses_exhausted(client, teacher_admin, student_in_c
     db.session.flush()
 
     # Give student a rent-granted item with 0 uses remaining (exhausted)
-    rent_granted = StudentItem(seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, correlation_id='corr_test', 
+    rent_granted = StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id, store_item_id=store_item.id,
         status='purchased', uses_remaining=0,
         purchase_date=datetime.now(timezone.utc),
@@ -1023,14 +1021,11 @@ def test_per_use_charges_when_uses_exhausted(client, teacher_admin, student_in_c
     )
     db.session.add(rent_granted)
 
-    tx = Transaction(user_id=student_user.id, seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, amount=100, account_type='checking',join_code='JOINCODE123')
+    tx = Transaction(user_id=student_user.id, seat_id=seat.id, amount=100, account_type='checking',join_code='JOINCODE123')
     db.session.add(tx)
     db.session.commit()
 
     original_balance = student.checking_balance
-
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
