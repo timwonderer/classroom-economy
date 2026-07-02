@@ -3,7 +3,7 @@ from tests.helpers.class_scope import make_student_identity
 import pytest
 import re
 from decimal import Decimal
-from app.models import User, RentItem, RentSettings, RentPayment, RentWaiver, StoreItem, StudentItem, Student, Transaction, Admin, ClassEconomy, Seat, IdentityProfile
+from app.models import User, RentItem, RentSettings, RentPayment, RentWaiver, StoreItem, StudentItem, Transaction, Admin, ClassEconomy, Seat, IdentityProfile
 from app.extensions import db
 from datetime import datetime, timezone, timedelta
 

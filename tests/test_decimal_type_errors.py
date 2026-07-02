@@ -16,7 +16,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from app.models import (
-    Admin, Student, Transaction, StudentBlock, RentSettings, RentPayment, BankingSettings, Seat, User, UserRole, _quantize_currency
+    Admin, Transaction, StudentBlock, RentSettings, RentPayment, BankingSettings, Seat, User, UserRole, _quantize_currency
 )
 from app.extensions import db
 from tests.helpers.class_scope import create_class_scope
@@ -387,7 +387,7 @@ class TestDecimalTypeErrors:
         Fix: Use Decimal('0.00') as the fallback when scalar() returns None.
         """
         from app.models import (
-            Admin, Student, StudentTeacher, InsurancePolicy, InsuranceEnrollment,
+            Admin, StudentTeacher, InsurancePolicy, InsuranceEnrollment,
         )
         from tests.helpers.class_scope import create_class_scope
 

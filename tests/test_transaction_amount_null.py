@@ -9,7 +9,7 @@ from unittest.mock import PropertyMock, patch
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from tests.helpers.class_scope import make_student_identity
 from app import db
-from app.models import User, UserRole, Student, Transaction, Admin, ClassEconomy
+from app.models import User, UserRole, Transaction, Admin, ClassEconomy
 import sqlalchemy as sa
 
 def test_get_total_earnings_defensive_checks(client, app):
