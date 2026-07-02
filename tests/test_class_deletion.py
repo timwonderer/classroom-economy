@@ -35,8 +35,8 @@ def test_collapse_universe_cascades_and_cleans_up(client):
         create_claimed_teacher_block=True,
         teacher_block_claimed=True,
     )
-    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
-    student_b_user = User.query.filter_by(username_hash=f"auto_{student_b.id}").first()
+    student_user = db.session.get(User, student.user_id)
+    student_b_user = db.session.get(User, student_b.user_id)
     assert student_user is not None
     assert student_b_user is not None
     db.session.add(ClassMembership(join_code=join_code, user_id=student_b_user.id, role="student"))
@@ -178,7 +178,7 @@ def test_collapse_universe_raises_on_null_class_id_scope_rows(client):
     ).first()
     db.session.add(
         TapEvent(
-            seat_id=Seat.query.filter_by(user_id=student_user.id, class_id=economy.class_id).first().id,
+            seat_id=Seat.query.filter_by(user_id=student.user_id, class_id=economy.class_id).first().id,
             period="A",
             join_code="INV001",
             class_id=None,

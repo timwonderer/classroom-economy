@@ -52,7 +52,7 @@ Status legend:
 - [~] Rewrite deletion pipeline around Seat/IdentityProfile ownership in [`app/utils/student_deletion.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/utils/student_deletion.py)
 - [~] Rewrite deletion orchestration around canonical identity in [`app/utils/deletion.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/utils/deletion.py)
 - [ ] Rewrite student-contract tests that still depend on legacy schema semantics in [`tests/test_rent_item_types.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_rent_item_types.py)
-- [ ] Rewrite student-contract tests that still depend on `StudentBlock` in [`tests/test_class_deletion.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_class_deletion.py)
+- [x] Rewrite student-contract tests that still depend on `StudentBlock` in [`tests/test_class_deletion.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_class_deletion.py)
 - [ ] Rewrite tests that still call `Student` methods directly in [`tests/test_transaction_amount_null.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_transaction_amount_null.py)
 - [ ] Rewrite tests that still call `Student` methods directly in [`tests/test_decimal_type_errors.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_decimal_type_errors.py)
 - [x] Rewrite tests that still call `Student` methods directly in [`tests/test_transaction_amount_null.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_transaction_amount_null.py)
