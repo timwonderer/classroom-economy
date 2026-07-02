@@ -16,7 +16,7 @@ import re
 import pytest
 from datetime import datetime, timedelta, timezone
 from app import db
-from app.models import Seat, IdentityProfile, ClassEconomy, Admin, StudentTeacher, Transaction, StudentBlock, User, UserRole
+from app.models import Seat, IdentityProfile, ClassEconomy, Admin, StudentTeacher, Transaction, User, UserRole
 from app.hash_utils import get_random_salt, hash_username, hash_username_lookup
 from app.utils.money_guard import check_financial_cooldown
 from app.utils.time import ensure_utc, utc_now
@@ -335,14 +335,11 @@ def test_recovery_preserves_balance_and_transactions(client, recovery_data):
     teacher = recovery_data["teacher"]
     join_code = recovery_data["join_code"]
 
-    # Give student a balance
-    db.session.add(StudentBlock(
-        user_id=student_user.id,
-        period="A",
-        join_code=join_code,
-    ))
+    # Give student a balance using the canonical student user/seat anchor.
+    student_user = db.session.get(User, student.user_id)
+    assert student_user is not None
     tx = Transaction(
-        user_id=student_user.id,amount=200.0,
+        user_id=student_user.id, amount=200.0,
         type='deposit',
         description='Initial deposit',
         account_type='checking',
