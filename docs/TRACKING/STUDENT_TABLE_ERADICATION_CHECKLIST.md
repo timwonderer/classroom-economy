@@ -25,6 +25,7 @@ Status legend:
 - [x] Replace student-period attendance resolution with `Seat` in [`app/attendance.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/attendance.py)
 - [x] Replace student-period helper lookups with `Seat` in [`app/utils/attendance_helpers.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/utils/attendance_helpers.py)
 - [x] Replace student-scoped balance resolution with `Seat` / `ClassEconomy` in [`app/utils/banking.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/utils/banking.py)
+- [x] Replace student-scoped balance helper wrapper with canonical seat/class ids in [`app/routes/student.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/routes/student.py)
 - [x] Replace student aggregation with seat-derived mapping in [`app/utils/analytics_engine.py`](/Users/timothychang/Documents/GitHub/classroom-economy/app/utils/analytics_engine.py)
 - [x] Replace `student_id` session/login setup with canonical seat context in [`tests/test_api_tenancy.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_api_tenancy.py)
 - [x] Replace `student_id` session/login setup with canonical seat context in [`tests/test_rent_penalty_reversal.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/test_rent_penalty_reversal.py)
