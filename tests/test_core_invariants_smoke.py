@@ -7,7 +7,7 @@ from werkzeug.security import generate_password_hash
 
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from app.models import Seat, IdentityProfile, Admin, ClassMembership, ClassFeature, InsuranceClaim, InsuranceEnrollment, InsurancePolicy, RentPayment, RentSettings, StoreItem, Student, StudentTeacher, AttendanceSession, Transaction, TransactionStatus, ClassEconomy, User, UserRole
+from app.models import Seat, IdentityProfile, Admin, ClassMembership, ClassFeature, InsuranceClaim, InsuranceEnrollment, InsurancePolicy, RentPayment, RentSettings, StoreItem, StudentTeacher, AttendanceSession, Transaction, TransactionStatus, ClassEconomy, User, UserRole
 from app.services import ledger_service, obligations_service
 from tests.helpers.admin_context import login_admin
 from tests.helpers.class_scope import create_class_scope, make_student_identity, make_student_seat, _ensure_user
@@ -25,7 +25,7 @@ def _create_admin(username: str) -> Admin:
     return admin
 
 
-def _create_student(first_name: str, block: str = "A") -> Student:
+def _create_student(first_name: str, block: str = "A"):
     return make_student_identity(
         first_name=first_name,
         last_name="Test",
@@ -34,7 +34,7 @@ def _create_student(first_name: str, block: str = "A") -> Student:
     )
 
 
-def _link_student_to_teacher(student: Student, admin: Admin, join_code: str, block: str = "A") -> None:
+def _link_student_to_teacher(student, admin: Admin, join_code: str, block: str = "A") -> None:
     if not db.session.query(ClassMembership.id).filter_by(
         join_code=join_code,
         admin_id=admin.id,

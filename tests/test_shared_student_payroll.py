@@ -4,7 +4,7 @@ from tests.helpers.class_scope import make_student_identity
 import uuid
 from datetime import datetime, timedelta, timezone
 from app import db
-from app.models import User, UserRole, Admin, AttendanceSession, Seat, IdentityProfile, Student, StudentTeacher, PayrollSettings, Transaction
+from app.models import User, UserRole, Admin, AttendanceSession, Seat, IdentityProfile, StudentTeacher, PayrollSettings, Transaction
 from app.payroll import calculate_payroll_breakdown
 from tests.helpers.class_scope import create_class_scope
 

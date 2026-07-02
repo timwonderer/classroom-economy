@@ -3,7 +3,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import uuid
 from datetime import datetime, timezone
 from app import db
-from app.models import AttendanceSession, ClassEconomy, Seat, SeatAttendanceState, User, UserRole, Student, StudentTeacher
+from app.models import AttendanceSession, ClassEconomy, Seat, SeatAttendanceState, User, UserRole, StudentTeacher
 from app.attendance import get_all_block_statuses
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.class_scope import make_student_identity
