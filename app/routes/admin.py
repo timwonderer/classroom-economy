@@ -57,7 +57,7 @@ from app.extensions import db, limiter
 from app.feats.base import feat_shell, FEATContext, InvariantViolation
 from app.access import AccessScopeDenied, resolve_scope
 from app.models import (
-    Student, Admin, ClassEconomy, Transaction, TransactionStatus, TapEvent, AttendanceSession, StoreItem, StorePurchase,
+    Admin, ClassEconomy, Transaction, TransactionStatus, TapEvent, AttendanceSession, StoreItem, StorePurchase,
     InsurancePolicy, InsurancePolicyBlock, RentItem, RentPayment, RentSettings, StoreItemBlock,
     InsuranceEnrollment, InsuranceClaim, HallPassLog, HallPassSettings, PayrollSettings, SavedAdjustment,
     BankingSettings,
@@ -965,7 +965,7 @@ def _get_join_codes_by_block(admin_id, blocks):
 
 def _build_payroll_preview_state(students, join_codes_by_block):
     """Aggregate payroll preview data from class-scoped payroll anchors."""
-    students_by_join_code: dict[str, dict[int, Student]] = defaultdict(dict)
+    students_by_join_code: dict[str, dict[int, Seat]] = defaultdict(dict)
 
     for student in students:
         for raw_block in (student.block or "").split(","):
@@ -3497,7 +3497,7 @@ def recover():
         # ----------------------------------------------------------------
         # Step 3: Verify each username belongs in the correct join_code
         # ----------------------------------------------------------------
-        resolved_students = {}   # join_code -> Student
+        resolved_students = {}   # join_code -> Seat
 
         # Group Seat student_ids by join_code for quick lookup
         seats_by_jc = {}
