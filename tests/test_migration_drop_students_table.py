@@ -36,6 +36,8 @@ def _reset_schema():
 
 def _prepare_legacy_students_table():
     with db.engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS legacy_student_notes CASCADE"))
+        conn.execute(text("DROP TABLE IF EXISTS students CASCADE"))
         conn.execute(
             text(
                 """
