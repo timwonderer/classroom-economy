@@ -24,9 +24,11 @@ def column_exists(table_name, column_name):
         return False
 
 def upgrade():
+    if column_exists('seat_attendance_state', 'tap_enabled'):
+        return
+
     # 1. Add tap_enabled to seat_attendance_state
-    if not column_exists('seat_attendance_state', 'tap_enabled'):
-        op.add_column('seat_attendance_state', sa.Column('tap_enabled', sa.Boolean(), server_default='true', nullable=False))
+    op.add_column('seat_attendance_state', sa.Column('tap_enabled', sa.Boolean(), server_default='true', nullable=False))
     
     # 2. Backfill tap_enabled from student_blocks
     op.execute("""
