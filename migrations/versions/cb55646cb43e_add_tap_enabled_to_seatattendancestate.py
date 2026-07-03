@@ -15,9 +15,18 @@ down_revision = '042824e29710'
 branch_labels = None
 depends_on = None
 
+def column_exists(table_name, column_name):
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    try:
+        return any(col["name"] == column_name for col in inspector.get_columns(table_name))
+    except Exception:
+        return False
+
 def upgrade():
     # 1. Add tap_enabled to seat_attendance_state
-    op.add_column('seat_attendance_state', sa.Column('tap_enabled', sa.Boolean(), server_default='true', nullable=False))
+    if not column_exists('seat_attendance_state', 'tap_enabled'):
+        op.add_column('seat_attendance_state', sa.Column('tap_enabled', sa.Boolean(), server_default='true', nullable=False))
     
     # 2. Backfill tap_enabled from student_blocks
     op.execute("""

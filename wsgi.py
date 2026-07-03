@@ -60,7 +60,6 @@ def get_validated_status_page_url():
 # -------------------- BACKWARD COMPATIBILITY IMPORTS --------------------
 # Models (Stage 2)
 from app.models import (
-    Student,
     AdminInviteCode,
     SystemAdmin,
     Transaction,
