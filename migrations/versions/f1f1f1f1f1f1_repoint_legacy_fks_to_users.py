@@ -298,31 +298,34 @@ def upgrade():
     # 10. ClassMembership: collapse admin_id + student_id → user_id
     # ============================================================
     print("\n--- ClassMembership ---")
-    if not column_exists('class_memberships', 'user_id'):
-        op.add_column('class_memberships', sa.Column('user_id', sa.Integer(), nullable=True))
-        print("  ✅ Added class_memberships.user_id")
+    if table_exists('class_memberships'):
+        if not column_exists('class_memberships', 'user_id'):
+            op.add_column('class_memberships', sa.Column('user_id', sa.Integer(), nullable=True))
+            print("  ✅ Added class_memberships.user_id")
 
-    safe_drop_column('class_memberships', 'admin_id')
-    safe_drop_column('class_memberships', 'student_id')
+        safe_drop_column('class_memberships', 'admin_id')
+        safe_drop_column('class_memberships', 'student_id')
 
-    if column_exists('class_memberships', 'user_id'):
-        op.alter_column('class_memberships', 'user_id', nullable=False)
-        if not has_foreign_key('class_memberships', 'fk_class_memberships_user_id_users'):
-            op.create_foreign_key(
-                'fk_class_memberships_user_id_users',
-                'class_memberships', 'users',
-                ['user_id'], ['id'],
-                ondelete='CASCADE',
-            )
-        if not index_exists('class_memberships', 'uq_class_membership_user'):
-            op.create_unique_constraint(
-                'uq_class_membership_user',
-                'class_memberships',
-                ['class_id', 'user_id'],
-            )
-        if not index_exists('class_memberships', 'ix_class_memberships_user_id'):
-            op.create_index('ix_class_memberships_user_id', 'class_memberships', ['user_id'])
-        print("  ✅ class_memberships → single user_id (users.id)")
+        if column_exists('class_memberships', 'user_id'):
+            op.alter_column('class_memberships', 'user_id', nullable=False)
+            if not has_foreign_key('class_memberships', 'fk_class_memberships_user_id_users'):
+                op.create_foreign_key(
+                    'fk_class_memberships_user_id_users',
+                    'class_memberships', 'users',
+                    ['user_id'], ['id'],
+                    ondelete='CASCADE',
+                )
+            if not index_exists('class_memberships', 'uq_class_membership_user'):
+                op.create_unique_constraint(
+                    'uq_class_membership_user',
+                    'class_memberships',
+                    ['class_id', 'user_id'],
+                )
+            if not index_exists('class_memberships', 'ix_class_memberships_user_id'):
+                op.create_index('ix_class_memberships_user_id', 'class_memberships', ['user_id'])
+            print("  ✅ class_memberships → single user_id (users.id)")
+    else:
+        print("  ⚠️  class_memberships missing, skipping")
 
     # ============================================================
     # 11. UserReport: _student_id → seat_id (if not already done)
