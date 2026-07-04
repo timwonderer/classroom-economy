@@ -1,6 +1,7 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
-from app import db, Student, Transaction
+from app import db, Transaction
 from app.payroll import calculate_payroll_breakdown
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -12,7 +13,7 @@ FLOAT_TOLERANCE = 0.0001
 @pytest.fixture
 def test_teacher(client):
     """Fixture to create a test teacher for payroll tests."""
-    from app.models import Admin, Seat, IdentityProfile, Student
+    from app.models import Admin, Seat, IdentityProfile
     teacher = make_admin("test_teacher", "s")
     db.session.add(teacher)
     db.session.commit()
@@ -35,7 +36,7 @@ def test_class(test_teacher):
     return class_economy
 
 def test_calculate_payroll(client):
-    from app.models import AttendanceSession, Student
+    from app.models import AttendanceSession
     from tests.helpers.class_scope import create_class_scope
 
     # Create Teacher
@@ -44,16 +45,7 @@ def test_calculate_payroll(client):
     db.session.commit()
 
     # Create a student
-    profile = IdentityProfile(profile_type='student', first_name='Test', last_name='S')
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(
-        identity_profile=profile,
-        block="A",
-        salt=b'salt',
-        has_completed_setup=True
-    )
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name='Test', last_name='S')
     db.session.commit()
 
     class_economy = create_class_scope(
@@ -85,10 +77,8 @@ def test_calculate_payroll(client):
     session_start = now - timedelta(minutes=60)
     session_end = now - timedelta(minutes=30)
     attendance_session = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_economy.class_id,
-        period="A",
         started_at=session_start,
         ended_at=session_end,
         duration_seconds=1800,
@@ -112,11 +102,7 @@ def test_calculate_payroll(client):
     # NOTE: student2 intentionally has no StudentTeacher link and no TeacherBlock
     # to verify proper skipping behavior in calculate_payroll. Students without
     # these associations should be skipped during payroll processing.
-    profile2 = IdentityProfile(profile_type='student', first_name='Test2', last_name='S')
-    db.session.add(profile2)
-    db.session.flush()
-    student2 = Student(identity_profile=profile2, block="B", salt=b'salt2', has_completed_setup=True)
-    db.session.add(student2)
+    student2 = make_student_identity(block="B", first_name='Test2', last_name='S')
     db.session.commit()
 
     payroll_summary2 = calculate_payroll_breakdown(class_economy.class_id, [], last_payroll_time)
@@ -141,21 +127,14 @@ def test_calculate_payroll(client):
 
 
 def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
-    from app.models import AttendanceSession, Admin, Student
+    from app.models import AttendanceSession, Admin
     from tests.helpers.class_scope import create_class_scope
 
     teacher = make_admin("prof_multiclass", "s")
     db.session.add(teacher)
     db.session.commit()
 
-    student = Student(
-        first_name="Multi",
-        last_name="S",
-        block="A,B",
-        salt=b'salt',
-        has_completed_setup=True,
-    )
-    db.session.add(student)
+    student = make_student_identity(block="A,B", first_name="Multi", last_name="S")
     db.session.flush()
     class_a = create_class_scope(
         teacher=teacher,
@@ -204,28 +183,22 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
     now = datetime.now(timezone.utc)
     db.session.add_all([
         AttendanceSession(
-            user_id=student_user.id,
             seat_id=seat_a.id,
             class_id=class_a.class_id,
-            period="A",
             started_at=now - timedelta(minutes=50),
             ended_at=now - timedelta(minutes=40),
             duration_seconds=600,
         ),
         AttendanceSession(
-            user_id=student_user.id,
             seat_id=seat_a.id,
             class_id=class_a.class_id,
-            period="A",
             started_at=now - timedelta(minutes=39),
             ended_at=now - timedelta(minutes=35),
             duration_seconds=240,
         ),
         AttendanceSession(
-            user_id=student_user.id,
             seat_id=seat_b.id,
             class_id=class_b.class_id,
-            period="B",
             started_at=now - timedelta(minutes=30),
             ended_at=now - timedelta(minutes=15),
             duration_seconds=900,
@@ -436,7 +409,7 @@ def test_get_pay_rate_for_block_requires_class_scope(client):
 def test_get_cached_payroll_with_meta(client):
     """Test the caching logic for payroll."""
     from app.payroll import get_cached_payroll_with_meta
-    from app.models import Admin, Seat, IdentityProfile, AttendanceSession, Student, PayrollCache
+    from app.models import Admin, Seat, IdentityProfile, AttendanceSession, PayrollCache
     from tests.helpers.class_scope import create_class_scope
     from datetime import datetime, timedelta, timezone
 
@@ -445,12 +418,8 @@ def test_get_cached_payroll_with_meta(client):
     db.session.add(teacher)
     db.session.commit()
 
-    # Setup Student
-    profile_cache = IdentityProfile(profile_type='student', first_name='CacheUser', last_name='T')
-    db.session.add(profile_cache)
-    db.session.flush()
-    student = Student(identity_profile=profile_cache, block="A", salt=b's', has_completed_setup=True)
-    db.session.add(student)
+    # Setup seat-scoped student identity
+    student = make_student_identity(block="A", first_name="CacheUser", last_name="T")
     db.session.flush()
     class_economy = create_class_scope(
         teacher=teacher,
@@ -480,10 +449,8 @@ def test_get_cached_payroll_with_meta(client):
     # Add attendance session (1 hour at default rate).
     now = datetime.now(timezone.utc)
     session_one = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_economy.class_id,
-        period="A",
         started_at=now - timedelta(hours=2),
         ended_at=now - timedelta(hours=1),
         duration_seconds=3600,
@@ -511,10 +478,8 @@ def test_get_cached_payroll_with_meta(client):
     # Add more attendance events that SHOULD increase payroll if recalculated
     # Adding another 15 minutes
     session_two = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_economy.class_id,
-        period="A",
         started_at=now - timedelta(minutes=30),
         ended_at=now - timedelta(minutes=15),
         duration_seconds=900,

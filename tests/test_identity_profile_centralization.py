@@ -1,7 +1,8 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from app.models import User, UserRole, Admin, IdentityProfile, Student, Seat
+from app.models import User, UserRole, Admin, IdentityProfile, Seat
 
 
 def _create_admin(username: str) -> Admin:
@@ -12,20 +13,7 @@ def _create_admin(username: str) -> Admin:
 
 
 def test_student_requires_explicit_identity_profile(client):
-    salt = get_random_salt()
-    profile = IdentityProfile(
-        profile_type="student",
-        first_name="Alicia",
-        last_name="Quinn",
-    )
-    student = Student(
-        identity_profile=profile,
-        block="A",
-        salt=salt,
-        username_hash=hash_username("alicia", salt),
-        pin_hash="fake-hash",
-    )
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Alicia", last_name="Quinn")
     db.session.commit()
 
     assert student.identity_id is not None
@@ -41,20 +29,7 @@ def test_student_requires_explicit_identity_profile(client):
 
 
 def test_student_name_update_syncs_identity_profile(client):
-    salt = get_random_salt()
-    profile = IdentityProfile(
-        profile_type="student",
-        first_name="Jordan",
-        last_name="Mills",
-    )
-    student = Student(
-        identity_profile=profile,
-        block="A",
-        salt=salt,
-        username_hash=hash_username("jordan", salt),
-        pin_hash="fake-hash",
-    )
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Jordan", last_name="Mills")
     db.session.commit()
 
     student.identity_profile.first_name = "Jordyn"
@@ -91,25 +66,8 @@ def test_seat_reads_name_from_identity_profile(client):
 
 
 def test_student_internal_reference_is_non_sequential_and_unique(client):
-    salt_a = get_random_salt()
-    salt_b = get_random_salt()
-    profile_a = IdentityProfile(profile_type="student", first_name="One", last_name="Alpha")
-    profile_b = IdentityProfile(profile_type="student", first_name="Two", last_name="Beta")
-    a = Student(
-        identity_profile=profile_a,
-        block="A",
-        salt=salt_a,
-        username_hash=hash_username("one", salt_a),
-        pin_hash="fake-hash",
-    )
-    b = Student(
-        identity_profile=profile_b,
-        block="B",
-        salt=salt_b,
-        username_hash=hash_username("two", salt_b),
-        pin_hash="fake-hash",
-    )
-    db.session.add_all([a, b])
+    a = make_student_identity(block="A", first_name="One", last_name="Alpha")
+    b = make_student_identity(block="B", first_name="Two", last_name="Beta")
     db.session.commit()
 
     assert a.internal_reference.startswith("sint_")

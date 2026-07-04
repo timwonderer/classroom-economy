@@ -13,32 +13,18 @@ from app.models import (
     ClassEconomy,
     HallPassLog,
     HallPassSettings,
-    IdentityProfile,
     Seat,
     SeatAttendanceState,
-    Student,
     EntitlementEvent,
     AttendanceReasonCode,
 )
 from app.payroll import get_daily_limit_seconds
 from app.utils.economy_policy import resolve_feature_class_for_class
-from app.utils.seat_scope import get_seat_id_for_class
 from app.utils.time import ensure_utc, get_class_now, get_class_today_range, normalize_for_db, utc_now
 from app.attendance import calculate_period_attendance_utc_range
 
 
 HALL_PASS_FREE_REASONS = {"office", "summons", "done for the day"}
-
-
-def _resolve_student_id_for_seat(*, seat_id: int, class_id: str) -> int | None:
-    row = (
-        db.session.query(Student.id)
-        .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
-        .join(Seat, Seat.id == IdentityProfile.seat_id)
-        .filter(Seat.id == seat_id, Seat.class_id == class_id)
-        .first()
-    )
-    return row[0] if row else None
 
 
 @dataclass
@@ -81,30 +67,24 @@ def _get_or_create_hall_pass_settings(*, class_id: str):
 
 def student_tap(
     *,
-    student_id: int,
     seat_id: int,
     class_id: str,
-    period: str,
     status: str,
     reason: str | None = None,
     reason_code: AttendanceReasonCode | None = None,
     timestamp_utc=None,
-    join_code: str | None = None,
 ) -> AttendanceSession:
     """Create or close canonical attendance sessions and update live state."""
     event_time = timestamp_utc or utc_now()
     state = SeatAttendanceState.query.filter_by(
         seat_id=seat_id,
         class_id=class_id,
-        period=period,
     ).first()
 
     if status == "active":
         session = AttendanceSession(
-            student_id=student_id,
             seat_id=seat_id,
             class_id=class_id,
-            period=period,
             started_at=event_time,
             start_reason=reason,
             created_at=event_time,
@@ -114,13 +94,10 @@ def student_tap(
         db.session.flush()
         if not state:
             state = SeatAttendanceState(
-                student_id=student_id,
                 seat_id=seat_id,
                 class_id=class_id,
-                period=period,
             )
             db.session.add(state)
-        state.student_id = student_id
         state.is_active = True
         state.open_session_id = session.id
         state.last_event_at = event_time
@@ -139,7 +116,6 @@ def student_tap(
             AttendanceSession.query.filter_by(
                 seat_id=seat_id,
                 class_id=class_id,
-                period=period,
                 ended_at=None,
             )
             .order_by(AttendanceSession.started_at.desc(), AttendanceSession.id.desc())
@@ -157,10 +133,8 @@ def student_tap(
         session = open_session
     else:
         session = AttendanceSession(
-            student_id=student_id,
             seat_id=seat_id,
             class_id=class_id,
-            period=period,
             started_at=event_time,
             ended_at=event_time,
             duration_seconds=0,
@@ -175,13 +149,10 @@ def student_tap(
 
     if not state:
         state = SeatAttendanceState(
-            student_id=student_id,
             seat_id=seat_id,
             class_id=class_id,
-            period=period,
         )
         db.session.add(state)
-    state.student_id = student_id
     state.is_active = False
     state.open_session_id = None
     state.last_event_at = event_time
@@ -197,7 +168,6 @@ def request_hall_pass(
     student,
     seat_id: int,
     class_id: str,
-    period: str,
     reason: str,
     now_utc=None,
 ) -> HallPassLog:
@@ -207,7 +177,6 @@ def request_hall_pass(
         seat_id=seat_id,
         class_id=class_id,
         reason=reason,
-        period=period,
         status="pending",
         request_time=now_utc or utc_now(),
     )
@@ -218,31 +187,22 @@ def request_hall_pass(
 
 def get_or_create_attendance_state(
     *,
-    student_id: int,
     seat_id: int,
     class_id: str,
-    period: str,
     tap_enabled: bool = True,
 ) -> SeatAttendanceState:
-    """Get or create canonical attendance state for one seat/class/period."""
+    """Get or create canonical attendance state for one seat/class."""
     state = SeatAttendanceState.query.filter_by(
         seat_id=seat_id,
         class_id=class_id,
-        period=period,
     ).first()
     if state:
         return state
-
-    resolved_student_id = student_id or _resolve_student_id_for_seat(seat_id=seat_id, class_id=class_id)
-    if not resolved_student_id:
-        raise PermissionError("Student block not found or access denied.")
 
     try:
         state = SeatAttendanceState(
             seat_id=seat_id,
             class_id=class_id,
-            period=period,
-            student_id=resolved_student_id,
             tap_enabled=tap_enabled,
         )
         db.session.add(state)
@@ -253,19 +213,15 @@ def get_or_create_attendance_state(
         return SeatAttendanceState.query.filter_by(
             seat_id=seat_id,
             class_id=class_id,
-            period=period,
         ).first()
 
 
 def apply_standard_tap_mutations(
     *,
-    student,
     seat_id: int,
     class_id: str,
-    period: str,
     normalized_action: str,
     reason: str | None,
-    valid_periods: list[str],
     now_utc=None,
     logger=None,
 ) -> None:
@@ -274,50 +230,20 @@ def apply_standard_tap_mutations(
     status = "active" if normalized_action == "start_work" else "inactive"
 
     if normalized_action == "start_work":
-        for other_period in valid_periods:
-            if other_period == period:
-                continue
-            other_state = SeatAttendanceState.query.filter_by(
-                seat_id=seat_id,
-                class_id=class_id,
-                period=other_period,
-            ).first()
-            if other_state and other_state.is_active:
-                student_tap(
-                    student_id=student.id,
-                    seat_id=seat_id,
-                    class_id=class_id,
-                    period=other_period,
-                    status="inactive",
-                    reason="auto_switch",
-                    timestamp_utc=now,
-                )
-                if logger:
-                    logger.info(
-                        "Auto-tapped out seat %s from period %s when tapping into %s",
-                        seat_id,
-                        other_period,
-                        period,
-                    )
-
-    if normalized_action == "start_work":
         active_hall_pass = HallPassLog.query.filter_by(
             seat_id=seat_id,
             class_id=class_id,
-            period=period,
             status="left",
         ).order_by(HallPassLog.request_time.desc()).first()
         if active_hall_pass:
             active_hall_pass.status = "returned"
             active_hall_pass.return_time = now
             if logger:
-                logger.info("Auto-returned hall pass %s for student %s", active_hall_pass.id, student.id)
+                logger.info("Auto-returned hall pass %s for seat %s", active_hall_pass.id, seat_id)
 
     student_tap(
-        student_id=student.id,
         seat_id=seat_id,
         class_id=class_id,
-        period=period,
         status=status,
         reason=reason,
         timestamp_utc=now,
@@ -326,27 +252,25 @@ def apply_standard_tap_mutations(
     att_state = SeatAttendanceState.query.filter_by(
         seat_id=seat_id,
         class_id=class_id,
-        period=period,
     ).first()
 
     today_local = get_class_now(class_id, reference_time_utc=now).date()
     if att_state and att_state.done_for_day_date and att_state.done_for_day_date != today_local:
         att_state.done_for_day_date = None
         if logger:
-            logger.info("Cleared done_for_day_date for seat %s in period %s (new day)", seat_id, period)
+            logger.info("Cleared done_for_day_date for seat %s (new day)", seat_id)
 
     if normalized_action == "stop_work" and att_state:
         if reason and reason.lower() in ["done", "done for the day"]:
             att_state.done_for_day_date = today_local
             if logger:
-                logger.info("Seat %s marked as done for the day in period %s", seat_id, period)
+                logger.info("Seat %s marked as done for the day", seat_id)
         elif att_state.done_for_day_date is not None:
             att_state.done_for_day_date = None
             if logger:
                 logger.info(
-                    "Cleared done_for_day_date for seat %s in period %s (reason: %s)",
+                    "Cleared done_for_day_date for seat %s (reason: %s)",
                     seat_id,
-                    period,
                     reason,
                 )
 
@@ -405,10 +329,8 @@ def leave_hall_pass(*, log_entry: HallPassLog, now_utc=None) -> HallPassMutation
     log_entry.status = "left"
     log_entry.left_time = now
     student_tap(
-        student_id=log_entry.student_id,
         seat_id=log_entry.seat_id,
         class_id=log_entry.class_id,
-        period=log_entry.period,
         status="inactive",
         reason=log_entry.reason,
         timestamp_utc=now,
@@ -424,10 +346,8 @@ def return_hall_pass(*, log_entry: HallPassLog, now_utc=None) -> HallPassMutatio
     log_entry.status = "returned"
     log_entry.return_time = now
     student_tap(
-        student_id=log_entry.student_id,
         seat_id=log_entry.seat_id,
         class_id=log_entry.class_id,
-        period=log_entry.period,
         status="active",
         reason="Return from hall pass",
         timestamp_utc=now,
@@ -460,10 +380,8 @@ def checkout_hall_pass(*, student, log_entry: HallPassLog, now_utc=None) -> Hall
     log_entry.status = "left"
     log_entry.left_time = now
     student_tap(
-        student_id=student.id,
         seat_id=resolved_seat_id,
         class_id=resolved_class_id,
-        period=log_entry.period,
         status="inactive",
         reason=log_entry.reason,
         timestamp_utc=now,
@@ -491,10 +409,8 @@ def checkin_hall_pass(*, student, log_entry: HallPassLog, now_utc=None) -> HallP
     log_entry.status = "returned"
     log_entry.return_time = now
     student_tap(
-        student_id=student.id,
         seat_id=resolved_seat_id,
         class_id=resolved_class_id,
-        period=log_entry.period,
         status="active",
         reason="Returned from hall pass",
         timestamp_utc=now,
@@ -547,16 +463,17 @@ def _check_simultaneous_pass_limit(*, log_entry: HallPassLog):
 
 def check_start_work_daily_limit(
     *,
-    student_id: int,
     seat_id: int,
     class_id: str,
-    period: str,
     now_utc=None,
     logger=None,
 ) -> TapGuardResult:
     """Read-only daily-limit guard for tap start_work requests."""
     now = now_utc or utc_now()
-    daily_limit = get_daily_limit_seconds(period, class_id=class_id)
+    from app.models import ClassEconomy
+    class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+    section = class_row.section if class_row else None
+    daily_limit = get_daily_limit_seconds(section, class_id=class_id) if section else None
     if not daily_limit:
         return TapGuardResult(allowed=True)
 
@@ -564,7 +481,6 @@ def check_start_work_daily_limit(
     today_attendance = calculate_period_attendance_utc_range(
         seat_id,
         class_id,
-        period,
         start_of_day_utc,
         end_of_day_utc,
     )
@@ -574,14 +490,13 @@ def check_start_work_daily_limit(
     hours_limit = daily_limit / 3600.0
     if logger:
         logger.warning(
-            "Student %s attempted to tap in for %s but reached daily limit of %.1f hours",
-            student_id,
-            period,
+            "Seat %s attempted to tap in but reached daily limit of %.1f hours",
+            seat_id,
             hours_limit,
         )
     return TapGuardResult(
         allowed=False,
-        message=f"Daily limit of {hours_limit:.1f} hours reached for this period. Please try again tomorrow.",
+        message=f"Daily limit of {hours_limit:.1f} hours reached. Please try again tomorrow.",
         status_code=400,
     )
 
@@ -590,7 +505,6 @@ def check_hall_pass_request_policy(
     *,
     student,
     class_id: str,
-    period: str,
     reason: str,
     now_utc=None,
 ) -> HallPassRequestGuardResult:
@@ -673,119 +587,100 @@ def check_hall_pass_request_policy(
     )
 
 
-def enforce_daily_limits(*, student, commit: bool = True, logger=None):
-    """Canonical daily-limit enforcement for one student across class-scoped seats."""
-    student_blocks = [b.strip() for b in student.block.split(",") if b.strip()]
-    now_utc = utc_now()
+def enforce_daily_limits(*, seat_id: int, class_id: str, commit: bool = True, logger=None):
+    """Canonical daily-limit enforcement for one seat/class."""
+    now = utc_now()
     log = logger
 
-    for block_original in student_blocks:
-        period_upper = block_original.upper()
-        seat = Seat.query.filter_by(
-            student_id=student.id,
-            block=block_original,
-        ).filter(Seat.claimed_at.isnot(None)).first()
-        if not seat or not seat.class_id:
-            continue
+    from app.models import ClassEconomy
+    seat = db.session.get(Seat, seat_id)
+    if not seat or not seat.class_id:
+        return
 
-        class_id = seat.class_id
-        seat_id = seat.id
-        start_of_day_utc, end_of_day_utc = get_class_today_range(class_id, reference_time_utc=now_utc)
-        today_local = get_class_now(class_id, reference_time_utc=now_utc).date()
+    class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
+    section = class_row.section if class_row else None
+    start_of_day_utc, end_of_day_utc = get_class_today_range(class_id, reference_time_utc=now)
+    today_local = get_class_now(class_id, reference_time_utc=now).date()
 
-        state = SeatAttendanceState.query.filter_by(
+    state = SeatAttendanceState.query.filter_by(
+        seat_id=seat_id,
+        class_id=class_id,
+    ).first()
+    if not state or not state.is_active:
+        if commit:
+            db.session.flush()
+        return
+
+    daily_limit = get_daily_limit_seconds(section, class_id=class_id) if section else None
+    if not daily_limit:
+        if commit:
+            db.session.flush()
+        return
+
+    today_attendance = calculate_period_attendance_utc_range(
+        seat_id,
+        class_id,
+        start_of_day_utc,
+        end_of_day_utc,
+    )
+
+    if today_attendance < daily_limit:
+        if commit:
+            db.session.flush()
+        return
+
+    hours_limit = daily_limit / 3600.0
+
+    existing_limit_tapout = AttendanceSession.query.filter(
+        AttendanceSession.seat_id == seat_id,
+        AttendanceSession.class_id == class_id,
+        AttendanceSession.ended_at >= start_of_day_utc,
+        AttendanceSession.ended_at < end_of_day_utc,
+        AttendanceSession.end_reason_code == AttendanceReasonCode.DAILY_LIMIT,
+    ).first()
+    if existing_limit_tapout:
+        if log:
+            log.debug(
+                "Skipping duplicate auto-tap-out for seat %s - already exists at %s",
+                seat_id,
+                existing_limit_tapout.ended_at,
+            )
+        if commit:
+            db.session.flush()
+        return
+
+    if log:
+        log.info(
+            "Auto-tapping out seat %s - daily limit of %.1f hours reached (total: %.2fh)",
+            seat_id,
+            hours_limit,
+            today_attendance / 3600.0,
+        )
+
+    overage_seconds = today_attendance - daily_limit
+    tapout_timestamp = now - timedelta(seconds=overage_seconds)
+
+    student_tap(
+        seat_id=seat_id,
+        class_id=class_id,
+        status="inactive",
+        reason=f"Daily limit ({hours_limit:.1f}h) reached",
+        timestamp_utc=tapout_timestamp,
+        reason_code=AttendanceReasonCode.DAILY_LIMIT,
+    )
+
+    state = SeatAttendanceState.query.filter_by(
+        seat_id=seat_id,
+        class_id=class_id,
+    ).first()
+    if not state:
+        state = SeatAttendanceState(
             seat_id=seat_id,
             class_id=class_id,
-            period=period_upper,
-        ).first()
-        if not state or not state.is_active:
-            continue
-
-        daily_limit = get_daily_limit_seconds(block_original, class_id=class_id)
-        if not daily_limit:
-            continue
-
-        today_attendance = calculate_period_attendance_utc_range(
-            seat_id,
-            class_id,
-            period_upper,
-            start_of_day_utc,
-            end_of_day_utc,
+            tap_enabled=True,
         )
-
-        if today_attendance < daily_limit:
-            continue
-
-        hours_limit = daily_limit / 3600.0
-        resolved_class_id = class_id
-        resolved_seat_id = get_seat_id_for_class(student.id, resolved_class_id) if resolved_class_id else None
-        if not resolved_seat_id or not resolved_class_id:
-            if log:
-                log.warning(
-                    "Unable to resolve V2 identity for student %s in period %s for auto-tap-out.",
-                    student.id,
-                    period_upper,
-                )
-            continue
-
-        existing_limit_tapout = AttendanceSession.query.filter(
-            AttendanceSession.seat_id == resolved_seat_id,
-            AttendanceSession.class_id == resolved_class_id,
-            AttendanceSession.period == period_upper,
-            AttendanceSession.ended_at >= start_of_day_utc,
-            AttendanceSession.ended_at < end_of_day_utc,
-            AttendanceSession.end_reason_code == AttendanceReasonCode.DAILY_LIMIT,
-        ).first()
-        if existing_limit_tapout:
-            if log:
-                log.debug(
-                    "Skipping duplicate auto-tap-out for seat %s in %s - already exists at %s",
-                    resolved_seat_id,
-                    period_upper,
-                    existing_limit_tapout.ended_at,
-                )
-            continue
-
-        if log:
-            log.info(
-                "Auto-tapping out seat %s from %s - daily limit of %.1f hours reached (total: %.2fh)",
-                resolved_seat_id,
-                period_upper,
-                hours_limit,
-                today_attendance / 3600.0,
-            )
-
-        overage_seconds = today_attendance - daily_limit
-        tapout_timestamp = now_utc - timedelta(seconds=overage_seconds)
-
-        class_row = ClassEconomy.query.filter_by(class_id=resolved_class_id).first()
-        join_code = class_row.join_code if class_row else None
-        student_tap(
-            student_id=student.id,
-            seat_id=resolved_seat_id,
-            class_id=resolved_class_id,
-            period=period_upper,
-            status="inactive",
-            reason=f"Daily limit ({hours_limit:.1f}h) reached",
-            timestamp_utc=tapout_timestamp,
-            reason_code=AttendanceReasonCode.DAILY_LIMIT,
-        )
-
-        state = SeatAttendanceState.query.filter_by(
-            seat_id=resolved_seat_id,
-            class_id=resolved_class_id,
-            period=period_upper,
-        ).first()
-        if not state:
-            state = SeatAttendanceState(
-                seat_id=resolved_seat_id,
-                class_id=resolved_class_id,
-                student_id=student.id,
-                period=period_upper,
-                tap_enabled=True,
-            )
-            db.session.add(state)
-        state.done_for_day_date = today_local
+        db.session.add(state)
+    state.done_for_day_date = today_local
 
     if commit:
         db.session.flush()
@@ -805,29 +700,21 @@ def set_attendance_state_tap_enabled(
     *,
     seat_id: int,
     class_id: str,
-    period: str,
     tap_enabled: bool,
 ) -> SeatAttendanceState:
-    """Set tap_enabled for a canonical seat/class/period block row."""
+    """Set tap_enabled for a canonical seat/class row."""
     state = SeatAttendanceState.query.filter_by(
         seat_id=seat_id,
         class_id=class_id,
-        period=period,
     ).first()
     if state:
         state.tap_enabled = tap_enabled
         db.session.flush()
         return state
 
-    resolved_student_id = _resolve_student_id_for_seat(seat_id=seat_id, class_id=class_id)
-    if not resolved_student_id:
-        raise PermissionError("Student block not found or access denied.")
-
     state = SeatAttendanceState(
         seat_id=seat_id,
         class_id=class_id,
-        student_id=resolved_student_id,
-        period=period,
         tap_enabled=tap_enabled,
     )
     db.session.add(state)
@@ -835,24 +722,20 @@ def set_attendance_state_tap_enabled(
         db.session.flush()
     except IntegrityError as exc:
         db.session.rollback()
-        raise PermissionError("Student block not found or access denied.") from exc
+        raise PermissionError("Seat not found or access denied.") from exc
     return state
 
 
 def admin_tap_out(
     *,
-    student_id: int,
     seat_id: int,
     class_id: str,
-    period: str,
     reason: str | None = None,
     now_utc=None,
 ) -> AttendanceSession:
     return student_tap(
-        student_id=student_id,
         seat_id=seat_id,
         class_id=class_id,
-        period=period,
         status="inactive",
         reason=reason,
         timestamp_utc=now_utc or utc_now(),
@@ -861,18 +744,14 @@ def admin_tap_out(
 
 def admin_tap_in(
     *,
-    student_id: int,
     seat_id: int,
     class_id: str,
-    period: str,
     reason: str | None = None,
     now_utc=None,
 ) -> AttendanceSession:
     return student_tap(
-        student_id=student_id,
         seat_id=seat_id,
         class_id=class_id,
-        period=period,
         status="active",
         reason=reason,
         timestamp_utc=now_utc or utc_now(),

@@ -4,6 +4,7 @@ from app.extensions import db
 from app.models import Admin, PayrollSettings, Seat, User, UserRole
 from app.utils.auth_username import build_hashed_username_fields
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.v2_fixtures import make_admin
 
 
@@ -26,11 +27,14 @@ def _login_canonical_admin(client, admin: Admin, user: User, *, class_id: str, j
     with client.session_transaction() as sess:
         sess["is_admin"] = True
         sess["admin_id"] = admin.id
-        sess["user_id"] = user.id
-        sess["current_seat_id"] = teacher_seat.id
-        sess["current_class_id"] = class_id
-        sess["current_join_code"] = join_code
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=user.id,
+            class_id=class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
+            join_code=join_code,
+        )
 
 
 def test_payroll_settings_update_persists_class_scoped_row(client):

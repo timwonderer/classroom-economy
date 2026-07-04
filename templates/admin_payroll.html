@@ -348,7 +348,7 @@
                 <td>
                   {% if record.student %}
                   <a
-                    href="{{ student_detail_url(record.student_id) }}">
+                    href="{{ student_detail_url(record.actor_public_id) }}">
                     {{ record.student.full_name }}
                   </a>
                   {% else %}
@@ -446,7 +446,7 @@
                 <td>
                   {% if entry.student %}
                   <a
-                    href="{{ student_detail_url(entry.student_id) }}">
+                    href="{{ student_detail_url(entry.actor_public_id) }}">
                     {{ entry.student_name }}
                   </a>
                   {% else %}
@@ -985,9 +985,9 @@
                 <tbody>
                   {% if all_students %}
                   {% for student in all_students %}
-                  <tr class="student-row" data-blocks="{{ student.block }}" data-student-id="{{ student.id }}">
+                  <tr class="student-row" data-blocks="{{ student.block }}" data-student-id="{{ student.public_id }}">
                     <td>
-                      <input class="form-check-input student-checkbox" type="checkbox" value="{{ student.id }}"
+                      <input class="form-check-input student-checkbox" type="checkbox" value="{{ student.public_id }}"
                         data-blocks="{{ student.block }}">
                     </td>
                     <td>

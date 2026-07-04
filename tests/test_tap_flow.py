@@ -1,10 +1,12 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
-from app import db, Student
+from app import db
 from werkzeug.security import generate_password_hash
 from app.hash_utils import hash_username, hash_username_lookup, get_random_salt
 from bs4 import BeautifulSoup
 import json
 from datetime import datetime, timezone
+from tests.helpers.canonical_session import set_canonical_context
+from tests.helpers.class_scope import make_student_identity
 
 def login(client, username, pin):
     return client.post('/student/login', data={'username': username, 'pin': pin})
@@ -53,7 +55,7 @@ def create_claimed_seat(teacher_id, student_id, block, join_code, salt=None, use
     elif not identity_user.last_active_class_id:
         identity_user.last_active_class_id = class_economy.class_id
 
-    tb = Seat(student_id=student_id, class_id=class_economy.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    tb = Seat(user_id=identity_user.id, class_id=class_economy.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(tb)
 
@@ -84,26 +86,16 @@ def test_dynamic_blocks_and_tap_flow(client):
     db.session.flush()
 
     # 1. Create a two-block student
-    salt = get_random_salt()
     username = "t1"
-    stu = Student(
-        first_name="Test",
-        last_initial="S",
-        block="A,C",
-        salt=salt,
-        username_hash=hash_username(username, salt),
-        pin_hash=generate_password_hash("0000"),
-    )
-    db.session.add(stu)
-    db.session.flush()
+    stu = make_student_identity(block="A,C", first_name="Test", last_name="S")
 
     # Link student to teacher via StudentTeacher
-    st = StudentTeacher(user_id=stu_user.id, teacher_id=teacher.id)
+    st = StudentTeacher(user_id=stu.user_id, teacher_id=teacher.id)
     db.session.add(st)
 
     # Create TeacherBlocks for the student (required for join_code context)
-    create_claimed_seat(teacher.id, stu.id, "A", "JOIN-A", salt, username=username, pin="0000")
-    create_claimed_seat(teacher.id, stu.id, "C", "JOIN-C", salt)
+    create_claimed_seat(teacher.id, stu.id, "A", "JOIN-A", username=username, pin="0000")
+    create_claimed_seat(teacher.id, stu.id, "C", "JOIN-C")
 
     db.session.commit()
 
@@ -143,23 +135,13 @@ def test_invalid_period_and_action(client):
     db.session.flush()
 
     # Set up student and log in
-    salt = get_random_salt()
     username = "t2"
-    stu = Student(
-        first_name="Test",
-        last_initial="S",
-        block="A",
-        salt=salt,
-        username_hash=hash_username(username, salt),
-        pin_hash=generate_password_hash("0000"),
-    )
-    db.session.add(stu)
-    db.session.flush()
+    stu = make_student_identity(block="A", first_name="Test", last_name="S")
 
-    db.session.add(StudentTeacher(user_id=stu_user.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=stu.user_id, teacher_id=teacher.id))
 
     # Create TeacherBlock
-    create_claimed_seat(teacher.id, stu.id, "A", "JOIN-T2", salt, username=username, pin="0000")
+    create_claimed_seat(teacher.id, stu.id, "A", "JOIN-T2", username=username, pin="0000")
 
     db.session.commit()
     login(client, username, "0000")
@@ -184,25 +166,15 @@ def test_server_state_json(client):
 
     # Ensure serverState JSON matches interactions
     # Create and log in student
-    salt = get_random_salt()
     username = "t3"
-    stu = Student(
-        first_name="Test",
-        last_initial="S",
-        block="A",
-        salt=salt,
-        username_hash=hash_username(username, salt),
-        pin_hash=generate_password_hash("0000"),
-    )
-    db.session.add(stu)
-    db.session.flush()
+    stu = make_student_identity(block="A", first_name="Test", last_name="S")
 
     # Link student to teacher via StudentTeacher
-    st = StudentTeacher(user_id=stu_user.id, teacher_id=teacher.id)
+    st = StudentTeacher(user_id=stu.user_id, teacher_id=teacher.id)
     db.session.add(st)
 
     # Create TeacherBlock
-    create_claimed_seat(teacher.id, stu.id, "A", "JOIN-A", salt, username=username, pin="0000")
+    create_claimed_seat(teacher.id, stu.id, "A", "JOIN-A", username=username, pin="0000")
 
     db.session.commit()
 
@@ -254,22 +226,12 @@ def test_auto_tapout_noops_without_canonical_seat_scope(client):
     db.session.add(ps)
 
     # 1. Create a student with a period
-    salt = get_random_salt()
     username = "legacy_test"
-    stu = Student(
-        first_name="Legacy",
-        last_initial="T",
-        block="A",
-        salt=salt,
-        username_hash=hash_username(username, salt),
-        pin_hash=generate_password_hash("0000"),
-    )
-    db.session.add(stu)
-    db.session.flush()
+    stu = make_student_identity(block="A", first_name="Legacy", last_name="T")
     
     # Link to teacher
     from app.models import StudentTeacher
-    st = StudentTeacher(user_id=stu_user.id, teacher_id=teacher.id)
+    st = StudentTeacher(user_id=stu.user_id, teacher_id=teacher.id)
     db.session.add(st)
     db.session.commit()
 
@@ -287,24 +249,14 @@ def test_student_status_get_is_read_only_and_reconcile_is_explicit_mutation(clie
     db.session.add(teacher)
     db.session.flush()
 
-    salt = get_random_salt()
     username = "status_student"
-    stu = Student(
-        first_name="Status",
-        last_initial="R",
-        block="A",
-        salt=salt,
-        username_hash=hash_username(username, salt),
-        pin_hash=generate_password_hash("0000"),
-    )
-    db.session.add(stu)
-    db.session.flush()
+    stu = make_student_identity(block="A", first_name="Status", last_name="R")
 
-    db.session.add(StudentTeacher(user_id=stu_user.id, teacher_id=teacher.id))
-    create_claimed_seat(teacher.id, stu.id, "A", "JOIN-A", salt, username=username, pin="0000")
+    db.session.add(StudentTeacher(user_id=stu.user_id, teacher_id=teacher.id))
+    create_claimed_seat(teacher.id, stu.id, "A", "JOIN-A", username=username, pin="0000")
     db.session.commit()
     class_row = ClassEconomy.query.filter_by(join_code="JOIN-A").first()
-    seat = Seat.query.filter_by(user_id=stu_user.id, class_id=class_row.class_id).first()
+    seat = Seat.query.filter_by(user_id=stu.user_id, class_id=class_row.class_id).first()
     assert class_row is not None
     assert seat is not None
     if not seat.claimed_at:
@@ -312,15 +264,14 @@ def test_student_status_get_is_read_only_and_reconcile_is_explicit_mutation(clie
         db.session.commit()
 
     with client.session_transaction() as sess:
-        now = datetime.now(timezone.utc).isoformat()
-        sess["student_id"] = stu.id
-        sess["current_seat_id"] = seat.id
-        sess["seat_id"] = seat.id
-        sess["current_class_id"] = class_row.class_id
-        sess["class_id"] = class_row.class_id
-        sess["current_join_code"] = "JOIN-A"
-        sess["login_time"] = now
-        sess["last_activity"] = now
+        set_canonical_context(
+            sess,
+            user_id=stu.user_id,
+            class_id=class_row.class_id,
+            seat_id=seat.id,
+            role="student",
+            join_code="JOIN-A",
+        )
 
     called = {"count": 0}
 

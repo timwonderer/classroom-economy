@@ -3,9 +3,10 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import uuid
 from datetime import datetime, timezone
 from app import db
-from app.models import AttendanceSession, ClassEconomy, Seat, SeatAttendanceState, User, UserRole, Student, StudentTeacher
+from app.models import AttendanceSession, ClassEconomy, Seat, SeatAttendanceState, User, UserRole, StudentTeacher
 from app.attendance import get_all_block_statuses
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.class_scope import make_student_identity
 
 def test_attendance_status_isolation(client):
     """
@@ -18,15 +19,8 @@ def test_attendance_status_isolation(client):
     db.session.add_all([t1, t2])
     db.session.commit()
 
-    # 2. Setup Student
-    student = Student(
-        first_name="Shared",
-        last_initial="S",
-        block="PERIOD 1",
-        salt=b'salt'
-    )
-    db.session.add(student)
-    db.session.commit()
+    # 2. Setup seat-scoped student identity
+    student = make_student_identity(first_name="Shared", last_name="S", block="PERIOD 1", claimed=True)
 
     # 3. Create Links & Seats
     db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=t1.id))
@@ -60,10 +54,8 @@ def test_attendance_status_isolation(client):
     class_t1 = ClassEconomy.query.filter_by(join_code="JC1").first()
     assert class_t1 is not None
     session = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_t1.class_id,
-        period="PERIOD 1",
         started_at=now,
     )
     db.session.add(session)
@@ -73,7 +65,6 @@ def test_attendance_status_isolation(client):
             user_id=student_user.id,
             seat_id=seat.id,
             class_id=class_t1.class_id,
-            period="PERIOD 1",
             is_active=True,
             open_session_id=session.id,
             last_event_at=now,

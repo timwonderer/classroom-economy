@@ -3,6 +3,7 @@ import pyotp
 from app import db
 from app.models import Admin, ClassEconomy, User, UserReport, UserRole
 from app.utils.auth_username import build_hashed_username_fields
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def _login_admin(client):
@@ -38,9 +39,14 @@ def _login_admin(client):
     with client.session_transaction() as sess:
         sess["admin_id"] = admin.id
         sess["is_admin"] = True
-        sess["user_id"] = user.id
-        sess["current_class_id"] = "help-support-class"
-        sess["current_join_code"] = "ELA123"
+        set_canonical_context(
+            sess,
+            user_id=user.id,
+            class_id="help-support-class",
+            seat_id=admin.user_id,
+            role="teacher",
+            join_code="ELA123",
+        )
 
 
 def test_help_support_page_renders(client):

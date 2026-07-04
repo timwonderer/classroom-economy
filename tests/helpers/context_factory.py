@@ -1,8 +1,7 @@
 """canonicalContextFactory — canonical v2 test fixture builder.
 
 Builds the full v2 identity chain: User → Seat → IdentityProfile.
-Legacy Admin/Student rows are still created as shadows where auth and
-compatibility routes require them, but seat ownership stays canonical.
+Seat ownership stays canonical; compatibility helpers resolve through Seat.
 
 Usage:
     ctx = canonicalContextFactory(db).build()
@@ -41,9 +40,6 @@ class StudentContext:
     profile: object    # IdentityProfile model instance
     join_code: str = ""
     class_id: str = ""
-    # Legacy shadow (hidden infrastructure for auth compatibility)
-    _legacy_student: object = None
-
     @property
     def seat_id(self):
         return self.seat.id
@@ -55,13 +51,15 @@ class StudentContext:
     def login(self, client):
         """Log this student into the test client session."""
         with client.session_transaction() as sess:
-            sess["user_id"] = self.user.id
-            sess["current_join_code"] = self.join_code
-            sess["current_class_id"] = self.class_id
-            sess["current_seat_id"] = self.seat.id
-            # Legacy keys still checked by login_required decorator
-            if self._legacy_student:
-                sess["student_id"] = self._legacy_student.id
+            from tests.helpers.canonical_session import set_canonical_context
+            set_canonical_context(
+                sess,
+                user_id=self.user.id,
+                class_id=self.class_id,
+                seat_id=self.seat.id,
+                role="student",
+                join_code=self.join_code,
+            )
 
 
 @dataclass
@@ -73,9 +71,6 @@ class ClassroomContext:
     teacher_seat: object     # Seat instance (user_id → teacher_user)
     teacher_profile: object  # IdentityProfile instance
     students: List[StudentContext] = field(default_factory=list)
-    # Legacy shadow (hidden infrastructure for ClassEconomy FK + auth compat)
-    _legacy_admin: object = None
-
     @property
     def class_id(self):
         return self.economy.class_id
@@ -86,17 +81,15 @@ class ClassroomContext:
 
     @property
     def teacher_id(self):
-        """Legacy admin ID — only for compatibility with routes that still need it."""
-        return self._legacy_admin.id if self._legacy_admin else None
+        return None
 
     def add_student(self, first_name="Test", last_name="Student", **kwargs):
         """Add a student to this class with full v2 wiring.
 
         Returns a StudentContext with .user, .seat, .profile attributes.
         """
-        from app.models import User, Student, Seat, IdentityProfile, UserRole
+        from app.models import User, Seat, IdentityProfile, UserRole
         from app.utils.auth_username import build_hashed_username_fields
-        from app.hash_utils import hash_username, get_random_salt
 
         idx = len(self.students) + 1
         username = kwargs.pop("username", f"student_{self.join_code}_{idx}")
@@ -133,25 +126,12 @@ class ClassroomContext:
         self.db.session.add(profile)
         self.db.session.flush()
 
-        # 4. Legacy Student shadow (auth decorators still expect a Student row)
-        salt = get_random_salt()
-        legacy_student = Student(
-            identity_profile=profile,
-            block=kwargs.pop("block", "A"),
-            salt=salt,
-            username_hash=hash_username(username, salt),
-            pin_hash="fake-hash",
-        )
-        self.db.session.add(legacy_student)
-        self.db.session.flush()
-
         sc = StudentContext(
             user=user,
             seat=seat,
             profile=profile,
             join_code=self.join_code,
             class_id=self.class_id,
-            _legacy_student=legacy_student,
         )
         self.students.append(sc)
         return sc
@@ -159,15 +139,15 @@ class ClassroomContext:
     def login_teacher(self, client):
         """Log the teacher into the test client session for this class."""
         with client.session_transaction() as sess:
-            sess["user_id"] = self.teacher_user.id
-            sess["is_admin"] = True
-            sess["current_join_code"] = self.join_code
-            sess["current_class_id"] = self.class_id
-            sess["current_seat_id"] = self.teacher_seat.id
-            sess["last_activity"] = datetime.now(timezone.utc).isoformat()
-            # Legacy compatibility key for older login fixtures
-            if self._legacy_admin:
-                sess["admin_id"] = self._legacy_admin.id
+            from tests.helpers.canonical_session import set_canonical_context
+            set_canonical_context(
+                sess,
+                user_id=self.teacher_user.id,
+                class_id=self.class_id,
+                seat_id=self.teacher_seat.id,
+                role="teacher",
+                join_code=self.join_code,
+            )
 
     def commit(self):
         """Commit the current session."""
@@ -208,7 +188,6 @@ class ClassroomContextFactory:
         from app.models import (
             Admin, User, ClassEconomy, Seat, IdentityProfile, UserRole,
         )
-        from tests.helpers.v2_fixtures import make_admin
         from app.utils.auth_username import build_hashed_username_fields
 
         uname = f"teacher_{uuid.uuid4().hex[:8]}"
@@ -221,14 +200,6 @@ class ClassroomContextFactory:
             username_lookup_hash=u_lookup,
         )
         self._db.session.add(teacher_user)
-        self._db.session.flush()
-
-        # Legacy Admin shadow (auth compatibility only)
-        legacy_admin = make_admin(
-            username=uname,
-            totp_secret="JBSWY3DPEHPK3PXP",
-        )
-        self._db.session.add(legacy_admin)
         self._db.session.flush()
 
         # 2. ClassEconomy
@@ -277,7 +248,6 @@ class ClassroomContextFactory:
             economy=economy,
             teacher_seat=teacher_seat,
             teacher_profile=teacher_profile,
-            _legacy_admin=legacy_admin,
         )
 
         # 5. Named students

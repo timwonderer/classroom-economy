@@ -5,8 +5,6 @@ from app.models import (
     HallPassLog,
     SeatAttendanceState,
     Seat,
-    IdentityProfile,
-    Student,
 )
 from app.utils.time import ensure_utc, get_class_now
 
@@ -28,13 +26,12 @@ def _calculate_unpaid_from_sessions(session_rows, now_utc, last_payroll_time):
     return int(max(0, total_seconds))
 
 
-def calculate_unpaid_attendance_seconds(seat_id: int, class_id: str, period: str, last_payroll_time):
+def calculate_unpaid_attendance_seconds(seat_id: int, class_id: str, last_payroll_time):
     """Calculate unpaid attendance from a caller-supplied payroll anchor."""
     now_utc = get_class_now(class_id)
     canonical_rows = AttendanceSession.query.filter(
         AttendanceSession.seat_id == seat_id,
         AttendanceSession.class_id == class_id,
-        AttendanceSession.period == period,
     ).order_by(AttendanceSession.started_at.asc()).all()
     return _calculate_unpaid_from_sessions(canonical_rows, now_utc, last_payroll_time)
 
@@ -44,19 +41,12 @@ def get_all_block_statuses(student, *, class_id: str, payroll_anchor_by_class_id
     if not class_id:
         raise ValueError("get_all_block_statuses requires class_id.")
 
-    from app.models import User
-
-    claimed_seats = (
-        Seat.query
-        .join(User, User.id == Seat.user_id)
-        .join(Student, Student.username_hash == User.username_hash)
-        .filter(
-            Student.id == student.id,
-            Seat.class_id == class_id,
-            Seat.role == 'student',
-            Seat.claimed_at.isnot(None),
-        ).all()
-    )
+    claimed_seats = Seat.query.filter(
+        Seat.user_id == getattr(student, "id", None),
+        Seat.class_id == class_id,
+        Seat.role == 'student',
+        Seat.claimed_at.isnot(None),
+    ).all()
     student_blocks = [seat.block.strip() for seat in claimed_seats if seat.block]
 
     period_states = {}
@@ -72,7 +62,6 @@ def get_all_block_statuses(student, *, class_id: str, payroll_anchor_by_class_id
         state = SeatAttendanceState.query.filter_by(
             seat_id=seat_id,
             class_id=class_id,
-            period=blk,
         ).first()
         is_active = state.is_active if state else False
 
@@ -83,14 +72,12 @@ def get_all_block_statuses(student, *, class_id: str, payroll_anchor_by_class_id
         duration = calculate_unpaid_attendance_seconds(
             seat_id,
             class_id,
-            blk,
             payroll_anchor_by_class_id.get(class_id),
         )
 
         active_pass = HallPassLog.query.filter_by(
             seat_id=seat_id,
             class_id=class_id,
-            period=blk
         ).filter(
             HallPassLog.status.in_(["pending", "approved", "left", "rejected"])
         ).order_by(HallPassLog.request_time.desc()).first()

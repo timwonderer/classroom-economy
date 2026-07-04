@@ -14,8 +14,9 @@ import os
 from werkzeug.security import generate_password_hash
 
 from app import db
-from app.models import User, UserRole, Admin, Student, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus, Seat, IdentityProfile
-from app.hash_utils import get_random_salt, hash_username
+from app.models import User, UserRole, Admin, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus, Seat, IdentityProfile, StudentTeacher
+from tests.helpers.class_scope import make_student_identity
+from tests.helpers.canonical_session import set_canonical_context
 
 
 @pytest.fixture
@@ -25,25 +26,15 @@ def setup_rent_with_items(client):
     db.session.add(teacher)
     db.session.commit()
 
-    salt = get_random_salt()
-    student = Student(
-        first_name="Test",
-        last_initial="S",
+    student_seat = make_student_identity(
+        join_code="TESTA",
         block="A",
-        salt=salt,
-        username_hash=hash_username("teststudent", salt),
-        pin_hash=generate_password_hash("1234")
+        first_name="Test",
+        last_name="S",
     )
-    db.session.add(student)
+    db.session.add(StudentTeacher(user_id=student_seat.user_id, teacher_id=teacher.id))
     db.session.commit()
 
-    # Link student to teacher
-    from app.models import User, UserRole, StudentTeacher
-    st = StudentTeacher(user_id=student_user.id, teacher_id=teacher.id)
-    db.session.add(st)
-    db.session.commit()
-
-    # Create ClassEconomy first for FK constraint
     economy = ClassEconomy(
         join_code="TESTA",
         user_id=teacher.id,
@@ -54,25 +45,7 @@ def setup_rent_with_items(client):
     db.session.add(economy)
     db.session.flush()
 
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    seat = Seat(user_id=student_user.id, join_code="TESTA", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-
-    db.session.add(seat)
-
-    db.session.flush()
-
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Test", last_initial="S"))
-    db.session.add(seat)
-    db.session.add(Seat(
-        user_id=student_user.id,
-        class_id=economy.class_id,
-        join_code="TESTA",
-        block="A",
-        role="student",
-    ))
+    student_seat.class_id = economy.class_id
     db.session.commit()
 
     # Create rent settings (join-code scoped)
@@ -113,7 +86,7 @@ def setup_rent_with_items(client):
 
     return {
         'teacher': teacher,
-        'student': student,
+        'student': student_seat,
         'rent_settings': rent_settings,
         'items': [item1, item2],
         'join_code': "TESTA"
@@ -125,9 +98,14 @@ def test_rent_items_display_before_due_date(client, setup_rent_with_items):
     data = setup_rent_with_items
     
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+        set_canonical_context(
+            sess,
+            user_id=data['student'].user_id,
+            class_id=data['student'].class_id,
+            seat_id=data['student'].id,
+            role="student",
+            join_code=data['join_code'],
+        )
 
     response = client.get('/student/rent')
     assert response.status_code == 200
@@ -149,9 +127,14 @@ def test_rent_items_display_after_due_date(client, setup_rent_with_items):
     db.session.commit()
     
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+        set_canonical_context(
+            sess,
+            user_id=data['student'].user_id,
+            class_id=data['student'].class_id,
+            seat_id=data['student'].id,
+            role="student",
+            join_code=data['join_code'],
+        )
 
     response = client.get('/student/rent')
     assert response.status_code == 200
@@ -188,9 +171,14 @@ def test_overdue_rent_payment_uses_coverage_month_in_transaction_description(cli
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
 
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+        set_canonical_context(
+            sess,
+            user_id=data['student'].user_id,
+            class_id=data['student'].class_id,
+            seat_id=data['student'].id,
+            role="student",
+            join_code=data['join_code'],
+        )
 
     response = client.post('/student/rent/pay/A', follow_redirects=False)
     assert response.status_code == 302
@@ -221,9 +209,14 @@ def test_overdue_current_period_does_not_show_future_due_countdown(client, setup
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
 
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+        set_canonical_context(
+            sess,
+            user_id=data['student'].user_id,
+            class_id=data['student'].class_id,
+            seat_id=data['student'].id,
+            role="student",
+            join_code=data['join_code'],
+        )
 
     response = client.get('/student/rent')
     assert response.status_code == 200
@@ -242,9 +235,14 @@ def test_days_until_due_calculation(client, setup_rent_with_items):
     db.session.commit()
     
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+        set_canonical_context(
+            sess,
+            user_id=data['student'].user_id,
+            class_id=data['student'].class_id,
+            seat_id=data['student'].id,
+            role="student",
+            join_code=data['join_code'],
+        )
 
     response = client.get('/student/rent')
     assert response.status_code == 200
@@ -267,9 +265,14 @@ def test_status_text_more_than_7_days(client, setup_rent_with_items):
     db.session.commit()
     
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+        set_canonical_context(
+            sess,
+            user_id=data['student'].user_id,
+            class_id=data['student'].class_id,
+            seat_id=data['student'].id,
+            role="student",
+            join_code=data['join_code'],
+        )
 
     response = client.get('/student/rent')
     assert response.status_code == 200
@@ -289,9 +292,14 @@ def test_status_text_between_3_and_7_days(client, setup_rent_with_items):
     db.session.commit()
     
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+        set_canonical_context(
+            sess,
+            user_id=data['student'].user_id,
+            class_id=data['student'].class_id,
+            seat_id=data['student'].id,
+            role="student",
+            join_code=data['join_code'],
+        )
 
     response = client.get('/student/rent')
     assert response.status_code == 200
@@ -310,9 +318,14 @@ def test_status_text_within_2_days(client, setup_rent_with_items):
     db.session.commit()
     
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+        set_canonical_context(
+            sess,
+            user_id=data['student'].user_id,
+            class_id=data['student'].class_id,
+            seat_id=data['student'].id,
+            role="student",
+            join_code=data['join_code'],
+        )
 
     response = client.get('/student/rent')
     assert response.status_code == 200
@@ -333,9 +346,14 @@ def test_status_text_past_due(client, setup_rent_with_items):
     db.session.commit()
     
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+        set_canonical_context(
+            sess,
+            user_id=data['student'].user_id,
+            class_id=data['student'].class_id,
+            seat_id=data['student'].id,
+            role="student",
+            join_code=data['join_code'],
+        )
 
     response = client.get('/student/rent')
     assert response.status_code == 200
@@ -353,9 +371,14 @@ def test_status_text_due_today(client, setup_rent_with_items):
     db.session.commit()
     
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+        set_canonical_context(
+            sess,
+            user_id=data['student'].user_id,
+            class_id=data['student'].class_id,
+            seat_id=data['student'].id,
+            role="student",
+            join_code=data['join_code'],
+        )
 
     response = client.get('/student/rent')
     assert response.status_code == 200
@@ -377,9 +400,14 @@ def test_status_text_no_rent_yet(client, setup_rent_with_items):
     db.session.commit()
     
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+        set_canonical_context(
+            sess,
+            user_id=data['student'].user_id,
+            class_id=data['student'].class_id,
+            seat_id=data['student'].id,
+            role="student",
+            join_code=data['join_code'],
+        )
 
     response = client.get('/student/rent')
     assert response.status_code == 200
@@ -393,9 +421,14 @@ def test_rent_items_show_store_availability(client, setup_rent_with_items):
     data = setup_rent_with_items
     
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+        set_canonical_context(
+            sess,
+            user_id=data['student'].user_id,
+            class_id=data['student'].class_id,
+            seat_id=data['student'].id,
+            role="student",
+            join_code=data['join_code'],
+        )
 
     response = client.get('/student/rent')
     assert response.status_code == 200
@@ -418,9 +451,14 @@ def test_incremental_rent_form_shows_even_when_full_balance_is_short(client, set
     db.session.commit()
 
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
-        sess['current_join_code'] = data['join_code']
+        set_canonical_context(
+            sess,
+            user_id=data['student'].user_id,
+            class_id=data['student'].class_id,
+            seat_id=data['student'].id,
+            role="student",
+            join_code=data['join_code'],
+        )
 
     response = client.get('/student/rent')
     assert response.status_code == 200

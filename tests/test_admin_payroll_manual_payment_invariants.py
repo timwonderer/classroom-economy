@@ -4,6 +4,7 @@ from app.extensions import db
 from tests.helpers.v2_fixtures import make_admin
 from tests.helpers.class_scope import create_class_scope
 from app.models import ClassFeature, Seat
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def test_payroll_scope_missing_class_id_raises_invariant(client):
@@ -37,7 +38,15 @@ def test_payroll_scope_missing_seat_id_raises_invariant(client):
 
     with client.application.test_request_context('/admin/payroll/manual-payment?block=1'):
         from flask import session
-        session["current_class_id"] = class_scope.class_id
+        teacher_seat = Seat.query.filter_by(class_id=class_scope.class_id, role="teacher").first()
+        assert teacher_seat is not None
+        set_canonical_context(
+            session,
+            user_id=teacher_seat.user_id,
+            class_id=class_scope.class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
+        )
 
         # Invoking the helper directly proves seat_id is required
         with pytest.raises(InvariantViolation) as excinfo:
@@ -63,8 +72,13 @@ def test_payroll_scope_seat_not_found_raises_invariant(client):
 
     with client.application.test_request_context('/admin/payroll/manual-payment?block=1'):
         from flask import session
-        session["current_class_id"] = class_scope.class_id
-        session["current_seat_id"] = 999999  # Non-existent seat
+        set_canonical_context(
+            session,
+            user_id=teacher.id,
+            class_id=class_scope.class_id,
+            seat_id=999999,
+            role="teacher",
+        )
 
         with pytest.raises(InvariantViolation) as excinfo:
             _require_payroll_feature_scope_from_request()
@@ -88,8 +102,13 @@ def test_payroll_scope_seat_class_mismatch_raises_invariant(client):
 
     with client.application.test_request_context('/admin/payroll/manual-payment?block=1'):
         from flask import session
-        session["current_class_id"] = class_b.class_id  # Request Class B context
-        session["current_seat_id"] = seat_a.id  # Pass Seat A (from Class A)
+        set_canonical_context(
+            session,
+            user_id=teacher.id,
+            class_id=class_b.class_id,
+            seat_id=seat_a.id,
+            role="teacher",
+        )
 
         with pytest.raises(InvariantViolation) as excinfo:
             _require_payroll_feature_scope_from_request()
@@ -117,8 +136,13 @@ def test_payroll_scope_student_seat_insufficient_authority(client):
 
     with client.application.test_request_context('/admin/payroll/manual-payment?block=1'):
         from flask import session
-        session["current_class_id"] = class_scope.class_id
-        session["current_seat_id"] = student_seat.id
+        set_canonical_context(
+            session,
+            user_id=teacher.user_id,
+            class_id=class_scope.class_id,
+            seat_id=student_seat.id,
+            role="student",
+        )
 
         with pytest.raises(InvariantViolation) as excinfo:
             _require_payroll_feature_scope_from_request()
@@ -142,13 +166,17 @@ def test_payroll_scope_resolves_active_teacher_seat(client):
         from flask import session
         session['admin_id'] = teacher.id
         session['is_admin'] = True
-        session['current_join_code'] = "CLSA01"
-        session['current_class_id'] = class_a.class_id
-
         # Retrieve the seat_a for class_a to pass/mock in the session
         seat_a = Seat.query.filter_by(role='teacher', class_id=class_a.class_id).first()
         assert seat_a is not None
-        session['current_seat_id'] = seat_a.id
+        set_canonical_context(
+            session,
+            user_id=teacher.user_id,
+            class_id=class_a.class_id,
+            seat_id=seat_a.id,
+            role="teacher",
+            join_code="CLSA01",
+        )
 
         # Call the helper
         scope = _require_payroll_feature_scope_from_request()

@@ -3,7 +3,8 @@ from datetime import datetime, timezone
 from flask import g
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, ClassEconomy, ClassMembership, Seat, Student, StudentTeacher, AttendanceSession, IdentityProfile, User
+from app.models import Admin, ClassEconomy, ClassMembership, Seat, StudentTeacher, AttendanceSession, IdentityProfile, User, UserRole
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def _login_admin(client, admin_id, join_code):
@@ -16,14 +17,19 @@ def _login_admin(client, admin_id, join_code):
     with client.session_transaction() as sess:
         sess["is_admin"] = True
         sess["admin_id"] = admin_id
-        if user:
-            sess["user_id"] = user.id
-        sess["current_join_code"] = join_code
-        if economy and economy.class_id:
-            sess["current_class_id"] = economy.class_id
-        else:
-            sess.pop("current_class_id", None)
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+        if user and economy and economy.class_id:
+            teacher_seat = Seat.query.filter_by(class_id=economy.class_id, role="teacher").first()
+            if teacher_seat:
+                set_canonical_context(
+                    sess,
+                    user_id=user.id,
+                    class_id=economy.class_id,
+                    seat_id=teacher_seat.id,
+                    role="teacher",
+                    join_code=join_code,
+                )
+        elif join_code:
+            sess["current_join_code"] = join_code
 
 
 def _setup_shared_student_with_split_membership():
@@ -38,8 +44,12 @@ def _setup_shared_student_with_split_membership():
     db.session.add_all([user_a, user_b])
     db.session.flush()
 
-    student = Student(first_name="Tap", last_initial="S", block="A", salt=b"salt")
-    db.session.add(student)
+    student_user = User(user_role=UserRole.STUDENT, username_hash="tap_student_hash", username_lookup_hash="tap_student_lookup")
+    db.session.add(student_user)
+    db.session.flush()
+
+    profile = IdentityProfile(profile_type="student", first_name="Tap", last_initial="S")
+    db.session.add(profile)
     db.session.flush()
 
     class_a = ClassEconomy(join_code="TAPA01", user_id=admin_a.id, status="active", created_by_admin_id=admin_a.id)
@@ -47,7 +57,19 @@ def _setup_shared_student_with_split_membership():
     db.session.add_all([class_a, class_b])
     db.session.flush()
 
-    # Shared student-teacher association but student class membership only in TAPB01.
+    seat = Seat(
+        user_id=student_user.id,
+        class_id=class_b.class_id,
+        join_code="TAPB01",
+        role="student",
+        block_identifier="A",
+        block="A",
+        claimed_at=datetime.now(timezone.utc),
+    )
+    db.session.add(seat)
+    db.session.flush()
+    profile.seat_id = seat.id
+
     db.session.add_all([
         StudentTeacher(user_id=student_user.id, teacher_id=admin_a.id),
         StudentTeacher(user_id=student_user.id, teacher_id=admin_b.id),
@@ -56,68 +78,34 @@ def _setup_shared_student_with_split_membership():
         ClassMembership(join_code="TAPB01", class_id=class_b.class_id, user_id=student_user.id, role="student"),
     ])
     db.session.flush()
-    seat = Seat.query.filter_by(
-        user_id=student_user.id,
-        join_code="TAPB01",
-    ).first()
-    if not seat:
-        # Auto-injected Canonical User
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-        db.session.add(student_user)
-        db.session.flush()
-        seat = Seat(user_id=student_user.id, class_id=class_b.class_id, join_code="TAPB01", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-        db.session.add(seat)
-        db.session.flush()
-        db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name=student.first_name, last_initial=student.last_initial))
-        db.session.add(seat)
-        db.session.flush()
-
-    seat_row = Seat.query.filter_by(user_id=student_user.id, class_id=seat.class_id).first()
-    if not seat_row:
-        # Auto-injected Canonical User
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-        db.session.add(student_user)
-        db.session.flush()
-        seat_row = Seat(
-            user_id=student_user.id,
-            class_id=seat.class_id,
-            join_code="TAPB01",
-            role="student",
-            block_identifier="A",
-            block="A",
-        )
-        db.session.add(seat_row)
-        db.session.flush()
 
     tap_event = AttendanceSession(
-        user_id=student_user.id,
-        seat_id=seat_row.id,
+        seat_id=seat.id,
         class_id=seat.class_id,
-        period="A",
         started_at=datetime.now(timezone.utc),
     )
     db.session.add(tap_event)
     db.session.commit()
-    return admin_a, admin_b, student, tap_event
+    return admin_a, admin_b, seat, tap_event
 
 
 def test_get_tap_entries_requires_student_in_current_join_code(client):
-    admin_a, admin_b, student, _event = _setup_shared_student_with_split_membership()
+    admin_a, admin_b, seat, _event = _setup_shared_student_with_split_membership()
 
     _login_admin(client, admin_a.id, "TAPA01")
-    denied = client.get(f"/api/admin/tap-entries/{student.id}")
+    denied = client.get(f"/api/admin/tap-entries/{seat.id}")
     assert denied.status_code == 404
 
     _login_admin(client, admin_b.id, "TAPB01")
-    allowed = client.get(f"/api/admin/tap-entries/{student.id}")
+    allowed = client.get(f"/api/admin/tap-entries/{seat.id}")
     assert allowed.status_code == 200
     data = allowed.get_json()
-    assert data["student_id"] == student.id
+    assert data["student_id"] == seat.id
     assert "A" in data["periods"]
 
 
 def test_delete_tap_entry_rejects_cross_join_code_context(client):
-    admin_a, admin_b, _student, event = _setup_shared_student_with_split_membership()
+    admin_a, admin_b, _seat, event = _setup_shared_student_with_split_membership()
 
     _login_admin(client, admin_a.id, "TAPA01")
     denied = client.delete(f"/api/admin/tap-entries/{event.id}")

@@ -3,9 +3,9 @@ from typing import TYPE_CHECKING
 from app.utils.time import utc_now, ensure_utc
 
 if TYPE_CHECKING:
-    from app.models import Student
+    from app.models import Seat
 
-def check_financial_cooldown(student: Student) -> tuple[bool, str]:
+def check_financial_cooldown(student: Seat) -> tuple[bool, str]:
     """
     Checks if a student is under a financial cooldown.
     Returns (is_allowed, message).

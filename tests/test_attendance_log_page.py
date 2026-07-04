@@ -2,11 +2,13 @@
 Tests for the attendance log page to ensure it renders with proper context.
 """
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone
 from app import db
-from app.models import Admin, Student, AttendanceSession, StudentTeacher, ClassEconomy, ClassMembership, Seat, User
+from app.models import Admin, AttendanceSession, StudentTeacher, ClassEconomy, ClassMembership, Seat, User, UserRole, IdentityProfile
 from app.hash_utils import hash_username, get_random_salt
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def _create_user_for_admin(admin):
@@ -42,68 +44,27 @@ def admin_with_data(client):
     db.session.add(ClassMembership(class_id=class_row.class_id, join_code="ATTLOG1", admin_id=admin.id, role="admin"))
 
     # Create students with blocks
-    salt1 = get_random_salt()
-    student1 = Student(
-        username_hash=hash_username('student1', salt1),
-        salt=salt1,
-        first_name='Test',
-        last_initial='T',
-        pin_hash='hashed_pin',
-        block='PERIOD1'
-    )
-    salt2 = get_random_salt()
-    student2 = Student(
-        username_hash=hash_username('student2', salt2),
-        salt=salt2,
-        first_name='Student',
-        last_initial='S',
-        pin_hash='hashed_pin',
-        block='PERIOD3'
-    )
-    db.session.add_all([student1, student2])
-    db.session.flush()
-
-    # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
-    db.session.add(StudentTeacher(user_id=student1_user.id, teacher_id=admin.id))
-    db.session.add(StudentTeacher(user_id=student2_user.id, teacher_id=admin.id))
-    db.session.flush()
-
-    # Create seats
-    # Auto-injected Canonical User
-    student1_user = User(username_hash=f"auto_{student1.id}", username_lookup_hash=f"auto_l_{student1.id}", user_role=UserRole.STUDENT)
-    db.session.add(student1_user)
-    db.session.flush()
-    seat1 = Seat(user_id=student1_user.id, class_id=class_row.class_id, join_code="ATTLOG1", block="PERIOD1", role="student")
-    # Auto-injected Canonical User
-    student2_user = User(username_hash=f"auto_{student2.id}", username_lookup_hash=f"auto_l_{student2.id}", user_role=UserRole.STUDENT)
-    db.session.add(student2_user)
-    db.session.flush()
-    seat2 = Seat(user_id=student2_user.id, class_id=class_row.class_id, join_code="ATTLOG1", block="PERIOD3", role="student")
-    db.session.add_all([seat1, seat2])
-    db.session.flush()
+    seat1 = make_student_identity(block='PERIOD1', first_name='Test', last_name='T', class_id=class_row.class_id, join_code="ATTLOG1")
+    seat2 = make_student_identity(block='PERIOD3', first_name='Student', last_name='S', class_id=class_row.class_id, join_code="ATTLOG1")
+    student1 = seat1
+    student2 = seat2
 
     # Create attendance sessions with different periods
     tap1 = AttendanceSession(
-        user_id=student1_user.id,
         seat_id=seat1.id,
         class_id=class_row.class_id,
-        period='PERIOD1',
         started_at=datetime.now(timezone.utc),
     )
     tap2 = AttendanceSession(
-        user_id=student1_user.id,
         seat_id=seat1.id,
         class_id=class_row.class_id,
-        period='PERIOD2',
         started_at=datetime.now(timezone.utc),
         ended_at=datetime.now(timezone.utc),
         duration_seconds=0,
     )
     tap3 = AttendanceSession(
-        user_id=student2_user.id,
         seat_id=seat2.id,
         class_id=class_row.class_id,
-        period='PERIOD3',
         started_at=datetime.now(timezone.utc),
     )
     db.session.add_all([tap1, tap2, tap3])
@@ -127,10 +88,14 @@ def test_attendance_log_page_renders_with_periods_and_blocks(client, admin_with_
     with client.session_transaction() as sess:
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
-        sess['user_id'] = admin_with_data['user'].id
-        sess['current_class_id'] = admin_with_data['class_id']
-        sess['current_join_code'] = admin_with_data['join_code']
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=admin_with_data['user'].id,
+            class_id=admin_with_data['class_id'],
+            seat_id=admin_with_data['seat'].id if admin_with_data.get('seat') else admin_with_data['user'].id,
+            role="teacher",
+            join_code=admin_with_data['join_code'],
+        )
 
     # Access the attendance log page
     response = client.get('/admin/attendance-log')
@@ -160,7 +125,6 @@ def test_attendance_log_page_with_no_data(client):
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
         sess['user_id'] = user.id
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 
     # Access the attendance log page
     response = client.get('/admin/attendance-log')
@@ -192,34 +156,10 @@ def test_attendance_log_tenant_scoping(client):
     db.session.add(ClassMembership(class_id=class2.class_id, join_code="ADM2CLS", admin_id=admin2.id, role="admin"))
 
     # Create students for each admin
-    salt1 = get_random_salt()
-    student1 = Student(
-        username_hash=hash_username('student1', salt1),
-        salt=salt1,
-        first_name='Student1',
-        last_initial='S',
-        pin_hash='hash1',
-        block='ADM1PER'
-    )
-    salt2 = get_random_salt()
-    student2 = Student(
-        username_hash=hash_username('student2', salt2),
-        salt=salt2,
-        first_name='Student2',
-        last_initial='S',
-        pin_hash='hash2',
-        block='ADM2PER'
-    )
-    db.session.add_all([student1, student2])
-    db.session.flush()
-
-    # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
-    db.session.add(StudentTeacher(user_id=student1_user.id, teacher_id=admin1.id))
-    db.session.add(StudentTeacher(user_id=student2_user.id, teacher_id=admin2.id))
-    db.session.flush()
+    student1 = make_student_identity(block='ADM1PER', first_name='Student1', last_name='S')
+    student2 = make_student_identity(block='ADM2PER', first_name='Student2', last_name='S')
 
     # Create seats
-    # Auto-injected Canonical User
     student1_user = User(username_hash=f"auto_{student1.id}", username_lookup_hash=f"auto_l_{student1.id}", user_role=UserRole.STUDENT)
     db.session.add(student1_user)
     db.session.flush()
@@ -234,17 +174,13 @@ def test_attendance_log_tenant_scoping(client):
 
     # Create attendance sessions
     tap1 = AttendanceSession(
-        user_id=student1_user.id,
         seat_id=seat1.id,
         class_id=class1.class_id,
-        period='ADM1PER',
         started_at=datetime.now(timezone.utc),
     )
     tap2 = AttendanceSession(
-        user_id=student2_user.id,
         seat_id=seat2.id,
         class_id=class2.class_id,
-        period='ADM2PER',
         started_at=datetime.now(timezone.utc),
     )
     db.session.add_all([tap1, tap2])
@@ -268,8 +204,14 @@ def test_attendance_log_tenant_scoping(client):
 
     # Verify tenant isolation via the attendance history API
     with client.session_transaction() as sess:
-        sess['current_class_id'] = class1.class_id
-        sess['current_join_code'] = "ADM1CLS"
+        set_canonical_context(
+            sess,
+            user_id=user1.id,
+            class_id=class1.class_id,
+            seat_id=Seat.query.filter_by(class_id=class1.class_id, role="teacher").first().id,
+            role="teacher",
+            join_code="ADM1CLS",
+        )
     api_response = client.get('/api/attendance/history')
     assert api_response.status_code == 200
     data = api_response.get_json()

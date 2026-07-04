@@ -65,6 +65,30 @@ def get_foreign_keys_by_column(table_name, column_name):
     except Exception:
         return []
 
+
+def get_foreign_keys_referencing_table(target_table):
+    conn = op.get_bind()
+    inspector = sa.inspect(conn)
+    refs = []
+    for table_name in inspector.get_table_names():
+        if table_name == target_table:
+            continue
+        try:
+            for fk in inspector.get_foreign_keys(table_name):
+                if fk.get('referred_table') == target_table and fk.get('name'):
+                    refs.append((table_name, fk['name']))
+        except Exception:
+            continue
+    return refs
+
+
+def drop_foreign_keys_referencing_table(target_table):
+    for table_name, fk_name in get_foreign_keys_referencing_table(target_table):
+        try:
+            op.drop_constraint(fk_name, table_name, type_='foreignkey')
+        except Exception:
+            pass
+
 # ============================================================================
 # MIGRATION FUNCTIONS
 # ============================================================================
@@ -86,6 +110,7 @@ def upgrade():
     if index_exists('student_blocks', 'ix_student_blocks_seat_id'):
         op.drop_index(op.f('ix_student_blocks_seat_id'), table_name='student_blocks')
     if table_exists('student_blocks'):
+        drop_foreign_keys_referencing_table('student_blocks')
         op.drop_table('student_blocks')
 
 

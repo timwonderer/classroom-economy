@@ -3,8 +3,9 @@ from datetime import datetime, timezone
 import pytest
 
 from app.extensions import db
-from app.models import ClassEconomy, ClassMembership, Seat, IdentityProfile, User, UserRole, Student, StudentTeacher, TapEvent
+from app.models import ClassEconomy, ClassMembership, Seat, IdentityProfile, User, UserRole, StudentTeacher, TapEvent
 from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.class_scope import make_student_identity
 
 
 def _setup_scoped_student(with_seat: bool = True):
@@ -33,8 +34,13 @@ def _setup_scoped_student(with_seat: bool = True):
     profile = IdentityProfile(profile_type="student", first_name="Tap", last_name="I")
     db.session.add(profile)
     db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b"salt")
-    db.session.add(student)
+    student = make_student_identity(first_name="Tap", last_name="I", block="A", claimed=True)
+    student_user = User(
+        username_hash=f"tap_{student.id}",
+        username_lookup_hash=f"tap_lookup_{student.id}",
+        user_role=UserRole.STUDENT,
+    )
+    db.session.add(student_user)
     db.session.flush()
 
     db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
@@ -49,10 +55,6 @@ def _setup_scoped_student(with_seat: bool = True):
 
     seat = None
     if with_seat:
-        # Auto-injected Canonical User
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-        db.session.add(student_user)
-        db.session.flush()
         seat = Seat(
             user_id=student_user.id,
             class_id=cls.class_id,
@@ -73,7 +75,7 @@ def test_tap_event_rejects_missing_class_id_and_seat_id():
 
     db.session.add(
         TapEvent(
-            student_id=student_id,
+            seat_id=seat.id if seat else None,
             period="A",
             status="active",
             timestamp=datetime.now(timezone.utc),
@@ -91,7 +93,7 @@ def test_tap_event_requires_seat_even_when_class_is_present():
 
     db.session.add(
         TapEvent(
-            student_id=student_id,
+            seat_id=seat.id if seat else None,
             class_id=class_id,
             period="A",
             status="active",

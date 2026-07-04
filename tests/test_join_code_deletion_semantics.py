@@ -3,9 +3,10 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.models import Seat, IdentityProfile, User, UserRole, Admin, ClassMembership, Student, StudentTeacher, Transaction, StoreItem, StoreItemBlock, StudentItem, IssueCategory, Issue
+from app.models import Seat, User, UserRole, Admin, ClassMembership, StudentTeacher, Transaction, StoreItem, StoreItemBlock, StudentItem, IssueCategory, Issue
 from app.hash_utils import get_random_salt, hash_hmac
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.class_scope import make_student_identity
 
 
 def _create_admin(username: str) -> tuple[Admin, str]:
@@ -16,39 +17,11 @@ def _create_admin(username: str) -> tuple[Admin, str]:
     return admin, secret
 
 
-def _create_student(teacher: Admin, first_name: str, block: str, join_code: str) -> Student:
-    salt = get_random_salt()
-    credential = f"{first_name[0].upper()}2025"
-    first_half_hash = hash_hmac(credential.encode(), salt)
-
-    student = Student(
-        first_name=first_name,
-        last_initial=first_name[0].upper(),
-        block=block,
-        salt=salt,
-        first_half_hash=first_half_hash,
-    )
-    db.session.add(student)
-    db.session.flush()
-
-    create_class_scope(
-        teacher=teacher,
-        join_code=join_code,
-        student=student,
-        block=block,
-        display_name=block,
-    )
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    _tb_seat = Seat(user_id=student_user.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(_tb_seat)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_initial=first_name[0].upper()))
+def _create_student(teacher: Admin, first_name: str, block: str, join_code: str):
+    seat = make_student_identity(first_name=first_name, last_name=first_name[0].upper(), block=block, join_code=join_code)
+    db.session.add(StudentTeacher(user_id=seat.user_id, teacher_id=teacher.id))
     db.session.commit()
-    return student
+    return seat
 
 
 def _login_admin(client, admin: Admin, secret: str):
@@ -69,7 +42,7 @@ def test_delete_student_removes_transactions(client):
     student = _create_student(teacher, "Alice", "A", "ARCHIVE1")
 
     tx = Transaction(
-        user_id=student_user.id,join_code="ARCHIVE1",
+        user_id=student.user_id,join_code="ARCHIVE1",
         amount=50,
         account_type="checking",
         description="Seed ledger entry",
@@ -87,7 +60,7 @@ def test_delete_student_removes_transactions(client):
     )
     assert response.status_code == 200
 
-    assert db.session.get(Student, student_id) is None
+    assert db.session.query(Seat).filter_by(user_id=student_id).first() is None
     assert db.session.get(Transaction, tx_id) is None
 
 
@@ -107,7 +80,7 @@ def test_deactivate_item_does_not_delete_transactions(client):
     db.session.add(StoreItemBlock(store_item_id=item.id, block="A"))
 
     tx = Transaction(
-        user_id=student_user.id,join_code="ITEMJC1",
+        user_id=student.user_id,join_code="ITEMJC1",
         amount=-10,
         account_type="checking",
         type="purchase",
@@ -208,8 +181,8 @@ def test_delete_join_code_removes_only_scoped_records(client):
     assert db.session.get(Issue, issue_id) is None
 
     # Student with only the deleted join_code is removed; student in other class remains.
-    assert db.session.get(Student, student_a_id) is None
-    assert db.session.get(Student, student_b_id) is not None
+    assert db.session.query(Seat).filter_by(user_id=student_a_id).first() is None
+    assert db.session.query(Seat).filter_by(user_id=student_b_id).first() is not None
 
     assert db.session.get(StoreItem, item_a_id) is None
     assert db.session.get(StoreItem, item_b_id) is not None

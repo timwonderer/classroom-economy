@@ -17,7 +17,7 @@ def enforce_daily_limits_job():
     Runs hourly to ensure limits are enforced even if students close their browser.
     """
     # Import here to avoid circular imports
-    from app.models import AttendanceSession, SeatAttendanceState, Student, AttendanceReasonCode
+    from app.models import AttendanceSession, SeatAttendanceState, AttendanceReasonCode
     from app.feats.attendance import enforce_daily_limits as feat_enforce_daily_limits
     from app.extensions import db
 
@@ -25,72 +25,54 @@ def enforce_daily_limits_job():
     logger.info("Starting scheduled auto tap-out enforcement job")
 
     try:
-        # Load all students into memory first to avoid named cursor issues
-        # yield_per() creates a server-side cursor that gets invalidated by commit()
-        students = Student.query.all()
+        # Find all active attendance states
+        active_states = SeatAttendanceState.query.filter_by(is_active=True).all()
         checked_count = 0
         tapped_out_count = 0
 
-        for student in students:
+        for state in active_states:
             try:
-                # Isolate each student in a savepoint so one failure doesn't
-                # discard successful mutations for prior students.
                 with db.session.begin_nested():
-                    # Get the student's current active sessions
-                    student_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
-                    has_active_session = False
+                    checked_count += 1
+                    seat_id = state.seat_id
+                    class_id = state.class_id
 
-                    for period in student_blocks:
-                        state = (
-                            SeatAttendanceState.query
-                            .filter_by(student_id=student.id, period=period)
-                            .order_by(SeatAttendanceState.updated_at.desc())
-                            .first()
+                    before_daily_limit_count = (
+                        AttendanceSession.query
+                        .filter(
+                            AttendanceSession.seat_id == seat_id,
+                            AttendanceSession.class_id == class_id,
+                            AttendanceSession.end_reason_code == AttendanceReasonCode.DAILY_LIMIT,
+                            AttendanceSession.ended_at.is_not(None),
                         )
+                        .count()
+                    )
 
-                        # If student is active, check their limit
-                        if state and state.is_active:
-                            has_active_session = True
-                            break
+                    feat_enforce_daily_limits(seat_id=seat_id, class_id=class_id, commit=False, logger=logger)
 
-                    if has_active_session:
-                        checked_count += 1
-                        # Compare canonical daily-limit session closures before/after.
-                        before_daily_limit_count = (
-                            AttendanceSession.query
-                            .filter(
-                                AttendanceSession.student_id == student.id,
-                                AttendanceSession.end_reason_code == AttendanceReasonCode.DAILY_LIMIT,
-                                AttendanceSession.ended_at.is_not(None),
-                            )
-                            .count()
+                    after_daily_limit_count = (
+                        AttendanceSession.query
+                        .filter(
+                            AttendanceSession.seat_id == seat_id,
+                            AttendanceSession.class_id == class_id,
+                            AttendanceSession.end_reason_code == AttendanceReasonCode.DAILY_LIMIT,
+                            AttendanceSession.ended_at.is_not(None),
                         )
+                        .count()
+                    )
 
-                        feat_enforce_daily_limits(student=student, commit=False, logger=logger)
-
-                        after_daily_limit_count = (
-                            AttendanceSession.query
-                            .filter(
-                                AttendanceSession.student_id == student.id,
-                                AttendanceSession.end_reason_code == AttendanceReasonCode.DAILY_LIMIT,
-                                AttendanceSession.ended_at.is_not(None),
-                            )
-                            .count()
+                    newly_closed = max(0, after_daily_limit_count - before_daily_limit_count)
+                    if newly_closed:
+                        tapped_out_count += newly_closed
+                        logger.info(
+                            "Auto-tapped out seat %s in class %s",
+                            seat_id,
+                            class_id,
                         )
-
-                        newly_closed = max(0, after_daily_limit_count - before_daily_limit_count)
-                        if newly_closed:
-                            tapped_out_count += newly_closed
-                            logger.info(
-                                "Auto-tapped out student %s (%s) in %s class sessions",
-                                student.id,
-                                student.full_name,
-                                newly_closed,
-                            )
             except Exception as e:
-                logger.error(f"Error checking student {student.id}: {e}", exc_info=True)
+                logger.error(f"Error checking seat {state.seat_id}: {e}", exc_info=True)
                 continue
-        logger.info(f"Auto tap-out job completed. Checked {checked_count} active students, tapped out {tapped_out_count}")
+        logger.info(f"Auto tap-out job completed. Checked {checked_count} active seats, tapped out {tapped_out_count}")
 
     except Exception as e:
         db.session.rollback()

@@ -20,7 +20,7 @@ from werkzeug.security import check_password_hash
 
 from app.extensions import db, limiter
 from app.models import (
-    Admin, Student, StoreItem, StorePurchase, Transaction, TransactionStatus, TapEvent, AttendanceSession,
+    Admin, StoreItem, StorePurchase, Transaction, TransactionStatus, TapEvent, AttendanceSession,
     AttendanceReasonCode, TapEventReasonCode, HallPassLog, HallPassSettings, InsuranceClaim, BankingSettings,
     StoreItemBlock, User,
     RedemptionAuditLog, RedemptionAuditAction, RedemptionAuditSource, _quantize_currency,
@@ -77,7 +77,6 @@ from app.services import store_service
 from app.utils.economy_policy import resolve_class_scope, resolve_feature_class, resolve_feature_class_for_class
 from app.utils.join_code import get_display_join_code
 from app.utils.overdraft import charge_overdraft_fee_if_needed
-from app.utils.seat_scope import get_seat_id_for_class
 from app.utils.transaction_idempotency import (
     MAX_IDEMPOTENCY_KEY_LENGTH,
     get_idempotent_transaction,
@@ -319,7 +318,7 @@ def _admin_has_class_scope(admin_id, class_id):
     ).scalar()
 
 
-def _apply_admin_class_scope(query, model, admin_id, accessible_student_ids_query=None):
+def _apply_admin_class_scope(query, model, admin_id):
     """Apply class_id tenant scoping. In V2, class_id is the primary anchor."""
     class_id_scope, has_class_scope = _get_teacher_class_scope(admin_id)
     if has_class_scope:
@@ -327,8 +326,6 @@ def _apply_admin_class_scope(query, model, admin_id, accessible_student_ids_quer
             model.class_id.isnot(None),
             model.class_id.in_(sa.select(class_id_scope)),
         )
-    if accessible_student_ids_query is not None:
-        return query.filter(model.student_id.in_(accessible_student_ids_query))
     return query
 
 
@@ -385,7 +382,7 @@ def _charge_overdraft_fee_if_needed(student, banking_settings, teacher_id, join_
     Returns (fee_charged, fee_amount) tuple.
 
     Args:
-        student: Student object
+        student: seat-scoped identity object
         banking_settings: BankingSettings object
         teacher_id: Teacher ID for multi-tenancy isolation
         join_code: Join code for multi-tenancy isolation
@@ -768,7 +765,7 @@ def use_item():
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
 
     user = db.session.get(User, context.user_id)
-    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first()
+    student = db.session.get(Seat, context.seat_id)
     
     if not user or not student:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401
@@ -787,7 +784,7 @@ def use_item():
     # 2. Get the student's item
     student_item = db.session.get(StorePurchase, student_item_id)
 
-    if not student_item or student_item.seat_id != student.seat_id:
+    if not student_item or student_item.seat_id != student.id:
         return jsonify({"status": "error", "message": "Invalid item."}), 404
 
     # Special handling for hall_pass items in inventory (legacy or bundle)
@@ -1149,11 +1146,11 @@ def _enforce_hall_pass_student_context(student, log_entry):
 def cancel_hall_pass(pass_id):
     """Allow students to cancel their pending hall pass request"""
     context = getattr(g, "canonical_context", None)
-    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first() if context else None
+    student = db.session.get(Seat, context.seat_id) if context else None
     log_entry = db.get_or_404(HallPassLog, pass_id)
 
     # Verify this pass belongs to the logged-in student
-    if log_entry.student_id != student.id:
+    if not student or log_entry.seat_id != student.id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
     context_error = _enforce_hall_pass_student_context(student, log_entry)
     if context_error:
@@ -1176,7 +1173,7 @@ def cancel_hall_pass(pass_id):
 def checkout_hall_pass():
     """Allow student to check out with their approved hall pass (replaces terminal use)"""
     context = getattr(g, "canonical_context", None)
-    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first() if context else None
+    student = db.session.get(Seat, context.seat_id) if context else None
     data = request.get_json()
     pass_id = data.get('pass_id')
     
@@ -1185,10 +1182,9 @@ def checkout_hall_pass():
     
     log_entry = db.get_or_404(HallPassLog, pass_id)
     current_app.logger.info(
-        "HALL_PASS_CHECKOUT_DEBUG: student_id=%s pass_id=%s pass_student_id=%s pass_seat_id=%s pass_class_id=%s pass_join_code=%s session_class_id=%s",
+        "HALL_PASS_CHECKOUT_DEBUG: student_id=%s pass_id=%s pass_seat_id=%s pass_class_id=%s pass_join_code=%s session_class_id=%s",
         getattr(student, "id", None),
         pass_id,
-        log_entry.student_id,
         log_entry.seat_id,
         log_entry.class_id,
         log_entry.join_code,
@@ -1196,7 +1192,7 @@ def checkout_hall_pass():
     )
     
     # Verify this pass belongs to the logged-in student
-    if log_entry.student_id != student.id:
+    if log_entry.seat_id != student.id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
     context_error = _enforce_hall_pass_student_context(student, log_entry)
     if context_error:
@@ -1244,7 +1240,7 @@ def checkout_hall_pass():
 def checkin_hall_pass():
     """Allow student to check in from their hall pass (replaces terminal return)"""
     context = getattr(g, "canonical_context", None)
-    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first() if context else None
+    student = db.session.get(Seat, context.seat_id) if context else None
     data = request.get_json()
     pass_id = data.get('pass_id')
     
@@ -1253,10 +1249,9 @@ def checkin_hall_pass():
     
     log_entry = db.get_or_404(HallPassLog, pass_id)
     current_app.logger.info(
-        "HALL_PASS_CHECKIN_DEBUG: student_id=%s pass_id=%s pass_student_id=%s pass_seat_id=%s pass_class_id=%s pass_join_code=%s session_class_id=%s",
+        "HALL_PASS_CHECKIN_DEBUG: student_id=%s pass_id=%s pass_seat_id=%s pass_class_id=%s pass_join_code=%s session_class_id=%s",
         getattr(student, "id", None),
         pass_id,
-        log_entry.student_id,
         log_entry.seat_id,
         log_entry.class_id,
         log_entry.join_code,
@@ -1264,7 +1259,7 @@ def checkin_hall_pass():
     )
     
     # Verify this pass belongs to the logged-in student
-    if log_entry.student_id != student.id:
+    if log_entry.seat_id != student.id:
         return jsonify({"status": "error", "message": "Unauthorized."}), 403
     context_error = _enforce_hall_pass_student_context(student, log_entry)
     if context_error:
@@ -1427,9 +1422,10 @@ def hall_pass_history():
         # Format records for response
         records_data = []
         for record in records:
+            seat = record.seat
             records_data.append({
                 "id": record.id,
-                "student_name": record.student.full_name if record.student else "Unknown",
+                "student_name": seat.identity_profile.full_name if seat and seat.identity_profile else "Unknown",
                 "period": record.period,
                 "reason": record.reason,
                 "status": record.status,
@@ -1752,7 +1748,6 @@ def attendance_history():
                     sa.and_(
                         duplicate_tap.seat_id == AttendanceSession.seat_id,
                         duplicate_tap.class_id == AttendanceSession.class_id,
-                        duplicate_tap.period == AttendanceSession.period,
                         duplicate_tap.started_at == AttendanceSession.started_at,
                         duplicate_tap.end_reason == AttendanceSession.end_reason,
                         duplicate_tap.is_deleted.is_(False),
@@ -1762,9 +1757,7 @@ def attendance_history():
             )
         ))
 
-        # Apply filters
-        if period:
-            query = query.filter(AttendanceSession.period == period)
+        # Apply filters (period filter removed — period is no longer on AttendanceSession)
 
         if status:
             if status == 'active':
@@ -1789,10 +1782,10 @@ def attendance_history():
                 return jsonify({"status": "error", "message": "Invalid end date format"}), 400
 
         from app.models import Seat
-        # Filter by block (need to join with Seat)
+        # Filter by block (join with Seat to match block_identifier)
         if block:
             query = query.join(Seat, AttendanceSession.seat_id == Seat.id)
-            query = query.filter(AttendanceSession.period == block)
+            query = query.filter(Seat.block == block)
 
         # Order by most recent first
         query = query.order_by(AttendanceSession.started_at.desc())
@@ -1886,7 +1879,7 @@ def handle_tap():
     current_app.logger.info(f"TAP DEBUG: Received data {safe_data}")
 
     context = getattr(g, "canonical_context", None)
-    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first() if context else None
+    student = db.session.get(Seat, context.seat_id) if context else None
 
     if not student:
         current_app.logger.warning("TAP ERROR: Unauthenticated tap attempt.")
@@ -1929,7 +1922,7 @@ def handle_tap():
         current_app.logger.warning("TAP ERROR: Missing class_id context for student_id=%s", student.id)
         return jsonify({"error": "Unable to resolve class context for this period."}), 400
 
-    seat_id = seat.id if seat and seat.class_id == class_id else get_seat_id_for_class(student.id, class_id)
+    seat_id = seat.id if seat and seat.class_id == class_id else (student.identity_profile.seat_id if student and student.identity_profile else None)
     if not seat_id:
         return jsonify({"error": "No seat assigned in this class."}), 403
 
@@ -1949,10 +1942,8 @@ def handle_tap():
 
     # --- Check if tap is enabled for this student in this period ---
     att_state = feat_get_or_create_attendance_state(
-        student_id=student.id,
         seat_id=seat_id,
         class_id=class_id,
-        period=period,
         tap_enabled=True,
     )
 
@@ -1966,7 +1957,6 @@ def handle_tap():
         att_state = SeatAttendanceState.query.filter_by(
             seat_id=seat_id,
             class_id=class_id,
-            period=period,
         ).first()
         done_date = att_state.done_for_day_date if att_state else None
         if done_date is not None and done_date < today_local:
@@ -1992,8 +1982,6 @@ def handle_tap():
             policy_guard = feat_check_hall_pass_request_policy(
                 student=student,
                 class_id=class_id,
-                join_code=join_code,
-                period=period,
                 reason=reason,
                 now_utc=now,
             )
@@ -2019,8 +2007,6 @@ def handle_tap():
                 student=student,
                 seat_id=seat_id,
                 class_id=class_id,
-                join_code=join_code,
-                period=period,
                 reason=reason,
                 now_utc=now,
             )
@@ -2029,7 +2015,7 @@ def handle_tap():
             # We need to return the current state to the UI.
             is_active = True
             last_payroll_time = get_last_payroll_time(seat_id=seat_id, class_id=class_id)
-            duration = calculate_unpaid_attendance_seconds(seat_id, class_id, period, last_payroll_time)
+            duration = calculate_unpaid_attendance_seconds(seat_id, class_id, last_payroll_time)
             rate_per_second = get_pay_rate_for_block(block_lookup.get(period, period), class_id=class_id)
             projected_pay = duration * rate_per_second
 
@@ -2056,12 +2042,11 @@ def handle_tap():
         latest_state = SeatAttendanceState.query.filter_by(
             seat_id=seat_id,
             class_id=class_id,
-            period=period,
         ).first()
         if latest_state and ((latest_state.is_active and status == "active") or (not latest_state.is_active and status == "inactive")):
-            current_app.logger.info(f"Duplicate {action} ignored for seat {seat_id} in period {period}")
+            current_app.logger.info(f"Duplicate {action} ignored for seat {seat_id}")
             last_payroll_time = get_last_payroll_time(seat_id=seat_id, class_id=class_id)
-            duration = calculate_unpaid_attendance_seconds(seat_id, class_id, period, last_payroll_time)
+            duration = calculate_unpaid_attendance_seconds(seat_id, class_id, last_payroll_time)
             db.session.flush() # FEAT-AUTHORIZED-SHELL
             return jsonify({
                 "status": "ok",
@@ -2071,10 +2056,8 @@ def handle_tap():
 
         if normalized_action == "start_work":
             daily_limit_guard = feat_check_start_work_daily_limit(
-                student_id=student.id,
                 seat_id=seat_id,
                 class_id=class_id,
-                period=period,
                 now_utc=now,
                 logger=current_app.logger,
             )
@@ -2082,15 +2065,10 @@ def handle_tap():
                 return jsonify({"error": daily_limit_guard.message}), daily_limit_guard.status_code
 
         feat_apply_standard_tap_mutations(
-            student=student,
-            student_block=student_block,
             seat_id=seat_id,
             class_id=class_id,
-            join_code=join_code,
-            period=period,
             normalized_action=normalized_action,
             reason=reason,
-            valid_periods=valid_periods,
             now_utc=now,
             logger=current_app.logger,
         )
@@ -2104,11 +2082,10 @@ def handle_tap():
     latest_state = SeatAttendanceState.query.filter_by(
         seat_id=seat_id,
         class_id=class_id,
-        period=period,
     ).first()
     is_active = latest_state.is_active if latest_state else False
     last_payroll_time = get_last_payroll_time(seat_id=seat_id, class_id=class_id)
-    duration = calculate_unpaid_attendance_seconds(seat_id, class_id, period, last_payroll_time)
+    duration = calculate_unpaid_attendance_seconds(seat_id, class_id, last_payroll_time)
 
     rate_per_second = get_pay_rate_for_block(block_lookup.get(period, period), class_id=class_id)
     projected_pay = duration * rate_per_second
@@ -2141,28 +2118,22 @@ def get_tap_entries(student_id):
     if not has_class_scope:
         return jsonify({"error": "Student not found or access denied"}), 404
 
-    from app.utils.seat_scope import get_seat_id_for_class
-    seat_id = get_seat_id_for_class(student_id, active_class_id)
-    if not seat_id:
+    student = db.session.get(Seat, student_id)
+    if not student or student.class_id != active_class_id:
         return jsonify({"error": "Student not found or access denied"}), 404
-
-    student = Student.query.filter_by(id=student_id).first()
-    if not student:
-        return jsonify({"error": "Student not found or access denied"}), 404
+    seat_id = student.id
 
     # Canonical attendance history is AttendanceSession scoped by seat_id + class_id.
     query = AttendanceSession.query.filter(
         AttendanceSession.seat_id == seat_id,
         AttendanceSession.class_id == active_class_id,
     )
-    events = query.order_by(AttendanceSession.period, AttendanceSession.started_at.asc()).all()
+    events = query.order_by(AttendanceSession.started_at.asc()).all()
 
-    # Group by period and validate pairing
-    periods = {}
+    # Build events list and validate pairing
+    events_list = []
     for event in events:
-        if event.period not in periods:
-            periods[event.period] = []
-        periods[event.period].append({
+        events_list.append({
             'id': event.id,
             'status': event.status,
             'timestamp': event.timestamp.isoformat() if event.timestamp else None,
@@ -2171,9 +2142,9 @@ def get_tap_entries(student_id):
             'deleted_at': event.deleted_at.isoformat() if event.deleted_at else None
         })
 
-    # Validate pairing for each period
+    # Validate pairing
     period_data = {}
-    for period, events_list in periods.items():
+    for period, events_list in {"_": events_list}.items():
         # Filter out deleted events for pairing validation
         active_events = [e for e in events_list if not e['is_deleted']]
 
@@ -2262,12 +2233,11 @@ def update_student_block_settings():
         return jsonify({"error": "Unauthorized"}), 401
 
     data = request.get_json()
-    student_id = data.get('student_id')
-    period = data.get('period', '').upper()
+    seat_id = data.get('seat_id')
     tap_enabled = data.get('tap_enabled')
 
-    if not student_id or not period or tap_enabled is None:
-        return jsonify({"error": "Missing required fields"}), 400
+    if not seat_id or tap_enabled is None:
+        return jsonify({"error": "Missing required fields (seat_id, tap_enabled)"}), 400
 
     active_class_id = context.class_id if context else None
     if not active_class_id:
@@ -2277,37 +2247,24 @@ def update_student_block_settings():
     if not has_class_scope:
         return jsonify({"error": "Unauthorized"}), 403
 
-    from app.utils.seat_scope import get_seat_id_for_class
-    seat_id = get_seat_id_for_class(student_id, active_class_id)
-    if not seat_id:
-        return jsonify({"error": "Student not found or access denied"}), 404
-
     seat = db.session.get(Seat, seat_id)
-    if not seat or not seat.claimed_at:
-        return jsonify({"error": "Student block not found or access denied"}), 403
-
-    seat_blocks = [b.strip().upper() for b in (seat.block or "").split(",") if b.strip()]
-    if period not in seat_blocks:
-        return jsonify({"error": "Student block not found or access denied"}), 403
-
-    class_id = active_class_id
+    if not seat or not seat.claimed_at or seat.class_id != active_class_id:
+        return jsonify({"error": "Seat not found or access denied"}), 403
 
     try:
         feat_set_attendance_state_tap_enabled(
             seat_id=seat_id,
-            class_id=class_id,
-            period=period,
+            class_id=active_class_id,
             tap_enabled=tap_enabled,
         )
     except PermissionError:
-        return jsonify({"error": "Student block not found or access denied"}), 403
+        return jsonify({"error": "Seat not found or access denied"}), 403
 
     current_app.logger.info(
-        "Admin %s set tap_enabled=%s for student %s period %s",
+        "Admin %s set tap_enabled=%s for seat %s",
         scoped_admin_id,
         tap_enabled,
-        student_id,
-        period,
+        seat_id,
     )
 
     return jsonify({
@@ -2316,27 +2273,29 @@ def update_student_block_settings():
     })
 
 
-def check_and_auto_tapout_if_limit_reached(student, commit=True):
+def check_and_auto_tapout_if_limit_reached(seat_id, class_id, commit=True):
     """
-    Checks if an active student has reached their daily limit and auto-taps them out.
+    Checks if an active seat has reached their daily limit and auto-taps them out.
     This function should be called periodically (e.g., during status checks).
     Daily limits reset at midnight in the effective class timezone.
-    
+
     Args:
-        student: Student model instance
+        seat_id: Seat ID
+        class_id: Class ID
         commit: Whether to commit the transaction immediately (default: True).
                 Set to False if calling in a loop to batch commits.
     """
     try:
         feat_enforce_daily_limits(
-            student=student,
+            seat_id=seat_id,
+            class_id=class_id,
             commit=commit,
             logger=current_app.logger,
         )
     except Exception as e:
         if commit:
             db.session.rollback()
-        current_app.logger.error(f"Failed to auto-tap-out student {student.id}: {e}")
+        current_app.logger.error(f"Failed to auto-tap-out seat {seat_id}: {e}")
         if not commit:
             raise
 
@@ -2350,7 +2309,7 @@ def student_status():
     if not context:
         return jsonify({"status": "error", "message": "No class selected."}), 400
 
-    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first()
+    student = db.session.get(Seat, context.seat_id)
 
     class_id = context.class_id
     if not class_id:
@@ -2380,11 +2339,7 @@ def reconcile_student_status():
     if not context:
         return jsonify({"status": "error", "message": "No class selected."}), 400
 
-    student = Student.query.join(IdentityProfile, IdentityProfile.id == Student.identity_id).filter(IdentityProfile.seat_id == context.seat_id).first()
-    if not student:
-        return jsonify({"status": "error", "message": "Student not found."}), 404
-
-    check_and_auto_tapout_if_limit_reached(student, commit=True)
+    check_and_auto_tapout_if_limit_reached(context.seat_id, context.class_id, commit=True)
     return jsonify({"status": "ok"})
 
 
@@ -2487,7 +2442,6 @@ def get_block_tap_settings():
         state = SeatAttendanceState.query.filter_by(
             seat_id=seat.id,
             class_id=class_id,
-            period=block,
         ).first()
         
         if state:
@@ -2524,45 +2478,36 @@ def update_block_tap_settings():
         return jsonify({"error": "Unauthorized"}), 403
     
     data = request.get_json()
-    block = data.get('block', '').strip().upper()
     tap_enabled = data.get('tap_enabled')
-    
-    if not block or tap_enabled is None:
-        return jsonify({"error": "Missing required fields"}), 400
-    
-    from app.models import Student
-    
+
+    if tap_enabled is None:
+        return jsonify({"error": "Missing required field: tap_enabled"}), 400
+
     try:
         class_id = active_class_id
-        
-        # Get all claimed seats in this block
-        all_seats = Seat.query.filter(
+
+        # Get all claimed seats in this class
+        seats = Seat.query.filter(
             Seat.class_id == class_id,
-            Seat.claimed_at.isnot(None)
+            Seat.role == 'student',
+            Seat.claimed_at.isnot(None),
         ).all()
-        
-        seats = [
-            s for s in all_seats
-            if block in [b.strip().upper() for b in (s.block or "").split(",") if b.strip()]
-        ]
 
         updated_count = 0
         for seat in seats:
-            # Strict v2 scope: seat_id + class_id + period must match.
             feat_set_attendance_state_tap_enabled(
                 seat_id=seat.id,
                 class_id=class_id,
-                period=block,
                 tap_enabled=tap_enabled,
             )
             updated_count += 1
 
         current_app.logger.info(
-            "Admin %s set tap_enabled=%s for %s students in block %s",
+            "Admin %s set tap_enabled=%s for %s seats in class %s",
             scoped_admin_id,
             tap_enabled,
             updated_count,
-            block,
+            class_id,
         )
         
         return jsonify({

@@ -10,11 +10,12 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from werkzeug.security import generate_password_hash
 from app import db
-from app.models import User, UserRole, Admin, Student, StudentBlock, Transaction, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, Transaction, Seat, IdentityProfile, ClassEconomy
 from app.hash_utils import hash_username, hash_username_lookup, get_random_salt
 from app.utils.name_utils import hash_last_name_parts
 from app.utils.claim_credentials import compute_primary_claim_hash
 from datetime import datetime, timezone
+from tests.helpers.class_scope import make_student_identity
 
 
 @pytest.fixture
@@ -25,55 +26,33 @@ def test_data(app):
         db.session.add(admin)
         db.session.commit()
 
+        class_row = ClassEconomy(join_code='FLOW2A', user_id=admin.id, display_name='Flow Reset Class')
+        db.session.add(class_row)
+        db.session.flush()
+
         salt = get_random_salt()
         dob_sum = 20100101
 
         last_name_hashes = hash_last_name_parts('TeacherLast', salt)
         first_half = compute_primary_claim_hash('F', dob_sum, salt)
 
-        # Auto-injected Canonical User
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-        db.session.add(student_user)
-        db.session.flush()
-        tb = Seat(join_code='FLOW2A', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
-
-        db.session.add(tb)
-
-        db.session.flush()
-
-        db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name='Admin', last_initial='F'))
-        db.session.add(tb)
-        db.session.commit()
-
         u_hash = hash_username('olduser', salt)
         ul_hash = hash_username_lookup('olduser')
         p_hash = generate_password_hash('1234')
         pp_hash = generate_password_hash('old-passphrase-word')
 
-        student = Student(
-            first_name='Flow',
-            last_initial='T',
-            block='A',
-            salt=salt,
-            username_hash=u_hash,
-            username_lookup_hash=ul_hash,
-            pin_hash=p_hash,
-            passphrase_hash=pp_hash,
-            has_completed_setup=True,
-            recovery_status='active',
-        )
+        student = make_student_identity(first_name='Flow', last_name='T', block='A', join_code='FLOW2A', class_id=class_row.class_id)
+        student.pin_hash = p_hash
+        student.passphrase_hash = pp_hash
+        student.has_completed_setup = True
+        student.recovery_status = 'active'
         db.session.add(student)
         db.session.commit()
 
-        tb.student_id = student.id
-        student.teachers.append(admin)
-
-        db.session.add(StudentBlock(
-            user_id=student_user.id, period='A', join_code='FLOW2A',
-        ))
+        seat = student
 
         tx = Transaction(
-            user_id=student_user.id,amount=100.0,
+            user_id=student.user_id,amount=100.0,
             type='deposit',
             description='Initial Balance',
             account_type='checking',
@@ -86,6 +65,7 @@ def test_data(app):
             'admin_id': admin.id,
             'student_id': student.id,
             'join_code': 'FLOW2A',
+            'seat_id': seat.id,
         }
 
 
@@ -116,7 +96,7 @@ def test_credential_reset_flow(client, test_data):
 
     # Retrieve the generated code from DB
     with client.application.app_context():
-        s = db.session.get(Student, student_id)
+        s = db.session.merge(test_data["student"])
         reset_code = s.reset_code
         assert reset_code is not None
         assert len(reset_code) == 8
@@ -127,7 +107,7 @@ def test_credential_reset_flow(client, test_data):
     assert reset_code.encode() in resp.data
     assert b"FLOW2A" in resp.data
 
-    # ── Step 3: Student enters join_code + reset_code ──
+    # ── Step 3: seat-scoped identity enters join_code + reset_code ──
     # (Clear admin session first)
     client.get('/logout')
 
@@ -140,7 +120,7 @@ def test_credential_reset_flow(client, test_data):
 
     # Verify state after lookup and before credentials are re-established.
     with client.application.app_context():
-        s = db.session.get(Student, student_id)
+        s = db.session.merge(test_data["student"])
         assert s.has_completed_setup is False
         assert s.username_hash is None
         assert s.pin_hash is None
@@ -166,7 +146,7 @@ def test_credential_reset_flow(client, test_data):
 
     # ── Step 5: Verify state after full recovery completion ──
     with client.application.app_context():
-        s = db.session.get(Student, student_id)
+        s = db.session.merge(test_data["student"])
 
         # student_id unchanged
         assert s.id == student_id
@@ -187,13 +167,13 @@ def test_credential_reset_flow(client, test_data):
 
         # Economic data preserved
         tx_count = Transaction.query.filter_by(
-            student_id=student_id, join_code=join_code,
+            user_id=student.user_id, join_code=join_code,
         ).count()
         assert tx_count == 1
 
         checking = sum(
             t.amount for t in Transaction.query.filter_by(
-                student_id=student_id,
+                user_id=student.user_id,
                 join_code=join_code,
                 account_type='checking',
             ).all()

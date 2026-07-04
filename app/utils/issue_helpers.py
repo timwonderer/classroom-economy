@@ -18,7 +18,6 @@ from app.models import (
     IssueStatusHistory,
     IssueResolutionAction,
     Transaction,
-    Student,
     ClassEconomy,
     Seat,
     IdentityProfile,
@@ -28,12 +27,23 @@ from app.services.tlcp import create_ticket_correlation_pack
 from app.feats.base import feat_shell
 
 
-def create_context_snapshot(student, class_id, related_transaction_id=None, related_record_type=None, related_record_id=None):
+def _resolve_actor_seat(actor):
+    if actor is None:
+        return None
+    if isinstance(actor, Seat):
+        return actor
+    identity_profile = getattr(actor, "identity_profile", None)
+    if identity_profile and getattr(identity_profile, "seat", None):
+        return identity_profile.seat
+    return getattr(actor, "seat", None)
+
+
+def create_context_snapshot(actor, class_id, related_transaction_id=None, related_record_type=None, related_record_id=None):
     """
     Create an immutable snapshot of system context for an issue.
 
     Args:
-        student: Student model instance
+        actor: Seat or legacy student-like instance with an identity_profile->seat path
         class_id: Canonical class ID (UUID)
         related_transaction_id: Optional transaction ID for transaction-specific issues
         related_record_type: Optional record type ('transaction', 'tap_event', etc.)
@@ -51,19 +61,14 @@ def create_context_snapshot(student, class_id, related_transaction_id=None, rela
 
     if not class_id:
         raise ValueError("create_context_snapshot requires canonical class_id scope.")
-    seat = (
-        Seat.query
-        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-        .filter(IdentityProfile.id == student.identity_id, Seat.class_id == class_id)
-        .first()
-    )
+    seat = _resolve_actor_seat(actor)
     if not seat:
         raise ValueError("create_context_snapshot requires canonical seat_id scope.")
 
     # Get current balances (scoped by class_id + seat_id)
     # Convert Decimal to float for JSON serialization (db.JSON column)
-    checking_balance = student.get_checking_balance(class_id=class_id, seat_id=seat.id)
-    savings_balance = student.get_savings_balance(class_id=class_id, seat_id=seat.id)
+    checking_balance = seat.get_checking_balance(class_id=class_id, seat_id=seat.id)
+    savings_balance = seat.get_savings_balance(class_id=class_id, seat_id=seat.id)
     snapshot['balances'] = {
         'checking': float(checking_balance),
         'savings': float(savings_balance),
@@ -86,7 +91,7 @@ def create_context_snapshot(student, class_id, related_transaction_id=None, rela
 
     # Get recent transaction history (last 10 transactions for context)
     recent_transactions = Transaction.query.filter_by(
-        student_id=student.id,
+        seat_id=seat.id,
         class_id=class_id
     ).order_by(Transaction.timestamp.desc()).limit(10).all()
 
@@ -104,14 +109,14 @@ def create_context_snapshot(student, class_id, related_transaction_id=None, rela
 
 
 @feat_shell("FEAT-SUP-001")
-def create_issue(student, teacher_id, class_id, category_id, explanation, expected_outcome=None,
+def create_issue(actor, teacher_id, class_id, category_id, explanation, expected_outcome=None,
                  related_transaction_id=None, related_record_type=None, related_record_id=None,
                  include_recent_error=True):
     """
     Create a new issue submission.
 
     Args:
-        student: Student model instance
+        actor: Seat or legacy student-like instance with an identity_profile->seat path
         teacher_id: Teacher's admin ID
         class_id: Canonical class ID (UUID)
         category_id: IssueCategory ID
@@ -136,12 +141,7 @@ def create_issue(student, teacher_id, class_id, category_id, explanation, expect
     class_row = ClassEconomy.query.filter_by(class_id=class_id).first()
     join_code = class_row.join_code if class_row else None
     class_label = (class_row.display_name if class_row and class_row.display_name else None) or join_code or class_id
-    canonical_seat = (
-        Seat.query
-        .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-        .filter(IdentityProfile.id == student.identity_id, Seat.class_id == class_id)
-        .first()
-    )
+    canonical_seat = _resolve_actor_seat(actor)
     if not canonical_seat:
         raise ValueError("create_issue requires canonical seat public_id scope.")
 
@@ -150,18 +150,17 @@ def create_issue(student, teacher_id, class_id, category_id, explanation, expect
 
     # Create context snapshot
     context_snapshot = create_context_snapshot(
-        student, class_id, related_transaction_id, related_record_type, related_record_id
+        actor, class_id, related_transaction_id, related_record_type, related_record_id
     )
 
     now_utc = utc_now()
 
     # Create the issue
     issue = Issue(
-        student_id=student.id,
+        seat_id=canonical_seat.id,
         actor_public_id=actor_public_id,
         teacher_id=teacher_id,
         class_id=class_id,
-        seat_id=canonical_seat.id,
         join_code=join_code,
         class_label=class_label,
         category_id=category_id,
@@ -193,7 +192,7 @@ def create_issue(student, teacher_id, class_id, category_id, explanation, expect
     )
 
     # Record status history
-    record_status_change(issue, None, Issue.STATUS_OPEN, 'student', student.id)
+    record_status_change(issue, None, Issue.STATUS_OPEN, 'student', canonical_seat.id)
 
     db.session.flush()  # FEAT-AUTHORIZED-SHELL
 

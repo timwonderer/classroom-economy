@@ -1,10 +1,17 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 import re
 from decimal import Decimal
-from app.models import User, UserRole, RentItem, RentSettings, RentPayment, RentWaiver, StoreItem, StudentItem, Student, Transaction, Admin, ClassEconomy, Seat, IdentityProfile
+from app.models import User, RentItem, RentSettings, RentPayment, RentWaiver, StoreItem, StudentItem, Transaction, Admin, ClassEconomy, Seat, IdentityProfile
 from app.extensions import db
 from datetime import datetime, timezone, timedelta
+
+
+def _student_user_and_seat(student):
+    student_user = db.session.get(User, student.user_id) if student and student.user_id else None
+    seat = db.session.get(Seat, student.id) if student else None
+    return student_user, seat
 
 @pytest.fixture
 def teacher_admin(client):
@@ -22,22 +29,13 @@ def teacher_admin(client):
 @pytest.fixture
 def student_in_class(client, teacher_admin):
     """Create a student in the teacher's class."""
-    profile = IdentityProfile(profile_type='student', first_name='Test', last_name='S')
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b'salt')
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Test", last_name="S")
     db.session.flush()
 
     # Link to teacher
 
     # Create seat
-    # Auto-injected Canonical User
-    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
-    if not student_user:
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
-        db.session.add(student_user)
-        db.session.flush()
+    student_user, _ = _student_user_and_seat(student)
     # Setup Class Context
     class_economy = ClassEconomy.query.filter_by(join_code='JOINCODE123').first()
     if not class_economy:
@@ -64,11 +62,7 @@ def student_in_class(client, teacher_admin):
 @pytest.fixture
 def admin_class_scope(client, teacher_admin):
     """Create a class-scoped seat so admin feature routes can resolve scope."""
-    profile = IdentityProfile(profile_type='student', first_name='Scope', last_name='S')
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b"scope-salt")
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Scope", last_name="S")
     db.session.flush()
 
     class_economy = ClassEconomy(
@@ -80,12 +74,7 @@ def admin_class_scope(client, teacher_admin):
     db.session.add(class_economy)
     db.session.flush()
 
-    # Auto-injected Canonical User
-    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
-    if not student_user:
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
-        db.session.add(student_user)
-        db.session.flush()
+    student_user, _ = _student_user_and_seat(student)
 
     db.session.add_all([
         
@@ -103,8 +92,9 @@ def admin_class_scope(client, teacher_admin):
 
 def test_admin_configure_rent_item_types(client, teacher_admin, admin_class_scope):
     """Test that admin can configure different rent item types."""
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
+    seat = Seat.query.filter_by(class_id=admin_class_scope.class_id).order_by(Seat.id.asc()).first()
+    student_user = db.session.get(User, seat.user_id) if seat and seat.user_id else None
+    assert student_user is not None
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
     db.session.commit()
@@ -229,7 +219,7 @@ def test_store_sync_logic(client, teacher_admin, admin_class_scope):
 def test_student_purchase_per_use_item(client, teacher_admin, student_in_class):
     """Test student purchasing a multi-use item."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     # 1. Setup Item
     store_item = StoreItem(
@@ -255,13 +245,11 @@ def test_student_purchase_per_use_item(client, teacher_admin, student_in_class):
     db.session.add(rent_item)
 
     # Give student money
-    tx = Transaction(user_id=student_user.id, seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, amount=100, account_type='checking',join_code='JOINCODE123')
+    tx = Transaction(user_id=student_user.id, seat_id=seat.id, amount=100, account_type='checking',join_code='JOINCODE123')
     db.session.add(tx)
     db.session.commit()
 
     # Login as student
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
     db.session.commit()
@@ -291,7 +279,7 @@ def test_student_purchase_per_use_item(client, teacher_admin, student_in_class):
     assert resp.status_code == 200
 
     # 3. Verify StudentItem State
-    student_item = StudentItem.query.filter_by(student_id=student.id, store_item_id=store_item.id).first()
+    student_item = StudentItem.query.filter_by(seat_id=seat.id, store_item_id=store_item.id).first()
     assert student_item is not None
     assert student_item.status == 'purchased' # Should be 'purchased' to show in inventory
     assert student_item.uses_remaining is None  # Paid purchases are single-use, not rent free uses
@@ -299,15 +287,15 @@ def test_student_purchase_per_use_item(client, teacher_admin, student_in_class):
 def test_student_use_per_use_item(client, teacher_admin, student_in_class):
     """Test decrementing uses for a multi-use item."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     # Setup StudentItem directly (simulate previous purchase)
     store_item = StoreItem(user_id=teacher_admin.id, name='Pencil', price=5, is_active=True)
     db.session.add(store_item)
     db.session.flush()
 
-    student_item = StudentItem(seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, correlation_id='corr_test', 
-        student_id=student.id, store_item_id=store_item.id,
+    student_item = StudentItem(seat_id=seat.id, correlation_id='corr_test', 
+        store_item_id=store_item.id,
         status='purchased', uses_remaining=3,
         join_code='JOINCODE123'
     )
@@ -317,9 +305,6 @@ def test_student_use_per_use_item(client, teacher_admin, student_in_class):
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
     db.session.commit()
-
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
@@ -395,15 +380,11 @@ def test_prevent_deletion_of_linked_items(client, teacher_admin, admin_class_sco
 def test_hall_pass_topoff_replenishes_rent_portion_only(client, teacher_admin, student_in_class):
     """Test hall pass top-off only replenishes the rent-granted portion, not purchased passes."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
-
-    # Create student block with join_code
-    sb = StudentBlock.query.filter_by(student_id=student.id).first()
-    if not sb:
-        db.session.flush()
+    student_user, seat = _student_user_and_seat(student)
+    assert seat is not None
 
     # Scenario: rent grants 3, student has 1 rent + 2 purchased = 3 total
-    sb.rent_hall_passes = 1
+    seat.hall_passes = 1
     student.hall_passes = 3  # 1 rent + 2 purchased
     db.session.commit()
 
@@ -427,101 +408,95 @@ def test_hall_pass_topoff_replenishes_rent_portion_only(client, teacher_admin, s
 
     # Simulate the top-off logic directly (same as student.py rent_pay)
     total_grant = sum(item.hall_pass_count for item in [hall_pass_item] if item.hall_pass_count)
-    current_rent_passes = sb.rent_hall_passes
+    current_rent_passes = seat.hall_passes
     top_off = max(0, total_grant - current_rent_passes)
 
     student.hall_passes = (student.hall_passes or 0) + top_off
-    sb.rent_hall_passes = total_grant
+    seat.hall_passes = total_grant
     db.session.commit()
 
     db.session.refresh(student)
-    db.session.refresh(sb)
+    db.session.refresh(seat)
 
     # Expected: 3(original) + 2(top-off of rent portion: 3-1=2) = 5 total
     assert student.hall_passes == 5
     # rent_hall_passes should now be 3 (the full grant amount)
-    assert sb.rent_hall_passes == 3
+    assert seat.hall_passes == 3
 
 
 def test_hall_pass_topoff_zero_existing(client, teacher_admin, student_in_class):
     """Test hall pass top-off when student has 0 passes grants full amount."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
+    assert seat is not None
 
-    sb = StudentBlock.query.filter_by(student_id=student.id).first()
-    if not sb:
-        db.session.flush()
-
-    sb.rent_hall_passes = 0
+    seat.hall_passes = 0
     student.hall_passes = 0
     db.session.commit()
 
     # Top-off with grant of 3
     total_grant = 3
-    current_rent_passes = sb.rent_hall_passes
+    current_rent_passes = seat.hall_passes
     top_off = max(0, total_grant - current_rent_passes)
 
     student.hall_passes = (student.hall_passes or 0) + top_off
-    sb.rent_hall_passes = total_grant
+    seat.hall_passes = total_grant
     db.session.commit()
 
     db.session.refresh(student)
-    db.session.refresh(sb)
+    db.session.refresh(seat)
 
     assert student.hall_passes == 3
-    assert sb.rent_hall_passes == 3
+    assert seat.hall_passes == 3
 
 
 def test_hall_pass_consumption_decrements_rent_passes_first(client, teacher_admin, student_in_class):
     """Test that using a hall pass decrements rent_hall_passes before purchased passes."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
-
-    sb = StudentBlock.query.filter_by(student_id=student.id).first()
-    if not sb:
-        db.session.flush()
+    student_user, seat = _student_user_and_seat(student)
+    assert seat is not None
 
     # Student has 3 rent + 2 purchased = 5 total
-    sb.rent_hall_passes = 3
+    seat.hall_passes = 3
     student.hall_passes = 5
     db.session.commit()
 
     # Simulate hall pass consumption (same as api.py hall pass approval)
     student.hall_passes -= 1
-    if sb.rent_hall_passes > 0:
-        sb.rent_hall_passes -= 1
+    if seat.hall_passes > 0:
+        seat.hall_passes -= 1
     db.session.commit()
 
     db.session.refresh(student)
     db.session.refresh(sb)
 
     assert student.hall_passes == 4
-    assert sb.rent_hall_passes == 2  # Rent pass consumed first
+    assert seat.hall_passes == 2  # Rent pass consumed first
 
     # Consume 2 more rent passes
     for _ in range(2):
         student.hall_passes -= 1
-        if sb.rent_hall_passes > 0:
-            sb.rent_hall_passes -= 1
+        if seat.hall_passes > 0:
+            seat.hall_passes -= 1
     db.session.commit()
 
     db.session.refresh(student)
     db.session.refresh(sb)
 
     assert student.hall_passes == 2
-    assert sb.rent_hall_passes == 0  # All rent passes consumed
+    assert seat.hall_passes == 0  # All rent passes consumed
 
-    # Next pass consumed is from purchased (rent_hall_passes stays 0)
+    # Next pass consumed is from purchased (seat-hall-pass grant stays 0)
     student.hall_passes -= 1
-    if sb.rent_hall_passes > 0:
-        sb.rent_hall_passes -= 1
+    if seat.hall_passes > 0:
+        seat.hall_passes -= 1
     db.session.commit()
 
     db.session.refresh(student)
     db.session.refresh(sb)
 
     assert student.hall_passes == 1
-    assert sb.rent_hall_passes == 0  # Still 0, purchased pass consumed
+    assert seat.hall_passes == 0  # Still 0, purchased pass consumed
 
 
 def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately(client, teacher_admin, student_in_class):
@@ -529,7 +504,7 @@ def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately
     from app.routes.student import _ensure_rent_hall_pass_top_off
 
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     
     class_econ = ClassEconomy.query.first()
@@ -554,10 +529,8 @@ def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately
     ))
 
     # Student starts new period with 3 rent-granted + 2 purchased passes.
-    sb = StudentBlock.query.filter_by(student_id=student.id, period='A').first()
-    if not sb:
-        db.session.flush()
-    sb.rent_hall_passes = 3
+    assert seat is not None
+    seat.hall_passes = 3
     student.hall_passes = 5
     db.session.commit()
 
@@ -571,9 +544,9 @@ def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately
 
     db.session.commit()
     db.session.refresh(student)
-    db.session.refresh(sb)
+    db.session.refresh(seat)
     assert student.hall_passes == 2
-    assert sb.rent_hall_passes == 0
+    assert seat.hall_passes == 0
 
     # Pay rent for current coverage period and reconcile again immediately.
     db.session.add(RentPayment(
@@ -609,9 +582,9 @@ def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately
 
     db.session.commit()
     db.session.refresh(student)
-    db.session.refresh(sb)
+    db.session.refresh(seat)
     assert student.hall_passes == 5
-    assert sb.rent_hall_passes == 3
+    assert seat.hall_passes == 3
 
 
 def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(client, teacher_admin, student_in_class):
@@ -619,7 +592,7 @@ def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(
     from app.routes.student import _ensure_rent_hall_pass_top_off
 
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     
     class_econ = ClassEconomy.query.first()
@@ -643,10 +616,8 @@ def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(
         hall_pass_count=3,
     ))
 
-    sb = StudentBlock.query.filter_by(student_id=student.id, period='A').first()
-    if not sb:
-        db.session.flush()
-    sb.rent_hall_passes = 0
+    assert seat is not None
+    seat.hall_passes = 0
     student.hall_passes = 2
     db.session.commit()
 
@@ -689,9 +660,9 @@ def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(
 
     db.session.commit()
     db.session.refresh(student)
-    db.session.refresh(sb)
+    db.session.refresh(seat)
     assert student.hall_passes == 5
-    assert sb.rent_hall_passes == 3
+    assert seat.hall_passes == 3
 
 
 def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(client, teacher_admin, student_in_class):
@@ -699,7 +670,7 @@ def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(client, teach
     from app.routes.student import _ensure_rent_hall_pass_top_off
 
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     
     class_econ = ClassEconomy.query.first()
@@ -723,10 +694,8 @@ def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(client, teach
         hall_pass_count=3,
     ))
 
-    sb = StudentBlock.query.filter_by(student_id=student.id, period='A').first()
-    if not sb:
-        db.session.flush()
-    sb.rent_hall_passes = 0
+    assert seat is not None
+    seat.hall_passes = 0
     student.hall_passes = 0
     db.session.commit()
 
@@ -767,9 +736,9 @@ def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(client, teach
 
     db.session.commit()
     db.session.refresh(student)
-    db.session.refresh(sb)
+    db.session.refresh(seat)
     assert student.hall_passes == 3
-    assert sb.rent_hall_passes == 3
+    assert seat.hall_passes == 3
 
 
 def test_mid_period_lock_blocks_semantic_changes(client, teacher_admin, admin_class_scope):
@@ -812,12 +781,7 @@ def test_mid_period_lock_blocks_semantic_changes(client, teacher_admin, admin_cl
     db.session.flush()
 
     # Create a TeacherBlock with join_code
-    # Auto-injected Canonical User
-    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
-    if not student_user:
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
-        db.session.add(student_user)
-        db.session.flush()
+    student_user, _ = _student_user_and_seat(student)
     tb = Seat(join_code='LOCKTEST', block='A', block_identifier='A', role="student")
     db.session.add(tb)
     db.session.flush()
@@ -826,11 +790,7 @@ def test_mid_period_lock_blocks_semantic_changes(client, teacher_admin, admin_cl
     db.session.flush()
 
     # Create a student who has paid rent for the current coverage period
-    profile_payer = IdentityProfile(profile_type='student', first_name='Payer', last_name='P')
-    db.session.add(profile_payer)
-    db.session.flush()
-    student = Student(identity_profile=profile_payer, block="A", salt=b'salt')
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Payer", last_name="P")
     db.session.flush()
 
 
@@ -900,12 +860,7 @@ def test_mid_period_lock_allows_new_items(client, teacher_admin, admin_class_sco
     db.session.add(settings)
     db.session.flush()
 
-    # Auto-injected Canonical User
-    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
-    if not student_user:
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT, current_session_nonce='test_nonce_123')
-        db.session.add(student_user)
-        db.session.flush()
+    student_user, _ = _student_user_and_seat(student)
     tb = Seat(join_code='LOCKTEST2', block='A', block_identifier='A', role="student")
 
     db.session.add(tb)
@@ -916,11 +871,7 @@ def test_mid_period_lock_allows_new_items(client, teacher_admin, admin_class_sco
     db.session.add(tb)
     db.session.flush()
 
-    profile_payer = IdentityProfile(profile_type='student', first_name='Payer', last_name='P')
-    db.session.add(profile_payer)
-    db.session.flush()
-    student = Student(identity_profile=profile_payer, block="A", salt=b'salt')
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Payer", last_name="P")
     db.session.flush()
 
 
@@ -983,7 +934,7 @@ def test_legacy_rent_items_default_to_privilege(client, teacher_admin, admin_cla
 def test_per_use_free_purchase_from_rent(client, teacher_admin, student_in_class):
     """Test that a student with rent-granted uses_remaining can purchase for $0."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
 
@@ -996,7 +947,7 @@ def test_per_use_free_purchase_from_rent(client, teacher_admin, student_in_class
     db.session.flush()
 
     # Give student a rent-granted StudentItem with 3 uses remaining
-    rent_granted = StudentItem(seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, correlation_id='corr_test', 
+    rent_granted = StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id, store_item_id=store_item.id,
         status='purchased', uses_remaining=3,
         purchase_date=datetime.now(timezone.utc),
@@ -1005,15 +956,13 @@ def test_per_use_free_purchase_from_rent(client, teacher_admin, student_in_class
     db.session.add(rent_granted)
 
     # Give student some money
-    tx = Transaction(user_id=student_user.id, seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, amount=100, account_type='checking',join_code='JOINCODE123')
+    tx = Transaction(user_id=student_user.id, seat_id=seat.id, amount=100, account_type='checking',join_code='JOINCODE123')
     db.session.add(tx)
     db.session.commit()
 
     original_balance = student.checking_balance
 
     # Login as student
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
     db.session.commit()
@@ -1052,7 +1001,7 @@ def test_per_use_free_purchase_from_rent(client, teacher_admin, student_in_class
 def test_per_use_charges_when_uses_exhausted(client, teacher_admin, student_in_class):
     """Test that after free uses are exhausted, the student pays regular price."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
 
@@ -1064,7 +1013,7 @@ def test_per_use_charges_when_uses_exhausted(client, teacher_admin, student_in_c
     db.session.flush()
 
     # Give student a rent-granted item with 0 uses remaining (exhausted)
-    rent_granted = StudentItem(seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, correlation_id='corr_test', 
+    rent_granted = StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id, store_item_id=store_item.id,
         status='purchased', uses_remaining=0,
         purchase_date=datetime.now(timezone.utc),
@@ -1072,14 +1021,11 @@ def test_per_use_charges_when_uses_exhausted(client, teacher_admin, student_in_c
     )
     db.session.add(rent_granted)
 
-    tx = Transaction(user_id=student_user.id, seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, amount=100, account_type='checking',join_code='JOINCODE123')
+    tx = Transaction(user_id=student_user.id, seat_id=seat.id, amount=100, account_type='checking',join_code='JOINCODE123')
     db.session.add(tx)
     db.session.commit()
 
     original_balance = student.checking_balance
-
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
@@ -1108,7 +1054,7 @@ def test_per_use_charges_when_uses_exhausted(client, teacher_admin, student_in_c
 def test_per_use_free_purchase_without_precreated_grant_when_rent_paid(client, teacher_admin, student_in_class):
     """Paid-rent students should still get $0 per-use purchases when grant rows are missing."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
 
@@ -1177,9 +1123,6 @@ def test_per_use_free_purchase_without_precreated_grant_when_rent_paid(client, t
 
     starting_balance = student.checking_balance
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1204,7 +1147,7 @@ def test_per_use_free_purchase_without_precreated_grant_when_rent_paid(client, t
 def test_shop_only_disables_privilege_items_when_rent_paid(client, teacher_admin, student_in_class):
     """When rent is paid, privilege items are included/disabled but per-use items remain purchasable."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
 
@@ -1289,9 +1232,6 @@ def test_shop_only_disables_privilege_items_when_rent_paid(client, teacher_admin
     ))
     db.session.commit()
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1328,7 +1268,7 @@ def test_shop_only_disables_privilege_items_when_rent_paid(client, teacher_admin
 def test_shop_keeps_item_purchasable_when_per_use_and_privilege_links_overlap(client, teacher_admin, student_in_class):
     """If legacy data creates mixed rent item types for one store item, per-use access should remain purchasable."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     anchor_now = datetime.now(timezone.utc)
 
     
@@ -1401,9 +1341,6 @@ def test_shop_keeps_item_purchasable_when_per_use_and_privilege_links_overlap(cl
     ))
     db.session.commit()
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1428,7 +1365,7 @@ def test_shop_keeps_item_purchasable_when_per_use_and_privilege_links_overlap(cl
 def test_shop_treats_legacy_privilege_with_per_use_duration_as_per_use(client, teacher_admin, student_in_class):
     """Legacy privilege+per_use-duration rows should render as purchasable rent perks, not included/disabled."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     anchor_now = datetime.now(timezone.utc)
 
     
@@ -1493,9 +1430,6 @@ def test_shop_treats_legacy_privilege_with_per_use_duration_as_per_use(client, t
     ))
     db.session.commit()
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1521,7 +1455,7 @@ def test_shop_treats_legacy_privilege_with_per_use_duration_as_per_use(client, t
 def test_api_allows_zero_cost_rent_linked_purchase_when_paid_without_per_use_mapping(client, teacher_admin, student_in_class):
     """Paid-rent students can still buy non-privilege rent-linked perks for $0 when mapping rows are missing."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
     anchor_now = datetime.now(timezone.utc)
@@ -1586,9 +1520,6 @@ def test_api_allows_zero_cost_rent_linked_purchase_when_paid_without_per_use_map
 
     starting_balance = student.checking_balance
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1613,7 +1544,7 @@ def test_api_allows_zero_cost_rent_linked_purchase_when_paid_without_per_use_map
 def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(client, teacher_admin, student_in_class):
     """Hall-pass items should always purchase directly and never create rent-perk inventory rows."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     from app.routes.student import _calculate_rent_coverage_due_date
 
@@ -1679,9 +1610,6 @@ def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(client, teacher_admin
     starting_balance = student.checking_balance
     starting_hall_passes = student.hall_passes
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1703,14 +1631,14 @@ def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(client, teacher_admin
     assert student.hall_passes == starting_hall_passes + 1
     assert student.checking_balance == starting_balance - Decimal('5.00')
 
-    created_rows = StudentItem.query.filter_by(student_id=student.id, store_item_id=hall_pass_item.id).all()
+    created_rows = StudentItem.query.filter_by(seat_id=seat.id, store_item_id=hall_pass_item.id).all()
     assert len(created_rows) == 0
 
 
 def test_use_item_converts_legacy_hall_pass_inventory_row(client, teacher_admin, student_in_class):
     """Legacy hall-pass StudentItem rows should redeem into hall-pass balance immediately."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
 
     student.passphrase_hash = generate_password_hash('password')
@@ -1725,7 +1653,7 @@ def test_use_item_converts_legacy_hall_pass_inventory_row(client, teacher_admin,
     db.session.add(hall_pass_item)
     db.session.flush()
 
-    legacy_row = StudentItem(seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, correlation_id='corr_test', 
+    legacy_row = StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id,
         store_item_id=hall_pass_item.id,
         join_code='JOINCODE123',
@@ -1736,9 +1664,6 @@ def test_use_item_converts_legacy_hall_pass_inventory_row(client, teacher_admin,
     db.session.commit()
 
     starting_hall_passes = student.hall_passes
-
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
@@ -1773,7 +1698,7 @@ def test_use_item_converts_legacy_hall_pass_inventory_row(client, teacher_admin,
 def test_shop_displays_rent_perk_price_as_free(client, teacher_admin, student_in_class):
     """Rent perk items with active free uses should display $0 pricing in the student shop."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
 
@@ -1790,7 +1715,7 @@ def test_shop_displays_rent_perk_price_as_free(client, teacher_admin, student_in
     db.session.flush()
 
     # Active rent-granted uses for this item
-    db.session.add(StudentItem(seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, correlation_id='corr_test', 
+    db.session.add(StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id,
         store_item_id=store_item.id,
         status='purchased',
@@ -1799,9 +1724,6 @@ def test_shop_displays_rent_perk_price_as_free(client, teacher_admin, student_in
         join_code='JOINCODE123',
     ))
     db.session.commit()
-
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
@@ -1825,7 +1747,7 @@ def test_shop_displays_rent_perk_price_as_free(client, teacher_admin, student_in
 def test_shop_displays_rent_perk_price_as_free_when_rent_paid_without_grant_row(client, teacher_admin, student_in_class):
     """Shop should display per-use rent perk as $0 for paid-rent students even when grant row is missing."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     
     class_econ = ClassEconomy.query.first()
@@ -1886,9 +1808,6 @@ def test_shop_displays_rent_perk_price_as_free_when_rent_paid_without_grant_row(
     ))
     db.session.commit()
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -1910,7 +1829,9 @@ def test_shop_displays_rent_perk_price_as_free_when_rent_paid_without_grant_row(
 
 def test_admin_store_hides_delete_button_for_rent_linked_items(client, teacher_admin, admin_class_scope):
     """Rent-linked items should hide delete even when legacy is_rent_linked flag is stale."""
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
+    seat = Seat.query.filter_by(class_id=admin_class_scope.class_id).first()
+    student_user = db.session.get(User, seat.user_id) if seat else None
+    assert seat is not None and student_user is not None
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
@@ -2034,7 +1955,7 @@ def test_late_fee_only_when_unpaid_by_grace(client, teacher_admin, student_in_cl
     from app.routes.student import utc_now, _total_paid_by_grace
     
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     
     # Set up rent settings with late fee
     now = utc_now()
@@ -2196,7 +2117,7 @@ def test_late_fee_only_when_unpaid_by_grace(client, teacher_admin, student_in_cl
 def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(client, teacher_admin, student_in_class, monkeypatch):
     """Paid-rent students should not be charged if a stale exhausted grant row is the only row present."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     from werkzeug.security import generate_password_hash
     student.passphrase_hash = generate_password_hash('password')
 
@@ -2262,7 +2183,7 @@ def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(
     ))
 
     # Stale legacy row: exhausted grant still present
-    db.session.add(StudentItem(seat_id=Seat.query.filter_by(user_id=student_user.id).first().id, correlation_id='corr_test', 
+    db.session.add(StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id,
         store_item_id=store_item.id,
         join_code='JOINCODE123',
@@ -2281,9 +2202,6 @@ def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(
     db.session.commit()
 
     starting_balance = student.checking_balance
-
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
@@ -2309,7 +2227,7 @@ def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(
 def test_rent_payment_hall_pass_top_off_recovers_from_stale_counter(client, teacher_admin, student_in_class, monkeypatch):
     """Hall-pass grant should still top-off when rent_hall_passes counter drifted above actual passes."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     fixed_now = datetime(2026, 2, 10, 12, 0, tzinfo=timezone.utc)
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
 
@@ -2347,9 +2265,6 @@ def test_rent_payment_hall_pass_top_off_recovers_from_stale_counter(client, teac
     ))
     db.session.commit()
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -2369,15 +2284,14 @@ def test_rent_payment_hall_pass_top_off_recovers_from_stale_counter(client, teac
     db.session.refresh(student)
     assert student.hall_passes == 3
 
-    sb = StudentBlock.query.filter_by(student_id=student.id, period='A').first()
-    assert sb is not None
-    assert sb.rent_hall_passes == 3
+    assert seat is not None
+    assert seat.hall_passes == 3
 
 
 def test_waiver_does_not_grant_rent_perks_in_shop(client, teacher_admin, student_in_class, monkeypatch):
     """A waiver allows access but should not grant paid-rent perks."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
 
     fixed_now = datetime.now(timezone.utc)
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
@@ -2448,9 +2362,6 @@ def test_waiver_does_not_grant_rent_perks_in_shop(client, teacher_admin, student
     ))
     db.session.commit()
 
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
-
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 
 
@@ -2486,7 +2397,7 @@ def test_waiver_does_not_grant_rent_perks_in_shop(client, teacher_admin, student
 def test_shop_keeps_rent_perks_when_payment_exists_alongside_waiver(client, teacher_admin, student_in_class, monkeypatch):
     """A real payment should still grant perks even if a waiver also exists."""
     student = student_in_class
-    student_user = User.query.filter_by(username_hash=f"auto_{student_in_class.id}").first()
+    student_user, seat = _student_user_and_seat(student)
     fixed_now = datetime.now(timezone.utc)
     monkeypatch.setattr('app.routes.student.utc_now', lambda: fixed_now)
 
@@ -2558,9 +2469,6 @@ def test_shop_keeps_rent_perks_when_payment_exists_alongside_waiver(client, teac
         periods_count=1,
     ))
     db.session.commit()
-
-    seat = Seat.query.filter_by(user_id=student_user.id).first()
-
 
     db.session.execute(db.text("UPDATE users SET last_active_class_id = :cid, last_active_seat_id = :sid WHERE id = :uid"), {'cid': seat.class_id, 'sid': seat.id, 'uid': student_user.id})
 

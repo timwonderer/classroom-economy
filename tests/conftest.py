@@ -48,99 +48,10 @@ import pytest
 import sqlalchemy as sa
 from sqlalchemy import event, text
 from sqlalchemy.exc import IntegrityError
-from app import app as flask_app, db, Student
+from app import app as flask_app, db
 from flask import current_app
 from app.extensions import limiter
 from app.models import Transaction, Seat, IdentityProfile
-
-@event.listens_for(Transaction, "init")
-def intercept_transaction_student_id(target, args, kwargs):
-    """Test-only shim to intercept legacy student_id during Transaction instantiation."""
-    student_id = kwargs.pop('student_id', None)
-    if student_id:
-        target._transient_student_id = student_id
-
-@event.listens_for(Transaction, "before_insert")
-def resolve_seat_from_transient_student(mapper, connection, target):
-    """Test-only shim to resolve seat_id from legacy student_id before insert."""
-    if hasattr(target, '_transient_student_id'):
-        student_id = target._transient_student_id
-        if getattr(target, 'seat_id', None) is None:
-            class_id = getattr(target, 'class_id', None)
-            join_code = getattr(target, 'join_code', None)
-            
-            # resolve class_id
-            if not class_id and join_code:
-                class_row = connection.execute(
-                    sa.text("SELECT class_id FROM classes WHERE join_code = :jc LIMIT 1"),
-                    {"jc": join_code}
-                ).fetchone()
-                if class_row:
-                    class_id = class_row[0]
-                    target.class_id = class_id
-            
-            # resolve seat_id via user_id (v2: student_id column removed from seats)
-            # The transient student_id is treated as a user_id for seat lookup
-            if class_id:
-                seat_row = connection.execute(
-                    sa.text("SELECT id FROM seats WHERE user_id = :uid AND class_id = :cid LIMIT 1"),
-                    {"uid": student_id, "cid": class_id}
-                ).fetchone()
-                if seat_row:
-                    target.seat_id = seat_row[0]
-            else:
-                # fallback
-                seat_row = connection.execute(
-                    sa.text("SELECT id, class_id FROM seats WHERE user_id = :uid LIMIT 1"),
-                    {"uid": student_id}
-                ).fetchone()
-                if seat_row:
-                    target.seat_id = seat_row[0]
-                    target.class_id = seat_row[1]
-
-            if getattr(target, 'seat_id', None) is None:
-                # Create a mock seat on the fly for tests that skip ClassEconomy creation
-                import uuid
-                from datetime import datetime, timezone
-                pub_id = str(uuid.uuid4())
-                cid = class_id or str(uuid.uuid4())
-                jc = join_code or f"MOCK-{cid[:8]}"
-                now = datetime.now(timezone.utc)
-
-                # Ensure the class row exists first (FK: seats.class_id → classes.class_id)
-                class_exists = connection.execute(
-                    sa.text("SELECT 1 FROM classes WHERE class_id = :cid LIMIT 1"),
-                    {"cid": cid}
-                ).fetchone()
-                if not class_exists:
-                    # Use the student_id as teacher_id for mock class creation
-                    connection.execute(
-                        sa.text("""
-                        INSERT INTO classes (class_id, teacher_id, join_code, created_at, updated_at)
-                        VALUES (:cid, :tid, :jc, :now, :now)
-                        ON CONFLICT DO NOTHING
-                        """),
-                        {"cid": cid, "tid": student_id, "jc": jc, "now": now}
-                    )
-
-                target.class_id = cid
-                target.join_code = join_code or jc
-                connection.execute(
-                    sa.text("""
-                    INSERT INTO seats (public_id, user_id, class_id, join_code, role, has_received_rent_exemption, created_at, updated_at)
-                    VALUES (:pid, :uid, :cid, :jc, 'student', false, :now, :now)
-                    """),
-                    {
-                        "pid": pub_id, "uid": student_id, "cid": cid,
-                        "jc": target.join_code, "now": now
-                    }
-                )
-                seat_row = connection.execute(
-                    sa.text("SELECT id FROM seats WHERE public_id = :pid"),
-                    {"pid": pub_id}
-                ).fetchone()
-                if seat_row:
-                    target.seat_id = seat_row[0]
 
 def _set_sqlite_pragma(dbapi_connection, connection_record):
     cursor = dbapi_connection.cursor()
@@ -293,7 +204,7 @@ def _auto_bypass_feat(request, app):
 def test_student():
     from app.hash_utils import hash_username, get_random_salt
     from app.feats.base import FEATBypass
-    from app.models import User, UserRole, Seat
+    from app.models import User, UserRole
     from app.utils.auth_username import build_hashed_username_fields
     salt = get_random_salt()
     _, username_hash, username_lookup_hash = build_hashed_username_fields("test_student")
@@ -311,18 +222,10 @@ def test_student():
     )
     db.session.add(profile)
     db.session.flush()
-    stu = Student(
-        identity_profile=profile,
-        block="A",
-        salt=salt,
-        username_hash=hash_username("test", salt),
-        pin_hash="fake-hash",
-    )
-    db.session.add(stu)
     seat = Seat(
         user_id=user.id,
-        class_id=stu.class_id,
-        join_code=stu.join_code or "TESTSTUDENT",
+        class_id=None,
+        join_code="TESTSTUDENT",
         role="student",
     )
     db.session.add(seat)
@@ -330,7 +233,7 @@ def test_student():
     profile.seat_id = seat.id
     with FEATBypass():
         db.session.commit()
-    return stu
+    return seat
 
 
 @pytest.fixture

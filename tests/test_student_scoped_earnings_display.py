@@ -3,15 +3,26 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import User, UserRole, Admin, IdentityProfile, Student, StudentTeacher, Transaction, TransactionStatus
+from app.models import User, UserRole, Admin, IdentityProfile, StudentTeacher, Transaction, TransactionStatus
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.canonical_session import set_canonical_context
+from tests.helpers.class_scope import make_student_identity
 
 
 def _login_student(client, student_id, join_code):
     with client.session_transaction() as sess:
-        sess["student_id"] = student_id
-        sess["current_join_code"] = join_code
-        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+        seat = StudentTeacher.query.filter_by(user_id=student_id).first()
+        if seat:
+            student_seat = Seat.query.filter_by(user_id=student_id, join_code=join_code).first()
+            if student_seat:
+                set_canonical_context(
+                    sess,
+                    user_id=student_id,
+                    class_id=student_seat.class_id,
+                    seat_id=student_seat.id,
+                    role="student",
+                    join_code=join_code,
+                )
 
 
 def _build_multi_class_student():
@@ -23,16 +34,14 @@ def _build_multi_class_student():
     profile = IdentityProfile(profile_type="student", first_name="Scope", last_name="T")
     db.session.add(profile)
     db.session.flush()
-    student = Student(identity_profile=profile, block="A, B", salt=b"salt")
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(first_name="Scope", last_name="T", block="A, B", claimed=True, profile_type="student_claimed")
 
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=teacher.id))
     class_a = create_class_scope(teacher=teacher, join_code="STUDSC1", student=student, block="A", display_name="A")
     class_b = create_class_scope(teacher=teacher, join_code="STUDSC2", student=student, block="B", display_name="B")
     db.session.add_all([
         Transaction(
-            user_id=student_user.id,join_code="STUDSC1",
+            user_id=student.user_id,join_code="STUDSC1",
             amount=Decimal("10.00"),
             account_type="checking",
             status=TransactionStatus.PENDING,
@@ -40,7 +49,7 @@ def _build_multi_class_student():
             description="Class A earnings",
         ),
         Transaction(
-            user_id=student_user.id,join_code="STUDSC2",
+            user_id=student.user_id,join_code="STUDSC2",
             amount=Decimal("200.00"),
             account_type="checking",
             status=TransactionStatus.PENDING,

@@ -1,9 +1,11 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
+from tests.helpers.class_scope import create_class_scope
 import pytest
 import pyotp
 import bcrypt
 from datetime import datetime, timezone, timedelta
-from app.models import Admin, IdentityProfile, Seat, Student, RecoveryRequest, StudentRecoveryCode, StudentTeacher, ClassEconomy, User, UserRole
+from app.models import Admin, IdentityProfile, Seat, RecoveryRequest, StudentRecoveryCode, StudentTeacher, ClassEconomy, User, UserRole
 from app.extensions import db
 from app.hash_utils import hash_username_lookup, get_random_salt, hash_hmac
 
@@ -29,49 +31,22 @@ def create_teacher(username="teacher1"):
 
 # Helper to create student
 def create_student(teacher, username="student1", block="A"):
-    passphrase = "secret"
-    from werkzeug.security import generate_password_hash
-    passphrase_hash = generate_password_hash(passphrase)
-    from app.hash_utils import hash_username_lookup, get_random_salt, hash_hmac
-    
-    first_name = "Test"
-    last_initial = "S"
-    salt = get_random_salt()
-    
-    student = Student(
-        salt=salt,
-        username_hash=hash_hmac(username.encode(), salt),
-        username_lookup_hash=hash_username_lookup(username),
-        first_name=first_name,
-        last_initial=last_initial,
-        block=block,
-        passphrase_hash=passphrase_hash,
-        has_completed_setup=True
-    )
-    db.session.add(student)
-    db.session.flush()
-
-    # Link
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-    
     join_code = f"JOIN{teacher.id}{block}"
-    class_economy = ClassEconomy.query.filter_by(join_code=join_code).first()
-    if not class_economy:
-        class_economy = ClassEconomy(join_code=join_code, user_id=teacher.id)
-        db.session.add(class_economy)
+    class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+    if not class_row:
+        class_row = ClassEconomy(join_code=join_code, user_id=teacher.id)
+        db.session.add(class_row)
         db.session.flush()
 
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    _tb_seat = Seat(user_id=student_user.id, class_id=class_economy.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
-
-    db.session.add(_tb_seat)
-
-    db.session.flush()
-
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_initial=last_initial))
+    student = make_student_identity(
+        class_id=class_row.class_id,
+        join_code=join_code,
+        block=block,
+        first_name="Test",
+        last_name="S",
+        claimed=True,
+    )
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=teacher.id))
     db.session.flush()
 
     return student

@@ -1,11 +1,12 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
-from app.models import Student, Transaction, StoreItem, StudentItem, Admin, IdentityProfile, Seat, User, ClassMembership, StudentTeacher
+from app.models import Transaction, StoreItem, StudentItem, Admin, IdentityProfile, Seat, User, ClassMembership, StudentTeacher
 from app.utils.analytics_engine import AnalyticsEngine
 from app import db
 import time
 import re
 from datetime import datetime, timezone, timedelta
+from tests.helpers.class_scope import make_student_identity
 
 @pytest.fixture
 def teacher(app):
@@ -68,12 +69,13 @@ def test_teacher_student_lifecycle(client, teacher, app):
         # Verify Seat is claimed and linked
         db.session.refresh(tb)
         assert tb.claimed_at is not None
-        assert tb.student_id is not None
+        assert tb.user_id is not None
 
-        student = db.session.get(Student, tb.student_id)
+        student = db.session.get(Seat, tb.id)
         assert student is not None
-        assert student.is_teacher is True
         assert student.block == block
+        assert student.identity_profile is not None
+        assert student.identity_profile.profile_type == "teacher_shadow_student"
         with client.session_transaction() as sess:
             claimed_user_id = sess.get('claimed_user_id')
             claimed_seat_id = sess.get('claimed_seat_id')
@@ -141,40 +143,13 @@ def test_teacher_student_lifecycle(client, teacher, app):
         # 4. Analytics Exclusion
         from app.hash_utils import get_random_salt
 
-        regular_student = Student(
-            first_name="Regular",
-            last_initial="R",
-            identity_profile=IdentityProfile(profile_type="student", first_name="Regular", last_name="Reed"),
-            block="Z",
-            is_teacher=False,
-            salt=get_random_salt(),
-            first_half_hash=b'fakehash',
-        )
-        db.session.add(regular_student)
-        db.session.commit()
-
         from app.models import ClassEconomy
         class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
-        # Auto-injected Canonical User
-        regular_student_user = User(username_hash=f"auto_{regular_student.id}", username_lookup_hash=f"auto_l_{regular_student.id}", user_role=UserRole.STUDENT)
-        db.session.add(regular_student_user)
-        db.session.flush()
-        regular_seat = Seat(
-            user_id=regular_student_user.id,
-            class_id=class_row.class_id if class_row else None,
-            join_code=join_code,
-            block="Z",
-            block_identifier="Z",
-            role="student",
-            claimed_at=datetime.now(timezone.utc),
-        )
-        db.session.add(regular_seat)
-        db.session.flush()
-        db.session.add(IdentityProfile(seat_id=regular_seat.id, profile_type="student_claimed", first_name="Regular", last_name="Reed"))
+        regular_seat = make_student_identity(first_name="Regular", last_name="Reed", block="Z", join_code=join_code, class_id=class_row.class_id if class_row else None)
 
         # Add StudentTeacher link
         from app.models import StudentTeacher
-        st1 = StudentTeacher(user_id=regular_student_user.id, teacher_id=teacher.id)
+        st1 = StudentTeacher(user_id=regular_seat.user_id, teacher_id=teacher.id)
         db.session.add(st1)
 
         db.session.commit()
@@ -199,37 +174,10 @@ def test_teacher_student_lifecycle(client, teacher, app):
         db.session.commit()
 
         # Lazy student (Inactive)
-        lazy_student = Student(
-            first_name="Lazy",
-            last_initial="L",
-            identity_profile=IdentityProfile(profile_type="student", first_name="Lazy", last_name="Lane"),
-            block="Z",
-            is_teacher=False,
-            salt=get_random_salt(),
-            first_half_hash=b'fakehash2',
-        )
-        db.session.add(lazy_student)
-        db.session.commit()
-
-        # Auto-injected Canonical User
-        lazy_student_user = User(username_hash=f"auto_{lazy_student.id}", username_lookup_hash=f"auto_l_{lazy_student.id}", user_role=UserRole.STUDENT)
-        db.session.add(lazy_student_user)
-        db.session.flush()
-        lazy_seat = Seat(
-            user_id=lazy_student_user.id,
-            class_id=class_row.class_id if class_row else None,
-            join_code=join_code,
-            block="Z",
-            block_identifier="Z",
-            role="student",
-            claimed_at=datetime.now(timezone.utc),
-        )
-        db.session.add(lazy_seat)
-        db.session.flush()
-        db.session.add(IdentityProfile(seat_id=lazy_seat.id, profile_type="student_claimed", first_name="Lazy", last_name="Lane"))
+        lazy_seat = make_student_identity(first_name="Lazy", last_name="Lane", block="Z", join_code=join_code, class_id=class_row.class_id if class_row else None)
 
         # Add StudentTeacher link
-        st2 = StudentTeacher(user_id=lazy_student_user.id, teacher_id=teacher.id)
+        st2 = StudentTeacher(user_id=lazy_seat.user_id, teacher_id=teacher.id)
         db.session.add(st2)
 
         db.session.commit()
@@ -274,10 +222,16 @@ def test_teacher_student_lifecycle(client, teacher, app):
         db.session.add(si_teacher)
         db.session.commit()
 
-        count = StudentItem.query.join(Student).filter(
-            StudentItem.store_item_id == goal_item.id,
-            Student.is_teacher == False
-        ).count()
+        count = (
+            StudentItem.query
+            .join(Seat, Seat.user_id == StudentItem.user_id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .filter(
+                StudentItem.store_item_id == goal_item.id,
+                IdentityProfile.profile_type != "teacher_shadow_student",
+            )
+            .count()
+        )
         assert count == 0
 
         # Regular student buys it (should contribute)
@@ -290,10 +244,16 @@ def test_teacher_student_lifecycle(client, teacher, app):
         db.session.add(si_regular)
         db.session.commit()
 
-        count = StudentItem.query.join(Student).filter(
-            StudentItem.store_item_id == goal_item.id,
-            Student.is_teacher == False
-        ).count()
+        count = (
+            StudentItem.query
+            .join(Seat, Seat.user_id == StudentItem.user_id)
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .filter(
+                StudentItem.store_item_id == goal_item.id,
+                IdentityProfile.profile_type != "teacher_shadow_student",
+            )
+            .count()
+        )
         assert count == 1
 
 
@@ -326,9 +286,10 @@ def test_teacher_student_reuses_identity_across_join_codes(client, teacher, app)
             join_code=join_code_a, role='teacher'
         ).first()
         assert tb_a.claimed_at is not None
-        student_a = db.session.get(Student, tb_a.student_id)
+        student_a = db.session.get(Seat, tb_a.id)
         assert student_a is not None
-        assert student_a.is_teacher is True
+        assert student_a.identity_profile is not None
+        assert student_a.identity_profile.profile_type == "teacher_shadow_student"
 
         # Complete setup for student A so it has completed_setup
         client.post('/student/create-username', data={'write_in_word': 'alpha'})
@@ -363,9 +324,10 @@ def test_teacher_student_reuses_identity_across_join_codes(client, teacher, app)
             join_code=join_code_b, role='teacher'
         ).first()
         assert tb_b.claimed_at is not None
-        student_b = db.session.get(Student, tb_b.student_id)
+        student_b = db.session.get(Seat, tb_b.id)
         assert student_b is not None
-        assert student_b.is_teacher is True
+        assert student_b.identity_profile is not None
+        assert student_b.identity_profile.profile_type == "teacher_shadow_student"
 
         user_b = (
             User.query.join(Seat, Seat.user_id == User.id)
@@ -386,7 +348,7 @@ def test_teacher_student_reuses_identity_across_join_codes(client, teacher, app)
         ).count() == membership_count_after_a + 1
 
         teacher_seats = (
-            Seat.query.filter_by(user_id=student_a_user.id, user_id=user_a.id)
+            Seat.query.filter(Seat.user_id == student_a_user.id)
             .order_by(Seat.join_code.asc())
             .all()
         )

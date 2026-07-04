@@ -1,5 +1,5 @@
 import pyotp
-from app import db, Student
+from app import db
 from werkzeug.security import generate_password_hash
 from app.hash_utils import hash_username, hash_username_lookup, get_random_salt
 from app.models import ClassEconomy, IdentityProfile, Seat, User, UserRole
@@ -16,36 +16,26 @@ def test_student_login_next_redirect(client):
     profile = IdentityProfile(profile_type="student", first_name="Stu", last_initial="S")
     db.session.add_all([class_row, profile])
     db.session.flush()
-    stu = Student(
-        first_name="Stu",
-        last_initial="S",
-        identity_id=profile.id,
-        block="A",
-        join_code=class_row.join_code,
-        class_id=class_row.class_id,
-        salt=salt,
-        username_hash=hash_username(username, salt),
-        username_lookup_hash=hash_username_lookup(username),
-        pin_hash=generate_password_hash("1234"),
-        has_completed_setup=True,
-    )
     user = User(
         user_role=UserRole.STUDENT,
-        username_hash=hash_username_lookup(username),
+        username_hash=hash_username(username, salt),
         username_lookup_hash=hash_username_lookup(username),
         pin_hash=generate_password_hash("1234"),
         has_completed_setup=True,
         last_active_class_id=class_row.class_id,
     )
-    db.session.add_all([stu, user])
+    db.session.add(user)
     db.session.flush()
-    db.session.add(Seat(
+    seat = Seat(
         user_id=user.id,
         class_id=class_row.class_id,
         join_code=class_row.join_code,
         role="student",
         claimed_at=utc_now(),
-    ))
+    )
+    db.session.add(seat)
+    db.session.flush()
+    profile.seat_id = seat.id
     db.session.commit()
 
     # Access protected route

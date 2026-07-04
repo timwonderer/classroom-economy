@@ -256,6 +256,9 @@ class IdentityProfile(db.Model):
     first_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
     last_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
     notes = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=True)
+    reset_code = db.Column(db.String(8), nullable=True, unique=True)
+    reset_code_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    recovery_status = db.Column(db.String(20), default='active', nullable=False)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
@@ -379,210 +382,6 @@ def _sync_seat_scope(mapper, connection, target):
         if class_id:
             target.class_id = str(class_id)
 
-
-
-class Student(db.Model):
-    __tablename__ = 'students'
-    id = db.Column(db.Integer, primary_key=True)
-    first_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
-    last_initial = db.Column(db.String(1), nullable=False)
-    identity_id = db.Column(db.Integer, db.ForeignKey('identity_profiles.id', ondelete='RESTRICT'), nullable=False, index=True)
-    block = db.Column(db.String(10), nullable=False)
-    join_code = db.Column(db.String(20), nullable=True, index=True)
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
-
-    # Hash and credential fields
-    # Credential: CONCAT(first_initial, DOB_sum) - simpler than old name_code system
-    salt = db.Column(db.LargeBinary(16), nullable=False)
-    first_half_hash = db.Column(db.String(64), unique=True, nullable=True)  # Hash of "FirstInitial + DOBSum" (e.g., "S2025")
-    second_half_hash = db.Column(db.String(64), unique=True, nullable=True)  # Legacy/compat hash value
-    username_hash = db.Column(db.String(64), unique=True, nullable=True)
-    username_lookup_hash = db.Column(db.String(64), unique=True, nullable=True)
-
-    # Ownership / tenancy
-    pin_hash = db.Column(db.Text, nullable=True)
-    passphrase_hash = db.Column(db.Text, nullable=True)
-
-    hall_passes = db.Column(db.Integer, default=3)
-
-    is_rent_enabled = db.Column(db.Boolean, default=True)
-    insurance_plan = db.Column(db.String, default="none")
-    insurance_last_paid = db.Column(db.DateTime(timezone=True), nullable=True)
-    second_factor_type = db.Column(db.String, nullable=True)
-    second_factor_enabled = db.Column(db.Boolean, default=False)
-    has_completed_setup = db.Column(db.Boolean, default=False)
-    # Track if student has completed the legacy profile migration
-    has_completed_profile_migration = db.Column(db.Boolean, default=False)
-    # Teacher Identity Flag (prevents deletion and analytics skew)
-    is_teacher = db.Column(db.Boolean, default=False, nullable=False)
-
-    # Account Recovery Fields
-    reset_code = db.Column(db.String(8), nullable=True, unique=True)  # 8-char alphanumeric code
-    reset_code_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    money_action_cooldown_until = db.Column(db.DateTime(timezone=True), nullable=True)
-    recovery_status = db.Column(db.String(20), default='active', nullable=False)  # active, to_be_claimed
-    # Internal non-sequential DB reference for cross-table linkage.
-    internal_reference = db.Column(
-        db.String(64),
-        unique=True,
-        nullable=False,
-        index=True,
-        default=lambda: f"sint_{uuid.uuid4().hex}",
-    )
-    # Non-identifying reference for sysadmin-facing workflows.
-    opaque_reference = db.Column(
-        db.String(64),
-        unique=True,
-        nullable=False,
-        index=True,
-        default=lambda: f"stu_{uuid.uuid4().hex}",
-    )
-    identity_profile = db.relationship('IdentityProfile', foreign_keys=[identity_id], lazy='joined')
-
-    @property
-    def full_name(self):
-        return f"{self.display_first_name} {self.display_last_initial}."
-
-    @property
-    def name_identity_id(self):
-        """Identity-profile key used for centralized student display identity."""
-        return self.identity_id
-
-    @property
-    def internal_db_id(self):
-        """Non-sequential internal reference (do not expose publicly)."""
-        return self.internal_reference
-
-    @property
-    def opaque_id(self):
-        """Opaque reference safe for sysadmin views and non-PII logs."""
-        return self.opaque_reference
-
-    def get_sysadmin_reference(self):
-        return self.opaque_reference
-
-    @property
-    def display_first_name(self):
-        return self.identity_profile.first_name if self.identity_profile else ""
-
-    @property
-    def display_last_initial(self):
-        return self.identity_profile.last_initial if self.identity_profile else ""
-
-    # Student transactions relationship severed in V2.
-    # checking_balance and savings_balance properties severed in V2.
-
-    def get_active_insurance(self, teacher_id=None, class_id=None):
-        """
-        Return the active insurance enrollment for this student.
-
-        Resolution order:
-        1) class-scoped (`class_id`) when available (canonical)
-        2) teacher-scoped fallback for legacy callers
-        """
-        query = InsuranceEnrollment.query.join(
-            InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id
-        ).filter(
-            InsuranceEnrollment.seat_id.in_(
-                db.session.query(Seat.id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).filter(IdentityProfile.id == self.identity_id)
-            ),
-            InsuranceEnrollment.status == 'active',
-        )
-
-        if class_id:
-            return query.filter(InsurancePolicy.class_id == class_id).first()
-        if teacher_id:
-            return query.filter(InsurancePolicy.teacher_id == teacher_id).first()
-        return None
-
-    def get_checking_balance(self, class_id: str, seat_id: int):
-        """Authoritative checking balance lookup via ledger service."""
-        from app.services.ledger_service import get_available_balance
-        if not class_id or not seat_id:
-            raise ValueError("get_checking_balance requires class_id and seat_id.")
-        return get_available_balance(seat_id, class_id, 'checking')
-
-    def get_savings_balance(self, class_id: str, seat_id: int):
-        """Authoritative savings balance lookup via ledger service."""
-        from app.services.ledger_service import get_available_balance
-        if not class_id or not seat_id:
-            raise ValueError("get_savings_balance requires class_id and seat_id.")
-        return get_available_balance(seat_id, class_id, 'savings')
-
-    def get_total_earnings(self, class_id=None, join_code=None, teacher_id=None):
-        """
-        Get total earnings scoped to a specific class economy.
-
-        CRITICAL: For proper period isolation, callers should pass class_id when available.
-        join_code remains supported for legacy callers that still scope by join code.
-
-        Args:
-            class_id: Canonical class scope identifier
-            join_code: Legacy class identifier for period-level isolation
-            teacher_id: Deprecated — accepted but ignored for backward compatibility
-
-        Returns:
-            float: The total earnings rounded to 2 decimal places
-        """
-        seat_id = None
-        if self.identity_profile and self.identity_profile.seat_id:
-            seat_id = self.identity_profile.seat_id
-
-        if class_id:
-            total = db.session.query(db.func.sum(Transaction.amount)).filter(
-                Transaction.class_id == class_id,
-                Transaction.amount > 0,
-                Transaction.is_void == False,
-                ~Transaction.description.startswith("Transfer")
-            ).scalar()
-            return float(round(_quantize_currency(total), 2)) if total else 0.0
-
-        if join_code:
-            # Legacy scoping by join_code (period-level isolation)
-            total = db.session.query(db.func.sum(Transaction.amount)).filter(
-                Transaction.join_code == join_code,
-                Transaction.amount > 0,
-                Transaction.is_void == False,
-                ~Transaction.description.startswith("Transfer")
-            ).scalar()
-            return float(round(_quantize_currency(total), 2)) if total else 0.0
-
-        # Unscoped totals are disabled under class/join-code scoping to avoid
-        # leaking or conflating balances across distinct class economies.
-        return 0.0
-
-    @property
-    def total_earnings(self):
-        # Deprecated: Use get_total_earnings(join_code=...) instead for class-scoped aggregation.
-        return self.get_total_earnings()
-
-    @property
-    def recent_deposits(self):
-        now = utc_now()
-        recent_timeframe = now - timedelta(days=2)
-
-        deposits = (
-            db.session.query(Transaction)
-            .join(Seat, Seat.id == Transaction.seat_id)
-            .filter(Seat.user_id == self.id)
-            .filter(Transaction.amount > 0)
-            .filter(Transaction.is_void == False)
-            .filter(~db.func.lower(Transaction.description).like('transfer%'))
-            .filter(Transaction.timestamp >= recent_timeframe)
-            .all()
-        )
-        return deposits
-
-    @property
-    def amount_needed_to_cover_bills(self):
-        total_due = Decimal('0')
-        if self.is_rent_enabled:
-            total_due += Decimal('800')
-        if self.insurance_plan != "none":
-            total_due += Decimal('200')  # Estimated insurance cost
-        return max(Decimal('0'), total_due - self.checking_balance)
-
-    # Removed deprecated last_tap_in/last_tap_out properties; backend is source of truth.
 
 
 class AdminInviteCode(db.Model):
@@ -988,14 +787,12 @@ class BalanceCache(db.Model):
 
 
 class AttendanceSession(db.Model):
-    """Canonical attendance session windows per seat/class/period."""
+    """Canonical attendance session windows per seat/class."""
     __tablename__ = 'attendance_sessions'
 
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
-    period = db.Column(db.String(10), nullable=False, index=True)
 
     started_at = db.Column(db.DateTime(timezone=True), nullable=False, index=True)
     ended_at = db.Column(db.DateTime(timezone=True), nullable=True, index=True)
@@ -1012,7 +809,6 @@ class AttendanceSession(db.Model):
     deleted_at = db.Column(db.DateTime(timezone=True), nullable=True)
     deleted_by_seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True)
 
-    student = db.relationship("Student", backref=db.backref("attendance_sessions", passive_deletes=True))
     seat = db.relationship("Seat", foreign_keys=[seat_id], backref=db.backref("attendance_sessions", passive_deletes=True))
 
     @property
@@ -1028,19 +824,17 @@ class AttendanceSession(db.Model):
         return self.end_reason or self.start_reason
 
     __table_args__ = (
-        db.Index('ix_attendance_sessions_seat_class_period_start', 'seat_id', 'class_id', 'period', 'started_at'),
+        db.Index('ix_attendance_sessions_seat_class_start', 'seat_id', 'class_id', 'started_at'),
     )
 
 
 class SeatAttendanceState(db.Model):
-    """Canonical latest attendance state per seat/class/period."""
+    """Canonical latest attendance state per seat/class."""
     __tablename__ = 'seat_attendance_state'
 
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id', ondelete='CASCADE'), nullable=False, index=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
-    period = db.Column(db.String(10), nullable=False, index=True)
 
     is_active = db.Column(db.Boolean, default=False, nullable=False)
     open_session_id = db.Column(db.Integer, db.ForeignKey('attendance_sessions.id', ondelete='SET NULL'), nullable=True)
@@ -1051,12 +845,10 @@ class SeatAttendanceState(db.Model):
     last_reason = db.Column(db.String(50), nullable=True)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
-    student = db.relationship("Student", backref=db.backref("attendance_states", passive_deletes=True))
     seat = db.relationship("Seat", backref=db.backref("attendance_states", passive_deletes=True))
 
     __table_args__ = (
-        db.UniqueConstraint('seat_id', 'class_id', 'period', name='uq_attendance_state_scope'),
-        db.Index('ix_attendance_state_student_period', 'student_id', 'period'),
+        db.UniqueConstraint('seat_id', 'class_id', name='uq_attendance_state_scope'),
     )
 
 
@@ -1108,7 +900,6 @@ def _validate_tap_event_scope(_mapper, connection, target):
 class HallPassLog(db.Model):
     __tablename__ = 'hall_pass_logs'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     reason = db.Column(db.String(50), nullable=False)
     status = db.Column(db.String(20), default='pending', nullable=False) # pending, approved, rejected, left, returned
@@ -1123,7 +914,6 @@ class HallPassLog(db.Model):
     left_time = db.Column(db.DateTime(timezone=True), nullable=True)
     return_time = db.Column(db.DateTime(timezone=True), nullable=True)
 
-    student = db.relationship('Student', backref='hall_pass_logs')
     seat = db.relationship('Seat', backref='hall_pass_logs')
 
 
@@ -1285,7 +1075,6 @@ class StoreItemBlock(db.Model):
 class StudentItem(db.Model):
     __tablename__ = 'student_items'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     store_item_id = db.Column(db.Integer, db.ForeignKey('store_items.id'), nullable=False)
 
     # CRITICAL: class_id is the source of truth for class isolation
@@ -1311,41 +1100,7 @@ class StudentItem(db.Model):
     # Multi-use item tracking
     uses_remaining = db.Column(db.Integer, nullable=True) # For per-use items with > 1 use limit
 
-    # Relationships
-    student = db.relationship('Student', backref=db.backref('items', lazy='dynamic'))
     collective_goal_instance_code = db.Column(db.String(36), nullable=True, index=True)
-
-
-@sa.event.listens_for(StudentItem, "before_insert")
-@sa.event.listens_for(StudentItem, "before_update")
-def _sync_student_item_scope(_mapper, connection, target):
-    """Dual-write bridge for student_items seat/class scope."""
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-    student_id = getattr(target, "student_id", None)
-
-    if not class_id and join_code:
-        class_id = connection.execute(
-            sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-            {"join_code": join_code},
-        ).scalar()
-        if class_id:
-            target.class_id = str(class_id)
-
-    if not getattr(target, "seat_id", None) and student_id:
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-        if seat_id:
-            target.seat_id = seat_id
-
-    if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
-        seat_class_id = connection.execute(
-            sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_class_id:
-            target.class_id = str(seat_class_id)
-
-
 class RedemptionAuditAction(enum.Enum):
     REQUEST = 'request'
     APPROVED = 'approved'
@@ -1691,8 +1446,6 @@ class RentPolicyVersion(db.Model):
 class RentPayment(db.Model):
     __tablename__ = 'rent_payments'
     id = db.Column(db.Integer, primary_key=True)
-    # student_id is DEPRECATED in favor of seat_id.
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=True)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
     period = db.Column(db.String(10), nullable=False)  # Block/Period (e.g., 'A', 'B', 'C')
@@ -1718,7 +1471,6 @@ class RentPayment(db.Model):
     was_late = db.Column(db.Boolean, default=False)
     late_fee_charged = db.Column(db.Numeric(precision=12, scale=2), default=Decimal('0.00'))
 
-    student = db.relationship('Student', backref='rent_payments')
     seat = db.relationship('Seat', backref='rent_payments')
 
     __table_args__ = (
@@ -1734,7 +1486,6 @@ class RentPayment(db.Model):
 class RentWaiver(db.Model):
     __tablename__ = 'rent_waivers'
     id = db.Column(db.Integer, primary_key=True)
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False)
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='SET NULL'), nullable=True, index=True)
     class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=True, index=True)
     join_code = db.Column(db.String(20), nullable=True, index=True)
@@ -1745,40 +1496,8 @@ class RentWaiver(db.Model):
     created_by_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now)
 
-    student = db.relationship('Student', backref='rent_waivers')
     seat = db.relationship('Seat', backref='rent_waivers')
     created_by = db.relationship('User', backref='rent_waivers_created')
-
-
-
-@sa.event.listens_for(RentWaiver, "before_insert")
-@sa.event.listens_for(RentWaiver, "before_update")
-def _sync_rent_waiver_scope(_mapper, connection, target):
-    """Dual-write bridge for rent_waivers.seat_id and class_id."""
-    student_id = getattr(target, "student_id", None)
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-
-    if not class_id and join_code:
-        class_id = connection.execute(
-            sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-            {"join_code": join_code},
-        ).scalar()
-        if class_id:
-            target.class_id = str(class_id)
-
-    if not getattr(target, "seat_id", None) and student_id:
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-        if seat_id:
-            target.seat_id = seat_id
-
-    if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
-        seat_class_id = connection.execute(
-            sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_class_id:
-            target.class_id = str(seat_class_id)
 
 @sa.event.listens_for(HallPassLog, "before_insert")
 @sa.event.listens_for(HallPassLog, "before_update")
@@ -1799,81 +1518,6 @@ def _sync_hall_pass_seat(_mapper, connection, target):
         ).scalar()
         if seat_class_id:
             target.class_id = str(seat_class_id)
-
-
-@sa.event.listens_for(RentPayment, "before_insert")
-@sa.event.listens_for(RentPayment, "before_update")
-def _sync_rent_payment_seat(_mapper, connection, target):
-    """Dual-write bridge for rent_payments.seat_id and rent_payments.class_id."""
-    student_id = getattr(target, "student_id", None)
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-
-    if not class_id and join_code:
-        class_id = connection.execute(
-            sa.text("SELECT class_id FROM classes WHERE join_code = :join_code LIMIT 1"),
-            {"join_code": join_code},
-        ).scalar()
-        if class_id:
-            target.class_id = str(class_id)
-
-    if not getattr(target, "seat_id", None) and student_id:
-        seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-        if seat_id:
-            target.seat_id = seat_id
-
-    if not getattr(target, "seat_id", None) and student_id:
-        legacy_join_code = join_code or f"LEGACY_{student_id}"
-        legacy_block = connection.execute(
-            sa.text("SELECT COALESCE(block, 'A') FROM students WHERE id = :student_id LIMIT 1"),
-            {"student_id": student_id},
-        ).scalar() or "A"
-        legacy_seat_id = connection.execute(
-            sa.text(
-                "INSERT INTO seats (public_id, user_id, class_id, role, block_identifier, roster_fingerprint, dedupe_code, claimed_at, has_received_rent_exemption, join_code, student_id, block, created_at, updated_at) "
-                "VALUES (:public_id, NULL, :class_id, :role, :block_identifier, NULL, NULL, NULL, :has_received_rent_exemption, :join_code, :student_id, :block, :created_at, :updated_at) "
-                "RETURNING id"
-            ),
-            {
-                "public_id": str(uuid.uuid4()),
-                "class_id": str(class_id) if class_id else None,
-                "role": "student",
-                "block_identifier": legacy_block,
-                "has_received_rent_exemption": False,
-                "join_code": legacy_join_code,
-                "student_id": student_id,
-                "block": legacy_block,
-                "created_at": utc_now(),
-                "updated_at": utc_now(),
-            },
-        ).scalar()
-        if legacy_seat_id:
-            target.seat_id = int(legacy_seat_id)
-
-    if not getattr(target, "class_id", None) and getattr(target, "seat_id", None):
-        seat_class_id = connection.execute(
-            sa.text("SELECT class_id FROM seats WHERE id = :seat_id LIMIT 1"),
-            {"seat_id": target.seat_id},
-        ).scalar()
-        if seat_class_id:
-            target.class_id = str(seat_class_id)
-
-
-
-@sa.event.listens_for(RentWaiver, "before_insert")
-@sa.event.listens_for(RentWaiver, "before_update")
-def _sync_rent_waiver_seat(_mapper, connection, target):
-    """Dual-write bridge for rent_waivers.seat_id."""
-    if getattr(target, "seat_id", None):
-        return
-    
-    student_id = getattr(target, "student_id", None)
-    class_id = getattr(target, "class_id", None)
-    join_code = getattr(target, "join_code", None)
-    
-    seat_id = _resolve_seat_id(connection, student_id, class_id=class_id, join_code=join_code)
-    if seat_id:
-        target.seat_id = seat_id
 
 
 class RentItem(db.Model):
@@ -2064,17 +1708,12 @@ class InsuranceClaim(db.Model):
     @property
     def student(self):
         """Resolve student through seat for template compatibility."""
-        if not self.seat or not self.seat.user_id:
-            return None
-        if self.seat.identity_profile:
-            return Student.query.filter_by(identity_id=self.seat.identity_profile.id).first()
-        return None
+        return self.seat.identity_profile if self.seat and self.seat.identity_profile else None
 
     @property
     def student_id(self):
         """Resolve the canonical student id through the seat binding."""
-        student = self.student
-        return student.id if student else None
+        return self.seat.user_id if self.seat else None
 
 
 
@@ -2249,11 +1888,7 @@ class InsuranceEnrollment(db.Model):
     @property
     def student(self):
         """Resolve student through seat for template compatibility."""
-        if not self.seat or not self.seat.user_id:
-            return None
-        if self.seat.identity_profile:
-            return Student.query.filter_by(identity_id=self.seat.identity_profile.id).first()
-        return None
+        return self.seat.identity_profile if self.seat and self.seat.identity_profile else None
 
 
 class EntitlementEvent(db.Model):
@@ -2368,14 +2003,6 @@ class UserReport(db.Model):
     reward_amount = db.Column(db.Float, nullable=True, default=0.0)
     reward_sent_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
-    # Internal student ID (hidden from sysadmin, used only for reward routing)
-    _student_id = db.Column('student_id', db.Integer, db.ForeignKey('students.id'), nullable=True)
-    student = db.relationship(
-        'Student',
-        backref=db.backref('reports', cascade='all, delete-orphan'),
-        foreign_keys=[_student_id],
-    )
-
     reviewed_by = db.relationship('User', backref='reviewed_reports', foreign_keys=[reviewed_by_sysadmin_id])
 
 
@@ -2422,8 +2049,7 @@ class Issue(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
 
-    # Student display cache and actor reference
-    student_id = db.Column(db.Integer, db.ForeignKey('students.id'), nullable=False, index=True)
+    # Seat display cache and actor reference
     student_first_name = db.Column(db.String(100), nullable=False)  # Cached for display
     student_last_initial = db.Column(db.String(1), nullable=False)
 
@@ -2488,7 +2114,6 @@ class Issue(db.Model):
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     # Relationships
-    student = db.relationship('Student', backref=db.backref('issues', lazy='dynamic'))
     teacher = db.relationship('User', foreign_keys=[user_id], backref=db.backref('class_issues', lazy='dynamic'))
     sysadmin = db.relationship('User', foreign_keys=[sysadmin_id], backref=db.backref('reviewed_issues', lazy='dynamic'))
     related_transaction = db.relationship('Transaction', backref='related_issues')
@@ -2504,7 +2129,7 @@ class Issue(db.Model):
     # Indexes
     __table_args__ = (
         db.Index('ix_issues_teacher_status', 'user_id', 'status'),
-        db.Index('ix_issues_student_status', 'student_id', 'status'),
+        db.Index('ix_issues_student_status', 'seat_id', 'status'),
         db.Index('ix_issues_join_code_status', 'join_code', 'status'),
     )
 
@@ -2685,12 +2310,11 @@ class Admin(db.Model):
     def get_student_count(self):
         """Return unique students linked via canonical seats."""
         return (
-            db.session.query(Seat.student_id)
+            db.session.query(Seat.id)
             .filter(
                 Seat.user_id == self.id,
-                Seat.student_id.isnot(None),
+                Seat.role == 'student',
             )
-            .distinct()
             .count()
         )
 
@@ -3458,65 +3082,3 @@ class IntegrityStatus(db.Model):
     def __repr__(self):
         state = "PASSING" if self.passing else "DEGRADED"
         return f'<IntegrityStatus {state} checked={self.last_checked_utc}>'
-
-
-def _normalize_initial(value):
-    if not value:
-        return None
-    return str(value).strip().upper()[:1]
-
-
-def _sync_identity_profile(session, entity, profile_type):
-    profile = entity.identity_profile
-
-    first_name = (entity.first_name or "").strip() if entity.first_name else None
-    if not first_name and profile is not None and getattr(profile, "first_name", None):
-        first_name = str(profile.first_name).strip() or None
-
-    # Legacy Student only stores last_initial; use it as last_name for the profile.
-    last_name = _normalize_initial(entity.last_initial) if hasattr(entity, 'last_initial') else None
-    if not last_name and profile is not None and getattr(profile, "last_name", None):
-        last_name = _normalize_initial(profile.last_name)
-
-    # Use placeholder values if first_name or last_name is missing
-    # This prevents constraint violations when IdentityProfile can't sync
-    if not first_name:
-        first_name = "[Unknown]"
-    if not last_name:
-        last_name = "?"
-
-    if profile is None and getattr(entity, "identity_id", None):
-        profile = session.get(IdentityProfile, entity.identity_id)
-        if profile:
-            entity.identity_profile = profile
-
-    if profile is None:
-        profile = IdentityProfile(
-            profile_type=profile_type,
-            first_name=first_name,
-            last_name=last_name,
-        )
-        session.add(profile)
-        entity.identity_profile = profile
-    else:
-        profile.first_name = first_name
-        profile.last_name = last_name
-        if not profile.profile_type:
-            profile.profile_type = profile_type
-
-    if isinstance(entity, Student):
-        if not getattr(entity, "first_name", None):
-            entity.first_name = first_name
-        if not getattr(entity, "last_initial", None):
-            entity.last_initial = last_name
-
-
-@event.listens_for(Session, "before_flush")
-def _ensure_identity_profiles(session, flush_context, instances):
-    for obj in session.new:
-        if isinstance(obj, Student):
-            _sync_identity_profile(session, obj, "student")
-
-    for obj in session.dirty:
-        if isinstance(obj, Student):
-            _sync_identity_profile(session, obj, "student")

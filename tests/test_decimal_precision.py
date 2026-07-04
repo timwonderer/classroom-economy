@@ -6,11 +6,12 @@ These tests verify that the fixes for floating-point rounding bugs work correctl
 2. Partial rent payments with problematic float values can be fully paid off
 """
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
 from app.models import (
-    User, UserRole, Admin, ClassEconomy, IdentityProfile, Seat, Student, Transaction, RentSettings, RentPayment, BankingSettings, _quantize_currency
+    User, UserRole, Admin, ClassEconomy, IdentityProfile, Seat, Transaction, RentSettings, RentPayment, BankingSettings, _quantize_currency
 )
 from app.extensions import db
 from app.utils.overdraft import charge_overdraft_fee_if_needed
@@ -60,7 +61,7 @@ class TestDecimalPrecision:
         """
         CRITICAL BUG FIX TEST: Transfer that zeros out checking should not trigger overdraft fee.
 
-        Bug: Student transfers exact checking balance to savings, balance becomes -0.00 due to
+        Bug: seat-scoped identity transfers exact checking balance to savings, balance becomes -0.00 due to
         floating-point errors, triggering $35 overdraft fee.
 
         Fix: Use Decimal for exact representation and normalize near-zero balances.
@@ -84,16 +85,7 @@ class TestDecimalPrecision:
         db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='Test', last_name='S'))
         db.session.add(block)
 
-        # Create student
-        student = Student(
-            first_name='Test',
-            last_initial='S',
-            block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash'
-        )
-        db.session.add(student)
-        db.session.flush()
+        student = make_student_identity(block='A', first_name='Test', last_name='S')
 
         class_id, seat_id = _attach_class_scope(teacher, student, join_code, block='A')
         banking_settings = BankingSettings(
@@ -182,7 +174,7 @@ class TestDecimalPrecision:
         """
         CRITICAL BUG FIX TEST: Partial rent payments with float-problematic values should pay off completely.
 
-        Bug: Student pays rent in multiple payments. Due to float precision errors, a tiny
+        Bug: seat-scoped identity pays rent in multiple payments. Due to float precision errors, a tiny
         unpayable balance remains (e.g., $0.0000001).
 
         Fix: Use Decimal for exact representation in rent calculations.
@@ -214,16 +206,7 @@ class TestDecimalPrecision:
         )
         db.session.add(rent_settings)
 
-        # Create student
-        student = Student(
-            first_name='Rent',
-            last_initial='T',
-            block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash'
-        )
-        db.session.add(student)
-        db.session.flush()
+        student = make_student_identity(block='A', first_name='Rent', last_name='T')
 
         class_id, seat_id = _attach_class_scope(teacher, student, join_code, block='A')
 
@@ -320,7 +303,7 @@ class TestDecimalPrecision:
         remaining_final = _quantize_currency(total_due - total_paid)
         assert remaining_final == Decimal('0.00')
 
-        # Student should have exactly $10.00 left in checking (60 - 50)
+        # Seat-scoped identity should have exactly $10.00 left in checking (60 - 50)
         final_checking = student.get_checking_balance(class_id=class_id, seat_id=seat_id)
         assert final_checking == Decimal('10.00')
 
@@ -346,15 +329,7 @@ class TestDecimalPrecision:
         db.session.add(block)
 
         # Create student
-        student = Student(
-            first_name='Zero',
-            last_initial='T',
-            block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash'
-        )
-        db.session.add(student)
-        db.session.flush()
+        student = make_student_identity(block='A', first_name='Zero', last_name='T')
 
         class_id, seat_id = _attach_class_scope(teacher, student, join_code, block='A')
         banking_settings = BankingSettings(
@@ -429,15 +404,7 @@ class TestDecimalPrecision:
         db.session.add(block)
 
         # Create student
-        student = Student(
-            first_name='Negative',
-            last_initial='T',
-            block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash'
-        )
-        db.session.add(student)
-        db.session.flush()
+        student = make_student_identity(block='A', first_name='Negative', last_name='T')
 
         class_id, seat_id = _attach_class_scope(teacher, student, join_code, block='A')
         banking_settings = BankingSettings(
@@ -496,15 +463,7 @@ class TestDecimalPrecision:
         db.session.flush()
 
         join_code = 'LATE_FEE_Q'
-        student = Student(
-            first_name='Late',
-            last_initial='F',
-            block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash'
-        )
-        db.session.add(student)
-        db.session.flush()
+        student = make_student_identity(block='A', first_name='Late', last_name='F')
 
         identity = IdentityProfile(profile_type="roster", first_name="Late", last_name="F")
         db.session.add(identity)
@@ -568,8 +527,15 @@ class TestDecimalPrecision:
 
             sess['current_session_nonce'] = student_user.current_session_nonce
             sess['current_join_code'] = join_code
-            sess['current_class_id'] = economy.class_id
-            sess['current_seat_id'] = seat.id
+            from tests.helpers.canonical_session import set_canonical_context
+            set_canonical_context(
+                sess,
+                user_id=student_user.id,
+                class_id=economy.class_id,
+                seat_id=seat.id,
+                role="student",
+                join_code=join_code,
+            )
             sess['login_time'] = datetime.now(timezone.utc).isoformat()
             sess['last_activity'] = datetime.now(timezone.utc).isoformat()
 

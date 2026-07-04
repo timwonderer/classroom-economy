@@ -53,12 +53,13 @@ No identifier answers more than its assigned question.
 
 `users` owns:
 
-- login
-- passkeys
-- TOTP
-- recovery
+- authentication credentials
+- student account recovery
 - session establishment
-- account deletion
+- last class context
+- TOTP
+- user roles
+
 
 `users` does not own:
 
@@ -70,7 +71,7 @@ No identifier answers more than its assigned question.
 - class-local claim verification artifacts
 - display identity
 
-Passkey metadata may be implemented by dedicated credential tables, but the owning
+Passkey metadata is handled by a unified `passkey_credential` table for both teacher and sysadmin, but the owning
 principal is always `users.id`.
 
 ## VII. Operational Actor

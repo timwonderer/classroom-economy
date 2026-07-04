@@ -356,7 +356,7 @@
                   {% for row in payment_log %}
                   <tr>
                     <td>
-                      <a href="{{ student_detail_url(row.student.id) }}">
+                      <a href="{{ student_detail_url(row.actor_public_id) }}">
                         {{ row.student.full_name }}
                       </a>
                     </td>
@@ -393,7 +393,7 @@
                   {% for row in unpaid_rent_log %}
                   <tr>
                     <td>
-                      <a href="{{ student_detail_url(row.student.id) }}">
+                      <a href="{{ student_detail_url(row.actor_public_id) }}">
                         {{ row.student.full_name }}
                       </a>
                     </td>

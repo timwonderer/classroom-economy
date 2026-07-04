@@ -1,20 +1,24 @@
 from decimal import Decimal
 
 from app import db
-from app.hash_utils import get_random_salt, hash_username_lookup
-from app.models import BalanceCache, Seat, Student, Transaction, TransactionStatus, User
+from app.models import BalanceCache, IdentityProfile, Seat, Transaction, TransactionStatus, User, UserRole
 from app.utils.banking import settle_balances
 
 
-def _student(first_name: str = "Seat", last_initial: str = "S", block: str = "A") -> Student:
-    return Student(
-        first_name=first_name,
-        last_initial=last_initial,
-        block=block,
-        salt=get_random_salt(),
-        first_half_hash=None,
-        second_half_hash=None,
+def _student(first_name: str = "Seat", last_initial: str = "S", block: str = "A") -> Seat:
+    user = User(
+        user_role=UserRole.STUDENT,
+        username_hash=f"{first_name.lower()}_{block.lower()}_hash",
+        username_lookup_hash=f"{first_name.lower()}_{block.lower()}_lookup",
+        password_hash="pw",
     )
+    db.session.add(user)
+    db.session.flush()
+    seat = Seat(user_id=user.id, join_code="JOIN_LEDGER", block=block, block_identifier=block, role="student")
+    db.session.add(seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name=first_name, last_initial=last_initial))
+    return seat
 
 
 def test_transaction_autofills_seat_id_from_student_and_join_code(client):
@@ -22,16 +26,8 @@ def test_transaction_autofills_seat_id_from_student_and_join_code(client):
     db.session.add(student)
     db.session.flush()
 
-    user = User(username_hash=hash_username_lookup(f"ledger_user_{student.id}"), password_hash="pw")
-    db.session.add(user)
-    db.session.flush()
-
-    seat = Seat(user_id=user.id, join_code="JOIN_LEDGER", block="A")
-    db.session.add(seat)
-    db.session.flush()
-
     tx = Transaction(
-        user_id=student_user.id,
+        user_id=student.user_id,
         join_code="JOIN_LEDGER",
         amount=Decimal("5.00"),
         account_type="checking",
@@ -42,7 +38,7 @@ def test_transaction_autofills_seat_id_from_student_and_join_code(client):
     db.session.commit()
 
     db.session.refresh(tx)
-    assert tx.seat_id == seat.id
+    assert tx.seat_id == student.id
 
 
 def test_settlement_creates_balance_cache_with_seat_id(client):
@@ -50,17 +46,9 @@ def test_settlement_creates_balance_cache_with_seat_id(client):
     db.session.add(student)
     db.session.flush()
 
-    user = User(username_hash=hash_username_lookup(f"cache_user_{student.id}"), password_hash="pw")
-    db.session.add(user)
-    db.session.flush()
-
-    seat = Seat(user_id=user.id, join_code="JOIN_CACHE", block="A")
-    db.session.add(seat)
-    db.session.flush()
-
     db.session.add(
         Transaction(
-            user_id=student_user.id,
+            user_id=student.user_id,
             join_code="JOIN_CACHE",
             amount=Decimal("3.00"),
             account_type="checking",
@@ -70,9 +58,9 @@ def test_settlement_creates_balance_cache_with_seat_id(client):
     )
     db.session.commit()
 
-    settle_balances(student.id, "JOIN_CACHE")
+    settle_balances(student.user_id, "JOIN_CACHE")
     db.session.commit()
 
-    cache = BalanceCache.query.filter_by(join_code="JOIN_CACHE", user_id=student_user.id).first()
+    cache = BalanceCache.query.filter_by(join_code="JOIN_CACHE", user_id=student.user_id).first()
     assert cache is not None
-    assert cache.seat_id == seat.id
+    assert cache.seat_id == student.id

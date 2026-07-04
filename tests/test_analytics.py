@@ -11,10 +11,10 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timedelta, timezone
 from app import db
-from app.models import Seat, IdentityProfile, User, UserRole, Admin, Student, StudentBlock, StudentTeacher, ClassEconomy, Transaction, PayrollSettings, RentSettings, AnalyticsAlert, FeatureSettings, ClassMembership, ClassMembershipRole
+from app.models import Seat, IdentityProfile, User, UserRole, Admin, StudentBlock, StudentTeacher, ClassEconomy, Transaction, PayrollSettings, RentSettings, AnalyticsAlert, FeatureSettings, ClassMembership, ClassMembershipRole
 from app.routes.analytics import get_pay_cycle_days, get_rent_cycle_days
 from app.utils.analytics_engine import AnalyticsEngine
-from app.hash_utils import get_random_salt, hash_username
+from tests.helpers.class_scope import make_student_identity
 
 
 @pytest.fixture
@@ -53,29 +53,18 @@ def setup_analytics_test(client):
     # Create students
     students = []
     for i in range(5):
-        salt = get_random_salt()
-        student = Student(
-            first_name=f"Student{i}",
-            last_initial="T",
-            block=block,
-            salt=salt,
-            username_hash=hash_username(f"student{i}", salt),
-            pin_hash="fake-hash"
-        )
-        db.session.add(student)
-        db.session.flush()
-
-        db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
+        student = make_student_identity(first_name=f"Student{i}", last_name="T", block=block, claimed=True)
+        db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=admin.id))
         db.session.add(ClassMembership(
             class_id=class_row.class_id,
             join_code=join_code,
-            user_id=student_user.id,
+            user_id=student.user_id,
             role=ClassMembershipRole.STUDENT.value,
         ))
         db.session.add(Seat(
             class_id=class_row.class_id,
             join_code=join_code,
-            user_id=student_user.id,
+            user_id=student.user_id,
             role='student',
             block=block,
             block_identifier=block,
@@ -83,19 +72,11 @@ def setup_analytics_test(client):
         
         # Link student to period
         student_block = StudentBlock(
-            user_id=student_user.id,
+            user_id=student.user_id,
             period=block,
             join_code=join_code
         )
         db.session.add(student_block)
-        # Auto-injected Canonical User
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-        db.session.add(student_user)
-        db.session.flush()
-        _tb_seat = Seat(user_id=student_user.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
-        db.session.add(_tb_seat)
-        db.session.flush()
-        db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
         students.append(student)
     
     db.session.commit()
@@ -135,7 +116,7 @@ def test_participation_rate_calculation(client, setup_analytics_test):
     window_start = now - timedelta(days=7)
     
     for i in range(3):
-        seat = Seat.query.filter_by(student_id=students[i].id, class_id=payroll.class_id).order_by(Seat.id.desc()).first()
+        seat = Seat.query.filter_by(user_id=students[i].user_id, class_id=payroll.class_id).order_by(Seat.id.desc()).first()
         tx = Transaction(
             seat_id=seat.id,
             class_id=seat.class_id,
@@ -168,7 +149,7 @@ def test_money_velocity_calculation(client, setup_analytics_test):
     window_start = now - timedelta(days=5)
     
     for i in range(10):
-        seat = Seat.query.filter_by(student_id=students[i % 5].id, class_id=payroll.class_id).order_by(Seat.id.desc()).first()
+        seat = Seat.query.filter_by(user_id=students[i % 5].user_id, class_id=payroll.class_id).order_by(Seat.id.desc()).first()
         tx = Transaction(
             seat_id=seat.id,
             class_id=seat.class_id,
@@ -199,7 +180,7 @@ def test_snapshot_creation(client, setup_analytics_test):
     window_start = now - timedelta(days=7)
     
     for student in students:
-        seat = Seat.query.filter_by(user_id=student_user.id, class_id=payroll.class_id).order_by(Seat.id.desc()).first()
+        seat = Seat.query.filter_by(user_id=student.user_id, class_id=payroll.class_id).order_by(Seat.id.desc()).first()
         tx = Transaction(
             seat_id=seat.id,
             class_id=seat.class_id,
@@ -355,17 +336,7 @@ def test_trend_calculation(client, setup_analytics_test):
 def test_enrolled_students_require_class_membership(client, setup_analytics_test):
     """Analytics enrollment is class-membership authoritative."""
     admin, join_code, block, students, payroll = setup_analytics_test
-    null_salt = get_random_salt()
-    null_student = Student(
-        first_name="Null",
-        last_initial="N",
-        block=block,
-        salt=null_salt,
-        username_hash=hash_username("nulluser", null_salt),
-        pin_hash="fake-hash"
-    )
-    db.session.add(null_student)
-    db.session.flush()
+    null_student = make_student_identity(first_name="Null", last_name="N", block=block, claimed=False)
     db.session.commit()
 
     engine = AnalyticsEngine(ClassEconomy.query.filter_by(join_code=join_code).first().class_id)
@@ -445,7 +416,7 @@ def test_budget_survival_uses_policy_mode_min_savings_ratio(client, setup_analyt
         db.session.commit()
 
     # Use fixed balances to isolate threshold behavior.
-    monkeypatch.setattr(Student, "get_checking_balance", lambda self, class_id, seat_id: 12.0)
+    monkeypatch.setattr(Seat, "get_checking_balance", lambda self, class_id, seat_id: 12.0)
 
     _set_policy('tight')  # min savings ratio = 0.05
     tight_engine = AnalyticsEngine(ClassEconomy.query.filter_by(join_code=join_code).first().class_id)
@@ -454,4 +425,3 @@ def test_budget_survival_uses_policy_mode_min_savings_ratio(client, setup_analyt
     _set_policy('comfortable')  # min savings ratio = 0.15
     comfortable_engine = AnalyticsEngine(ClassEconomy.query.filter_by(join_code=join_code).first().class_id)
     assert comfortable_engine.calculate_budget_survival_pass_rate(100.0) == 0.0
-

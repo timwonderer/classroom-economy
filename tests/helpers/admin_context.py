@@ -1,5 +1,5 @@
-from datetime import datetime, timezone
 import secrets
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def login_admin(
@@ -32,7 +32,6 @@ def login_admin(
         sess["is_admin"] = True
         sess["admin_id"] = admin_id
         if user_id is not None:
-            sess["user_id"] = user_id
             sess["current_session_nonce"] = secrets.token_urlsafe(32)
             from app.extensions import db
             from app.models import User
@@ -40,10 +39,14 @@ def login_admin(
             if user:
                 user.current_session_nonce = sess["current_session_nonce"]
                 db.session.commit()
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
-        if join_code is not None:
+        if class_id is not None and seat_id is not None and user_id is not None:
+            set_canonical_context(
+                sess,
+                user_id=user_id,
+                class_id=class_id,
+                seat_id=seat_id,
+                role="teacher",
+                join_code=join_code,
+            )
+        elif join_code is not None:
             sess["current_join_code"] = join_code
-        if class_id is not None:
-            sess["current_class_id"] = class_id
-        if seat_id is not None:
-            sess["current_seat_id"] = seat_id

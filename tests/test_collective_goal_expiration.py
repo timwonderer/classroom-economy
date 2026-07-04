@@ -22,13 +22,21 @@ from app.models import User, UserRole, Admin, ClassMembership, StoreItem, Studen
 from app.utils.store import process_expired_collective_goals, refund_pending_collective_purchases
 from tests.helpers.admin_context import login_admin
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def _login_student(client, student_id, join_code):
     with client.session_transaction() as sess:
-        sess['student_id'] = student_id
-        sess['current_join_code'] = join_code
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
+        seat = Seat.query.filter_by(user_id=student_id).order_by(Seat.id.asc()).first()
+        if seat:
+            set_canonical_context(
+                sess,
+                user_id=student_id,
+                class_id=seat.class_id,
+                seat_id=seat.id,
+                role="student",
+                join_code=join_code,
+            )
 
 
 def _login_admin(client, admin_id, join_code=None):
@@ -44,56 +52,45 @@ def _create_teacher(username):
 
 
 def _create_student(teacher, first_name, join_code, block='A'):
-    """Create a Student enrolled in the given class period."""
-    from app.models import User, UserRole, Student
+    """Create canonical student identity enrolled in the given class period."""
     profile = IdentityProfile(profile_type='student', first_name=first_name, last_name='S')
     db.session.add(profile)
     db.session.flush()
-    student = Student(identity_profile=profile, block=block, salt=b'salt')
-    student.passphrase_hash = generate_password_hash('password')
-    db.session.add(student)
-    db.session.flush()
-    if not db.session.query(ClassMembership.id).filter_by(
-        join_code=join_code,
-        admin_id=teacher.id,
-        role='admin',
-    ).first():
-        create_class_scope(
-            teacher=teacher,
-            join_code=join_code,
-            student=student,
-            block=block,
-            display_name=block,
-        )
-        db.session.flush()
-    elif not db.session.query(ClassMembership.id).filter_by(
-        join_code=join_code,
-        user_id=student_user.id,
-        role='student',
-    ).first():
-        db.session.add(ClassMembership(
-            join_code=join_code,
-            user_id=student_user.id,
-            role='student',
-        ))
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    student_user = User(
+        user_role=UserRole.STUDENT,
+        username_hash=f"auto_{first_name.lower()}_{join_code.lower()}",
+        username_lookup_hash=f"auto_l_{first_name.lower()}_{join_code.lower()}",
+    )
     db.session.add(student_user)
     db.session.flush()
-    _tb_seat = Seat(user_id=student_user.id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(_tb_seat)
+    seat = Seat(
+        user_id=student_user.id,
+        join_code=join_code,
+        class_id=create_class_scope(
+            teacher=teacher,
+            join_code=join_code,
+            block=block,
+            display_name=block,
+        ).class_id,
+        block=block,
+        block_identifier=block,
+        role="student",
+        claimed_at=datetime.now(timezone.utc),
+    )
+    db.session.add(seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=first_name, last_name='S'))
+    profile.seat_id = seat.id
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     # Give the student funds so purchases succeed
     db.session.add(Transaction(
-        user_id=student_user.id,join_code=join_code,
+        user_id=student_user.id,
+        join_code=join_code,
         amount=Decimal('100.00'),
         account_type='checking',
         type='deposit',
         description='Initial funds',
     ))
-    return student
+    return seat
 
 
 import uuid

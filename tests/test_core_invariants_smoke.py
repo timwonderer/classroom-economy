@@ -7,11 +7,12 @@ from werkzeug.security import generate_password_hash
 
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from app.models import Seat, IdentityProfile, Admin, ClassMembership, ClassFeature, InsuranceClaim, InsuranceEnrollment, InsurancePolicy, RentPayment, RentSettings, StoreItem, Student, StudentTeacher, AttendanceSession, Transaction, TransactionStatus, ClassEconomy, User, UserRole
+from app.models import Seat, IdentityProfile, Admin, ClassMembership, ClassFeature, InsuranceClaim, InsuranceEnrollment, InsurancePolicy, RentPayment, RentSettings, StoreItem, StudentTeacher, AttendanceSession, Transaction, TransactionStatus, ClassEconomy, User, UserRole
 from app.services import ledger_service, obligations_service
 from tests.helpers.admin_context import login_admin
-from tests.helpers.class_scope import create_class_scope, make_student_seat, _ensure_user
+from tests.helpers.class_scope import create_class_scope, make_student_identity, make_student_seat, _ensure_user
 from app.hash_utils import hash_username_lookup
+from tests.helpers.canonical_session import set_canonical_context
 
 
 pytestmark = pytest.mark.critical
@@ -24,23 +25,16 @@ def _create_admin(username: str) -> Admin:
     return admin
 
 
-def _create_student(first_name: str, block: str = "A") -> Student:
-    salt = get_random_salt()
-    student = Student(
+def _create_student(first_name: str, block: str = "A"):
+    return make_student_identity(
         first_name=first_name,
-        last_initial="T",
+        last_name="Test",
         block=block,
-        salt=salt,
-        username_hash=hash_username(first_name.lower(), salt),
-        pin_hash="pin-hash",
-        passphrase_hash=generate_password_hash("password"),
+        claimed=True,
     )
-    db.session.add(student)
-    db.session.flush()
-    return student
 
 
-def _link_student_to_teacher(student: Student, admin: Admin, join_code: str, block: str = "A") -> None:
+def _link_student_to_teacher(student, admin: Admin, join_code: str, block: str = "A") -> None:
     if not db.session.query(ClassMembership.id).filter_by(
         join_code=join_code,
         admin_id=admin.id,
@@ -56,15 +50,15 @@ def _link_student_to_teacher(student: Student, admin: Admin, join_code: str, blo
         db.session.flush()
     elif not db.session.query(ClassMembership.id).filter_by(
         join_code=join_code,
-        user_id=student_user.id,
+        user_id=student.user_id,
         role="student",
     ).first():
         db.session.add(ClassMembership(
             join_code=join_code,
-            user_id=student_user.id,
+            user_id=student.user_id,
             role="student",
         ))
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=admin.id))
     class_row = db.session.query(ClassMembership.join_code).filter_by(
         join_code=join_code,
         admin_id=admin.id,
@@ -117,19 +111,14 @@ def _login_student(client, student_id: int, join_code: str) -> None:
         db.session.flush()
         user_id = user.id
     with client.session_transaction() as sess:
-        sess["student_id"] = student_id
-        if user_id:
-            sess["user_id"] = user_id
-        sess["current_join_code"] = join_code
-        if class_id:
-            sess["current_class_id"] = class_id
-        if seat_id:
-            sess["current_seat_id"] = seat_id
-            sess["seat_id"] = seat_id
-        if class_id:
-            sess["class_id"] = class_id
-        sess["login_time"] = datetime.now(timezone.utc).isoformat()
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=user_id or student_id,
+            class_id=class_id or "",
+            seat_id=seat_id or 0,
+            role="student",
+            join_code=join_code,
+        )
 
 
 def test_tenant_isolation_attendance_history(client):
@@ -146,16 +135,12 @@ def test_tenant_isolation_attendance_history(client):
     seat_a = Seat.query.filter_by(class_id=economy_a.class_id, join_code="JOIN-A", role="student").first()
     seat_b = Seat.query.filter_by(class_id=economy_b.class_id, join_code="JOIN-B", role="student").first()
     tap_a = AttendanceSession(
-        user_id=student_a_user.id,
         seat_id=seat_a.id,
-        period="A",
         started_at=datetime.now(timezone.utc),
         class_id=economy_a.class_id if economy_a else None,
     )
     tap_b = AttendanceSession(
-        user_id=student_b_user.id,
         seat_id=seat_b.id,
-        period="A",
         started_at=datetime.now(timezone.utc),
         class_id=economy_b.class_id if economy_b else None,
     )
@@ -183,10 +168,8 @@ def test_payroll_run_creates_payroll_transaction(client):
     from app.models import AttendanceSession
     db.session.add(
         AttendanceSession(
-            user_id=student_user.id,
             seat_id=Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-PAY", role="student").first().id,
             class_id=economy.class_id,
-            period="A",
             started_at=now - timedelta(minutes=60),
             ended_at=now - timedelta(minutes=30),
             duration_seconds=1800,
@@ -203,7 +186,8 @@ def test_payroll_run_creates_payroll_transaction(client):
     )
     db.session.add(
         Transaction(
-            user_id=student_user.id,join_code="JOIN-PAY",
+            user_id=student.user_id,
+            join_code="JOIN-PAY",
             amount=Decimal("1.00"),
             account_type="checking",
             status=TransactionStatus.POSTED,
@@ -283,7 +267,7 @@ def test_insurance_approval_creates_reimbursement_transaction(client):
 
     purchase_tx = Transaction(
         seat_id=seat.id,
-        user_id=student_user.id,class_id=economy.class_id,
+        user_id=student.user_id, class_id=economy.class_id,
         join_code="JOIN-INS",
         amount=Decimal("-30.00"),
         account_type="checking",
@@ -350,7 +334,7 @@ def test_store_purchase_deducts_balance_and_records_transaction(client):
     db.session.add(
         Transaction(
             seat_id=seat.id,
-            user_id=student_user.id,class_id=economy.class_id,
+            user_id=student.user_id, class_id=economy.class_id,
             join_code="JOIN-STORE",
             amount=Decimal("25.00"),
             account_type="checking",
@@ -477,7 +461,7 @@ def test_store_purchase_bulk_discount_uses_quantized_total_for_funds_check(clien
     db.session.add(
         Transaction(
             seat_id=seat.id,
-            user_id=student_user.id,class_id=economy.class_id,
+            user_id=student.user_id, class_id=economy.class_id,
             join_code="JOIN-DISC",
             amount=Decimal("0.04"),
             account_type="checking",
@@ -556,7 +540,7 @@ def test_rent_payment_creates_rent_obligation_record(client):
     db.session.add(
         Transaction(
             seat_id=seat.id,
-            user_id=student_user.id,class_id=economy.class_id,
+            user_id=student.user_id, class_id=economy.class_id,
             join_code="JOIN-RENT",
             amount=Decimal("40.00"),
             account_type="checking",

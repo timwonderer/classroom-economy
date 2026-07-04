@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from app import db
 from app.models import Transaction, TransactionStatus, BalanceCache, AccountType, ClassEconomy, Seat
 from app.utils.time import utc_now
-from app.utils.seat_scope import get_seat_ids_for_student_join, transaction_scope_filter
+from app.utils.seat_scope import transaction_scope_filter
 
 logger = logging.getLogger(__name__)
 
@@ -90,88 +90,44 @@ def settle_balances(seat_id: int, class_id: str) -> None:
         raise RuntimeError("Settlement attempted during read-only request context")
 
     try:
-        original_scope_id = int(seat_id)
-        original_scope_key = class_id
-        resolved_student_id = None
-        resolved_join_code = None
-        resolved_seat_id = None
-        scope_filter = None
-
+        resolved_seat_id = int(seat_id)
         class_row = (
             ClassEconomy.query
             .with_entities(ClassEconomy.class_id, ClassEconomy.join_code)
             .filter_by(class_id=class_id)
             .first()
         )
-        if class_row:
-            # Canonical invocation: settle_balances(seat_id, class_id)
-            canonical_class_id = str(class_row[0])
-            resolved_join_code = class_row[1]
-            resolved_seat_id = original_scope_id
-            seat = db.session.get(Seat, resolved_seat_id)
-            if seat:
-                from app.models import IdentityProfile, Student
-                ip = IdentityProfile.query.filter_by(seat_id=seat.id).first()
-                student = Student.query.filter_by(identity_id=ip.id).first() if ip else None
-                resolved_student_id = student.id if student else None
-                resolved_join_code = seat.join_code or resolved_join_code
-            scope_filter = (Transaction.seat_id == resolved_seat_id)
-        else:
-            # Transitional invocation: settle_balances(student_id, join_code)
-            resolved_student_id = original_scope_id
-            resolved_join_code = class_id
-            seat_ids = get_seat_ids_for_student_join(resolved_student_id, resolved_join_code)
-            resolved_seat_id = seat_ids[0] if seat_ids else None
-            canonical_class_id = None
-            if resolved_seat_id:
-                seat_row = (
-                    Seat.query.with_entities(Seat.class_id, Seat.join_code)
-                    .filter_by(id=resolved_seat_id)
-                    .first()
-                )
-                if seat_row and seat_row[0]:
-                    canonical_class_id = str(seat_row[0])
-                    resolved_join_code = seat_row[1] or resolved_join_code
-            if not canonical_class_id:
-                class_lookup = (
-                    ClassEconomy.query
-                    .with_entities(ClassEconomy.class_id)
-                    .filter_by(join_code=resolved_join_code)
-                    .first()
-                )
-                if class_lookup and class_lookup[0]:
-                    canonical_class_id = str(class_lookup[0])
-            if not canonical_class_id:
-                raise ValueError(
-                    f"settle_balances could not resolve class_id for join_code={resolved_join_code}"
-                )
-            scope_filter = transaction_scope_filter(Transaction, resolved_student_id, seat_ids)
+        if not class_row:
+            raise ValueError(f"settle_balances could not resolve class_id={class_id}")
+        canonical_class_id = str(class_row[0])
+        seat = db.session.get(Seat, resolved_seat_id)
+        if not seat or seat.class_id != canonical_class_id:
+            raise ValueError("settle_balances requires a seat bound to the provided class_id")
 
-        class_id = canonical_class_id
+        scope_filter = transaction_scope_filter(Transaction, resolved_seat_id)
+        resolved_join_code = seat.join_code or class_row[1]
         cache_was_created = False
         # 1. Lock (or Create) BalanceCache Row
         # ---------------------------------------------------------
         # We must lock the cache row to prevent concurrent settlements
         # or balance updates for the same seat/class.
         cache = None
-        if resolved_seat_id:
-            cache = (
-                BalanceCache.query
-                .filter(
-                    BalanceCache.class_id == class_id,
-                    BalanceCache.seat_id == resolved_seat_id,
-                )
-                .with_for_update()
-                .first()
+        cache = (
+            BalanceCache.query
+            .filter(
+                BalanceCache.class_id == canonical_class_id,
+                BalanceCache.seat_id == resolved_seat_id,
             )
+            .with_for_update()
+            .first()
+        )
         if not cache:
-            seat = db.session.get(Seat, resolved_seat_id) if resolved_seat_id else None
             try:
                 with db.session.begin_nested():
                     cache = BalanceCache(
                         seat_id=resolved_seat_id,
-                        class_id=class_id,
-                        join_code=(seat.join_code if seat else resolved_join_code),
+                        class_id=canonical_class_id,
+                        join_code=resolved_join_code,
                     )
                     db.session.add(cache)
                     db.session.flush()
@@ -181,7 +137,7 @@ def settle_balances(seat_id: int, class_id: str) -> None:
                 cache = (
                     BalanceCache.query
                     .filter(
-                        BalanceCache.class_id == class_id,
+                        BalanceCache.class_id == canonical_class_id,
                         BalanceCache.seat_id == resolved_seat_id,
                     )
                     .with_for_update()
@@ -196,7 +152,7 @@ def settle_balances(seat_id: int, class_id: str) -> None:
             Transaction.query
             .filter(
                 scope_filter,
-                Transaction.class_id == class_id,
+                Transaction.class_id == canonical_class_id,
                 Transaction.status == TransactionStatus.PENDING,
             )
             .order_by(Transaction.timestamp)
@@ -230,7 +186,7 @@ def settle_balances(seat_id: int, class_id: str) -> None:
             seed_time = utc_now()
             all_checking = db.session.query(db.func.sum(Transaction.amount)).filter(
                 scope_filter,
-                Transaction.class_id == class_id,
+                Transaction.class_id == canonical_class_id,
                 Transaction.account_type == 'checking',
                 Transaction.is_void == False,
             ).scalar() or Decimal('0.00')

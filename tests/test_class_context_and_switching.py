@@ -4,8 +4,9 @@ import pytest
 from flask import session
 
 from app.extensions import db
-from app.hash_utils import get_random_salt, hash_username
-from app.models import ClassEconomy, IdentityProfile, Seat, Student, User, UserRole
+from app.models import ClassEconomy, IdentityProfile, Seat, User, UserRole
+from tests.helpers.class_scope import make_student_identity
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def _get_inject_class_context_processor(client):
@@ -31,18 +32,7 @@ def setup_multi_class_student(client):
     db.session.add(student_user)
     db.session.flush()
 
-    salt = get_random_salt()
-    student = Student(
-        first_name="MultiClass",
-        last_initial="S",
-        identity_id=profile.id,
-        block="A",
-        salt=salt,
-        username_hash=hash_username("multiclass_s", salt),
-        pin_hash="fake-hash",
-    )
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(first_name="MultiClass", last_name="S", block="A", claimed=True)
 
     class_1a = ClassEconomy(join_code="TEACHER1A", user_id=teacher1.id, display_name="Class 1A")
     class_2b = ClassEconomy(join_code="TEACHER2B", user_id=teacher2.id, display_name="Class 2B")
@@ -84,18 +74,7 @@ def setup_single_class_student(client):
     db.session.add(student_user)
     db.session.flush()
 
-    salt = get_random_salt()
-    student = Student(
-        first_name="SingleClass",
-        last_initial="X",
-        identity_id=profile.id,
-        block="D",
-        salt=salt,
-        username_hash=hash_username("singleclass_x", salt),
-        pin_hash="fake-hash",
-    )
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(first_name="SingleClass", last_name="X", block="D", claimed=True)
 
     class_single = ClassEconomy(join_code="SINGLED", user_id=teacher.id, display_name="Single D")
     db.session.add(class_single)
@@ -119,27 +98,17 @@ def test_inject_class_context_no_student(client):
 
 
 def test_inject_class_context_no_claimed_seats(client):
-    profile = IdentityProfile(profile_type="student", first_name="NoSeats", last_name="N")
-    db.session.add(profile)
-    db.session.flush()
-    student_user = User(user_role=UserRole.STUDENT, username_hash="noseats_user_hash", username_lookup_hash="noseats_user_lookup")
-    db.session.add(student_user)
-    db.session.flush()
-    salt = get_random_salt()
-    student = Student(
-        first_name="NoSeats",
-        last_initial="N",
-        identity_id=profile.id,
-        block="Z",
-        salt=salt,
-        username_hash=hash_username("noseats_n", salt),
-        pin_hash="fake-hash",
-    )
-    db.session.add(student)
-    db.session.commit()
+    student = make_student_identity(first_name="NoSeats", last_name="N", block="Z", claimed=False)
 
     with client.application.test_request_context("/"):
-        session["student_id"] = student.id
+        set_canonical_context(
+            session,
+            user_id=setup_multi_class_student["seats"][0].user_id,
+            class_id=setup_multi_class_student["classes"]["TEACHER2B"].class_id,
+            seat_id=setup_multi_class_student["seats"][1].id,
+            role="student",
+            join_code="TEACHER2B",
+        )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
         assert context["current_class_context"] is None
@@ -149,9 +118,14 @@ def test_inject_class_context_no_claimed_seats(client):
 def test_inject_class_context_requires_explicit_selection(client, setup_multi_class_student):
     student = setup_multi_class_student["student"]
     with client.application.test_request_context("/"):
-        session["student_id"] = student.id
-        session["user_id"] = setup_multi_class_student["seats"][0].user_id
-        session["current_seat_id"] = setup_multi_class_student["seats"][0].id
+        set_canonical_context(
+            session,
+            user_id=setup_multi_class_student["seats"][0].user_id,
+            class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
+            seat_id=setup_multi_class_student["seats"][0].id,
+            role="student",
+            join_code="TEACHER1A",
+        )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
         assert context["current_class_context"] is None
@@ -162,8 +136,14 @@ def test_inject_class_context_uses_session_join_code(client, setup_multi_class_s
     student = setup_multi_class_student["student"]
     class_row = setup_multi_class_student["classes"]["TEACHER2B"]
     with client.application.test_request_context("/"):
-        session["student_id"] = student.id
-        session["current_class_id"] = class_row.class_id
+        set_canonical_context(
+            session,
+            user_id=setup_multi_class_student["seats"][0].user_id,
+            class_id=class_row.class_id,
+            seat_id=setup_multi_class_student["seats"][1].id,
+            role="student",
+            join_code="TEACHER2B",
+        )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
         assert context["current_class_context"] is not None
@@ -175,8 +155,14 @@ def test_inject_class_context_available_classes_list(client, setup_multi_class_s
     student = setup_multi_class_student["student"]
     class_row = setup_multi_class_student["classes"]["TEACHER2B"]
     with client.application.test_request_context("/"):
-        session["student_id"] = student.id
-        session["current_class_id"] = class_row.class_id
+        set_canonical_context(
+            session,
+            user_id=setup_multi_class_student["seats"][0].user_id,
+            class_id=class_row.class_id,
+            seat_id=setup_multi_class_student["seats"][1].id,
+            role="student",
+            join_code="TEACHER2B",
+        )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
         assert len(context["available_classes"]) == 3
@@ -190,7 +176,14 @@ def test_inject_class_context_available_classes_list(client, setup_multi_class_s
 def test_inject_class_context_handles_missing_teacher(client, setup_single_class_student):
     student = setup_single_class_student["student"]
     with client.application.test_request_context("/"):
-        session["student_id"] = student.id
+        set_canonical_context(
+            session,
+            user_id=setup_single_class_student["seat"].user_id,
+            class_id=setup_single_class_student["seat"].class_id,
+            seat_id=setup_single_class_student["seat"].id,
+            role="student",
+            join_code="SINGLED",
+        )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
         assert context["current_class_context"] is not None
@@ -199,7 +192,13 @@ def test_inject_class_context_handles_missing_teacher(client, setup_single_class
 
 def test_inject_class_context_exception_handling(client):
     with client.application.test_request_context("/"):
-        session["student_id"] = 2**31 - 1
+        set_canonical_context(
+            session,
+            user_id=2**31 - 1,
+            class_id="",
+            seat_id=2**31 - 1,
+            role="student",
+        )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
         assert context["current_class_context"] is None
@@ -209,12 +208,14 @@ def test_inject_class_context_exception_handling(client):
 def test_switch_class_success(client, setup_multi_class_student):
     student = setup_multi_class_student["student"]
     with client.session_transaction() as sess:
-        sess["student_id"] = student.id
-        sess["current_class_id"] = setup_multi_class_student["classes"]["TEACHER1A"].class_id
-        sess["current_seat_id"] = setup_multi_class_student["seats"][0].id
-        sess["user_id"] = setup_multi_class_student["seats"][0].user_id
-        sess["current_join_code"] = "TEACHER1A"
-        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=setup_multi_class_student["seats"][0].user_id,
+            class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
+            seat_id=setup_multi_class_student["seats"][0].id,
+            role="student",
+            join_code="TEACHER1A",
+        )
 
     target_class_id = setup_multi_class_student["classes"]["TEACHER2B"].class_id
     response = client.post(f"/student/switch-class/{target_class_id}")
@@ -227,12 +228,14 @@ def test_switch_class_rejects_missing_runtime_seat(client, setup_multi_class_stu
     db.session.commit()
 
     with client.session_transaction() as sess:
-        sess["student_id"] = student.id
-        sess["current_class_id"] = setup_multi_class_student["classes"]["TEACHER1A"].class_id
-        sess["current_seat_id"] = setup_multi_class_student["seats"][0].id
-        sess["user_id"] = setup_multi_class_student["seats"][0].user_id
-        sess["current_join_code"] = "TEACHER1A"
-        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=setup_multi_class_student["seats"][0].user_id,
+            class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
+            seat_id=setup_multi_class_student["seats"][0].id,
+            role="student",
+            join_code="TEACHER1A",
+        )
 
     target_class_id = setup_multi_class_student["classes"]["TEACHER2B"].class_id
     response = client.post(f"/student/switch-class/{target_class_id}")
@@ -242,11 +245,14 @@ def test_switch_class_rejects_missing_runtime_seat(client, setup_multi_class_stu
 def test_switch_class_unauthorized(client, setup_multi_class_student):
     student = setup_multi_class_student["student"]
     with client.session_transaction() as sess:
-        sess["student_id"] = student.id
-        sess["current_seat_id"] = setup_multi_class_student["seats"][0].id
-        sess["user_id"] = setup_multi_class_student["seats"][0].user_id
-        sess["current_join_code"] = "TEACHER1A"
-        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=setup_multi_class_student["seats"][0].user_id,
+            class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
+            seat_id=setup_multi_class_student["seats"][0].id,
+            role="student",
+            join_code="TEACHER1A",
+        )
     response = client.post("/student/switch-class/invalid-class-id")
     assert response.status_code == 403
     assert response.get_json()["status"] == "error"
@@ -261,11 +267,14 @@ def test_switch_class_not_logged_in(client):
 def test_switch_class_nonexistent_join_code(client, setup_multi_class_student):
     student = setup_multi_class_student["student"]
     with client.session_transaction() as sess:
-        sess["student_id"] = student.id
-        sess["current_seat_id"] = setup_multi_class_student["seats"][0].id
-        sess["user_id"] = setup_multi_class_student["seats"][0].user_id
-        sess["current_join_code"] = "TEACHER1A"
-        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=setup_multi_class_student["seats"][0].user_id,
+            class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
+            seat_id=setup_multi_class_student["seats"][0].id,
+            role="student",
+            join_code="TEACHER1A",
+        )
     response = client.post("/student/switch-class/not-a-real-class")
     assert response.status_code == 403
 
@@ -276,11 +285,14 @@ def test_switch_class_unclaimed_seat(client, setup_multi_class_student):
     db.session.add(unclaimed_seat)
     db.session.commit()
     with client.session_transaction() as sess:
-        sess["student_id"] = student.id
-        sess["current_seat_id"] = setup_multi_class_student["seats"][0].id
-        sess["user_id"] = setup_multi_class_student["seats"][0].user_id
-        sess["current_join_code"] = "TEACHER1A"
-        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=setup_multi_class_student["seats"][0].user_id,
+            class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
+            seat_id=setup_multi_class_student["seats"][0].id,
+            role="student",
+            join_code="TEACHER1A",
+        )
     response = client.post(f"/student/switch-class/{setup_multi_class_student['classes']['UNCLAIMEDZ'].class_id}")
     assert response.status_code == 403
 
@@ -288,11 +300,14 @@ def test_switch_class_unclaimed_seat(client, setup_multi_class_student):
 def test_switch_class_proper_response_structure(client, setup_multi_class_student):
     student = setup_multi_class_student["student"]
     with client.session_transaction() as sess:
-        sess["student_id"] = student.id
-        sess["current_seat_id"] = setup_multi_class_student["seats"][0].id
-        sess["user_id"] = setup_multi_class_student["seats"][0].user_id
-        sess["current_join_code"] = "TEACHER1A"
-        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=setup_multi_class_student["seats"][0].user_id,
+            class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
+            seat_id=setup_multi_class_student["seats"][0].id,
+            role="student",
+            join_code="TEACHER1A",
+        )
     response = client.post(f"/student/switch-class/{setup_multi_class_student['classes']['TEACHER3C'].class_id}")
     assert response.status_code == 403
 
@@ -300,8 +315,14 @@ def test_switch_class_proper_response_structure(client, setup_multi_class_studen
 def test_switch_class_between_all_classes(client, setup_multi_class_student):
     student = setup_multi_class_student["student"]
     with client.session_transaction() as sess:
-        sess["student_id"] = student.id
-        sess["login_time"] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=setup_multi_class_student["seats"][0].user_id,
+            class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
+            seat_id=setup_multi_class_student["seats"][0].id,
+            role="student",
+            join_code="TEACHER1A",
+        )
 
     for join_code, block in [("TEACHER1A", "A"), ("TEACHER2B", "B"), ("TEACHER3C", "C"), ("TEACHER1A", "A")]:
         class_id = setup_multi_class_student["classes"][join_code].class_id

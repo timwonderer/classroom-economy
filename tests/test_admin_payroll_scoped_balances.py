@@ -3,8 +3,9 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, Seat, IdentityProfile, Student, StudentTeacher, Transaction, TransactionStatus, User, UserRole
+from app.models import Admin, Seat, IdentityProfile, StudentTeacher, Transaction, TransactionStatus, User, UserRole
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def _bind_canonical_teacher(admin: Admin) -> User:
@@ -25,11 +26,14 @@ def _login_admin(client, admin_id, *, user_id: int, class_id: str, join_code: st
     with client.session_transaction() as sess:
         sess["admin_id"] = admin_id
         sess["is_admin"] = True
-        sess["user_id"] = user_id
-        sess["current_seat_id"] = teacher_seat.id
-        sess["current_class_id"] = class_id
-        sess["current_join_code"] = join_code
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=user_id,
+            class_id=class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
+            join_code=join_code,
+        )
 
 
 def test_admin_payroll_displays_scoped_balances_only(client):
@@ -43,18 +47,20 @@ def test_admin_payroll_displays_scoped_balances_only(client):
     profile = IdentityProfile(profile_type="student", first_name="Pay", last_name="S")
     db.session.add(profile)
     db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b"salt")
-    db.session.add(student)
+    student_user = User(user_role=UserRole.STUDENT, username_hash="payroll_scope_student_hash", username_lookup_hash="payroll_scope_student_lookup")
+    db.session.add(student_user)
     db.session.flush()
 
-    class_a = create_class_scope(teacher=teacher_a, join_code="PAYA01", student=student, block="A", display_name="A")
-    class_b = create_class_scope(teacher=teacher_b, join_code="PAYB01", student=student, block="A", display_name="A")
+    class_a = create_class_scope(teacher=teacher_a, join_code="PAYA01", block="A", display_name="A")
+    class_b = create_class_scope(teacher=teacher_b, join_code="PAYB01", block="A", display_name="A")
     db.session.flush()
-    seat_a = Seat.query.filter_by(class_id=class_a.class_id, user_id=student_user.id, role="student").first()
-    seat_b = Seat.query.filter_by(class_id=class_b.class_id, user_id=student_user.id, role="student").first()
+    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, join_code=class_a.join_code, role="student", claimed_at=datetime.now(timezone.utc))
+    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, join_code=class_b.join_code, role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add_all([seat_a, seat_b])
+    db.session.flush()
+    profile.seat_id = seat_a.id
+    db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type="student_claimed", first_name="Pay", last_initial="S"))
     assert seat_a is not None and seat_b is not None
-    seat_a.claimed_at = datetime.now(timezone.utc)
-    seat_b.claimed_at = datetime.now(timezone.utc)
 
     from app.feats.base import FEATContext
     with FEATContext("FEAT-ADMN-001"):

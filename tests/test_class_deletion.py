@@ -1,4 +1,5 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone
 
@@ -7,11 +8,11 @@ from app.feats.base import InvariantViolation
 from app.models import (
     User,
     UserRole,
-    Admin, IdentityProfile, ClassEconomy, ClassMembership, Transaction, StudentBlock,
+    Admin, IdentityProfile, ClassEconomy, ClassMembership, Transaction,
     TapEvent, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
     AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
     InsuranceEnrollment, RentPayment, Announcement, StoreItemBlock, StoreItem,
-    Seat, Student, StudentTeacher, PayrollSettings, RentSettings,
+    Seat, StudentTeacher, PayrollSettings, RentSettings,
     IssueCategory, InsurancePolicy, InsurancePolicyBlock
 )
 from app.utils.deletion import collapse_universe
@@ -22,19 +23,8 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     db.session.add(admin)
     db.session.flush()
 
-    profile_a = IdentityProfile(profile_type="student", first_name="Collapse", last_name="S")
-    db.session.add(profile_a)
-    db.session.flush()
-    student = Student(identity_profile=profile_a, block="A", salt=b"salt")
-    db.session.add(student)
-    db.session.flush()
-    
-    profile_b = IdentityProfile(profile_type="student", first_name="Survive", last_name="B")
-    db.session.add(profile_b)
-    db.session.flush()
-    student_b = Student(identity_profile=profile_b, block="A", salt=b"salt")
-    db.session.add(student_b)
-    db.session.flush()
+    student = make_student_identity(block="A", first_name="Collapse", last_name="S")
+    student_b = make_student_identity(block="A", first_name="Survive", last_name="B")
 
     join_code = "COLL01"
     
@@ -45,6 +35,10 @@ def test_collapse_universe_cascades_and_cleans_up(client):
         create_claimed_teacher_block=True,
         teacher_block_claimed=True,
     )
+    student_user = db.session.get(User, student.user_id)
+    student_b_user = db.session.get(User, student_b.user_id)
+    assert student_user is not None
+    assert student_b_user is not None
     db.session.add(ClassMembership(join_code=join_code, user_id=student_b_user.id, role="student"))
     db.session.flush()
     membership = ClassMembership.query.filter_by(join_code=join_code, admin_id=admin.id, role="admin").first()
@@ -69,7 +63,7 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     db.session.add(RentSettings(block="A"))
 
     # Transaction
-    db.session.add(Transaction(user_id=student_user.id,join_code=join_code, amount=10, account_type="checking", type="deposit", is_void=False))
+    db.session.add(Transaction(user_id=student_user.id, join_code=join_code, amount=10, account_type="checking", type="deposit", is_void=False))
     
     # Store Item and Block
     store_item = StoreItem(user_id=admin.id, join_code=join_code, name="Item", price=10, item_type='immediate')
@@ -103,12 +97,12 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     assert db.session.query(Transaction).filter_by(join_code=join_code).count() == 1
     assert db.session.query(StoreItemBlock).filter_by(store_item_id=store_item.id).count() == 1
     assert db.session.query(StoreItem).filter_by(id=store_item.id).count() == 1
-    assert db.session.get(Student, student.id) is not None
-    assert db.session.get(Student, student_b.id) is not None
+    assert db.session.query(Seat).filter_by(user_id=student_user.id).first() is not None
+    assert db.session.query(Seat).filter_by(user_id=student_b_user.id).first() is not None
 
     store_item_id_val = store_item.id
-    student_id_val = student.id
-    student_b_id_val = student_b.id
+    student_user_id_val = student_user.id
+    student_b_user_id_val = student_b_user.id
     admin_id_val = admin.id
 
     # Do the collapse
@@ -133,10 +127,10 @@ def test_collapse_universe_cascades_and_cleans_up(client):
 
     db.session.expire_all()
     # Student A should be entirely deleted because they have no other classes
-    assert db.session.get(Student, student_id_val) is None
+    assert db.session.query(Seat).filter_by(user_id=student_user_id_val).first() is None
     
     # Student B should survive because they have another class
-    assert db.session.get(Student, student_b_id_val) is not None
+    assert db.session.query(Seat).filter_by(user_id=student_b_user_id_val).first() is not None
 
 
 def test_admin_join_code_delete_route(client):
@@ -168,12 +162,7 @@ def test_collapse_universe_raises_on_null_class_id_scope_rows(client):
     db.session.add(admin)
     db.session.flush()
 
-    profile = IdentityProfile(profile_type="student", first_name="Invalid", last_name="S")
-    db.session.add(profile)
-    db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b"salt")
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(block="A", first_name="Invalid", last_name="S")
 
     economy = create_class_scope(
         teacher=admin,
@@ -188,12 +177,12 @@ def test_collapse_universe_raises_on_null_class_id_scope_rows(client):
         role="admin",
     ).first()
     db.session.add(
-        StudentBlock(
-            user_id=student_user.id,
+        TapEvent(
+            seat_id=Seat.query.filter_by(user_id=student.user_id, class_id=economy.class_id).first().id,
             period="A",
             join_code="INV001",
             class_id=None,
-            tap_enabled=True,
+            status="active",
         )
     )
     db.session.commit()

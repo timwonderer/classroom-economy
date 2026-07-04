@@ -2,9 +2,10 @@ from datetime import datetime, timedelta, timezone
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
-from app.models import Seat, IdentityProfile, User, UserRole, Admin, ActorRequestTrace, ErrorEvent, IssueCategory, ClassEconomy, Student
+from app.models import Seat, IdentityProfile, User, UserRole, Admin, ActorRequestTrace, ErrorEvent, IssueCategory, ClassEconomy
 from app.utils.issue_helpers import create_issue
 from app.utils.time import utc_now
+from tests.helpers.class_scope import make_student_identity
 
 
 def _create_student_issue_context():
@@ -16,51 +17,14 @@ def _create_student_issue_context():
     db.session.add(join_code)
     db.session.flush()
 
-    student = Student(
-        first_name="Student",
-        last_initial="S",
-        block="A",
-        join_code=join_code.join_code,
-        class_id=join_code.class_id,
-        salt=b"1234567890123456",
-        pin_hash="pin",
-    )
-    db.session.add(student)
-    db.session.flush()
-
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    teacher_block = Seat(user_id=student_user.id, class_id=join_code.class_id, join_code=join_code.join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-
-    db.session.add(teacher_block)
-
-    db.session.flush()
-
-    db.session.add(IdentityProfile(seat_id=teacher_block.id, profile_type='student_claimed', first_name="Student", last_initial="S"))
-    db.session.add(teacher_block)
-
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    seat = Seat(
-        user_id=student_user.id,
-        class_id=join_code.class_id,
-        join_code=join_code.join_code,
-        role="student",
-        claimed_at=utc_now(),
-    )
-    db.session.add(seat)
-    db.session.flush()
+    seat = make_student_identity(first_name="Student", last_name="S", block="A", join_code=join_code.join_code, class_id=join_code.class_id)
     actor_public_id = seat.public_id
 
     category = IssueCategory(name="General TLCP", category_type="general", is_active=True)
     db.session.add(category)
     db.session.flush()
 
-    return admin, student, join_code, category, actor_public_id
+    return admin, seat, join_code, category, actor_public_id
 
 
 def test_create_issue_attaches_correlation_pack_with_trace_and_error(app):
@@ -152,20 +116,12 @@ def test_authenticated_request_writes_trace_row(app, client):
 
     from app.services.tlcp import persist_request_trace
 
-    student = Student(
-        first_name="Trace",
-        last_initial="S",
-        block="A",
-        salt=b"1234567890123456",
-        pin_hash="pin",
-    )
-    db.session.add(student)
-    db.session.commit()
+    student = make_student_identity(first_name="Trace", last_name="S", block="A")
 
     request_id = uuid.uuid4().hex
     context = {
         "actor_type": "student",
-        "actor_id": student.id,
+        "actor_id": student.user_id,
         "actor_public_id": "seat-public-trace-test",
         "class_id": None,
         "endpoint": "/_tlcp_ping",

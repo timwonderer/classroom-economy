@@ -16,11 +16,13 @@ from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from app.models import (
-    Admin, Student, Transaction, StudentBlock, RentSettings, RentPayment, BankingSettings, Seat, User, UserRole, _quantize_currency
+    Admin, Transaction, StudentBlock, RentSettings, RentPayment, BankingSettings, Seat, User, UserRole, _quantize_currency
 )
 from app.extensions import db
 from tests.helpers.class_scope import create_class_scope
 from app.hash_utils import hash_username_lookup
+from tests.helpers.canonical_session import set_canonical_context
+from tests.helpers.class_scope import make_student_identity
 
 
 class TestDecimalTypeErrors:
@@ -100,15 +102,11 @@ class TestDecimalTypeErrors:
         db.session.flush()
 
         # Create student
-        student = Student(
+        student = make_student_identity(
             first_name='Earnings',
-            last_initial='T',
+            last_name='T',
             block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash'
         )
-        db.session.add(student)
-        db.session.flush()
 
         join_code = 'EARNINGS_TEST'
         class_scope = create_class_scope(
@@ -131,7 +129,7 @@ class TestDecimalTypeErrors:
                 # Positive earning - should count
                 Transaction(
                     seat_id=seat.id,
-                    user_id=student_user.id,
+                    user_id=student.user_id,
                     class_id=class_scope.class_id,
                     amount=Decimal('100.00'),
                     account_type='checking',
@@ -141,7 +139,7 @@ class TestDecimalTypeErrors:
                 # Zero amount - should not count
                 Transaction(
                     seat_id=seat.id,
-                    user_id=student_user.id,
+                    user_id=student.user_id,
                     class_id=class_scope.class_id,
                     amount=Decimal('0.00'),
                     account_type='checking',
@@ -151,7 +149,7 @@ class TestDecimalTypeErrors:
                 # Negative amount - should not count
                 Transaction(
                     seat_id=seat.id,
-                    user_id=student_user.id,
+                    user_id=student.user_id,
                     class_id=class_scope.class_id,
                     amount=Decimal('-50.00'),
                     account_type='checking',
@@ -161,7 +159,7 @@ class TestDecimalTypeErrors:
                 # Transfer - should not count even if positive
                 Transaction(
                     seat_id=seat.id,
-                    user_id=student_user.id,
+                    user_id=student.user_id,
                     class_id=class_scope.class_id,
                     amount=Decimal('25.00'),
                     account_type='checking',
@@ -171,7 +169,7 @@ class TestDecimalTypeErrors:
                 # Another positive earning
                 Transaction(
                     seat_id=seat.id,
-                    user_id=student_user.id,
+                    user_id=student.user_id,
                     class_id=class_scope.class_id,
                     amount=Decimal('75.50'),
                     account_type='checking',
@@ -303,15 +301,11 @@ class TestDecimalTypeErrors:
         join_code = 'INTEREST_TEST'
 
         # Build the canonical v2 class fixture; the transaction should key off class_id/seat_id.
-        student = Student(
+        student = make_student_identity(
             first_name='Interest',
-            last_initial='T',
+            last_name='T',
             block='A',
-            salt=b'test_salt',
-            passphrase_hash='test_hash',
         )
-        db.session.add(student)
-        db.session.flush()
 
         class_scope = create_class_scope(
             teacher=teacher,
@@ -332,7 +326,7 @@ class TestDecimalTypeErrors:
         with FEATContext("FEAT-ADMN-001"):
             deposit = Transaction(
                 seat_id=seat.id,
-                user_id=student_user.id,
+                user_id=student.user_id,
                 class_id=class_scope.class_id,
                 amount=Decimal('100.00'),
                 account_type='savings',
@@ -393,7 +387,7 @@ class TestDecimalTypeErrors:
         Fix: Use Decimal('0.00') as the fallback when scalar() returns None.
         """
         from app.models import (
-            Admin, Student, StudentTeacher, InsurancePolicy, InsuranceEnrollment,
+            Admin, StudentTeacher, InsurancePolicy, InsuranceEnrollment,
         )
         from tests.helpers.class_scope import create_class_scope
 
@@ -403,18 +397,14 @@ class TestDecimalTypeErrors:
         db.session.flush()
 
         # Create student
-        student = Student(
+        student = make_student_identity(
             first_name='ClaimCap',
-            last_initial='T',
+            last_name='T',
             block='A',
-            salt=b'test_salt_cap',
-            passphrase_hash='test_hash',
         )
-        db.session.add(student)
-        db.session.flush()
 
         # Associate student with teacher
-        st = StudentTeacher(user_id=student_user.id, teacher_id=teacher.id)
+        st = StudentTeacher(user_id=student.user_id, teacher_id=teacher.id)
         db.session.add(st)
         db.session.flush()
 
@@ -448,7 +438,7 @@ class TestDecimalTypeErrors:
         )
         db.session.flush()
 
-        seat = Seat.query.filter_by(user_id=student_user.id, class_id=class_scope.class_id).first()
+        seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_scope.class_id).first()
         assert seat is not None
         user = User(
             username_hash=hash_username_lookup(f"claim-cap-{student.id}"),
@@ -476,14 +466,14 @@ class TestDecimalTypeErrors:
 
         # Log in as student
         with client.session_transaction() as sess:
-            sess['student_id'] = student.id
-            sess['user_id'] = user.id
-            sess['current_join_code'] = 'CLAIMCAP1'
-            sess['current_class_id'] = class_scope.class_id
-            sess['current_seat_id'] = seat.id
-            sess['seat_id'] = seat.id
-            sess['class_id'] = class_scope.class_id
-            sess['login_time'] = datetime.now(timezone.utc).isoformat()
+            set_canonical_context(
+                sess,
+                user_id=user.id,
+                class_id=class_scope.class_id,
+                seat_id=seat.id,
+                role="student",
+                join_code='CLAIMCAP1',
+            )
 
         # GET the file_claim route — must not raise TypeError
         # (no prior InsuranceClaim rows exist, so scalar() returns None)

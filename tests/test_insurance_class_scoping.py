@@ -17,12 +17,13 @@ from app import db
 from app.models import (
     User,
     UserRole,
-    Admin, ClassEconomy, IdentityProfile, Student, StudentBlock, StudentTeacher,
+    Admin, ClassEconomy, IdentityProfile, StudentBlock, StudentTeacher,
     InsurancePolicy, InsurancePolicyBlock, InsuranceEnrollment, InsuranceClaim,
     Seat,
 )
 from app.hash_utils import hash_username
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.class_scope import make_student_identity
 
 
 @pytest.fixture
@@ -33,9 +34,8 @@ def teacher_with_two_classes(client):
     db.session.add(teacher)
     db.session.flush()
 
-    salt = get_random_salt()
-
     # Create Seat for Period A with join_code JOINA123
+    student_a = make_student_identity(block="A", first_name="Alice", last_name="A")
     # Auto-injected Canonical User
     student_a_user = User(username_hash=f"auto_{student_a.id}", username_lookup_hash=f"auto_l_{student_a.id}", user_role=UserRole.STUDENT)
     db.session.add(student_a_user)
@@ -61,27 +61,16 @@ def teacher_with_two_classes(client):
 def students_in_two_classes(client, teacher_with_two_classes):
     """Create students in two different class periods."""
     teacher = teacher_with_two_classes
-    salt = get_random_salt()
-
     # Student in Period A
-    student_a = Student(
-        first_name="Alice",
-        last_initial="A",
-        block="A",
-        salt=salt,
-        username_hash=hash_username("alice_a", salt),
-        pin_hash="fake-hash"
-    )
-    db.session.add(student_a)
-    db.session.flush()
+    student_a = make_student_identity(block="A", first_name="Alice", last_name="A")
 
     # StudentTeacher relationship
-    st_a = StudentTeacher(user_id=student_a_user.id, teacher_id=teacher.id)
+    st_a = StudentTeacher(user_id=student_a.user_id, teacher_id=teacher.id)
     db.session.add(st_a)
 
     # StudentBlock for Period A with join_code JOINA123
     sb_a = StudentBlock(
-        user_id=student_a_user.id,
+        user_id=student_a.user_id,
         join_code="JOINA123",
         period="A"
     )
@@ -90,7 +79,7 @@ def students_in_two_classes(client, teacher_with_two_classes):
     # Add transaction to set balance
     from app.models import Transaction
     db.session.add(Transaction(
-        user_id=student_a_user.id,join_code="JOINA123",
+        user_id=student_a.user_id,join_code="JOINA123",
         amount=100.0,
         type="deposit",
         description="Initial balance",
@@ -98,24 +87,15 @@ def students_in_two_classes(client, teacher_with_two_classes):
     ))
 
     # Student in Period B
-    student_b = Student(
-        first_name="Bob",
-        last_initial="B",
-        block="B",
-        salt=salt,
-        username_hash=hash_username("bob_b", salt),
-        pin_hash="fake-hash"
-    )
-    db.session.add(student_b)
-    db.session.flush()
+    student_b = make_student_identity(block="B", first_name="Bob", last_name="B")
 
     # StudentTeacher relationship
-    st_b = StudentTeacher(user_id=student_b_user.id, teacher_id=teacher.id)
+    st_b = StudentTeacher(user_id=student_b.user_id, teacher_id=teacher.id)
     db.session.add(st_b)
 
     # StudentBlock for Period B with join_code JOINB456
     sb_b = StudentBlock(
-        user_id=student_b_user.id,
+        user_id=student_b.user_id,
         join_code="JOINB456",
         period="B"
     )
@@ -123,7 +103,7 @@ def students_in_two_classes(client, teacher_with_two_classes):
 
     # Add transaction to set balance
     db.session.add(Transaction(
-        user_id=student_b_user.id,join_code="JOINB456",
+        user_id=student_b.user_id,join_code="JOINB456",
         amount=200.0,
         type="deposit",
         description="Initial balance",
@@ -277,8 +257,8 @@ def test_student_insurance_enrollments_filtered_by_join_code(
     policies = policies_for_two_classes
 
     # Create enrollment for student A in Period A
-    seat_a = Seat.query.filter_by(student_id=students['student_a'].id).first()
-    seat_b = Seat.query.filter_by(student_id=students['student_b'].id).first()
+    seat_a = Seat.query.filter_by(user_id=students['student_a'].user_id).first()
+    seat_b = Seat.query.filter_by(user_id=students['student_b'].user_id).first()
     assert seat_a is not None
     assert seat_b is not None
     enrollment_a = InsuranceEnrollment(
@@ -315,7 +295,7 @@ def test_student_insurance_enrollments_filtered_by_join_code(
 
     # Should only include enrollment_a
     assert len(period_a_enrollments) == 1
-    assert period_a_enrollments[0].student_id == students['student_a'].id
+    assert period_a_enrollments[0].seat_id == seat_a.id
 
     # Query enrollments for Period B only
     period_b_enrollments = (
@@ -327,7 +307,7 @@ def test_student_insurance_enrollments_filtered_by_join_code(
 
     # Should only include enrollment_b
     assert len(period_b_enrollments) == 1
-    assert period_b_enrollments[0].student_id == students['student_b'].id
+    assert period_b_enrollments[0].seat_id == seat_b.id
 
 
 def test_claims_filtered_by_join_code(
@@ -347,8 +327,8 @@ def test_claims_filtered_by_join_code(
         class_b = create_class_scope(teacher=teacher, join_code="JOINB456", student=students['student_b'], block="B")
     db.session.flush()
 
-    seat_a = Seat.query.filter_by(student_id=students['student_a'].id, class_id=class_a.class_id).first()
-    seat_b = Seat.query.filter_by(student_id=students['student_b'].id, class_id=class_b.class_id).first()
+    seat_a = Seat.query.filter_by(user_id=students['student_a'].user_id, class_id=class_a.class_id).first()
+    seat_b = Seat.query.filter_by(user_id=students['student_b'].user_id, class_id=class_b.class_id).first()
 
     enrollment_a = InsuranceEnrollment(
         seat_id=seat_a.id,

@@ -2,6 +2,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
 from app.models import User, UserRole, Admin
 from datetime import datetime, timezone
+from tests.helpers.canonical_session import set_canonical_context
 
 def test_admin_help_page(client):
     # Create admin
@@ -26,11 +27,13 @@ def test_admin_help_page(client):
 def test_student_help_page(client, test_student):
     # Login as student
     with client.session_transaction() as sess:
-        sess["student_id"] = test_student.id
-        # Use current time in UTC
-        now = datetime.now(timezone.utc).isoformat()
-        sess['login_time'] = now
-        sess['last_activity'] = now
+        set_canonical_context(
+            sess,
+            user_id=test_student.user_id,
+            class_id=test_student.class_id,
+            seat_id=test_student.id,
+            role="student",
+        )
 
     resp = client.get("/student/help-support", follow_redirects=True)
     if resp.status_code != 200:

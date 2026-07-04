@@ -2,18 +2,12 @@ from datetime import datetime, timezone
 
 from app import db
 from app.hash_utils import get_random_salt, hash_username_lookup
-from app.models import Admin, ClassEconomy, Seat, Student, StudentBlock, AttendanceSession, User
+from app.models import Admin, ClassEconomy, Seat, StudentBlock, AttendanceSession, User
+from tests.helpers.class_scope import make_student_identity
 
 
-def _student() -> Student:
-    return Student(
-        first_name="Attend",
-        last_initial="A",
-        block="A",
-        salt=get_random_salt(),
-        first_half_hash=None,
-        second_half_hash=None,
-    )
+def _student():
+    return make_student_identity(block="A", first_name="Attend", last_name="A")
 
 
 def _ensure_class_scope(join_code: str, class_id: str) -> ClassEconomy:
@@ -62,10 +56,8 @@ def test_attendance_session_requires_seat_id(client):
     db.session.flush()
 
     event = AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat.id,
         class_id=class_scope.class_id,
-        period="A",
         started_at=datetime.now(timezone.utc),
     )
     db.session.add(event)
@@ -73,7 +65,6 @@ def test_attendance_session_requires_seat_id(client):
 
     db.session.refresh(event)
     assert event.seat_id == seat.id
-    assert event.student_id == student.id
 
 
 def test_student_block_autofills_seat_id_from_class_scope(client):
@@ -97,7 +88,7 @@ def test_student_block_autofills_seat_id_from_class_scope(client):
     db.session.flush()
 
     student_block = StudentBlock(
-        user_id=student_user.id,
+        user_id=student.user_id,
         class_id=class_scope.class_id,
         join_code="JOIN_SB",
         period="A",
@@ -109,34 +100,15 @@ def test_student_block_autofills_seat_id_from_class_scope(client):
     assert student_block.seat_id == seat.id
 
 
-def test_attendance_session_requires_student_id(client):
-    """AttendanceSession requires student_id — inserting without it must fail at DB level."""
+def test_attendance_session_requires_seat_id(client):
+    """AttendanceSession requires seat_id — inserting without it must fail at DB level."""
     import sqlalchemy
-
-    student = _student()
-    db.session.add(student)
-    db.session.flush()
 
     class_scope = _ensure_class_scope("JOIN_SCOPE", "cccccccc-cccc-cccc-cccc-cccccccccccc")
 
-    user = User(username_hash=hash_username_lookup(f"seat_user_{student.id}"), password_hash="pw")
-    db.session.add(user)
-    db.session.flush()
-
-    seat = Seat(
-        user_id=user.id,
-        class_id=class_scope.class_id,
-        join_code="JOIN_SCOPE",
-        block="A",
-    )
-    db.session.add(seat)
-    db.session.flush()
-
     event = AttendanceSession(
-        student_id=None,
-        seat_id=seat.id,
+        seat_id=None,
         class_id=class_scope.class_id,
-        period="A",
         started_at=datetime.now(timezone.utc),
     )
     db.session.add(event)

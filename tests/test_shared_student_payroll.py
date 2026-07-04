@@ -1,9 +1,10 @@
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 import uuid
 from datetime import datetime, timedelta, timezone
 from app import db
-from app.models import User, UserRole, Admin, AttendanceSession, Seat, IdentityProfile, Student, StudentTeacher, PayrollSettings, Transaction
+from app.models import User, UserRole, Admin, AttendanceSession, Seat, IdentityProfile, StudentTeacher, PayrollSettings, Transaction
 from app.payroll import calculate_payroll_breakdown
 from tests.helpers.class_scope import create_class_scope
 
@@ -20,11 +21,7 @@ def test_shared_student_diff_teacher_diff_period(client):
     db.session.add_all([t1, t2])
     db.session.commit()
 
-    profile_a = IdentityProfile(profile_type='student', first_name='ScenarioA', last_name='S')
-    db.session.add(profile_a)
-    db.session.flush()
-    student = Student(identity_profile=profile_a, block="P1,P2", salt=b's')
-    db.session.add(student)
+    student = make_student_identity(block="P1,P2", first_name="ScenarioA", last_name="S")
     db.session.commit()
 
     # Links & canonical class scopes
@@ -64,19 +61,15 @@ def test_shared_student_diff_teacher_diff_period(client):
     # 2. Attendance sessions
     now = datetime.now(timezone.utc)
     db.session.add(AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat_1.id,
         class_id=class_1.class_id,
-        period="P1",
         started_at=now - timedelta(hours=2),
         ended_at=now - timedelta(hours=1),
         duration_seconds=3600,
     ))
     db.session.add(AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat_2.id,
         class_id=class_2.class_id,
-        period="P2",
         started_at=now - timedelta(minutes=30),
         ended_at=now,
         duration_seconds=1800,
@@ -109,11 +102,7 @@ def test_same_teacher_same_block_diff_context(client):
     db.session.add(t1)
     db.session.commit()
 
-    profile_b = IdentityProfile(profile_type='student', first_name='ScenarioB', last_name='S')
-    db.session.add(profile_b)
-    db.session.flush()
-    student = Student(identity_profile=profile_b, block="P1", salt=b's')
-    db.session.add(student)
+    student = make_student_identity(block="P1", first_name="ScenarioB", last_name="S")
     db.session.commit()
 
     # Links & canonical class scopes
@@ -152,10 +141,8 @@ def test_same_teacher_same_block_diff_context(client):
     # 2. Attendance in JC1 only.
     now = datetime.now(timezone.utc)
     db.session.add(AttendanceSession(
-        user_id=student_user.id,
         seat_id=seat_1.id,
         class_id=class_1.class_id,
-        period="P1",
         started_at=now - timedelta(hours=1),
         ended_at=now,
         duration_seconds=3600,
@@ -182,11 +169,7 @@ def test_balance_separation_by_join_code(client):
     db.session.add(t1)
     db.session.commit()
 
-    profile_bal = IdentityProfile(profile_type='student', first_name='BalanceTest', last_name='B')
-    db.session.add(profile_bal)
-    db.session.flush()
-    student = Student(identity_profile=profile_bal, block="P1", salt=b'salt')
-    db.session.add(student)
+    student = make_student_identity(block="P1", first_name="BalanceTest", last_name="B")
     db.session.flush()
     create_class_scope(
         teacher=t1,
@@ -230,12 +213,12 @@ def test_balance_separation_by_join_code(client):
 
     # 4. Verify Context for JC1
     # Should ignore JC2 transactions
-    chk1, sav1 = calculate_scoped_balances(student, join_code='JC1', teacher_id=t1.id)
+    chk1, sav1 = calculate_scoped_balances(seat_1.id, class_scope_a.class_id)
     assert chk1 == 100.0
     assert sav1 == 50.0
 
     # 5. Verify Context for JC2
     # Should ignore JC1 transactions
-    chk2, sav2 = calculate_scoped_balances(student, join_code='JC2', teacher_id=t1.id)
+    chk2, sav2 = calculate_scoped_balances(seat_2.id, class_scope_b.class_id)
     assert chk2 == 200.0
     assert sav2 == 100.0

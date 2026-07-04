@@ -8,8 +8,8 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pyotp
 
 from app import db
-from app.models import User, UserRole, Admin, Student, StudentTeacher, SystemAdmin
-from app.hash_utils import get_random_salt, hash_hmac
+from app.models import User, UserRole, Admin, StudentTeacher, SystemAdmin
+from tests.helpers.class_scope import make_student_identity
 
 
 def _create_sysadmin(username: str) -> tuple[SystemAdmin, str]:
@@ -27,21 +27,16 @@ def _create_teacher(username: str) -> Admin:
     return teacher
 
 
-def _create_student_for_teacher(teacher: Admin, block: str = "A", first_name: str = "Alex") -> Student:
-    salt = get_random_salt()
-    first_half_hash = hash_hmac(b"A2025", salt)
-    student = Student(
-        first_name=first_name,
-        last_initial=first_name[0].upper(),
+def _create_student_for_teacher(teacher: Admin, block: str = "A", first_name: str = "Alex"):
+    student_seat = make_student_identity(
         block=block,
-        salt=salt,
-        first_half_hash=first_half_hash,
+        first_name=first_name,
+        last_name="Test",
+        claimed=True,
     )
-    db.session.add(student)
-    db.session.flush()
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student_seat.user_id, teacher_id=teacher.id))
     db.session.commit()
-    return student
+    return student_seat
 
 
 def _login_sysadmin(client, sysadmin: SystemAdmin, secret: str, username: str = "sysadmin"):

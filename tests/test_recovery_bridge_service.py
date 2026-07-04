@@ -5,8 +5,8 @@ from datetime import timedelta
 from werkzeug.security import generate_password_hash
 
 from app.extensions import db
-from app.hash_utils import get_random_salt, hash_hmac, hash_username_lookup
-from app.models import RecoveryRequest, User, UserRole, Student, StudentRecoveryCode, StudentTeacher
+from app.hash_utils import hash_hmac
+from app.models import RecoveryRequest, User, UserRole, IdentityProfile, Seat, StudentRecoveryCode, StudentTeacher
 from app.services.recovery_bridge_service import (
     create_recovery_request_with_students,
     delete_recovery_codes_for_student,
@@ -32,20 +32,27 @@ def _seed_teacher_student():
     db.session.add(teacher)
     db.session.flush()
 
-    student_salt = get_random_salt()
-    student = Student(
-        first_name="Recover",
-        last_initial="S",
-        block="A",
-        salt=student_salt,
-        username_lookup_hash=hash_username_lookup("recover-student"),
-        passphrase_hash=generate_password_hash("secret"),
+    student_user = User(
+        user_role=UserRole.STUDENT,
+        username_hash="recover_student_hash",
+        username_lookup_hash="recover_student_lookup",
     )
-    db.session.add(student)
+    db.session.add(student_user)
     db.session.flush()
+    seat = Seat(
+        user_id=student_user.id,
+        join_code="RECOV01",
+        block="A",
+        block_identifier="A",
+        role="student",
+        claimed_at=utc_now(),
+    )
+    db.session.add(seat)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name="Recover", last_initial="S"))
     db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.flush()
-    return teacher, student
+    return teacher, seat
 
 
 def test_pending_recovery_code_for_student_filters_active_pending_request(client):
@@ -65,10 +72,10 @@ def test_pending_recovery_code_for_student_filters_active_pending_request(client
     db.session.add(code_row)
     db.session.commit()
 
-    pending = get_pending_recovery_code_for_student(student.id, utc_now())
+    pending = get_pending_recovery_code_for_student(student.user_id, utc_now())
     assert pending is not None
     assert pending.id == code_row.id
-    assert pending.student_id == student.id
+    assert pending.student_id == student.user_id
     assert pending.recovery_request.expires_at == request_row.expires_at
 
 
@@ -89,8 +96,8 @@ def test_get_recovery_code_for_student_respects_student_scope(client):
     db.session.add(code_row)
     db.session.commit()
 
-    found = get_recovery_code_for_student(code_row.id, student.id)
-    not_found = get_recovery_code_for_student(code_row.id, student.id + 999)
+    found = get_recovery_code_for_student(code_row.id, student.user_id)
+    not_found = get_recovery_code_for_student(code_row.id, student.user_id + 999)
     assert found is not None
     assert found.id == code_row.id
     assert not_found is None

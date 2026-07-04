@@ -2,9 +2,11 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
-from app.models import User, UserRole, Admin, Student, Transaction, StoreItem, StudentItem, StudentTeacher, ClassEconomy, ClassMembership, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, Transaction, StoreItem, StudentItem, StudentTeacher, ClassEconomy, ClassMembership, Seat, IdentityProfile
 from app.extensions import db
 from werkzeug.security import generate_password_hash
+from tests.helpers.canonical_session import set_canonical_context
+from tests.helpers.class_scope import make_student_identity
 
 
 def _class_id_for(join_code):
@@ -26,10 +28,7 @@ def student_in_class(client, teacher_admin):
     profile = IdentityProfile(profile_type='student', first_name='TestRejection', last_name='S')
     db.session.add(profile)
     db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b'salt')
-    student.passphrase_hash = generate_password_hash('password')
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(first_name='TestRejection', last_name='S', block='A')
 
     link = StudentTeacher(user_id=student_user.id, teacher_id=teacher_admin.id)
     db.session.add(link)
@@ -82,10 +81,16 @@ def test_reject_redemption_refunds_student(client, teacher_admin, student_in_cla
     db.session.commit()
 
     with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        sess['current_join_code'] = 'REJECT123'
-        sess['current_class_id'] = _class_id_for('REJECT123')
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
+        seat = Seat.query.filter_by(user_id=student.user_id, class_id=_class_id_for('REJECT123')).first()
+        if seat:
+            set_canonical_context(
+                sess,
+                user_id=student.user_id,
+                class_id=seat.class_id,
+                seat_id=seat.id,
+                role="student",
+                join_code='REJECT123',
+            )
 
     purchase_resp = client.post('/api/purchase-item', json={
         'item_id': item.id,
@@ -172,10 +177,17 @@ def test_reject_redemption_refunds_single_unit_from_multi_quantity_purchase(clie
     db.session.commit()
 
     with client.session_transaction() as sess:
-        sess['student_id'] = student.id
-        sess['current_join_code'] = 'REJECT123'
-        sess['current_class_id'] = _class_id_for('REJECT123')
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
+        seat = Seat.query.filter_by(user_id=student.user_id, class_id=_class_id_for('REJECT123')).first()
+        if seat:
+            from tests.helpers.canonical_session import set_canonical_context
+            set_canonical_context(
+                sess,
+                user_id=student.user_id,
+                class_id=seat.class_id,
+                seat_id=seat.id,
+                role="student",
+                join_code='REJECT123',
+            )
 
     purchase_resp = client.post('/api/purchase-item', json={
         'item_id': item.id,

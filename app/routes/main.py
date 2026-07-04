@@ -69,7 +69,7 @@ def health_check_deep():
 
     Checks:
     - Database connectivity
-    - Student table accessibility
+    - Seat table accessibility
     - Admin table accessibility
     - Hall passes table accessibility (if accessible)
 
@@ -89,15 +89,15 @@ def health_check_deep():
         checks['database'] = 'error'
         overall_status = 'degraded'
 
-    # Check if student table is accessible
+    # Check if seat table is accessible
     try:
         with db.engine.connect() as conn:
-            student_count = conn.execute(text('SELECT COUNT(*) FROM students')).scalar()
-        checks['students_table'] = 'accessible'
-        checks['student_count'] = student_count
+            seat_count = conn.execute(text('SELECT COUNT(*) FROM seats')).scalar()
+        checks['seats_table'] = 'accessible'
+        checks['seat_count'] = seat_count
     except SQLAlchemyError as e:
-        current_app.logger.warning('Students table check failed: %s', str(e))
-        checks['students_table'] = 'error'
+        current_app.logger.warning('Seats table check failed: %s', str(e))
+        checks['seats_table'] = 'error'
         overall_status = 'degraded'
 
     # Check if admin table is accessible
@@ -343,11 +343,11 @@ def verify_hall_pass(teacher_public_token):
     # Stop at 2 matches: enough to distinguish unique vs ambiguous.
     matched = []
     for entry in passes_query.yield_per(100):
-        student = entry.student
-        if not student:
+        seat = entry.seat
+        if not seat or not seat.identity_profile:
             continue
-        stored_norm = _normalize_first_name(student.display_first_name)
-        stored_last_name = _normalize_last_name(student.display_last_name)
+        stored_norm = _normalize_first_name(seat.display_first_name)
+        stored_last_name = _normalize_last_name(seat.display_last_initial)
         if stored_norm == first_name_norm and stored_last_name == last_name_norm:
             matched.append(entry)
         if len(matched) >= 2:
@@ -360,7 +360,6 @@ def verify_hall_pass(teacher_public_token):
         result = {'outcome': 'ambiguous'}
     else:
         entry = matched[0]
-        student = entry.student
         class_label = next((c['label'] for c in classes if c['join_code'] == selected_join_code), selected_join_code)
 
         # Format time_out in school timezone

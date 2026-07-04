@@ -7,7 +7,8 @@ from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.security import generate_password_hash
 
 from app.extensions import db
-from app.models import Seat, IdentityProfile, User, UserRole, Admin, ClassEconomy, ClassMembership, RedemptionAuditLog, StoreItem, Student, StudentItem, StudentTeacher, Transaction
+from app.models import Seat, IdentityProfile, User, UserRole, Admin, ClassEconomy, ClassMembership, RedemptionAuditLog, StoreItem, StudentItem, StudentTeacher, Transaction
+from tests.helpers.canonical_session import set_canonical_context
 
 
 @pytest.fixture
@@ -21,9 +22,13 @@ def teacher_admin(client):
 @pytest.fixture
 def student_in_class(client, teacher_admin):
     profile = IdentityProfile(profile_type='student', first_name='Audit', last_name='Stone')
-    student = Student(identity_profile=profile, block="A", salt=b'salt')
-    student.passphrase_hash = generate_password_hash('password')
-    db.session.add(student)
+    db.session.add(profile)
+    student_user = User(
+        user_role=UserRole.STUDENT,
+        username_hash="audit_student_hash",
+        username_lookup_hash="audit_student_lookup",
+    )
+    db.session.add(student_user)
     db.session.flush()
 
     class_economy = ClassEconomy(
@@ -48,11 +53,7 @@ def student_in_class(client, teacher_admin):
         role='student',
     ))
     db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher_admin.id, class_id=class_economy.class_id, join_code='AUDIT123'))
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    _tb_seat = Seat(
+    seat = Seat(
         user_id=student_user.id,
         class_id=class_economy.class_id,
         join_code='AUDIT123',
@@ -61,24 +62,27 @@ def student_in_class(client, teacher_admin):
         role="student",
         claimed_at=datetime.now(timezone.utc),
     )
-    db.session.add(_tb_seat)
+    db.session.add(seat)
     db.session.flush()
-    profile.seat_id = _tb_seat.id
+    profile.seat_id = seat.id
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name='Audit', last_name='Stone'))
     db.session.commit()
-    return student
+    return seat
 
 
 def _login_student(client, student_id):
     class_row = ClassEconomy.query.filter_by(join_code='AUDIT123').first()
-    seat = Seat.query.filter_by(student_id=student_id, join_code='AUDIT123').first()
+    seat = Seat.query.filter_by(user_id=student_id, join_code='AUDIT123').first()
     with client.session_transaction() as sess:
-        sess['student_id'] = student_id
-        sess['current_join_code'] = 'AUDIT123'
-        if class_row is not None:
-            sess['current_class_id'] = class_row.class_id
-        if seat is not None:
-            sess['current_seat_id'] = seat.id
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
+        if seat is not None and class_row is not None:
+            set_canonical_context(
+                sess,
+                user_id=student_id,
+                class_id=class_row.class_id,
+                seat_id=seat.id,
+                role="student",
+                join_code='AUDIT123',
+            )
 
 
 def _login_admin(client, admin_id):
@@ -106,7 +110,8 @@ def _fund_and_purchase_delayed_item(client, teacher_admin, student, item_name='A
     db.session.add(item)
     db.session.flush()
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='AUDIT123',
+        user_id=student.user_id,
+        join_code='AUDIT123',
         amount=Decimal('100.00'),
         account_type='checking',
         type='deposit',
@@ -114,7 +119,7 @@ def _fund_and_purchase_delayed_item(client, teacher_admin, student, item_name='A
     ))
     db.session.commit()
 
-    _login_student(client, student.id)
+    _login_student(client, student.user_id)
     purchase_resp = client.post('/api/purchase-item', json={
         'item_id': item.id,
         'passphrase': 'password',

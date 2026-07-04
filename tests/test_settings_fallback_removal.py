@@ -5,12 +5,13 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 
 from app.extensions import db
-from app.models import Seat, IdentityProfile, User, UserRole, Admin, BankingSettings, ClassFeature, ClassEconomy, ClassMembership, FeatureSettings, RentSettings, Student, StudentTeacher
+from app.models import Seat, IdentityProfile, User, UserRole, Admin, BankingSettings, ClassFeature, ClassEconomy, ClassMembership, FeatureSettings, RentSettings, StudentTeacher
 from app.routes.student import (
     get_banking_settings_for_context,
     get_feature_settings_for_student,
     get_rent_settings_for_context,
 )
+from tests.helpers.canonical_session import set_canonical_context
 
 
 @pytest.fixture
@@ -20,17 +21,6 @@ def teacher_with_legacy_and_scoped_settings(client):
     db.session.add(teacher)
     db.session.flush()
 
-    student = Student(
-        first_name="Fallback",
-        last_initial="T",
-        block="A",
-        salt=b"salt",
-    )
-    db.session.add(student)
-    db.session.flush()
-
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-
     join_code = "FALL01"
     economy = ClassEconomy(join_code=join_code, user_id=teacher.id, created_by_admin_id=teacher.id)
     other_economy = ClassEconomy(join_code="FALL02", user_id=teacher.id, created_by_admin_id=teacher.id)
@@ -38,14 +28,17 @@ def teacher_with_legacy_and_scoped_settings(client):
     db.session.flush()
     db.session.add(ClassMembership(join_code=join_code, admin_id=teacher.id, role="admin"))
     db.session.add(ClassMembership(join_code="FALL02", admin_id=teacher.id, role="admin"))
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    student_user = User(username_hash="fallback_student_hash", username_lookup_hash="fallback_student_lookup", user_role=UserRole.STUDENT)
     db.session.add(student_user)
+    db.session.flush()
+    profile = IdentityProfile(profile_type='student', first_name="Fallback", last_initial="T")
+    db.session.add(profile)
     db.session.flush()
     _tb_seat = Seat(user_id=student_user.id, join_code=join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name="Fallback", last_initial="T"))
+    profile.seat_id = _tb_seat.id
+    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
 
     # Banking is now strictly class-scoped; keep only an unrelated-class row.
     db.session.add(BankingSettings(
@@ -64,7 +57,7 @@ def teacher_with_legacy_and_scoped_settings(client):
     db.session.commit()
     return {
         "teacher": teacher,
-        "student": student,
+        "student": _tb_seat,
         "join_code": join_code,
         "class_id": economy.class_id,
         "other_class_id": other_economy.class_id,
@@ -145,8 +138,14 @@ def test_feature_settings_returns_defaults_without_scoped_row(client, teacher_wi
 
     with client.application.test_request_context():
         from flask import session as flask_session
-        flask_session["student_id"] = data["student"].id
-        flask_session["current_join_code"] = data["join_code"]
+        set_canonical_context(
+            flask_session,
+            user_id=data["student"].user_id,
+            class_id=data["class_id"],
+            seat_id=data["student"].id,
+            role="student",
+            join_code=data["join_code"],
+        )
 
         result = get_feature_settings_for_student()
 
@@ -167,8 +166,14 @@ def test_feature_settings_returns_scoped_row(client, teacher_with_legacy_and_sco
 
     with client.application.test_request_context():
         from flask import session as flask_session
-        flask_session["student_id"] = data["student"].id
-        flask_session["current_join_code"] = data["join_code"]
+        set_canonical_context(
+            flask_session,
+            user_id=data["student"].user_id,
+            class_id=data["class_id"],
+            seat_id=data["student"].id,
+            role="student",
+            join_code=data["join_code"],
+        )
 
         result = get_feature_settings_for_student()
 

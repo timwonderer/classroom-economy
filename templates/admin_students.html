@@ -462,7 +462,7 @@
                       {% for student in unclaimed_students %}
                       <tr>
                         <td>
-                          <a href="{{ student_detail_url(student.id) }}"
+                          <a href="{{ student_detail_url(student.public_id) }}"
                             class="text-decoration-none">
                             <span class="fw-bold">{{ student.full_name }}</span>
                           </a>
@@ -474,14 +474,14 @@
                           <span class="badge bg-warning text-dark">Needs Username</span>
                         </td>
                         <td>
-                          <a href="{{ student_detail_url(student.id) }}"
+                          <a href="{{ student_detail_url(student.public_id) }}"
                             class="btn btn-sm btn-outline-primary"
                             aria-label="View details for {{ student.full_name }}">
                             <span class="material-symbols-outlined align-middle fs-6"
                               aria-hidden="true">visibility</span>
                           </a>
                           <button type="button" class="btn btn-sm btn-outline-danger" data-bs-toggle="modal"
-                            data-bs-target="#deleteStudentModal" data-student-id="{{ student.id }}"
+                            data-bs-target="#deleteStudentModal" data-student-id="{{ student.public_id }}"
                             data-student-name="{{ student.full_name }}"
                             aria-label="Delete student {{ student.full_name }}">
                             <span class="material-symbols-outlined align-middle fs-6" aria-hidden="true">delete</span>
@@ -587,13 +587,13 @@
                     </thead>
                     <tbody>
                       {% for student in claimed_students %}
-                      <tr class="student-row" data-student-id="{{ student.id }}">
+                      <tr class="student-row" data-student-id="{{ student.public_id }}">
                         <td>
-                          <input type="checkbox" class="form-check-input student-checkbox" value="{{ student.id }}"
+                          <input type="checkbox" class="form-check-input student-checkbox" value="{{ student.public_id }}"
                             onchange="updateBulkToolbar('{{ block }}')" aria-label="Select {{ student.full_name }}">
                         </td>
                         <td>
-                          <a href="{{ student_detail_url(student.id) }}"
+                          <a href="{{ student_detail_url(student.public_id) }}"
                             class="fw-bold text-decoration-none">
                             {{ student.full_name }}
                           </a>
@@ -828,7 +828,7 @@
         </div>
         <div class="modal-body">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" id="edit_student_id" name="student_id">
+          <input type="hidden" id="edit_student_id" name="seat_id">
 
           <!-- Basic Information -->
           <div class="card border-primary mb-3">
@@ -953,7 +953,7 @@
         </div>
         <div class="modal-body">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-          <input type="hidden" id="delete_student_id" name="student_id">
+          <input type="hidden" id="delete_student_id" name="seat_id">
 
           <div class="alert alert-danger">
             <h3 class="h6"><span class="material-symbols-outlined me-2" style="vertical-align: middle;">warning</span>Warning</h3>

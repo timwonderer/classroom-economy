@@ -4,6 +4,7 @@ from decimal import Decimal
 from werkzeug.security import generate_password_hash
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import make_student_identity
 from app import db
 from app.hash_utils import get_random_salt, hash_username
 from app.models import (
@@ -12,7 +13,6 @@ from app.models import (
     Admin,
     ClassMembership,
     Seat,
-    Student,
     StudentTeacher,
     RentSettings,
     RentItem,
@@ -22,9 +22,10 @@ from app.models import (
 )
 from app.routes.student import _calculate_rent_coverage_due_date
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.canonical_session import set_canonical_context
 
 
-def _ensure_class_scope(teacher: Admin, student: Student, join_code: str, block: str = "A") -> None:
+def _ensure_class_scope(teacher: Admin, student, join_code: str, block: str = "A") -> None:
     if not db.session.query(ClassMembership.id).filter_by(
         join_code=join_code,
         admin_id=teacher.id,
@@ -43,12 +44,12 @@ def _ensure_class_scope(teacher: Admin, student: Student, join_code: str, block:
         db.session.flush()
     elif not db.session.query(ClassMembership.id).filter_by(
         join_code=join_code,
-        user_id=student_user.id,
+        user_id=student.user_id,
         role="student",
     ).first():
         db.session.add(ClassMembership(
             join_code=join_code,
-            user_id=student_user.id,
+            user_id=student.user_id,
             role="student",
         ))
 
@@ -58,24 +59,15 @@ def test_overdue_rent_payment_restores_privileges(client):
     db.session.add(teacher)
     db.session.commit()
 
-    salt = get_random_salt()
-    student = Student(
-        first_name="Rent",
-        last_initial="P",
-        block="A",
-        salt=salt,
-        username_hash=hash_username("rent_student_overdue", salt),
-        pin_hash=generate_password_hash("1234"),
-    )
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Rent", last_name="P")
     db.session.commit()
 
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=teacher.id))
     db.session.commit()
 
     join_code = "JOINA"
     _ensure_class_scope(teacher, student, join_code, block="A")
-    seat = Seat.query.filter_by(user_id=student_user.id, join_code=join_code).first()
+    seat = Seat.query.filter_by(user_id=student.user_id, join_code=join_code).first()
     assert seat is not None
 
     now = datetime.now(timezone.utc)
@@ -117,7 +109,14 @@ def test_overdue_rent_payment_restores_privileges(client):
     db.session.commit()
 
     with client.session_transaction() as sess:
-        sess["student_id"] = student.id
+        set_canonical_context(
+            sess,
+        user_id=student.user_id,
+        class_id=seat.class_id,
+        seat_id=seat.id,
+        role="student",
+        join_code=join_code,
+    )
         sess["login_time"] = now.isoformat()
         sess["current_join_code"] = join_code
 
@@ -133,7 +132,7 @@ def test_overdue_rent_payment_restores_privileges(client):
     late_fee_applies = now > grace_for_coverage
     required_amount = rent_settings.rent_amount + (rent_settings.late_fee if late_fee_applies else Decimal("0.00"))
     payment = RentPayment(
-        user_id=student_user.id,
+        user_id=student.user_id,
         seat_id=seat.id,
         period="A",
         join_code=join_code,
@@ -147,7 +146,7 @@ def test_overdue_rent_payment_restores_privileges(client):
         late_fee_charged=rent_settings.late_fee if late_fee_applies else Decimal("0.00"),
     )
     transaction = Transaction(
-        user_id=student_user.id,
+        user_id=student.user_id,
         seat_id=seat.id,join_code=join_code,
         amount=-required_amount,
         account_type="checking",
@@ -168,24 +167,15 @@ def test_voided_payment_does_not_restore_privileges(client):
     db.session.add(teacher)
     db.session.commit()
 
-    salt = get_random_salt()
-    student = Student(
-        first_name="Void",
-        last_initial="P",
-        block="A",
-        salt=salt,
-        username_hash=hash_username("rent_student_voided", salt),
-        pin_hash=generate_password_hash("1234"),
-    )
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Void", last_name="P")
     db.session.commit()
 
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=teacher.id))
     db.session.commit()
 
     join_code = "JOINV"
     _ensure_class_scope(teacher, student, join_code, block="A")
-    seat = Seat.query.filter_by(user_id=student_user.id, join_code=join_code).first()
+    seat = Seat.query.filter_by(user_id=student.user_id, join_code=join_code).first()
     assert seat is not None
 
     now = datetime.now(timezone.utc)
@@ -227,7 +217,14 @@ def test_voided_payment_does_not_restore_privileges(client):
     db.session.commit()
 
     with client.session_transaction() as sess:
-        sess["student_id"] = student.id
+        set_canonical_context(
+            sess,
+            user_id=student.user_id,
+            class_id=seat.class_id,
+            seat_id=seat.id,
+            role="student",
+            join_code=join_code,
+        )
         sess["login_time"] = now.isoformat()
         sess["current_join_code"] = join_code
 
@@ -307,16 +304,7 @@ def test_overdue_rent_payment_with_timestamp_drift_restores_privileges(client):
     db.session.add(teacher)
     db.session.commit()
 
-    salt = get_random_salt()
-    student = Student(
-        first_name="Drift",
-        last_initial="P",
-        block="A",
-        salt=salt,
-        username_hash=hash_username("rent_student_drift", salt),
-        pin_hash=generate_password_hash("1234"),
-    )
-    db.session.add(student)
+    student = make_student_identity(block="A", first_name="Drift", last_name="P")
     db.session.commit()
 
     db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
@@ -365,7 +353,14 @@ def test_overdue_rent_payment_with_timestamp_drift_restores_privileges(client):
     db.session.commit()
 
     with client.session_transaction() as sess:
-        sess["student_id"] = student.id
+        set_canonical_context(
+            sess,
+            user_id=student.user_id,
+            class_id=seat.class_id,
+            seat_id=seat.id,
+            role="student",
+            join_code=join_code,
+        )
         sess["login_time"] = now.isoformat()
         sess["current_join_code"] = join_code
 

@@ -26,7 +26,7 @@ import sqlalchemy as sa
 
 from app.extensions import db
 from app.models import (
-    Student, Transaction, AttendanceSession, PayrollSettings,
+    Transaction, AttendanceSession, PayrollSettings,
     RentSettings, AnalyticsSnapshot, AnalyticsAlert, ClassEconomy,
     Seat, IdentityProfile
 )
@@ -102,18 +102,16 @@ class AnalyticsEngine:
         )
 
 
-    def _get_enrolled_students(self) -> List[Student]:
-        """Get all students enrolled in this class period via canonical class membership."""
+    def _get_enrolled_students(self) -> List[Seat]:
+        """Get all student seats enrolled in this class period via canonical class membership."""
         if not self.class_id:
             return []
         return (
-            Student.query
-            .join(IdentityProfile, IdentityProfile.id == Student.identity_id)
-            .join(Seat, Seat.id == IdentityProfile.seat_id)
+            Seat.query
             .filter(
                 Seat.class_id == self.class_id,
                 Seat.role == 'student',
-                Student.is_teacher.is_(False),
+                Seat.claimed_at.isnot(None),
             )
             .all()
         )
@@ -122,12 +120,10 @@ class AnalyticsEngine:
         if not self.class_id or not student_ids:
             return {}
         rows = (
-            Seat.query.with_entities(Seat.id, Student.id)
-            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
-            .join(Student, Student.identity_id == IdentityProfile.id)
+            Seat.query.with_entities(Seat.id, Seat.user_id)
             .filter(
                 Seat.class_id == self.class_id,
-                Student.id.in_(student_ids),
+                Seat.user_id.in_(student_ids),
             )
             .all()
         )
@@ -194,8 +190,8 @@ class AnalyticsEngine:
             if student_id:
                 active_student_ids.add(student_id)
         
-        att_student_rows = (
-            AttendanceSession.query.with_entities(AttendanceSession.student_id)
+        att_seat_rows = (
+            AttendanceSession.query.with_entities(AttendanceSession.seat_id)
             .filter(
                 AttendanceSession.class_id == self.class_id,
                 AttendanceSession.started_at >= window_start,
@@ -205,8 +201,10 @@ class AnalyticsEngine:
             .distinct()
             .all()
         )
-        for (student_id,) in att_student_rows:
-            active_student_ids.add(student_id)
+        for (seat_id,) in att_seat_rows:
+            student_id = student_id_by_seat.get(seat_id)
+            if student_id:
+                active_student_ids.add(student_id)
         
         # Filter active IDs to only include enrolled students (excludes teachers/demos)
         enrolled_student_ids = {s.id for s in students}

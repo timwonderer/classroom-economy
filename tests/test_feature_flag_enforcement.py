@@ -9,10 +9,12 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash
-from app.models import Student, Admin, Transaction, ClassEconomy, ClassFeature, ClassMembership, StoreItem, Seat, User, UserRole, IdentityProfile
+from app.models import Admin, Transaction, ClassEconomy, ClassFeature, ClassMembership, StoreItem, Seat, User, UserRole, IdentityProfile
+from tests.helpers.class_scope import make_student_identity
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
 from tests.helpers.admin_context import login_admin
+from tests.helpers.canonical_session import set_canonical_context
 
 def _bind_canonical_teacher(teacher):
     user = User(
@@ -40,14 +42,14 @@ def _bind_canonical_student(student):
 
 def _login_student(client, data, *, transfer_token=None):
     with client.session_transaction() as sess:
-        sess['student_id'] = data['student'].id
-        sess['user_id'] = data['user_id']
-        sess['current_join_code'] = data['join_code']
-        sess['current_class_id'] = data['class_id']
-        sess['class_id'] = data['class_id']
-        sess['current_seat_id'] = data['seat_id']
-        sess['seat_id'] = data['seat_id']
-        sess['login_time'] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=data['user_id'],
+            class_id=data['class_id'],
+            seat_id=data['seat_id'],
+            role="student",
+            join_code=data['join_code'],
+        )
         sess['current_period'] = data['period']
         if transfer_token:
             sess['transfer_token'] = transfer_token
@@ -61,18 +63,8 @@ def setup_student_with_disabled_banking(client):
     db.session.add(teacher)
     db.session.commit()
 
-    # Create student
-    salt = get_random_salt()
-    student = Student(
-        first_name="Bob",
-        last_initial="B",
-        block="Period1",
-        salt=salt,
-        username_hash=hash_username("bob_b", salt),
-        passphrase_hash=generate_password_hash("bob_pass")
-    )
-    db.session.add(student)
-    db.session.flush()
+    # Create seat-owned student identity
+    student = make_student_identity(block="Period1", first_name="Bob", last_name="B")
     user = _bind_canonical_student(student)
     
     # Link student to teacher
@@ -199,17 +191,7 @@ def setup_student_with_enabled_banking(client):
     db.session.commit()
 
     # Create student
-    salt = get_random_salt()
-    student = Student(
-        first_name="Carol",
-        last_initial="C",
-        block="Period2",
-        salt=salt,
-        username_hash=hash_username("carol_c", salt),
-        passphrase_hash=generate_password_hash("carol_pass")
-    )
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(block="Period2", first_name="Carol", last_name="C")
     user = _bind_canonical_student(student)
 
     # Link student to teacher
@@ -520,18 +502,7 @@ def test_student_rent_rejects_disabled_feature_scope(client):
     db.session.add(teacher)
     db.session.commit()
 
-    salt = get_random_salt()
-    student = Student(
-        first_name="Riley",
-        last_initial="R",
-        block="Period3",
-        salt=salt,
-        username_hash=hash_username("riley_r", salt),
-        passphrase_hash=generate_password_hash("riley_pass"),
-        is_rent_enabled=True,
-    )
-    db.session.add(student)
-    db.session.flush()
+    student = make_student_identity(block="Period3", first_name="Riley", last_name="R")
     user = _bind_canonical_student(student)
 
     from app.models import StudentTeacher

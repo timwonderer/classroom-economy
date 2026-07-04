@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from app.extensions import db
 from app.models import BalanceCache, Seat, Transaction, TransactionStatus, ClassEconomy, _quantize_currency
-from app.utils.seat_scope import get_seat_ids_for_student_join, transaction_scope_filter
+from app.utils.seat_scope import transaction_scope_filter
 from app.utils.time import ensure_utc, utc_now
 from app.utils.transaction_idempotency import create_idempotent_transaction
 from app.feats.base import feat_shell, audit_protected

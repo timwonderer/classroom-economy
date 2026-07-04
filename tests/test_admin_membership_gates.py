@@ -13,12 +13,12 @@ from app.models import (
     PayrollSettings,
     Seat,
     StoreItem,
-    Student,
     StudentTeacher,
     User,
     UserRole,
 )
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def _bind_canonical_teacher(admin: Admin) -> User:
@@ -37,13 +37,17 @@ def _login_admin(client, admin_id, *, user_id: int | None = None, class_id: str 
     with client.session_transaction() as sess:
         sess["admin_id"] = admin_id
         sess["is_admin"] = True
-        if user_id is not None:
+        if user_id is not None and class_id is not None and seat_id is not None:
+            set_canonical_context(
+                sess,
+                user_id=user_id,
+                class_id=class_id,
+                seat_id=seat_id,
+                role="teacher",
+            )
+        elif user_id is not None and class_id is not None:
             sess["user_id"] = user_id
-        if class_id is not None:
             sess["current_class_id"] = class_id
-        if seat_id is not None:
-            sess["current_seat_id"] = seat_id
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
 
 
 def test_set_current_class_requires_membership_even_if_teacherblock_exists(client):
@@ -105,7 +109,14 @@ def test_delete_join_code_requires_confirmation(client):
 
     _login_admin(client, admin.id, user_id=user.id, class_id=class_row.class_id)
     with client.session_transaction() as sess:
-        sess["current_join_code"] = "CONF001"
+        set_canonical_context(
+            sess,
+            user_id=user.id,
+            class_id=class_row.class_id,
+            seat_id=Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first().id,
+            role="teacher",
+            join_code="CONF001",
+        )
 
     # 1. Missing confirmation -> 400
     response = client.post("/admin/join-code/delete", json={"join_code": "CONF001"})
@@ -131,21 +142,14 @@ def test_issues_queue_respects_current_join_code_membership_scope(client):
     class_a = create_class_scope(teacher=admin, join_code="ISSGA1")
     class_b = create_class_scope(teacher=admin, join_code="ISSGB1")
     profile = IdentityProfile(profile_type="student", first_name="Gate", last_name="Stone")
-    student = Student(identity_profile=profile, block="A", class_id=class_a.class_id, join_code="ISSGA1", salt=b"salt")
-    db.session.add(student)
-    db.session.flush()
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
+    db.session.add(profile)
+    student_user = User(username_hash="gate_student_hash", username_lookup_hash="gate_student_lookup", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
     seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, join_code="ISSGA1", block="A", block_identifier="A", role="student")
     db.session.add(seat_a)
     db.session.flush()
     profile.seat_id = seat_a.id
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
     seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, join_code="ISSGB1", block="A", block_identifier="A", role="student")
     db.session.add(seat_b)
     db.session.flush()
@@ -188,7 +192,14 @@ def test_issues_queue_respects_current_join_code_membership_scope(client):
 
     _login_admin(client, admin.id, user_id=user.id, class_id=class_a.class_id)
     with client.session_transaction() as sess:
-        sess["current_join_code"] = "ISSGA1"
+        set_canonical_context(
+            sess,
+            user_id=user.id,
+            class_id=class_a.class_id,
+            seat_id=Seat.query.filter_by(class_id=class_a.class_id, role="teacher").first().id,
+            role="teacher",
+            join_code="ISSGA1",
+        )
 
     response = client.get("/admin/issues")
     assert response.status_code == 200
@@ -206,7 +217,7 @@ def test_add_individual_student_requires_current_class_context(client):
 
     _login_admin(client, admin.id)
 
-    initial_student_count = db.session.query(Student).count()
+    initial_student_count = db.session.query(Seat).filter(Seat.role == "student").count()
     response = client.post(
         "/admin/student/add-individual",
         data={
@@ -220,7 +231,7 @@ def test_add_individual_student_requires_current_class_context(client):
 
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/admin/students")
-    assert db.session.query(Student).count() == initial_student_count
+    assert db.session.query(Seat).filter(Seat.role == "student").count() == initial_student_count
 
 
 @pytest.mark.skip(reason="Legacy add-student seat-counting assertions were tied to TeacherBlock semantics and need canonical rewrite.")
@@ -240,9 +251,16 @@ def test_add_individual_student_creates_single_student_seat_for_new_student(clie
 
     _login_admin(client, admin.id)
     with client.session_transaction() as sess:
-        sess["current_join_code"] = "SING001"
+        set_canonical_context(
+            sess,
+            user_id=admin.user_id,
+            class_id=ClassEconomy.query.filter_by(join_code="SING001").first().class_id,
+            seat_id=Seat.query.filter_by(join_code="SING001", role="teacher").first().id,
+            role="teacher",
+            join_code="SING001",
+        )
 
-    initial_student_count = Student.query.count()
+    initial_student_count = db.session.query(Seat).filter(Seat.role == "student").count()
     initial_link_count = StudentTeacher.query.filter_by(teacher_id=admin.id).count()
     class_row = ClassEconomy.query.filter_by(join_code="SING001").first()
     initial_student_seat_count = Seat.query.filter_by(class_id=class_row.class_id, block="A").filter(Seat.user_id.isnot(None)).count()
@@ -259,7 +277,7 @@ def test_add_individual_student_creates_single_student_seat_for_new_student(clie
     )
 
     assert response.status_code == 302
-    assert Student.query.count() == initial_student_count + 1
+    assert db.session.query(Seat).filter(Seat.role == "student").count() == initial_student_count + 1
     assert StudentTeacher.query.filter_by(teacher_id=admin.id).count() == initial_link_count + 1
     assert Seat.query.filter_by(class_id=class_row.class_id, block="A").filter(Seat.user_id.isnot(None)).count() == initial_student_seat_count + 1
 
@@ -287,9 +305,16 @@ def test_add_manual_student_creates_single_student_seat_for_new_student(client):
 
     _login_admin(client, admin.id)
     with client.session_transaction() as sess:
-        sess["current_join_code"] = "MANU001"
+        set_canonical_context(
+            sess,
+            user_id=admin.user_id,
+            class_id=ClassEconomy.query.filter_by(join_code="MANU001").first().class_id,
+            seat_id=Seat.query.filter_by(join_code="MANU001", role="teacher").first().id,
+            role="teacher",
+            join_code="MANU001",
+        )
 
-    initial_student_count = Student.query.count()
+    initial_student_count = db.session.query(Seat).filter(Seat.role == "student").count()
     initial_link_count = StudentTeacher.query.filter_by(teacher_id=admin.id).count()
     class_row = ClassEconomy.query.filter_by(join_code="MANU001").first()
     initial_student_seat_count = Seat.query.filter_by(class_id=class_row.class_id, block="B").filter(Seat.user_id.isnot(None)).count()
@@ -310,7 +335,7 @@ def test_add_manual_student_creates_single_student_seat_for_new_student(client):
     )
 
     assert response.status_code == 302
-    assert Student.query.count() == initial_student_count + 1
+    assert db.session.query(Seat).filter(Seat.role == "student").count() == initial_student_count + 1
     assert StudentTeacher.query.filter_by(teacher_id=admin.id).count() == initial_link_count + 1
     assert Seat.query.filter_by(class_id=class_row.class_id, block="B").filter(Seat.user_id.isnot(None)).count() == initial_student_seat_count + 1
 
@@ -345,7 +370,14 @@ def test_add_individual_student_uses_selected_class_join_code_when_block_has_oth
 
     _login_admin(client, admin.id)
     with client.session_transaction() as sess:
-        sess["current_join_code"] = "NEWA001"
+        set_canonical_context(
+            sess,
+            user_id=admin.user_id,
+            class_id=ClassEconomy.query.filter_by(join_code="NEWA001").first().class_id,
+            seat_id=Seat.query.filter_by(join_code="NEWA001", role="teacher").first().id,
+            role="teacher",
+            join_code="NEWA001",
+        )
 
     response = client.post(
         "/admin/student/add-individual",
@@ -389,7 +421,14 @@ def test_add_individual_student_create_new_class_section_mints_new_join_code(cli
 
     _login_admin(client, admin.id)
     with client.session_transaction() as sess:
-        sess["current_join_code"] = "CURRA01"
+        set_canonical_context(
+            sess,
+            user_id=admin.user_id,
+            class_id=ClassEconomy.query.filter_by(join_code="CURRA01").first().class_id,
+            seat_id=Seat.query.filter_by(join_code="CURRA01", role="teacher").first().id,
+            role="teacher",
+            join_code="CURRA01",
+        )
 
     initial_class_count = ClassEconomy.query.count()
 
@@ -453,7 +492,14 @@ def test_admin_students_surfaces_teacher_shadow_claim_dob(client):
 
     _login_admin(client, admin.id, user_id=user.id, class_id=class_row.class_id)
     with client.session_transaction() as sess:
-        sess["current_join_code"] = "SHADOW1"
+        set_canonical_context(
+            sess,
+            user_id=user.id,
+            class_id=class_row.class_id,
+            seat_id=Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first().id,
+            role="teacher",
+            join_code="SHADOW1",
+        )
 
     response = client.get("/admin/students")
     assert response.status_code == 200
@@ -525,18 +571,21 @@ def test_payroll_settings_uses_feature_scope_blocks_not_student_block_text(clien
     profile = IdentityProfile(profile_type="student", first_name="Scope", last_name="S")
     db.session.add(profile)
     db.session.flush()
-    student = Student(identity_profile=profile, block="A", salt=b"salt")
-    db.session.add(student)
+    student_user = User(username_hash="scope_student_hash", username_lookup_hash="scope_student_lookup", user_role=UserRole.STUDENT)
+    db.session.add(student_user)
     db.session.flush()
 
     class_row = create_class_scope(
         teacher=admin,
         join_code="PAYS002",
         block="B",
-        student=student,
         create_claimed_teacher_block=True,
         teacher_block_claimed=True,
     )
+    student_seat = Seat(user_id=student_user.id, class_id=class_row.class_id, join_code=class_row.join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(student_seat)
+    db.session.flush()
+    profile.seat_id = student_seat.id
     db.session.commit()
 
     teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
@@ -575,7 +624,7 @@ def test_class_scoped_write_rejects_stale_session_join_code(client):
     with client.session_transaction() as sess:
         sess["current_join_code"] = "STALE999"
 
-    initial_student_count = db.session.query(Student).count()
+    initial_student_count = db.session.query(Seat).filter(Seat.role == "student").count()
     response = client.post(
         "/admin/student/add-individual",
         data={
@@ -589,7 +638,7 @@ def test_class_scoped_write_rejects_stale_session_join_code(client):
 
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/admin/students")
-    assert db.session.query(Student).count() == initial_student_count
+    assert db.session.query(Seat).filter(Seat.role == "student").count() == initial_student_count
 
 
 def test_store_query_scope_does_not_implicitly_switch_session_context(client):

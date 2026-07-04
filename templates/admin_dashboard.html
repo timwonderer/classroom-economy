@@ -261,8 +261,8 @@
                         <div
                             class="list-group-item px-0 d-flex justify-content-between align-items-center border-0 py-3">
                             <div>
-                                <strong>{{ student_lookup.get(req.student_id).full_name if
-                                    student_lookup.get(req.student_id) else 'Unknown' }}</strong>
+                                <strong>{{ seat_profiles.get(req.seat_id).first_name ~ ' ' ~ seat_profiles.get(req.seat_id).last_name if
+                                    seat_profiles.get(req.seat_id) else 'Unknown' }}</strong>
                                 <br>
                                 <small class="text-muted">{{ req.store_item.name }}</small>
                                 {% if req.redemption_details %}
@@ -302,8 +302,8 @@
                         <div
                             class="list-group-item px-0 d-flex justify-content-between align-items-center border-0 py-3">
                             <div>
-                                <strong>{{ student_lookup.get(pass.student_id).full_name if
-                                    student_lookup.get(pass.student_id) else 'Unknown' }}</strong>
+                                <strong>{{ seat_profiles.get(pass.seat_id).first_name ~ ' ' ~ seat_profiles.get(pass.seat_id).last_name if
+                                    seat_profiles.get(pass.seat_id) else 'Unknown' }}</strong>
                                 <br>
                                 <small class="text-muted"><span class="material-symbols-outlined me-1">signpost</span>{{
                                     pass.reason }}</small>
@@ -339,8 +339,8 @@
                         <div
                             class="list-group-item px-0 d-flex justify-content-between align-items-center border-0 py-3">
                             <div>
-                                <strong>{{ student_lookup.get(claim.student_id).full_name if
-                                    student_lookup.get(claim.student_id) else 'Unknown' }}</strong>
+                                <strong>{{ seat_profiles.get(claim.seat_id).first_name ~ ' ' ~ seat_profiles.get(claim.seat_id).last_name if
+                                    seat_profiles.get(claim.seat_id) else 'Unknown' }}</strong>
                                 <br>
                                 <small class="text-muted">{{ claim.description[:50] }}{% if claim.description|length >
                                     50 %}...{% endif %}</small>
@@ -401,10 +401,10 @@
                             <tr>
                                 <td class="ps-4">
                                     <div class="d-flex align-items-center">
-                                        {% set student = student_lookup.get(tx.student_id) %}
+                                        {% set profile = seat_profiles.get(tx.seat_id) %}
                                         <div>
                                             <div class="fw-medium text-dark">
-                                                {{ student.full_name if student else 'Unknown' }}
+                                                {{ profile.first_name ~ ' ' ~ profile.last_name if profile else 'Unknown' }}
                                             </div>
                                             <div class="small text-secondary local-timestamp"
                                                 data-timestamp="{{ format_utc_iso(tx.timestamp) }}">
