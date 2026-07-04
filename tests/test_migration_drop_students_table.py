@@ -36,6 +36,8 @@ def _reset_schema():
 
 def _prepare_legacy_students_table():
     with db.engine.begin() as conn:
+        conn.execute(text("DROP TABLE IF EXISTS legacy_student_notes CASCADE"))
+        conn.execute(text("DROP TABLE IF EXISTS students CASCADE"))
         conn.execute(
             text(
                 """
@@ -64,16 +66,6 @@ def _prepare_legacy_students_table():
                 """
             )
         )
-
-
-def _table_columns(table_name):
-    inspector = inspect(db.engine)
-    return {col["name"] for col in inspector.get_columns(table_name)}
-
-
-def _table_fks(table_name):
-    inspector = inspect(db.engine)
-    return inspector.get_foreign_keys(table_name)
 
 
 def test_students_table_drop_migration_is_idempotent(app, monkeypatch):
