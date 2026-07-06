@@ -13,7 +13,6 @@ from app.utils.time import ensure_utc, get_class_now, to_class_time
 
 CLAIM_TYPE_TRANSACTION_MONETARY = "transaction_monetary"
 CLAIM_TYPE_NON_MONETARY = "non_monetary"
-CLAIM_TYPE_LEGACY_MONETARY = "legacy_monetary"
 
 CLAIM_REASON_HARD_DENY_CATEGORY = "HARD_DENY_CATEGORY"
 CLAIM_REASON_INTERNAL_TRANSFER = "INTERNAL_TRANSFER"
@@ -138,7 +137,7 @@ def _check_delay_use_rule(tx: Transaction, *, class_id: str, now_class: datetime
 
     item_name = _extract_purchase_item_name(tx.description)
     if not item_name:
-        # Preserve claimability for legacy/manual purchase descriptions.
+        # Preserve claimability for manual purchase descriptions.
         return None
 
     item_query = StoreItem.query.filter(
@@ -334,13 +333,12 @@ def resolve_claim_type(*, claim=None, policy_claim_type: Optional[str] = None) -
     if policy_claim_type in {
         CLAIM_TYPE_TRANSACTION_MONETARY,
         CLAIM_TYPE_NON_MONETARY,
-        CLAIM_TYPE_LEGACY_MONETARY,
     }:
         return policy_claim_type
     if claim is None:
-        return CLAIM_TYPE_LEGACY_MONETARY
+        return CLAIM_TYPE_TRANSACTION_MONETARY
     if getattr(claim, "transaction_id", None):
         return CLAIM_TYPE_TRANSACTION_MONETARY
     if getattr(claim, "claim_item", None):
         return CLAIM_TYPE_NON_MONETARY
-    return CLAIM_TYPE_LEGACY_MONETARY
+    return CLAIM_TYPE_TRANSACTION_MONETARY

@@ -4,26 +4,25 @@ from datetime import timedelta
 
 from app.extensions import db
 from app.models import User, UserRole
-from app.services.admin_identity_bridge_service import (
+from app.services.admin_identity_service import (
     admin_has_passkeys,
     count_active_admin_invite_codes,
     create_admin_credential,
     create_admin_invite_code,
-    create_legacy_completed_teacher_onboarding,
     delete_admin_credential,
-    delete_admin_credentials_for_teacher,
-    delete_teacher_onboarding_for_teacher,
+    delete_admin_credentials_for_user,
+    delete_admin_onboarding_for_user,
     get_admin_credential,
     get_admin_invite_code_by_code,
     get_admin_invite_code_by_id,
-    get_or_create_teacher_onboarding,
-    get_teacher_onboarding,
+    get_admin_onboarding,
+    get_or_create_admin_onboarding,
     list_admin_invite_codes,
     mark_admin_invite_code_used,
     list_admin_credentials,
-    set_teacher_onboarding_skipped,
-    set_teacher_onboarding_widget_dismissed,
-    set_teacher_onboarding_widget_task_status,
+    set_admin_onboarding_skipped,
+    set_admin_onboarding_widget_dismissed,
+    set_admin_onboarding_widget_task_status,
     touch_admin_credentials_last_used,
 )
 from app.utils.time import utc_now
@@ -47,38 +46,27 @@ def test_onboarding_bridge_create_and_updates(client):
     teacher, _user = _seed_teacher()
     now = utc_now()
 
-    assert get_teacher_onboarding(teacher.id) is None
+    assert get_admin_onboarding(teacher.id) is None
 
-    created = get_or_create_teacher_onboarding(teacher.id, now)
-    assert created.teacher_id == teacher.id
+    created = get_or_create_admin_onboarding(teacher.id, now)
+    assert created.user_id == teacher.id
     assert created.is_completed is False
     assert created.is_skipped is False
     assert created.steps_completed == {}
     assert created.widget_tasks_completed == {}
 
-    set_teacher_onboarding_widget_task_status(teacher.id, "store", "skipped", utc_now())
-    set_teacher_onboarding_widget_dismissed(teacher.id, dismissed=True, now=utc_now())
-    set_teacher_onboarding_widget_dismissed(teacher.id, dismissed=False, now=utc_now())
-    set_teacher_onboarding_skipped(teacher.id, utc_now())
+    set_admin_onboarding_widget_task_status(teacher.id, "store", "skipped", utc_now())
+    set_admin_onboarding_widget_dismissed(teacher.id, dismissed=True, now=utc_now())
+    set_admin_onboarding_widget_dismissed(teacher.id, dismissed=False, now=utc_now())
+    set_admin_onboarding_skipped(teacher.id, utc_now())
     db.session.commit()
 
-    refreshed = get_teacher_onboarding(teacher.id)
+    refreshed = get_admin_onboarding(teacher.id)
     assert refreshed is not None
     assert refreshed.widget_tasks_completed.get("store") == "skipped"
     assert refreshed.widget_dismissed is False
     assert refreshed.widget_dismissed_at is None
     assert refreshed.is_skipped is True
-
-
-def test_onboarding_bridge_legacy_completed_create(client):
-    teacher, _user = _seed_teacher()
-    completed = create_legacy_completed_teacher_onboarding(teacher.id, utc_now())
-    db.session.commit()
-
-    assert completed.teacher_id == teacher.id
-    assert completed.is_completed is True
-    assert completed.is_skipped is True
-    assert completed.completed_at is not None
 
 
 def test_admin_credential_bridge_lifecycle(client):
@@ -88,8 +76,7 @@ def test_admin_credential_bridge_lifecycle(client):
     created = create_admin_credential(teacher.id, authenticator_name="My Passkey")
     db.session.flush()
 
-    assert created.teacher_id == teacher.id
-    assert created.user_id == user.id
+    assert created.user_id == teacher.id
     assert admin_has_passkeys(teacher.id) is True
 
     listed = list_admin_credentials(teacher.id)
@@ -113,17 +100,17 @@ def test_admin_credential_bridge_lifecycle(client):
 def test_admin_identity_bridge_bulk_deletes(client):
     teacher, _user = _seed_teacher()
     now = utc_now()
-    get_or_create_teacher_onboarding(teacher.id, now)
+    get_or_create_admin_onboarding(teacher.id, now)
     create_admin_credential(teacher.id, authenticator_name="Key 1")
     create_admin_credential(teacher.id, authenticator_name="Key 2")
     db.session.flush()
 
-    delete_admin_credentials_for_teacher(teacher.id)
-    delete_teacher_onboarding_for_teacher(teacher.id)
+    delete_admin_credentials_for_user(teacher.id)
+    delete_admin_onboarding_for_user(teacher.id)
     db.session.commit()
 
     assert admin_has_passkeys(teacher.id) is False
-    assert get_teacher_onboarding(teacher.id) is None
+    assert get_admin_onboarding(teacher.id) is None
 
 
 def test_admin_invite_code_bridge_lifecycle(client):

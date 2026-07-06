@@ -1,8 +1,8 @@
 """
 Root application module for Classroom Token Hub.
 
-This module serves as the WSGI entry point and provides backward compatibility
-imports. All routes have been modularized into blueprints (Stages 4-5).
+This module serves as the WSGI entry point. All routes have been modularized
+into blueprints.
 
 For gunicorn: wsgi:app
 """
@@ -57,8 +57,8 @@ def get_validated_status_page_url():
     return None
 
 
-# -------------------- BACKWARD COMPATIBILITY IMPORTS --------------------
-# Models (Stage 2)
+# -------------------- APPLICATION IMPORTS --------------------
+# Models
 from app.models import (
     AdminInviteCode,
     SystemAdmin,

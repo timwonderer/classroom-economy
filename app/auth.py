@@ -182,7 +182,7 @@ def admin_required(f):
             return redirect(url_for('admin.login'))
 
         if ctx is None:
-            # Fallback for _allow_teacher_context_exception which returns None
+            # Boundary contexts can still be established without a class.
             user_id = session.get("user_id")
             if not user_id:
                 return redirect(url_for('admin.login'))
@@ -429,9 +429,5 @@ def switch_student_session_context(student, *, class_id: str, seat_id: int):
         f"to {class_id} (Seat {seat_id})."
     )
     return seat
-
-
-    # Phase 5 removed the system-admin bridge helper.
-
 
     # is_viewing_as_student / can_access_student_routes — REMOVED (prohibited feature, cross-account leak risk)

@@ -76,7 +76,7 @@ class AttendanceReasonCode(str, enum.Enum):
 
 
 class TapEventReasonCode(str, enum.Enum):
-    """Legacy tap-event reason codes retained for attendance transition compatibility."""
+    """Tap-event reason codes used during the attendance transition."""
     DAILY_LIMIT = 'daily_limit'
     AUTO_SWITCH = 'auto_switch'
 
@@ -336,7 +336,7 @@ class Seat(db.Model):
     has_received_rent_exemption = db.Column(db.Boolean, nullable=False, default=False)
     hall_passes = db.Column(db.Integer, nullable=False, default=3)
 
-    # Transitional public-token bridge until seat/class rewiring is complete.
+    # Transitional public token until seat/class rewiring is complete.
     join_code = db.Column(db.String(20), nullable=False, index=True)
 
     block = db.Column(db.String(10), nullable=True)
@@ -369,7 +369,7 @@ class Seat(db.Model):
 @event.listens_for(Seat, "before_insert")
 @event.listens_for(Seat, "before_update")
 def _sync_seat_scope(mapper, connection, target):
-    """Keep transitional seat bridge fields aligned while the actor swap is incomplete."""
+    """Keep seat fields aligned while the actor swap is in progress."""
     if getattr(target, "block_identifier", None) is None and getattr(target, "block", None):
         target.block_identifier = target.block
     if getattr(target, "block", None) is None and getattr(target, "block_identifier", None):
@@ -385,7 +385,7 @@ def _sync_seat_scope(mapper, connection, target):
 
 
 class AdminInviteCode(db.Model):
-    # V1 LEGACY — replaced in v2 by open teacher signup (Turnstile-gated form → TOTP → passkey → done)
+    # Replaced in v2 by open teacher signup (Turnstile-gated form → TOTP → passkey → done)
     __tablename__ = 'teacher_invite_codes'
     id = db.Column(db.Integer, primary_key=True)
     code = db.Column(db.String(255), unique=True, nullable=False)
@@ -544,7 +544,7 @@ class SystemAdminCredential(db.Model):
 class Transaction(db.Model):
     __tablename__ = 'ledger_transaction'
     id = db.Column(db.Integer, primary_key=True)
-    # student_id has been formally severed in favor of seat_id. 
+    # seat_id is the canonical ledger anchor.
     seat_id = db.Column(db.Integer, db.ForeignKey('seats.id', ondelete='CASCADE'), nullable=False, index=True)
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
 
@@ -580,7 +580,7 @@ class Transaction(db.Model):
     idempotency_key = db.Column(db.String(100), nullable=True, index=True)
     is_void = db.Column(db.Boolean, default=False)
     # References for compensating/reversal ledger entries.
-    # Stored as IDs to keep compatibility simple across backends/migrations.
+    # Stored as IDs for backend portability.
     original_transaction_id = db.Column(db.Integer, nullable=True, index=True)
     reversal_transaction_id = db.Column(db.Integer, nullable=True, index=True)
     policy_id = db.Column(db.Integer, db.ForeignKey('insurance_policies.id'), nullable=True, index=True)
@@ -714,8 +714,8 @@ def _enforce_transaction_integrity(_mapper, _connection, target):
             raise ValueError(f"FATAL: Bypass mode active but correlation_id does not start with 'bypass_test_': {target.correlation_id}")
     else:
         # 1. Mandatory Identity Alignment (V2 Law)
-        # Tier-1 ledger FEATs require explicit class anchors; legacy low-blast
-        # admin/test flows can continue during migration hardening.
+        # Tier-1 ledger FEATs require explicit class anchors; low-blast
+        # admin/test flows can continue during routine validation.
         meta = FEAT_REGISTRY.get(feat_name, {})
         is_tier_1 = meta.get("blast_radius") == "HIGH" or (feat_name and feat_name.startswith("FEAT-LED"))
         if is_tier_1 and not target.class_id:
@@ -748,7 +748,7 @@ def _enforce_transaction_integrity(_mapper, _connection, target):
               raise ValueError(f"FATAL: Ledger mutation in {feat_name} missing seat_id. Must be provided by service.")
 
     # 4. Identity synchronization (pure assignment only)
-    # seat_id is optional but student_id is the primary anchor
+    # seat_id is the runtime anchor; student_id is only used for seat lookup.
 
 def _resolve_seat_id(connection, student_id, *, class_id=None, join_code=None):
     """Lookup seat ID for a student in a class universe."""
@@ -1045,7 +1045,7 @@ class StoreItem(db.Model):
 @sa.event.listens_for(StoreItem, "before_insert")
 @sa.event.listens_for(StoreItem, "before_update")
 def _sync_store_item_scope(_mapper, connection, target):
-    """Dual-write bridge for store_items class scope."""
+    """Synchronize store_items class scope during the transition."""
     class_id = getattr(target, "class_id", None)
     join_code = getattr(target, "join_code", None)
 
@@ -1273,7 +1273,7 @@ class RentSettings(db.Model):
 
     # Due date settings
     first_rent_due_date = db.Column(db.DateTime(timezone=True), nullable=True)
-    due_day_of_month = db.Column(db.Integer, default=1)  # For monthly frequency (kept for compatibility)
+    due_day_of_month = db.Column(db.Integer, default=1)  # For monthly frequency.
 
     # Grace period and late penalties
     grace_period_days = db.Column(db.Integer, default=3)
@@ -1309,7 +1309,7 @@ class RentSettings(db.Model):
         post_update=True,
     )
 
-    # Keep old field names for backward compatibility (deprecated)
+    # Keep old field names for accessors.
     @property
     def late_fee(self):
         return self.late_penalty_amount
@@ -1372,7 +1372,7 @@ class RentSettings(db.Model):
 @event.listens_for(RentSettings, "before_insert")
 @event.listens_for(RentSettings, "before_update")
 def _sync_rent_settings_scope(mapper, connection, target):
-    """Best-effort class scope backfill for transitional join-code seeded fixtures."""
+    """Best-effort class scope repair for join-code seeded data."""
     if getattr(target, "class_id", None) is None:
         join_code = getattr(target, "join_code", None)
         if join_code:
@@ -1502,7 +1502,7 @@ class RentWaiver(db.Model):
 @sa.event.listens_for(HallPassLog, "before_insert")
 @sa.event.listens_for(HallPassLog, "before_update")
 def _sync_hall_pass_seat(_mapper, connection, target):
-    """Dual-write bridge for hall_pass_logs.seat_id."""
+    """Synchronize hall_pass_logs.seat_id during the transition."""
     student_id = getattr(target, "student_id", None)
     class_id = getattr(target, "class_id", None)
 
@@ -1580,7 +1580,7 @@ class InsurancePolicy(db.Model):
     max_payout_per_period = db.Column(db.Numeric(precision=12, scale=2), nullable=True)  # Max total $ payout per period (null = unlimited)
 
     # Claim type
-    claim_type = db.Column(db.String(20), nullable=False, default='legacy_monetary')  # transaction_monetary, non_monetary, legacy_monetary
+    claim_type = db.Column(db.String(20), nullable=False, default='transaction_monetary')  # transaction_monetary, non_monetary
     is_monetary = db.Column(db.Boolean, default=True)  # True = monetary claims, False = item/service claims
 
     # Special rules
@@ -1707,7 +1707,7 @@ class InsuranceClaim(db.Model):
 
     @property
     def student(self):
-        """Resolve student through seat for template compatibility."""
+        """Resolve student through seat."""
         return self.seat.identity_profile if self.seat and self.seat.identity_profile else None
 
     @property
@@ -1887,7 +1887,7 @@ class InsuranceEnrollment(db.Model):
 
     @property
     def student(self):
-        """Resolve student through seat for template compatibility."""
+        """Resolve student through seat."""
         return self.seat.identity_profile if self.seat and self.seat.identity_profile else None
 
 
@@ -2084,9 +2084,9 @@ class Issue(db.Model):
 
     # Status tracking
     status = db.Column(db.String(50), default='OPEN', nullable=False, index=True)
-    # Canonical statuses follow FEAT-TICK-001; legacy values are still recognized for older rows.
+    # Canonical statuses follow FEAT-TICK-001; older rows may still use earlier values.
 
-    # Teacher review and resolution
+    # Review and resolution
     teacher_reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     teacher_notes = db.Column(db.Text, nullable=True)  # Separate from student content
     teacher_resolution = db.Column(db.String(100), nullable=True)  # Type of resolution applied
@@ -2095,19 +2095,19 @@ class Issue(db.Model):
     # Escalation to sysadmin
     escalated_at = db.Column(db.DateTime(timezone=True), nullable=True)
     escalation_reason = db.Column(db.String(200), nullable=True)
-    teacher_diagnostic_note = db.Column(db.Text, nullable=True)  # Teacher's diagnostic for sysadmin
-    share_class_name_with_sysadmin = db.Column(db.Boolean, default=False, nullable=False)  # Teacher consent for class disclosure
-    eligible_for_reward = db.Column(db.Boolean, default=False, nullable=False)  # Teacher marks if student may receive reward for legitimate bug
+    teacher_diagnostic_note = db.Column(db.Text, nullable=True)  # Diagnostic note for sysadmin
+    share_class_name_with_sysadmin = db.Column(db.Boolean, default=False, nullable=False)  # Consent for class disclosure
+    eligible_for_reward = db.Column(db.Boolean, default=False, nullable=False)  # Marks if student may receive reward for a legitimate bug
 
     # Sysadmin review and resolution
     sysadmin_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)
     sysadmin_reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    sysadmin_notes = db.Column(db.Text, nullable=True)  # Separate from teacher/student content, visible to teacher only
+    sysadmin_notes = db.Column(db.Text, nullable=True)  # Separate from student content, visible to teacher only
     sysadmin_resolved_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     # Closure
     closed_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    closed_by_type = db.Column(db.String(20), nullable=True)  # 'teacher', 'sysadmin', 'system'
+    closed_by_type = db.Column(db.String(20), nullable=True)  # 'reviewer', 'sysadmin', 'system'
 
     # Timestamps
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
@@ -2141,7 +2141,7 @@ class Issue(db.Model):
     STATUS_TEACHER_FINAL_REVIEW = 'TEACHER_FINAL_REVIEW'
     STATUS_CLOSED = 'CLOSED'
 
-    # Legacy status values retained for backward-compatible reads.
+    # Prior status values retained for reads.
     LEGACY_TO_CANONICAL_STATUS = {
         'submitted': STATUS_OPEN,
         'teacher_review': STATUS_TEACHER_REVIEW,
@@ -2257,7 +2257,6 @@ class Admin(db.Model):
     # Any access to .username will now raise AttributeError — intentional.
     username_hash = db.Column(db.String(64), unique=True, nullable=True)
     username_lookup_hash = db.Column(db.String(64), unique=True, nullable=True, index=True)
-    teacher_public_id = db.Column(db.String(120), unique=True, nullable=True, index=True)
     public_id = db.Column(
         db.String(64),
         unique=True,
@@ -2265,7 +2264,7 @@ class Admin(db.Model):
         index=True,
         default=lambda: secrets.token_urlsafe(18),
     )
-    display_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=True)  # Teacher's display name (defaults to teacher_public_id if not set)
+    display_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=True)  # Teacher's display name (defaults to canonical public identity if not set)
     # TOTP-only: store secret (base64-encoded encrypted data)
     totp_secret = db.Column(db.String(200), nullable=False)  # Stores base64-encoded encrypted TOTP secret
     # Account recovery: Hashed DOB sum (similar to student system)
@@ -2280,7 +2279,7 @@ class Admin(db.Model):
     tos_accepted_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
     # Hall pass public verification token (256-bit, capability-based, rotatable)
-    # Used for /verify/hallpass/<token> — not derived from teacher_id
+    # Used for /verify/hallpass/<token> — not derived from teacher identity
     hall_pass_verify_token = db.Column(db.String(64), unique=True, nullable=True, index=True)
 
     @staticmethod
@@ -2294,18 +2293,18 @@ class Admin(db.Model):
 
 
     def get_display_name(self):
-        """Return display_name if set, otherwise fall back to public teacher ID."""
+        """Return display_name if set, otherwise fall back to canonical public identity."""
         if self.display_name:
             return self.display_name
-        if self.teacher_public_id:
-            return self.teacher_public_id
-        return f"teacher_{self.id}"
+        if self.public_id:
+            return self.public_id
+        return f"user_{self.id}"
 
     def get_sysadmin_display_name(self):
-        """Return the minimal-PII teacher identifier for sysadmin contexts."""
-        if self.teacher_public_id:
-            return self.teacher_public_id
-        return f"teacher_{self.id}"
+        """Return the minimal-PII canonical teacher identifier for sysadmin contexts."""
+        if self.public_id:
+            return self.public_id
+        return f"user_{self.id}"
 
     def get_student_count(self):
         """Return unique students linked via canonical seats."""

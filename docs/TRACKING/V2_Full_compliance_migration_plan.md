@@ -27,21 +27,22 @@ Target state:
 | Services | 8 (`access_policy`, `attendance`, `balance`, `identity`, `ledger`, `obligations`, `store`, `tlcp`) |
 | Blueprints | 8 (`admin` 514K lines, `student` 178K, `api` 120K, `system_admin` 78K, `docs` 30K, `analytics` 19K, `main` 14K, `recovery` 8.6K) |
 | Target canonical tables | 44 across 9 domains (DOM-CORE-002) |
-| Auth | `User` is active for teacher/sysadmin TOTP, student PIN/passphrase, passkey ownership, and session `user_id`; `Admin`/`Student`/`SystemAdmin` remain route compatibility shadows |
+| Auth | `User` is active for teacher/sysadmin TOTP, student PIN/passphrase, passkey ownership, and session `user_id`; runtime `session.get('admin_id'/'student_id'/'sysadmin_id')` reads are gone from `app/`, but `Admin`/`Student`/`SystemAdmin` model and test residue still exists |
 | `Seat` | Active class-local actor anchor; remaining `student_id` bridges are compatibility only |
 | `Class` | `classes.class_id` is the canonical class boundary; `join_code` is a public alias |
 
 ### Validation Checkpoint
 
-**Last validated:** 2026-06-10T04:58:00Z
+**Last validated:** 2026-07-05T00:00:00Z
 
-- Tracker reconciliation refreshed against the current `codex/v2.0` state.
+- Tracker reconciliation refreshed against the current `codex/v2.0` state after the latest remote merge.
+- Runtime extinct-identity session reads are no longer present in `app/`; the remaining legacy identity surface is concentrated in tests, compatibility models, and non-session FK naming.
 - Waves 3-6 remain the last fully evidenced landed cluster in the active tracker.
-- Wave 7 schema contract is installed; insurance-claim filing and resolution now emit canonical `assessment_events` + `obligation_lifecycle` state under a clean-cutover model, while legacy-read cutover and table drops remain open.
-- Wave 7 rent-waiver actor cutover is now also landed: `ObligationReversal` uses seat-scoped actor attribution and rent-waiver add/remove paths no longer emit legacy `AnalyticsEvent` compatibility rows.
+- Wave 7 schema contract is installed; insurance-claim filing and resolution emit canonical `assessment_events` + `obligation_lifecycle` state under a clean-cutover model, while legacy-read cutover and table drops remain open.
+- Wave 7 rent-waiver actor cutover is landed: `ObligationReversal` uses seat-scoped actor attribution and rent-waiver add/remove paths no longer emit legacy `AnalyticsEvent` compatibility rows.
 - Waves 8-12 remain open and continue to require per-wave verification gates before they can be marked complete.
 - No tracker entry was promoted to complete status without direct evidence in the current pass.
-- **2026-06-07**: `TeacherBlock` identity model decommissioning is in active execution under Wave 11 admin route decomposition scope (see Wave 11 status update below).
+- `TeacherBlock` runtime usage is gone; remaining work is test/data-shape cleanup and deletion of legacy identity residue.
 
 ---
 
@@ -91,7 +92,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [x] Complete Wave 4 class-configuration canonicalization and drop legacy settings columns
 - [x] Complete Wave 5 ledger table migration and FEAT hook reassignment
 - [x] Complete Wave 6 attendance table migration (`tap_events` lineage removed; canonical reads/writes and legacy table drop landed)
-- [ ] Complete Wave 7 obligations schema migration while preserving already-landed prepay/temporal behavior
+- [~] Complete Wave 7 obligations schema migration while preserving already-landed prepay/temporal behavior and finish the remaining legacy-identity residue cleanup in tests and model backfills
 - [ ] Deferred follow-up from commit 2 cutover: finish rent post-payment linkage cleanup so hall-pass reconciliation no longer depends on legacy seat/student assumptions or display-only block metadata. The remaining rent persistence smoke failure is out of scope for this PR and will be merged as a known follow-up.
 - [ ] Complete Wave 8 store schema migration and remove remaining teacher-scoped enforcement remnants
 - [ ] Complete Wave 9 operations + interpretation canonical migration
@@ -102,16 +103,17 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - [ ] Wave 11 backup/restore rehearsal evidence
 - [ ] Wave 11 operator sign-off flow completion (`user_invite_tokens`)
 - [ ] Wave 11 system-admin compliance audit completion
-- [/] Wave 11 admin route decomposition (`app/routes/admin.py`) — **TeacherBlock decommissioning actively in progress** (see Wave 11 status updates 2026-06-07, 2026-06-15)
+- [~] Wave 11 admin route decomposition (`app/routes/admin.py`) — runtime canonical context is now in place; remaining work is legacy shape cleanup and test parity (see Wave 11 status updates 2026-06-07, 2026-06-15)
 - [ ] Wave 11 invariant sweeps complete (INV-ARC-007, INV-ARC-014, INV-ARC-015 full repo pass)
 - [ ] Wave 11 `V2_CLASS_ID_INVARIANT_BACKLOG` closure
 - [ ] Complete single-context UI enforcement sweep: remove remaining page-level class selectors and request `join_code` context controls outside nav context switch
 - [ ] Enforce canonical-auth runtime gate matrix: [`V2_CANONICAL_AUTH_RUNTIME_GATE_MATRIX.md`](./V2_CANONICAL_AUTH_RUNTIME_GATE_MATRIX.md) as the hard acceptance gate for any remaining `user_id` / `class_id` / `seat_id` / `join_code` runtime work
-- [/] Wave 11 FEATBypass default-flip — invert `tests/conftest.py` so FEAT enforcement is the test default and `FEATBypass` is opt-in per test. **Phase 1 (instrumentation) complete 2026-06-09. Phase 2 (fixture consolidation) is the next active item, co-located with Waves 6–10 as canonical helpers land.** Full plan in [V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md](./V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md); Phase 1 findings in [V2_FEAT_BYPASS_DEPENDENCY_REPORT.md](./V2_FEAT_BYPASS_DEPENDENCY_REPORT.md). Headline: **4 dead mutating endpoints** (`admin.process_claim`, `sysadmin.resolve_escalated_issue`, `admin.rent_settings`, `admin.passkey_auth_finish`), **0 GET-side-effect endpoints**, **585 tests with fixture-only bypass dependency**. Original trigger: 2026-06-08 audit of `/api/approve-redemption` and `/api/reject-redemption` (dead, now fixed via `FEAT-STOR-006`) and the cross-FEAT correlation bug in `Transaction.before_update` (also fixed).
+- [/] Wave 11 FEATBypass default-flip — invert `tests/conftest.py` so FEAT enforcement is the test default and `FEATBypass` is opt-in per test. **Phase 1 (instrumentation) complete 2026-06-09. Phase 2 (fixture consolidation) remains the active item, now adjacent to legacy-identity residue cleanup in tests.** Full plan in [V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md](./V2_FEAT_BYPASS_DEFAULT_FLIP_PLAN.md); Phase 1 findings in [V2_FEAT_BYPASS_DEPENDENCY_REPORT.md](./V2_FEAT_BYPASS_DEPENDENCY_REPORT.md). Headline remains **4 dead mutating endpoints** (`admin.process_claim`, `sysadmin.resolve_escalated_issue`, `admin.rent_settings`, `admin.passkey_auth_finish`), **0 GET-side-effect endpoints**, **585 tests with fixture-only bypass dependency**. Original trigger: 2026-06-08 audit of `/api/approve-redemption` and `/api/reject-redemption` (dead, now fixed via `FEAT-STOR-006`) and the cross-FEAT correlation bug in `Transaction.before_update` (also fixed).
 - Session note 2026-06-22: began closing the Wave 7 / P0 remediation slice on `codex/wave7-closure-p0-remediation`. Rewrote `tests/test_v2_authority_guardrails.py` toward canonical v2 source-level assertions and wrapped the currently touched mutation entrypoints in FEAT ownership (`admin.process_claim`, `admin.passkey_auth_finish`, `admin.resolve_issue`, `sysadmin.resolve_escalated_issue`). The Wave 11 dead-route backlog line above remains the authoritative remaining count until the `admin.rent_settings` surface is addressed and the audit is rerun.
 - Session note 2026-06-25: added explicit guardrail coverage that source-checks the newly FEAT-owned dead-route mutation entrypoints and the admin GET read-only surface. This keeps the canonical v2 contract pinned without reintroducing legacy compatibility assumptions.
 - Session note 2026-06-25: moved the live student rent read path off direct `RentPayment` queries and onto canonical obligation helpers (`get_paid_rent_assessments_for_cycle`, `get_rent_payment_history`). This closes the remaining runtime rent read surface in `app/routes/student.py` so the route reads through the v2 assessment/lifecycle model only.
 - Session note 2026-06-25: pushed the Wave 7 admin rent cleanup further by converting the admin rent privilege cache and cycle-reversal flow to canonical obligation helpers. The remaining `RentPayment` references are now concentrated in report/delete maintenance paths that need separate shape-preserving treatment.
+- Session note 2026-07-06: removed the remaining bridge-service surface from the active admin/recovery identity paths and rewrote the touched tests to the canonical service APIs. `venv/bin/flask --app wsgi routes >/dev/null && echo OK` and the focused admin/recovery service test files both passed after the cleanup.
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 
 #### Deferred-but-tracked architecture items
@@ -2554,3 +2556,12 @@ grep -r "\.student_id" app/routes/            # 0 results (outside identity_serv
 | Services | `app/services/` (8 files) |
 | Auth layer | `app/auth.py` |
 | Seat scope utils | `app/utils/seat_scope.py` |
+
+### Status Update (2026-07-05): Runtime Identity Cleanup
+
+- Runtime helper modules were renamed to canonical service names:
+  - `app/services/admin_identity_service.py`
+  - `app/services/recovery_service.py`
+- Route and utility imports were updated to match the new names.
+- Startup verification passed after the rename:
+  - `venv/bin/flask --app wsgi routes >/dev/null && echo OK`

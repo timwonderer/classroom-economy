@@ -55,7 +55,7 @@ def nl2br_filter(s):
     # TODO: [DEPENDABOT PR #463] MarkupSafe 3.x introduces breaking changes:
     # - soft_str and soft_unicode removed (deprecated since 2.0)
     # - Markup.striptags() behavior may differ
-    # - Review Jinja2 compatibility before upgrading from 2.1.5 to 3.0.3
+    # - Review Jinja2 behavior before upgrading from 2.1.5 to 3.0.3
     from markupsafe import Markup
     if s is None:
         return ''
@@ -528,13 +528,10 @@ def create_app():
     @app.before_request
     def set_rls_tenant_context():
         """
-        Set PostgreSQL Row-Level Security tenant context for multi-tenancy isolation.
+        Set PostgreSQL Row-Level Security tenant context for the current request.
 
         This sets the app.current_teacher_id session variable that RLS policies use
-        to filter database queries. This ensures teachers can only see/modify their
-        own data at the database level, even if application code has bugs.
-
-        This follows industry best practices from AWS, Azure, and major SaaS providers.
+        to filter database queries.
         """
         # Skip for static files, health checks, and public routes
         if request.path.startswith("/static/"):
@@ -542,7 +539,7 @@ def create_app():
         if request.endpoint in {"main.health_check"}:
             return None
 
-        # Set tenant context for both admin and student sessions
+        # Set tenant context for both admin and student requests.
         teacher_id = None
         try:
             from app.auth import get_current_seat, get_current_class_id, get_current_user
@@ -556,12 +553,12 @@ def create_app():
                 if class_row and class_row.user_id:
                     teacher_id = class_row.user_id
 
-            # Canonical user currently has no teacher-role mapping in this phase.
-            # Keep this lookup to centralize identity dependency for future phases.
+            # Canonical user currently has no teacher-role mapping here.
+            # Keep this lookup centralized in the request-context setup.
             if teacher_id is None:
                 _ = get_current_user()
         except Exception:
-            # Keep request resilient; legacy fallbacks below preserve behavior.
+            # Keep request resilient.
             teacher_id = None
 
         if teacher_id:
@@ -971,10 +968,10 @@ def create_app():
     return app
 
 
-# Create a default application instance for compatibility with legacy imports
+# Create a default application instance for import convenience.
 app = create_app()
 
-# Re-export commonly used objects for convenience/legacy support
+# Re-export commonly used objects for convenience.
 from app.extensions import db  # noqa: E402
 from app.models import AttendanceSession, Transaction  # noqa: E402
 from app.routes.student import apply_savings_interest  # noqa: E402

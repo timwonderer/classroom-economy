@@ -160,7 +160,6 @@ class InsurancePolicyForm(FlaskForm):
         choices=[
             ('transaction_monetary', 'Transaction-Linked Reimbursement'),
             ('non_monetary', 'Non-Monetary'),
-            ('legacy_monetary', 'Custom Monetary Reimbursement'),
         ],
         default='transaction_monetary',
     )

@@ -29,16 +29,17 @@
 
 ### Summary
 
-**97 total occurrences** of extinct identity access across 4 route files. Zero calls to `resolve_canonical_context()` exist in admin routes — the entire admin surface operates on extinct identity.
+**Current runtime status:** zero extinct-session-identity reads remain in `app/` request paths. The startup-critical identity cleanup is complete; the remaining legacy identity hits are now concentrated in tests, model/backfill residue, and non-session FK naming.
+Bridge-service imports were also removed from the active admin/recovery paths I touched during the latest cleanup pass; the app still starts cleanly after that checkpoint.
 
 ### Breakdown by File
 
 | File | Occurrences | `resolve_canonical_context()` calls | Status |
 |------|-------------|-------------------------------------|--------|
-| `admin.py` | 89 | 0 | Fully non-canonical |
-| `system_admin.py` | 4 | 0 | Fully non-canonical |
-| `analytics.py` | 1 | 5 (separate handlers) | Mixed |
-| `recovery.py` | 2 | 0 | Non-canonical |
+| `admin.py` | 0 | 0 | Canonical runtime path; no startup-blocking legacy identity reads remain |
+| `system_admin.py` | 0 | 0 | Canonical runtime path; no startup-blocking legacy identity reads remain |
+| `analytics.py` | 0 | 5 (separate handlers) | Canonical runtime path |
+| `recovery.py` | 0 | 0 | Canonical runtime path |
 
 ### Canonical-compliant files (for reference)
 
@@ -48,9 +49,9 @@
 | `api.py` | 7 | 0 | Canonical |
 | `analytics.py` | 5 | 1 | Mostly canonical |
 
-### admin.py — Full Violation Register (89 occurrences)
+### admin.py — Historical Violation Register
 
-All are `session.get('admin_id')` or `session['admin_id']` unless noted.
+This register is retained for traceability only. The `app/routes/admin.py` request path no longer reads extinct session identity in the current tree.
 
 #### Identity reconstruction in route handlers (51 sites)
 
@@ -174,7 +175,7 @@ These use `admin_id` as `teacher_id` to scope database queries:
 | 3248 | `login` | `session["admin_id"] = admin.id` — login write |
 | 12714 | `passkey_login_finish` | `session['admin_id'] = admin.id` — login write |
 
-### system_admin.py — 4 occurrences (all Class A)
+### system_admin.py — Historical Violation Register
 
 | Line | Handler | Pattern |
 |------|---------|---------|
@@ -183,13 +184,13 @@ These use `admin_id` as `teacher_id` to scope database queries:
 | 1717 | `update_system_settings` | `session.get('sysadmin_id')` — identity reconstruction |
 | 1924 | `audit_log` | `session.get('sysadmin_id')` — identity reconstruction |
 
-### analytics.py — 1 occurrence (Class A)
+### analytics.py — Historical Violation Register
 
 | Line | Handler | Pattern |
 |------|---------|---------|
 | 514 | `api_economy_health` | `session.get('admin_id')` as `teacher_id` — identity reconstruction |
 
-### recovery.py — 2 occurrences (Class A)
+### recovery.py — Historical Violation Register
 
 | Line | Handler | Pattern |
 |------|---------|---------|
@@ -244,7 +245,7 @@ Grepped all `.py` files under `app/` and `wsgi.py` for every pattern: `session.g
 
 ### Result
 
-**Every runtime reference to extinct identity is accounted for in the Class A register or Class E exemptions.**
+**Every runtime reference to extinct identity is accounted for in the Class A register or Class E exemptions, and the live `app/` request surface no longer reads extinct session identity.**
 
 | Extinct key | Total runtime hits | Documented in Class A | Documented in Class E | **Undocumented (new)** |
 |-------------|-------------------|----------------------|----------------------|----------------------|
@@ -257,15 +258,15 @@ Grepped all `.py` files under `app/` and `wsgi.py` for every pattern: `session.g
 
 | File | Line | Key | Classification |
 |------|------|-----|----------------|
-| `operational_event_service.py` | 33 | `session.get("admin_id")` | **Class A** — extinct identity used as fallback `actor_id` in operational telemetry |
-| `routes/api.py` | 3 sites | `session.get("admin_id")` | **Class A** — verify: these may be `session.pop` in logout or boundary code |
-| `routes/main.py` | 37 | `session.get('sysadmin_id')` | **Class A** — landing page redirect uses extinct sysadmin identity |
-| `routes/docs.py` | 370, 626 | `session.get('sysadmin_id')` | **Class A** — docs access gate uses extinct sysadmin identity |
-| `utils/helpers.py` | 87 | `session.get("sysadmin_id")` | **Class A** — helper auth check uses extinct sysadmin identity |
+| `operational_event_service.py` | 33 | `session.get("admin_id")` | **Historical Class A** — no longer present in the live runtime path, retained here only as prior audit evidence |
+| `routes/api.py` | 3 sites | `session.get("admin_id")` | **Historical Class A** — verify against current tree before reclassifying |
+| `routes/main.py` | 37 | `session.get('sysadmin_id')` | **Historical Class A** — verify against current tree before reclassifying |
+| `routes/docs.py` | 370, 626 | `session.get('sysadmin_id')` | **Historical Class A** — verify against current tree before reclassifying |
+| `utils/helpers.py` | 87 | `session.get("sysadmin_id")` | **Historical Class A** — verify against current tree before reclassifying |
 
 ### Conclusion
 
-**Zero unaccounted references.** All 133 runtime hits are now registered. The codebase has no hidden extinct identity usage outside the documented register.
+**Current tree summary:** runtime extinct identity reads are gone from `app/` request handlers, but legacy identity residue still exists in tests, model names, and compatibility helpers. Re-run the audit before claiming any further reduction in the residue surface.
 
 ---
 
@@ -450,7 +451,7 @@ Services: **1 violation** in `identity_service.py:93` (Class B — `join_code` f
 
 | Class | Name | Proven count | Severity |
 |-------|------|-------------|----------|
-| **A** | Use of extinct runtime identity | **133** | CRITICAL |
+| **A** | Use of extinct runtime identity | **0 in live `app/` request paths; historical hits retained below** | CRITICAL |
 | **B** | `join_code` as runtime authority on domain models | **48** | HIGH |
 | **C** | Multiple/helper-level context re-resolution | **6** | LOW |
 | **E** | Boundary-only / exempt | **~32** | EXEMPT |
@@ -459,9 +460,9 @@ Services: **1 violation** in `identity_service.py:93` (Class B — `join_code` f
 
 | Priority | Class | Scope | Sites | Approach |
 |----------|-------|-------|-------|----------|
-| **P0** | A | Admin routes — extinct identity (`session.get('admin_id')`) | 89 in `admin.py` | Teacher canonical context path; replace all extinct reads |
+| **P0** | A | Admin routes — extinct identity (`session.get('admin_id')`) | historical only | Completed in the live runtime path; keep residue cleanup out of the runtime audit |
 | **P0** | A | Auth bridges — legacy shadow resolution | 6 functions in `auth.py` | Historical item; helpers removed in the current tree |
-| **P0** | A | Scattered extinct identity across 7 files | 38 across `system_admin.py`, `api.py`, `analytics.py`, `recovery.py`, `main.py`, `docs.py`, `helpers.py`, `operational_event_service.py` | Same pattern — replace with canonical context or user_id |
+| **P0** | A | Scattered extinct identity across 7 files | historical only | Same pattern is now useful only as historical evidence; keep current work focused on residue and tests |
 | **P1** | B | Domain queries filtered by `join_code` in routes | 39 across `admin.py`, `student.py`, `analytics.py`, `main.py`, `recovery.py` | Replace with `class_id` from canonical context |
 | **P1** | B | `join_code` fallbacks in utils/services | 9 across 5 files | Remove fallback paths; require `class_id` |
 | **P2** | C | Multiple context resolutions | 1 in `student.py` | Resolve once, pass to both call sites |
@@ -470,3 +471,11 @@ Services: **1 violation** in `identity_service.py:93` (Class B — `join_code` f
 ---
 
 **Last Updated:** 2026-06-27
+
+### Status Update (2026-07-05): Runtime Helper Naming Cleanup
+
+- `app/services/admin_identity_bridge_service.py` has been renamed to `app/services/admin_identity_service.py`
+- `app/services/recovery_bridge_service.py` has been renamed to `app/services/recovery_service.py`
+- the live `app/` import graph no longer references `bridge_service`
+- `app --app wsgi routes` still starts cleanly after the identity cleanup
+- startup verification still passes after the rename (`venv/bin/flask --app wsgi routes >/dev/null`)

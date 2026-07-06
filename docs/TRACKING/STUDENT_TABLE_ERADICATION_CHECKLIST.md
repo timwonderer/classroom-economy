@@ -70,5 +70,7 @@ Status legend:
 - [x] Canonical student identity helper exists in [`tests/helpers/class_scope.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/helpers/class_scope.py)
 - [x] Canonical context helper exists in [`tests/helpers/canonical_session.py`](/Users/timothychang/Documents/GitHub/classroom-economy/tests/helpers/canonical_session.py)
 - [x] Touched tests now use canonical context helper instead of raw `current_*` writes
-- [~] Repo-wide `Student` eradication in `app/` is still incomplete
+- [~] Repo-wide `Student` eradication in `app/` is still incomplete, but the live request-time legacy identity surface is now mostly model/data residue rather than session-based runtime authority
+- [x] Runtime onboarding and recovery helper modules now use canonical service names instead of `bridge` filenames
+- [x] Startup-critical runtime identity cleanup in `app/` is complete and bootstraps cleanly
 - [~] Repo-wide `Student` eradication in `tests/` is still incomplete

@@ -533,7 +533,7 @@ def purchase_item():
             None
         )
 
-        # Fallback for legacy/stale linkage where StoreItem.is_rent_linked is True but mapping row is missing.
+        # Fallback for stale linkage where StoreItem.is_rent_linked is True but mapping row is missing.
         if not per_use_rent_item and item.is_rent_linked:
             has_per_use_link = True
 
@@ -787,7 +787,7 @@ def use_item():
     if not student_item or student_item.seat_id != student.id:
         return jsonify({"status": "error", "message": "Invalid item."}), 404
 
-    # Special handling for hall_pass items in inventory (legacy or bundle)
+    # Special handling for hall_pass items in inventory (bundle or standalone)
     if student_item.store_item.item_type == 'hall_pass':
         # Grant balance immediately
         qty = student_item.quantity or 1
@@ -851,7 +851,7 @@ def use_item():
             student_item.bundle_remaining -= 1
             if student_item.bundle_remaining == 0:
                 student_item.status = 'redeemed'  # All uses consumed
-            # StorePurchase no longer tracks legacy redemption detail fields.
+            # StorePurchase no longer tracks redemption detail fields.
         elif student_item.uses_remaining is not None:
             # Multi-use item (Rent Per-Use with limit > 1) or unlimited (-1)
             # Don't decrement if unlimited
@@ -1615,11 +1615,6 @@ def get_available_hall_pass_types():
     Authority: class_id is canonical and required.
     """
     requested_class_id = (request.args.get('class_id') or '').strip() or None
-    if request.args.get('teacher_public_id'):
-        return jsonify({
-            "status": "error",
-            "message": "teacher_public_id is not supported"
-        }), 400
 
     resolved_class_id = None
     context = resolve_canonical_context()

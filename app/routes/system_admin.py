@@ -55,16 +55,16 @@ from app.utils.passwordless_client import (
 )
 from app.utils.auth_username import normalize_auth_username
 from app.utils.opaque_refs import make_opaque_ref, resolve_opaque_ref
-from app.services.admin_identity_bridge_service import (
+from app.services.admin_identity_service import (
     count_active_admin_invite_codes,
     create_admin_invite_code,
-    delete_admin_credentials_for_teacher,
-    delete_teacher_onboarding_for_teacher,
+    delete_admin_credentials_for_user,
+    delete_admin_onboarding_for_user,
     get_admin_invite_code_by_id,
     list_admin_invite_codes,
     mark_admin_invite_code_used,
 )
-from app.services.recovery_bridge_service import delete_recovery_rows_for_teacher
+from app.services.recovery_service import delete_recovery_rows_for_user
 
 # Create blueprint
 sysadmin_bp = Blueprint('sysadmin', __name__, url_prefix='/sysadmin')
@@ -74,7 +74,7 @@ INACTIVITY_THRESHOLD_DAYS = 180  # Number of days of inactivity before highlight
 
 
 def _resolve_teacher_user(admin: Admin) -> User | None:
-    """Resolve the canonical teacher user for a legacy admin shadow."""
+    """Resolve the canonical admin user."""
     if not admin or not admin.username_lookup_hash:
         return None
     return User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
@@ -194,7 +194,7 @@ def auth_check():
     Note: Do NOT decorate with `@system_admin_required` because that may redirect
     to the login page; `auth_request` needs a clean 2xx/401 signal.
     """
-    # Validate sysadmin auth via canonical context instead of extinct bridge
+    # Validate sysadmin auth via canonical context.
     from app.services.context_resolver import (
         resolve_canonical_context, BoundaryContext,
         ContextNotEstablished, ContextMismatch, ContextForbidden,
@@ -879,21 +879,20 @@ def test_error_503():
     raise ServiceUnavailable("This is a test 503 error triggered by system admin for testing purposes.")
 
 
-# -------------------- ADMIN (TEACHER) MANAGEMENT --------------------
+# -------------------- ADMIN MANAGEMENT --------------------
 
 @sysadmin_bp.route('/admins')
 @system_admin_required
 def manage_admins():
     """
-    V1 LEGACY — admin account management (no nav link in layout_system_admin.html).
-    v2 replaces with DOM-IDEN/DOM-OPS compliant sysadmin audit (Wave 11 item 3).
+    Admin account management.
     """
-    # Get all admins with student counts
-    admins = Admin.query.order_by(db.func.coalesce(Admin.teacher_public_id, ''), Admin.id.asc()).all()
+    # Get all admins with linked student counts.
+    admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
     admin_data = []
 
     for admin in admins:
-        # Count students associated with this specific teacher
+        # Count linked students associated with the account.
         student_count = admin.get_student_count()
 
         admin_data.append({
@@ -915,9 +914,7 @@ def manage_admins():
 @system_admin_required
 def reset_teacher_totp(admin_id):
     """
-    V1 LEGACY — only accessible via manage_admins (no nav link).
-    v2 teacher TOTP is owned by User model. Student-assisted teacher recovery
-    (app/routes/recovery.py) is the canonical account recovery method.
+    Reset TOTP for an admin account.
     """
     admin = db.get_or_404(Admin, admin_id)
 
@@ -926,7 +923,7 @@ def reset_teacher_totp(admin_id):
         new_secret = pyotp.random_base32()
         user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
         if not user:
-            return jsonify({"status": "error", "message": "Canonical teacher identity is missing."}), 409
+            return jsonify({"status": "error", "message": "Canonical admin identity is missing."}), 409
         encrypted_totp_secret = encrypt_totp(new_secret)
         user.totp_secret_encrypted = encrypted_totp_secret
         db.session.flush()
@@ -991,9 +988,9 @@ def delete_admin(admin_id):
             for cid in class_ids:
                 collapse_universe(cid, reason="Teacher account deletion", actor_membership_id=None)
 
-            delete_recovery_rows_for_teacher(teacher_user.id)
-            delete_admin_credentials_for_teacher(teacher_user.id)
-            delete_teacher_onboarding_for_teacher(teacher_user.id)
+            delete_recovery_rows_for_user(teacher_user.id)
+            delete_admin_credentials_for_user(teacher_user.id)
+            delete_admin_onboarding_for_user(teacher_user.id)
             db.session.delete(teacher_user)
 
         admin_username = admin.get_sysadmin_display_name()
@@ -1017,8 +1014,7 @@ def delete_admin(admin_id):
 @system_admin_required
 def manage_teachers():
     """
-    V1 LEGACY — invite-code based teacher management.
-    v2 replaces this with open teacher signup (Turnstile-gated form → TOTP → passkey → done).
+    Manage invite codes.
     """
     # Handle invite code form submission
     form = SystemAdminInviteForm()
@@ -1033,10 +1029,10 @@ def manage_teachers():
         flash(f"Invite code '{code}' created successfully.", "success")
         return redirect(url_for("sysadmin.manage_teachers") + "#invite-codes")
 
-    # Get all invite codes and categorize them
+    # Get all invite codes and organize them.
     all_invites = list_admin_invite_codes()
     
-    # Categorize invites: active, expired, or used
+    # Organize invites: active, expired, or used.
     active_invites = []
     expired_invites = []
     used_invites = []
@@ -1052,7 +1048,7 @@ def manage_teachers():
             active_invites.append(invite)
 
     # Build rich teacher data (from teacher_overview logic)
-    all_teachers = Admin.query.order_by(db.func.coalesce(Admin.teacher_public_id, ''), Admin.id.asc()).all()
+    all_teachers = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
     inactivity_threshold = utc_now() - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
 
     teacher_user_ids_by_admin_id = {
@@ -1133,7 +1129,7 @@ def teacher_overview():
     - Individual student names
     - Individual student details
     """
-    teachers = Admin.query.order_by(db.func.coalesce(Admin.teacher_public_id, ''), Admin.id.asc()).all()
+    teachers = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
     
     # Define inactivity threshold (6 months)
     inactivity_threshold = utc_now() - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
@@ -1445,7 +1441,7 @@ def grafana_proxy(path):
     allowed_prefixes = (
         '',                 # root
         'd/',               # dashboard URLs
-        'dashboard/',       # legacy dashboard URLs
+        'dashboard/',
         'dashboards/',      # dashboards listing
         'api/',             # Grafana API
         'public/',          # public assets
@@ -1671,7 +1667,7 @@ def announcement_create():
     form = SystemAdminAnnouncementForm()
 
     # Populate teacher choices
-    teachers = Admin.query.order_by(db.func.coalesce(Admin.teacher_public_id, ''), Admin.id.asc()).all()
+    teachers = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
     form.target_teacher.choices = [('', '-- Select Teacher --')] + [
         (teacher.id, teacher.get_sysadmin_display_name())
         for teacher in teachers
@@ -1728,7 +1724,7 @@ def announcement_edit(announcement_id):
     form = SystemAdminAnnouncementForm(obj=announcement)
 
     # Populate teacher choices
-    teachers = Admin.query.order_by(db.func.coalesce(Admin.teacher_public_id, ''), Admin.id.asc()).all()
+    teachers = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
     form.target_teacher.choices = [('', '-- Select Teacher --')] + [
         (teacher.id, teacher.get_sysadmin_display_name())
         for teacher in teachers
@@ -1830,7 +1826,7 @@ def escalated_issues():
     System admin view of all escalated issues from teachers.
     Shows issues that have been escalated for developer/sysadmin review.
     """
-    # Get all escalated issues (canonical + legacy compatibility)
+    # Get all escalated issues.
     issues = Issue.query.filter(
         Issue.status.in_([
             Issue.STATUS_ESCALATED_TO_DEV,
@@ -1894,7 +1890,7 @@ def view_escalated_issue(issue_ref):
 @sysadmin_bp.route('/issues/<issue_ref>/start-review', methods=['POST'])
 @system_admin_required
 def start_review_escalated_issue(issue_ref):
-    """Legacy endpoint: no-op under canonical lifecycle."""
+    """Start review for an escalated issue record."""
     issue_id = _resolve_issue_id_from_ref(issue_ref)
     if issue_id is None:
         raise NotFound("Issue not found")

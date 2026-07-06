@@ -74,7 +74,7 @@ from app.services.ledger_service import (
     get_available_balances,
 )
 from app.services import access_policy_service, identity_service, store_service
-from app.services.recovery_bridge_service import (
+from app.services.recovery_service import (
     dismiss_recovery_code as dismiss_recovery_code_row,
     get_pending_recovery_code_for_student,
     get_recovery_code_for_student,
@@ -219,7 +219,7 @@ def enforce_student_feature_gates():
     if not context or getattr(context, "actor_role", None) != "student":
         return None
 
-    # Some legacy tests/flows hydrate seat context lazily during route execution.
+    # Some tests/flows hydrate seat context lazily during route execution.
     # Only enforce here when class context is already resolvable.
     if not context:
         return None
@@ -317,24 +317,24 @@ def _get_claimed_setup_state():
 
 
 
-def _prime_student_teacher_display_name_cache(student_id: int) -> None:
-    """Cache decrypted teacher display names in session for this student session."""
+def _prime_seat_teacher_display_name_cache(student_user_id: int) -> None:
+    """Cache teacher display names in session for this seat-scoped session."""
     from app.models import Seat, ClassEconomy, Admin
 
     seats = Seat.query.filter(
-        Seat.user_id == student_id,
+        Seat.user_id == student_user_id,
         Seat.claimed_at.isnot(None),
     ).all()
     class_ids = sorted({seat.class_id for seat in seats if seat.class_id})
-    teacher_ids = []
+    seat_owner_ids = []
     if class_ids:
         classes = ClassEconomy.query.filter(ClassEconomy.class_id.in_(class_ids)).all()
-        teacher_ids = sorted({c.user_id for c in classes if c.user_id})
-    if not teacher_ids:
+        seat_owner_ids = sorted({c.user_id for c in classes if c.user_id})
+    if not seat_owner_ids:
         clear_teacher_display_name_cache()
         return
 
-    cache_updates = {str(teacher_id): "Teacher" for teacher_id in teacher_ids}
+    cache_updates = {str(seat_owner_id): "Teacher" for seat_owner_id in seat_owner_ids}
     upsert_teacher_display_name_cache(cache_updates)
 
 
@@ -1207,7 +1207,7 @@ def dashboard():
         # FIX: Pass scoped balances to template instead of using unscoped properties
         checking_balance=float(checking_balance),
         savings_balance=float(savings_balance),
-        # teacher_id removed from route
+        # teacher_id is resolved from class context.
         pending_recovery_code=pending_recovery_code,
         # Weekly/monthly analytics
         unique_days_tapped=unique_days_tapped,
@@ -1320,7 +1320,7 @@ def transfer():
 
     student = _get_canonical_student_from_context()
 
-    # CRITICAL FIX v2: Get full class context (join_code, teacher_id, block)
+    # CRITICAL FIX v2: Get full class context (join_code, class_id, block)
     context = resolve_canonical_context()
     if not context:
         flash("No class selected. Please select a class to continue.", "error")
@@ -1413,7 +1413,7 @@ def transfer():
                 execute_account_transfer(
                     seat_id=seat_id,
                     class_id=class_id,
-                    # teacher_id removed from route
+                    # teacher_id is resolved from class context.
                     amount=amount,
                     from_account=from_account,
                     to_account=to_account,
@@ -1736,14 +1736,14 @@ def purchase_insurance(policy_id):
         student,
         policy.premium,
         banking_settings,
-        # teacher_id removed from route
+        # teacher_id is resolved from class context.
         join_code=join_code
     )
     if not allowed:
         fee_charged, fee_amount = _charge_overdraft_fee_if_needed(
             student,
             banking_settings,
-            # teacher_id removed from route
+            # teacher_id is resolved from class context.
             join_code=join_code,
             force=True
         )
@@ -2027,7 +2027,7 @@ def file_claim(policy_id):
                 flash("Claim item is required for non-monetary policies.", "danger")
                 return redirect(url_for('student.file_claim', policy_id=policy_id))
             claim_item_value = form.claim_item.data
-        elif claim_type == 'legacy_monetary':
+        elif claim_type != 'non_monetary':
             if not form.claim_amount.data:
                 flash("Claim amount is required for monetary policies.", "danger")
                 return redirect(url_for('student.file_claim', policy_id=policy_id))
@@ -2229,7 +2229,7 @@ def shop():
                 for frozen_item in frozen_store_items:
                     sid = frozen_item['store_item_id']
                     effective_type = frozen_item.get('rent_item_type', 'privilege')
-                    # Backward compatibility: legacy rows can still carry privilege as the
+                    # Some rows can still carry privilege as the
                     # default type while semantically behaving per-use via duration.
                     if effective_type == 'privilege' and frozen_item.get('purchase_duration') == 'per_use':
                         effective_type = 'per_use'
@@ -2267,7 +2267,7 @@ def shop():
                 rent_free_uses[si.store_item_id] = si.uses_remaining
 
         # Backfill UI for paid-rent students who are entitled to per-use perks
-        # but are missing grant rows (legacy/edge-state). Do not override items
+        # but are missing grant rows (edge-state). Do not override items
         # that already have an explicit grant record (including exhausted = 0).
         if has_paid_rent and per_use_limit_by_store_id:
             existing_per_use_rows = StorePurchase.query.filter(
@@ -2419,7 +2419,7 @@ def _calculate_rent_deadlines(settings, reference_date=None):
             and first_due.second == 0
             and first_due.microsecond == 0
         ):
-            # Preserve legacy day-only anchors that were stored as UTC midnight.
+            # Preserve day-only anchors that were stored as UTC midnight.
             first_due_local = teacher_tz.localize(datetime(first_due.year, first_due.month, first_due.day, 0, 0, 0))
             first_due = first_due_local.astimezone(timezone.utc)
         # If we're before the first due date, return the first due date
@@ -3477,7 +3477,7 @@ def rent_pay(period):
         # Full payment required (or no amount specified with incremental disabled)
         payment_amount = remaining_amount
 
-    # Get banking settings for overdraft handling (reuse teacher_id from above)
+    # Get banking settings for overdraft handling (reuse class context from above)
     banking_settings = get_banking_settings_for_context(context)
 
     from app.models import Seat
@@ -3704,7 +3704,7 @@ def login():
                 reason=f"Student {student.id} login failed to hydrate canonical seat for class {valid_persisted_selection['class_id']}.",
                 is_json=is_json,
             )
-        _prime_student_teacher_display_name_cache(student.id)
+        _prime_seat_teacher_display_name_cache(student.id)
 
 
         # Removed redirect to student_setup for has_completed_setup; new onboarding flow uses claim → username → pin/passphrase.
@@ -3854,25 +3854,17 @@ def switch_class(class_id):
 @student_bp.route('/switch-period/<int:teacher_id>', methods=['POST'])
 @login_required
 def switch_period(teacher_id):
-    """Legacy numeric-ID switch route is disabled in strict join-code mode."""
+    """Disabled switch-period route."""
     current_app.logger.warning(
-        "Deprecated student switch-period route called with teacher_id=%s; route is disabled.",
+        "Disabled student switch-period route called.",
         teacher_id,
     )
-    flash("This class switch path is no longer supported. Please switch using class context.", "warning")
+    flash("Switch using class context.", "warning")
     return redirect(url_for('student.dashboard'))
 
 
-@student_bp.route('/switch-teacher/<string:teacher_public_id>', methods=['POST'])
-@login_required
-@feat_shell("FEAT-IDEN-001")
-def switch_teacher(teacher_public_id):
-    """Reject obsolete role-specific public-ID switching."""
-    abort(404)
-
-
 # -------------------- SETUP COMPLETE --------------------
-# Note: This route is not prefixed with /student for backward compatibility
+    # Note: This route is not prefixed with /student.
 
 @student_bp.route('/setup-complete')
 @login_required

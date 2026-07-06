@@ -12,7 +12,7 @@ from app.extensions import db
 @dataclass
 class RecoveryRequestView:
     id: int
-    teacher_id: int
+    user_id: int
     status: str
     created_at: datetime | None
     expires_at: datetime
@@ -43,7 +43,7 @@ def _tables() -> tuple[sa.Table, sa.Table]:
 def _request_row_to_view(row: sa.Row) -> RecoveryRequestView:
     return RecoveryRequestView(
         id=row.id,
-        teacher_id=row.teacher_id,
+        user_id=row.user_id,
         status=row.status,
         created_at=row.created_at,
         expires_at=row.expires_at,
@@ -138,12 +138,12 @@ def dismiss_recovery_code(code_id: int) -> None:
     db.session.execute(stmt)
 
 
-def get_active_recovery_request_for_teacher(teacher_id: int, now_utc: datetime) -> RecoveryRequestView | None:
+def get_active_recovery_request_for_user(user_id: int, now_utc: datetime) -> RecoveryRequestView | None:
     requests, _codes = _tables()
     stmt = (
         sa.select(requests)
         .where(
-            requests.c.teacher_id == teacher_id,
+            requests.c.user_id == user_id,
             requests.c.status == "pending",
             requests.c.expires_at > now_utc,
         )
@@ -155,7 +155,7 @@ def get_active_recovery_request_for_teacher(teacher_id: int, now_utc: datetime) 
 
 
 def create_recovery_request_with_students(
-    teacher_id: int,
+    user_id: int,
     student_ids: list[int],
     expires_at: datetime,
 ) -> RecoveryRequestView:
@@ -163,7 +163,7 @@ def create_recovery_request_with_students(
     insert_stmt = (
         sa.insert(requests)
         .values(
-            teacher_id=teacher_id,
+            user_id=user_id,
             status="pending",
             expires_at=expires_at,
         )
@@ -176,7 +176,7 @@ def create_recovery_request_with_students(
             [
                 {
                     "recovery_request_id": request_id,
-                    "student_id": student_id,
+                    "user_id": student_id,
                 }
                 for student_id in student_ids
             ],
@@ -199,7 +199,7 @@ def list_recovery_codes_for_request(recovery_request_id: int) -> list[RecoveryCo
     stmt = (
         sa.select(
             codes.c.id.label("code_id"),
-            codes.c.student_id,
+            codes.c.user_id,
             codes.c.recovery_request_id,
             codes.c.code_hash,
             codes.c.verified_at,
@@ -276,14 +276,14 @@ def find_recovery_request_by_resume_pin(resume_pin_hash: str, now_utc: datetime)
     return _request_row_to_view(row) if row else None
 
 
-def delete_recovery_rows_for_teacher(teacher_id: int) -> None:
+def delete_recovery_rows_for_user(user_id: int) -> None:
     requests, codes = _tables()
-    request_ids_subq = sa.select(requests.c.id).where(requests.c.teacher_id == teacher_id)
+    request_ids_subq = sa.select(requests.c.id).where(requests.c.user_id == user_id)
     db.session.execute(
         sa.delete(codes).where(codes.c.recovery_request_id.in_(request_ids_subq))
     )
     db.session.execute(
-        sa.delete(requests).where(requests.c.teacher_id == teacher_id)
+        sa.delete(requests).where(requests.c.user_id == user_id)
     )
 
 

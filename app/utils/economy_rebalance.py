@@ -20,7 +20,7 @@ from app.utils.time import ensure_utc, utc_now
 
 REBALANCE_ACTIVATION_IMMEDIATE = "immediate"
 REBALANCE_ACTIVATION_NEXT_RENEWAL = "next_renewal"
-REBALANCE_ACTIVATION_LEGACY_NEXT_PAYROLL = "next_payroll"
+REBALANCE_ACTIVATION_NEXT_PAYROLL = "next_payroll"
 REBALANCE_TRIGGER_INSURANCE_RENEWAL = "insurance_renewal"
 POLICY_TRANSITION_STATUS_PENDING = "pending"
 POLICY_TRANSITION_STATUS_APPLIED = "applied"
@@ -430,14 +430,14 @@ def activate_due_rebalances(teacher_id, *, class_id=None, reference_time=None, r
                     transition.status = POLICY_TRANSITION_STATUS_CANCELLED
                     transition.cancelled_at = reference_time
                     continue
-                activation_mode = transition.activation_mode or REBALANCE_ACTIVATION_LEGACY_NEXT_PAYROLL
+                activation_mode = transition.activation_mode or REBALANCE_ACTIVATION_NEXT_PAYROLL
                 activation_event = change.get("activation_event")
                 activation_policy_id = change.get("activation_policy_id")
                 effective_at = _parse_dt(change.get("effective_at"))
                 is_due = False
                 if activation_event == REBALANCE_TRIGGER_INSURANCE_RENEWAL:
                     is_due = renewal_policy_id is not None and str(activation_policy_id) == str(renewal_policy_id)
-                elif activation_mode == REBALANCE_ACTIVATION_LEGACY_NEXT_PAYROLL and effective_at is None:
+                elif activation_mode == REBALANCE_ACTIVATION_NEXT_PAYROLL and effective_at is None:
                     is_due = True
                 elif effective_at is not None and effective_at <= reference_time:
                     is_due = True
@@ -480,7 +480,7 @@ def activate_due_rebalances(teacher_id, *, class_id=None, reference_time=None, r
 
             continue
 
-        # No pending policy transitions for this class; legacy JSON fallback has been retired.
+        # No pending policy transitions for this class; the JSON fallback has been retired.
         continue
 
     return activated, applied_labels

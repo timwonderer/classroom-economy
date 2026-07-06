@@ -98,8 +98,8 @@ from app.utils.economy_policy import (
 )
 from app.utils.economy_rebalance import (
     REBALANCE_ACTIVATION_IMMEDIATE,
-    REBALANCE_ACTIVATION_LEGACY_NEXT_PAYROLL,
     REBALANCE_ACTIVATION_NEXT_RENEWAL,
+    REBALANCE_ACTIVATION_NEXT_PAYROLL,
     activate_due_rebalances,
     apply_rebalance_changes,
     cancel_pending_policy_transitions,
@@ -123,11 +123,6 @@ from app.utils.passwordless_client import (
     create_register_token,
     verify_signin_token,
     get_public_api_key
-)
-from app.utils.admin_identity import (
-    load_teacher_id_words,
-    generate_teacher_public_id,
-    generate_teacher_public_id_with_suffix,
 )
 from app.utils.display_name_session import (
     set_admin_display_name_cache,
@@ -166,27 +161,26 @@ from app.services.balance_service import get_batch_balances_by_class_seat
 from app.services import access_policy_service, ledger_service, obligations_service
 from app.services import operational_event_service
 from app.services.ledger_service import get_available_balances
-from app.services.admin_identity_bridge_service import (
+from app.services.admin_identity_service import (
     admin_has_passkeys,
     create_admin_credential,
-    create_legacy_completed_teacher_onboarding,
     delete_admin_credential,
-    delete_admin_credentials_for_teacher,
-    delete_teacher_onboarding_for_teacher,
+    delete_admin_credentials_for_user,
+    delete_admin_onboarding_for_user,
     get_admin_credential,
-    get_or_create_teacher_onboarding,
-    get_teacher_onboarding,
+    get_or_create_admin_onboarding,
+    get_admin_onboarding,
     list_admin_credentials,
-    set_teacher_onboarding_skipped,
-    set_teacher_onboarding_widget_dismissed,
-    set_teacher_onboarding_widget_task_status,
+    set_admin_onboarding_skipped,
+    set_admin_onboarding_widget_dismissed,
+    set_admin_onboarding_widget_task_status,
     touch_admin_credentials_last_used,
 )
-from app.services.recovery_bridge_service import (
+from app.services.recovery_service import (
     create_recovery_request_with_students,
-    delete_recovery_rows_for_teacher,
+    delete_recovery_rows_for_user,
     find_recovery_request_by_resume_pin,
-    get_active_recovery_request_for_teacher,
+    get_active_recovery_request_for_user,
     get_recovery_request_by_id,
     invalidate_recovery_codes,
     list_recovery_codes_for_request,
@@ -223,10 +217,10 @@ FREQUENCY_TO_CLAIM_PERIOD = {
     'monthly': 'month',
     'semester': 'semester',
 }
-# Placeholder values for legacy class roster entries
-LEGACY_PLACEHOLDER_CREDENTIAL = "LEGACY0"  # Placeholder credential for legacy classes
-LEGACY_PLACEHOLDER_FIRST_NAME = "__JOIN_CODE_PLACEHOLDER__"  # Marks legacy placeholder entries
-LEGACY_PLACEHOLDER_LAST_INITIAL = "P"  # "P" for Placeholder
+# Synthetic roster-import values
+PLACEHOLDER_CREDENTIAL = "LEGACY0"  # Synthetic roster-import credential
+PLACEHOLDER_FIRST_NAME = "__JOIN_CODE_PLACEHOLDER__"  # Marks synthetic roster entries
+PLACEHOLDER_LAST_INITIAL = "P"  # Synthetic roster placeholder initial
 
 # Module-level cache for schema table-name lookups (keyed by DB URL to be app-config safe).
 _table_names_cache: dict[str, set[str]] = {}
@@ -775,7 +769,7 @@ def _build_teacher_block_dedupe_key(class_id: str, first_name: str, last_name: s
 
 
 def _find_admin_by_auth_username(username: str):
-    """Lookup teacher by hash, with migration-only legacy fallback."""
+    """Lookup the canonical admin record by hashed auth username."""
     normalized = normalize_auth_username(username)
     if not normalized:
         return None
@@ -807,18 +801,6 @@ def _auth_username_exists(username: str, *, exclude_admin_id: int | None = None)
 
 def _admin_requires_username_migration(admin: Admin) -> bool:
     return needs_hashed_username_migration(admin)
-
-
-def _generate_unique_teacher_public_id() -> str:
-    words = load_teacher_id_words()
-    for _ in range(100):
-        candidate = generate_teacher_public_id(words=words)
-        if not Admin.query.filter_by(teacher_public_id=candidate).first():
-            return candidate
-    while True:
-        candidate = generate_teacher_public_id_with_suffix(words=words)
-        if not Admin.query.filter_by(teacher_public_id=candidate).first():
-            return candidate
 
 
 def _build_admin_auth_fields(username: str, *, existing_salt: bytes | None = None) -> tuple[bytes, str, str]:
@@ -997,7 +979,7 @@ def _build_payroll_preview_state(students, join_codes_by_block):
         )
         seat_ids = [seat_id for seat_id, _student_id in seat_rows]
 
-        # map seat_id to student_id to preserve backward compatibility of the preview payload
+        # Map seat rows to the preview payload.
         seat_to_student = {seat_id: student_id for seat_id, student_id in seat_rows}
 
         anchor = None
@@ -1011,7 +993,7 @@ def _build_payroll_preview_state(students, join_codes_by_block):
                 anchor
             )
 
-        # Remap to student_id to preserve downstream view templates expecting student IDs
+        # Remap to student IDs to preserve downstream view templates.
         summary = {}
         for s_id, amt in seat_summary.items():
             if s_id in seat_to_student:
@@ -1459,9 +1441,9 @@ def _delete_teacher_issue_rows(teacher_id):
 
 def _delete_teacher_recovery_and_credentials_rows(teacher_id):
     """Delete teacher recovery, credential, and onboarding rows."""
-    delete_recovery_rows_for_teacher(teacher_id)
-    delete_admin_credentials_for_teacher(teacher_id)
-    delete_teacher_onboarding_for_teacher(teacher_id)
+    delete_recovery_rows_for_user(teacher_id)
+    delete_admin_credentials_for_user(teacher_id)
+    delete_admin_onboarding_for_user(teacher_id)
 
 
 def _delete_teacher_store_rows(teacher_id):
@@ -1766,7 +1748,7 @@ def _ensure_teacher_student_seat(teacher_id, join_code, block):
         last_name=last_name,
     )
     db.session.add(profile)
-    current_app.logger.info(f"Created teacher shadow student seat for teacher {teacher_id}, join_code {join_code}")
+    current_app.logger.info(f"Created shadow seat for teacher {teacher_id}, join_code {join_code}")
 
 
 def _get_table_names() -> set[str]:
@@ -2700,7 +2682,7 @@ def _get_or_create_onboarding(user_id):
     Returns:
         Teacher onboarding record view
     """
-    return get_or_create_teacher_onboarding(user_id, utc_now())
+    return get_or_create_admin_onboarding(user_id, utc_now())
 
 
 def _check_onboarding_redirect():
@@ -2720,17 +2702,10 @@ def _check_onboarding_redirect():
     admin = Admin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first()
 
     # Check if teacher has completed or skipped onboarding
-    onboarding = get_teacher_onboarding(user.id)
+    onboarding = get_admin_onboarding(user.id)
 
     # If no onboarding record exists, teacher needs onboarding
     if not onboarding:
-        # Check if teacher has any existing students - if so, they're a legacy teacher
-        # and we should skip onboarding for them
-        if admin and admin.has_assigned_students:
-            # Legacy teacher - create completed onboarding record
-            create_legacy_completed_teacher_onboarding(user.id, utc_now())
-            return None
-
         # New teacher - no redirect, they'll see the Getting Started widget
         return None
 
@@ -2739,9 +2714,8 @@ def _check_onboarding_redirect():
 
 
 def _normalize_claim_credentials_for_admin(admin_id: int) -> int:
-    """No-op: TeacherBlock-based hash normalization has been removed.
+    """No-op: seat claim credential normalization is no longer needed.
 
-    Kept as a stub to avoid breaking any callers that have not yet been removed.
     Returns 0 always.
     """
     return 0
@@ -3002,16 +2976,16 @@ def dashboard():
     # v2: DOB-based recovery setup prompt is disabled.
     show_recovery_setup = False
 
-    # Prompt legacy teachers to upgrade insurance policies to the new tiered design
+    # Prompt teachers to upgrade insurance policies to the new tiered design.
     show_insurance_tier_prompt = False
-    onboarding_record = get_teacher_onboarding(current_user_id)
+    onboarding_record = get_admin_onboarding(current_user_id)
     if onboarding_record and onboarding_record.steps_completed and onboarding_record.steps_completed.get("needs_insurance_tier_upgrade"):
         class_ids_subq = (
             db.session.query(ClassEconomy.class_id)
             .filter(ClassEconomy.user_id == current_user_id)
             .subquery()
         )
-        legacy_policy_exists = (
+        policy_needs_upgrade = (
             db.session.query(InsurancePolicy.id)
             .filter(InsurancePolicy.class_id.in_(sa.select(class_ids_subq)))
             .filter(InsurancePolicy.tier_category_id.is_(None))
@@ -3019,7 +2993,7 @@ def dashboard():
             .first()
             is not None
         )
-        show_insurance_tier_prompt = legacy_policy_exists
+        show_insurance_tier_prompt = policy_needs_upgrade
 
     return render_template(
         'admin_dashboard.html',
@@ -3124,7 +3098,7 @@ def login():
                     admin = Admin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first()
                     if not admin:
                         current_app.logger.error(
-                            "Admin login failed: canonical teacher user_id=%s has no unique legacy route shadow",
+                            "Admin login failed: canonical admin user_id=%s has no matching admin record",
                             user.id,
                         )
                         flash("Invalid credentials or TOTP code.", "error")
@@ -3155,7 +3129,7 @@ def login():
 @admin_bp.route('/username-migration', methods=['GET', 'POST'])
 @admin_required
 def username_migration():
-    """One-time migration screen for legacy plaintext teacher usernames."""
+    """One-time username update screen."""
     admin = db.session.get(Admin, g.canonical_context.user_id)
     if not admin:
         flash("Account not found.", "error")
@@ -3165,8 +3139,8 @@ def username_migration():
         session.pop("force_admin_username_migration", None)
         return redirect(url_for("admin.dashboard"))
 
-    legacy_username = session.get("admin_auth_username")
-    if not legacy_username:
+    current_username = session.get("admin_auth_username")
+    if not current_username:
         flash("Could not determine your current username. Contact support.", "error")
         return redirect(url_for("admin.logout"))
 
@@ -3175,7 +3149,7 @@ def username_migration():
 
     if request.method == "POST":
         action = request.form.get("action", "continue")
-        chosen_username = legacy_username
+        chosen_username = current_username
 
         if action == "update":
             chosen_username = normalize_auth_username(request.form.get("new_username", ""))
@@ -3183,7 +3157,7 @@ def username_migration():
                 flash("Please enter a username.", "error")
                 return render_template(
                     "admin_username_migration.html",
-                    legacy_username=legacy_username,
+                    current_username=current_username,
                     no_recovery_warning=no_recovery_warning,
                     student_count=student_count,
                 )
@@ -3191,7 +3165,7 @@ def username_migration():
                 flash("Username already exists. Choose a different username.", "error")
                 return render_template(
                     "admin_username_migration.html",
-                    legacy_username=legacy_username,
+                    current_username=current_username,
                     no_recovery_warning=no_recovery_warning,
                     student_count=student_count,
                 )
@@ -3203,12 +3177,10 @@ def username_migration():
         admin.salt = salt
         admin.username_hash = username_hash
         admin.username_lookup_hash = username_lookup_hash
-        user = find_canonical_user_by_auth_username(legacy_username, expected_role="teacher")
+        user = find_canonical_user_by_auth_username(current_username, expected_role="teacher")
         if user:
             user.username_hash = username_hash
             user.username_lookup_hash = username_lookup_hash
-        if not admin.teacher_public_id:
-            admin.teacher_public_id = _generate_unique_teacher_public_id()
         if not admin.hall_pass_verify_token:
             admin.hall_pass_verify_token = Admin.generate_verify_token()
         db.session.flush()
@@ -3216,12 +3188,12 @@ def username_migration():
         session["admin_auth_username"] = chosen_username
         set_admin_display_name_cache(teacher_user_id=admin.id, display_name=admin.get_display_name())
         session.pop("force_admin_username_migration", None)
-        flash("Username migration completed.", "success")
+        flash("Username update completed.", "success")
         return redirect(url_for("admin.dashboard"))
 
     return render_template(
         "admin_username_migration.html",
-        legacy_username=legacy_username,
+        current_username=current_username,
         no_recovery_warning=no_recovery_warning,
         student_count=student_count,
     )
@@ -3381,7 +3353,6 @@ def signup():
         new_admin = Admin(
             username_hash=username_hash,
             username_lookup_hash=username_lookup_hash,
-            teacher_public_id=_generate_unique_teacher_public_id(),
             totp_secret=encrypted_totp_secret,
             dob_sum_hash=signup_seed_hash,
             salt=salt,
@@ -3427,12 +3398,12 @@ def signup():
 @limiter.limit("5 per hour")
 def recover():
     """
-    Teacher account recovery - Step 1: Roster pair verification.
+    Account recovery - Step 1: Roster verification.
 
     Teacher submits one (join_code, student_username) pair per class taught.
     Lookup order (enforced):
       1. Resolve join_code -> ClassEconomy (establishes teacher_id and class scope)
-      2. Find student by username_lookup_hash *within* that join_code's roster
+      2. Find the seat owner by username_lookup_hash *within* that join_code's roster
     All pairs must resolve to the same teacher and must cover all active join codes.
     No DOB is used.
 
@@ -3443,51 +3414,51 @@ def recover():
     _GENERIC_ERROR = "Unable to verify identity. Please check your entries and try again."
 
     if request.method == 'POST' and form.validate_on_submit():
-        join_codes = request.form.getlist('join_code[]')
-        student_usernames = request.form.getlist('student_username[]')
+        seat_owner_join_codes = request.form.getlist('join_code[]')
+        seat_owner_usernames = request.form.getlist('student_username[]')
 
         # Strip and filter empty entries
-        pairs = [
+        seat_owner_pairs = [
             (jc.strip().upper(), un.strip())
-            for jc, un in zip(join_codes, student_usernames)
+            for jc, un in zip(seat_owner_join_codes, seat_owner_usernames)
             if jc.strip() and un.strip()
         ]
 
-        if not pairs:
+        if not seat_owner_pairs:
             flash(_GENERIC_ERROR, "error")
             return render_template("admin_recover.html", form=form)
 
         # ----------------------------------------------------------------
-        # Step 1: Establish teacher identity from the first join_code
+        # Step 1: Establish class authority from the first join_code
         # ----------------------------------------------------------------
-        first_join_code = pairs[0][0]
-        first_class = ClassEconomy.query.filter_by(join_code=first_join_code).first()
+        recovered_join_code = seat_owner_pairs[0][0]
+        first_class = ClassEconomy.query.filter_by(join_code=recovered_join_code).first()
         if not first_class:
             current_app.logger.warning(
-                f"Admin recovery: initial join_code '{first_join_code}' not found"
+                f"Admin recovery: initial join_code '{recovered_join_code}' not found"
             )
             flash(_GENERIC_ERROR, "error")
             return render_template("admin_recover.html", form=form)
 
-        teacher_id = first_class.user_id
+        recovered_account_id = first_class.user_id
 
         # ----------------------------------------------------------------
-        # Step 2: Verify submitted join codes exactly match the teacher's active classes
+        # Step 2: Verify submitted join codes exactly match the active class records
         # ----------------------------------------------------------------
-        teacher_classes = ClassEconomy.query.filter_by(user_id=teacher_id).all()
-        all_active_join_codes = {c.join_code for c in teacher_classes if c.join_code}
-        submitted_join_codes = set(jc for jc, _ in pairs)
+        active_classes = ClassEconomy.query.filter_by(user_id=recovered_account_id).all()
+        all_active_join_codes = {c.join_code for c in active_classes if c.join_code}
+        submitted_class_join_codes = set(jc for jc, _ in seat_owner_pairs)
 
         # Must exactly match backend list
-        if all_active_join_codes != submitted_join_codes:
+        if all_active_join_codes != submitted_class_join_codes:
             current_app.logger.warning(
-                f"Admin recovery: join_code set mismatch for teacher {teacher_id}"
+                f"Admin recovery: join_code set mismatch for recovered account {recovered_account_id}"
             )
             flash(_GENERIC_ERROR, "error")
             return render_template("admin_recover.html", form=form)
 
         # Reject duplicates (e.g. submitting the same valid class 3 times)
-        if len(submitted_join_codes) != len(pairs):
+        if len(submitted_class_join_codes) != len(seat_owner_pairs):
             current_app.logger.warning(
                 f"Admin recovery: duplicate join_codes submitted"
             )
@@ -3495,13 +3466,13 @@ def recover():
             return render_template("admin_recover.html", form=form)
 
         # ----------------------------------------------------------------
-        # Step 3: Verify each username belongs in the correct join_code
+        # Step 3: Verify each seat owner belongs in the correct join_code
         # ----------------------------------------------------------------
-        resolved_students = {}   # join_code -> Seat
+        resolved_seats = {}   # join_code -> seat owner record
 
-        # Group Seat student_ids by join_code for quick lookup
+        # Group seat owner IDs by join_code for quick lookup
         seats_by_jc = {}
-        for c in teacher_classes:
+        for c in active_classes:
             if c.join_code:
                 jc_seats = (
                     Seat.query
@@ -3515,12 +3486,12 @@ def recover():
                 )
                 seats_by_jc[c.join_code] = jc_seats
 
-        for join_code, username in pairs:
-            # We already know this join_code belongs to the teacher from the set comparison
-            lookup_hash = hash_username_lookup(username)
+        for seat_owner_join_code, seat_owner_username in seat_owner_pairs:
+            # We already know this join_code is in scope from the set comparison
+            seat_owner_lookup_hash = hash_username_lookup(seat_owner_username)
 
-            # Get all student IDs associated with this specific join_code
-            seats_for_jc = seats_by_jc.get(join_code, [])
+            # Get all seat owner IDs associated with this specific join_code
+            seats_for_jc = seats_by_jc.get(seat_owner_join_code, [])
             seat_ids_in_class = [seat_id for seat_id, _student_id in seats_for_jc if seat_id]
 
             seat = (
@@ -3528,24 +3499,24 @@ def recover():
                 .join(User, User.id == Seat.user_id)
                 .filter(
                     Seat.id.in_(seat_ids_in_class),
-                    User.username_lookup_hash == lookup_hash,
+                    User.username_lookup_hash == seat_owner_lookup_hash,
                 )
                 .first()
             )
 
             if not seat:
                 current_app.logger.warning(
-                    f"Admin recovery: username not found in join_code scope"
+                    f"Admin recovery: seat owner not found in seat-owner scope"
                 )
                 flash(_GENERIC_ERROR, "error")
                 return render_template("admin_recover.html", form=form)
 
-            resolved_students[join_code] = seat
+            resolved_seats[seat_owner_join_code] = seat
 
         # ----------------------------------------------------------------
         # Step 4: Check for existing active recovery request
         # ----------------------------------------------------------------
-        existing_request = get_active_recovery_request_for_teacher(teacher.id, utc_now())
+        existing_request = get_active_recovery_request_for_user(recovered_account_id, utc_now())
 
         if existing_request:
             flash("You already have an active recovery request. Please check back or wait for it to expire.", "info")
@@ -3557,14 +3528,14 @@ def recover():
         # ----------------------------------------------------------------
         expires_at = utc_now() + timedelta(days=5)
         recovery_request = create_recovery_request_with_students(
-            teacher_id=teacher.id,
-            student_ids=[student.id for student in resolved_students.values()],
+            user_id=recovered_account_id,
+            student_ids=[seat.id for seat in resolved_seats.values()],
             expires_at=expires_at,
         )
 
         session['recovery_request_id'] = recovery_request.id
         current_app.logger.info(
-            f"Admin recovery: request created for teacher {teacher.id}, expires {expires_at}"
+            f"Admin recovery: request created for recovered account {recovered_account_id}, expires {expires_at}"
         )
 
         flash("Recovery request created! Your students have been notified. You have 5 days to complete this process.", "success")
@@ -3677,7 +3648,7 @@ def reset_credentials():
             return redirect(url_for('admin.recovery_status'))
 
         # Check username uniqueness
-        if _auth_username_exists(new_username, exclude_admin_id=recovery_request.teacher_id):
+        if _auth_username_exists(new_username, exclude_admin_id=recovery_request.user_id):
             flash("Username already exists. Please choose a different username.", "error")
             return render_template("admin_reset_credentials.html", form=form, show_qr=False)
 
@@ -3720,7 +3691,7 @@ def _invalidate_all_recovery_codes(recovery_request_id: int):
     This prevents attackers from testing codes individually.
     """
     invalidated_count = invalidate_recovery_codes(recovery_request_id)
-    db.session.flush()  # FEAT-LEGACY-WRAP: commit removed
+    db.session.flush()  # Flush after invalidating recovery codes.
     current_app.logger.info(
         f"Invalidated {invalidated_count} recovery codes - students must regenerate"
     )
@@ -3743,7 +3714,7 @@ def confirm_reset():
         flash("Invalid recovery session.", "error")
         return redirect(url_for('admin.recover'))
 
-    teacher = db.session.get(Admin, recovery_request.teacher_id)
+    teacher = db.session.get(Admin, recovery_request.user_id)
     if not teacher:
         flash("Invalid recovery session.", "error")
         return redirect(url_for('admin.recover'))
@@ -3916,7 +3887,7 @@ def settings():
             if display_name:
                 admin.display_name = display_name
             else:
-                admin.display_name = None  # Use teacher_public_id as fallback
+                admin.display_name = None  # Use canonical public_id as fallback
 
             # Update class labels for each ClassEconomy (canonical class label store)
             teacher_classes = ClassEconomy.query.filter_by(user_id=admin_id).all()
@@ -4855,7 +4826,7 @@ def edit_student():
                             'join_code': target_join_code,
                             'class_id': ce.class_id,
                             # Ensure seat scope tracks the transferred join_code.
-                            # If target seat is missing, clear legacy seat link to avoid stale cross-scope seat_id.
+                            # If target seat is missing, clear the stale seat link to avoid cross-scope seat_id.
                             'seat_id': target_seat_id,
                         }
                         update_res = Transaction.query.filter_by(
@@ -5187,9 +5158,9 @@ def delete_join_code():
     if not class_row or not _admin_owns_class(current_admin_id, class_row.class_id):
         return jsonify({"status": "error", "message": "Join code not found or access denied."}), 403
 
-    legacy_confirm_join_code = str((data or {}).get("confirm_join_code", "")).strip().upper()
-    if legacy_confirm_join_code:
-        if legacy_confirm_join_code != join_code:
+    confirm_join_code = str((data or {}).get("confirm_join_code", "")).strip().upper()
+    if confirm_join_code:
+        if confirm_join_code != join_code:
             return jsonify({
                 "status": "error",
                 "message": "Confirmation failed: join code did not match."
@@ -5513,7 +5484,7 @@ def add_manual_student():
             flash(f"Student {first_name} {last_name} is already in your class.", "info")
             return redirect(url_for('admin.students'))
 
-        # Check for duplicates GLOBALLY (not scoped to teacher)
+        # Check for duplicates globally.
         potential_duplicates = [
             existing_seat for existing_seat in Seat.query.filter(
                 Seat.display_first_name == first_name,
@@ -5522,7 +5493,7 @@ def add_manual_student():
         ]
 
         for existing_student in potential_duplicates:
-            # Verify credential matches (canonical + legacy)
+            # Verify credential matches.
             credential_matches, is_primary, canonical_hash = match_claim_hash(
                 existing_student.first_half_hash if existing_student.identity_profile else None,
                 first_initial,
@@ -5824,7 +5795,7 @@ def store_management():
                 })
             collective_progress_by_item[item.id] = per_class
 
-    # -------------------- Redemption Audit (live + inferred legacy adapter) --------------------
+    # -------------------- Redemption Audit --------------------
     audit_student = request.args.get('audit_student', '').strip()
     audit_class = request.args.get('audit_class', '').strip()
     audit_action = request.args.get('audit_action', '').strip()
@@ -6056,7 +6027,7 @@ def delete_store_item(item_id):
 @admin_bp.route('/store/hard-delete/<int:item_id>', methods=['POST'])
 @admin_required
 def hard_delete_store_item(item_id):
-    """Legacy endpoint: hard item deletion is restricted to join-code deletion workflow."""
+    """Hard item deletion is restricted to the join-code deletion workflow."""
     admin_id = g.canonical_context.user_id
     selected_scope = require_admin_feature_scope(
         'store',
@@ -7538,7 +7509,7 @@ def delete_insurance_policy(policy_id):
         ]
         claims_deleted = InsuranceClaim.query.filter(InsuranceClaim.id.in_(claim_ids_to_delete)).delete(synchronize_session=False) if claim_ids_to_delete else 0
 
-        # Delete all enrollments for this policy (legacy + canonical)
+        # Delete all enrollments for this policy.
         enrollments_deleted = InsuranceEnrollment.query.filter(
             InsuranceEnrollment.policy_id == policy_id,
             InsuranceEnrollment.seat_id.in_(
@@ -7825,7 +7796,7 @@ def process_claim(claim_id):
 
             base_amount = _claim_base_amount(claim)
             approved_amount = base_amount
-            if claim_type == 'legacy_monetary' and form.approved_amount.data is not None:
+            if is_monetary_claim and form.approved_amount.data is not None:
                 approved_amount = Decimal(str(form.approved_amount.data))
 
             if max_claim_amount:
@@ -8113,11 +8084,8 @@ def apply_economy_rebalance():
     allowed_activation_modes = {
         REBALANCE_ACTIVATION_IMMEDIATE,
         REBALANCE_ACTIVATION_NEXT_RENEWAL,
-        REBALANCE_ACTIVATION_LEGACY_NEXT_PAYROLL,
+        REBALANCE_ACTIVATION_NEXT_PAYROLL,
     }
-
-    if activation_mode == REBALANCE_ACTIVATION_LEGACY_NEXT_PAYROLL:
-        activation_mode = REBALANCE_ACTIVATION_NEXT_RENEWAL
 
     if activation_mode not in allowed_activation_modes:
         flash("Invalid rebalance activation mode.", "warning")
@@ -8455,13 +8423,13 @@ def payroll_history():
 @feat_shell("FEAT-LED-004")
 def run_payroll(*args, **kwargs):
     """FEAT-Shell for payroll execution."""
-    res = _run_payroll_legacy(*args, **kwargs)
+    res = _run_payroll(*args, **kwargs)
     # No manual commit here; feat_shell owns it
     return res
 
-def _run_payroll_legacy():
+def _run_payroll():
     """
-    Run payroll by computing earned seconds from TapEvent append-only log (LEGACY).
+    Run payroll by computing earned seconds from the TapEvent append-only log.
     For each student, for each block, match active/inactive pairs since last payroll,
     sum total seconds, and post ledger payroll entries.
 
@@ -8523,7 +8491,7 @@ def _run_payroll_legacy():
             current_admin_id,
             class_id=selected_scope['class_id'],
         )
-        db.session.flush() # FEAT-LEGACY-WRAP: commit removed
+        db.session.flush()  # Flush after applying scheduled rebalances.
         current_app.logger.info(f"Payroll complete. Created {result.applied_count} transactions.")
 
         success_message = f"Payroll complete. Processed {result.applied_count} payments."
@@ -8933,7 +8901,7 @@ def payroll_settings():
             requested_block=request.form.get('cwi_block') or request.form.get('block'),
         )
 
-        # Derive assignable blocks from canonical feature scopes, not legacy student.block text.
+        # Derive assignable blocks from canonical feature scopes, not student.block text.
         blocks = enabled_blocks
 
         # Determine which mode we're in
@@ -11527,7 +11495,7 @@ def onboarding_status():
     admin_id = g.canonical_context.user_id
     try:
         # GET endpoint must remain read-only: do not create records here.
-        onboarding_record = get_teacher_onboarding(admin_id)
+        onboarding_record = get_admin_onboarding(admin_id)
 
         # Check if widget is dismissed
         if onboarding_record and onboarding_record.widget_dismissed:
@@ -11675,13 +11643,13 @@ def onboarding():
 @admin_bp.route('/onboarding/skip', methods=['POST'])
 @admin_required
 def onboarding_skip():
-    """Mark onboarding as skipped for the current admin (legacy endpoint)."""
+    """Mark onboarding as skipped for the current admin."""
     user = get_current_user()
     if not user:
         return jsonify({'status': 'error', 'message': 'Not authenticated'}), 401
 
-    get_or_create_teacher_onboarding(user.id, utc_now())
-    set_teacher_onboarding_skipped(user.id, utc_now())
+    get_or_create_admin_onboarding(user.id, utc_now())
+    set_admin_onboarding_skipped(user.id, utc_now())
     db.session.flush()
     return jsonify({'status': 'success'})
 
@@ -11702,7 +11670,7 @@ def onboarding_skip_task():
             return jsonify({'status': 'error', 'message': 'Task name required'}), 400
 
         # Get or create onboarding record
-        set_teacher_onboarding_widget_task_status(
+        set_admin_onboarding_widget_task_status(
             user.id,
             task_name=task_name,
             status='skipped',
@@ -11732,7 +11700,7 @@ def onboarding_dismiss_widget():
 
     try:
         # Get or create onboarding record
-        set_teacher_onboarding_widget_dismissed(user.id, dismissed=True, now=utc_now())
+        set_admin_onboarding_widget_dismissed(user.id, dismissed=True, now=utc_now())
 
         db.session.flush()
 
@@ -11757,7 +11725,7 @@ def onboarding_undismiss_widget():
 
     try:
         # Get onboarding record
-        set_teacher_onboarding_widget_dismissed(user.id, dismissed=False, now=utc_now())
+        set_admin_onboarding_widget_dismissed(user.id, dismissed=False, now=utc_now())
 
         db.session.flush()
 
@@ -12158,7 +12126,7 @@ def passkey_register_start():
 
         # Generate registration token using official SDK
         user_id = f"user_{user.id}"
-        username = session.get("admin_auth_username") or admin.teacher_public_id or f"teacher_{admin.id}"
+        username = session.get("admin_auth_username") or user.auth_username or f"user_{user.id}"
         displayname = admin.get_display_name()
 
         token = create_register_token(user_id, username, displayname)
@@ -12310,7 +12278,7 @@ def passkey_auth_finish():
         user.current_session_nonce = nonce
         session["login_time"] = now.isoformat()
         session["last_activity"] = now.isoformat()
-        session['admin_auth_username'] = auth_username or admin.teacher_public_id
+        session['admin_auth_username'] = auth_username or user.auth_username or f"user_{user.id}"
         set_admin_display_name_cache(teacher_user_id=admin.id, display_name=admin.get_display_name())
         session.permanent = True
 
@@ -12388,7 +12356,7 @@ def passkey_settings():
                          credentials=credentials)
 
 
-# ==================== ISSUE RESOLUTION SYSTEM - TEACHER ROUTES ====================
+    # ==================== ISSUE RESOLUTION SYSTEM ====================
 
 def _resolve_issue_id_from_ref(issue_ref: str) -> int | None:
     if issue_ref.isdigit():
@@ -12422,7 +12390,7 @@ def issues_queue():
     else:
         issues_query = Issue.query.filter_by(user_id=admin_id)
 
-    # Get issues by status (canonical + legacy compatibility)
+    # Get issues by status.
     pending_issues = issues_query.filter(
         Issue.status.in_([
             Issue.STATUS_OPEN,

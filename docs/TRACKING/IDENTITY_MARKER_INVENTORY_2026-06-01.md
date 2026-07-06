@@ -6,7 +6,9 @@
 
 This inventory audits current implementation residue against a clean v2 build. It is
 not a historical-data migration plan. Invalid marker families should be removed rather
-than preserved as compatibility contracts.
+than preserved as compatibility contracts. In the live `app/` request paths, extinct
+session identity and startup-blocking bridge wiring are now gone; the remaining work
+is mostly model, test, and broader legacy residue.
 
 ## Summary
 
@@ -39,7 +41,7 @@ The codebase currently mixes four identity layers:
    - `Student.opaque_reference`
    - `Student.internal_reference`
 
-The most important conclusion is that **seat-scoped runtime authority is not the only actor identity language still in use**. The app still carries multiple role-specific ID families, plus some ambiguous markers that are not cleanly canonical or purely presentation-only.
+The most important conclusion is that **seat-scoped runtime authority is now the live request-time dialect**, but the codebase still carries multiple role-specific ID families, plus some ambiguous markers that are not cleanly canonical or purely presentation-only.
 
 ## High-Frequency Marker Families
 
@@ -51,7 +53,7 @@ Quick grep counts across `app/` show the dominant identifiers still in live code
 - `admin_id`, `teacher_id`, and `student_id` remain heavily used in auth, routes, and bridge tables.
 - `seat_id` is present across canonical domains, but still less pervasive than legacy human IDs.
 
-This means the app is **not yet speaking one identity dialect**. It is speaking at least three: teacher/student/sysadmin principal IDs, seat/class IDs, and join-code/block-era roster markers.
+This means the repository is **not yet speaking one identity dialect**. Runtime request paths are much closer to canonical, but tests, schema names, and compatibility helpers still speak at least three dialects: teacher/student/sysadmin principal IDs, seat/class IDs, and join-code/block-era roster markers.
 
 ## Inventory By Marker
 
@@ -73,8 +75,9 @@ Notes:
 - `Seat.public_id` is the single canonical deidentified public actor identifier. It is
   a UUID encoded as a 36-character string.
 - `User.id` is authoritative for teacher TOTP, student PIN, system-admin TOTP,
-  and passkey credential verification. Route compatibility still prevents a
-  complete end-to-end legacy-principal removal.
+  and passkey credential verification. Live runtime compatibility is now mostly
+  removed; remaining legacy-principal removal is concentrated in tests and data
+  residue.
 - `identity_id` is identity-display linkage, not an activity anchor.
 - `IdentityProfile` is one-to-one with `Seat`; it must not own authentication,
   claim verification, or authority state.
@@ -97,7 +100,7 @@ These are public-facing or opaque identifiers that can represent an actor withou
 
 Key weirdness:
 
-- Teachers currently have **two separate public IDs**: `teacher_public_id` and `public_id`. Neither belongs in clean v2; teacher seats use `Seat.public_id`.
+- Teachers previously had **two separate public IDs**: `teacher_public_id` and `public_id`. Neither belongs in clean v2; teacher seats use `Seat.public_id`.
 - Students currently have **two separate references**: `opaque_reference` and `internal_reference`. Neither belongs in clean v2; student seats use `Seat.public_id` publicly and `seat_id` internally.
 - TLCP runtime and schema now use `actor_public_id`, backed by the class-scoped
   `Seat.public_id` value.
@@ -115,7 +118,7 @@ These are still load-bearing in route logic after canonical authentication.
 
 Important distinction:
 
-- `admin_id` is still a route-session compatibility language for teachers.
+- `admin_id` is still a route-session compatibility language in tests and helper surfaces, but not in live `app/` request handlers.
 - `teacher_id` is the **model/ownership language** for teachers.
 - That split is semantically understandable, but still increases identity-surface complexity.
 
@@ -227,8 +230,8 @@ These are the markers most likely to cause confusion or authority bugs.
 
 ### `student_id`
 
-- Still active in auth, routes, bridge tables, recovery flows, analytics drilldowns, observability, and many domain tables.
-- The codebase often treats it as “person identity,” but several dual-write bridges still translate it into seat scope on the fly.
+- Still active in tests, bridge tables, recovery flows, analytics drilldowns, observability, and many domain tables.
+- The codebase often treats it as “person identity,” but the live runtime increasingly translates it into seat scope only at the boundary.
 
 ### `actor_id`
 
@@ -276,6 +279,14 @@ Runtime reduction completed on 2026-06-02:
 
 Remaining `Admin.teacher_public_id` and `Admin.public_id` usages are account/display
 residue, not class-scoped lookup authority.
+
+Runtime helper cleanup completed on 2026-07-05:
+
+- `app/services/admin_identity_bridge_service.py` renamed to `app/services/admin_identity_service.py`
+- `app/services/recovery_bridge_service.py` renamed to `app/services/recovery_service.py`
+- The remaining active callers now use the canonical service names directly; bridge filenames are no longer part of the runtime code path in the cleaned admin/recovery slice.
+- route imports now reference the canonical service names, with no `bridge_service` imports left in `app/`
+- startup verification passed after the rename: `venv/bin/flask --app wsgi routes >/dev/null`
 
 ### 3. Two student opaque/reference families
 
@@ -353,7 +364,7 @@ the Passwordless external identity and reject legacy `admin_<id>` /
 - `Seat.join_code`
 - `Seat.block`
 - `StudentTeacher.*`
-- `TeacherBlock.*` — **runtime cleared 2026-06-07; test surface 62% reduced 2026-06-15 (27 files remain, ~8 with active model usage)**
+- `TeacherBlock.*` — runtime cleared; remaining surface is test and data-shape residue
 - `ClassMembership.admin_id`
 - `ClassMembership.student_id`
 - `seat_id` session alias
@@ -381,7 +392,7 @@ the Passwordless external identity and reject legacy `admin_<id>` /
    - Remove `opaque_reference` and `internal_reference`; student seats use `Seat.public_id` publicly and `seat_id` internally.
 
 3. **Reduce session key aliases**
-   - Standardize on one key each for current user, seat, class, and join-code context.
+   - Standardize on one key each for current user, seat, class, and join-code context. Runtime request handlers are already on the canonical path; this is now alias cleanup, not emergency cutover work.
 
 4. **Remove legacy seat synthesis from `student_id` writes**
    - Stop auto-creating seats with synthetic `LEGACY_<student_id>` aliases as the affected write paths are rewritten.

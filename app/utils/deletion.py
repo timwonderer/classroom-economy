@@ -91,7 +91,7 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
             actor_membership_id,
         )
 
-        # 1. Identify affected Seats and Students for this class
+        # 1. Identify affected seats and student-scoped rows for this class
         teacher_id = economy.teacher_id
         affected_seat_blocks = [
             b for (b,) in db.session.query(Seat.block).filter(
@@ -161,18 +161,18 @@ def collapse_universe(class_id: str, reason: str, actor_membership_id: Optional[
         # 6. Delete the ClassEconomy itself (triggers ON DELETE CASCADE for Transactions, Memberships, etc.)
         db.session.delete(economy)
 
-        # 7. Post-collapse: Student Erasure and Link Cleanup
-        # If a student has zero remaining Seats under this teacher's classes, continue erasure checks.
-        # If they have zero across ALL teachers, fully delete the student record.
+        # 7. Post-collapse: Seat erasure and link cleanup
+        # If a seat owner has zero remaining seats under the current teacher's classes, continue erasure checks.
+        # If they have zero across all teachers, fully delete the student record.
         if affected_student_ids:
             for s_id in affected_student_ids:
                 # Full erasure if totally orphaned across all teachers
                 remaining_seats = db.session.query(Seat.id).filter(Seat.user_id == s_id).count()
                 if remaining_seats == 0:
-                    logger.info(f"Student Erasure Rule triggered for student_id={s_id}")
+                    logger.info(f"Seat erasure rule triggered for student_id={s_id}")
 
-        # 8. Post-collapse: Settings Cleanup
-        # If no remaining Seat exists for that block name in this teacher's other classes, delete insurance policy blocks.
+        # 8. Post-collapse: Settings cleanup
+        # If no remaining seat exists for that block name in the current teacher's other classes, delete insurance policy blocks.
         if affected_seat_blocks:
             for block_name in affected_seat_blocks:
                 remaining = (

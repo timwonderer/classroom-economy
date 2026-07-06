@@ -23,7 +23,7 @@ from app.models import (
     Seat,
     IdentityProfile,
 )
-from app.services.recovery_bridge_service import delete_recovery_codes_for_student
+from app.services.recovery_service import delete_recovery_codes_for_student
 
 
 def _collect_related_ids(student_id):

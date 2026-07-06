@@ -10,9 +10,9 @@ from app.utils.time import utc_now
 
 
 @dataclass
-class TeacherOnboardingView:
+class AdminOnboardingView:
     id: int
-    teacher_id: int
+    user_id: int
     is_completed: bool
     is_skipped: bool
     current_step: int
@@ -30,8 +30,7 @@ class TeacherOnboardingView:
 @dataclass
 class AdminCredentialView:
     id: int
-    teacher_id: int
-    user_id: int | None
+    user_id: int
     credential_id: str | None
     authenticator_name: str | None
     created_at: datetime | None
@@ -55,15 +54,14 @@ def _tables() -> tuple[sa.Table, sa.Table, sa.Table]:
 
 
 def _onboarding_user_col(onboarding: sa.Table) -> sa.ColumnElement:
-    """Resolve the canonical teacher/onboarding foreign key column."""
-    return onboarding.c.user_id if "user_id" in onboarding.c else onboarding.c.teacher_id
+    """Resolve the canonical onboarding foreign key column."""
+    return onboarding.c.user_id
 
 
-def _onboarding_row_to_view(row: sa.Row) -> TeacherOnboardingView:
-    teacher_id = row._mapping["user_id"] if "user_id" in row._mapping else row._mapping["teacher_id"]
-    return TeacherOnboardingView(
+def _onboarding_row_to_view(row: sa.Row) -> AdminOnboardingView:
+    return AdminOnboardingView(
         id=row.id,
-        teacher_id=teacher_id,
+        user_id=row._mapping["user_id"],
         is_completed=bool(row.is_completed),
         is_skipped=bool(row.is_skipped),
         current_step=row.current_step,
@@ -82,8 +80,7 @@ def _onboarding_row_to_view(row: sa.Row) -> TeacherOnboardingView:
 def _credential_row_to_view(row: sa.Row) -> AdminCredentialView:
     return AdminCredentialView(
         id=row.id,
-        teacher_id=row.teacher_id,
-        user_id=getattr(row, "user_id", None),
+        user_id=row.user_id,
         credential_id=row.credential_id,
         authenticator_name=row.authenticator_name,
         created_at=row.created_at,
@@ -101,19 +98,19 @@ def _invite_row_to_view(row: sa.Row) -> AdminInviteCodeView:
     )
 
 
-def get_teacher_onboarding(teacher_id: int) -> TeacherOnboardingView | None:
+def get_admin_onboarding(user_id: int) -> AdminOnboardingView | None:
     onboarding, _credentials, _invites = _tables()
-    stmt = sa.select(onboarding).where(_onboarding_user_col(onboarding) == teacher_id).limit(1)
+    stmt = sa.select(onboarding).where(_onboarding_user_col(onboarding) == user_id).limit(1)
     row = db.session.execute(stmt).first()
     return _onboarding_row_to_view(row) if row else None
 
 
-def create_teacher_onboarding(teacher_id: int, now: datetime) -> TeacherOnboardingView:
+def create_admin_onboarding(user_id: int, now: datetime) -> AdminOnboardingView:
     onboarding, _credentials, _invites = _tables()
     insert_stmt = (
         sa.insert(onboarding)
         .values(
-            **{_onboarding_user_col(onboarding).name: teacher_id},
+            **{_onboarding_user_col(onboarding).name: user_id},
             is_completed=False,
             is_skipped=False,
             current_step=1,
@@ -130,59 +127,31 @@ def create_teacher_onboarding(teacher_id: int, now: datetime) -> TeacherOnboardi
         .returning(onboarding.c.id)
     )
     onboarding_id = db.session.execute(insert_stmt).scalar_one()
-    created = get_teacher_onboarding_by_id(onboarding_id)
+    created = get_admin_onboarding_by_id(onboarding_id)
     if created is None:
-        raise RuntimeError("Failed to create teacher onboarding row")
+        raise RuntimeError("Failed to create admin onboarding row")
     return created
 
 
-def get_teacher_onboarding_by_id(onboarding_id: int) -> TeacherOnboardingView | None:
+def get_admin_onboarding_by_id(onboarding_id: int) -> AdminOnboardingView | None:
     onboarding, _credentials, _invites = _tables()
     stmt = sa.select(onboarding).where(onboarding.c.id == onboarding_id).limit(1)
     row = db.session.execute(stmt).first()
     return _onboarding_row_to_view(row) if row else None
 
 
-def get_or_create_teacher_onboarding(teacher_id: int, now: datetime) -> TeacherOnboardingView:
-    existing = get_teacher_onboarding(teacher_id)
+def get_or_create_admin_onboarding(user_id: int, now: datetime) -> AdminOnboardingView:
+    existing = get_admin_onboarding(user_id)
     if existing is not None:
         return existing
-    return create_teacher_onboarding(teacher_id, now)
+    return create_admin_onboarding(user_id, now)
 
 
-def create_legacy_completed_teacher_onboarding(teacher_id: int, completed_at: datetime) -> TeacherOnboardingView:
-    onboarding, _credentials, _invites = _tables()
-    insert_stmt = (
-        sa.insert(onboarding)
-        .values(
-            **{_onboarding_user_col(onboarding).name: teacher_id},
-            is_completed=True,
-            is_skipped=True,
-            current_step=1,
-            total_steps=5,
-            steps_completed={},
-            widget_tasks_completed={},
-            widget_dismissed=False,
-            widget_dismissed_at=None,
-            started_at=completed_at,
-            completed_at=completed_at,
-            skipped_at=completed_at,
-            last_activity_at=completed_at,
-        )
-        .returning(onboarding.c.id)
-    )
-    onboarding_id = db.session.execute(insert_stmt).scalar_one()
-    created = get_teacher_onboarding_by_id(onboarding_id)
-    if created is None:
-        raise RuntimeError("Failed to create legacy completed onboarding row")
-    return created
-
-
-def set_teacher_onboarding_skipped(teacher_id: int, now: datetime) -> None:
+def set_admin_onboarding_skipped(user_id: int, now: datetime) -> None:
     onboarding, _credentials, _invites = _tables()
     stmt = (
         sa.update(onboarding)
-        .where(_onboarding_user_col(onboarding) == teacher_id)
+        .where(_onboarding_user_col(onboarding) == user_id)
         .values(
             is_skipped=True,
             skipped_at=now,
@@ -192,14 +161,14 @@ def set_teacher_onboarding_skipped(teacher_id: int, now: datetime) -> None:
     db.session.execute(stmt)
 
 
-def set_teacher_onboarding_widget_task_status(teacher_id: int, task_name: str, status: str | bool, now: datetime) -> None:
-    record = get_or_create_teacher_onboarding(teacher_id, now)
+def set_admin_onboarding_widget_task_status(user_id: int, task_name: str, status: str | bool, now: datetime) -> None:
+    record = get_or_create_admin_onboarding(user_id, now)
     tasks = dict(record.widget_tasks_completed or {})
     tasks[task_name] = status
     onboarding, _credentials, _invites = _tables()
     stmt = (
         sa.update(onboarding)
-        .where(_onboarding_user_col(onboarding) == teacher_id)
+        .where(_onboarding_user_col(onboarding) == user_id)
         .values(
             widget_tasks_completed=tasks,
             last_activity_at=now,
@@ -208,12 +177,12 @@ def set_teacher_onboarding_widget_task_status(teacher_id: int, task_name: str, s
     db.session.execute(stmt)
 
 
-def set_teacher_onboarding_widget_dismissed(teacher_id: int, dismissed: bool, now: datetime) -> None:
-    get_or_create_teacher_onboarding(teacher_id, now)
+def set_admin_onboarding_widget_dismissed(user_id: int, dismissed: bool, now: datetime) -> None:
+    get_or_create_admin_onboarding(user_id, now)
     onboarding, _credentials, _invites = _tables()
     stmt = (
         sa.update(onboarding)
-        .where(_onboarding_user_col(onboarding) == teacher_id)
+        .where(_onboarding_user_col(onboarding) == user_id)
         .values(
             widget_dismissed=dismissed,
             widget_dismissed_at=(now if dismissed else None),
@@ -223,14 +192,13 @@ def set_teacher_onboarding_widget_dismissed(teacher_id: int, dismissed: bool, no
     db.session.execute(stmt)
 
 
-def delete_teacher_onboarding_for_teacher(teacher_id: int) -> None:
+def delete_admin_onboarding_for_user(user_id: int) -> None:
     onboarding, _credentials, _invites = _tables()
-    db.session.execute(sa.delete(onboarding).where(_onboarding_user_col(onboarding) == teacher_id))
+    db.session.execute(sa.delete(onboarding).where(_onboarding_user_col(onboarding) == user_id))
 
 
-def admin_has_passkeys(teacher_id: int) -> bool:
+def admin_has_passkeys(user_id: int) -> bool:
     _onboarding, credentials, _invites = _tables()
-    user_id = teacher_id
     if user_id is None:
         return False
     stmt = (
@@ -241,15 +209,13 @@ def admin_has_passkeys(teacher_id: int) -> bool:
     return db.session.execute(stmt).first() is not None
 
 
-def create_admin_credential(teacher_id: int, authenticator_name: str, credential_id: str | None = None) -> AdminCredentialView:
+def create_admin_credential(user_id: int, authenticator_name: str, credential_id: str | None = None) -> AdminCredentialView:
     _onboarding, credentials, _invites = _tables()
-    user_id = teacher_id
     if user_id is None:
-        raise RuntimeError("Cannot create passkey credential without canonical teacher user")
+        raise RuntimeError("Cannot create passkey credential without canonical admin user")
     insert_stmt = (
         sa.insert(credentials)
         .values(
-            teacher_id=teacher_id,
             user_id=user_id,
             credential_id=credential_id,
             authenticator_name=authenticator_name,
@@ -257,15 +223,14 @@ def create_admin_credential(teacher_id: int, authenticator_name: str, credential
         .returning(credentials.c.id)
     )
     cred_id = db.session.execute(insert_stmt).scalar_one()
-    created = get_admin_credential(cred_id, teacher_id)
+    created = get_admin_credential(cred_id, user_id)
     if created is None:
         raise RuntimeError("Failed to create admin credential row")
     return created
 
 
-def touch_admin_credentials_last_used(teacher_id: int, now: datetime) -> int:
+def touch_admin_credentials_last_used(user_id: int, now: datetime) -> int:
     _onboarding, credentials, _invites = _tables()
-    user_id = teacher_id
     if user_id is None:
         return 0
     stmt = (
@@ -277,9 +242,8 @@ def touch_admin_credentials_last_used(teacher_id: int, now: datetime) -> int:
     return result.rowcount or 0
 
 
-def list_admin_credentials(teacher_id: int) -> list[AdminCredentialView]:
+def list_admin_credentials(user_id: int) -> list[AdminCredentialView]:
     _onboarding, credentials, _invites = _tables()
-    user_id = teacher_id
     if user_id is None:
         return []
     stmt = (
@@ -290,9 +254,8 @@ def list_admin_credentials(teacher_id: int) -> list[AdminCredentialView]:
     return [_credential_row_to_view(row) for row in db.session.execute(stmt).all()]
 
 
-def get_admin_credential(credential_id: int, teacher_id: int) -> AdminCredentialView | None:
+def get_admin_credential(credential_id: int, user_id: int) -> AdminCredentialView | None:
     _onboarding, credentials, _invites = _tables()
-    user_id = teacher_id
     if user_id is None:
         return None
     stmt = (
@@ -307,9 +270,8 @@ def get_admin_credential(credential_id: int, teacher_id: int) -> AdminCredential
     return _credential_row_to_view(row) if row else None
 
 
-def delete_admin_credential(credential_id: int, teacher_id: int) -> bool:
+def delete_admin_credential(credential_id: int, user_id: int) -> bool:
     _onboarding, credentials, _invites = _tables()
-    user_id = teacher_id
     if user_id is None:
         return False
     stmt = sa.delete(credentials).where(
@@ -320,9 +282,8 @@ def delete_admin_credential(credential_id: int, teacher_id: int) -> bool:
     return (result.rowcount or 0) > 0
 
 
-def delete_admin_credentials_for_teacher(teacher_id: int) -> None:
+def delete_admin_credentials_for_user(user_id: int) -> None:
     _onboarding, credentials, _invites = _tables()
-    user_id = teacher_id
     if user_id is None:
         return
     db.session.execute(sa.delete(credentials).where(credentials.c.user_id == user_id))
