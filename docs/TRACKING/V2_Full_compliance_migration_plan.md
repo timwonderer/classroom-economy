@@ -119,6 +119,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - Session note 2026-07-06: renamed the economy-balance checker boundary to `user_id` and aligned the scheduled rent cycle FEAT to the same owner-user naming. Startup remained clean after the helper slice.
 - Session note 2026-07-06: renamed the `app/routes/api.py` redemption and hall-pass helper boundaries from teacher-shaped internal names to owner-user naming while leaving external payload keys stable. App startup remained clean after the route helper slice.
 - Session note 2026-07-06: renamed the top-of-file admin class-anchoring helpers to owner-user naming so class resolution and feature-settings lookup share the same canonical boundary as the policy helpers. Startup remained clean after the admin helper slice.
+- Session note 2026-07-06: renamed the account-transfer and admin-adjustment FEAT boundaries to `user_id` where they already operate on the canonical owner-user actor. Startup remained clean after the FEAT slice.
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 
 #### Deferred-but-tracked architecture items

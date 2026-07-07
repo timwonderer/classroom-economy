@@ -20,7 +20,7 @@ def execute_account_transfer(
     *,
     seat_id: int,
     class_id: str,
-    teacher_id: int,
+    user_id: int,
     amount: Decimal,
     from_account: str,
     to_account: str,
@@ -29,7 +29,7 @@ def execute_account_transfer(
     withdraw_tx, deposit_tx = ledger_service.create_transfer_pair(
         seat_id=seat_id,
         class_id=class_id,
-        teacher_id=teacher_id,
+        teacher_id=user_id,
         amount=amount,
         from_account=from_account,
         to_account=to_account,

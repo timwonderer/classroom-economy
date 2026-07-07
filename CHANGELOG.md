@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **Transfer and admin-adjustment FEAT boundaries aligned to `user_id`** — The account-transfer FEAT and admin-adjustment FEAT now name the owner-user boundary explicitly where they already operate on canonical user ownership. The ledger calls still pass `teacher_id` into legacy-shaped service APIs, but the FEAT layer itself now speaks the same runtime language as the rest of the cleanup.
 - **Admin helper boundaries aligned to owner-user naming** — The top-of-file admin class-anchoring helpers now use `user_id` naming for class resolution and feature-settings lookup, matching the canonical owner-user boundary used elsewhere in the runtime.
 - **API helper boundaries aligned to owner-user naming** — `app/routes/api.py` now uses owner-user naming for the redemption audit and hall-pass helper boundaries while preserving the existing outward payload shapes. This is a runtime-only cleanup that keeps the canonical class-owner model moving through the remaining API surface.
 - **Economy-balance boundary aligned to `user_id`** — The economy balance checker now takes `user_id` instead of `teacher_id`, and the scheduled rent-cycle FEAT now uses owner-user naming at the boundary. This keeps the remaining class-scope helpers aligned with the canonical runtime ownership model.
