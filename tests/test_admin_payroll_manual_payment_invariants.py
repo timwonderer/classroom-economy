@@ -156,7 +156,7 @@ def test_payroll_scope_resolves_active_teacher_seat(client):
 
     from app.routes.admin import _require_payroll_feature_scope_from_request
 
-    with client.application.test_request_context('/admin/payroll/manual-payment?block=1'):
+    with client.application.test_request_context('/admin/payroll/manual-payment'):
         from flask import session
         session['admin_id'] = teacher.id
         session['is_admin'] = True
