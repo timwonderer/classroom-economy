@@ -1475,14 +1475,14 @@ def _delete_orphan_students(affected_student_ids):
     ).delete(synchronize_session=False)
 
 
-def _hard_delete_teacher_account_scope(teacher_id):
-    """Hard-delete a teacher account and all class-scoped data owned by the teacher."""
-    if not teacher_id:
-        raise ValueError("teacher_id is required for account deletion")
+def _hard_delete_teacher_account_scope(owner_user_id):
+    """Hard-delete an owner user account and all class-scoped data owned by that user."""
+    if not owner_user_id:
+        raise ValueError("owner_user_id is required for account deletion")
 
     class_ids = [
         value for (value,) in db.session.query(ClassEconomy.class_id).filter(
-            ClassEconomy.user_id == teacher_id,
+            ClassEconomy.user_id == owner_user_id,
         ).distinct().all()
     ]
 
@@ -1495,15 +1495,15 @@ def _hard_delete_teacher_account_scope(teacher_id):
 
     # Required ordering: all join-code-scoped data is destroyed before admin account deletion.
     for class_id in class_ids:
-        _hard_delete_class_scope(class_id, teacher_id)
+        _hard_delete_class_scope(class_id, owner_user_id)
 
-    _delete_teacher_residual_ownership_rows(teacher_id)
-    _delete_teacher_settings_activity_and_audit_rows(teacher_id)
-    _delete_teacher_rent_rows(teacher_id)
-    _delete_teacher_insurance_rows(teacher_id)
-    _delete_teacher_issue_rows(teacher_id)
-    _delete_teacher_recovery_and_credentials_rows(teacher_id)
-    _delete_teacher_store_rows(teacher_id)
+    _delete_teacher_residual_ownership_rows(owner_user_id)
+    _delete_teacher_settings_activity_and_audit_rows(owner_user_id)
+    _delete_teacher_rent_rows(owner_user_id)
+    _delete_teacher_insurance_rows(owner_user_id)
+    _delete_teacher_issue_rows(owner_user_id)
+    _delete_teacher_recovery_and_credentials_rows(owner_user_id)
+    _delete_teacher_store_rows(owner_user_id)
     _delete_orphan_students(affected_student_ids)
 
 
