@@ -1,0 +1,18 @@
+#!/bin/bash
+# Post-checkout hook to keep DATABASE_URL pinned to the classroom economy DB.
+
+CLASSROOM_ECONOMY_URL="postgresql://postgres:postgres@localhost:5432/classroom_economy"
+ENV_FILE=".env"
+
+if [ ! -f "$ENV_FILE" ]; then
+  exit 0
+fi
+
+if grep -q "^DATABASE_URL=" "$ENV_FILE"; then
+  sed -i.bak "s|^DATABASE_URL=.*|DATABASE_URL=$CLASSROOM_ECONOMY_URL|" "$ENV_FILE"
+  rm -f "$ENV_FILE.bak"
+else
+  echo "DATABASE_URL=$CLASSROOM_ECONOMY_URL" >> "$ENV_FILE"
+fi
+
+echo "✓ DATABASE_URL pinned to classroom_economy"
