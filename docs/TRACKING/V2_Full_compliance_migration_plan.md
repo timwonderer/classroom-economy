@@ -121,6 +121,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - Session note 2026-07-06: renamed the top-of-file admin class-anchoring helpers to owner-user naming so class resolution and feature-settings lookup share the same canonical boundary as the policy helpers. Startup remained clean after the admin helper slice.
 - Session note 2026-07-06: renamed the account-transfer and admin-adjustment FEAT boundaries to `user_id` where they already operate on the canonical owner-user actor. Startup remained clean after the FEAT slice.
 - Session note 2026-07-06: renamed the admin student-seat provisioning helper to owner-user naming and rewired the remaining internal callsites. Startup remained clean after the admin helper slice.
+- Session note 2026-07-06: renamed the admin rent-to-store sync and insurance tier namespace helpers to owner-user naming, then rewired the stale internal callsite. Startup remained clean after the admin rent/store slice.
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 
 #### Deferred-but-tracked architecture items

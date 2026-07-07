@@ -6066,7 +6066,7 @@ def _block_rent_linked_store_item(item: StoreItem) -> bool:
         return True
     return False
 
-def _sync_rent_items_to_store(rent_settings, teacher_id, block):
+def _sync_rent_items_to_store(rent_settings, user_id, block):
     """
     Sync rent items with store items.
     Creates or updates store items for rent items that are marked as available in store.
@@ -6077,12 +6077,12 @@ def _sync_rent_items_to_store(rent_settings, teacher_id, block):
     """
     from app.models import RentItem, StoreItem, StoreItemBlock
 
-    join_code = _resolve_join_code_for_block(teacher_id, block)
-    class_id = _ensure_join_code_anchors(teacher_id, join_code, class_label=block) if join_code else None
+    join_code = _resolve_join_code_for_block(user_id, block)
+    class_id = _ensure_join_code_anchors(user_id, join_code, class_label=block) if join_code else None
     if not join_code or not class_id:
         current_app.logger.warning(
             "Skipping rent-to-store sync for teacher %s block %s due to missing class scope",
-            teacher_id,
+            user_id,
             block,
         )
         return
@@ -6157,7 +6157,7 @@ def _sync_rent_items_to_store(rent_settings, teacher_id, block):
                 # Rent items should be 'delayed' (redeemable) to allow use tracking
                 # especially for multi-use items or privileges valid for a period
                 store_item = StoreItem(
-                    teacher_id=teacher_id,
+                    teacher_id=user_id,
                     join_code=join_code,
                     class_id=class_id,
                     name=rent_item.name,
@@ -7151,7 +7151,7 @@ def reverse_cycle_penalties():
 # -------------------- INSURANCE MANAGEMENT --------------------
 
 
-def _get_tier_namespace_seed(user_id):
+def _get_owner_user_tier_namespace_seed(user_id):
     """Return a stable seed for tenant-scoped tier IDs using the teacher's join code."""
     join_code_row = (
         db.session.query(ClassEconomy.join_code)
@@ -7233,7 +7233,7 @@ def insurance_management():
             })
 
     tier_groups = sorted(tier_groups_map.values(), key=lambda g: g['id'])
-    tier_namespace_seed = _get_tier_namespace_seed(admin_id)
+    tier_namespace_seed = _get_owner_user_tier_namespace_seed(admin_id)
     existing_tier_ids = set(tier_groups_map.keys())
     next_tier_category_id = _next_tenant_scoped_tier_id(tier_namespace_seed, existing_tier_ids)
 
@@ -7392,7 +7392,7 @@ def edit_insurance_policy(policy_id):
             })
 
     tier_groups = sorted(tier_groups_map.values(), key=lambda g: g['id'])
-    tier_namespace_seed = _get_tier_namespace_seed(policy.teacher_id)
+    tier_namespace_seed = _get_owner_user_tier_namespace_seed(policy.teacher_id)
     existing_tier_ids = set(tier_groups_map.keys())
     next_tier_category_id = _next_tenant_scoped_tier_id(tier_namespace_seed, existing_tier_ids)
 
