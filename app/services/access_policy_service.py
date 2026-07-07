@@ -18,14 +18,14 @@ def assert_can_view_dashboard(scope: Scope) -> None:
         )
 
 
-def assert_can_purchase_item(*, scope: Scope, teacher_id: int, class_id: str) -> None:
+def assert_can_purchase_item(*, scope: Scope, user_id: int, class_id: str) -> None:
     """Pure access decision for student store purchases inside a class scope."""
     if scope.role != "student":
         raise AccessPolicyDenied(
             reason_code="forbidden_role",
             message="Only students can purchase store items from the student surface.",
         )
-    if scope.teacher_id != teacher_id:
+    if scope.user_id != user_id:
         raise AccessPolicyDenied(
             reason_code="foreign_teacher_scope",
             message="You do not have access to that class store.",
@@ -37,7 +37,7 @@ def assert_can_purchase_item(*, scope: Scope, teacher_id: int, class_id: str) ->
         )
 
 
-def assert_can_pay_rent(*, seat_id: int, class_id: str, teacher_id: int) -> None:
+def assert_can_pay_rent(*, seat_id: int, class_id: str, user_id: int) -> None:
     """Pure access decision for student rent-payment workflows inside a class scope."""
     # Note: If this is called from student.py, the seat_id and class_id come from session context.
     # We trust the session context if it was resolved correctly by scope_factory.

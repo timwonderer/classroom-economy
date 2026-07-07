@@ -56,7 +56,7 @@ def execute_rent_payment(
     access_policy_service.assert_can_pay_rent(
         seat_id=seat.id,
         class_id=class_id,
-        teacher_id=user_id,  # access_policy API still uses teacher_id; canonicalization pending
+        user_id=user_id,
     )
     current_block = (getattr(seat, "block", None) or period or "").strip().upper()
     is_partial = payment_amount < remaining_amount
@@ -105,7 +105,7 @@ def execute_rent_payment(
         ledger_service.create_transfer_pair(
             seat_id=seat.id,
             class_id=class_id,
-            teacher_id=user_id,  # ledger API still uses teacher_id; DOM-LED canonicalization pending
+            teacher_id=user_id,
             amount=overdraft_shortfall,
             from_account='savings',
             to_account='checking',

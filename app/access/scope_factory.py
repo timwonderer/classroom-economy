@@ -49,7 +49,7 @@ def _scope_from_runtime_seat(*, actor, selected_class_id: str | None) -> Scope |
         join_code=current_seat.join_code,
         actor_id=actor.id,
         role="student",
-        teacher_id=class_row.user_id,
+        user_id=class_row.user_id,
         block=current_seat.block_identifier or current_seat.block,
         seat_id=current_seat.id,
     )
@@ -92,7 +92,7 @@ def resolve_student_class_switch_scope(*, actor, class_id: str) -> ResolvedStude
         join_code=seat.join_code,
         actor_id=actor.id,
         role="student",
-        teacher_id=class_row.user_id,
+        user_id=class_row.user_id,
         block=seat.block_identifier or seat.block,
         seat_id=seat.id,
     )
@@ -116,7 +116,7 @@ def _resolve_teacher_scope(*, actor, selected_class_id: str | None) -> Scope:
                 join_code=class_row.join_code,
                 actor_id=actor.id,
                 role="teacher",
-                teacher_id=actor.id,
+                user_id=actor.id,
                 block=class_row.display_name,
                 seat_id=None,
             )
@@ -139,7 +139,7 @@ def _resolve_teacher_scope(*, actor, selected_class_id: str | None) -> Scope:
             join_code=class_row.join_code,
             actor_id=actor.id,
             role="teacher",
-            teacher_id=actor.id,
+            user_id=actor.id,
             block=class_row.display_name,
             seat_id=None,
         )
@@ -209,7 +209,7 @@ def resolve_scope(*, actor, selected_join_code: str | None = None, actor_role: s
         join_code=active_seat.join_code,
         actor_id=actor.id,
         role="student",
-        teacher_id=class_row.user_id,
+        user_id=class_row.user_id,
         block=active_seat.block_identifier or active_seat.block,
         seat_id=active_seat.id,
     )

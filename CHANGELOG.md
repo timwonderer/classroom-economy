@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **Identity cleanup checkpointed** — Removed the remaining bridge-service surface from the active admin/recovery identity paths, shifted the runtime access boundary from `Scope.teacher_id` to `Scope.user_id`, and reconciled the context-resolver tests to the current canonical session contract. The tracker docs were updated with the latest verified slice, and startup stayed clean under focused validation.
 - **Wave 8 store domain cutover** — Canonical store tables `store_purchases`, `redemption_events`, and `store_item_visibility` replace `student_items`, `store_item_blocks`, and `redemption_audit_logs` as the store domain authority. DOM-STORE-001 v2.0 aligned with DOM-CORE-002. Migration `0009_store_domain.py` creates the canonical tables. `store_service.py` and `store_purchase_feat.py` rewritten to v2-only execution with no legacy fallback. Schema and behavioral tests in `tests/domain/test_store.py`. (#1244+)
 
 - **Wave 7 closeout completed for the insurance obligations slice** — legacy `StudentInsurance` runtime usage was removed, all insurance runtime paths now use `InsuranceEnrollment`, and the focused insurance/decimal regressions were rewritten to the v2 seat-based architecture. The remaining table-drop cleanup is tracked separately and no longer blocks the Wave 7 exit gate.

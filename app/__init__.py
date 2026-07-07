@@ -540,28 +540,28 @@ def create_app():
             return None
 
         # Set tenant context for both admin and student requests.
-        teacher_id = None
+        user_id = None
         try:
             from app.auth import get_current_seat, get_current_class_id, get_current_user
             from app.models import ClassEconomy
 
-            # Canonical path for student-scoped requests: class_id -> teacher_id
+            # Canonical path for student-scoped requests: class_id -> owning user.
             current_seat = get_current_seat()
             current_class_id = get_current_class_id()
             if current_seat and current_class_id:
                 class_row = ClassEconomy.query.filter_by(class_id=current_class_id).first()
                 if class_row and class_row.user_id:
-                    teacher_id = class_row.user_id
+                    user_id = class_row.user_id
 
             # Canonical user currently has no teacher-role mapping here.
             # Keep this lookup centralized in the request-context setup.
-            if teacher_id is None:
+            if user_id is None:
                 _ = get_current_user()
         except Exception:
             # Keep request resilient.
-            teacher_id = None
+            user_id = None
 
-        if teacher_id:
+        if user_id:
             try:
                 from sqlalchemy import text
                 from app.extensions import db
@@ -571,9 +571,9 @@ def create_app():
                 if db.engine.dialect.name != 'sqlite':
                     db.session.execute(
                         text("SET LOCAL app.current_teacher_id = :teacher_id"),
-                        {"teacher_id": teacher_id}
+                        {"teacher_id": user_id}
                     )
-                    app.logger.debug(f"RLS context set for teacher_id={teacher_id}")
+                    app.logger.debug(f"RLS context set for user_id={user_id}")
             except Exception as e:
                 # Log but don't fail the request - RLS will just filter to empty results
                 app.logger.error(f"Failed to set RLS tenant context: {str(e)}")
@@ -736,7 +736,7 @@ def create_app():
 
             # Build current class context from cache.
             current_class_row = class_rows_by_class_id.get(current_seat.class_id)
-            current_teacher_id = getattr(current_class_row, 'user_id', None)
+            current_owner_user_id = getattr(current_class_row, 'user_id', None)
             current_class_label = (
                 current_class_row.display_name
                 if current_class_row and current_class_row.display_name
@@ -747,8 +747,8 @@ def create_app():
                 'class_id': getattr(current_class_row, 'class_id', None),
                 'class_identifier': current_class_label,
                 'class_timezone': getattr(current_class_row, 'class_timezone', None),
-                'teacher_name': teacher_name_cache.get(str(current_teacher_id), 'Unknown') if current_teacher_id else 'Unknown',
-                'teacher_id': current_teacher_id,
+                'teacher_name': teacher_name_cache.get(str(current_owner_user_id), 'Unknown') if current_owner_user_id else 'Unknown',
+                'teacher_id': current_owner_user_id,
                 'block': current_seat.block,
                 'block_display': current_class_label,
                 'is_current': True,
@@ -758,8 +758,8 @@ def create_app():
                 'class_id': getattr(current_class_row, 'class_id', None),
                 'class_identifier': current_class_label,
                 'class_timezone': getattr(current_class_row, 'class_timezone', None),
-                'teacher_name': teacher_name_cache.get(str(current_teacher_id), 'Unknown') if current_teacher_id else 'Unknown',
-                'teacher_id': current_teacher_id,
+                'teacher_name': teacher_name_cache.get(str(current_owner_user_id), 'Unknown') if current_owner_user_id else 'Unknown',
+                'teacher_id': current_owner_user_id,
                 'block': current_seat.block,
                 'block_display': current_class_label,
                 'student_full_name': current_seat.identity_profile.full_name if current_seat.identity_profile else "",

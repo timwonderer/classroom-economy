@@ -922,7 +922,7 @@ def dashboard():
         return redirect(url_for('student.login'))
 
     join_code = scope.join_code
-    teacher_id = scope.teacher_id
+    owner_user_id = scope.user_id
     current_block = scope.block  # Get current class block
     if not scope.class_id:
         flash("Class context unavailable. Please select a class and retry.", "error")
@@ -1008,12 +1008,12 @@ def dashboard():
     # Get student's active insurance policies (scoped to current class)
     context = {
         'join_code': scope.join_code,
-        'teacher_id': scope.teacher_id,
+        'teacher_id': scope.user_id,
         'class_id': scope.class_id,
         'block': scope.block,
         'seat_id': scope.seat_id,
     }
-    teacher_id = scope.teacher_id
+    owner_user_id = scope.user_id
     class_id = scope.class_id
     active_insurance = student.get_active_insurance(class_id=join_code)
 
@@ -3834,9 +3834,9 @@ def switch_class(class_id):
     )
 
     # Get teacher name for response
-    teacher_id = resolved_switch.scope.teacher_id
+    owner_user_id = resolved_switch.scope.user_id
     teacher_cache = get_teacher_display_name_cache()
-    teacher_name = teacher_cache.get(str(teacher_id))
+    teacher_name = teacher_cache.get(str(owner_user_id))
     if not teacher_name:
         teacher_name = "Teacher"
 
