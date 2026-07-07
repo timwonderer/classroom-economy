@@ -1662,7 +1662,7 @@ def announcement_create():
     from app.forms import SystemAdminAnnouncementForm
     from app.models import Announcement
 
-    sysadmin_id = g.canonical_context.user_id
+    sysadmin_user_id = g.canonical_context.user_id
 
     form = SystemAdminAnnouncementForm()
 
@@ -1682,7 +1682,7 @@ def announcement_create():
                     return render_template('sysadmin_announcement_form.html', form=form, action='Create')
 
             announcement = Announcement(
-                system_admin_id=sysadmin_id,
+                system_admin_id=sysadmin_user_id,
                 audience_type=form.audience_type.data,
                 target_teacher_id=form.target_teacher.data if form.audience_type.data == 'teacher_all_classes' else None,
                 title=form.title.data,
@@ -1712,7 +1712,7 @@ def announcement_edit(announcement_id):
     from app.forms import SystemAdminAnnouncementForm
     from app.models import Announcement
 
-    # sysadmin_id not needed here — announcement ownership verified by is_system_admin_announcement()
+    # sysadmin_user_id not needed here — announcement ownership verified by is_system_admin_announcement()
 
     # Get announcement and verify it's a system admin announcement
     announcement = Announcement.query.filter_by(id=announcement_id).first()

@@ -124,6 +124,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - Session note 2026-07-06: renamed the admin rent-to-store sync and insurance tier namespace helpers to owner-user naming, then rewired the stale internal callsite. Startup remained clean after the admin rent/store slice.
 - Session note 2026-07-06: renamed the redemption disposition FEAT actor boundary to `actor_user_id` so the FEAT speaks the canonical owner-user language internally. Startup remained clean after the FEAT slice.
 - Session note 2026-07-06: renamed the admin public student-detail route local boundary to `owner_user_id` and threaded it through the class-scoped reads. Startup remained clean after the route slice.
+- Session note 2026-07-06: renamed the system-admin announcement create boundary to `sysadmin_user_id` so the announcement flow uses canonical user naming internally. Startup remained clean after the system-admin slice.
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 
 #### Deferred-but-tracked architecture items
