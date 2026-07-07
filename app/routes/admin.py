@@ -1166,7 +1166,7 @@ def _delete_transactions_for_class(class_id, *, join_code_deletion=False):
     return Transaction.query.filter_by(class_id=class_id).delete(synchronize_session=False)
 
 
-def _hard_delete_class_scope(class_id, teacher_id):
+def _hard_delete_class_scope(class_id, owner_user_id):
     """
     Permanently remove records scoped to a destroyed class.
 
@@ -1258,7 +1258,7 @@ def _hard_delete_class_scope(class_id, teacher_id):
     AnalyticsSnapshot.query.filter(AnalyticsSnapshot.class_id == class_id).delete(synchronize_session=False)
     AnalyticsEvent.query.filter(AnalyticsEvent.class_id == class_id).delete(synchronize_session=False)
     Announcement.query.filter(
-        Announcement.user_id == teacher_id,
+        Announcement.user_id == owner_user_id,
         Announcement.class_id == class_id,
     ).delete(synchronize_session=False)
 

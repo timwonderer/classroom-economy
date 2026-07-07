@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **Admin class-delete helper boundary renamed to `owner_user_id`** — The class-delete helper now uses owner-user naming for its boundary and announcement purge, matching the rest of the admin cleanup. This is a focused cleanup slice; behavior remains unchanged.
 - **Admin hard-delete account scope renamed to `owner_user_id`** — The admin account-deletion fan-out now names its owner boundary as `owner_user_id` and threads that naming through the class-deletion cascade. This is a focused cleanup slice; behavior remains unchanged.
 - **Admin deletion-helper owner boundary renamed to `owner_user_id`** — The admin cleanup helpers now use owner-user naming for the deletion block instead of `teacher_id`, and the associated comments were tightened to match. This is a focused cleanup slice; behavior remains unchanged.
 - **Admin issue-resolution wording and seed-script shadow rows removed** — The admin issue workflow now uses owner/admin wording in its local boundary names and messages without changing the FEAT/status contract, and `scripts/seed_canonical_v2.py` now seeds directly from `User`, `Seat`, and `IdentityProfile` instead of writing legacy shadow rows. This is a focused cleanup slice; behavior remains unchanged.
