@@ -53,6 +53,9 @@ def create_class_scope(
     """
     claimed = teacher_block_claimed or create_claimed_teacher_block
 
+    # Prefer the teacher's canonical user_id over auto-creating a new User.
+    if teacher_user_id is None and hasattr(teacher, 'user_id') and teacher.user_id is not None:
+        teacher_user_id = teacher.user_id
     resolved_teacher_user_id = _ensure_user(teacher_user_id, role="teacher")
     resolved_teacher_admin_id = getattr(teacher, "id", None) or resolved_teacher_user_id
     class_row = ClassEconomy(

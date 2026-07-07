@@ -48,5 +48,14 @@ def login_admin(
                 role="teacher",
                 join_code=join_code,
             )
+            # Persist canonical pointers on the User model so context_resolver
+            # can establish CanonicalContext from DB state.
+            from app.extensions import db
+            from app.models import User
+            user = db.session.get(User, user_id)
+            if user:
+                user.last_active_class_id = class_id
+                user.last_active_seat_id = seat_id
+                db.session.commit()
         elif join_code is not None:
             sess["current_join_code"] = join_code
