@@ -133,6 +133,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - Session note 2026-07-06: added an explicit `issue_owner_user_id` boundary in the system-admin bug-reward path so the issue-resolution flow matches the canonical owner-user naming. Startup remained clean after the bookkeeping cleanup.
 - Session note 2026-07-06: renamed the system-admin delete-admin universe-collapse reason string to owner-user wording. Startup remained clean after the deletion reason cleanup.
 - Session note 2026-07-06: cleaned the admin issue-resolution boundary in `app/routes/admin.py` so the ticket workflow uses owner/admin wording in its local names and messages while keeping the FEAT/status contract unchanged. Also removed the legacy seed-script shadow rows so `scripts/seed_canonical_v2.py` now seeds directly from `User`, `Seat`, and `IdentityProfile`. Validation stayed clean with `venv/bin/python -m py_compile scripts/seed_canonical_v2.py`.
+- Session note 2026-07-06: continued the `app/routes/admin.py` legacy-shape cleanup by renaming the owner boundary in the deletion-helper block from `teacher_id` to `owner_user_id` and tightening the associated comments. Validation stayed clean with `venv/bin/python -m py_compile app/routes/admin.py`.
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 
 #### Deferred-but-tracked architecture items

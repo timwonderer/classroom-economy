@@ -1352,17 +1352,17 @@ def _hard_delete_class_scope(class_id, teacher_id):
         Seat.user_id.in_(sa.select(orphan_student_ids))
     ).delete(synchronize_session=False)
 
-def _delete_teacher_residual_ownership_rows(teacher_id):
-    """Delete teacher-owned link rows not already removed by class-scoped deletion."""
+def _delete_teacher_residual_ownership_rows(owner_user_id):
+    """Delete owner-user link rows not already removed by class-scoped deletion."""
     Seat.query.join(ClassEconomy, ClassEconomy.class_id == Seat.class_id).filter(
-        ClassEconomy.user_id == teacher_id
+        ClassEconomy.user_id == owner_user_id
     ).delete(synchronize_session=False)
 
 
-def _delete_teacher_settings_activity_and_audit_rows(teacher_id):
-    """Delete teacher-scoped settings, activity, and audit rows."""
+def _delete_teacher_settings_activity_and_audit_rows(owner_user_id):
+    """Delete owner-user scoped settings, activity, and audit rows."""
     class_ids_subq = db.session.query(ClassEconomy.class_id).filter(
-        ClassEconomy.user_id == teacher_id
+        ClassEconomy.user_id == owner_user_id
     ).subquery()
     BankingSettings.query.filter(
         BankingSettings.class_id.in_(sa.select(class_ids_subq))
@@ -1381,18 +1381,18 @@ def _delete_teacher_settings_activity_and_audit_rows(teacher_id):
     ).delete(synchronize_session=False)
     Announcement.query.filter(
         sa.or_(
-            Announcement.user_id == teacher_id,
-            Announcement.target_teacher_id == teacher_id,
+            Announcement.user_id == owner_user_id,
+            Announcement.target_teacher_id == owner_user_id,
         )
     ).delete(synchronize_session=False)
-    Transaction.query.filter_by(user_id=teacher_id).delete(synchronize_session=False)
-    RedemptionAuditLog.query.filter_by(user_id=teacher_id).delete(synchronize_session=False)
+    Transaction.query.filter_by(user_id=owner_user_id).delete(synchronize_session=False)
+    RedemptionAuditLog.query.filter_by(user_id=owner_user_id).delete(synchronize_session=False)
 
 
-def _delete_teacher_rent_rows(teacher_id):
-    """Delete rent settings and dependent items owned by a teacher."""
+def _delete_teacher_rent_rows(owner_user_id):
+    """Delete rent settings and dependent items owned by the owner user."""
     class_ids_subq = db.session.query(ClassEconomy.class_id).filter(
-        ClassEconomy.user_id == teacher_id
+        ClassEconomy.user_id == owner_user_id
     ).subquery()
     rent_setting_ids_subq = db.session.query(RentSettings.id).filter(
         RentSettings.class_id.in_(sa.select(class_ids_subq))
@@ -1405,10 +1405,10 @@ def _delete_teacher_rent_rows(teacher_id):
     ).delete(synchronize_session=False)
 
 
-def _delete_teacher_insurance_rows(teacher_id):
-    """Delete insurance policies and dependent rows scoped to classes owned by the teacher."""
+def _delete_teacher_insurance_rows(owner_user_id):
+    """Delete insurance policies and dependent rows scoped to classes owned by the owner user."""
     class_ids_subq = db.session.query(ClassEconomy.class_id).filter(
-        ClassEconomy.user_id == teacher_id
+        ClassEconomy.user_id == owner_user_id
     ).subquery()
     policy_ids_subq = db.session.query(InsurancePolicy.id).filter(
         InsurancePolicy.class_id.in_(sa.select(class_ids_subq))
@@ -1427,32 +1427,32 @@ def _delete_teacher_insurance_rows(teacher_id):
     ).delete(synchronize_session=False)
 
 
-def _delete_teacher_issue_rows(teacher_id):
-    """Delete teacher-owned issue records and their dependent rows."""
-    issue_ids_subq = db.session.query(Issue.id).filter(Issue.user_id == teacher_id).subquery()
+def _delete_teacher_issue_rows(owner_user_id):
+    """Delete owner-user-owned issue records and their dependent rows."""
+    issue_ids_subq = db.session.query(Issue.id).filter(Issue.user_id == owner_user_id).subquery()
     IssueResolutionAction.query.filter(
         IssueResolutionAction.issue_id.in_(sa.select(issue_ids_subq))
     ).delete(synchronize_session=False)
     IssueStatusHistory.query.filter(
         IssueStatusHistory.issue_id.in_(sa.select(issue_ids_subq))
     ).delete(synchronize_session=False)
-    Issue.query.filter(Issue.user_id == teacher_id).delete(synchronize_session=False)
+    Issue.query.filter(Issue.user_id == owner_user_id).delete(synchronize_session=False)
 
 
-def _delete_teacher_recovery_and_credentials_rows(teacher_id):
-    """Delete teacher recovery, credential, and onboarding rows."""
-    delete_recovery_rows_for_user(teacher_id)
-    delete_admin_credentials_for_user(teacher_id)
-    delete_admin_onboarding_for_user(teacher_id)
+def _delete_teacher_recovery_and_credentials_rows(owner_user_id):
+    """Delete owner-user recovery, credential, and onboarding rows."""
+    delete_recovery_rows_for_user(owner_user_id)
+    delete_admin_credentials_for_user(owner_user_id)
+    delete_admin_onboarding_for_user(owner_user_id)
 
 
-def _delete_teacher_store_rows(teacher_id):
-    """Delete store rows owned by teacher, including dependent student items."""
-    store_item_ids_subq = db.session.query(StoreItem.id).filter_by(user_id=teacher_id).subquery()
+def _delete_teacher_store_rows(owner_user_id):
+    """Delete store rows owned by the owner user."""
+    store_item_ids_subq = db.session.query(StoreItem.id).filter_by(user_id=owner_user_id).subquery()
     StorePurchase.query.filter(
         StorePurchase.store_item_id.in_(sa.select(store_item_ids_subq))
     ).delete(synchronize_session=False)
-    StoreItem.query.filter_by(user_id=teacher_id).delete(synchronize_session=False)
+    StoreItem.query.filter_by(user_id=owner_user_id).delete(synchronize_session=False)
 
 
 def _delete_orphan_students(affected_student_ids):
