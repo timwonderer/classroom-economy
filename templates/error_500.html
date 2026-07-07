@@ -193,29 +193,22 @@
 
         <div class="error-body">
             <div class="alert alert-warning" role="alert">
-                <strong>That was unexpected!</strong> Something went wrong when processing your last action. It could be
+                <p class="fw-bold">Pardon the Interruption!</p>
+                <p class="mb-0">Something went wrong when processing your last action. It could be
                 due to a bug in our codes, a sudden glitch on our servers, or an unexpected input you provided. You may
-                try again and see if the problem persists.
+                try again and see if the problem persists.</p>
             </div>
 
             {% if error_id %}
             <div class="error-id alert alert-info mb-0">
-                This error has been automatically logged with <strong>Error ID {{ error_id }}</strong>. Our support team
-                will address this issue as soon as possible. You don't need do anything at this time.
+                <p>This error has been automatically logged with <strong>Error ID {{ error_id }}</strong>. If you plan on filing a bug report, please include this Error ID in your ticket for faster resolution.</p>
+                <p class="mb-0">You can also help us identify the issue quicker by repeating the steps you have taken before encountering this error screen and immediately file a bug report. This will allow our system to capture the exact sequence of events that led to this error.</p>
             </div>
             {% endif %}
 
 
 
-            <div class="log-section">
-                <div class="log-header">
-                    <h5> Most Recent Stack Trace (Last 50 Lines)</h5>
-                    <button class="btn-copy bg-primary text-white" onclick="copyLogs()">Copy Logs</button>
-                </div>
-                <div class="log-output mb-2" id="logOutput">{{ log_output or '[No log output available]' }}</div>
-                <p>If you wish to file a support ticket, please copy this log output and include it in your support
-                    ticket.</p>
-            </div>
+            
             <div class="actions">
                 <a href="/" class="btn bg-primary text-white">Return to Login Page</a>
                 <a href="javascript:history.back()" class="btn bg-primary text-white">Go Back to Last Page</a>

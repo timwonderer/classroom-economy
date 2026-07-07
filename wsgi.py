@@ -162,17 +162,9 @@ def _wait_for_enter_or_timeout(timeout_seconds=180):
                 return "enter"
 
 
-def ensure_default_admin():
-    """Placeholder: No default admin created for TOTP-only auth."""
-    app.logger.info("ensure_default_admin: TOTP-only mode, no default admin created.")
 
 
-@app.cli.command("ensure-admin")
-@with_appcontext
-def ensure_admin_command():
-    """Create the default admin user if credentials are provided."""
-    with app.app_context():
-        ensure_default_admin()
+
 
 
 @app.cli.command("create-sysadmin")
@@ -268,26 +260,21 @@ def create_sysadmin():
 _admin_checked = False
 
 
-def _run_admin_check():
-    """Ensure the default admin exists but only run once."""
-    global _admin_checked
-    if not _admin_checked:
-        ensure_default_admin()
-        _admin_checked = True
+
 
 
 if hasattr(app, "before_serving"):
     @app.before_serving
     def create_default_admin_if_needed():
-        _run_admin_check()
+        pass
 elif hasattr(app, "before_first_request"):
     @app.before_first_request
     def create_default_admin_if_needed():
-        _run_admin_check()
+        pass
 else:
     @app.before_request
     def create_default_admin_if_needed():
-        _run_admin_check()
+        pass
 
 
 # -------------------- CONTEXT PROCESSORS --------------------
@@ -427,10 +414,6 @@ def internal_error(error):
     return render_template(
         'error_500.html',
         error_id=error_id,
-        error_type=error_type,
-        error_message=error_message,
-        log_output=log_output,
-        support_email='timothy.cs.chang@gmail.com',
         status_page_url=get_validated_status_page_url()
     ), 500
 
