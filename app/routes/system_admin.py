@@ -1954,10 +1954,11 @@ def resolve_escalated_issue(issue_ref):
 
         if reward_amount_value is not None:
             # Bug rewards must be anchored to the class universe where the bug was found.
+            issue_owner_user_id = issue.teacher_id
             reward_transaction = ledger_service.create_pending_transaction(
                 seat_id=issue.seat_id,
                 class_id=issue.class_id,
-                teacher_id=issue.teacher_id,
+                teacher_id=issue_owner_user_id,
                 amount=reward_amount_value,
                 account_type='checking',
                 description=f"Bug Reward (Issue #{issue.id})",

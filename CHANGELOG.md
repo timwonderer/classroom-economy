@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **System-admin bug-reward bookkeeping boundary made explicit** — The system-admin issue-resolution flow now names the issue owner explicitly as `issue_owner_user_id` before issuing the bug-reward transaction. This keeps the reward path aligned with the canonical owner-user naming.
 - **System-admin delete-admin boundary aligned to `owner_user`** — The system-admin delete-admin flow now names its resolved canonical account as `owner_user`, matching the owner-user terminology used elsewhere in the cleanup.
 - **System-admin TOTP reset endpoint renamed** — The system-admin TOTP reset route helper is now named `reset_admin_totp`, matching the actual actor type that the route handles.
 - **System-admin issue-resolution boundary made consistent** — The system-admin issue-resolution flow now uses `sysadmin_user_id` consistently for its record-status bookkeeping. This is a small runtime cleanup that removes the last local variable mismatch in the flow.
