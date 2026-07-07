@@ -415,7 +415,7 @@ def get_transaction_tier_defaults(
     }
 
 
-def _resolve_join_code_for_block(teacher_id: int, block: Optional[str]) -> Optional[str]:
+def _resolve_join_code_for_block(user_id: int, block: Optional[str]) -> Optional[str]:
     if not has_app_context() or not block:
         return None
 
@@ -424,7 +424,7 @@ def _resolve_join_code_for_block(teacher_id: int, block: Optional[str]) -> Optio
     row = (
         ClassEconomy.query.with_entities(ClassEconomy.join_code)
         .filter(
-            ClassEconomy.user_id == teacher_id,
+            ClassEconomy.user_id == user_id,
             ClassEconomy.section == block,
             ClassEconomy.join_code.isnot(None),
         )
@@ -434,12 +434,12 @@ def _resolve_join_code_for_block(teacher_id: int, block: Optional[str]) -> Optio
 
 
 def resolve_class_scope(
-    teacher_id: int,
+    user_id: int,
     *,
     block: Optional[str] = None,
     join_code: Optional[str] = None,
 ) -> Optional[dict[str, str]]:
-    if not has_app_context() or not teacher_id:
+    if not has_app_context() or not user_id:
         return None
 
     from app.models import ClassEconomy
@@ -448,12 +448,12 @@ def resolve_class_scope(
     normalized_join_code = (join_code or "").strip().upper() or None
 
     if normalized_block and not normalized_join_code:
-        normalized_join_code = _resolve_join_code_for_block(teacher_id, normalized_block)
+        normalized_join_code = _resolve_join_code_for_block(user_id, normalized_block)
     if normalized_join_code and not normalized_block:
         block_row = (
             ClassEconomy.query.with_entities(ClassEconomy.section)
             .filter(
-                ClassEconomy.user_id == teacher_id,
+                ClassEconomy.user_id == user_id,
                 ClassEconomy.join_code == normalized_join_code,
                 ClassEconomy.section.isnot(None),
             )
@@ -468,7 +468,7 @@ def resolve_class_scope(
         ClassEconomy.query.with_entities(ClassEconomy.class_id)
         .filter(
             ClassEconomy.join_code == normalized_join_code,
-            ClassEconomy.user_id == teacher_id,
+            ClassEconomy.user_id == user_id,
         )
         .first()
     )
@@ -483,7 +483,7 @@ def resolve_class_scope(
 
 
 def resolve_feature_class(
-    teacher_id: int,
+    user_id: int,
     feature_name: str,
     *,
     block: Optional[str] = None,
@@ -492,7 +492,7 @@ def resolve_feature_class(
     if feature_name not in FEATURE_FLAGS:
         raise ValueError(f"Unknown feature flag: {feature_name}")
 
-    scope = resolve_class_scope(teacher_id, block=block, join_code=join_code)
+    scope = resolve_class_scope(user_id, block=block, join_code=join_code)
     if not scope:
         return None
 
@@ -508,7 +508,7 @@ def resolve_feature_class(
 
 
 def get_class_feature_settings(
-    teacher_id: int,
+    user_id: int,
     *,
     block: Optional[str] = None,
     join_code: Optional[str] = None,
@@ -518,7 +518,7 @@ def get_class_feature_settings(
 
     from app.models import ClassFeature
 
-    scope = resolve_class_scope(teacher_id, block=block, join_code=join_code)
+    scope = resolve_class_scope(user_id, block=block, join_code=join_code)
     if not scope:
         return None
     return {
@@ -548,7 +548,7 @@ def replace_enabled_class_features(class_id: str, enabled_features: set[str]) ->
 
 
 def get_feature_settings_row(
-    teacher_id: int,
+    user_id: int,
     block: Optional[str] = None,
     join_code: Optional[str] = None,
     create: bool = False,
@@ -556,7 +556,7 @@ def get_feature_settings_row(
     if not has_app_context():
         return None
 
-    scope = resolve_class_scope(teacher_id, block=block, join_code=join_code)
+    scope = resolve_class_scope(user_id, block=block, join_code=join_code)
     if not scope:
         return None
     return get_feature_settings_row_for_class(
@@ -592,11 +592,11 @@ def get_feature_settings_row_for_class(
     return row
 
 
-def get_active_policy_mode(teacher_id: int, block: Optional[str] = None, join_code: Optional[str] = None) -> str:
+def get_active_policy_mode(user_id: int, block: Optional[str] = None, join_code: Optional[str] = None) -> str:
     if not has_app_context():
         return POLICY_MODE_DEFAULT
 
-    row = get_feature_settings_row(teacher_id, block=block, join_code=join_code, create=False)
+    row = get_feature_settings_row(user_id, block=block, join_code=join_code, create=False)
     if not row:
         return POLICY_MODE_DEFAULT
     return normalize_policy_mode(getattr(row, "economy_policy_mode", POLICY_MODE_DEFAULT))
