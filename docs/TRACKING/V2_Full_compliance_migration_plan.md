@@ -116,6 +116,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - Session note 2026-07-06: removed the remaining bridge-service surface from the active admin/recovery identity paths and rewrote the touched tests to the canonical service APIs. `venv/bin/flask --app wsgi routes >/dev/null && echo OK` and the focused admin/recovery service test files both passed after the cleanup.
 - Session note 2026-07-06: shifted the runtime access boundary from `Scope.teacher_id` to `Scope.user_id` in the access-policy and student-scope path, then realigned the context-resolver tests to the current canonical session contract. Startup remained clean and the focused resolver tests passed.
 - Session note 2026-07-06: renamed the economy-policy helper boundary from `teacher_id` to `user_id` so the class-scope helpers now speak the same canonical actor language as the runtime access layer. App startup remained clean after the signature rename.
+- Session note 2026-07-06: renamed the economy-balance checker boundary to `user_id` and aligned the scheduled rent cycle FEAT to the same owner-user naming. Startup remained clean after the helper slice.
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 
 #### Deferred-but-tracked architecture items

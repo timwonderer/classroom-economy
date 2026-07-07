@@ -132,26 +132,26 @@ class EconomyBalanceChecker:
 
     def __init__(
         self,
-        teacher_id: int,
+        user_id: int,
         block: Optional[str] = None,
         policy_mode: Optional[str] = None,
         class_id: Optional[str] = None,
     ):
         """
-        Initialize checker for a specific teacher and optional block.
+        Initialize checker for a specific class owner and optional block.
 
         Args:
-            teacher_id: The teacher's ID
+            user_id: The owning user ID
             block: Optional block/period identifier for scoped settings
         """
-        self.teacher_id = teacher_id
+        self.user_id = user_id
         self.block = block
         self.class_id = class_id
         resolved_mode_source = policy_mode
         if resolved_mode_source is None and class_id:
             resolved_mode_source = get_active_policy_mode_for_class(class_id)
         if resolved_mode_source is None:
-            resolved_mode_source = get_active_policy_mode(teacher_id, block)
+            resolved_mode_source = get_active_policy_mode(user_id, block)
         resolved_mode = normalize_policy_mode(resolved_mode_source)
         self.policy_mode = resolved_mode
         self.policy_profile = get_policy_profile(resolved_mode)
