@@ -912,7 +912,7 @@ def manage_admins():
 
 @sysadmin_bp.route('/admins/<int:admin_id>/reset-totp', methods=['POST'])
 @system_admin_required
-def reset_teacher_totp(admin_id):
+def reset_admin_totp(admin_id):
     """
     Reset TOTP for an admin account.
     """
