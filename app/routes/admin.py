@@ -756,9 +756,9 @@ def _normalize_full_name_for_dedupe(first_name: str, last_name: str) -> str:
     return re.sub(r"[^a-z]", "", f"{first_name}{last_name}".lower())
 
 
-def _resolve_class_id(teacher_id: int, join_code: str) -> str:
+def _resolve_class_id(user_id: int, join_code: str) -> str:
     """Get or create the canonical ClassEconomy row and return class_id."""
-    return _ensure_join_code_anchors(teacher_id, join_code)
+    return _ensure_join_code_anchors(user_id, join_code)
 
 
 def _build_teacher_block_dedupe_key(class_id: str, first_name: str, last_name: str) -> str:
@@ -1854,25 +1854,25 @@ def _remove_pending_class_timezone_confirmation(class_id: str):
     session.modified = True
 
 
-def _ensure_join_code_anchors(teacher_id, join_code, class_label=None, return_metadata: bool = False):
+def _ensure_join_code_anchors(user_id, join_code, class_label=None, return_metadata: bool = False):
     """Ensure the canonical class row and membership exist before child inserts."""
-    if not teacher_id or not join_code:
+    if not user_id or not join_code:
         return (None, False, None) if return_metadata else None
 
     economy = ClassEconomy.query.filter_by(join_code=join_code).first()
     created = False
     if economy is not None:
-        if economy.user_id != teacher_id:
+        if economy.user_id != user_id:
             raise ValueError("Join code belongs to a different teacher.")
         if class_label and not economy.display_name:
             economy.display_name = class_label
         if economy.created_by_user_id is None:
-            economy.created_by_user_id = teacher_id
+            economy.created_by_user_id = user_id
     else:
         economy = ClassEconomy(
             join_code=join_code,
-            user_id=teacher_id,
-            created_by_user_id=teacher_id,
+            user_id=user_id,
+            created_by_user_id=user_id,
             display_name=class_label,
         )
         db.session.add(economy)
@@ -2034,12 +2034,12 @@ def _link_student_to_admin(
         )
 
 
-def _get_feature_settings(teacher_id, block=None):
+def _get_feature_settings(user_id, block=None):
     """
     Get class-scoped feature settings for a teacher block.
 
     Args:
-        teacher_id: The teacher's admin ID
+        user_id: The owning user's admin ID
         block: Optional block/period name (e.g., "A", "B", "1")
 
     Returns:
@@ -2047,7 +2047,7 @@ def _get_feature_settings(teacher_id, block=None):
     """
     if not block:
         return FeatureSettings.get_defaults()
-    scoped_features = get_class_feature_settings(teacher_id, block=block)
+    scoped_features = get_class_feature_settings(user_id, block=block)
     if scoped_features:
         return scoped_features["features"]
     return FeatureSettings.get_defaults()

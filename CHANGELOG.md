@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **Admin helper boundaries aligned to owner-user naming** — The top-of-file admin class-anchoring helpers now use `user_id` naming for class resolution and feature-settings lookup, matching the canonical owner-user boundary used elsewhere in the runtime.
 - **API helper boundaries aligned to owner-user naming** — `app/routes/api.py` now uses owner-user naming for the redemption audit and hall-pass helper boundaries while preserving the existing outward payload shapes. This is a runtime-only cleanup that keeps the canonical class-owner model moving through the remaining API surface.
 - **Economy-balance boundary aligned to `user_id`** — The economy balance checker now takes `user_id` instead of `teacher_id`, and the scheduled rent-cycle FEAT now uses owner-user naming at the boundary. This keeps the remaining class-scope helpers aligned with the canonical runtime ownership model.
 - **Economy-policy helper boundary renamed** — Class-scope policy helpers now speak `user_id` instead of `teacher_id`, matching the canonical runtime actor boundary that was already active in scope resolution and student rent processing. The app startup check remained clean after the signature rename.
