@@ -1,9 +1,8 @@
 from datetime import datetime, timezone
 
 from app import db
-from app.hash_utils import hash_username_lookup
-from app.models import Admin, ClassEconomy, Seat, AttendanceSession, User
-from tests.helpers.class_scope import make_student_identity
+from app.models import ClassEconomy, Seat, AttendanceSession, User, UserRole
+from tests.helpers.class_scope import make_student_identity, create_class_scope
 
 
 def _student():
@@ -15,20 +14,23 @@ def _ensure_class_scope(join_code: str, class_id: str) -> ClassEconomy:
     if class_scope:
         return class_scope
 
-    admin = Admin.query.first()
-    if not admin:
-        admin = Admin(totp_secret="JBSWY3DPEHPK3PXP", teacher_public_id=f"teacher_{join_code.lower()}")
-        db.session.add(admin)
-        db.session.flush()
+    teacher_user = User(
+        user_role=UserRole.TEACHER,
+        username_hash=f"teacher_{join_code.lower()}_hash",
+        username_lookup_hash=f"teacher_{join_code.lower()}_lookup",
+        password_hash="secret",
+    )
+    db.session.add(teacher_user)
+    db.session.flush()
 
-    class_scope = ClassEconomy(
-        user_id=admin.id,
+    class_scope = create_class_scope(
+        teacher=teacher_user,
+        teacher_user_id=teacher_user.id,
         join_code=join_code,
-        class_id=class_id,
+        student=None,
+        block="A",
         display_name=f"Scope {join_code}",
     )
-    db.session.add(class_scope)
-    db.session.flush()
     return class_scope
 
 
@@ -40,7 +42,7 @@ def test_attendance_session_records_seat_id(client):
 
     class_scope = _ensure_class_scope("JOIN_TAP", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 
-    user = User(username_hash=hash_username_lookup(f"tap_user_{student.id}"), password_hash="pw")
+    user = User(username_hash=f"tap_user_{student.id}", username_lookup_hash=f"tap_lookup_{student.id}", password_hash="pw")
     db.session.add(user)
     db.session.flush()
 

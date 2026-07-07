@@ -95,7 +95,7 @@ def create_class_scope(
             block=block,
             block_identifier=block,
             role="student",
-            claimed_at=datetime.now(timezone.utc) if claimed else None,
+            claimed_at=datetime.now(timezone.utc) if (claimed or student is not None) else None,
         )
         db.session.add(s_seat)
         db.session.flush()
@@ -153,4 +153,3 @@ def make_student_identity(
     ))
     db.session.flush()
     return seat
-

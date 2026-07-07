@@ -2352,9 +2352,8 @@ def set_timezone():
         is_authenticated = True
         session['last_activity'] = now.isoformat()
     else:
-        # Check System Admin Session
-        ctx = getattr(g, 'canonical_context', None)
-        if ctx and getattr(ctx, 'actor_role', None) == 'sysadmin':
+        # Allow legacy admin session shape during the auth transition.
+        if session.get('is_admin') and session.get('admin_id'):
             last_activity = session.get('last_activity')
             if last_activity:
                 try:
@@ -2367,6 +2366,21 @@ def set_timezone():
             else:
                 is_authenticated = True
                 session['last_activity'] = now.isoformat()
+        else:
+            ctx = getattr(g, 'canonical_context', None)
+            if ctx and getattr(ctx, 'actor_role', None) == 'sysadmin':
+                last_activity = session.get('last_activity')
+                if last_activity:
+                    try:
+                        last_activity_dt = datetime.fromisoformat(last_activity)
+                        if (now - last_activity_dt) < timedelta(minutes=SESSION_TIMEOUT_MINUTES):
+                            is_authenticated = True
+                            session['last_activity'] = now.isoformat()
+                    except ValueError:
+                        pass
+                else:
+                    is_authenticated = True
+                    session['last_activity'] = now.isoformat()
 
     if not is_authenticated:
         return jsonify({"status": "error", "message": "Unauthorized"}), 401

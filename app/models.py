@@ -678,6 +678,14 @@ def _enforce_transaction_integrity(_mapper, _connection, target):
         if seat_class_id:
             target.class_id = str(seat_class_id)
 
+    if not target.seat_id and getattr(target, "user_id", None) and target.class_id:
+        resolved_seat_id = _connection.execute(
+            sa.text("SELECT id FROM seats WHERE user_id = :user_id AND class_id = :class_id LIMIT 1"),
+            {"user_id": target.user_id, "class_id": target.class_id},
+        ).scalar()
+        if resolved_seat_id:
+            target.seat_id = int(resolved_seat_id)
+
     if not target.join_code and target.class_id:
         resolved_join_code = _connection.execute(
             sa.text("SELECT join_code FROM classes WHERE class_id = :class_id LIMIT 1"),
@@ -746,7 +754,7 @@ def _resolve_seat_id(connection, student_id, *, class_id=None, join_code=None):
         return None
 
     seat_id = connection.execute(
-        sa.text("SELECT id FROM seats WHERE student_id = :student_id AND class_id = :class_id LIMIT 1"),
+        sa.text("SELECT id FROM seats WHERE user_id = :student_id AND class_id = :class_id LIMIT 1"),
         {"student_id": student_id, "class_id": class_id},
     ).scalar()
     return int(seat_id) if seat_id else None

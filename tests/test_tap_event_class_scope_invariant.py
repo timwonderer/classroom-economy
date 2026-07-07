@@ -4,20 +4,20 @@ import pytest
 
 from app.extensions import db
 from app.models import ClassEconomy, Seat, IdentityProfile, User, UserRole, TapEvent
-from tests.helpers.v2_fixtures import make_admin
 from tests.helpers.class_scope import make_student_identity
 
 
 def _setup_scoped_student(with_seat: bool = True):
-    teacher = make_admin("tap_inv_teacher", "secret")
+    teacher = User(
+        username_hash="tap_inv_teacher_hash",
+        username_lookup_hash="tap_inv_teacher_lookup",
+        user_role=UserRole.TEACHER,
+        password_hash="secret",
+    )
     db.session.add(teacher)
     db.session.flush()
 
-    cls = ClassEconomy(
-        join_code="TINV01",
-        user_id=teacher.id,
-        status="active",
-    )
+    cls = ClassEconomy(join_code="TINV01", user_id=teacher.id, status="active")
     db.session.add(cls)
     db.session.flush()
 
@@ -25,11 +25,7 @@ def _setup_scoped_student(with_seat: bool = True):
     db.session.add(profile)
     db.session.flush()
     student = make_student_identity(first_name="Tap", last_name="I", block="A", claimed=True)
-    student_user = User(
-        username_hash=f"tap_{student.id}",
-        username_lookup_hash=f"tap_lookup_{student.id}",
-        user_role=UserRole.STUDENT,
-    )
+    student_user = User(username_hash=f"tap_{student.id}", username_lookup_hash=f"tap_lookup_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
 
@@ -55,7 +51,7 @@ def test_tap_event_rejects_missing_class_id_and_seat_id():
 
     db.session.add(
         TapEvent(
-            seat_id=seat.id if seat else None,
+            seat_id=None,
             period="A",
             status="active",
             timestamp=datetime.now(timezone.utc),
@@ -73,7 +69,7 @@ def test_tap_event_requires_seat_even_when_class_is_present():
 
     db.session.add(
         TapEvent(
-            seat_id=seat.id if seat else None,
+            seat_id=None,
             class_id=class_id,
             period="A",
             status="active",

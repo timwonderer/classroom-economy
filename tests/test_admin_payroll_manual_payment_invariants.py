@@ -3,7 +3,7 @@ from app.feats.base import InvariantViolation
 from app.extensions import db
 from tests.helpers.v2_fixtures import make_admin
 from tests.helpers.class_scope import create_class_scope
-from app.models import ClassFeature, Seat
+from app.models import Seat
 from tests.helpers.canonical_session import set_canonical_context
 
 
@@ -14,7 +14,6 @@ def test_payroll_scope_missing_class_id_raises_invariant(client):
         from flask import session
         session.clear()
 
-        # Invoking the helper directly proves class_id is required
         with pytest.raises(InvariantViolation) as excinfo:
             _require_payroll_feature_scope_from_request()
 
@@ -28,8 +27,8 @@ def test_payroll_scope_missing_seat_id_raises_invariant(client):
 
     class_scope = create_class_scope(
         teacher=teacher,
+        join_code="NOSEAT1",
         display_name="No Seat Class",
-        create_teacher_membership=False,
     )
     db.session.commit()
 
@@ -47,9 +46,8 @@ def test_payroll_scope_missing_seat_id_raises_invariant(client):
             role="teacher",
         )
 
-        # Invoking the helper directly proves seat_id is required
         with pytest.raises(InvariantViolation) as excinfo:
-            _require_payroll_feature_scope_from_request()
+            _require_payroll_feature_scope_from_request(class_scope.class_id)
 
         assert "Missing canonical seat_id context" in str(excinfo.value)
 
@@ -61,8 +59,8 @@ def test_payroll_scope_seat_not_found_raises_invariant(client):
 
     class_scope = create_class_scope(
         teacher=teacher,
+        join_code="INVALID1",
         display_name="Invalid Seat Class",
-        create_teacher_membership=False,
     )
     db.session.commit()
 
@@ -79,7 +77,7 @@ def test_payroll_scope_seat_not_found_raises_invariant(client):
         )
 
         with pytest.raises(InvariantViolation) as excinfo:
-            _require_payroll_feature_scope_from_request()
+            _require_payroll_feature_scope_from_request(class_scope.class_id, 999999)
 
         assert "Seat not found for seat_id=999999" in str(excinfo.value)
 
@@ -89,8 +87,8 @@ def test_payroll_scope_seat_class_mismatch_raises_invariant(client):
     db.session.add(teacher)
     db.session.flush()
 
-    class_a = create_class_scope(teacher=teacher, display_name="Class A")
-    class_b = create_class_scope(teacher=teacher, display_name="Class B")
+    class_a = create_class_scope(teacher=teacher, join_code="MISMATCA", display_name="Class A")
+    class_b = create_class_scope(teacher=teacher, join_code="MISMATCB", display_name="Class B")
     db.session.commit()
 
     seat_a = Seat.query.filter_by(role='teacher', class_id=class_a.class_id).first()
@@ -109,7 +107,7 @@ def test_payroll_scope_seat_class_mismatch_raises_invariant(client):
         )
 
         with pytest.raises(InvariantViolation) as excinfo:
-            _require_payroll_feature_scope_from_request()
+            _require_payroll_feature_scope_from_request(class_b.class_id, seat_a.id)
 
         assert "Seat class mismatch" in str(excinfo.value)
 
@@ -119,9 +117,8 @@ def test_payroll_scope_student_seat_insufficient_authority(client):
     db.session.add(teacher)
     db.session.flush()
 
-    class_scope = create_class_scope(teacher=teacher, display_name="Class A")
+    class_scope = create_class_scope(teacher=teacher, join_code="STUDSEAT1", display_name="Class A")
 
-    # Create a student seat in this class
     student_seat = Seat(
         class_id=class_scope.class_id,
         role='student',
@@ -135,14 +132,14 @@ def test_payroll_scope_student_seat_insufficient_authority(client):
         from flask import session
         set_canonical_context(
             session,
-            user_id=teacher.user_id,
+            user_id=teacher.id,
             class_id=class_scope.class_id,
             seat_id=student_seat.id,
             role="student",
         )
 
         with pytest.raises(InvariantViolation) as excinfo:
-            _require_payroll_feature_scope_from_request()
+            _require_payroll_feature_scope_from_request(class_scope.class_id, student_seat.id)
 
         assert "Insufficient authority" in str(excinfo.value)
 
@@ -152,8 +149,8 @@ def test_payroll_scope_resolves_active_teacher_seat(client):
     db.session.add(teacher)
     db.session.flush()
 
-    class_a = create_class_scope(teacher=teacher, display_name="Class A")
-    class_b = create_class_scope(teacher=teacher, display_name="Class B")
+    class_a = create_class_scope(teacher=teacher, join_code="SEATRESA1", display_name="Class A")
+    class_b = create_class_scope(teacher=teacher, join_code="SEATRESB1", display_name="Class B")
 
     db.session.commit()
 
@@ -163,19 +160,17 @@ def test_payroll_scope_resolves_active_teacher_seat(client):
         from flask import session
         session['admin_id'] = teacher.id
         session['is_admin'] = True
-        # Retrieve the seat_a for class_a to pass/mock in the session
         seat_a = Seat.query.filter_by(role='teacher', class_id=class_a.class_id).first()
         assert seat_a is not None
         set_canonical_context(
             session,
-            user_id=teacher.user_id,
+            user_id=teacher.id,
             class_id=class_a.class_id,
             seat_id=seat_a.id,
             role="teacher",
         )
 
-        # Call the helper
-        scope = _require_payroll_feature_scope_from_request()
+        scope = _require_payroll_feature_scope_from_request(class_a.class_id, seat_a.id)
 
         assert scope["teacher_seat"].id == seat_a.id
         assert scope["teacher_seat"].class_id == class_a.class_id

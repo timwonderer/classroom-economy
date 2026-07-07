@@ -305,13 +305,11 @@ def settle_balances(seat_id: int, class_id: str) -> None:
         cache.last_settlement_at = now
         
         logger.info(
-            "Settled balances scope=(%s, %s) resolved=(seat_id=%s, class_id=%s, student_id=%s, join_code=%s): "
+            "Settled balances resolved=(seat_id=%s, class_id=%s, student_id=%s, join_code=%s): "
             "Posted %s, Voided %s. Checking Net: %s, Savings Net: %s",
-            original_scope_id,
-            original_scope_key,
             resolved_seat_id,
-            class_id,
-            resolved_student_id,
+            canonical_class_id,
+            seat.user_id,
             resolved_join_code,
             cnt_posted,
             cnt_voided,

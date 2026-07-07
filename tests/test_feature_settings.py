@@ -5,13 +5,15 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import os
 import pytest
 import pyotp
-from flask import session
+from flask import g, session
+from types import SimpleNamespace
 
 from app import app, db
 from app.models import Admin, ClassEconomy, ClassFeature, FeatureSettings, Seat, TeacherOnboarding, User, UserRole
 from app.routes.admin import get_admin_feature_join_code_options, is_admin_feature_enabled
 from tests.helpers.admin_context import login_admin
 from tests.helpers.canonical_session import set_canonical_context
+from tests.helpers.class_scope import create_class_scope
 from app.utils.economy_policy import (
     get_class_feature_settings_for_class,
     resolve_feature_class_for_class,
@@ -204,6 +206,12 @@ class TestClassFeatures:
         db.session.flush()
 
         with app.test_request_context('/admin/insurance'):
+            g.canonical_context = SimpleNamespace(
+                user_id=test_admin.user_id,
+                class_id=economy_b.class_id,
+                seat_id=teacher_seat.id,
+                actor_role="teacher",
+            )
             set_canonical_context(
                 session,
                 user_id=test_admin.user_id,
@@ -313,7 +321,22 @@ class TestFeatureSettingsRoutes:
 
     def test_feature_settings_page_accessible_when_logged_in(self, client, test_admin):
         """Test that feature settings page is accessible when logged in."""
-        login_admin(client, test_admin.id, user_id=test_admin.user_id)
+        economy = create_class_scope(
+            teacher=test_admin,
+            join_code="FEATSET1",
+            display_name="Feature Settings",
+        )
+        db.session.commit()
+        teacher_seat = Seat.query.filter_by(class_id=economy.class_id, role="teacher").first()
+        assert teacher_seat is not None
+        login_admin(
+            client,
+            test_admin.id,
+            user_id=test_admin.user_id,
+            class_id=economy.class_id,
+            seat_id=teacher_seat.id,
+            join_code=economy.join_code,
+        )
 
         response = client.get('/admin/feature-settings')
         assert response.status_code == 200
@@ -334,7 +357,22 @@ class TestOnboardingRoutes:
         db.session.add(onboarding)
         db.session.commit()
 
-        login_admin(client, test_admin.id, user_id=test_admin.user_id)
+        economy = create_class_scope(
+            teacher=test_admin,
+            join_code="ONBRD01",
+            display_name="Onboarding",
+        )
+        db.session.commit()
+        teacher_seat = Seat.query.filter_by(class_id=economy.class_id, role="teacher").first()
+        assert teacher_seat is not None
+        login_admin(
+            client,
+            test_admin.id,
+            user_id=test_admin.user_id,
+            class_id=economy.class_id,
+            seat_id=teacher_seat.id,
+            join_code=economy.join_code,
+        )
 
         response = client.post('/admin/onboarding/skip',
                                content_type='application/json')

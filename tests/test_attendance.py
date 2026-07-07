@@ -1,5 +1,6 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from tests.helpers.class_scope import make_student_identity
+from types import SimpleNamespace
 import pytest
 from app import db, Transaction
 from app.attendance import (
@@ -14,51 +15,22 @@ from datetime import datetime, timedelta, timezone
 
 
 def _attach_student_to_class(student, block="A"):
-    from app.models import Admin, IdentityProfile, User, Seat, UserRole
     from tests.helpers.class_scope import create_class_scope
-    from app.hash_utils import hash_username_lookup
 
-    teacher = make_admin(f"teacher_{join_code}_{student.id or 'new'}", "s")
+    join_code = f"ATT-{student.id}-{block}"
+    teacher = make_admin(f"teacher_{join_code}", "s")
     db.session.add(teacher)
-    db.session.flush()
-
-    admin_user = User(
-        user_role=UserRole.TEACHER,
-        username_hash=teacher.username_hash,
-        username_lookup_hash=teacher.username_lookup_hash,
-        password_hash="pw",
-    )
-    db.session.add(admin_user)
     db.session.flush()
 
     class_economy = create_class_scope(
         teacher=teacher,
+        join_code=join_code,
         student=student,
+        student_user_id=student.user_id,
         block=block,
         display_name=block,
-        create_seat=False,
     )
     db.session.flush()
-
-    student_username = f"user_{join_code}_{student.id}"
-    user = User(
-        user_role=UserRole.STUDENT,
-        username_hash=hash_username_lookup(student_username),
-        username_lookup_hash=hash_username_lookup(student_username),
-        password_hash="hash",
-    )
-    db.session.add(user)
-    db.session.flush()
-    db.session.add(
-        Seat(
-            user_id=user.id,
-            class_id=class_economy.class_id,
-            block=block,
-            block_identifier=block,
-            role="student",
-            claimed_at=datetime.now(timezone.utc),
-        )
-    )
     db.session.commit()
     return join_code
 
@@ -66,6 +38,8 @@ def _attach_student_to_class(student, block="A"):
 def _resolve_scope(student_id, join_code):
     class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
     assert class_row is not None
+    from app.models import Seat
+
     seat = db.session.query(Seat).filter(Seat.user_id == student_id, Seat.class_id == class_row.class_id).first()
     seat_id = seat.id if seat else None
     assert seat_id is not None
@@ -79,13 +53,13 @@ def test_get_last_payroll_time(client):
     student = make_student_identity(block="A", first_name="Test", last_name="S")
     db.session.commit()
     join_code = _attach_student_to_class(student, block="A")
-    seat_id, class_id = _resolve_scope(student.id, join_code)
+    seat_id, class_id = _resolve_scope(student.user_id, join_code)
 
     # Test with a payroll transaction
     now = datetime.now(timezone.utc)
     # V2 requires seat_id/class_id, but compatibility layer supports join_code
     tx = Transaction(
-        user_id=student_user.id, 
+        user_id=student.user_id, 
         seat_id=seat_id,
         class_id=class_id,
         amount=10, 
@@ -99,7 +73,7 @@ def test_get_last_payroll_time(client):
     # Manual payments should only change the per-student anchor
     manual_time = now + timedelta(hours=1)
     manual_tx = Transaction(
-        user_id=student_user.id, 
+        user_id=student.user_id, 
         seat_id=seat_id,
         class_id=class_id,
         amount=5, 
@@ -112,10 +86,10 @@ def test_get_last_payroll_time(client):
 
     # Class-scoped anchors must ignore payroll/manual payment activity from other classes
     other_join = _attach_student_to_class(student, block="B")
-    other_seat_id, other_class_id = _resolve_scope(student.id, other_join)
+    other_seat_id, other_class_id = _resolve_scope(student.user_id, other_join)
     other_join_time = manual_time + timedelta(hours=1)
     other_join_tx = Transaction(
-        user_id=student_user.id,
+        user_id=student.user_id,
         seat_id=other_seat_id,
         class_id=other_class_id,
         amount=7,
@@ -136,7 +110,7 @@ def test_calculate_unpaid_attendance_seconds(client):
     now = datetime.now(timezone.utc)
     tap_in_time = now - timedelta(minutes=30)
     tap_out_time = now - timedelta(minutes=15)
-    seat_id, class_id = _resolve_scope(student.id, join_code)
+    seat_id, class_id = _resolve_scope(student.user_id, join_code)
 
     db.session.add(
         AttendanceSession(
@@ -164,7 +138,7 @@ def test_calculate_period_attendance(client):
     today = now.date()
     tap_in_time = now - timedelta(minutes=20)
     tap_out_time = now - timedelta(minutes=10)
-    seat_id, class_id = _resolve_scope(student.id, join_code)
+    seat_id, class_id = _resolve_scope(student.user_id, join_code)
 
     db.session.add(
         AttendanceSession(
@@ -189,7 +163,7 @@ def test_get_session_status(client):
 
     now = datetime.now(timezone.utc)
     tap_in_time = now - timedelta(minutes=5)
-    seat_id, class_id = _resolve_scope(student.id, join_code)
+    seat_id, class_id = _resolve_scope(student.user_id, join_code)
 
     session = AttendanceSession(
         seat_id=seat_id,
@@ -200,7 +174,6 @@ def test_get_session_status(client):
     db.session.flush()
     db.session.add(
         SeatAttendanceState(
-            user_id=student_user.id,
             seat_id=seat_id,
             class_id=class_id,
             is_active=True,
@@ -225,7 +198,7 @@ def test_get_all_block_statuses(client):
 
     now = datetime.now(timezone.utc)
     tap_in_time_a = now - timedelta(minutes=10)
-    seat_id_a, class_id_a = _resolve_scope(student.id, join_code_a)
+    seat_id_a, class_id_a = _resolve_scope(student.user_id, join_code_a)
     session_a = AttendanceSession(
         seat_id=seat_id_a,
         class_id=class_id_a,
@@ -235,7 +208,6 @@ def test_get_all_block_statuses(client):
     db.session.flush()
     db.session.add(
         SeatAttendanceState(
-            user_id=student_user.id,
             seat_id=seat_id_a,
             class_id=class_id_a,
             is_active=True,
@@ -246,13 +218,14 @@ def test_get_all_block_statuses(client):
     )
     db.session.commit()
 
-    statuses_a = get_all_block_statuses(student, class_id=class_id_a)
+    student_user = SimpleNamespace(id=student.user_id)
+    statuses_a = get_all_block_statuses(student_user, class_id=class_id_a)
     assert "A" in statuses_a
     assert "B" not in statuses_a
     assert statuses_a["A"]["active"] is True
     assert statuses_a["A"]["projected_pay"] is None
 
-    _, class_id_b = _resolve_scope(student.id, join_code_b)
-    statuses_b = get_all_block_statuses(student, class_id=class_id_b)
+    _, class_id_b = _resolve_scope(student.user_id, join_code_b)
+    statuses_b = get_all_block_statuses(student_user, class_id=class_id_b)
     assert "B" in statuses_b
     assert statuses_b["B"]["active"] is False

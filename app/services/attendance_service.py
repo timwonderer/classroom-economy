@@ -41,8 +41,12 @@ def get_all_block_statuses(student, *, class_id: str, payroll_anchor_by_class_id
     if not class_id:
         raise ValueError("get_all_block_statuses requires class_id.")
 
+    student_user_id = getattr(student, "user_id", None)
+    if student_user_id is None:
+        student_user_id = getattr(student, "id", None)
+
     claimed_seats = Seat.query.filter(
-        Seat.user_id == getattr(student, "id", None),
+        Seat.user_id == student_user_id,
         Seat.class_id == class_id,
         Seat.role == 'student',
         Seat.claimed_at.isnot(None),

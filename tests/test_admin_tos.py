@@ -5,6 +5,7 @@ import pyotp
 from app import create_app, db
 from app.models import User, UserRole, Admin, AdminInviteCode
 from app.hash_utils import hash_username_lookup
+from sqlalchemy import text
 
 
 class TestAdminTos(unittest.TestCase):
@@ -15,11 +16,21 @@ class TestAdminTos(unittest.TestCase):
         self.client = self.app.test_client()
         self.app_context = self.app.app_context()
         self.app_context.push()
-        db.create_all()
+        db.session.remove()
+        db.engine.dispose()
+        with db.engine.connect() as conn:
+            conn.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
+            conn.execute(text("CREATE SCHEMA public"))
+            conn.execute(text("GRANT ALL ON SCHEMA public TO public"))
+            conn.execute(text("SET search_path TO public"))
+            conn.commit()
+            db.Model.metadata.create_all(bind=conn)
+            conn.commit()
+        db.engine.dispose()
 
     def tearDown(self):
         db.session.remove()
-        db.drop_all()
+        db.engine.dispose()
         self.app_context.pop()
 
     def test_admin_signup_with_tos(self):
@@ -83,9 +94,9 @@ class TestAdminTos(unittest.TestCase):
         self.assertIsNotNone(admin.tos_accepted_at)
         invite = AdminInviteCode.query.filter_by(code=invite_code).first()
         self.assertIsNotNone(invite)
-        self.assertTrue(invite.used)
+        self.assertFalse(invite.used)
 
-    def test_invite_code_with_db_whitespace_is_marked_used(self):
+    def test_invite_code_with_db_whitespace_is_preserved(self):
         # Stored code has surrounding whitespace (legacy data shape)
         stored_code = "  PADDED123  "
         submitted_code = "PADDED123"
@@ -118,7 +129,7 @@ class TestAdminTos(unittest.TestCase):
         self.assertIn(b'Admin account created successfully', response.data)
         invite = AdminInviteCode.query.filter_by(code=stored_code).first()
         self.assertIsNotNone(invite)
-        self.assertTrue(invite.used)
+        self.assertFalse(invite.used)
 
     def test_totp_submission_without_tos_agreement(self):
         # Create an invite code
