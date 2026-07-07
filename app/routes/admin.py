@@ -4505,15 +4505,15 @@ def set_class_timezone(class_id: str):
 @admin_required
 def student_detail_public(actor_public_id):
     """View detailed information for a specific student via public-id URL."""
-    teacher_id = g.canonical_context.user_id
+    owner_user_id = g.canonical_context.user_id
     current_class_id = g.canonical_context.class_id
-    print(f"DEBUG: student_detail_public called with {actor_public_id}, teacher_id={teacher_id}, current_class_id={current_class_id}")
+    print(f"DEBUG: student_detail_public called with {actor_public_id}, owner_user_id={owner_user_id}, current_class_id={current_class_id}")
     nav_payload = _read_student_detail_nav_token(request.args.get('nav', ''))
     if not nav_payload:
         abort(404)
 
     expected_admin_id = int(nav_payload.get("admin_id") or 0)
-    if expected_admin_id and expected_admin_id != int(teacher_id or 0):
+    if expected_admin_id and expected_admin_id != int(owner_user_id or 0):
         abort(404)
     expected_public_id = str(nav_payload.get("actor_public_id") or "")
     expected_class_id = str(nav_payload.get("class_id") or "")
@@ -4526,7 +4526,7 @@ def student_detail_public(actor_public_id):
         .filter(
             Seat.public_id == actor_public_id,
             Seat.role == "student",
-            ClassEconomy.user_id == teacher_id,
+            ClassEconomy.user_id == owner_user_id,
         )
         .first()
     )
@@ -4600,7 +4600,7 @@ def student_detail_public(actor_public_id):
     )
 
     # Get student's active insurance policy scoped to current class.
-    active_insurance = student.get_active_insurance(class_id=class_id, teacher_id=teacher_id)
+    active_insurance = student.get_active_insurance(class_id=class_id, teacher_id=owner_user_id)
 
     # Get all blocks for the edit modal
     all_students = Seat.query.filter(Seat.class_id == class_id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).all()
@@ -4658,7 +4658,7 @@ def student_detail_public(actor_public_id):
         block_parts = [b.strip().upper() for b in student.block.split(',') if b.strip()]
         if block_parts:
             class_rows = ClassEconomy.query.filter(
-                ClassEconomy.user_id == teacher_id,
+                ClassEconomy.user_id == owner_user_id,
                 ClassEconomy.section.in_(block_parts)
             ).all()
             for class_row in class_rows:
