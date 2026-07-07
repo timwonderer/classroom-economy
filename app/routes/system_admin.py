@@ -1051,19 +1051,19 @@ def manage_teachers():
     all_teachers = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
     inactivity_threshold = utc_now() - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
 
-    teacher_user_ids_by_admin_id = {
+    owner_user_ids_by_admin_id = {
         teacher.id: resolved.id
         for teacher in all_teachers
         if (resolved := _resolve_teacher_user(teacher)) is not None
     }
-    teacher_student_counts, teacher_periods = _teacher_student_counts(list(teacher_user_ids_by_admin_id.values()))
+    teacher_student_counts, teacher_periods = _teacher_student_counts(list(owner_user_ids_by_admin_id.values()))
     teacher_pending_requests = {}
 
     teachers = []
     for teacher in all_teachers:
-        teacher_user_id = teacher_user_ids_by_admin_id.get(teacher.id)
-        total_students = teacher_student_counts.get(teacher_user_id, 0) if teacher_user_id else 0
-        periods = teacher_periods.get(teacher_user_id, {}) if teacher_user_id else {}
+        owner_user_id = owner_user_ids_by_admin_id.get(teacher.id)
+        total_students = teacher_student_counts.get(owner_user_id, 0) if owner_user_id else 0
+        periods = teacher_periods.get(owner_user_id, {}) if owner_user_id else {}
         pending_requests = teacher_pending_requests.get(teacher.id, [])
 
         is_inactive = False
@@ -1134,12 +1134,12 @@ def teacher_overview():
     # Define inactivity threshold (6 months)
     inactivity_threshold = utc_now() - timedelta(days=INACTIVITY_THRESHOLD_DAYS)
 
-    teacher_user_ids_by_admin_id = {
+    owner_user_ids_by_admin_id = {
         teacher.id: resolved.id
         for teacher in teachers
         if (resolved := _resolve_teacher_user(teacher)) is not None
     }
-    teacher_student_counts, teacher_periods = _teacher_student_counts(list(teacher_user_ids_by_admin_id.values()))
+    teacher_student_counts, teacher_periods = _teacher_student_counts(list(owner_user_ids_by_admin_id.values()))
 
     teacher_pending_requests = {}
 
@@ -1147,9 +1147,9 @@ def teacher_overview():
     teacher_data = []
     for teacher in teachers:
         # Get data from batched queries
-        teacher_user_id = teacher_user_ids_by_admin_id.get(teacher.id)
-        total_students = teacher_student_counts.get(teacher_user_id, 0) if teacher_user_id else 0
-        periods = teacher_periods.get(teacher_user_id, {}) if teacher_user_id else {}
+        owner_user_id = owner_user_ids_by_admin_id.get(teacher.id)
+        total_students = teacher_student_counts.get(owner_user_id, 0) if owner_user_id else 0
+        periods = teacher_periods.get(owner_user_id, {}) if owner_user_id else {}
         pending_requests = teacher_pending_requests.get(teacher.id, [])
 
         # Check if teacher is inactive
@@ -1919,9 +1919,9 @@ def resolve_escalated_issue(issue_ref):
     resolution_note = request.form.get('resolution_note', '').strip()
     eligible_for_reward = request.form.get('eligible_for_reward') == 'on'
     reward_amount_raw = request.form.get('reward_amount', '').strip()
-    sysadmin_id = g.canonical_context.user_id
+    sysadmin_user_id = g.canonical_context.user_id
 
-    if not sysadmin_id:
+    if not sysadmin_user_id:
         flash("System admin session is invalid. Please log in again.", "error")
         return redirect(url_for('sysadmin.login', next=request.path))
 
@@ -1949,7 +1949,7 @@ def resolve_escalated_issue(issue_ref):
         issue.status = Issue.STATUS_DEV_RESOLVED
         issue.sysadmin_resolved_at = utc_now()
         issue.sysadmin_notes = resolution_note
-        issue.sysadmin_id = sysadmin_id
+        issue.sysadmin_id = sysadmin_user_id
         issue.eligible_for_reward = eligible_for_reward
 
         if reward_amount_value is not None:
@@ -1970,7 +1970,7 @@ def resolve_escalated_issue(issue_ref):
                 action_type='bug_reward_issued',
                 action_description=f"Issued bug reward while resolving issue #{issue.id}",
                 performed_by_type='sysadmin',
-                performed_by_id=sysadmin_id,
+                performed_by_id=sysadmin_user_id,
                 related_transaction_id=reward_transaction.id,
                 amount_changed=float(reward_amount_value),
                 before_value='0.00',
