@@ -52,4 +52,4 @@ This log records the current implementation status of the user/seat identity spl
 
 - Local database policy during this work:
   - `classroom_economy_test` is treated as disposable test infrastructure.
-  - `production_dev` is preserved as a production-simulation database and is not purged.
+

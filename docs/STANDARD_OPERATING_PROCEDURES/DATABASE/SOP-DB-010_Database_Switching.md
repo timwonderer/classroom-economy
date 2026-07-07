@@ -2,7 +2,11 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| SOP-DB-010       | 1.1     | 2026-03-08     | 1.0        | Normative       |
+| SOP-DB-010       | N/A     | 2026-03-08     | 1.1        | DEPRECATED - INFORMATIVE  |
+
+> [!NOTE]
+> 
+> This document has been deprecated and should not be used as reference for current configurations.
 
 ## I. Purpose
 To specify local developer environments regarding branch-based, automatic PostgreSQL database switching and configurations.
