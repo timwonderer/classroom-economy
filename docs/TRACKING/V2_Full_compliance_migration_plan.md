@@ -33,13 +33,14 @@ Target state:
 
 ### Validation Checkpoint
 
-**Last validated:** 2026-07-05T00:00:00Z
+**Last validated:** 2026-07-06T00:00:00Z
 
 - Tracker reconciliation refreshed against the current `codex/v2.0` state after the latest remote merge.
 - Runtime extinct-identity session reads are no longer present in `app/`; the remaining legacy identity surface is concentrated in tests, compatibility models, and non-session FK naming.
 - Waves 3-6 remain the last fully evidenced landed cluster in the active tracker.
 - Wave 7 schema contract is installed; insurance-claim filing and resolution emit canonical `assessment_events` + `obligation_lifecycle` state under a clean-cutover model, while legacy-read cutover and table drops remain open.
 - Wave 7 rent-waiver actor cutover is landed: `ObligationReversal` uses seat-scoped actor attribution and rent-waiver add/remove paths no longer emit legacy `AnalyticsEvent` compatibility rows.
+- Session note 2026-07-06: continued the system-admin identity cleanup slice by reducing teacher-shaped naming in announcements and escalated-issue resolution. Validation stayed clean with `venv/bin/python -m py_compile app/routes/system_admin.py` and `venv/bin/flask --app wsgi routes >/dev/null && echo OK`.
 - Waves 8-12 remain open and continue to require per-wave verification gates before they can be marked complete.
 - No tracker entry was promoted to complete status without direct evidence in the current pass.
 - `TeacherBlock` runtime usage is gone; remaining work is test/data-shape cleanup and deletion of legacy identity residue.

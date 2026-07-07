@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **System-admin announcement and escalated-issue labels moved further toward owner-admin naming** — The system-admin announcement display and form copy now use owner-admin language, and the escalated-issue docstrings were tightened to match the canonical owner-user framing. This is a small cleanup slice; behavior is unchanged.
 - **System-admin delete-admin reason string aligned to owner-user wording** — The delete-admin universe-collapse reason string now says owner-user instead of teacher, matching the canonical ownership language used elsewhere in the cleanup.
 - **System-admin bug-reward bookkeeping boundary made explicit** — The system-admin issue-resolution flow now names the issue owner explicitly as `issue_owner_user_id` before issuing the bug-reward transaction. This keeps the reward path aligned with the canonical owner-user naming.
 - **System-admin delete-admin boundary aligned to `owner_user`** — The system-admin delete-admin flow now names its resolved canonical account as `owner_user`, matching the owner-user terminology used elsewhere in the cleanup.

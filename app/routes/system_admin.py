@@ -1637,14 +1637,14 @@ def announcements():
         Announcement.system_admin_id != None
     ).order_by(Announcement.created_at.desc()).all()
 
-    # Get list of teachers for display
-    teachers_dict = {admin.id: admin for admin in Admin.query.all()}
+    # Get list of owner admins for display
+    admins_dict = {admin.id: admin for admin in Admin.query.all()}
 
     # Attach audience info to each announcement
     for announcement in announcements_list:
         if announcement.audience_type == 'teacher_all_classes' and announcement.target_teacher_id:
-            teacher = teachers_dict.get(announcement.target_teacher_id)
-            announcement.audience_display = f"All classes of {teacher.get_sysadmin_display_name() if teacher else 'Unknown Teacher'}"
+            owner_admin = admins_dict.get(announcement.target_teacher_id)
+            announcement.audience_display = f"All classes of {owner_admin.get_sysadmin_display_name() if owner_admin else 'Unknown Admin'}"
         else:
             announcement.audience_display = announcement.get_audience_label()
 
@@ -1666,11 +1666,11 @@ def announcement_create():
 
     form = SystemAdminAnnouncementForm()
 
-    # Populate teacher choices
-    teachers = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
-    form.target_teacher.choices = [('', '-- Select Teacher --')] + [
-        (teacher.id, teacher.get_sysadmin_display_name())
-        for teacher in teachers
+    # Populate owner-admin choices
+    owner_admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
+    form.target_teacher.choices = [('', '-- Select Admin --')] + [
+        (owner_admin.id, owner_admin.get_sysadmin_display_name())
+        for owner_admin in owner_admins
     ]
 
     if form.validate_on_submit():
@@ -1678,7 +1678,7 @@ def announcement_create():
             # Validate target_teacher requirement
             if form.audience_type.data == 'teacher_all_classes':
                 if not form.target_teacher.data:
-                    flash('Please select a target teacher for "All Classes of Specific Teacher" audience.', 'danger')
+                    flash('Please select a target admin for "All Classes of Specific Admin" audience.', 'danger')
                     return render_template('sysadmin_announcement_form.html', form=form, action='Create')
 
             announcement = Announcement(
@@ -1723,11 +1723,11 @@ def announcement_edit(announcement_id):
 
     form = SystemAdminAnnouncementForm(obj=announcement)
 
-    # Populate teacher choices
-    teachers = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
-    form.target_teacher.choices = [('', '-- Select Teacher --')] + [
-        (teacher.id, teacher.get_sysadmin_display_name())
-        for teacher in teachers
+    # Populate owner-admin choices
+    owner_admins = Admin.query.order_by(db.func.coalesce(Admin.public_id, ''), Admin.id.asc()).all()
+    form.target_teacher.choices = [('', '-- Select Admin --')] + [
+        (owner_admin.id, owner_admin.get_sysadmin_display_name())
+        for owner_admin in owner_admins
     ]
 
     if form.validate_on_submit():
@@ -1735,7 +1735,7 @@ def announcement_edit(announcement_id):
             # Validate target_teacher requirement
             if form.audience_type.data == 'teacher_all_classes':
                 if not form.target_teacher.data:
-                    flash('Please select a target teacher for "All Classes of Specific Teacher" audience.', 'danger')
+                    flash('Please select a target admin for "All Classes of Specific Admin" audience.', 'danger')
                     return render_template('sysadmin_announcement_form.html', form=form, announcement=announcement, action='Edit')
 
             announcement.audience_type = form.audience_type.data
@@ -1823,7 +1823,7 @@ def announcement_toggle(announcement_id):
 @system_admin_required
 def escalated_issues():
     """
-    System admin view of all escalated issues from teachers.
+    System admin view of all escalated issues from owner admins.
     Shows issues that have been escalated for developer/sysadmin review.
     """
     # Get all escalated issues.
@@ -1907,7 +1907,7 @@ def start_review_escalated_issue(issue_ref):
 @feat_shell("FEAT-OPS-001")
 @system_admin_required
 def resolve_escalated_issue(issue_ref):
-    """Mark technical fix complete, optionally issue bug bounty, then return to teacher final review."""
+    """Mark technical fix complete, optionally issue bug bounty, then return to owner-admin final review."""
     issue_id = _resolve_issue_id_from_ref(issue_ref)
     if issue_id is None:
         raise NotFound("Issue not found")
