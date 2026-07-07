@@ -53,7 +53,7 @@ def _resolve_class_display_label(class_id, fallback_block):
     return fallback_block or "Unknown Class"
 
 
-def _write_event(*, purchase: StorePurchase, actor_teacher_id: int, action: str, notes: Optional[str]) -> str:
+def _write_event(*, purchase: StorePurchase, actor_user_id: int, action: str, notes: Optional[str]) -> str:
     action_map = {
         "approved": RedemptionEventAction.APPROVED,
         "rejected": RedemptionEventAction.REJECTED,
@@ -69,7 +69,7 @@ def _write_event(*, purchase: StorePurchase, actor_teacher_id: int, action: str,
         class_id=purchase.class_id,
         action=action_map[action],
         source=RedemptionEventSource.LIVE,
-        initiated_by_user_id=actor_teacher_id,
+        initiated_by_user_id=actor_user_id,
         seat_display_name=purchase.seat.display_first_name if purchase.seat else "Unknown Seat",
         class_display_label=label,
         notes=notes if notes else None,
@@ -131,7 +131,7 @@ def _compute_refund_amount(purchase: StorePurchase, purchase_tx) -> Decimal:
 def execute_redemption_approval(
     *,
     purchase: StorePurchase,
-    actor_teacher_id: int,
+    actor_user_id: int,
     notes: Optional[str] = None,
 ) -> RedemptionDispositionResult:
     if purchase.status != "processing":
@@ -141,7 +141,7 @@ def execute_redemption_approval(
 
     event_id = _write_event(
         purchase=purchase,
-        actor_teacher_id=actor_teacher_id,
+        actor_user_id=actor_user_id,
         action="approved",
         notes=notes,
     )
@@ -171,7 +171,7 @@ def execute_redemption_approval(
 def execute_redemption_rejection(
     *,
     purchase: StorePurchase,
-    actor_teacher_id: int,
+    actor_user_id: int,
     notes: Optional[str] = None,
 ) -> RedemptionDispositionResult:
     if purchase.status != "processing":
@@ -184,7 +184,7 @@ def execute_redemption_rejection(
 
     event_id = _write_event(
         purchase=purchase,
-        actor_teacher_id=actor_teacher_id,
+        actor_user_id=actor_user_id,
         action="rejected",
         notes=notes,
     )
@@ -194,7 +194,7 @@ def execute_redemption_rejection(
         idempotency_key=store_purchase_refund_key(purchase.id, "redemption-rejected"),
         seat_id=purchase.seat_id,
         class_id=purchase.class_id,
-        teacher_id=actor_teacher_id,
+        teacher_id=actor_user_id,
         amount=refund_amount,
         account_type="checking",
         type="refund",
