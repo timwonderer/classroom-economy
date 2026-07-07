@@ -130,6 +130,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - Session note 2026-07-06: renamed the system-admin TOTP reset endpoint function to `reset_admin_totp` so the route helper matches the actual actor type. Startup remained clean after the endpoint rename.
 - Session note 2026-07-06: renamed the system-admin delete-admin route local from `teacher_user` to `owner_user` so the canonical account deletion flow uses owner-user naming internally. Startup remained clean after the deletion-boundary rename.
 - Session note 2026-07-06: added an explicit `issue_owner_user_id` boundary in the system-admin bug-reward path so the issue-resolution flow matches the canonical owner-user naming. Startup remained clean after the bookkeeping cleanup.
+- Session note 2026-07-06: renamed the system-admin delete-admin universe-collapse reason string to owner-user wording. Startup remained clean after the deletion reason cleanup.
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 
 #### Deferred-but-tracked architecture items
