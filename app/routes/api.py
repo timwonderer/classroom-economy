@@ -192,7 +192,7 @@ def _calculate_due_dates(rent_setting, now):
     return (current_due, next_due)
 
 
-def _resolve_class_display_label(teacher_id, class_id, join_code=None, fallback_block=None):
+def _resolve_class_display_label(owner_user_id, class_id, join_code=None, fallback_block=None):
     """
     Resolve a stable class display label snapshot for audit logging.
     """
@@ -210,7 +210,7 @@ def _resolve_class_display_label(teacher_id, class_id, join_code=None, fallback_
     return fallback_block or "Unknown Class"
 
 
-def _append_redemption_audit_log(*, student_item, student, teacher_id, action, notes, guard_state, fallback_block=None):
+def _append_redemption_audit_log(*, student_item, student, owner_user_id, action, notes, guard_state, fallback_block=None):
     """
     Append exactly one live redemption audit log row for this request path.
 
@@ -229,14 +229,14 @@ def _append_redemption_audit_log(*, student_item, student, teacher_id, action, n
 
     class_id = getattr(student_item, 'class_id', None)
     join_code = getattr(student_item, 'join_code', None)
-    class_label = _resolve_class_display_label(teacher_id, class_id, join_code=join_code, fallback_block=fallback_block)
+    class_label = _resolve_class_display_label(owner_user_id, class_id, join_code=join_code, fallback_block=fallback_block)
 
     db.session.add(RedemptionAuditLog(
         student_item_id=student_item.id if student_item else None,
         class_display_label=class_label,
         action=action_map[action],
         notes=notes if notes else None,
-        teacher_id=teacher_id,
+        teacher_id=owner_user_id,
         class_id=class_id,
         seat_id=getattr(student_item, 'seat_id', None),
         timestamp=utc_now(),
@@ -255,9 +255,9 @@ def _get_request_join_code(payload=None):
     return join_code or None
 
 
-def _get_hall_pass_settings_scope(teacher_id, join_code):
+def _get_hall_pass_settings_scope(user_id, join_code):
     """Resolve canonical class scope for hall pass settings."""
-    return resolve_class_scope(teacher_id, join_code=join_code)
+    return resolve_class_scope(user_id, join_code=join_code)
 
 
 def _get_or_create_hall_pass_settings(class_id):
@@ -1454,7 +1454,7 @@ def hall_pass_history():
 def get_hall_pass_setup():
     """Get teacher's hall pass configuration"""
     _ = get_current_user()
-    teacher_id = g.canonical_context.user_id
+    owner_user_id = g.canonical_context.user_id
     context = getattr(g, "canonical_context", None)
     current_class_id = context.class_id if context else None
     if not current_class_id:
@@ -1464,7 +1464,7 @@ def get_hall_pass_setup():
     if not join_code:
         return jsonify({"status": "error", "message": "Class scope not found"}), 404
 
-    scope = _get_hall_pass_settings_scope(teacher_id, join_code)
+    scope = _get_hall_pass_settings_scope(owner_user_id, join_code)
     if not scope:
         return jsonify({"status": "error", "message": "Class scope not found"}), 404
 
@@ -1495,7 +1495,7 @@ def get_hall_pass_setup():
 @feat_shell("FEAT-ATTN-001")
 def save_hall_pass_setup():
     """Save teacher's hall pass configuration"""
-    scoped_admin_id = g.canonical_context.user_id
+    owner_user_id = g.canonical_context.user_id
     data = request.get_json() or {}
     context = getattr(g, "canonical_context", None)
     current_class_id = context.class_id if context else None
@@ -1543,7 +1543,7 @@ def save_hall_pass_setup():
                     return jsonify({"status": "error", "message": f"{field} must be a number or blank"}), 400
 
     try:
-        scope = _get_hall_pass_settings_scope(scoped_admin_id, join_code)
+        scope = _get_hall_pass_settings_scope(owner_user_id, join_code)
         if not scope:
             return jsonify({"status": "error", "message": "Class scope not found"}), 404
         settings = HallPassSettings.query.filter_by(class_id=scope["class_id"]).first()
@@ -1557,7 +1557,7 @@ def save_hall_pass_setup():
             return jsonify({"status": "error", "message": "Hall pass is disabled for this class"}), 403
 
         settings = feat_save_hall_pass_setup_config(
-            teacher_id=scoped_admin_id,
+            teacher_id=owner_user_id,
             class_id=scope["class_id"],
             join_code=scope["join_code"],
             hall_pass_enabled=hall_pass_enabled,
@@ -1589,12 +1589,12 @@ def rotate_hall_pass_verify_token():
     The old token is immediately invalid. Use after a lost pass, suspicious
     traffic, or student screenshot concern.
     """
-    teacher_id = g.canonical_context.user_id
+    owner_user_id = g.canonical_context.user_id
 
     try:
-        token = feat_rotate_teacher_hall_pass_verify_token(teacher_id=teacher_id)
+        token = feat_rotate_teacher_hall_pass_verify_token(teacher_id=owner_user_id)
     except LookupError as exc:
-        _log_api_client_error("rotate_hall_pass_verify_token", exc, extra=f"teacher_id={teacher_id}")
+        _log_api_client_error("rotate_hall_pass_verify_token", exc, extra=f"teacher_id={owner_user_id}")
         return jsonify({"status": "error", "message": "Hall pass verification settings were not found."}), 404
     except SQLAlchemyError:
         db.session.rollback()
