@@ -3038,6 +3038,7 @@ def give_bonus_all():
     ctx = g.canonical_context
     class_ids_subq = [ctx.class_id]
     seats = Seat.query.filter(Seat.class_id.in_(sa.select(class_ids_subq)), Seat.role == 'student').all()
+    owner_user_id = ctx.user_id
 
     banking_settings = (
         BankingSettings.query
@@ -3049,7 +3050,7 @@ def give_bonus_all():
     for seat in seats:
         adjustments.append({
             'seat': seat,
-            'teacher_id': current_admin_id,
+            'teacher_id': owner_user_id,
             'amount': amount,
             'type': tx_type,
             'description': title,

@@ -136,6 +136,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - Session note 2026-07-06: continued the `app/routes/admin.py` legacy-shape cleanup by renaming the owner boundary in the deletion-helper block from `teacher_id` to `owner_user_id` and tightening the associated comments. Validation stayed clean with `venv/bin/python -m py_compile app/routes/admin.py`.
 - Session note 2026-07-06: continued the `app/routes/admin.py` legacy-shape cleanup by renaming the top-level hard-delete account scope boundary from `teacher_id` to `owner_user_id` and threading that naming through the class deletion fan-out. Validation stayed clean with `venv/bin/python -m py_compile app/routes/admin.py`.
 - Session note 2026-07-06: continued the `app/routes/admin.py` legacy-shape cleanup by renaming the class-delete helper boundary from `teacher_id` to `owner_user_id` and threading that naming through the class-scoped announcement purge. Validation stayed clean with `venv/bin/python -m py_compile app/routes/admin.py`.
+- Session note 2026-07-06: fixed the `give_bonus_all` admin route helper to read the canonical owner boundary from `g.canonical_context.user_id` instead of a stale local name. Validation stayed clean with `venv/bin/python -m py_compile app/routes/admin.py`.
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 
 #### Deferred-but-tracked architecture items
