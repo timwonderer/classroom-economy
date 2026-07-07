@@ -138,6 +138,10 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - Session note 2026-07-06: continued the `app/routes/admin.py` legacy-shape cleanup by renaming the class-delete helper boundary from `teacher_id` to `owner_user_id` and threading that naming through the class-scoped announcement purge. Validation stayed clean with `venv/bin/python -m py_compile app/routes/admin.py`.
 - Session note 2026-07-06: fixed the `give_bonus_all` admin route helper to read the canonical owner boundary from `g.canonical_context.user_id` instead of a stale local name. Validation stayed clean with `venv/bin/python -m py_compile app/routes/admin.py`.
 - Session note 2026-07-06: aligned the admin payroll adjustment helpers with the FEAT contract by changing the adjustments payload key from `teacher_id` to `user_id` in the payroll routes. Validation stayed clean with `venv/bin/python -m py_compile app/routes/admin.py`.
+- Session note 2026-07-06: renamed the admin feature-scope join-code helper stack to owner-user language in `app/routes/admin.py` while keeping the canonical `class_id` / `join_code` lookup behavior intact. Validation stayed clean with `venv/bin/python -m py_compile app/routes/admin.py` and `venv/bin/flask --app wsgi routes >/dev/null && echo OK`.
+- Session note 2026-07-06: renamed the admin export and help-support helper locals to owner-user naming around the canonical join-code lookup path in `app/routes/admin.py`. Validation stayed clean with `venv/bin/python -m py_compile app/routes/admin.py` and `venv/bin/flask --app wsgi routes >/dev/null && echo OK`.
+- Session note 2026-07-06: aligned the help-support route docstring to owner-user wording in `app/routes/admin.py` while keeping the canonical join-code lookup path intact. Validation stayed clean with `venv/bin/python -m py_compile app/routes/admin.py` and `venv/bin/flask --app wsgi routes >/dev/null && echo OK`.
+- Session note 2026-07-06: switched the admin help-support route to key support-scope metadata and filtering by `class_id` while retaining `join_code` as the public display label. Validation stayed clean with `venv/bin/python -m py_compile app/routes/admin.py` and `venv/bin/flask --app wsgi routes >/dev/null && echo OK`.
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 
 #### Deferred-but-tracked architecture items
@@ -2589,3 +2593,51 @@ grep -r "\.student_id" app/routes/            # 0 results (outside identity_serv
 - Route and utility imports were updated to match the new names.
 - Startup verification passed after the rename:
   - `venv/bin/flask --app wsgi routes >/dev/null && echo OK`
+
+### Status Update (2026-07-06): `Seat.join_code` Constitutional Removal + Test Corpus Import Fix
+
+**Scope:** DOM-IDEN-007 enforcement — `join_code` is exclusively owned by `ClassEconomy` and must not be duplicated on other models.
+
+**Schema change:**
+- `seats.join_code` column dropped via migration `1c6893a8b375_remove_join_code_from_seat_owned_by_.py`
+- Index `ix_seats_join_code` dropped in the same migration
+- Idempotency helpers included; upgrade/downgrade/re-upgrade all verified
+
+**Runtime callsites fixed (7 files):**
+- `app/access/scope_factory.py` — three `Scope()` calls replaced `seat.join_code` with `class_row.join_code`
+- `app/__init__.py` — context processor replaced `current_seat.join_code` with `current_class_row.join_code`
+- `app/feats/rent_payment_feat.py` — `seat.join_code` replaced with `ClassEconomy.query.filter_by(class_id=class_id).first().join_code`
+- `app/utils/attendance_helpers.py` — `seat.join_code` replaced with `ClassEconomy.query.filter_by(class_id=seat.class_id).first().join_code`
+- `app/utils/banking.py` — `seat.join_code or class_row[1]` simplified to `class_row[1]` (already canonical)
+- `app/routes/admin.py` — four spots: teacher seat context dict, class-code query, seat write guard, group-by query; all rewritten to use `ClassEconomy`
+- `app/routes/student.py` — list comprehension replaced `seat.join_code` with `class_row.join_code`
+
+**Model change:**
+- `Seat.join_code` column removed from `app/models.py`
+- `_sync_seat_scope` event listener: join_code→class_id resolution branch removed (class_id must be set directly)
+
+**Test helper fixed:**
+- `tests/helpers/class_scope.py` — `Seat()` constructors no longer pass `join_code=`
+
+**Test corpus import errors fixed (51 files):**
+
+All 51 test files that imported `ClassMembership`, `StudentTeacher`, or `StudentBlock` from `app.models` have been fixed. These models no longer exist in v2. Fixes fall into three categories:
+
+1. **Simple import removal** (~38 files, Phase 1): removed the import and any `db.session.add(StudentTeacher(...))` / `ClassMembership(...)` calls that had no v2 replacement. `Seat` existence is the v2 membership model.
+
+2. **Isolation test rewrites** (8 files, Phase 2): replaced scoping assertions that relied on `StudentTeacher` or `ClassMembership` with `Seat.class_id → ClassEconomy.user_id` joins:
+   - `test_admin_multi_tenancy.py` — rewritten; `_scoped_students()` (removed from admin routes) replaced with canonical `Seat → ClassEconomy` join
+   - `test_unassigned_visibility.py` — same
+   - `test_admin_membership_gates.py` — `StudentTeacher.query.count()` assertions replaced with `Seat.query.count()`
+   - `test_teacher_student_flow.py` — `ClassMembership.query.count()` → `Seat.query.count()`; `Seat.query.filter_by(join_code=...)` → via `ClassEconomy`
+   - `test_analytics.py` — fixture removed `StudentTeacher`/`ClassMembership`/`StudentBlock` adds; only canonical `Seat` add remains
+   - `test_insurance_class_scoping.py` — fixtures rewritten using `create_class_scope`; scoping assertions use `class_id`
+   - `test_api_tenancy.py` — helpers rewritten; 4 `StudentBlock`-dependent tests deleted
+   - `test_attendance_seat_scope.py` — `StudentBlock` test deleted; `Seat.join_code` reference fixed
+
+3. **Miscellaneous fixes**:
+   - `test_core_invariants_smoke.py` — removed nonexistent `make_student_seat` from import
+   - `test_decimal_type_errors.py` — removed unused `StudentBlock` import
+   - `test_user_seat_identity.py` — rewritten to use `class_id` scoping (done in Phase 0c)
+
+**Collection result:** 855 tests collected with 0 import errors.

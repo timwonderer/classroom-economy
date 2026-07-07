@@ -336,9 +336,6 @@ class Seat(db.Model):
     has_received_rent_exemption = db.Column(db.Boolean, nullable=False, default=False)
     hall_passes = db.Column(db.Integer, nullable=False, default=3)
 
-    # Transitional public token until seat/class rewiring is complete.
-    join_code = db.Column(db.String(20), nullable=False, index=True)
-
     block = db.Column(db.String(10), nullable=True)
 
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
@@ -369,18 +366,11 @@ class Seat(db.Model):
 @event.listens_for(Seat, "before_insert")
 @event.listens_for(Seat, "before_update")
 def _sync_seat_scope(mapper, connection, target):
-    """Keep seat fields aligned while the actor swap is in progress."""
+    """Keep block fields aligned."""
     if getattr(target, "block_identifier", None) is None and getattr(target, "block", None):
         target.block_identifier = target.block
     if getattr(target, "block", None) is None and getattr(target, "block_identifier", None):
         target.block = target.block_identifier
-    if getattr(target, "class_id", None) is None and getattr(target, "join_code", None):
-        class_id = connection.execute(
-            sa.text("SELECT class_id FROM classes WHERE join_code = :join_code"),
-            {"join_code": target.join_code},
-        ).scalar()
-        if class_id:
-            target.class_id = str(class_id)
 
 
 

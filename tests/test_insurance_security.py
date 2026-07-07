@@ -9,10 +9,10 @@ from app.models import (
     User,
     UserRole,
     Admin,
+    ClassEconomy,
     InsuranceEnrollment,
     InsurancePolicy,
     Seat,
-    InsuranceEnrollment,
     InsuranceClaim,
     Transaction,
     TransactionStatus,
@@ -50,11 +50,12 @@ def _create_policy(admin_id):
 def _enroll_student(student_id, policy_id):
     seat = Seat.query.filter_by(user_id=student_id).first()
     assert seat is not None, f"No seat for student_id={student_id}"
+    _class_row = ClassEconomy.query.filter_by(class_id=seat.class_id).first()
     enrollment = InsuranceEnrollment(
         seat_id=seat.id,
         class_id=seat.class_id,
         policy_id=policy_id,
-        join_code=seat.join_code,
+        join_code=_class_row.join_code if _class_row else None,
         status="active",
         coverage_start_date=datetime.now(timezone.utc) - timedelta(days=2),
         payment_current=True,
@@ -96,23 +97,12 @@ def _build_claim(enrollment, policy, student_id, transaction):
 
 
 def _ensure_admin_class_scope(admin, student, join_code="JOIN-INS-SEC", block="A"):
-    from app.models import StudentTeacher
-
-    if not db.session.query(StudentTeacher.id).filter_by(user_id=student_user.id, teacher_id=admin.id).first():
-        db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
-    if not db.session.query(InsurancePolicy.id).filter_by(teacher_id=admin.id).first():
-        pass
     class_row = create_class_scope(teacher=admin, join_code=join_code, student=student, block=block)
     db.session.commit()
     return class_row
 
 
 def test_duplicate_transaction_claim_blocked(client, test_student, admin_user):
-    from app.models import StudentTeacher
-
-    # Create StudentTeacher association for proper scoping
-    st = StudentTeacher(user_id=test_student_user.id, teacher_id=admin_user.id)
-    db.session.add(st)
     db.session.commit()
     class_row = _ensure_admin_class_scope(admin_user, test_student)
 
@@ -135,11 +125,7 @@ def test_duplicate_transaction_claim_blocked(client, test_student, admin_user):
 
 
 def test_voided_transaction_cannot_be_approved(client, test_student, admin_user):
-    from app.models import StudentTeacher
 
-    # Create StudentTeacher association for proper scoping
-    st = StudentTeacher(user_id=test_student_user.id, teacher_id=admin_user.id)
-    db.session.add(st)
     db.session.commit()
     class_row = _ensure_admin_class_scope(admin_user, test_student)
 
@@ -170,10 +156,7 @@ def test_voided_transaction_cannot_be_approved(client, test_student, admin_user)
 
 
 def test_hard_deny_transaction_type_cannot_be_approved(client, test_student, admin_user):
-    from app.models import StudentTeacher
 
-    st = StudentTeacher(user_id=test_student_user.id, teacher_id=admin_user.id)
-    db.session.add(st)
     db.session.commit()
     class_row = _ensure_admin_class_scope(admin_user, test_student)
 
@@ -212,10 +195,7 @@ def test_hard_deny_transaction_type_cannot_be_approved(client, test_student, adm
 
 
 def test_duplicate_reimbursement_for_same_source_and_policy_blocked(client, test_student, admin_user):
-    from app.models import StudentTeacher
 
-    st = StudentTeacher(user_id=test_student_user.id, teacher_id=admin_user.id)
-    db.session.add(st)
     db.session.commit()
     class_row = _ensure_admin_class_scope(admin_user, test_student)
 
@@ -259,10 +239,7 @@ def test_duplicate_reimbursement_for_same_source_and_policy_blocked(client, test
 
 
 def test_pending_transaction_cannot_be_approved(client, test_student, admin_user):
-    from app.models import StudentTeacher
 
-    st = StudentTeacher(user_id=test_student_user.id, teacher_id=admin_user.id)
-    db.session.add(st)
     db.session.commit()
     class_row = _ensure_admin_class_scope(admin_user, test_student)
 
@@ -296,10 +273,7 @@ def test_pending_transaction_cannot_be_approved(client, test_student, admin_user
 
 
 def test_rent_privilege_purchase_cannot_be_approved(client, test_student, admin_user):
-    from app.models import StudentTeacher
 
-    st = StudentTeacher(user_id=test_student_user.id, teacher_id=admin_user.id)
-    db.session.add(st)
     db.session.commit()
     class_row = _ensure_admin_class_scope(admin_user, test_student)
 

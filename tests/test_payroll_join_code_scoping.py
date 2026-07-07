@@ -14,7 +14,6 @@ def _create_class(teacher_id: int, join_code: str) -> ClassEconomy:
         join_code=join_code,
         teacher_id=teacher_id,
         display_name=join_code,
-        created_by_admin_id=teacher_id,
     )
     db.session.add(class_row)
     db.session.flush()

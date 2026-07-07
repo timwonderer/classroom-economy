@@ -38,7 +38,6 @@ def admin_with_payroll(client):
 
     class_scope = create_class_scope(
         teacher=admin,
-        join_code="ECONA001",
         block="A",
         display_name="A",
         create_claimed_teacher_block=True,
@@ -92,7 +91,6 @@ def _attach_join_code(admin, block='A', token='JOIN-A'):
     economy = ClassEconomy.query.filter_by(join_code=token).first()
     if not economy:
         economy = ClassEconomy(
-            join_code=token,
             user_id=admin.id,
             created_by_user_id=admin.id,
             display_name=f'Period {block}',
@@ -100,7 +98,7 @@ def _attach_join_code(admin, block='A', token='JOIN-A'):
         db.session.add(economy)
         db.session.flush()
 
-    _tb_seat = Seat(join_code=token, block=block, block_identifier=block, class_id=economy.class_id, role="student")
+    _tb_seat = Seat(block=block, block_identifier=block, class_id=economy.class_id, role="student")
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name='Test', last_name='Anderson'))
@@ -374,7 +372,6 @@ def test_different_expected_hours_per_block(client):
     # Create payroll settings for different blocks with different hours
     class_a = create_class_scope(
         teacher=admin,
-        join_code="ECONMULA",
         block="A",
         display_name="A",
         create_claimed_teacher_block=True,
@@ -383,7 +380,6 @@ def test_different_expected_hours_per_block(client):
     )
     class_b = create_class_scope(
         teacher=admin,
-        join_code="ECONMULB",
         block="B",
         display_name="B",
         create_claimed_teacher_block=True,
@@ -929,7 +925,6 @@ def test_analyze_endpoint_error_does_not_leak_exception_details(client):
 
     class_scope = create_class_scope(
         teacher=admin,
-        join_code="ERRTEST1",
         block="A",
         display_name="Error Test",
         create_claimed_teacher_block=True,
@@ -987,7 +982,6 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client):
 
     class_scope = create_class_scope(
         teacher=admin,
-        join_code="SCOPEA1",
         block="A",
         display_name="Scope A",
         create_claimed_teacher_block=True,
@@ -995,7 +989,7 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client):
     )
     db.session.flush()
 
-    _tb_seat = Seat(join_code="SCOPEA1", class_id=class_scope.class_id, block="A", block_identifier="A", role="student")
+    _tb_seat = Seat(class_id=class_scope.class_id, block="A", block_identifier="A", role="student")
     db.session.add(_tb_seat)
     db.session.flush()
 
@@ -1038,7 +1032,6 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client):
 
     class_scope = create_class_scope(
         teacher=admin,
-        join_code="SCOPEV1",
         block="A",
         display_name="Scope V",
         create_claimed_teacher_block=True,
@@ -1046,7 +1039,7 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client):
     )
     db.session.flush()
 
-    _tb_seat = Seat(join_code="SCOPEV1", class_id=class_scope.class_id, block="A", block_identifier="A", role="student")
+    _tb_seat = Seat(class_id=class_scope.class_id, block="A", block_identifier="A", role="student")
     db.session.add(_tb_seat)
     db.session.flush()
 
@@ -1086,14 +1079,13 @@ def test_analyze_block_prefers_join_code_scoped_payroll_settings(client):
 
     class_scope = create_class_scope(
         teacher=admin,
-        join_code="JOINA123",
         block="A",
         display_name="A",
         create_claimed_teacher_block=True,
         teacher_block_claimed=False,
         teacher_user_id=teacher_user.id,
     )
-    _tb_seat = Seat(join_code="JOINA123", block="A", block_identifier="A", role="student")
+    _tb_seat = Seat(block="A", block_identifier="A", role="student")
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Jones"))

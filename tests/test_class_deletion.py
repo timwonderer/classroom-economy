@@ -8,11 +8,11 @@ from app.feats.base import InvariantViolation
 from app.models import (
     User,
     UserRole,
-    Admin, IdentityProfile, ClassEconomy, ClassMembership, Transaction,
+    Admin, IdentityProfile, ClassEconomy, Transaction,
     TapEvent, HallPassLog, RedemptionAuditLog, StudentItem, AnalyticsEvent,
     AnalyticsSnapshot, Issue, IssueResolutionAction, InsuranceClaim,
     InsuranceEnrollment, RentPayment, Announcement, StoreItemBlock, StoreItem,
-    Seat, StudentTeacher, PayrollSettings, RentSettings,
+    Seat, PayrollSettings, RentSettings,
     IssueCategory, InsurancePolicy, InsurancePolicyBlock
 )
 from app.utils.deletion import collapse_universe
@@ -39,9 +39,8 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     student_b_user = db.session.get(User, student_b.user_id)
     assert student_user is not None
     assert student_b_user is not None
-    db.session.add(ClassMembership(join_code=join_code, user_id=student_b_user.id, role="student"))
     db.session.flush()
-    membership = ClassMembership.query.filter_by(join_code=join_code, admin_id=admin.id, role="admin").first()
+    membership = economy
     
     # Student B has another class
     join_code_survive = "SURV01"
@@ -51,12 +50,6 @@ def test_collapse_universe_cascades_and_cleans_up(client):
         create_teacher_membership=False,
         create_student_membership=False,
     )
-    db.session.add(ClassMembership(join_code=join_code_survive, user_id=student_b_user.id, role="student"))
-    
-    # Bridge row
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
-    db.session.add(StudentTeacher(user_id=student_b_user.id, teacher_id=admin.id))
-
     # TeacherBlock
     # Settings
     db.session.add(PayrollSettings(block="A"))
@@ -106,12 +99,12 @@ def test_collapse_universe_cascades_and_cleans_up(client):
     admin_id_val = admin.id
 
     # Do the collapse
-    success = collapse_universe(economy.class_id, reason="Test collapse", actor_membership_id=membership.id)
+    success = collapse_universe(economy.class_id, reason="Test collapse", actor_membership_id=admin.id)
     assert success is True
 
     # Post-collapse assertions
     assert ClassEconomy.query.filter_by(join_code=join_code).first() is None
-    assert db.session.query(ClassMembership).filter_by(join_code=join_code).count() == 0
+    assert Seat.query.filter_by(class_id=economy.class_id).count() == 0
     assert db.session.query(Transaction).filter_by(join_code=join_code).count() == 0
     assert db.session.query(Seat).filter_by(join_code=join_code).count() == 0
     assert db.session.query(Issue).filter_by(join_code=join_code).count() == 0
@@ -171,11 +164,7 @@ def test_collapse_universe_raises_on_null_class_id_scope_rows(client):
         create_claimed_teacher_block=True,
         teacher_block_claimed=True,
     )
-    membership = ClassMembership.query.filter_by(
-        join_code="INV001",
-        admin_id=admin.id,
-        role="admin",
-    ).first()
+    membership = Seat.query.filter_by(class_id=economy.class_id, role="teacher").first()
     db.session.add(
         TapEvent(
             seat_id=Seat.query.filter_by(user_id=student.user_id, class_id=economy.class_id).first().id,
@@ -188,4 +177,4 @@ def test_collapse_universe_raises_on_null_class_id_scope_rows(client):
     db.session.commit()
 
     with pytest.raises(InvariantViolation):
-        collapse_universe(economy.class_id, reason="Invariant test", actor_membership_id=membership.id)
+        collapse_universe(economy.class_id, reason="Invariant test", actor_membership_id=membership.id if membership else admin.id)

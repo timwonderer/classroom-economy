@@ -14,7 +14,7 @@ import os
 from werkzeug.security import generate_password_hash
 
 from app import db
-from app.models import User, UserRole, Admin, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus, Seat, IdentityProfile, StudentTeacher
+from app.models import User, UserRole, Admin, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus, Seat, IdentityProfile
 from tests.helpers.class_scope import make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -32,7 +32,6 @@ def setup_rent_with_items(client):
         first_name="Test",
         last_name="S",
     )
-    db.session.add(StudentTeacher(user_id=student_seat.user_id, teacher_id=teacher.id))
     db.session.commit()
 
     economy = ClassEconomy(
@@ -40,7 +39,6 @@ def setup_rent_with_items(client):
         user_id=teacher.id,
         display_name='Test Rent Class',
         status='active',
-        created_by_admin_id=teacher.id
     )
     db.session.add(economy)
     db.session.flush()

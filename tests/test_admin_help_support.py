@@ -33,7 +33,6 @@ def _login_admin(client):
         display_name="ELA",
         section="A",
         status="active",
-        created_by_admin_id=admin.id,
     ))
     db.session.commit()
     with client.session_transaction() as sess:

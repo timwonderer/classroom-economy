@@ -28,22 +28,20 @@ def teacher_block(test_teacher):
     # Create ClassEconomy first for FK constraint
     if not db.session.get(ClassEconomy, 'TEST123'):
         economy = ClassEconomy(
-            join_code='TEST123',
             user_id=test_teacher.id,
             display_name='Test Announcements Class',
             status='active',
-            created_by_admin_id=test_teacher.id
         )
         db.session.add(economy)
         db.session.flush()
     
-    block = Seat(join_code='TEST123', block='A', block_identifier='A', role="student")
+    block = Seat(block='A', block_identifier='A', role="student")
     
     db.session.add(block)
     
     db.session.flush()
     
-    db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='encrypted_test_name', last_initial='T'))
+    db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='encrypted_test_name', last_name='T'))
     db.session.add(block)
     db.session.commit()
     return block
@@ -56,7 +54,6 @@ class TestAnnouncementModel:
         """Test creating an announcement."""
         announcement = Announcement(
             teacher_id=test_teacher.id,
-            join_code=teacher_block.join_code,
             title='Test Announcement',
             message='This is a test message',
             priority='normal',
@@ -75,7 +72,6 @@ class TestAnnouncementModel:
         """Test announcement model defaults."""
         announcement = Announcement(
             teacher_id=test_teacher.id,
-            join_code=teacher_block.join_code,
             title='Test',
             message='Test message'
         )
@@ -92,7 +88,6 @@ class TestAnnouncementModel:
         # Create expired announcement
         expired_announcement = Announcement(
             teacher_id=test_teacher.id,
-            join_code=teacher_block.join_code,
             title='Expired',
             message='This is expired',
             expires_at=datetime.now(timezone.utc) - timedelta(days=1)
@@ -102,7 +97,6 @@ class TestAnnouncementModel:
         # Create active announcement
         active_announcement = Announcement(
             teacher_id=test_teacher.id,
-            join_code=teacher_block.join_code,
             title='Active',
             message='This is active',
             expires_at=datetime.now(timezone.utc) + timedelta(days=1)
@@ -112,7 +106,6 @@ class TestAnnouncementModel:
         # Create announcement with no expiration
         no_expiry = Announcement(
             teacher_id=test_teacher.id,
-            join_code=teacher_block.join_code,
             title='No Expiry',
             message='Never expires'
         )
@@ -128,7 +121,6 @@ class TestAnnouncementModel:
         # Active and not expired
         visible = Announcement(
             teacher_id=test_teacher.id,
-            join_code=teacher_block.join_code,
             title='Visible',
             message='Should be visible',
             is_active=True
@@ -138,7 +130,6 @@ class TestAnnouncementModel:
         # Inactive
         inactive = Announcement(
             teacher_id=test_teacher.id,
-            join_code=teacher_block.join_code,
             title='Inactive',
             message='Should not be visible',
             is_active=False
@@ -148,7 +139,6 @@ class TestAnnouncementModel:
         # Expired
         expired = Announcement(
             teacher_id=test_teacher.id,
-            join_code=teacher_block.join_code,
             title='Expired',
             message='Should not be visible',
             is_active=True,
@@ -170,7 +160,6 @@ class TestAnnouncementModel:
         for priority, expected_class, expected_icon in zip(priorities, expected_classes, expected_icons):
             announcement = Announcement(
                 teacher_id=test_teacher.id,
-                join_code=teacher_block.join_code,
                 title=f'{priority} priority',
                 message='Test',
                 priority=priority
@@ -189,32 +178,28 @@ class TestAnnouncementMultiTenancy:
         """Test that announcements are properly scoped by join_code."""
         # Create ClassEconomies for FK constraints
         economy_a = ClassEconomy(
-            join_code='CODE_A',
             user_id=test_teacher.id,
             display_name='Class A',
             status='active',
-            created_by_admin_id=test_teacher.id
         )
         economy_b = ClassEconomy(
-            join_code='CODE_B',
             user_id=test_teacher.id,
             display_name='Class B',
             status='active',
-            created_by_admin_id=test_teacher.id
         )
         db.session.add(economy_a)
         db.session.add(economy_b)
         db.session.flush()
         
         # Create two different blocks with different join codes
-        block_a = Seat(join_code='CODE_A', block='A', block_identifier='A', role="student")
+        block_a = Seat(block='A', block_identifier='A', role="student")
         db.session.add(block_a)
         db.session.flush()
-        db.session.add(IdentityProfile(seat_id=block_a.id, profile_type='student_unclaimed', first_name='encrypted_test_name', last_initial='T'))
-        block_b = Seat(join_code='CODE_B', block='B', block_identifier='B', role="student")
+        db.session.add(IdentityProfile(seat_id=block_a.id, profile_type='student_unclaimed', first_name='encrypted_test_name', last_name='T'))
+        block_b = Seat(block='B', block_identifier='B', role="student")
         db.session.add(block_b)
         db.session.flush()
-        db.session.add(IdentityProfile(seat_id=block_b.id, profile_type='student_unclaimed', first_name='encrypted_test_name', last_initial='T'))
+        db.session.add(IdentityProfile(seat_id=block_b.id, profile_type='student_unclaimed', first_name='encrypted_test_name', last_name='T'))
         db.session.add(block_a)
         db.session.add(block_b)
         db.session.commit()
@@ -222,14 +207,12 @@ class TestAnnouncementMultiTenancy:
         # Create announcements for each block
         announcement_a = Announcement(
             teacher_id=test_teacher.id,
-            join_code='CODE_A',
             title='Announcement for Block A',
             message='Only Block A should see this',
             is_active=True
         )
         announcement_b = Announcement(
             teacher_id=test_teacher.id,
-            join_code='CODE_B',
             title='Announcement for Block B',
             message='Only Block B should see this',
             is_active=True
@@ -240,13 +223,11 @@ class TestAnnouncementMultiTenancy:
 
         # Query announcements for Block A
         announcements_a = Announcement.query.filter_by(
-            join_code='CODE_A',
             is_active=True
         ).all()
 
         # Query announcements for Block B
         announcements_b = Announcement.query.filter_by(
-            join_code='CODE_B',
             is_active=True
         ).all()
 
@@ -261,7 +242,6 @@ class TestAnnouncementMultiTenancy:
         """Test that announcements are deleted when teacher is deleted."""
         announcement = Announcement(
             teacher_id=test_teacher.id,
-            join_code=teacher_block.join_code,
             title='Test Announcement',
             message='This should be deleted with teacher',
             is_active=True

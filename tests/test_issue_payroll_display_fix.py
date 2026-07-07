@@ -22,14 +22,16 @@ def test_payroll_visibility_bug(client):
     )
     db.session.add(student_user)
     db.session.flush()
-    tb1 = Seat(user_id=student_user.id, join_code="JOIN_A", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    # TODO: tb1 needs class_id set from the ClassEconomy for join_code JOIN_A
+    tb1 = Seat(user_id=student_user.id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb1)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb1.id, profile_type='student_claimed', first_name="Timothy", last_initial="C"))
-    tb2 = Seat(user_id=student_user.id, join_code="JOIN_G", block="G", block_identifier="G", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(IdentityProfile(seat_id=tb1.id, profile_type='student_claimed', first_name="Timothy", last_name="C"))
+    # TODO: tb2 needs class_id set from the ClassEconomy for join_code JOIN_G
+    tb2 = Seat(user_id=student_user.id, block="G", block_identifier="G", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb2)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb2.id, profile_type='student_claimed', first_name="Timothy", last_initial="C"))
+    db.session.add(IdentityProfile(seat_id=tb2.id, profile_type='student_claimed', first_name="Timothy", last_name="C"))
     db.session.commit()
 
     # 3. Create Transactions

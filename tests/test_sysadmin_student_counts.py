@@ -10,7 +10,7 @@ from tests.helpers.class_scope import make_student_identity
 import pyotp
 
 from app import app, db
-from app.models import User, UserRole, Admin, StudentTeacher, SystemAdmin
+from app.models import User, UserRole, Admin, SystemAdmin
 
 
 def _create_sysadmin(username: str = "sysadmin"):
@@ -43,14 +43,6 @@ def _create_student(first_name: str, primary_teacher: Admin = None, linked_teach
     student = make_student_identity(block="A", first_name=first_name, last_name="X")
     student_user = db.session.get(User, student.user_id)
     assert student_user is not None
-    
-    # Add student_teachers links
-    if linked_teachers:
-        for teacher in linked_teachers:
-            db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-    elif primary_teacher:
-        # If no explicit links but has primary, create link
-        db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=primary_teacher.id))
     
     db.session.commit()
     return student
@@ -131,8 +123,6 @@ def test_sysadmin_counts_students_with_only_links(client):
     student_user = db.session.get(User, student.user_id)
     assert student_user is not None
     
-    # Add link to teacher_a
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher_a.id))
     db.session.commit()
     
     _login_sysadmin(client, sys_admin, sys_secret)
@@ -214,7 +204,6 @@ def test_deleted_students_are_excluded_from_teacher_counts(client):
 
     _create_student("ActiveStudent", primary_teacher=teacher)
     deleted_student = _create_student("DeletedStudent", primary_teacher=teacher)
-    StudentTeacher.query.filter_by(user_id=deleted_student.user_id, teacher_id=teacher.id).delete()
     db.session.delete(deleted_student)
     db.session.commit()
 

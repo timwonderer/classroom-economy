@@ -5,7 +5,7 @@ import pytest
 import pyotp
 import bcrypt
 from datetime import datetime, timezone, timedelta
-from app.models import Admin, IdentityProfile, Seat, RecoveryRequest, StudentRecoveryCode, StudentTeacher, ClassEconomy, User, UserRole
+from app.models import Admin, IdentityProfile, Seat, RecoveryRequest, StudentRecoveryCode, ClassEconomy, User, UserRole
 from app.extensions import db
 from app.hash_utils import hash_username_lookup, get_random_salt, hash_hmac
 
@@ -46,14 +46,9 @@ def create_student(teacher, username="student1", block="A"):
         last_name="S",
         claimed=True,
     )
-    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=teacher.id))
     db.session.flush()
 
     return student
-
-@pytest.mark.skip(reason="Test harness issue: session transaction not persisting correctly for student verification step in SQLite memory DB")
-def test_teacher_recovery_full_flow(client, app):
-    pass
 
 def test_recovery_fails_missing_period(client, app):
     teacher = create_teacher()

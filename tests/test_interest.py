@@ -13,7 +13,6 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
     past_date = datetime.now(timezone.utc) - timedelta(days=31)
     savings_tx = Transaction(
         user_id=test_student.user_id,
-        join_code='TEST',
         amount=100.0,
         account_type='savings',
         description='Initial savings deposit',
@@ -50,7 +49,7 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
 
 
 def test_dashboard_renders_recent_deposit(client, test_student):
-    from app.models import Admin, StudentTeacher
+    from app.models import Admin
 
     # Create a teacher and link the student
     teacher = make_admin("testteacher", "SECRET123")
@@ -62,8 +61,6 @@ def test_dashboard_renders_recent_deposit(client, test_student):
     test_student.join_code = join_code
 
     # Link student to teacher
-    st = StudentTeacher(user_id=test_student.user_id, teacher_id=teacher.id)
-    db.session.add(st)
     db.session.commit()
 
     recent_deposit_time = datetime.now(timezone.utc) - timedelta(hours=12)
@@ -71,7 +68,6 @@ def test_dashboard_renders_recent_deposit(client, test_student):
 
     recent_deposit = Transaction(
         user_id=test_student.user_id,
-        join_code=join_code,
         amount=50.0,
         account_type='checking',
         description='Payroll Deposit',
@@ -80,7 +76,6 @@ def test_dashboard_renders_recent_deposit(client, test_student):
     )
     mature_savings = Transaction(
         user_id=test_student.user_id,
-        join_code=join_code,
         amount=200.0,
         account_type='savings',
         description='Savings Seed',
@@ -98,7 +93,6 @@ def test_dashboard_renders_recent_deposit(client, test_student):
             class_id=test_student.class_id,
             seat_id=test_student.id,
             role="student",
-            join_code=join_code,
         )
 
     response = client.get('/student/dashboard')

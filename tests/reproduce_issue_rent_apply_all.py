@@ -16,14 +16,16 @@ def teacher_with_classes(client):
     db.session.commit()
     
     # Create two classes (blocks)
-    block_a = Seat(join_code="JOIN_A", block="BlockA", block_identifier="BlockA", role="student")
+    # TODO: block_a needs class_id set from the ClassEconomy for join_code JOIN_A
+    block_a = Seat(block="BlockA", block_identifier="BlockA", role="student")
     db.session.add(block_a)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=block_a.id, profile_type='student_unclaimed', first_name="P", last_initial="P"))
-    block_b = Seat(join_code="JOIN_B", block="BlockB", block_identifier="BlockB", role="student")
+    db.session.add(IdentityProfile(seat_id=block_a.id, profile_type='student_unclaimed', first_name="P", last_name="P"))
+    # TODO: block_b needs class_id set from the ClassEconomy for join_code JOIN_B
+    block_b = Seat(block="BlockB", block_identifier="BlockB", role="student")
     db.session.add(block_b)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=block_b.id, profile_type='student_unclaimed', first_name="P", last_initial="P"))
+    db.session.add(IdentityProfile(seat_id=block_b.id, profile_type='student_unclaimed', first_name="P", last_name="P"))
     db.session.add_all([block_a, block_b])
     db.session.commit()
     

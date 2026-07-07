@@ -11,7 +11,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timedelta, timezone
 from app import db
-from app.models import Seat, IdentityProfile, User, UserRole, Admin, StudentBlock, StudentTeacher, ClassEconomy, Transaction, PayrollSettings, RentSettings, AnalyticsAlert, FeatureSettings, ClassMembership, ClassMembershipRole
+from app.models import Seat, IdentityProfile, User, UserRole, Admin, ClassEconomy, Transaction, PayrollSettings, RentSettings, AnalyticsAlert, FeatureSettings
 from app.routes.analytics import get_pay_cycle_days, get_rent_cycle_days
 from app.utils.analytics_engine import AnalyticsEngine
 from tests.helpers.class_scope import make_student_identity
@@ -32,7 +32,6 @@ def setup_analytics_test(client):
         join_code=join_code,
         user_id=admin.id,
         status="active",
-        created_by_admin_id=admin.id,
     )
     db.session.add(class_row)
     db.session.flush()
@@ -54,29 +53,13 @@ def setup_analytics_test(client):
     students = []
     for i in range(5):
         student = make_student_identity(first_name=f"Student{i}", last_name="T", block=block, claimed=True)
-        db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=admin.id))
-        db.session.add(ClassMembership(
-            class_id=class_row.class_id,
-            join_code=join_code,
-            user_id=student.user_id,
-            role=ClassMembershipRole.STUDENT.value,
-        ))
         db.session.add(Seat(
             class_id=class_row.class_id,
-            join_code=join_code,
             user_id=student.user_id,
             role='student',
             block=block,
             block_identifier=block,
         ))
-        
-        # Link student to period
-        student_block = StudentBlock(
-            user_id=student.user_id,
-            period=block,
-            join_code=join_code
-        )
-        db.session.add(student_block)
         students.append(student)
     
     db.session.commit()
@@ -260,7 +243,6 @@ def test_multi_tenancy_scoping(client, setup_analytics_test):
         join_code=join_code2,
         user_id=admin.id,
         status="active",
-        created_by_admin_id=admin.id,
     )
     db.session.add(class_row2)
     db.session.flush()
@@ -275,7 +257,7 @@ def test_multi_tenancy_scoping(client, setup_analytics_test):
         is_active=True
     )
     db.session.add(payroll2)
-    _tb_seat = Seat(join_code=join_code2, block=block2, block_identifier=block2, role="student")
+    _tb_seat = Seat(class_id=class_row2.class_id, block=block2, block_identifier=block2, role="student")
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Seat", last_name="B"))
@@ -359,7 +341,6 @@ def test_analytics_pay_cycle_ignores_teacher_global_for_unscoped_join_code(clien
         join_code=join_code2,
         user_id=admin.id,
         status="active",
-        created_by_admin_id=admin.id,
     )
     db.session.add(class_row2)
     db.session.commit()
@@ -375,7 +356,6 @@ def test_analytics_rent_cycle_ignores_teacher_global_for_unscoped_join_code(clie
         join_code=join_code2,
         user_id=admin.id,
         status="active",
-        created_by_admin_id=admin.id,
     )
     db.session.add(class_row2)
     db.session.commit()

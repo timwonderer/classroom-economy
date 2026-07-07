@@ -9,7 +9,7 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.models import User, UserRole, Admin, Seat, IdentityProfile, StudentTeacher
+from app.models import User, UserRole, Admin, Seat, IdentityProfile
 
 
 def _create_admin(username: str) -> tuple[Admin, str]:
@@ -39,8 +39,7 @@ def _create_student(first_name: str, teacher: Admin, block: str = "A") -> Seat:
     )
     db.session.add(seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name=first_name, last_initial="A"))
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name=first_name, last_name="A"))
     db.session.commit()
     return seat
 

@@ -12,11 +12,10 @@ from datetime import datetime, timezone, timedelta
 from app.models import (
     User,
     UserRole,
-    Admin, HallPassLog, StudentTeacher
+    Admin, HallPassLog, ClassEconomy,
 )
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
-from app.models import ClassEconomy, ClassMembership
 
 
 @pytest.fixture
@@ -40,11 +39,6 @@ def setup_multi_teacher_hall_pass_history(client):
     db.session.add_all([student1, student2, student3, student4])
     db.session.flush()
 
-    # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
-    db.session.add(StudentTeacher(user_id=student1_user.id, teacher_id=teacher1.id))
-    db.session.add(StudentTeacher(user_id=student2_user.id, teacher_id=teacher1.id))
-    db.session.add(StudentTeacher(user_id=student3_user.id, teacher_id=teacher2.id))
-    db.session.add(StudentTeacher(user_id=student4_user.id, teacher_id=teacher2.id))
     db.session.commit()
 
     # Create Class Contexts
@@ -53,18 +47,10 @@ def setup_multi_teacher_hall_pass_history(client):
     join_code3 = "CLASS-C"
     join_code4 = "CLASS-D"
     db.session.add_all([
-        ClassEconomy(join_code=join_code1, user_id=teacher1.id, status="active", created_by_admin_id=teacher1.id),
-        ClassEconomy(join_code=join_code2, user_id=teacher1.id, status="active", created_by_admin_id=teacher1.id),
-        ClassEconomy(join_code=join_code3, user_id=teacher2.id, status="active", created_by_admin_id=teacher2.id),
-        ClassEconomy(join_code=join_code4, user_id=teacher2.id, status="active", created_by_admin_id=teacher2.id),
-        ClassMembership(join_code=join_code1, admin_id=teacher1.id, role="admin"),
-        ClassMembership(join_code=join_code2, admin_id=teacher1.id, role="admin"),
-        ClassMembership(join_code=join_code3, admin_id=teacher2.id, role="admin"),
-        ClassMembership(join_code=join_code4, admin_id=teacher2.id, role="admin"),
-        ClassMembership(join_code=join_code1, user_id=student1_user.id, role="student"),
-        ClassMembership(join_code=join_code2, user_id=student2_user.id, role="student"),
-        ClassMembership(join_code=join_code3, user_id=student3_user.id, role="student"),
-        ClassMembership(join_code=join_code4, user_id=student4_user.id, role="student"),
+        ClassEconomy(join_code=join_code1, user_id=teacher1.id, status="active"),
+        ClassEconomy(join_code=join_code2, user_id=teacher1.id, status="active"),
+        ClassEconomy(join_code=join_code3, user_id=teacher2.id, status="active"),
+        ClassEconomy(join_code=join_code4, user_id=teacher2.id, status="active"),
     ])
     db.session.flush()
 
@@ -210,11 +196,6 @@ def test_hall_pass_history_with_shared_student(client, setup_multi_teacher_hall_
     student1_id = data['student1'].id
     
     # Share student1 (originally teacher1's) with teacher2
-    shared_link = StudentTeacher(
-        student_id=student1_id,
-        teacher_id=teacher2_id
-    )
-    db.session.add(shared_link)
     db.session.commit()
     
     # Teacher1 should still see all their history including student1

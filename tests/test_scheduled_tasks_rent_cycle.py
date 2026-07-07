@@ -16,9 +16,9 @@ def _make_student() -> Seat:
     )
     db.session.add(student_user)
     db.session.flush()
+    # TODO: seat needs class_id set from the ClassEconomy for join_code RENTCYCLE1
     seat = Seat(
         user_id=student_user.id,
-        join_code="RENTCYCLE1",
         block="A",
         block_identifier="A",
         role="student",
@@ -27,7 +27,7 @@ def _make_student() -> Seat:
     )
     db.session.add(seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name="Rent", last_initial="R"))
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name="Rent", last_name="R"))
     return seat
 
 
@@ -41,14 +41,12 @@ def test_rent_cycle_idempotency_same_cycle(monkeypatch, app):
             join_code="RENTCYCLE1",
             user_id=admin.id,
             status="active",
-            created_by_admin_id=admin.id,
         )
         db.session.add(class_row)
         db.session.flush()
 
         seat = _make_student()
         seat.class_id = class_row.class_id
-        seat.join_code = class_row.join_code
         db.session.flush()
 
         configured_at = utc_now() - timedelta(days=60)
@@ -65,11 +63,13 @@ def test_rent_cycle_idempotency_same_cycle(monkeypatch, app):
         db.session.commit()
 
         def _fake_charge(*, seat, settings, class_id, execution_time, idempotency_key):
+            from app.models import ClassEconomy as _CE
+            _class_row = _CE.query.filter_by(class_id=class_id).first()
             payment = RentPayment(
                 student_id=seat.user_id,
                 seat_id=seat.id,
                 class_id=class_id,
-                join_code=seat.join_code,
+                join_code=_class_row.join_code if _class_row else None,
                 period=seat.block or "A",
                 amount_paid=settings.rent_amount,
                 coverage_start_time=execution_time,

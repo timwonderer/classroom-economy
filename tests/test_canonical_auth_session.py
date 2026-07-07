@@ -139,7 +139,7 @@ def test_student_login_verifies_user_pin_and_resolves_shadow_through_claimed_sea
     )
     db.session.add(teacher_user)
     db.session.flush()
-    class_row = ClassEconomy(join_code="CANON-STUDENT", user_id=teacher_user.id, display_name="Canonical")
+    class_row = ClassEconomy(user_id=teacher_user.id, display_name="Canonical")
     profile = IdentityProfile(profile_type="student", first_name="Canonical", last_name="S")
     db.session.add_all([class_row, profile])
     db.session.flush()
@@ -159,7 +159,6 @@ def test_student_login_verifies_user_pin_and_resolves_shadow_through_claimed_sea
     seat = Seat(
         user_id=user.id,
         class_id=class_row.class_id,
-        join_code=class_row.join_code,
         role="student",
         claimed_at=utc_now(),
     )
@@ -194,7 +193,7 @@ def test_student_login_missing_last_active_class_shows_selector(client, monkeypa
     )
     db.session.add(teacher_user)
     db.session.flush()
-    class_row = ClassEconomy(join_code="CANON-SELECT", user_id=teacher_user.id, display_name="Selector")
+    class_row = ClassEconomy(user_id=teacher_user.id, display_name="Selector")
     profile = IdentityProfile(profile_type="student", first_name="Select", last_name="A")
     db.session.add_all([class_row, profile])
     db.session.flush()
@@ -214,7 +213,6 @@ def test_student_login_missing_last_active_class_shows_selector(client, monkeypa
     seat = Seat(
         user_id=user.id,
         class_id=class_row.class_id,
-        join_code=class_row.join_code,
         role="student",
         claimed_at=utc_now(),
     )
@@ -252,7 +250,7 @@ def test_student_login_no_valid_class_seats_hard_fails(client, monkeypatch):
     )
     db.session.add(teacher_user)
     db.session.flush()
-    class_row = ClassEconomy(join_code="CANON-HARDFAIL", user_id=teacher_user.id, display_name="HardFail")
+    class_row = ClassEconomy(user_id=teacher_user.id, display_name="HardFail")
     profile = IdentityProfile(profile_type="student", first_name="Hard", last_name="F")
     db.session.add_all([class_row, profile])
     db.session.flush()
@@ -272,7 +270,6 @@ def test_student_login_no_valid_class_seats_hard_fails(client, monkeypatch):
     seat = Seat(
         user_id=user.id,
         class_id=class_row.class_id,
-        join_code=class_row.join_code,
         role="student",
         claimed_at=utc_now(),
     )

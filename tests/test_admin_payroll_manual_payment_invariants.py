@@ -28,7 +28,6 @@ def test_payroll_scope_missing_seat_id_raises_invariant(client):
 
     class_scope = create_class_scope(
         teacher=teacher,
-        join_code="NOSEAT",
         display_name="No Seat Class",
         create_teacher_membership=False,
     )
@@ -62,7 +61,6 @@ def test_payroll_scope_seat_not_found_raises_invariant(client):
 
     class_scope = create_class_scope(
         teacher=teacher,
-        join_code="INVSEAT",
         display_name="Invalid Seat Class",
         create_teacher_membership=False,
     )
@@ -91,8 +89,8 @@ def test_payroll_scope_seat_class_mismatch_raises_invariant(client):
     db.session.add(teacher)
     db.session.flush()
 
-    class_a = create_class_scope(teacher=teacher, join_code="MISM01", display_name="Class A")
-    class_b = create_class_scope(teacher=teacher, join_code="MISM02", display_name="Class B")
+    class_a = create_class_scope(teacher=teacher, display_name="Class A")
+    class_b = create_class_scope(teacher=teacher, display_name="Class B")
     db.session.commit()
 
     seat_a = Seat.query.filter_by(role='teacher', class_id=class_a.class_id).first()
@@ -121,13 +119,12 @@ def test_payroll_scope_student_seat_insufficient_authority(client):
     db.session.add(teacher)
     db.session.flush()
 
-    class_scope = create_class_scope(teacher=teacher, join_code="STUAUTH", display_name="Class A")
+    class_scope = create_class_scope(teacher=teacher, display_name="Class A")
 
     # Create a student seat in this class
     student_seat = Seat(
         class_id=class_scope.class_id,
         role='student',
-        join_code="STUAUTH",
     )
     db.session.add(student_seat)
     db.session.commit()
@@ -155,8 +152,8 @@ def test_payroll_scope_resolves_active_teacher_seat(client):
     db.session.add(teacher)
     db.session.flush()
 
-    class_a = create_class_scope(teacher=teacher, join_code="CLSA01", display_name="Class A")
-    class_b = create_class_scope(teacher=teacher, join_code="CLSB02", display_name="Class B")
+    class_a = create_class_scope(teacher=teacher, display_name="Class A")
+    class_b = create_class_scope(teacher=teacher, display_name="Class B")
 
     db.session.commit()
 
@@ -175,7 +172,6 @@ def test_payroll_scope_resolves_active_teacher_seat(client):
             class_id=class_a.class_id,
             seat_id=seat_a.id,
             role="teacher",
-            join_code="CLSA01",
         )
 
         # Call the helper

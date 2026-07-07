@@ -25,18 +25,16 @@ def test_class(test_teacher):
     from app.models import ClassEconomy
 
     class_economy = ClassEconomy(
-        class_id=str(uuid4()),
-        join_code=f"PAY{uuid4().hex[:6].upper()}",
-        teacher_id=test_teacher.id,
+        join_code=f"PAYT{test_teacher.id}",
+        user_id=test_teacher.id,
         display_name="Payroll Test Class",
-        created_by_admin_id=test_teacher.id,
     )
     db.session.add(class_economy)
     db.session.commit()
     return class_economy
 
 def test_calculate_payroll(client):
-    from app.models import AttendanceSession
+    from app.models import AttendanceSession, User, UserRole, IdentityProfile, Seat
     from tests.helpers.class_scope import create_class_scope
 
     # Create Teacher
@@ -50,7 +48,6 @@ def test_calculate_payroll(client):
 
     class_economy = create_class_scope(
         teacher=teacher,
-        join_code="JOIN123",
         student=student,
         block="A",
         display_name="A",
@@ -61,7 +58,7 @@ def test_calculate_payroll(client):
     student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    tb = Seat(user_id=student_user.id, class_id=class_economy.class_id, join_code="JOIN123", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    tb = Seat(user_id=student_user.id, class_id=class_economy.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Test", last_name="S"))
@@ -115,7 +112,6 @@ def test_calculate_payroll(client):
         amount=3,
         type="manual_payment",
         timestamp=manual_time,
-        join_code="JOIN123",
         class_id=class_economy.class_id,
         seat_id=seat.id,
     )
@@ -127,7 +123,7 @@ def test_calculate_payroll(client):
 
 
 def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
-    from app.models import AttendanceSession, Admin
+    from app.models import AttendanceSession, Admin, User, UserRole, IdentityProfile, Seat
     from tests.helpers.class_scope import create_class_scope
 
     teacher = make_admin("prof_multiclass", "s")
@@ -138,14 +134,12 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
     db.session.flush()
     class_a = create_class_scope(
         teacher=teacher,
-        join_code="PAYA01",
         student=student,
         block="A",
         display_name="A",
     )
     class_b = create_class_scope(
         teacher=teacher,
-        join_code="PAYB01",
         student=student,
         block="B",
         display_name="B",
@@ -156,7 +150,7 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
     student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    tb_a = Seat(user_id=student_user.id, class_id=class_a.class_id, join_code="PAYA01", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    tb_a = Seat(user_id=student_user.id, class_id=class_a.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(tb_a)
 
@@ -167,7 +161,7 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
     student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    tb_b = Seat(user_id=student_user.id, class_id=class_b.class_id, join_code="PAYB01", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    tb_b = Seat(user_id=student_user.id, class_id=class_b.class_id, block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb_b)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=tb_b.id, profile_type='student_claimed', first_name="Multi", last_name="S"))
@@ -210,7 +204,6 @@ def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
             amount=3,
             type="manual_payment",
             timestamp=now - timedelta(minutes=5),
-            join_code="PAYA01",
         ),
     ])
     db.session.commit()
@@ -409,7 +402,7 @@ def test_get_pay_rate_for_block_requires_class_scope(client):
 def test_get_cached_payroll_with_meta(client):
     """Test the caching logic for payroll."""
     from app.payroll import get_cached_payroll_with_meta
-    from app.models import Admin, Seat, IdentityProfile, AttendanceSession, PayrollCache
+    from app.models import Admin, Seat, IdentityProfile, AttendanceSession, PayrollCache, User, UserRole
     from tests.helpers.class_scope import create_class_scope
     from datetime import datetime, timedelta, timezone
 
@@ -423,7 +416,6 @@ def test_get_cached_payroll_with_meta(client):
     db.session.flush()
     class_economy = create_class_scope(
         teacher=teacher,
-        join_code="CACHE1",
         student=student,
         block="A",
         display_name="A",
@@ -435,7 +427,7 @@ def test_get_cached_payroll_with_meta(client):
     student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    tb = Seat(user_id=student_user.id, class_id=class_economy.class_id, join_code="CACHE1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    tb = Seat(user_id=student_user.id, class_id=class_economy.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(tb)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="CacheUser", last_name="T"))

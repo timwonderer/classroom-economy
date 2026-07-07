@@ -5,6 +5,8 @@
 **Scope:** Waves 1–8 (all code landed through Store domain)
 **Auditor:** Claude + Timothy
 
+> **2026-07-06 update:** `Seat.join_code` column has been fully removed (migration `1c6893a8b375`). All `Seat.join_code == join_code` violations listed in the register below have been resolved. The `ClassMembership` rows listed in the register are also resolved — `ClassMembership` is retired. Remaining violations in this register are for non-`Seat` models (`HallPassLog`, `RedemptionAuditLog`) which are separate remediation items.
+
 ---
 
 ## Audit Invariant

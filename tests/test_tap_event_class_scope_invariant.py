@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.extensions import db
-from app.models import ClassEconomy, ClassMembership, Seat, IdentityProfile, User, UserRole, StudentTeacher, TapEvent
+from app.models import ClassEconomy, Seat, IdentityProfile, User, UserRole, TapEvent
 from tests.helpers.v2_fixtures import make_admin
 from tests.helpers.class_scope import make_student_identity
 
@@ -17,19 +17,9 @@ def _setup_scoped_student(with_seat: bool = True):
         join_code="TINV01",
         user_id=teacher.id,
         status="active",
-        created_by_admin_id=teacher.id,
     )
     db.session.add(cls)
     db.session.flush()
-
-    db.session.add(
-        ClassMembership(
-            join_code=cls.join_code,
-            class_id=cls.class_id,
-            admin_id=teacher.id,
-            role="admin",
-        )
-    )
 
     profile = IdentityProfile(profile_type="student", first_name="Tap", last_name="I")
     db.session.add(profile)
@@ -42,16 +32,6 @@ def _setup_scoped_student(with_seat: bool = True):
     )
     db.session.add(student_user)
     db.session.flush()
-
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-    db.session.add(
-        ClassMembership(
-            join_code=cls.join_code,
-            class_id=cls.class_id,
-            user_id=student_user.id,
-            role="student",
-        )
-    )
 
     seat = None
     if with_seat:

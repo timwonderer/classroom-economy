@@ -5,7 +5,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 
 from app.extensions import db
-from app.models import Seat, IdentityProfile, User, UserRole, Admin, BankingSettings, ClassFeature, ClassEconomy, ClassMembership, FeatureSettings, RentSettings, StudentTeacher
+from app.models import Seat, IdentityProfile, User, UserRole, Admin, BankingSettings, ClassFeature, ClassEconomy, FeatureSettings, RentSettings
 from app.routes.student import (
     get_banking_settings_for_context,
     get_feature_settings_for_student,
@@ -22,24 +22,20 @@ def teacher_with_legacy_and_scoped_settings(client):
     db.session.flush()
 
     join_code = "FALL01"
-    economy = ClassEconomy(join_code=join_code, user_id=teacher.id, created_by_admin_id=teacher.id)
-    other_economy = ClassEconomy(join_code="FALL02", user_id=teacher.id, created_by_admin_id=teacher.id)
+    economy = ClassEconomy(user_id=teacher.id)
+    other_economy = ClassEconomy(user_id=teacher.id)
     db.session.add_all([economy, other_economy])
     db.session.flush()
-    db.session.add(ClassMembership(join_code=join_code, admin_id=teacher.id, role="admin"))
-    db.session.add(ClassMembership(join_code="FALL02", admin_id=teacher.id, role="admin"))
     student_user = User(username_hash="fallback_student_hash", username_lookup_hash="fallback_student_lookup", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    profile = IdentityProfile(profile_type='student', first_name="Fallback", last_initial="T")
+    profile = IdentityProfile(profile_type='student', first_name="Fallback", last_name="T")
     db.session.add(profile)
     db.session.flush()
-    _tb_seat = Seat(user_id=student_user.id, join_code=join_code, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    _tb_seat = Seat(user_id=student_user.id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     profile.seat_id = _tb_seat.id
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-
     # Banking is now strictly class-scoped; keep only an unrelated-class row.
     db.session.add(BankingSettings(
         class_id=other_economy.class_id,
@@ -144,7 +140,6 @@ def test_feature_settings_returns_defaults_without_scoped_row(client, teacher_wi
             class_id=data["class_id"],
             seat_id=data["student"].id,
             role="student",
-            join_code=data["join_code"],
         )
 
         result = get_feature_settings_for_student()
@@ -172,7 +167,6 @@ def test_feature_settings_returns_scoped_row(client, teacher_with_legacy_and_sco
             class_id=data["class_id"],
             seat_id=data["student"].id,
             role="student",
-            join_code=data["join_code"],
         )
 
         result = get_feature_settings_for_student()

@@ -439,7 +439,7 @@ def _handle_mismatched_admin_class_context():
             'endpoint': request.endpoint,
             'method': request.method,
             'path': request.path,
-            'session_join_code': _get_teacher_join_code(scoped_admin_id),
+            'session_join_code': _get_owner_user_join_code(scoped_admin_id),
             'requested_class_id': _get_requested_admin_class_id(),
         },
     )
@@ -582,7 +582,7 @@ def _get_admin_feature_name_for_path(path: str) -> str | None:
     return None
 
 
-def _get_teacher_join_code(admin_id: int | None) -> str | None:
+def _get_owner_user_join_code(admin_id: int | None) -> str | None:
     if not admin_id:
         return None
     current_class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or '').strip()
@@ -605,7 +605,7 @@ def get_admin_feature_settings_for_join_code(admin_id: int | None, join_code: st
     if not admin_id:
         return FeatureSettings.get_defaults()
 
-    resolved_join_code = (join_code or _get_teacher_join_code(admin_id) or '').strip()
+    resolved_join_code = (join_code or _get_owner_user_join_code(admin_id) or '').strip()
     if not resolved_join_code:
         return FeatureSettings.get_defaults()
 
@@ -1114,8 +1114,9 @@ def _require_payroll_feature_scope_from_request(
     # 5. Verify feature is enabled
     enabled = "payroll" in ClassFeature.enabled_names_for_class(resolved_class_id)
 
+    _class_row = ClassEconomy.query.filter_by(class_id=resolved_class_id).first()
     return {
-        'join_code': teacher_seat.join_code,
+        'join_code': _class_row.join_code if _class_row else None,
         'class_id': resolved_class_id,
         'block': resolved_block,
         'teacher_seat': teacher_seat,
@@ -1535,15 +1536,15 @@ def _get_admin_owned_join_codes(admin_id):
         return []
 
     return [
-        join_code
-        for (join_code,) in db.session.query(Seat.join_code)
-        .filter(
-            Seat.user_id == admin_id,
-            Seat.role == 'teacher',
+        jc
+        for (jc,) in (
+            db.session.query(ClassEconomy.join_code)
+            .join(Seat, Seat.class_id == ClassEconomy.class_id)
+            .filter(Seat.user_id == admin_id, Seat.role == 'teacher')
+            .distinct()
+            .all()
         )
-        .distinct()
-        .all()
-        if join_code
+        if jc
     ]
 
 
@@ -1716,7 +1717,6 @@ def _ensure_owner_user_student_seat(owner_user_id, join_code, block):
     if existing_seat:
         existing_seat.block_identifier = block
         existing_seat.block = block
-        existing_seat.join_code = join_code
         return
 
     first_name = "Teacher"
@@ -5727,16 +5727,16 @@ def store_management():
         class_sizes = {}
         class_size_query = (
             db.session.query(
-                Seat.join_code,
+                ClassEconomy.join_code,
                 db.func.count(db.func.distinct(Seat.id)).label('student_count')
             )
+            .join(Seat, Seat.class_id == ClassEconomy.class_id)
             .filter(
-                Seat.class_id == selected_scope['class_id'],
+                ClassEconomy.class_id == selected_scope['class_id'],
                 Seat.role == 'student',
                 Seat.claimed_at.isnot(None),
-                Seat.join_code.isnot(None),
             )
-            .group_by(Seat.join_code)
+            .group_by(ClassEconomy.join_code)
             .all()
         )
         class_sizes = {row.join_code: int(row.student_count or 0) for row in class_size_query}
@@ -6802,7 +6802,8 @@ def rent_settings():
             for info in classes_by_join_code.values()
         }
         for payment in payment_query:
-            payment_join = (payment.seat.join_code if payment.seat else '') or ''
+            _payment_class = ClassEconomy.query.filter_by(class_id=payment.seat.class_id).first() if payment.seat and payment.seat.class_id else None
+            payment_join = (_payment_class.join_code if _payment_class else '') or ''
             payment_join = payment_join.strip()
             payment_block = payment.seat.block_identifier if payment.seat and payment.seat.block_identifier else (payment.seat.block if payment.seat else '')
             coverage_label = "Unknown"
@@ -10013,9 +10014,9 @@ def export_class_roster():
 def export_students():
     """Export all student data to CSV."""
     admin_id = g.canonical_context.user_id
-    teacher_join_codes = _get_admin_owned_join_codes(admin_id)
-    selected_join_code = (_get_teacher_join_code(admin_id) or '').strip() or None
-    if selected_join_code and selected_join_code not in teacher_join_codes:
+    owner_user_join_codes = _get_admin_owned_join_codes(admin_id)
+    selected_join_code = (_get_owner_user_join_code(admin_id) or '').strip() or None
+    if selected_join_code and selected_join_code not in owner_user_join_codes:
         selected_join_code = None
     selected_class_id = None
     if selected_join_code:
@@ -10894,19 +10895,26 @@ def account_delete():
 @admin_bp.route('/help-support', methods=['GET', 'POST'])
 @admin_required
 def help_support():
-    """Teacher support center with direct ticket submission to sysadmin."""
+    """Owner-user support center with direct ticket submission to sysadmin."""
 
     admin_id = g.canonical_context.user_id
-    selected_join_code = (_get_teacher_join_code(admin_id) or '').strip()
+    selected_join_code = (_get_owner_user_join_code(admin_id) or '').strip()
 
-    teacher_class_rows = ClassEconomy.query.filter_by(user_id=admin_id).all()
+    owner_user_class_rows = (
+        ClassEconomy.query
+        .filter_by(user_id=admin_id)
+        .order_by(ClassEconomy.section.asc(), ClassEconomy.created_at.asc())
+        .all()
+    )
     class_scope_map = {}
-    for ce_row in teacher_class_rows:
+    class_id_by_join_code = {}
+    for ce_row in owner_user_class_rows:
         if ce_row.join_code and ce_row.join_code not in class_scope_map:
             class_scope_map[ce_row.join_code] = ce_row.display_name or ce_row.join_code
+            class_id_by_join_code[ce_row.join_code] = ce_row.class_id
 
     class_scope_options = [
-        {'join_code': join_code, 'label': label}
+        {'join_code': join_code, 'class_id': class_id_by_join_code.get(join_code), 'label': label}
         for join_code, label in sorted(class_scope_map.items(), key=lambda item: item[1] or item[0])
     ]
 
@@ -10916,9 +10924,9 @@ def help_support():
         'feature': 'suggestion',
     }
 
-    def _build_scope_metadata(join_code_value, class_label_value, category_value):
+    def _build_scope_metadata(class_id_value, join_code_value, class_label_value, category_value):
         return (
-            f"SUPPORT_SCOPE|join_code={join_code_value}|class_label={class_label_value}|category={category_value}"
+            f"SUPPORT_SCOPE|class_id={class_id_value}|join_code={join_code_value}|class_label={class_label_value}|category={category_value}"
         )
 
     def _parse_scope_metadata(raw_description):
@@ -10937,6 +10945,7 @@ def help_support():
 
         cleaned_body = body.strip() if body else raw_description
         return (
+            metadata.get('class_id'),
             metadata.get('join_code'),
             metadata.get('class_label'),
             metadata.get('category'),
@@ -10964,9 +10973,10 @@ def help_support():
         description = request.form.get('description', '').strip()
         expected_behavior = request.form.get('expected_behavior', '').strip()
         page_url = request.form.get('page_url', '').strip()
+        selected_class_id = class_id_by_join_code.get(selected_join_code)
         class_label = class_scope_map.get(selected_join_code)
 
-        if not selected_join_code or selected_join_code not in class_scope_map:
+        if not selected_join_code or selected_join_code not in class_scope_map or not selected_class_id:
             flash("Please select one of your classes before submitting a support ticket.", "error")
             return redirect(url_for('admin.help_support'))
 
@@ -11020,13 +11030,15 @@ def help_support():
                 form_page_url=page_url,
             )
         anonymous_code = generate_anonymous_code(f"admin:{admin_id}")
-        metadata_header = _build_scope_metadata(selected_join_code, class_label or 'Unknown', issue_category)
+        metadata_header = _build_scope_metadata(selected_class_id, selected_join_code, class_label or 'Unknown', issue_category)
         scoped_description = f"{metadata_header}\n\n{description}"
 
         try:
             report = UserReport(
                 anonymous_code=anonymous_code,
                 user_type='teacher',
+                class_id=selected_class_id,
+                join_code=selected_join_code,
                 report_type=category_to_report_type[issue_category],
                 title=title,
                 description=scoped_description,
@@ -11054,11 +11066,15 @@ def help_support():
     reports = my_reports_query.order_by(UserReport.submitted_at.desc()).limit(50).all()
     my_reports = []
     for report in reports:
-        scope_join_code, class_label, issue_category, clean_description = _parse_scope_metadata(report.description)
-        if selected_join_code and scope_join_code != selected_join_code:
+        scope_class_id, scope_join_code, class_label, issue_category, clean_description = _parse_scope_metadata(report.description)
+        if selected_class_id := class_id_by_join_code.get(selected_join_code):
+            if scope_class_id and scope_class_id != selected_class_id:
+                continue
+        elif selected_join_code and scope_join_code != selected_join_code:
             continue
         my_reports.append({
             'report': report,
+            'scope_class_id': scope_class_id,
             'scope_join_code': scope_join_code,
             'class_label': class_label,
             'issue_category': issue_category,

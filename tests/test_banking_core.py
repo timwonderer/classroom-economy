@@ -11,21 +11,21 @@ from app.utils.banking import settle_balances, settle_pending_transaction_contex
 
 
 def _attach_seat(student, teacher, join_code, block="A"):
-    economy = ClassEconomy(join_code=join_code, user_id=teacher.id, created_by_admin_id=teacher.id)
+    economy = ClassEconomy(user_id=teacher.id)
     db.session.add(economy)
     db.session.flush()
     # Auto-injected Canonical User
     student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    seat = Seat(user_id=student_user.id, class_id=economy.class_id, join_code=join_code, block=block, role="student")
+    seat = Seat(user_id=student_user.id, class_id=economy.class_id, block=block, role="student")
     db.session.add(seat)
     db.session.commit()
     return seat
 
 
 def _scope_for_student(student, join_code):
-    seat = Seat.query.filter_by(user_id=student_user.id, join_code=join_code).first()
+    seat = Seat.query.filter_by(user_id=student_user.id).first()
     assert seat is not None
     assert seat.class_id is not None
     return seat.class_id, seat.id
@@ -45,7 +45,6 @@ def test_ledger_flow(client):
     # 1. Create Transaction (PENDING)
     tx = Transaction(
         user_id=student_user.id,class_id=class_id,
-        join_code=join_code,
         amount=Decimal('10.50'),
         account_type='checking',
         status=TransactionStatus.PENDING,
@@ -73,7 +72,7 @@ def test_ledger_flow(client):
     assert tx.status == TransactionStatus.POSTED
     assert tx.posted_at is not None
     
-    cache = BalanceCache.query.filter_by(user_id=student_user.id, join_code=join_code).first()
+    cache = BalanceCache.query.filter_by(user_id=student_user.id).first()
     assert cache is not None
     assert cache.posted_checking_balance_cents == 1050
     assert cache.last_settlement_at is not None
@@ -92,7 +91,6 @@ def test_void_pending(client):
     # 1. Create PENDING
     tx = Transaction(
         user_id=student_user.id,class_id=class_id,
-        join_code=join_code,
         amount=Decimal('50.00'),
         status=TransactionStatus.PENDING
     )
@@ -125,7 +123,7 @@ def test_void_pending(client):
     assert tx.voided_at is not None
     
     # Verify Cache state (should be 0)
-    cache = BalanceCache.query.filter_by(user_id=student_user.id, join_code=join_code).first()
+    cache = BalanceCache.query.filter_by(user_id=student_user.id).first()
     # Cache might exist if get_checking_balance triggered settlement (which creates it if missing)
     if cache:
         assert cache.posted_checking_balance_cents == 0
@@ -144,7 +142,6 @@ def test_void_posted_with_reversal(client):
     # 1. Create PENDING then Settle -> POSTED
     tx = Transaction(
         user_id=student_user.id,class_id=class_id,
-        join_code=join_code,
         amount=Decimal('100.00'),
         status=TransactionStatus.PENDING
     )
@@ -168,7 +165,6 @@ def test_void_posted_with_reversal(client):
     
     reversal = Transaction(
         user_id=student_user.id,class_id=class_id,
-        join_code=join_code,
         amount=-tx.amount,
         status=TransactionStatus.PENDING,
         original_transaction_id=tx.id
@@ -190,7 +186,7 @@ def test_void_posted_with_reversal(client):
     reversal = db.session.get(Transaction, reversal.id)
     assert reversal.status == TransactionStatus.POSTED
     
-    cache = BalanceCache.query.filter_by(user_id=student_user.id, join_code=join_code).first()
+    cache = BalanceCache.query.filter_by(user_id=student_user.id).first()
     # Cache should be updated: 100 + (-100) = 0
     assert cache.posted_checking_balance_cents == 0
 
@@ -209,7 +205,6 @@ def test_settlement_sweep_processes_each_pending_context_once(client):
     db.session.add_all([
         Transaction(
             user_id=student_one_user.id,class_id=class_id_one,
-            join_code="SWEEP-A",
             amount=Decimal('12.34'),
             account_type='checking',
             status=TransactionStatus.PENDING,
@@ -218,7 +213,6 @@ def test_settlement_sweep_processes_each_pending_context_once(client):
         ),
         Transaction(
             user_id=student_one_user.id,class_id=class_id_one,
-            join_code="SWEEP-A",
             amount=Decimal('1.66'),
             account_type='savings',
             status=TransactionStatus.PENDING,
@@ -227,7 +221,6 @@ def test_settlement_sweep_processes_each_pending_context_once(client):
         ),
         Transaction(
             user_id=student_two_user.id,class_id=class_id_two,
-            join_code="SWEEP-B",
             amount=Decimal('9.99'),
             account_type='checking',
             status=TransactionStatus.PENDING,
@@ -249,8 +242,8 @@ def test_settlement_sweep_processes_each_pending_context_once(client):
     assert posted_statuses[(student_one.id, "SWEEP-A", "savings")] == TransactionStatus.POSTED
     assert posted_statuses[(student_two.id, "SWEEP-B", "checking")] == TransactionStatus.POSTED
 
-    cache_one = BalanceCache.query.filter_by(user_id=student_one_user.id, join_code="SWEEP-A").first()
-    cache_two = BalanceCache.query.filter_by(user_id=student_two_user.id, join_code="SWEEP-B").first()
+    cache_one = BalanceCache.query.filter_by(user_id=student_one_user.id).first()
+    cache_two = BalanceCache.query.filter_by(user_id=student_two_user.id).first()
     assert cache_one.posted_checking_balance_cents == 1234
     assert cache_one.posted_savings_balance_cents == 166
     assert cache_two.posted_checking_balance_cents == 999

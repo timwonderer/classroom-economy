@@ -4,7 +4,7 @@ from tests.helpers.class_scope import make_student_identity
 import uuid
 from datetime import datetime, timedelta, timezone
 from app import db
-from app.models import User, UserRole, Admin, AttendanceSession, Seat, IdentityProfile, StudentTeacher, PayrollSettings, Transaction
+from app.models import User, UserRole, Admin, AttendanceSession, Seat, IdentityProfile, PayrollSettings, Transaction
 from app.payroll import calculate_payroll_breakdown
 from tests.helpers.class_scope import create_class_scope
 
@@ -24,9 +24,7 @@ def test_shared_student_diff_teacher_diff_period(client):
     student = make_student_identity(block="P1,P2", first_name="ScenarioA", last_name="S")
     db.session.commit()
 
-    # Links & canonical class scopes
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=t1.id))
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=t2.id))
+    # Canonical class scopes
     class_1 = create_class_scope(
         teacher=t1,
         join_code="JC1",
@@ -48,8 +46,8 @@ def test_shared_student_diff_teacher_diff_period(client):
         create_seat=True,
     )
     db.session.flush()
-    seat_1 = Seat.query.filter_by(user_id=student_user.id, class_id=class_1.class_id).first()
-    seat_2 = Seat.query.filter_by(user_id=student_user.id, class_id=class_2.class_id).first()
+    seat_1 = Seat.query.filter_by(user_id=student.user_id, class_id=class_1.class_id).first()
+    seat_2 = Seat.query.filter_by(user_id=student.user_id, class_id=class_2.class_id).first()
     assert seat_1 is not None
     assert seat_2 is not None
     
@@ -105,8 +103,7 @@ def test_same_teacher_same_block_diff_context(client):
     student = make_student_identity(block="P1", first_name="ScenarioB", last_name="S")
     db.session.commit()
 
-    # Links & canonical class scopes
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=t1.id))
+    # Canonical class scopes
     class_1 = create_class_scope(
         teacher=t1,
         join_code="JC1",
@@ -128,8 +125,8 @@ def test_same_teacher_same_block_diff_context(client):
         create_seat=True,
     )
     db.session.flush()
-    seat_1 = Seat.query.filter_by(user_id=student_user.id, class_id=class_1.class_id).first()
-    seat_2 = Seat.query.filter_by(user_id=student_user.id, class_id=class_2.class_id).first()
+    seat_1 = Seat.query.filter_by(user_id=student.user_id, class_id=class_1.class_id).first()
+    seat_2 = Seat.query.filter_by(user_id=student.user_id, class_id=class_2.class_id).first()
     assert seat_1 is not None
     assert seat_2 is not None
     
@@ -192,22 +189,22 @@ def test_balance_separation_by_join_code(client):
         create_seat=True,
     )
     db.session.commit()
-    seat_1 = Seat.query.filter_by(user_id=student_user.id, join_code='JC1').first()
-    seat_2 = Seat.query.filter_by(user_id=student_user.id, join_code='JC2').first()
+    seat_1 = Seat.query.filter_by(user_id=student.user_id, join_code='JC1').first()
+    seat_2 = Seat.query.filter_by(user_id=student.user_id, join_code='JC2').first()
     assert seat_1 is not None
     assert seat_2 is not None
 
     # 2. Add Transactions for JC1
     # Checking: +100
     # Savings: +50
-    db.session.add(Transaction(user_id=student_user.id, seat_id=seat_1.id, amount=100, account_type='checking', type='deposit', join_code='JC1',))
-    db.session.add(Transaction(user_id=student_user.id, seat_id=seat_1.id, amount=50, account_type='savings', type='deposit', join_code='JC1',))
+    db.session.add(Transaction(user_id=student.user_id, seat_id=seat_1.id, amount=100, account_type='checking', type='deposit', join_code='JC1',))
+    db.session.add(Transaction(user_id=student.user_id, seat_id=seat_1.id, amount=50, account_type='savings', type='deposit', join_code='JC1',))
     
     # 3. Add Transactions for JC2
     # Checking: +200
     # Savings: +100
-    db.session.add(Transaction(user_id=student_user.id, seat_id=seat_2.id, amount=200, account_type='checking', type='deposit', join_code='JC2',))
-    db.session.add(Transaction(user_id=student_user.id, seat_id=seat_2.id, amount=100, account_type='savings', type='deposit', join_code='JC2',))
+    db.session.add(Transaction(user_id=student.user_id, seat_id=seat_2.id, amount=200, account_type='checking', type='deposit', join_code='JC2',))
+    db.session.add(Transaction(user_id=student.user_id, seat_id=seat_2.id, amount=100, account_type='savings', type='deposit', join_code='JC2',))
     
     db.session.commit()
 

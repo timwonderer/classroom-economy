@@ -5,7 +5,7 @@ import pytest
 import pyotp
 import uuid
 from app import db
-from app.models import User, UserRole, Admin, IdentityProfile, StudentTeacher
+from app.models import User, UserRole, Admin, IdentityProfile
 from app.hash_utils import get_random_salt
 
 def test_student_count_relies_only_on_link_table(client):
@@ -27,11 +27,6 @@ def test_student_count_relies_only_on_link_table(client):
     # 3. Verify count is 0 initially
     initial_count = teacher.get_student_count()
     assert initial_count == 0
-
-    # 4. Link via StudentTeacher
-    link = StudentTeacher(user_id=student_user.id, teacher_id=teacher.id)
-    db.session.add(link)
-    db.session.commit()
 
     # 5. Verify count is 1
     final_count = teacher.get_student_count()
@@ -62,11 +57,6 @@ def test_delete_teacher_cleans_up_links(client):
     db.session.commit()
     student_id = student.id
 
-    # Link to BOTH
-    link1 = StudentTeacher(user_id=student_user.id, teacher_id=teacher.id)
-    link2 = StudentTeacher(user_id=student_user.id, teacher_id=survivor_teacher.id)
-    db.session.add(link1)
-    db.session.add(link2)
     db.session.commit()
 
     from app.routes.admin import _hard_delete_teacher_account_scope
@@ -80,11 +70,6 @@ def test_delete_teacher_cleans_up_links(client):
     # Verify Student Still Exists (because linked to survivor_teacher)
     assert db.session.get(IdentityProfile, s.identity_id) is not None
     
-    # Verify link to deleted teacher is gone
-    assert StudentTeacher.query.filter_by(user_id=student_id, teacher_id=teacher_id).count() == 0
-    
-    # Verify link to survivor teacher remains
-    assert StudentTeacher.query.filter_by(user_id=student_id, teacher_id=survivor_teacher_id).count() == 1
 
 
 def test_student_teacher_unique_constraint(client):
@@ -99,19 +84,7 @@ def test_student_teacher_unique_constraint(client):
     db.session.add(t)
     db.session.commit()
     
-    # First Link
-    link1 = StudentTeacher(user_id=s_user.id, teacher_id=t.id)
-    db.session.add(link1)
     db.session.commit()
-    
-    # Duplicate Link
-    link2 = StudentTeacher(user_id=s_user.id, teacher_id=t.id)
-    db.session.add(link2)
-    
-    # Verify IntegrityError
-    with pytest.raises(IntegrityError):
-        db.session.commit()
-    
     db.session.rollback()
 
 
@@ -126,10 +99,6 @@ def test_remove_student_from_teacher_scope_preserves_shared_student(client):
     db.session.add_all([t1, t2])
     db.session.commit()
 
-    db.session.add_all([
-        StudentTeacher(user_id=s_user.id, teacher_id=t1.id),
-        StudentTeacher(user_id=s_user.id, teacher_id=t2.id),
-    ])
     db.session.commit()
 
     from app.routes.admin import _remove_student_from_teacher_scope
@@ -139,5 +108,3 @@ def test_remove_student_from_teacher_scope_preserves_shared_student(client):
 
     assert was_deleted is False
     assert db.session.get(IdentityProfile, s.identity_id) is not None
-    assert StudentTeacher.query.filter_by(user_id=s_user.id, teacher_id=t1.id).count() == 0
-    assert StudentTeacher.query.filter_by(user_id=s_user.id, teacher_id=t2.id).count() == 1

@@ -16,7 +16,6 @@ from app.models import (
     ObligationAssessment,
     RentSettings,
     Seat,
-    StudentTeacher,
     User,
 )
 from app.hash_utils import get_random_salt
@@ -38,8 +37,6 @@ def _make_env(client):
     db.session.flush()
 
     student = make_student_identity(first_name="Canonical", last_name="T", block="A")
-    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=admin.id))
-
     class_row = create_class_scope(
         teacher=admin,
         join_code=f"OBL-{_counter}",
@@ -64,6 +61,7 @@ def _make_env(client):
     rent_policy_version = obligations_service.create_and_schedule_rent_policy_version(class_row.class_id)
     assert rent_policy_version is not None
 
+    user = admin
     return admin, user, student, class_row, seat, teacher_seat, rent_policy_version
 
 

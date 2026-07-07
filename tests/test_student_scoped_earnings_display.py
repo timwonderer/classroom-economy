@@ -3,19 +3,19 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import User, UserRole, Admin, IdentityProfile, StudentTeacher, Transaction, TransactionStatus
+from app.models import User, UserRole, Admin, IdentityProfile, Seat, Transaction, TransactionStatus
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.class_scope import make_student_identity
 
 
 def _login_student(client, student_id, join_code):
+    from app.models import ClassEconomy
     with client.session_transaction() as sess:
-        seat = StudentTeacher.query.filter_by(user_id=student_id).first()
-        if seat:
-            student_seat = Seat.query.filter_by(user_id=student_id, join_code=join_code).first()
-            if student_seat:
-                set_canonical_context(
+        class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+        student_seat = Seat.query.filter_by(user_id=student_id, class_id=class_row.class_id if class_row else None).first()
+        if student_seat:
+            set_canonical_context(
                     sess,
                     user_id=student_id,
                     class_id=student_seat.class_id,
@@ -36,12 +36,16 @@ def _build_multi_class_student():
     db.session.flush()
     student = make_student_identity(first_name="Scope", last_name="T", block="A, B", claimed=True, profile_type="student_claimed")
 
-    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=teacher.id))
     class_a = create_class_scope(teacher=teacher, join_code="STUDSC1", student=student, block="A", display_name="A")
     class_b = create_class_scope(teacher=teacher, join_code="STUDSC2", student=student, block="B", display_name="B")
+    seat_a = Seat.query.filter_by(class_id=class_a.class_id, user_id=student.user_id).first()
+    seat_b = Seat.query.filter_by(class_id=class_b.class_id, user_id=student.user_id).first()
     db.session.add_all([
         Transaction(
-            user_id=student.user_id,join_code="STUDSC1",
+            seat_id=seat_a.id,
+            user_id=student.user_id,
+            join_code="STUDSC1",
+            class_id=class_a.class_id,
             amount=Decimal("10.00"),
             account_type="checking",
             status=TransactionStatus.PENDING,
@@ -49,7 +53,10 @@ def _build_multi_class_student():
             description="Class A earnings",
         ),
         Transaction(
-            user_id=student.user_id,join_code="STUDSC2",
+            seat_id=seat_b.id,
+            user_id=student.user_id,
+            join_code="STUDSC2",
+            class_id=class_b.class_id,
             amount=Decimal("200.00"),
             account_type="checking",
             status=TransactionStatus.PENDING,

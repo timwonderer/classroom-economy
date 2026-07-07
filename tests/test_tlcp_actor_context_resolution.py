@@ -22,7 +22,7 @@ def test_resolve_actor_context_student_session(app):
     )
     db.session.add(teacher_user)
     db.session.flush()
-    class_row = ClassEconomy(join_code="TLCP-STUDENT", user_id=teacher_user.id)
+    class_row = ClassEconomy(user_id=teacher_user.id)
     db.session.add(class_row)
     db.session.flush()
     student_user = User(
@@ -34,7 +34,6 @@ def test_resolve_actor_context_student_session(app):
     db.session.flush()
     seat = make_student_identity(
         class_id=class_row.class_id,
-        join_code=class_row.join_code,
         block="A",
         user_id=student_user.id,
         first_name="TLCP",
@@ -52,7 +51,6 @@ def test_resolve_actor_context_student_session(app):
             class_id=class_id,
             seat_id=seat.id,
             role="student",
-            join_code=class_row.join_code,
         )
 
         canonical_context = resolve_canonical_context()
@@ -77,13 +75,12 @@ def test_resolve_actor_context_admin_session(app):
     )
     db.session.add(user)
     db.session.flush()
-    class_row = ClassEconomy(join_code="TLCP-ADMIN", user_id=user.id)
+    class_row = ClassEconomy(user_id=user.id)
     db.session.add(class_row)
     db.session.flush()
     teacher_seat = Seat(
         user_id=user.id,
         class_id=class_row.class_id,
-        join_code=class_row.join_code,
         role="teacher",
     )
     db.session.add(teacher_seat)

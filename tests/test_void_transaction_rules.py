@@ -35,10 +35,10 @@ def _build_teacher_student(join_code='VOID123'):
     db.session.add(teacher_user)
     db.session.flush()
 
-    economy = ClassEconomy(join_code=join_code, user_id=teacher_user.id)
+    economy = ClassEconomy(user_id=teacher_user.id)
     db.session.add(economy)
     db.session.flush()
-    teacher_seat = Seat(user_id=teacher_user.id, class_id=economy.class_id, join_code=join_code, block='A', role="teacher", claimed_at=datetime.now(timezone.utc))
+    teacher_seat = Seat(user_id=teacher_user.id, class_id=economy.class_id, block='A', role="teacher", claimed_at=datetime.now(timezone.utc))
     db.session.add(teacher_seat)
     db.session.flush()
 
@@ -51,7 +51,7 @@ def _build_teacher_student(join_code='VOID123'):
     db.session.add(student_user)
     db.session.flush()
 
-    _tb_seat = Seat(user_id=student_user.id, class_id=economy.class_id, join_code=join_code, block='A', role="student", claimed_at=datetime.now(timezone.utc))
+    _tb_seat = Seat(user_id=student_user.id, class_id=economy.class_id, block='A', role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     
@@ -70,14 +70,13 @@ def test_void_delayed_purchase_removes_item_and_refunds(client):
 
     print('SEAT ID:', student_user.last_active_seat_id); delayed_item = StoreItem(
         user_id=teacher_user.id,
-        join_code='VOIDDLY1',
         name='Delayed Reward',
         price=Decimal('25.00'),
         item_type='delayed',
         is_active=True,
     )
     db.session.add(delayed_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id, join_code='VOIDDLY1',
+    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
         amount=Decimal('100.00'),
         account_type='checking',
         type='deposit',
@@ -138,14 +137,13 @@ def test_duplicate_purchase_submission_with_same_client_token_is_idempotent(clie
 
     print('SEAT ID:', student_user.last_active_seat_id); delayed_item = StoreItem(
         user_id=teacher_user.id,
-        join_code='VOIDIDEMP1',
         name='Notebook',
         price=Decimal('25.00'),
         item_type='delayed',
         is_active=True,
     )
     db.session.add(delayed_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id, join_code='VOIDIDEMP1',
+    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
         amount=Decimal('100.00'),
         account_type='checking',
         type='deposit',
@@ -184,14 +182,13 @@ def test_purchase_rejects_non_numeric_quantity_with_400(client):
 
     print('SEAT ID:', student_user.last_active_seat_id); delayed_item = StoreItem(
         user_id=teacher_user.id,
-        join_code='VOIDBADQ1',
         name='Marker',
         price=Decimal('5.00'),
         item_type='delayed',
         is_active=True,
     )
     db.session.add(delayed_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id, join_code='VOIDBADQ1',
+    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
         amount=Decimal('20.00'),
         account_type='checking',
         type='deposit',
@@ -215,14 +212,13 @@ def test_purchase_rejects_oversized_client_purchase_id_with_400(client):
 
     print('SEAT ID:', student_user.last_active_seat_id); delayed_item = StoreItem(
         user_id=teacher_user.id,
-        join_code='VOIDLONG1',
         name='Folder',
         price=Decimal('5.00'),
         item_type='delayed',
         is_active=True,
     )
     db.session.add(delayed_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id, join_code='VOIDLONG1',
+    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
         amount=Decimal('20.00'),
         account_type='checking',
         type='deposit',
@@ -247,14 +243,13 @@ def test_void_immediate_purchase_is_not_allowed(client):
 
     immediate_item = StoreItem(
         user_id=teacher_user.id,
-        join_code='VOIDIMM1',
         name='Immediate Reward',
         price=Decimal('15.00'),
         item_type='immediate',
         is_active=True,
     )
     db.session.add(immediate_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id, join_code='VOIDIMM1',
+    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
         amount=Decimal('100.00'),
         account_type='checking',
         type='deposit',
@@ -295,14 +290,13 @@ def test_void_delayed_purchase_after_redemption_request_is_not_allowed(client):
 
     print('SEAT ID:', student_user.last_active_seat_id); delayed_item = StoreItem(
         user_id=teacher_user.id,
-        join_code='VOIDUSE1',
         name='Delayed Use Reward',
         price=Decimal('20.00'),
         item_type='delayed',
         is_active=True,
     )
     db.session.add(delayed_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id, join_code='VOIDUSE1',
+    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
         amount=Decimal('100.00'),
         account_type='checking',
         type='deposit',
@@ -355,14 +349,13 @@ def test_void_already_voided_transaction_is_rejected(client):
 
     print('SEAT ID:', student_user.last_active_seat_id); delayed_item = StoreItem(
         user_id=teacher_user.id,
-        join_code='VOIDDBL1',
         name='Double Void Item',
         price=Decimal('10.00'),
         item_type='delayed',
         is_active=True,
     )
     db.session.add(delayed_item)
-    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id, join_code='VOIDDBL1',
+    db.session.add(Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
         amount=Decimal('100.00'),
         account_type='checking',
         type='deposit',
@@ -413,7 +406,7 @@ def test_void_already_voided_transaction_is_rejected(client):
 def test_void_rent_payment_reverts_bill_to_unpaid(client):
     teacher_user, student_user = _build_teacher_student('VOIDRNT1')
 
-    rent_tx = Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id, join_code='VOIDRNT1',
+    rent_tx = Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
         amount=Decimal('-30.00'),
         account_type='checking',
         type='Rent Payment',
@@ -425,7 +418,6 @@ def test_void_rent_payment_reverts_bill_to_unpaid(client):
     rent_payment = RentPayment(
         seat_id=student_user.last_active_seat_id,
         period='A',
-        join_code='VOIDRNT1',
         amount_paid=Decimal('30.00'),
         period_month=1,
         period_year=2026,
@@ -469,14 +461,13 @@ def test_void_insurance_premium_marks_enrollment_unpaid(client):
         seat_id=student_user.last_active_seat_id,
         class_id=student_user.last_active_class_id,
         policy_id=policy.id,
-        join_code='VOIDINS1',
         status='active',
         payment_current=True,
         days_unpaid=0,
     )
     db.session.add(enrollment)
 
-    insurance_tx = Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id, join_code='VOIDINS1',
+    insurance_tx = Transaction(seat_id=student_user.last_active_seat_id, class_id=student_user.last_active_class_id,
         amount=Decimal('-12.00'),
         account_type='checking',
         type='insurance_premium',

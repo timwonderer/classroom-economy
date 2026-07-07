@@ -740,10 +740,10 @@ def create_app():
             current_class_label = (
                 current_class_row.display_name
                 if current_class_row and current_class_row.display_name
-                else current_seat.join_code
+                else (current_class_row.join_code if current_class_row else None)
             )
             available_classes = [{
-                'join_code': current_seat.join_code,
+                'join_code': current_class_row.join_code if current_class_row else None,
                 'class_id': getattr(current_class_row, 'class_id', None),
                 'class_identifier': current_class_label,
                 'class_timezone': getattr(current_class_row, 'class_timezone', None),
@@ -754,7 +754,7 @@ def create_app():
                 'is_current': True,
             }]
             current_class_context = {
-                'join_code': current_seat.join_code,
+                'join_code': current_class_row.join_code if current_class_row else None,
                 'class_id': getattr(current_class_row, 'class_id', None),
                 'class_identifier': current_class_label,
                 'class_timezone': getattr(current_class_row, 'class_timezone', None),

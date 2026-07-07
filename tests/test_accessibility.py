@@ -160,7 +160,7 @@ def test_docs_page_accessibility(client):
 from datetime import datetime, timezone
 from tests.helpers.canonical_session import set_canonical_context
 from app.extensions import db
-from app.models import Admin, StudentTeacher, ClassEconomy, ClassMembership, Seat, IdentityProfile, RentSettings, User, TeacherOnboarding
+from app.models import Admin, ClassEconomy, Seat, IdentityProfile, RentSettings, User, TeacherOnboarding
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.v2_fixtures import make_admin
 from app.hash_utils import hash_username
@@ -176,7 +176,7 @@ def auth_student_context(app, client):
         db.session.add(teacher)
         db.session.flush()
 
-        profile = IdentityProfile(profile_type="student", first_name="Accessibility", last_initial="S")
+        profile = IdentityProfile(profile_type="student", first_name="Accessibility", last_name="S")
         db.session.add(profile)
         db.session.flush()
 

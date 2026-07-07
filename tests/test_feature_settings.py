@@ -29,7 +29,6 @@ def _create_class_scope(admin, block='A', join_code='JOIN_A'):
     db.session.flush()
     db.session.add(Seat(
         class_id=economy.class_id,
-        join_code=join_code,
         block=block,
         block_identifier=block,
         role='student',
@@ -197,7 +196,6 @@ class TestClassFeatures:
         teacher_seat = Seat(
             class_id=economy_b.class_id,
             user_id=test_admin.user_id,
-            join_code=economy_b.join_code,
             role='teacher',
             block='B',
             block_identifier='B',
@@ -436,8 +434,8 @@ class TestTeacherDeletionCascade:
             db.session.add(ClassEconomy(class_id='TEST456', join_code='TEST456', user_id=teacher_id, created_by_user_id=teacher_id, display_name='Class TEST456'))
         db.session.commit()
 
-        block1 = Seat(class_id='TEST123', join_code='TEST123', block='A', block_identifier='A', role='student')
-        block2 = Seat(class_id='TEST456', join_code='TEST456', block='B', block_identifier='B', role='student')
+        block1 = Seat(class_id='TEST123', block='A', block_identifier='A', role='student')
+        block2 = Seat(class_id='TEST456', block='B', block_identifier='B', role='student')
         db.session.add(block1)
         db.session.add(block2)
         db.session.commit()

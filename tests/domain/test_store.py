@@ -170,7 +170,6 @@ def store_test_setup(app):
         economy = ClassEconomy(
             class_id=class_id,
             user_id=user.id,
-            join_code=join_code,
             display_name="Test Class",
         )
         db.session.add(economy)
@@ -179,7 +178,6 @@ def store_test_setup(app):
         seat = Seat(
             class_id=class_id,
             user_id=user.id,
-            join_code=join_code,
         )
         db.session.add(seat)
         db.session.flush()
@@ -187,7 +185,6 @@ def store_test_setup(app):
         item = StoreItem(
             user_id=user.id,
             class_id=class_id,
-            join_code=join_code,
             name="Test Reward",
             price=Decimal("10.00"),
             item_type="delayed",
@@ -306,7 +303,7 @@ class TestStoreVisibilityBehavior:
             other_user = User(user_role=UserRole.STUDENT, username_hash=h2, username_lookup_hash=lh2)
             db.session.add(other_user)
             db.session.flush()
-            other_seat = Seat(class_id=ctx["class_id"], user_id=other_user.id, join_code=ctx["join_code"])
+            other_seat = Seat(class_id=ctx["class_id"], user_id=other_user.id)
             db.session.add(other_seat)
             db.session.flush()
 

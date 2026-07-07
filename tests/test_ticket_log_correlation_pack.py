@@ -13,7 +13,15 @@ def _create_student_issue_context():
     db.session.add(admin)
     db.session.flush()
 
-    join_code = ClassEconomy(join_code="TLCP-JOIN", user_id=admin.id)
+    teacher_user = User(
+        username_hash=f"tlcp_{admin.id}_{User.query.count()}",
+        username_lookup_hash=f"tlcpl_{admin.id}",
+        user_role=UserRole.TEACHER,
+    )
+    db.session.add(teacher_user)
+    db.session.flush()
+
+    join_code = ClassEconomy(join_code="TLCP-JOIN", user_id=teacher_user.id)
     db.session.add(join_code)
     db.session.flush()
 

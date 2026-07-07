@@ -26,31 +26,27 @@ def _make_class_id():
     return str(uuid.uuid4())
 
 
-def _make_admin():
-    """Create a minimal Admin row and return it (does not commit)."""
-    from app.models import User, UserRole, Admin
-    from app.utils.auth_username import build_hashed_username_fields
+def _make_user():
+    """Create a minimal User row (teacher role) and return it (does not commit)."""
+    from app.models import User, UserRole
 
-    username = f"auditteacher_{uuid.uuid4().hex[:8]}"
-    salt, username_hash, username_lookup_hash = build_hashed_username_fields(username)
-    admin = Admin(
-        username_hash=username_hash,
-        username_lookup_hash=username_lookup_hash,
-        salt=salt,
-        totp_secret=pyotp.random_base32(),
+    user = User(
+        username_hash=f"auditu_{uuid.uuid4().hex[:12]}",
+        username_lookup_hash=f"auditlup_{uuid.uuid4().hex[:12]}",
+        user_role=UserRole.TEACHER,
     )
-    db.session.add(admin)
+    db.session.add(user)
     db.session.flush()
-    return admin
+    return user
 
 
-def _make_class(teacher_id):
+def _make_class(user_id):
     """Create a minimal ClassEconomy row and return it (does not commit)."""
     from app.models import ClassEconomy
 
     class_id = _make_class_id()
     join_code = f"AUD{uuid.uuid4().hex[:5].upper()}"
-    ce = ClassEconomy(class_id=class_id, join_code=join_code, user_id=teacher_id)
+    ce = ClassEconomy(class_id=class_id, join_code=join_code, user_id=user_id)
     db.session.add(ce)
     db.session.flush()
     return ce
@@ -60,7 +56,7 @@ def _make_seat(class_id, join_code):
     """Create a minimal Seat row and return it (does not commit)."""
     from app.models import Seat
 
-    seat = Seat(class_id=class_id, join_code=join_code)
+    seat = Seat(class_id=class_id)
     db.session.add(seat)
     db.session.flush()
     return seat
@@ -247,8 +243,8 @@ def test_protected_write_attaches_lineage_token(app):
     with app.app_context():
         from app.services.ledger_service import create_pending_transaction
 
-        admin = _make_admin()
-        ce = _make_class(admin.id)
+        teacher_user = _make_user()
+        ce = _make_class(teacher_user.id)
         seat = _make_seat(ce.class_id, ce.join_code)
 
         txn = create_pending_transaction(

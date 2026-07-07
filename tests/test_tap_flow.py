@@ -25,11 +25,9 @@ def create_claimed_seat(teacher_id, student_id, block, join_code, salt=None, use
     class_economy = ClassEconomy.query.filter_by(join_code=join_code).first()
     if not class_economy:
         class_economy = ClassEconomy(
-            join_code=join_code,
             user_id=teacher_id,
             display_name=f"Class {join_code}",
             status="active",
-            created_by_admin_id=teacher_id,
         )
         db.session.add(class_economy)
         db.session.flush()
@@ -55,20 +53,19 @@ def create_claimed_seat(teacher_id, student_id, block, join_code, salt=None, use
     elif not identity_user.last_active_class_id:
         identity_user.last_active_class_id = class_economy.class_id
 
-    tb = Seat(user_id=identity_user.id, class_id=class_economy.class_id, join_code=join_code, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
+    tb = Seat(user_id=identity_user.id, class_id=class_economy.class_id, block=block, block_identifier=block, role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(tb)
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Test", last_initial="S"))
+    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Test", last_name="S"))
     db.session.add(tb)
     db.session.flush()
 
     db.session.add(Seat(
         user_id=identity_user.id,
         class_id=class_economy.class_id,
-        join_code=join_code,
         block=block,
         block_identifier=block,
         role="student",
@@ -77,7 +74,7 @@ def create_claimed_seat(teacher_id, student_id, block, join_code, salt=None, use
     return tb
 
 def test_dynamic_blocks_and_tap_flow(client):
-    from app.models import Admin, StudentTeacher
+    from app.models import Admin
     import pyotp
 
     # Create a teacher and link the student
@@ -89,9 +86,6 @@ def test_dynamic_blocks_and_tap_flow(client):
     username = "t1"
     stu = make_student_identity(block="A,C", first_name="Test", last_name="S")
 
-    # Link student to teacher via StudentTeacher
-    st = StudentTeacher(user_id=stu.user_id, teacher_id=teacher.id)
-    db.session.add(st)
 
     # Create TeacherBlocks for the student (required for join_code context)
     create_claimed_seat(teacher.id, stu.id, "A", "JOIN-A", username=username, pin="0000")
@@ -126,7 +120,7 @@ def test_dynamic_blocks_and_tap_flow(client):
     assert '"A":{"active":false,"done":true' in dash_html2
 
 def test_invalid_period_and_action(client):
-    from app.models import Admin, StudentTeacher
+    from app.models import Admin
     import pyotp
 
     # Create dummy teacher
@@ -138,7 +132,6 @@ def test_invalid_period_and_action(client):
     username = "t2"
     stu = make_student_identity(block="A", first_name="Test", last_name="S")
 
-    db.session.add(StudentTeacher(user_id=stu.user_id, teacher_id=teacher.id))
 
     # Create TeacherBlock
     create_claimed_seat(teacher.id, stu.id, "A", "JOIN-T2", username=username, pin="0000")
@@ -156,7 +149,7 @@ def test_invalid_period_and_action(client):
     assert 'error' in resp.json
 
 def test_server_state_json(client):
-    from app.models import Admin, StudentTeacher
+    from app.models import Admin
     import pyotp
 
     # Create a teacher and link the student
@@ -169,9 +162,6 @@ def test_server_state_json(client):
     username = "t3"
     stu = make_student_identity(block="A", first_name="Test", last_name="S")
 
-    # Link student to teacher via StudentTeacher
-    st = StudentTeacher(user_id=stu.user_id, teacher_id=teacher.id)
-    db.session.add(st)
 
     # Create TeacherBlock
     create_claimed_seat(teacher.id, stu.id, "A", "JOIN-A", username=username, pin="0000")
@@ -208,11 +198,9 @@ def test_auto_tapout_noops_without_canonical_seat_scope(client):
     db.session.flush()
 
     class_economy = ClassEconomy(
-        join_code="LEGACY_JOIN",
         user_id=teacher.id,
         display_name="Legacy Class",
         status="active",
-        created_by_admin_id=teacher.id,
     )
     db.session.add(class_economy)
     db.session.flush()
@@ -230,9 +218,6 @@ def test_auto_tapout_noops_without_canonical_seat_scope(client):
     stu = make_student_identity(block="A", first_name="Legacy", last_name="T")
     
     # Link to teacher
-    from app.models import StudentTeacher
-    st = StudentTeacher(user_id=stu.user_id, teacher_id=teacher.id)
-    db.session.add(st)
     db.session.commit()
 
     # No canonical seat/class context exists for this student; function should no-op.
@@ -241,7 +226,7 @@ def test_auto_tapout_noops_without_canonical_seat_scope(client):
 
 def test_student_status_get_is_read_only_and_reconcile_is_explicit_mutation(client, monkeypatch):
     from datetime import datetime, timezone
-    from app.models import Admin, StudentTeacher, ClassEconomy, Seat
+    from app.models import Admin, ClassEconomy, Seat
     import pyotp
     from app.routes import api as api_routes
 
@@ -252,7 +237,6 @@ def test_student_status_get_is_read_only_and_reconcile_is_explicit_mutation(clie
     username = "status_student"
     stu = make_student_identity(block="A", first_name="Status", last_name="R")
 
-    db.session.add(StudentTeacher(user_id=stu.user_id, teacher_id=teacher.id))
     create_claimed_seat(teacher.id, stu.id, "A", "JOIN-A", username=username, pin="0000")
     db.session.commit()
     class_row = ClassEconomy.query.filter_by(join_code="JOIN-A").first()
@@ -270,7 +254,6 @@ def test_student_status_get_is_read_only_and_reconcile_is_explicit_mutation(clie
             class_id=class_row.class_id,
             seat_id=seat.id,
             role="student",
-            join_code="JOIN-A",
         )
 
     called = {"count": 0}

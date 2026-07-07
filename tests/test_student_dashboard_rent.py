@@ -24,20 +24,20 @@ def test_dashboard_handles_rent_with_multi_block_student(client):
     )
     db.session.add(student_user)
     db.session.flush()
-    profile = IdentityProfile(profile_type='student', first_name="Rent", last_initial="R")
+    profile = IdentityProfile(profile_type='student', first_name="Rent", last_name="R")
     db.session.add(profile)
     db.session.flush()
-    seat_a = Seat(user_id=student_user.id, join_code="JOINA", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_a = Seat(user_id=student_user.id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(seat_a)
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=seat_a.id, profile_type='student_claimed', first_name="Rent", last_initial="R"))
-    seat_b = Seat(user_id=student_user.id, join_code="JOINB", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(IdentityProfile(seat_id=seat_a.id, profile_type='student_claimed', first_name="Rent", last_name="R"))
+    seat_b = Seat(user_id=student_user.id, block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat_b)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type='student_claimed', first_name="Rent", last_initial="R"))
+    db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type='student_claimed', first_name="Rent", last_name="R"))
     profile.seat_id = seat_a.id
 
     rent_settings = RentSettings(is_enabled=True,
@@ -54,7 +54,6 @@ def test_dashboard_handles_rent_with_multi_block_student(client):
             class_id=seat_b.class_id,
             seat_id=seat_b.id,
             role="student",
-            join_code="JOINB",
         )
 
     response = client.get('/student/dashboard')

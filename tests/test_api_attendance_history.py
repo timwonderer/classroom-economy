@@ -6,7 +6,7 @@ from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone, timedelta
 from app import app, db
-from app.models import Admin, AttendanceSession, AttendanceReasonCode, StudentTeacher, ClassEconomy, ClassMembership, Seat
+from app.models import Admin, AttendanceSession, AttendanceReasonCode, ClassEconomy, Seat
 from app.hash_utils import hash_username, get_random_salt
 from werkzeug.security import generate_password_hash
 from tests.helpers.canonical_session import set_canonical_context
@@ -34,28 +34,21 @@ def admin_with_students(client):
     # Create seat-owned student identity for this admin
     student = make_student_identity(block='A', first_name='Test', last_name='S')
 
-    # CRITICAL FIX: Create StudentTeacher association for multi-tenancy
     class_row = ClassEconomy(
-        join_code="ATTEND_A",
         user_id=admin.id,
         status="active",
-        created_by_admin_id=admin.id,
     )
     db.session.add(class_row)
     db.session.flush()
-    db.session.add(ClassMembership(class_id=class_row.class_id, admin_id=admin.id, role="admin"))
     teacher_seat = Seat(
         user_id=user.id,
         class_id=class_row.class_id,
-        join_code=class_row.join_code,
         role="teacher",
         block="A",
         block_identifier="A",
     )
     db.session.add(teacher_seat)
     seat = student
-    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=admin.id))
-
     # Create some tap events for this student
     now_utc = datetime.now(timezone.utc)
     
@@ -106,7 +99,6 @@ def test_attendance_history_returns_records(client, admin_with_students):
             class_id=admin_with_students['class_id'],
             seat_id=admin_with_students['seat'].id,
             role="teacher",
-            join_code=admin_with_students['join_code'],
         )
     
     # Call the API endpoint
@@ -144,7 +136,6 @@ def test_attendance_history_with_date_filters(client, admin_with_students):
             class_id=admin_with_students['class_id'],
             seat_id=admin_with_students['seat'].id,
             role="teacher",
-            join_code=admin_with_students['join_code'],
         )
     
     # Use the tap event date to avoid timezone-boundary flakiness.
@@ -207,20 +198,12 @@ def test_attendance_history_tenant_scoping(client):
     db.session.add_all([student1, student2])
     db.session.flush()
 
-    # CRITICAL FIX: Create StudentTeacher associations for multi-tenancy
-    db.session.add(StudentTeacher(user_id=student1_user.id, teacher_id=admin1.id))
-    db.session.add(StudentTeacher(user_id=student2_user.id, teacher_id=admin2.id))
-    db.session.flush()
-    class1 = ClassEconomy(join_code="ATTEND_1", user_id=admin1.id, status="active", created_by_admin_id=admin1.id)
-    class2 = ClassEconomy(join_code="ATTEND_2", user_id=admin2.id, status="active", created_by_admin_id=admin2.id)
+    class1 = ClassEconomy(user_id=admin1.id, status="active")
+    class2 = ClassEconomy(user_id=admin2.id, status="active")
     db.session.add_all([class1, class2])
     db.session.flush()
-    db.session.add_all([
-        ClassMembership(class_id=class1.class_id, admin_id=admin1.id, role="admin"),
-        ClassMembership(class_id=class2.class_id, admin_id=admin2.id, role="admin"),
-    ])
-    seat1 = Seat(user_id=student1_user.id, class_id=class1.class_id, join_code=class1.join_code, block="A", role="student")
-    seat2 = Seat(user_id=student2_user.id, class_id=class2.class_id, join_code=class2.join_code, block="B", role="student")
+    seat1 = Seat(user_id=student1_user.id, class_id=class1.class_id, block="A", role="student")
+    seat2 = Seat(user_id=student2_user.id, class_id=class2.class_id, block="B", role="student")
     db.session.add_all([seat1, seat2])
     db.session.flush()
 
@@ -248,7 +231,6 @@ def test_attendance_history_tenant_scoping(client):
             class_id=class1.class_id,
             seat_id=seat1.id,
             role="teacher",
-            join_code=class1.join_code,
         )
         sess['admin_id'] = admin1.id
     
@@ -291,7 +273,6 @@ def test_attendance_history_excludes_deleted_records(client, admin_with_students
             class_id=admin_with_students['class_id'],
             seat_id=admin_with_students['teacher_seat'].id,
             role="teacher",
-            join_code=admin_with_students['join_code'],
         )
         sess['admin_id'] = admin.id
     
@@ -347,7 +328,6 @@ def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_
             class_id=admin_with_students['class_id'],
             seat_id=admin_with_students['teacher_seat'].id,
             role="teacher",
-            join_code=admin_with_students['join_code'],
         )
         sess['admin_id'] = admin.id
 

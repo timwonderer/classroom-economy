@@ -46,7 +46,7 @@ def _scope_from_runtime_seat(*, actor, selected_class_id: str | None) -> Scope |
     _store_session_class_context(class_id=class_row.class_id, join_code=None)
     return Scope(
         class_id=class_row.class_id,
-        join_code=current_seat.join_code,
+        join_code=class_row.join_code,
         actor_id=actor.id,
         role="student",
         user_id=class_row.user_id,
@@ -89,7 +89,7 @@ def resolve_student_class_switch_scope(*, actor, class_id: str) -> ResolvedStude
 
     scope = Scope(
         class_id=class_row.class_id,
-        join_code=seat.join_code,
+        join_code=class_row.join_code,
         actor_id=actor.id,
         role="student",
         user_id=class_row.user_id,
@@ -206,7 +206,7 @@ def resolve_scope(*, actor, selected_join_code: str | None = None, actor_role: s
 
     return Scope(
         class_id=class_row.class_id,
-        join_code=active_seat.join_code,
+        join_code=class_row.join_code,
         actor_id=actor.id,
         role="student",
         user_id=class_row.user_id,

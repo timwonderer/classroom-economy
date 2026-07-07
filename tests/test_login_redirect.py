@@ -13,7 +13,7 @@ def test_student_login_next_redirect(client):
     db.session.add(admin)
     db.session.flush()
     class_row = ClassEconomy(join_code="LOGIN-REDIRECT", user_id=admin.id, display_name="Login")
-    profile = IdentityProfile(profile_type="student", first_name="Stu", last_initial="S")
+    profile = IdentityProfile(profile_type="student", first_name="Stu", last_name="S")
     db.session.add_all([class_row, profile])
     db.session.flush()
     user = User(

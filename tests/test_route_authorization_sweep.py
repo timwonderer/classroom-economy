@@ -4,7 +4,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from tests.helpers.class_scope import make_student_identity
 import pytest
 from app.extensions import db
-from app.models import User, UserRole, Admin, ClassEconomy, ClassMembership, Transaction, TransactionStatus, StoreItem, StudentItem, IssueCategory, Issue, Seat, ClassFeature, IdentityProfile
+from app.models import User, UserRole, Admin, ClassEconomy, Transaction, TransactionStatus, StoreItem, StudentItem, IssueCategory, Issue, Seat, ClassFeature, IdentityProfile
 from tests.helpers.canonical_session import set_canonical_context
 
 def _login_admin(client, admin_id):
@@ -36,24 +36,21 @@ def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_clas
     student_a = make_student_identity(block="A", first_name="Alpha", last_name="A")
     student_b = make_student_identity(block="B", first_name="Bravo", last_name="B")
 
-    class_a = ClassEconomy(join_code="HPASS01", user_id=admin.id, status="active", created_by_admin_id=admin.id)
-    class_b = ClassEconomy(join_code="HPASS02", user_id=admin.id, status="active", created_by_admin_id=admin.id)
-    class_other = ClassEconomy(join_code="HPASS99", user_id=other_admin.id, status="active", created_by_admin_id=other_admin.id)
+    class_a = ClassEconomy(user_id=admin.id, status="active")
+    class_b = ClassEconomy(user_id=admin.id, status="active")
+    class_other = ClassEconomy(user_id=other_admin.id, status="active")
     db.session.add_all([class_a, class_b, class_other])
     db.session.flush()
     # Auto-injected Canonical User
     student_a_user = User(username_hash=f"auto_{student_a.id}", username_lookup_hash=f"auto_l_{student_a.id}", user_role=UserRole.STUDENT)
     db.session.add(student_a_user)
     db.session.flush()
-    teacher_seat_a = Seat(class_id=class_a.class_id, join_code="HPASS01", role="teacher")
-    teacher_seat_b = Seat(class_id=class_b.class_id, join_code="HPASS02", role="teacher")
+    teacher_seat_a = Seat(class_id=class_a.class_id, role="teacher")
+    teacher_seat_b = Seat(class_id=class_b.class_id, role="teacher")
     db.session.add_all([
         teacher_seat_a,
         teacher_seat_b,
-        Seat(class_id=class_other.class_id, join_code="HPASS99", role="teacher"),
-        ClassMembership(join_code="HPASS01", admin_id=admin.id, role="admin"),
-        ClassMembership(join_code="HPASS02", admin_id=admin.id, role="admin"),
-        ClassMembership(join_code="HPASS99", admin_id=other_admin.id, role="admin"),
+        Seat(class_id=class_other.class_id, role="teacher"),
     ])
 
     from app.models import HallPassLog
@@ -65,7 +62,6 @@ def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_clas
             status="left",
             period="A",
             class_id=class_a.class_id,
-            join_code="HPASS01",
             left_time=now,
             request_time=now,
         ),
@@ -75,7 +71,6 @@ def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_clas
             status="returned",
             period="B",
             class_id=class_b.class_id,
-            join_code="HPASS02",
             left_time=now - timedelta(minutes=2),
             return_time=now - timedelta(minutes=1),
             request_time=now - timedelta(minutes=3),
@@ -86,7 +81,6 @@ def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_clas
             status="left",
             period="A",
             class_id=class_other.class_id,
-            join_code="HPASS99",
             left_time=now - timedelta(minutes=4),
             request_time=now - timedelta(minutes=4),
         ),
@@ -125,10 +119,9 @@ def test_approve_redemption_requires_membership(client):
 
     student = make_student_identity(block="A", first_name="Redeem", last_name="S")
 
-    db.session.add(ClassEconomy(join_code="REDEEM1", user_id=admin_owner.id, status="active", created_by_admin_id=admin_owner.id))
+    db.session.add(ClassEconomy(user_id=admin_owner.id, status="active"))
     db.session.flush()
     class_row = ClassEconomy.query.filter_by(join_code="REDEEM1").first()
-    db.session.add(ClassMembership(class_id=class_row.class_id, admin_id=admin_owner.id, role="admin"))
     # Intruder has NO membership
     
     # Create Item and StudentItem
@@ -136,7 +129,7 @@ def test_approve_redemption_requires_membership(client):
     student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    seat = Seat(user_id=student_user.id, class_id=class_row.class_id, join_code=class_row.join_code, block="A", role="student")
+    seat = Seat(user_id=student_user.id, class_id=class_row.class_id, block="A", role="student")
     db.session.add(seat)
     db.session.flush()
     item = StoreItem(name="Prize", price=10, user_id=admin_owner.id, class_id=class_row.class_id, is_active=True)
@@ -148,9 +141,7 @@ def test_approve_redemption_requires_membership(client):
         seat_id=seat.id,
         class_id=class_row.class_id,
         store_item_id=item.id,
-        status="processing",
-        join_code="REDEEM1"
-    )
+        status="processing")
     db.session.add(student_item)
     db.session.commit()
 
@@ -177,12 +168,8 @@ def test_file_claim_scoped_to_class(client):
 
     # Class A and Class B
     db.session.add_all([
-        ClassEconomy(join_code="CLAIM_A", user_id=admin.id, status="active", created_by_admin_id=admin.id),
-        ClassEconomy(join_code="CLAIM_B", user_id=admin.id, status="active", created_by_admin_id=admin.id),
-        ClassMembership(join_code="CLAIM_A", admin_id=admin.id, role="admin"),
-        ClassMembership(join_code="CLAIM_B", admin_id=admin.id, role="admin"),
-        ClassMembership(join_code="CLAIM_A", user_id=student_user.id, role="student"),
-        ClassMembership(join_code="CLAIM_B", user_id=student_user.id, role="student"),
+        ClassEconomy(user_id=admin.id, status="active"),
+        ClassEconomy(user_id=admin.id, status="active"),
     ])
     db.session.flush()
 
@@ -196,12 +183,12 @@ def test_file_claim_scoped_to_class(client):
     student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, join_code="CLAIM_A", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     # Auto-injected Canonical User
     student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, join_code="CLAIM_B", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add_all([seat_a, seat_b])
     db.session.flush()
     db.session.add_all([
@@ -221,7 +208,6 @@ def test_file_claim_scoped_to_class(client):
         # deductible=0,
         # coverage_percent=100,
         claim_type="transaction_monetary",
-        join_code="CLAIM_A",
         is_active=True
     )
     db.session.add(policy_a)
@@ -234,16 +220,14 @@ def test_file_claim_scoped_to_class(client):
         seat_id=seat.id,
         class_id=seat.class_id,
         status="active",
-        coverage_start_date=datetime.now(timezone.utc) - timedelta(days=1),
-        join_code="CLAIM_A"
-    )
+        coverage_start_date=datetime.now(timezone.utc) - timedelta(days=1))
     db.session.add(enrollment)
 
     # Transaction in Class B (should NOT be claimable under Policy A)
     tx_b = Transaction(
         user_id=student_user.id,
         seat_id=seat_b.id,
-        class_id=class_b.class_id,join_code="CLAIM_B",
+        class_id=class_b.class_id,
         amount=-50,
         status=TransactionStatus.POSTED,
         type="fine",
@@ -254,7 +238,7 @@ def test_file_claim_scoped_to_class(client):
     tx_a = Transaction(
         user_id=student_user.id,
         seat_id=seat_a.id,
-        class_id=class_a.class_id,join_code="CLAIM_A",
+        class_id=class_a.class_id,
         amount=-50,
         status=TransactionStatus.POSTED,
         type="fine",
@@ -275,7 +259,6 @@ def test_file_claim_scoped_to_class(client):
             class_id=class_a.class_id,
             seat_id=class_seat.id,
             role="student",
-            join_code="CLAIM_A",
         )
     
     # 1. Try to claim Class B transaction on Policy A

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from decimal import Decimal
 
 from app.extensions import db
-from app.models import _quantize_currency
+from app.models import ClassEconomy, _quantize_currency
 from app.services import access_policy_service, identity_service, ledger_service, obligations_service, store_service
 from app.utils.time import utc_now
 
@@ -45,8 +45,9 @@ def execute_rent_payment(
     """Obligations-led FEAT for rent payment orchestration."""
     now = now or utc_now()
     user_id = getattr(context, "user_id", None)
-    join_code = seat.join_code
     class_id = seat.class_id
+    class_economy = ClassEconomy.query.filter_by(class_id=class_id).first()
+    join_code = class_economy.join_code if class_economy else None
 
     # Resolve the immutable policy version governing this cycle
     active_version = obligations_service.resolve_active_rent_policy_version(class_id)

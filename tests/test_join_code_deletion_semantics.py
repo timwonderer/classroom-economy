@@ -3,7 +3,7 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.models import Seat, User, UserRole, Admin, ClassMembership, StudentTeacher, Transaction, StoreItem, StoreItemBlock, StudentItem, IssueCategory, Issue
+from app.models import Seat, User, UserRole, Admin, Transaction, StoreItem, StoreItemBlock, StudentItem, IssueCategory, Issue
 from app.hash_utils import get_random_salt, hash_hmac
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.class_scope import make_student_identity
@@ -19,7 +19,6 @@ def _create_admin(username: str) -> tuple[Admin, str]:
 
 def _create_student(teacher: Admin, first_name: str, block: str, join_code: str):
     seat = make_student_identity(first_name=first_name, last_name=first_name[0].upper(), block=block, join_code=join_code)
-    db.session.add(StudentTeacher(user_id=seat.user_id, teacher_id=teacher.id))
     db.session.commit()
     return seat
 
@@ -42,7 +41,9 @@ def test_delete_student_removes_transactions(client):
     student = _create_student(teacher, "Alice", "A", "ARCHIVE1")
 
     tx = Transaction(
-        user_id=student.user_id,join_code="ARCHIVE1",
+        seat_id=student.id,
+        user_id=student.user_id,
+        join_code="ARCHIVE1",
         amount=50,
         account_type="checking",
         description="Seed ledger entry",
@@ -80,7 +81,9 @@ def test_deactivate_item_does_not_delete_transactions(client):
     db.session.add(StoreItemBlock(store_item_id=item.id, block="A"))
 
     tx = Transaction(
-        user_id=student.user_id,join_code="ITEMJC1",
+        seat_id=student.id,
+        user_id=student.user_id,
+        join_code="ITEMJC1",
         amount=-10,
         account_type="checking",
         type="purchase",
@@ -104,8 +107,8 @@ def test_delete_join_code_removes_only_scoped_records(client):
     student_a = _create_student(teacher, "Cara", "A", "JCDEL1")
     student_b = _create_student(teacher, "Dylan", "B", "JCKEEP2")
 
-    tx_a = Transaction(user_id=student_a_user.id,join_code="JCDEL1", amount=20, account_type="checking")
-    tx_b = Transaction(user_id=student_b_user.id,join_code="JCKEEP2", amount=30, account_type="checking")
+    tx_a = Transaction(seat_id=student_a.id, user_id=student_a.user_id, join_code="JCDEL1", amount=20, account_type="checking")
+    tx_b = Transaction(seat_id=student_b.id, user_id=student_b.user_id, join_code="JCKEEP2", amount=30, account_type="checking")
     db.session.add_all([tx_a, tx_b])
     db.session.flush()
 
@@ -118,7 +121,7 @@ def test_delete_join_code_removes_only_scoped_records(client):
     db.session.flush()
 
     issue = Issue(
-        user_id=student_a_user.id,
+        user_id=student_a.user_id,
         actor_public_id="seat-public-join-delete",
         teacher_id=teacher.id,
         join_code="JCDEL1",
@@ -151,7 +154,7 @@ def test_delete_join_code_removes_only_scoped_records(client):
     ])
     db.session.flush()
 
-    purchase = StudentItem(correlation_id='corr_test', user_id=student_a_user.id, store_item_id=item_a.id, join_code="JCDEL1", status="purchased")
+    purchase = StudentItem(correlation_id='corr_test', user_id=student_a.user_id, store_item_id=item_a.id, join_code="JCDEL1", status="purchased")
     db.session.add(purchase)
     db.session.commit()
 

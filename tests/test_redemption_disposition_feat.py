@@ -21,7 +21,6 @@ from app.feats.base import FEATBypass
 from app.models import (
     Admin,
     ClassEconomy,
-    ClassMembership,
     IdentityProfile,
     RedemptionAuditAction,
     RedemptionAuditLog,
@@ -79,14 +78,9 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
             join_code=join_code,
             user_id=admin.id,
             status="active",
-            created_by_admin_id=admin.id,
         )
         db.session.add(economy)
         db.session.flush()
-        db.session.add(
-            ClassMembership(class_id=economy.class_id, admin_id=admin.id, role="admin")
-        )
-
         seat = Seat(
             user_id=student_user.id,
             class_id=economy.class_id,

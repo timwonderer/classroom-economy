@@ -7,7 +7,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import uuid
 
 from app.extensions import db
-from app.models import User, UserRole, Admin, ClassMembership, StoreItem, StoreItemBlock, StudentItem, StudentTeacher, Transaction, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, StoreItem, StoreItemBlock, StudentItem, Transaction, Seat, IdentityProfile
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -35,20 +35,14 @@ def _login_admin(client, admin_id):
 def _create_student(teacher, first_name, join_code, block='A'):
     student = make_student_identity(block=block, first_name=first_name, last_name='S', join_code=join_code)
     student.passphrase_hash = generate_password_hash('password')
-    if not db.session.query(ClassMembership.id).filter_by(
+    create_class_scope(
+        teacher=teacher,
         join_code=join_code,
-        admin_id=teacher.id,
-        role='admin',
-    ).first():
-        create_class_scope(
-            teacher=teacher,
-            join_code=join_code,
-            student=student,
-            block=block,
-            display_name=block,
-        )
-        db.session.flush()
-    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=teacher.id))
+        student=student,
+        block=block,
+        display_name=block,
+    )
+    db.session.flush()
     db.session.add(Transaction(
         user_id=student.user_id,join_code=join_code,
         amount=Decimal('100.00'),
@@ -491,7 +485,8 @@ def test_whole_class_goal_with_duplicate_seats_shows_correct_roster(client):
     student_a1_user = User(username_hash=f"auto_{student_a1.id}", username_lookup_hash=f"auto_l_{student_a1.id}", user_role=UserRole.STUDENT)
     db.session.add(student_a1_user)
     db.session.flush()
-    _tb_seat = Seat(user_id=student_a1_user.id, join_code='JOINDUP', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
+    # TODO: _tb_seat needs class_id set from the ClassEconomy for join_code JOINDUP
+    _tb_seat = Seat(user_id=student_a1_user.id, block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Laura', last_name='S'))

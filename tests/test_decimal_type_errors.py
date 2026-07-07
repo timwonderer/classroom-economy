@@ -16,7 +16,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from app.models import (
-    Admin, Transaction, StudentBlock, RentSettings, RentPayment, BankingSettings, Seat, User, UserRole, _quantize_currency
+    Admin, Transaction, RentSettings, RentPayment, BankingSettings, Seat, User, UserRole, _quantize_currency
 )
 from app.extensions import db
 from tests.helpers.class_scope import create_class_scope
@@ -44,7 +44,6 @@ class TestDecimalTypeErrors:
         # Build the canonical v2 class fixture; it returns the class_id we scope against.
         class_scope = create_class_scope(
             teacher=teacher,
-            join_code='RENT-DECIMAL',
             block='A',
             display_name='A',
             create_claimed_teacher_block=True,
@@ -111,7 +110,6 @@ class TestDecimalTypeErrors:
         join_code = 'EARNINGS_TEST'
         class_scope = create_class_scope(
             teacher=teacher,
-            join_code=join_code,
             student=student,
             block='A',
             display_name='A',
@@ -119,7 +117,7 @@ class TestDecimalTypeErrors:
             teacher_block_claimed=False,
         )
 
-        seat = Seat.query.filter_by(class_id=class_scope.class_id, join_code=join_code, role="student").first()
+        seat = Seat.query.filter_by(class_id=class_scope.class_id, role="student").first()
         assert seat is not None
 
         # Add various transaction types to test edge cases
@@ -240,7 +238,6 @@ class TestDecimalTypeErrors:
         # Build the canonical v2 class fixture; it returns the class_id we scope against.
         class_scope = create_class_scope(
             teacher=teacher,
-            join_code='RENT-REGRESSION',
             block='A',
             display_name='A',
             create_claimed_teacher_block=True,
@@ -309,7 +306,6 @@ class TestDecimalTypeErrors:
 
         class_scope = create_class_scope(
             teacher=teacher,
-            join_code=join_code,
             student=student,
             block='A',
             display_name='Interest Test Class',
@@ -317,7 +313,7 @@ class TestDecimalTypeErrors:
             teacher_block_claimed=False,
         )
 
-        seat = Seat.query.filter_by(class_id=class_scope.class_id, join_code='INTEREST_TEST', role='student').first()
+        seat = Seat.query.filter_by(class_id=class_scope.class_id, role='student').first()
         assert seat is not None
 
         # Add a savings deposit from 31+ days ago (eligible for interest)
@@ -372,8 +368,6 @@ class TestDecimalTypeErrors:
         # Interest should have been calculated (may or may not be > 0 depending on settings)
         assert interest_tx is not None or student.get_savings_balance(class_id=class_scope.class_id, seat_id=seat.id) == Decimal('100.00')
 
-    @pytest.mark.regression
-    @pytest.mark.xfail(reason="Student insurance claim route is not reachable in the current v2 smoke setup", strict=False)
     def test_file_claim_period_cap_no_prior_payouts_no_type_error(self, client, app):
         """
         Regression test for TypeError in file_claim when max_payout_per_period is set
@@ -387,7 +381,7 @@ class TestDecimalTypeErrors:
         Fix: Use Decimal('0.00') as the fallback when scalar() returns None.
         """
         from app.models import (
-            Admin, StudentTeacher, InsurancePolicy, InsuranceEnrollment,
+            Admin, InsurancePolicy, InsuranceEnrollment,
         )
         from tests.helpers.class_scope import create_class_scope
 
@@ -403,16 +397,10 @@ class TestDecimalTypeErrors:
             block='A',
         )
 
-        # Associate student with teacher
-        st = StudentTeacher(user_id=student.user_id, teacher_id=teacher.id)
-        db.session.add(st)
-        db.session.flush()
-
         # Create policy with max_payout_per_period set (triggers the Decimal path)
         policy = InsurancePolicy(
             policy_code='CAP-POLICY-001',
             teacher_id=teacher.id,
-            join_code='CLAIMCAP1',
             title='Cap Test Policy',
             description='',
             premium=Decimal('5.00'),
@@ -428,7 +416,6 @@ class TestDecimalTypeErrors:
 
         class_scope = create_class_scope(
             teacher=teacher,
-            join_code='CLAIMCAP1',
             student=student,
             block='A',
             display_name='A',
@@ -456,7 +443,6 @@ class TestDecimalTypeErrors:
             seat_id=seat.id,
             class_id=seat.class_id,
             policy_id=policy.id,
-            join_code='CLAIMCAP1',
             status='active',
             coverage_start_date=datetime.now(timezone.utc) - timedelta(days=5),
             payment_current=True,
@@ -472,7 +458,6 @@ class TestDecimalTypeErrors:
                 class_id=class_scope.class_id,
                 seat_id=seat.id,
                 role="student",
-                join_code='CLAIMCAP1',
             )
 
         # GET the file_claim route — must not raise TypeError

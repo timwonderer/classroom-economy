@@ -6,7 +6,7 @@ from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone
 from app import db
-from app.models import Admin, AttendanceSession, StudentTeacher, ClassEconomy, ClassMembership, Seat, User, UserRole, IdentityProfile
+from app.models import Admin, AttendanceSession, ClassEconomy, Seat, User, UserRole, IdentityProfile
 from app.hash_utils import hash_username, get_random_salt
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -34,18 +34,14 @@ def admin_with_data(client):
 
     # Create class economy
     class_row = ClassEconomy(
-        join_code="ATTLOG1",
         user_id=admin.id,
         status="active",
-        created_by_admin_id=admin.id,
     )
     db.session.add(class_row)
     db.session.flush()
-    db.session.add(ClassMembership(class_id=class_row.class_id, join_code="ATTLOG1", admin_id=admin.id, role="admin"))
-
     # Create students with blocks
-    seat1 = make_student_identity(block='PERIOD1', first_name='Test', last_name='T', class_id=class_row.class_id, join_code="ATTLOG1")
-    seat2 = make_student_identity(block='PERIOD3', first_name='Student', last_name='S', class_id=class_row.class_id, join_code="ATTLOG1")
+    seat1 = make_student_identity(block='PERIOD1', first_name='Test', last_name='T', class_id=class_row.class_id)
+    seat2 = make_student_identity(block='PERIOD3', first_name='Student', last_name='S', class_id=class_row.class_id)
     student1 = seat1
     student2 = seat2
 
@@ -94,7 +90,6 @@ def test_attendance_log_page_renders_with_periods_and_blocks(client, admin_with_
             class_id=admin_with_data['class_id'],
             seat_id=admin_with_data['seat'].id if admin_with_data.get('seat') else admin_with_data['user'].id,
             role="teacher",
-            join_code=admin_with_data['join_code'],
         )
 
     # Access the attendance log page
@@ -148,13 +143,10 @@ def test_attendance_log_tenant_scoping(client):
     _create_user_for_admin(admin2)
 
     # Create class economies
-    class1 = ClassEconomy(join_code="ADM1CLS", user_id=admin1.id, status="active", created_by_admin_id=admin1.id)
-    class2 = ClassEconomy(join_code="ADM2CLS", user_id=admin2.id, status="active", created_by_admin_id=admin2.id)
+    class1 = ClassEconomy(user_id=admin1.id, status="active")
+    class2 = ClassEconomy(user_id=admin2.id, status="active")
     db.session.add_all([class1, class2])
     db.session.flush()
-    db.session.add(ClassMembership(class_id=class1.class_id, join_code="ADM1CLS", admin_id=admin1.id, role="admin"))
-    db.session.add(ClassMembership(class_id=class2.class_id, join_code="ADM2CLS", admin_id=admin2.id, role="admin"))
-
     # Create students for each admin
     student1 = make_student_identity(block='ADM1PER', first_name='Student1', last_name='S')
     student2 = make_student_identity(block='ADM2PER', first_name='Student2', last_name='S')
@@ -163,12 +155,12 @@ def test_attendance_log_tenant_scoping(client):
     student1_user = User(username_hash=f"auto_{student1.id}", username_lookup_hash=f"auto_l_{student1.id}", user_role=UserRole.STUDENT)
     db.session.add(student1_user)
     db.session.flush()
-    seat1 = Seat(user_id=student1_user.id, class_id=class1.class_id, join_code="ADM1CLS", block="ADM1PER", role="student")
+    seat1 = Seat(user_id=student1_user.id, class_id=class1.class_id, block="ADM1PER", role="student")
     # Auto-injected Canonical User
     student2_user = User(username_hash=f"auto_{student2.id}", username_lookup_hash=f"auto_l_{student2.id}", user_role=UserRole.STUDENT)
     db.session.add(student2_user)
     db.session.flush()
-    seat2 = Seat(user_id=student2_user.id, class_id=class2.class_id, join_code="ADM2CLS", block="ADM2PER", role="student")
+    seat2 = Seat(user_id=student2_user.id, class_id=class2.class_id, block="ADM2PER", role="student")
     db.session.add_all([seat1, seat2])
     db.session.flush()
 
@@ -210,7 +202,6 @@ def test_attendance_log_tenant_scoping(client):
             class_id=class1.class_id,
             seat_id=Seat.query.filter_by(class_id=class1.class_id, role="teacher").first().id,
             role="teacher",
-            join_code="ADM1CLS",
         )
     api_response = client.get('/api/attendance/history')
     assert api_response.status_code == 200

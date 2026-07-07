@@ -8,12 +8,12 @@ from app.models import (
     User,
     UserRole,
     Admin,
+    ClassEconomy,
     InsurancePolicy,
     InsuranceClaim,
     ObligationAssessment,
     Seat,
     InsuranceEnrollment,
-    StudentTeacher,
     Transaction,
     TransactionStatus,
 )
@@ -64,7 +64,6 @@ def test_student_insurance_keeps_frozen_snapshot_after_policy_edit(client, test_
 
     class_row = create_class_scope(
         teacher=admin,
-        join_code="JOIN-SNAP-TEST",
         student=test_student,
         block="A",
         display_name="A",
@@ -73,11 +72,11 @@ def test_student_insurance_keeps_frozen_snapshot_after_policy_edit(client, test_
     )
     seat = Seat.query.filter_by(class_id=class_row.class_id, role="student").first()
     assert seat is not None
+    _snap_class = ClassEconomy.query.filter_by(class_id=seat.class_id).first()
     enrollment = InsuranceEnrollment(
         seat_id=seat.id,
         class_id=seat.class_id,
         policy_id=policy.id,
-        join_code=seat.join_code,
         status="active",
         purchase_date=datetime.now(timezone.utc),
         coverage_start_date=datetime.now(timezone.utc) - timedelta(days=1),
@@ -108,9 +107,8 @@ def test_admin_claim_approval_uses_frozen_claim_cap(client, test_student):
     db.session.add(admin)
     db.session.flush()
 
-    db.session.add(StudentTeacher(user_id=test_student_user.id, teacher_id=admin.id))
     db.session.commit()
-    class_row = create_class_scope(teacher=admin, join_code="JOIN-SNAP-1", student=test_student, block="A")
+    class_row = create_class_scope(teacher=admin, student=test_student, block="A")
     db.session.commit()
 
     policy = _create_policy(admin.id, title="Claim Cap Policy", max_claim_amount=Decimal("100.00"))
@@ -125,7 +123,6 @@ def test_admin_claim_approval_uses_frozen_claim_cap(client, test_student):
         class_id=student_seat.class_id,
         policy_id=policy.id,
         status="active",
-        join_code="JOIN-SNAP-1",
         purchase_date=datetime.now(timezone.utc) - timedelta(days=10),
         coverage_start_date=datetime.now(timezone.utc) - timedelta(days=9),
         payment_current=True,
@@ -136,7 +133,7 @@ def test_admin_claim_approval_uses_frozen_claim_cap(client, test_student):
     db.session.flush()
 
     tx = Transaction(
-        user_id=test_student_user.id,join_code="JOIN-SNAP-1",
+        user_id=test_student_user.id,
         amount=Decimal("-50.00"),
         account_type="checking",
         status=TransactionStatus.POSTED,

@@ -7,7 +7,7 @@ from decimal import Decimal
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from app.models import User, UserRole, Admin, ClassEconomy, ClassMembership, IdentityProfile, RentPayment, RentSettings, RentWaiver, Seat, Transaction
+from app.models import User, UserRole, Admin, ClassEconomy, IdentityProfile, RentPayment, RentSettings, RentWaiver, Seat, Transaction
 from app.routes.student import (
     RENT_PAYMENT_MATCH_TOLERANCE_SECONDS,
     _get_locked_rent_amount_for_join_code_cycle,
@@ -52,17 +52,15 @@ def _make_admin_with_block(join_code="LOCKA1", block="A", suffix="rv"):
     db.session.add(admin)
     db.session.flush()
 
-    identity = IdentityProfile(profile_type='student', first_name='Teacher', last_initial='T')
+    identity = IdentityProfile(profile_type='student', first_name='Teacher', last_name='T')
     db.session.add(identity)
     db.session.flush()
 
     db.session.add(ClassEconomy(
         join_code=join_code,
         user_id=admin.id,
-        created_by_admin_id=admin.id,
     ))
     db.session.flush()
-    db.session.add(ClassMembership(join_code=join_code, admin_id=admin.id, role="admin"))
     class_id = db.session.query(ClassEconomy.class_id).filter_by(join_code=join_code).scalar()
     seat = Seat(
         class_id=class_id,

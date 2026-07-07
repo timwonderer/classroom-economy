@@ -16,7 +16,7 @@ import re
 import pytest
 from datetime import datetime, timedelta, timezone
 from app import db
-from app.models import Seat, IdentityProfile, ClassEconomy, Admin, StudentTeacher, Transaction, User, UserRole
+from app.models import Seat, IdentityProfile, ClassEconomy, Admin, Transaction, User, UserRole
 from app.hash_utils import get_random_salt, hash_username, hash_username_lookup
 from app.utils.money_guard import check_financial_cooldown
 from app.utils.time import ensure_utc, utc_now
@@ -66,12 +66,6 @@ def recovery_data(client):
     db.session.add_all([user])
     db.session.flush()
     seat = student
-    db.session.add(StudentTeacher(
-        user_id=student.user_id,
-        teacher_id=teacher.id,
-        class_id=class_row.class_id,
-        join_code=join_code,
-    ))
     db.session.commit()
 
     return {

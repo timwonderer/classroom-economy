@@ -24,9 +24,19 @@ def test_data(app):
     with app.app_context():
         admin = make_admin('admin_flow2', 'dummy_secret')
         db.session.add(admin)
-        db.session.commit()
+        db.session.flush()
 
-        class_row = ClassEconomy(join_code='FLOW2A', user_id=admin.id, display_name='Flow Reset Class')
+        from app.models import User, UserRole
+        from uuid import uuid4
+        teacher_user = User(
+            username_hash=f"flow2_{uuid4().hex[:10]}",
+            username_lookup_hash=f"flow2l_{uuid4().hex[:10]}",
+            user_role=UserRole.TEACHER,
+        )
+        db.session.add(teacher_user)
+        db.session.flush()
+
+        class_row = ClassEconomy(join_code='FLOW2A', user_id=teacher_user.id, display_name='Flow Reset Class')
         db.session.add(class_row)
         db.session.flush()
 

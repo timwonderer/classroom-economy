@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from flask import g
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, ClassEconomy, ClassMembership, Seat, StudentTeacher, AttendanceSession, IdentityProfile, User, UserRole
+from app.models import Admin, ClassEconomy, Seat, AttendanceSession, IdentityProfile, User, UserRole
 from tests.helpers.canonical_session import set_canonical_context
 
 
@@ -48,12 +48,12 @@ def _setup_shared_student_with_split_membership():
     db.session.add(student_user)
     db.session.flush()
 
-    profile = IdentityProfile(profile_type="student", first_name="Tap", last_initial="S")
+    profile = IdentityProfile(profile_type="student", first_name="Tap", last_name="S")
     db.session.add(profile)
     db.session.flush()
 
-    class_a = ClassEconomy(join_code="TAPA01", user_id=admin_a.id, status="active", created_by_admin_id=admin_a.id)
-    class_b = ClassEconomy(join_code="TAPB01", user_id=admin_b.id, status="active", created_by_admin_id=admin_b.id)
+    class_a = ClassEconomy(join_code="TAPA01", user_id=admin_a.id, status="active")
+    class_b = ClassEconomy(join_code="TAPB01", user_id=admin_b.id, status="active")
     db.session.add_all([class_a, class_b])
     db.session.flush()
 
@@ -70,13 +70,6 @@ def _setup_shared_student_with_split_membership():
     db.session.flush()
     profile.seat_id = seat.id
 
-    db.session.add_all([
-        StudentTeacher(user_id=student_user.id, teacher_id=admin_a.id),
-        StudentTeacher(user_id=student_user.id, teacher_id=admin_b.id),
-        ClassMembership(join_code="TAPA01", class_id=class_a.class_id, admin_id=admin_a.id, role="admin"),
-        ClassMembership(join_code="TAPB01", class_id=class_b.class_id, admin_id=admin_b.id, role="admin"),
-        ClassMembership(join_code="TAPB01", class_id=class_b.class_id, user_id=student_user.id, role="student"),
-    ])
     db.session.flush()
 
     tap_event = AttendanceSession(

@@ -47,7 +47,7 @@ def test_student_name_update_syncs_identity_profile(client):
 def test_seat_reads_name_from_identity_profile(client):
     admin = _create_admin("identity-teacher")
 
-    seat = Seat(join_code="JOIN-IDENTITY", block="A", block_identifier="A", role="student")
+    seat = Seat(block="A", block_identifier="A", role="student")
 
     db.session.add(seat)
 

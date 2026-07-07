@@ -7,7 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.security import generate_password_hash
 
 from app.extensions import db
-from app.models import Seat, IdentityProfile, User, UserRole, Admin, ClassEconomy, ClassMembership, RedemptionAuditLog, StoreItem, StudentItem, StudentTeacher, Transaction
+from app.models import Seat, IdentityProfile, User, UserRole, Admin, ClassEconomy, RedemptionAuditLog, StoreItem, StudentItem, Transaction
 from tests.helpers.canonical_session import set_canonical_context
 
 
@@ -36,23 +36,9 @@ def student_in_class(client, teacher_admin):
         user_id=teacher_admin.id,
         display_name='A',
         status='active',
-        created_by_admin_id=teacher_admin.id,
     )
     db.session.add(class_economy)
     db.session.flush()
-    db.session.add(ClassMembership(
-        class_id=class_economy.class_id,
-        join_code='AUDIT123',
-        admin_id=teacher_admin.id,
-        role='admin',
-    ))
-    db.session.add(ClassMembership(
-        class_id=class_economy.class_id,
-        join_code='AUDIT123',
-        user_id=student_user.id,
-        role='student',
-    ))
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher_admin.id, class_id=class_economy.class_id, join_code='AUDIT123'))
     seat = Seat(
         user_id=student_user.id,
         class_id=class_economy.class_id,

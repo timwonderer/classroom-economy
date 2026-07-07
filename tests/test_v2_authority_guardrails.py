@@ -6,7 +6,7 @@ from pathlib import Path
 import re
 
 from app.extensions import db
-from app.models import IdentityProfile, User, UserRole, StudentTeacher, Transaction, Seat
+from app.models import IdentityProfile, User, UserRole, Transaction, Seat
 from app.routes import student as student_routes
 from app.services import attendance_service
 from tests.helpers.class_scope import create_class_scope
@@ -24,7 +24,6 @@ def _login_student(client, student_id, join_code):
                 class_id=seat.class_id,
                 seat_id=seat.id,
                 role="student",
-                join_code=join_code,
             )
 
 
@@ -279,7 +278,6 @@ def test_dashboard_read_is_interest_mutation_free(client):
     join_code = "READPURE1"
     class_row = create_class_scope(
         teacher=teacher,
-        join_code=join_code,
         block="A",
         display_name="A",
         create_claimed_teacher_block=True,
@@ -288,7 +286,6 @@ def test_dashboard_read_is_interest_mutation_free(client):
     seat = Seat(
         user_id=student_user.id,
         class_id=class_row.class_id,
-        join_code=join_code,
         block="A",
         role="student",
         claimed_at=datetime.now(timezone.utc),
@@ -296,11 +293,9 @@ def test_dashboard_read_is_interest_mutation_free(client):
     db.session.add(seat)
     db.session.flush()
     profile_read.seat_id = seat.id
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     mature_savings_time = datetime.now(timezone.utc) - timedelta(days=31)
     db.session.add(Transaction(
         user_id=student_user.id,
-        join_code=join_code,
         amount=100.0,
         account_type="savings",
         description="Savings Seed",
@@ -343,7 +338,6 @@ def test_dashboard_access_policy_fail_closed_invalid_join_code(client):
 
     class_a = create_class_scope(
         teacher=teacher,
-        join_code="SCOPEA1",
         block="A",
         display_name="A",
         create_claimed_teacher_block=True,
@@ -351,18 +345,16 @@ def test_dashboard_access_policy_fail_closed_invalid_join_code(client):
     )
     class_b = create_class_scope(
         teacher=teacher,
-        join_code="SCOPEB1",
         block="B",
         display_name="B",
         create_claimed_teacher_block=True,
         teacher_block_claimed=True,
     )
-    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, join_code="SCOPEA1", block="A", role="student", claimed_at=datetime.now(timezone.utc))
-    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, join_code="SCOPEB1", block="B", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, block="A", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, block="B", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add_all([seat_a, seat_b])
     db.session.flush()
     profile_scope.seat_id = seat_a.id
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
     db.session.commit()
 
     _login_student(client, student_user.id, "MISSING")

@@ -2,7 +2,7 @@ import os
 import pytest
 from datetime import datetime, timezone
 from app.extensions import db
-from app.models import TeacherOnboarding, User, UserRole, StudentTeacher, Seat, IdentityProfile
+from app.models import TeacherOnboarding, User, UserRole, Seat, IdentityProfile
 from app.utils.economy_policy import replace_enabled_class_features
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from tests.helpers.class_scope import create_class_scope
@@ -41,7 +41,6 @@ def test_teacher_navigation_integrity(client, integrity_tester):
     
     class_row = create_class_scope(
         teacher=admin,
-        join_code="NAVTECH1",
         student=None,
         block="A",
         create_student_membership=False,
@@ -53,11 +52,10 @@ def test_teacher_navigation_integrity(client, integrity_tester):
         student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
         db.session.add(student_user)
         db.session.flush()
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=admin.id))
-    _tb_seat = Seat(user_id=student_user.id, class_id=class_row.class_id, join_code="NAVTECH1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    _tb_seat = Seat(user_id=student_user.id, class_id=class_row.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(_tb_seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name="Nav", last_initial="T"))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name="Nav", last_name="T"))
     replace_enabled_class_features(
         class_row.class_id,
         {"insurance", "banking", "rent", "hall_pass", "store"},
@@ -71,7 +69,6 @@ def test_teacher_navigation_integrity(client, integrity_tester):
             class_id=class_row.class_id,
             seat_id=Seat.query.filter_by(class_id=class_row.class_id, user_id=student_user.id).first().id,
             role="teacher",
-            join_code="NAVTECH1",
         )
         sess['admin_id'] = admin.id
 
@@ -86,7 +83,6 @@ def test_student_navigation_integrity(client, integrity_tester):
 
     class_row = create_class_scope(
         teacher=teacher,
-        join_code="NAVSTU1",
         student=None,
         block="A",
         create_student_membership=False,
@@ -99,14 +95,13 @@ def test_student_navigation_integrity(client, integrity_tester):
         student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
         db.session.add(student_user)
         db.session.flush()
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-    seat = Seat(user_id=student_user.id, class_id=class_row.class_id, join_code="NAVSTU1", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    seat = Seat(user_id=student_user.id, class_id=class_row.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(seat)
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Nav", last_initial="S"))
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Nav", last_name="S"))
     db.session.add(seat)
     db.session.commit()
 
@@ -117,7 +112,6 @@ def test_student_navigation_integrity(client, integrity_tester):
             class_id=seat.class_id,
             seat_id=seat.id,
             role="student",
-            join_code="NAVSTU1",
         )
 
     # Begin traversal

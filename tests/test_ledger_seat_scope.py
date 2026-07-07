@@ -14,10 +14,10 @@ def _student(first_name: str = "Seat", last_initial: str = "S", block: str = "A"
     )
     db.session.add(user)
     db.session.flush()
-    seat = Seat(user_id=user.id, join_code="JOIN_LEDGER", block=block, block_identifier=block, role="student")
+    seat = Seat(user_id=user.id, block=block, block_identifier=block, role="student")
     db.session.add(seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name=first_name, last_initial=last_initial))
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name=first_name, last_name=last_initial))
     return seat
 
 
@@ -28,7 +28,6 @@ def test_transaction_autofills_seat_id_from_student_and_join_code(client):
 
     tx = Transaction(
         user_id=student.user_id,
-        join_code="JOIN_LEDGER",
         amount=Decimal("5.00"),
         account_type="checking",
         status=TransactionStatus.PENDING,
@@ -49,7 +48,6 @@ def test_settlement_creates_balance_cache_with_seat_id(client):
     db.session.add(
         Transaction(
             user_id=student.user_id,
-            join_code="JOIN_CACHE",
             amount=Decimal("3.00"),
             account_type="checking",
             status=TransactionStatus.PENDING,
@@ -61,6 +59,6 @@ def test_settlement_creates_balance_cache_with_seat_id(client):
     settle_balances(student.user_id, "JOIN_CACHE")
     db.session.commit()
 
-    cache = BalanceCache.query.filter_by(join_code="JOIN_CACHE", user_id=student.user_id).first()
+    cache = BalanceCache.query.filter_by(user_id=student.user_id).first()
     assert cache is not None
     assert cache.seat_id == student.id

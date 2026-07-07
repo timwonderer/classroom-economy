@@ -2,7 +2,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from decimal import Decimal
 from datetime import datetime, timezone
-from app.models import User, UserRole, Admin, Transaction, StoreItem, StudentItem, StudentTeacher, ClassEconomy, ClassMembership, Seat, IdentityProfile
+from app.models import User, UserRole, Admin, Transaction, StoreItem, StudentItem, ClassEconomy, Seat, IdentityProfile
 from app.extensions import db
 from werkzeug.security import generate_password_hash
 from tests.helpers.canonical_session import set_canonical_context
@@ -30,14 +30,12 @@ def student_in_class(client, teacher_admin):
     db.session.flush()
     student = make_student_identity(first_name='TestRejection', last_name='S', block='A')
 
-    link = StudentTeacher(user_id=student_user.id, teacher_id=teacher_admin.id)
-    db.session.add(link)
-
     # Auto-injected Canonical User
     student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    seat = Seat(user_id=student_user.id, join_code='REJECT123', block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
+    # TODO: seat needs class_id set from the ClassEconomy for join_code REJECT123
+    seat = Seat(user_id=student_user.id, block='A', block_identifier='A', role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(seat)
 
@@ -46,9 +44,7 @@ def student_in_class(client, teacher_admin):
     db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name='TestRejection', last_name='S'))
     db.session.add(seat)
 
-    db.session.add(ClassEconomy(join_code='REJECT123', user_id=teacher_admin.id, status="active", created_by_admin_id=teacher_admin.id))
-    db.session.add(ClassMembership(join_code='REJECT123', admin_id=teacher_admin.id, role="admin"))
-    db.session.add(ClassMembership(join_code='REJECT123', user_id=student_user.id, role="student"))
+    db.session.add(ClassEconomy(join_code='REJECT123', user_id=teacher_admin.id, status="active"))
     db.session.commit()
     return student
 

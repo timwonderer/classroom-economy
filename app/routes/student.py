@@ -125,8 +125,8 @@ def _get_identity_bound_seat_options(user_id: int):
         {
             "seat_id": seat.id,
             "class_id": seat.class_id,
-            "join_code": seat.join_code,
-            "class_identifier": seat.block_identifier or seat.block or seat.join_code,
+            "join_code": class_row.join_code,
+            "class_identifier": seat.block_identifier or seat.block or class_row.join_code,
             "class_name": class_row.display_name,
         }
         for seat, class_row in seat_rows

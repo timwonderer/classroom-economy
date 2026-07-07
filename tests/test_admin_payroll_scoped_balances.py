@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Admin, Seat, IdentityProfile, StudentTeacher, Transaction, TransactionStatus, User, UserRole
+from app.models import Admin, Seat, IdentityProfile, Transaction, TransactionStatus, User, UserRole
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -54,62 +54,34 @@ def test_admin_payroll_displays_scoped_balances_only(client):
     class_a = create_class_scope(teacher=teacher_a, join_code="PAYA01", block="A", display_name="A")
     class_b = create_class_scope(teacher=teacher_b, join_code="PAYB01", block="A", display_name="A")
     db.session.flush()
-    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, join_code=class_a.join_code, role="student", claimed_at=datetime.now(timezone.utc))
-    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, join_code=class_b.join_code, role="student", claimed_at=datetime.now(timezone.utc))
+    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, role="student", claimed_at=datetime.now(timezone.utc))
+    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add_all([seat_a, seat_b])
     db.session.flush()
     profile.seat_id = seat_a.id
-    db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type="student_claimed", first_name="Pay", last_initial="S"))
+    db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type="student_claimed", first_name="Pay", last_name="S"))
     assert seat_a is not None and seat_b is not None
 
     from app.feats.base import FEATContext
     with FEATContext("FEAT-ADMN-001"):
         db.session.add_all([
-            StudentTeacher(user_id=student_user.id, teacher_id=teacher_a.id),
-            StudentTeacher(user_id=student_user.id, teacher_id=teacher_b.id)(
-                teacher_id=teacher_a.id,
-                block="A",
-                join_code="PAYA01",
+            Transaction(
+                user_id=student_user.id, join_code="PAYA01",
                 class_id=class_a.class_id,
-                user_id=student_user.id,
-                is_claimed=True,
-                first_name=student.display_first_name,
-                last_initial=student.display_last_initial,
-                last_name_hash_by_part=[],
-                dob_sum_hash=None,
-                salt=b"salt",
-                first_half_hash="hash-a",
-            )(
-                teacher_id=teacher_b.id,
-                block="A",
-                join_code="PAYB01",
-                class_id=class_b.class_id,
-                user_id=student_user.id,
-                is_claimed=True,
-                first_name=student.display_first_name,
-                last_initial=student.display_last_initial,
-                last_name_hash_by_part=[],
-                dob_sum_hash=None,
-                salt=b"salt",
-                first_half_hash="hash-b",
-            ),
-                Transaction(
-                    user_id=student_user.id,join_code="PAYA01",
-                    class_id=class_a.class_id,
-                    seat_id=seat_a.id,
-                    amount=Decimal("111.11"),
-                    account_type="checking",
-                    status=TransactionStatus.PENDING,
+                seat_id=seat_a.id,
+                amount=Decimal("111.11"),
+                account_type="checking",
+                status=TransactionStatus.PENDING,
                 type="deposit",
                 description="Teacher A balance",
             ),
-                Transaction(
-                    user_id=student_user.id,join_code="PAYB01",
-                    class_id=class_b.class_id,
-                    seat_id=seat_b.id,
-                    amount=Decimal("222.22"),
-                    account_type="checking",
-                    status=TransactionStatus.PENDING,
+            Transaction(
+                user_id=student_user.id, join_code="PAYB01",
+                class_id=class_b.class_id,
+                seat_id=seat_b.id,
+                amount=Decimal("222.22"),
+                account_type="checking",
+                status=TransactionStatus.PENDING,
                 type="deposit",
                 description="Teacher B balance",
             ),

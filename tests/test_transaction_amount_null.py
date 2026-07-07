@@ -32,7 +32,6 @@ def test_get_total_earnings_defensive_checks(client, app):
             user_id=teacher.id,
             display_name='Test Class',
             status='active',
-            created_by_admin_id=teacher.id
         )
         db.session.add(economy)
         db.session.flush()
@@ -94,7 +93,6 @@ def test_get_total_earnings_with_negative_amounts(client, app):
             user_id=teacher.id,
             display_name='Test Class 2',
             status='active',
-            created_by_admin_id=teacher.id
         )
         db.session.add(economy)
         db.session.flush()
@@ -157,7 +155,6 @@ def test_get_total_earnings_with_zero_amount(client, app):
             user_id=teacher.id,
             display_name='Test Class 3',
             status='active',
-            created_by_admin_id=teacher.id
         )
         db.session.add(economy)
         db.session.flush()

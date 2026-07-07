@@ -39,14 +39,13 @@ def student_in_class(client, teacher_admin):
     # Setup Class Context
     class_economy = ClassEconomy.query.filter_by(join_code='JOINCODE123').first()
     if not class_economy:
-        class_economy = ClassEconomy(join_code='JOINCODE123', user_id=teacher_admin.id, status="active")
+        class_economy = ClassEconomy(user_id=teacher_admin.id, status="active")
         db.session.add(class_economy)
         db.session.flush()
 
     seat = Seat(
         user_id=student_user.id,
         class_id=class_economy.class_id,
-        join_code='JOINCODE123',
         block='A',
         role='student',
         claimed_at=datetime.now(timezone.utc)
@@ -66,7 +65,6 @@ def admin_class_scope(client, teacher_admin):
     db.session.flush()
 
     class_economy = ClassEconomy(
-        join_code='JOINCODE123',
         user_id=teacher_admin.id,
         status="active",
         
@@ -81,7 +79,6 @@ def admin_class_scope(client, teacher_admin):
         Seat(
             user_id=student_user.id,
             class_id=class_economy.class_id,
-            join_code='JOINCODE123',
             block='A',
             role='student',
         ),
@@ -175,7 +172,7 @@ def test_store_sync_logic(client, teacher_admin, admin_class_scope):
     
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
-    settings = RentSettings(class_id=admin_class_scope.join_code, join_code=admin_class_scope.join_code,
+    settings = RentSettings(class_id=admin_class_scope.join_code,
         block='A',
         is_enabled=True,
     )
@@ -245,7 +242,7 @@ def test_student_purchase_per_use_item(client, teacher_admin, student_in_class):
     db.session.add(rent_item)
 
     # Give student money
-    tx = Transaction(user_id=student_user.id, seat_id=seat.id, amount=100, account_type='checking',join_code='JOINCODE123')
+    tx = Transaction(user_id=student_user.id, seat_id=seat.id, amount=100, account_type='checking')
     db.session.add(tx)
     db.session.commit()
 
@@ -296,9 +293,7 @@ def test_student_use_per_use_item(client, teacher_admin, student_in_class):
 
     student_item = StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         store_item_id=store_item.id,
-        status='purchased', uses_remaining=3,
-        join_code='JOINCODE123'
-    )
+        status='purchased', uses_remaining=3)
     db.session.add(student_item)
 
     # Update passphrase
@@ -510,7 +505,6 @@ def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -552,7 +546,6 @@ def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately
     db.session.add(RentPayment(
         user_id=student_user.id,
         period='A',
-        join_code='JOINCODE123',
         amount_paid=Decimal('10.00'),
         period_month=fixed_now.month,
         period_year=fixed_now.year,
@@ -561,7 +554,7 @@ def test_unpaid_period_revokes_rent_hall_passes_and_payment_restores_immediately
         payment_date=fixed_now,
     ))
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('-10.00'),
         account_type='checking',
         type='Rent Payment',
@@ -598,7 +591,6 @@ def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -628,7 +620,6 @@ def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(
     db.session.add(RentPayment(
         user_id=student_user.id,
         period='A',
-        join_code='JOINCODE123',
         amount_paid=Decimal('10.00'),
         period_month=fixed_now.month,
         period_year=fixed_now.year,
@@ -639,7 +630,7 @@ def test_hall_pass_top_off_restores_after_base_rent_paid_even_with_late_fee_due(
         late_fee_charged=Decimal('0.00'),
     ))
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('-10.00'),
         account_type='checking',
         type='Rent Payment',
@@ -676,7 +667,6 @@ def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(client, teach
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -706,7 +696,6 @@ def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(client, teach
     db.session.add(RentPayment(
         user_id=student_user.id,
         period='A ',
-        join_code='JOINCODE123',
         amount_paid=Decimal('10.00'),
         period_month=fixed_now.month,
         period_year=fixed_now.year,
@@ -715,7 +704,7 @@ def test_hall_pass_top_off_accepts_legacy_whitespace_period_values(client, teach
         payment_date=fixed_now,
     ))
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('-10.00'),
         account_type='checking',
         type='Rent Payment',
@@ -756,7 +745,6 @@ def test_mid_period_lock_blocks_semantic_changes(client, teacher_admin, admin_cl
 
     # Create settings and a rent item
     db.session.add(ClassEconomy(
-        join_code='LOCKTEST',
         user_id=teacher_admin.id,
         status="active",
         
@@ -764,7 +752,7 @@ def test_mid_period_lock_blocks_semantic_changes(client, teacher_admin, admin_cl
     
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
-    settings = RentSettings(class_id=admin_class_scope.class_id, block='A', join_code='LOCKTEST', is_enabled=True,
+    settings = RentSettings(class_id=admin_class_scope.class_id, block='A', is_enabled=True,
         rent_amount=Decimal('50.00'), frequency_type='monthly',
         due_day_of_month=1, first_rent_due_date=datetime(2026, 2, 1, tzinfo=timezone.utc)
     )
@@ -782,7 +770,7 @@ def test_mid_period_lock_blocks_semantic_changes(client, teacher_admin, admin_cl
 
     # Create a TeacherBlock with join_code
     student_user, _ = _student_user_and_seat(student)
-    tb = Seat(join_code='LOCKTEST', block='A', block_identifier='A', role="student")
+    tb = Seat(block='A', block_identifier='A', role="student")
     db.session.add(tb)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_unclaimed', first_name='Seat', last_name='1'))
@@ -796,7 +784,7 @@ def test_mid_period_lock_blocks_semantic_changes(client, teacher_admin, admin_cl
 
     now = datetime.now(timezone.utc)
     payment = RentPayment(
-        user_id=student_user.id, period='A', join_code='LOCKTEST',
+        user_id=student_user.id, period='A',
         amount_paid=Decimal('50.00'),
         coverage_month=now.month, coverage_year=now.year
     )
@@ -845,7 +833,6 @@ def test_mid_period_lock_allows_new_items(client, teacher_admin, admin_class_sco
         sess['current_join_code'] = 'LOCKTEST2'
 
     db.session.add(ClassEconomy(
-        join_code='LOCKTEST2',
         user_id=teacher_admin.id,
         status="active",
         
@@ -853,7 +840,7 @@ def test_mid_period_lock_allows_new_items(client, teacher_admin, admin_class_sco
     
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
-    settings = RentSettings(class_id=admin_class_scope.class_id, block='A', join_code='LOCKTEST2', is_enabled=True,
+    settings = RentSettings(class_id=admin_class_scope.class_id, block='A', is_enabled=True,
         rent_amount=Decimal('50.00'), frequency_type='monthly',
         due_day_of_month=1, first_rent_due_date=datetime(2026, 2, 1, tzinfo=timezone.utc)
     )
@@ -861,7 +848,7 @@ def test_mid_period_lock_allows_new_items(client, teacher_admin, admin_class_sco
     db.session.flush()
 
     student_user, _ = _student_user_and_seat(student)
-    tb = Seat(join_code='LOCKTEST2', block='A', block_identifier='A', role="student")
+    tb = Seat(block='A', block_identifier='A', role="student")
 
     db.session.add(tb)
 
@@ -877,7 +864,7 @@ def test_mid_period_lock_allows_new_items(client, teacher_admin, admin_class_sco
 
     now = datetime.now(timezone.utc)
     payment = RentPayment(
-        user_id=student_user.id, period='A', join_code='LOCKTEST2',
+        user_id=student_user.id, period='A',
         amount_paid=Decimal('50.00'),
         coverage_month=now.month, coverage_year=now.year
     )
@@ -950,13 +937,11 @@ def test_per_use_free_purchase_from_rent(client, teacher_admin, student_in_class
     rent_granted = StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id, store_item_id=store_item.id,
         status='purchased', uses_remaining=3,
-        purchase_date=datetime.now(timezone.utc),
-        join_code='JOINCODE123'
-    )
+        purchase_date=datetime.now(timezone.utc))
     db.session.add(rent_granted)
 
     # Give student some money
-    tx = Transaction(user_id=student_user.id, seat_id=seat.id, amount=100, account_type='checking',join_code='JOINCODE123')
+    tx = Transaction(user_id=student_user.id, seat_id=seat.id, amount=100, account_type='checking')
     db.session.add(tx)
     db.session.commit()
 
@@ -992,9 +977,7 @@ def test_per_use_free_purchase_from_rent(client, teacher_admin, student_in_class
     # Verify a purchased item is created and can be used later
     purchased_items = StudentItem.query.filter_by(
         student_id=student.id,
-        store_item_id=store_item.id,
-        join_code='JOINCODE123'
-    ).all()
+        store_item_id=store_item.id).all()
     assert any(si.uses_remaining is None for si in purchased_items)
 
 
@@ -1016,12 +999,10 @@ def test_per_use_charges_when_uses_exhausted(client, teacher_admin, student_in_c
     rent_granted = StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id, store_item_id=store_item.id,
         status='purchased', uses_remaining=0,
-        purchase_date=datetime.now(timezone.utc),
-        join_code='JOINCODE123'
-    )
+        purchase_date=datetime.now(timezone.utc))
     db.session.add(rent_granted)
 
-    tx = Transaction(user_id=student_user.id, seat_id=seat.id, amount=100, account_type='checking',join_code='JOINCODE123')
+    tx = Transaction(user_id=student_user.id, seat_id=seat.id, amount=100, account_type='checking')
     db.session.add(tx)
     db.session.commit()
 
@@ -1062,7 +1043,6 @@ def test_per_use_free_purchase_without_precreated_grant_when_rent_paid(client, t
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -1099,7 +1079,6 @@ def test_per_use_free_purchase_without_precreated_grant_when_rent_paid(client, t
     db.session.add(RentPayment(
         user_id=student_user.id,
         period='A',
-        join_code='JOINCODE123',
         amount_paid=Decimal('10.00'),
         period_month=now.month,
         period_year=now.year,
@@ -1108,7 +1087,7 @@ def test_per_use_free_purchase_without_precreated_grant_when_rent_paid(client, t
         payment_date=now,
     ))
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('-10.00'),
         account_type='checking',
         type='Rent Payment',
@@ -1117,8 +1096,7 @@ def test_per_use_free_purchase_without_precreated_grant_when_rent_paid(client, t
     db.session.add(Transaction(
         user_id=student_user.id,
         amount=100,
-        account_type='checking',join_code='JOINCODE123'
-    ))
+        account_type='checking'))
     db.session.commit()
 
     starting_balance = student.checking_balance
@@ -1155,7 +1133,6 @@ def test_shop_only_disables_privilege_items_when_rent_paid(client, teacher_admin
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -1168,7 +1145,6 @@ def test_shop_only_disables_privilege_items_when_rent_paid(client, teacher_admin
 
     privilege_store_item = StoreItem(
         user_id=teacher_admin.id,
-        join_code='JOINCODE123',
         name='Desk Privilege',
         price=Decimal('50.00'),
         is_active=True,
@@ -1177,7 +1153,6 @@ def test_shop_only_disables_privilege_items_when_rent_paid(client, teacher_admin
     )
     per_use_store_item = StoreItem(
         user_id=teacher_admin.id,
-        join_code='JOINCODE123',
         name='Pencil Per Use',
         price=Decimal('3.00'),
         is_active=True,
@@ -1213,7 +1188,6 @@ def test_shop_only_disables_privilege_items_when_rent_paid(client, teacher_admin
     rent_payment = RentPayment(
         user_id=student_user.id,
         period='A',
-        join_code='JOINCODE123',
         amount_paid=Decimal('10.00'),
         period_month=now.month,
         period_year=now.year,
@@ -1224,7 +1198,7 @@ def test_shop_only_disables_privilege_items_when_rent_paid(client, teacher_admin
     db.session.add(rent_payment)
     # _filter_valid_rent_payments requires a matching Transaction within 5 seconds
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('-10.00'),
         account_type='checking',
         type='Rent Payment',
@@ -1275,7 +1249,6 @@ def test_shop_keeps_item_purchasable_when_per_use_and_privilege_links_overlap(cl
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -1288,7 +1261,6 @@ def test_shop_keeps_item_purchasable_when_per_use_and_privilege_links_overlap(cl
 
     store_item = StoreItem(
         user_id=teacher_admin.id,
-        join_code='JOINCODE123',
         name='Mixed Rent Link',
         price=Decimal('8.00'),
         is_active=True,
@@ -1324,7 +1296,6 @@ def test_shop_keeps_item_purchasable_when_per_use_and_privilege_links_overlap(cl
     db.session.add(RentPayment(
         user_id=student_user.id,
         period='A',
-        join_code='JOINCODE123',
         amount_paid=Decimal('10.00'),
         period_month=now.month,
         period_year=now.year,
@@ -1333,7 +1304,7 @@ def test_shop_keeps_item_purchasable_when_per_use_and_privilege_links_overlap(cl
         payment_date=now,
     ))
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('-10.00'),
         account_type='checking',
         type='Rent Payment',
@@ -1372,7 +1343,6 @@ def test_shop_treats_legacy_privilege_with_per_use_duration_as_per_use(client, t
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -1385,7 +1355,6 @@ def test_shop_treats_legacy_privilege_with_per_use_duration_as_per_use(client, t
 
     store_item = StoreItem(
         user_id=teacher_admin.id,
-        join_code='JOINCODE123',
         name='Legacy Per Use Link',
         price=Decimal('9.00'),
         is_active=True,
@@ -1413,7 +1382,6 @@ def test_shop_treats_legacy_privilege_with_per_use_duration_as_per_use(client, t
     db.session.add(RentPayment(
         user_id=student_user.id,
         period='A',
-        join_code='JOINCODE123',
         amount_paid=Decimal('10.00'),
         period_month=anchor_now.month,
         period_year=anchor_now.year,
@@ -1422,7 +1390,7 @@ def test_shop_treats_legacy_privilege_with_per_use_duration_as_per_use(client, t
         payment_date=anchor_now,
     ))
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('-10.00'),
         account_type='checking',
         type='Rent Payment',
@@ -1464,7 +1432,6 @@ def test_api_allows_zero_cost_rent_linked_purchase_when_paid_without_per_use_map
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -1478,7 +1445,6 @@ def test_api_allows_zero_cost_rent_linked_purchase_when_paid_without_per_use_map
     # Rent-linked store item without a RentItem mapping row (legacy/stale linkage).
     store_item = StoreItem(
         user_id=teacher_admin.id,
-        join_code='JOINCODE123',
         name='Link Only Perk',
         price=Decimal('12.00'),
         is_active=True,
@@ -1494,7 +1460,6 @@ def test_api_allows_zero_cost_rent_linked_purchase_when_paid_without_per_use_map
     db.session.add(RentPayment(
         user_id=student_user.id,
         period='A',
-        join_code='JOINCODE123',
         amount_paid=Decimal('10.00'),
         period_month=anchor_now.month,
         period_year=anchor_now.year,
@@ -1503,7 +1468,7 @@ def test_api_allows_zero_cost_rent_linked_purchase_when_paid_without_per_use_map
         payment_date=anchor_now,
     ))
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('-10.00'),
         account_type='checking',
         type='Rent Payment',
@@ -1514,7 +1479,6 @@ def test_api_allows_zero_cost_rent_linked_purchase_when_paid_without_per_use_map
         amount=Decimal('100.00'),
         account_type='checking',
         teacher_id=teacher_admin.id,
-        join_code='JOINCODE123',
     ))
     db.session.commit()
 
@@ -1554,7 +1518,6 @@ def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(client, teacher_admin
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -1583,7 +1546,6 @@ def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(client, teacher_admin
     db.session.add(RentPayment(
         user_id=student_user.id,
         period='A',
-        join_code='JOINCODE123',
         amount_paid=Decimal('10.00'),
         period_month=now.month,
         period_year=now.year,
@@ -1592,14 +1554,14 @@ def test_api_hall_pass_item_skips_rent_perk_zero_cost_flow(client, teacher_admin
         payment_date=now,
     ))
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('-10.00'),
         account_type='checking',
         type='Rent Payment',
         description='Rent for Period A',
     ))
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('100.00'),
         account_type='checking',
         type='Deposit',
@@ -1656,7 +1618,6 @@ def test_use_item_converts_legacy_hall_pass_inventory_row(client, teacher_admin,
     legacy_row = StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id,
         store_item_id=hall_pass_item.id,
-        join_code='JOINCODE123',
         status='purchased',
         quantity_purchased=2,
     )
@@ -1704,7 +1665,6 @@ def test_shop_displays_rent_perk_price_as_free(client, teacher_admin, student_in
 
     store_item = StoreItem(
         user_id=teacher_admin.id,
-        join_code='JOINCODE123',
         name='Rent Linked Pencil',
         price=Decimal('7.00'),
         is_active=True,
@@ -1721,7 +1681,6 @@ def test_shop_displays_rent_perk_price_as_free(client, teacher_admin, student_in
         status='purchased',
         uses_remaining=2,
         purchase_date=datetime.now(timezone.utc),
-        join_code='JOINCODE123',
     ))
     db.session.commit()
 
@@ -1753,7 +1712,6 @@ def test_shop_displays_rent_perk_price_as_free_when_rent_paid_without_grant_row(
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -1766,7 +1724,6 @@ def test_shop_displays_rent_perk_price_as_free_when_rent_paid_without_grant_row(
 
     per_use_store_item = StoreItem(
         user_id=teacher_admin.id,
-        join_code='JOINCODE123',
         name='Paid Rent Pencil',
         price=Decimal('4.00'),
         is_active=True,
@@ -1791,7 +1748,6 @@ def test_shop_displays_rent_perk_price_as_free_when_rent_paid_without_grant_row(
     db.session.add(RentPayment(
         user_id=student_user.id,
         period='A',
-        join_code='JOINCODE123',
         amount_paid=Decimal('10.00'),
         period_month=now.month,
         period_year=now.year,
@@ -1800,7 +1756,7 @@ def test_shop_displays_rent_perk_price_as_free_when_rent_paid_without_grant_row(
         payment_date=now,
     ))
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('-10.00'),
         account_type='checking',
         type='Rent Payment',
@@ -1987,14 +1943,12 @@ def test_late_fee_only_when_unpaid_by_grace(client, teacher_admin, student_in_cl
         coverage_month=coverage_due_date.month,
         coverage_year=coverage_due_date.year,
         amount_paid=Decimal('10.00'),
-        payment_date=payment_date_before_grace,
-        join_code='JOINCODE123'
-    )
+        payment_date=payment_date_before_grace)
     db.session.add(payment1)
     
     # Create matching transaction
     txn1 = Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=-Decimal('10.00'),
         account_type='checking',
         type='Rent Payment',
@@ -2039,13 +1993,11 @@ def test_late_fee_only_when_unpaid_by_grace(client, teacher_admin, student_in_cl
         coverage_month=coverage_due_date.month,
         coverage_year=coverage_due_date.year,
         amount_paid=Decimal('6.00'),
-        payment_date=payment_date_before_grace,
-        join_code='JOINCODE123'
-    )
+        payment_date=payment_date_before_grace)
     db.session.add(payment2)
     
     txn2 = Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=-Decimal('6.00'),
         account_type='checking',
         type='Rent Payment',
@@ -2085,13 +2037,11 @@ def test_late_fee_only_when_unpaid_by_grace(client, teacher_admin, student_in_cl
         coverage_month=coverage_due_date.month,
         coverage_year=coverage_due_date.year,
         amount_paid=Decimal('10.00'),
-        payment_date=payment_date_after_grace,
-        join_code='JOINCODE123'
-    )
+        payment_date=payment_date_after_grace)
     db.session.add(payment3)
     
     txn3 = Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=-Decimal('10.00'),
         account_type='checking',
         type='Rent Payment',
@@ -2128,7 +2078,6 @@ def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -2165,7 +2114,6 @@ def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(
     db.session.add(RentPayment(
         user_id=student_user.id,
         period='A',
-        join_code='JOINCODE123',
         amount_paid=Decimal('10.00'),
         period_month=fixed_now.month,
         period_year=fixed_now.year,
@@ -2174,7 +2122,7 @@ def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(
         payment_date=fixed_now,
     ))
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('-10.00'),
         account_type='checking',
         type='Rent Payment',
@@ -2186,14 +2134,13 @@ def test_per_use_free_purchase_recovers_from_exhausted_grant_row_when_rent_paid(
     db.session.add(StudentItem(seat_id=seat.id, correlation_id='corr_test', 
         student_id=student.id,
         store_item_id=store_item.id,
-        join_code='JOINCODE123',
         purchase_date=fixed_now,
         status='purchased',
         uses_remaining=0,
     ))
 
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('100.00'),
         account_type='checking',
         type='Deposit',
@@ -2235,7 +2182,6 @@ def test_rent_payment_hall_pass_top_off_recovers_from_stale_counter(client, teac
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -2257,7 +2203,7 @@ def test_rent_payment_hall_pass_top_off_recovers_from_stale_counter(client, teac
     # Stale state: counter says 3 rent passes, but student has 0 actual passes.
 
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('100.00'),
         account_type='checking',
         type='Deposit',
@@ -2299,7 +2245,6 @@ def test_waiver_does_not_grant_rent_perks_in_shop(client, teacher_admin, student
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -2312,7 +2257,6 @@ def test_waiver_does_not_grant_rent_perks_in_shop(client, teacher_admin, student
 
     privilege_store_item = StoreItem(
         user_id=teacher_admin.id,
-        join_code='JOINCODE123',
         name='Waiver Desk Privilege',
         price=Decimal('50.00'),
         is_active=True,
@@ -2321,7 +2265,6 @@ def test_waiver_does_not_grant_rent_perks_in_shop(client, teacher_admin, student
     )
     per_use_store_item = StoreItem(
         user_id=teacher_admin.id,
-        join_code='JOINCODE123',
         name='Waiver Pencil Per Use',
         price=Decimal('3.00'),
         is_active=True,
@@ -2355,7 +2298,6 @@ def test_waiver_does_not_grant_rent_perks_in_shop(client, teacher_admin, student
 
     db.session.add(RentWaiver(
         user_id=student_user.id,
-        join_code='JOINCODE123',
         waiver_start_date=datetime(2000, 1, 1, tzinfo=timezone.utc),
         waiver_end_date=datetime(2100, 1, 1, tzinfo=timezone.utc),
         periods_count=1,
@@ -2405,7 +2347,6 @@ def test_shop_keeps_rent_perks_when_payment_exists_alongside_waiver(client, teac
     class_econ = ClassEconomy.query.first()
     print("CLASS_ID_DEBUG:", class_econ.class_id if class_econ else "NONE")
     settings = RentSettings(class_id=ClassEconomy.query.first().class_id, block='A',
-        join_code='JOINCODE123',
         is_enabled=True,
         rent_amount=Decimal('10.00'),
         frequency_type='monthly',
@@ -2418,7 +2359,6 @@ def test_shop_keeps_rent_perks_when_payment_exists_alongside_waiver(client, teac
 
     privilege_store_item = StoreItem(
         user_id=teacher_admin.id,
-        join_code='JOINCODE123',
         name='Paid + Waived Privilege',
         price=Decimal('50.00'),
         is_active=True,
@@ -2445,7 +2385,6 @@ def test_shop_keeps_rent_perks_when_payment_exists_alongside_waiver(client, teac
     db.session.add(RentPayment(
         user_id=student_user.id,
         period='A',
-        join_code='JOINCODE123',
         amount_paid=Decimal('10.00'),
         period_month=coverage_due_date.month,
         period_year=coverage_due_date.year,
@@ -2454,7 +2393,7 @@ def test_shop_keeps_rent_perks_when_payment_exists_alongside_waiver(client, teac
         payment_date=fixed_now,
     ))
     db.session.add(Transaction(
-        user_id=student_user.id,join_code='JOINCODE123',
+        user_id=student_user.id,
         amount=Decimal('-10.00'),
         account_type='checking',
         type='Rent Payment',
@@ -2463,7 +2402,6 @@ def test_shop_keeps_rent_perks_when_payment_exists_alongside_waiver(client, teac
     ))
     db.session.add(RentWaiver(
         user_id=student_user.id,
-        join_code='JOINCODE123',
         waiver_start_date=datetime(2000, 1, 1, tzinfo=timezone.utc),
         waiver_end_date=datetime(2100, 1, 1, tzinfo=timezone.utc),
         periods_count=1,

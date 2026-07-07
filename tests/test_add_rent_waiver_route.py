@@ -10,12 +10,10 @@ from app.models import (
     UserRole,
     AnalyticsEvent,
     ClassEconomy,
-    ClassMembership,
     ObligationAssessment,
     IdentityProfile,
     RentSettings,
     Seat,
-    StudentTeacher,
     )
 from tests.helpers.admin_context import login_admin
 from tests.helpers.class_scope import make_student_identity
@@ -29,10 +27,9 @@ def _make_admin(suffix):
 
 
 def _make_teacher_block(admin_id, block, join_code):
-    economy = ClassEconomy(join_code=join_code, user_id=admin_id, created_by_admin_id=admin_id)
+    economy = ClassEconomy(join_code=join_code, user_id=admin_id)
     db.session.add(economy)
     db.session.flush()
-    db.session.add(ClassMembership(join_code=join_code, admin_id=admin_id, role="admin"))
     seat = Seat(
         class_id=economy.class_id,
         join_code=join_code,
@@ -42,7 +39,7 @@ def _make_teacher_block(admin_id, block, join_code):
     )
     db.session.add(seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="teacher_primary", first_name="Teacher", last_initial="T"))
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="teacher_primary", first_name="Teacher", last_name="T"))
     db.session.flush()
     return seat
 
@@ -72,7 +69,7 @@ def _make_student(suffix, block="A"):
     )
     db.session.add(student_user)
     db.session.flush()
-    profile = IdentityProfile(profile_type="student", first_name="Test", last_initial="W")
+    profile = IdentityProfile(profile_type="student", first_name="Test", last_name="W")
     db.session.add(profile)
     db.session.flush()
     seat = Seat(
@@ -89,7 +86,6 @@ def _make_student(suffix, block="A"):
 
 
 def _link_student(student, admin):
-    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=admin.id))
     db.session.flush()
 
 

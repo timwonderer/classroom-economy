@@ -17,7 +17,7 @@ import unicodedata
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
-from app.models import User, UserRole, Admin, StudentTeacher, HallPassLog, Seat, ClassEconomy
+from app.models import User, UserRole, Admin, HallPassLog, Seat, ClassEconomy
 from app.hash_utils import get_random_salt, hash_username
 from tests.helpers.class_scope import make_student_identity
 
@@ -38,18 +38,16 @@ def hp_teacher(client):
 
 @pytest.fixture
 def hp_student(client, hp_teacher):
-    """Create a student with a TeacherBlock and StudentTeacher link."""
+    """Create a student with a TeacherBlock link."""
     class_row = ClassEconomy(
         join_code="jc_chem3",
         user_id=hp_teacher.id,
-        created_by_admin_id=hp_teacher.id,
         section="Period3",
         display_name="Period3",
     )
     db.session.add(class_row)
     db.session.flush()
     student = make_student_identity(first_name="Maria", last_name="Garcia", block="Period3", class_id=class_row.class_id, join_code="jc_chem3")
-    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=hp_teacher.id))
     db.session.commit()
     return student
 
@@ -196,8 +194,6 @@ def test_post_verify_match_returned(client, hp_teacher, hp_student):
 def test_post_verify_ambiguous(client, hp_teacher, hp_student):
     """POST matching multiple students returns ambiguous response."""
     student2 = make_student_identity(first_name="Maria", last_name="Garcia", block="Period3", class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id, join_code="jc_chem3")
-    db.session.add(StudentTeacher(user_id=student2.user_id, teacher_id=hp_teacher.id))
-
     now = datetime.now(timezone.utc)
     for s in [hp_student, student2]:
         db.session.add(HallPassLog(
@@ -298,7 +294,6 @@ def test_post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_
     # Insert many newer non-matching records for the same class/day.
     for i in range(25):
         other = make_student_identity(first_name=f"Other{i}", last_name="Zimmer", block="Period3", class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id, join_code="jc_chem3")
-        db.session.add(StudentTeacher(user_id=other.user_id, teacher_id=hp_teacher.id))
         db.session.add(HallPassLog(
             user_id=other.user_id,
             class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,

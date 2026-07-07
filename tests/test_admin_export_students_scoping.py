@@ -4,7 +4,7 @@ import io
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import User, UserRole, Admin, IdentityProfile, Seat, StudentTeacher, Transaction
+from app.models import User, UserRole, Admin, IdentityProfile, Seat, Transaction
 from app.services.ledger_service import get_available_balances
 from app.routes.admin import _sanitize_roster_text
 from tests.helpers.class_scope import create_class_scope
@@ -30,7 +30,6 @@ def _make_student(first_name: str, last_initial: str = "A", block: str = "A"):
     seat = Seat(
         user_id=user.id,
         role="student",
-        join_code="ROSTERSYNC1",
         block=block,
         block_identifier=block,
         claimed_at=datetime.now(timezone.utc),
@@ -42,7 +41,7 @@ def _make_student(first_name: str, last_initial: str = "A", block: str = "A"):
         seat_id=seat.id,
         profile_type="student",
         first_name=first_name,
-        last_initial=last_initial,
+        last_name=last_initial,
     )
     db.session.add(profile)
     db.session.flush()
@@ -55,11 +54,8 @@ def test_roster_upload_ignores_balance_columns_and_keeps_ledger_truth(client):
     db.session.commit()
 
     student_user, seat, profile = _make_student("Original", "N")
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-
     class_row = create_class_scope(
         teacher=teacher,
-        join_code="ROSTERSYNC1",
         student=seat,
         block="A",
         display_name="Roster Sync",
@@ -81,7 +77,6 @@ def test_roster_upload_ignores_balance_columns_and_keeps_ledger_truth(client):
             user_id=student_user.id,
             seat_id=seat.id,
             class_id=class_row.class_id,
-            join_code=class_row.join_code,
             amount=Decimal("42.50"),
             account_type="checking",
             type="deposit",
@@ -102,7 +97,6 @@ def test_roster_upload_ignores_balance_columns_and_keeps_ledger_truth(client):
             class_id=class_row.class_id,
             seat_id=teacher_seat.id,
             role="teacher",
-            join_code=class_row.join_code,
         )
 
     csv_body = (

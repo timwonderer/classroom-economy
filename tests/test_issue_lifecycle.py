@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import User, UserRole, Admin, Issue, IssueCategory, Seat, ClassEconomy, StudentTeacher
+from app.models import User, UserRole, Admin, Issue, IssueCategory, Seat, ClassEconomy
 from app.utils.opaque_refs import make_opaque_ref
 from tests.helpers.class_scope import make_student_identity
 
@@ -14,7 +14,6 @@ def test_teacher_must_close_issue_after_final_review(client):
     class_row = ClassEconomy(
         join_code="JOINLIFE1",
         user_id=teacher.id,
-        created_by_admin_id=teacher.id,
         section="A",
         display_name="A",
     )
@@ -28,7 +27,6 @@ def test_teacher_must_close_issue_after_final_review(client):
     )
     db.session.add_all([student, category])
     db.session.flush()
-    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=teacher.id, class_id=class_row.class_id, join_code="JOINLIFE1"))
     seat = db.session.get(Seat, student.id)
 
     issue = Issue(

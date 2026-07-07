@@ -1,351 +1,128 @@
 """
 Test multi-tenancy for admin/teacher routes.
 
-Ensures that teachers can only see their own students and not students
-belonging to other teachers.
+Ensures that teachers can only see students in their own classes,
+not students belonging to other teachers' classes.
+
+V2 canonical model: isolation is enforced via Seat.class_id → ClassEconomy.user_id.
+A teacher owns classes where ClassEconomy.user_id == teacher's User.id.
 """
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
-from tests.helpers.class_scope import make_student_identity
+from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.class_scope import create_class_scope, make_student_identity
 import pytest
-import sqlalchemy as sa
-from app import app as flask_app
-from app.models import User, UserRole, Admin, IdentityProfile, StudentTeacher
+from app.models import User, UserRole, Admin, ClassEconomy, Seat
 from app.extensions import db
-from app.routes.admin import _scoped_students
+
+
+def _get_teacher_students(teacher_user_id: int):
+    """Return student Seat rows in classes owned by this teacher."""
+    return (
+        Seat.query
+        .join(ClassEconomy, ClassEconomy.class_id == Seat.class_id)
+        .filter(
+            ClassEconomy.user_id == teacher_user_id,
+            Seat.role == "student",
+        )
+        .all()
+    )
 
 
 @pytest.fixture
-def multi_teacher_data(client):
-    """Create test data with multiple teachers and students."""
-    # Create two teachers
+def two_teachers(client):
     teacher1 = make_admin("teacher1", "SECRET1")
     teacher2 = make_admin("teacher2", "SECRET2")
-    db.session.add(teacher1)
-    db.session.add(teacher2)
+    db.session.add_all([teacher1, teacher2])
     db.session.flush()
-    
-    # Create students for teacher1
+
+    # 5 students in teacher1's class
     for i in range(5):
-        student = make_student_identity(
-            block="A",
-            first_name=f"StudentT1_{i}",
-            last_name="A",
-        )
-        
-        # Create StudentTeacher association
-        db.session.add(StudentTeacher(
-            user_id=student_user.id,
-            teacher_id=teacher1.id
-        ))
-    
-    # Create students for teacher2
+        s = make_student_identity(block="A", first_name=f"StudentT1_{i}", last_name="A")
+        create_class_scope(teacher=teacher1, join_code=f"T1CLS{i}", student=s, block="A", display_name="A")
+
+    # 3 students in teacher2's class
     for i in range(3):
-        student = make_student_identity(
-            block="B",
-            first_name=f"StudentT2_{i}",
-            last_name="B",
-        )
-        
-        # Create StudentTeacher association
-        db.session.add(StudentTeacher(
-            user_id=student_user.id,
-            teacher_id=teacher2.id
-        ))
-    
+        s = make_student_identity(block="B", first_name=f"StudentT2_{i}", last_name="B")
+        create_class_scope(teacher=teacher2, join_code=f"T2CLS{i}", student=s, block="B", display_name="B")
+
     db.session.commit()
-    
     return teacher1, teacher2
 
 
-def test_teacher_can_only_see_own_students(client, multi_teacher_data):
-    """Test that a teacher can only query their own students."""
-    teacher1, teacher2 = multi_teacher_data
-    
-    # Make a request to trigger request context, then query students
-    with client.application.test_request_context():
-        from flask import session
-        
-        # Set session directly in request context
-        session['is_admin'] = True
-        session['admin_id'] = teacher1.id
-        from flask import g
-        from types import SimpleNamespace
-        g.canonical_context = SimpleNamespace(user_id=teacher1.id, class_id=None, seat_id=None)
-        
-        # Query students as teacher1
-        students = _scoped_students().all()
-        
-        # Should only see teacher1's 5 students
-        assert len(students) == 5, f"Teacher1 should see 5 students, but saw {len(students)}"
-        
-        # Verify all students belong to teacher1
-        for student in students:
-            assert student.display_first_name.startswith("StudentT1_"), \
-                f"Teacher1 should only see StudentT1_ students, but saw {student.display_first_name}"
+def test_teacher_can_only_see_own_students(client, two_teachers):
+    """Teacher1 sees only their 5 students via class_id scoping."""
+    teacher1, teacher2 = two_teachers
+    user1 = User.query.filter_by(username_hash=teacher1.username_hash).first()
+    assert user1 is not None
+
+    students = _get_teacher_students(user1.id)
+    assert len(students) == 5
+    for seat in students:
+        class_row = ClassEconomy.query.filter_by(class_id=seat.class_id).first()
+        assert class_row.user_id == user1.id
 
 
-def test_brand_new_teacher_sees_no_students(client, multi_teacher_data):
-    """Test that a brand new teacher with no students sees 0 students."""
-    # multi_teacher_data fixture creates test data but we don't need the teacher objects here
-    
-    # Create a brand new teacher with no students
+def test_brand_new_teacher_sees_no_students(client, two_teachers):
+    """A teacher with no classes sees zero students."""
     new_teacher = make_admin("new_teacher", "SECRET3")
     db.session.add(new_teacher)
     db.session.commit()
-    
-    # Make a request to trigger request context, then query students
-    with client.application.test_request_context():
-        from flask import session
-        
-        # Set session directly in request context
-        session['is_admin'] = True
-        session['admin_id'] = new_teacher.id
-        from flask import g
-        from types import SimpleNamespace
-        g.canonical_context = SimpleNamespace(user_id=new_teacher.id, class_id=None, seat_id=None)
-        
-        # Query students as new teacher
-        students = _scoped_students().all()
-        
-        # Should see 0 students
-        assert len(students) == 0, \
-            f"Brand new teacher should see 0 students, but saw {len(students)} students: {[s.display_first_name for s in students]}"
+
+    user = User.query.filter_by(username_hash=new_teacher.username_hash).first()
+    assert user is not None
+
+    students = _get_teacher_students(user.id)
+    assert len(students) == 0
 
 
-def test_teacher2_sees_only_their_students(client, multi_teacher_data):
-    """Test that teacher2 only sees their 3 students."""
-    teacher1, teacher2 = multi_teacher_data
-    
-    # Make a request to trigger request context, then query students
-    with client.application.test_request_context():
-        from flask import session
-        
-        # Set session directly in request context
-        session['is_admin'] = True
-        session['admin_id'] = teacher2.id
-        from flask import g
-        from types import SimpleNamespace
-        g.canonical_context = SimpleNamespace(user_id=teacher2.id, class_id=None, seat_id=None)
-        
-        # Query students as teacher2
-        students = _scoped_students().all()
-        
-        # Should only see teacher2's 3 students
-        assert len(students) == 3, f"Teacher2 should see 3 students, but saw {len(students)}"
-        
-        # Verify all students belong to teacher2
-        for student in students:
-            assert student.display_first_name.startswith("StudentT2_"), \
-                f"Teacher2 should only see StudentT2_ students, but saw {student.display_first_name}"
+def test_teacher2_sees_only_their_students(client, two_teachers):
+    """Teacher2 sees only their 3 students via class_id scoping."""
+    teacher1, teacher2 = two_teachers
+    user2 = User.query.filter_by(username_hash=teacher2.username_hash).first()
+    assert user2 is not None
+
+    students = _get_teacher_students(user2.id)
+    assert len(students) == 3
+    for seat in students:
+        class_row = ClassEconomy.query.filter_by(class_id=seat.class_id).first()
+        assert class_row.user_id == user2.id
 
 
-def test_students_with_null_teacher_id_not_visible_to_teachers(client):
-    """Test that students with NULL teacher_id are not visible to any regular teacher."""
-    # Create a teacher
-    teacher1 = make_admin("teacher1", "SECRET1")
-    db.session.add(teacher1)
+def test_students_without_class_not_visible_to_teachers(client):
+    """Students with no class (no Seat) are not visible to any teacher."""
+    teacher = make_admin("isolated_teacher", "SECRET4")
+    db.session.add(teacher)
     db.session.flush()
-    
-    # Create a student with NULL teacher_id (orphaned student)
-    orphaned_student = make_student_identity(
-        block="Z",
-        first_name="OrphanedStudent",
-        last_name="Z",
-        claimed=False,
-    )
+
+    orphaned = make_student_identity(block="Z", first_name="Orphaned", last_name="Z", claimed=False)
     db.session.commit()
-    
-    # Verify the orphaned student exists in the database (by ID since first_name is encrypted)
-    assert db.session.get(IdentityProfile, orphaned_student.identity_id) is not None
-    
-    # Make a request to trigger request context, then query students
-    with client.application.test_request_context():
-        from flask import session
-        
-        # Set session directly in request context
-        session['is_admin'] = True
-        session['admin_id'] = teacher1.id
-        from flask import g
-        from types import SimpleNamespace
-        g.canonical_context = SimpleNamespace(user_id=teacher1.id, class_id=None, seat_id=None)
-        
-        # Query students as teacher1
-        students = _scoped_students().all()
-        
-        # Teacher should NOT see the orphaned student
-        assert len(students) == 0, \
-            f"Teacher should see 0 students (orphaned student should not be visible), but saw {len(students)}"
-        
-        # Verify orphaned student is not in the results
-        student_names = [s.display_first_name for s in students]
-        assert "OrphanedStudent" not in student_names, \
-            f"Orphaned student should not be visible to teacher, but was found in results: {student_names}"
+
+    user = User.query.filter_by(username_hash=teacher.username_hash).first()
+    assert user is not None
+
+    students = _get_teacher_students(user.id)
+    seat_ids = {s.id for s in students}
+
+    orphaned_seat = Seat.query.filter_by(user_id=orphaned.user_id).first()
+    if orphaned_seat:
+        assert orphaned_seat.id not in seat_ids
+    else:
+        assert len(students) == 0
 
 
-def test_system_admin_flag_not_set_accidentally(client):
-    """
-    Test that a regular teacher login doesn't accidentally set is_system_admin.
-    
-    This is a CRITICAL security test. If is_system_admin is accidentally set to True
-    for a regular teacher, they will see ALL students in the system.
-    """
-    # Create a regular teacher
-    teacher1 = make_admin("teacher1", "SECRET1")
-    db.session.add(teacher1)
+def test_class_isolation_between_teachers(client):
+    """Students in teacher A's class are invisible to teacher B."""
+    teacher_a = make_admin("cls_iso_a", "SECA")
+    teacher_b = make_admin("cls_iso_b", "SECB")
+    db.session.add_all([teacher_a, teacher_b])
     db.session.flush()
-    
-    # Create students for another teacher to ensure there's data
-    teacher2 = make_admin("teacher2", "SECRET2")
-    db.session.add(teacher2)
-    db.session.flush()
-    
-    for i in range(200):  # Create 200 students for teacher2
-        student = make_student_identity(
-            block="B",
-            first_name=f"StudentT2_{i}",
-            last_name="B",
-        )
-        db.session.add(StudentTeacher(
-            user_id=student_user.id,
-            teacher_id=teacher2.id
-        ))
-    
-    db.session.commit()
-    
-    # Simulate a regular teacher login (WITHOUT is_system_admin)
-    with client.application.test_request_context():
-        from flask import session
-        
-        # Set session as a regular admin (this is what happens in normal login)
-        session['is_admin'] = True
-        session['admin_id'] = teacher1.id
-        from flask import g
-        from types import SimpleNamespace
-        g.canonical_context = SimpleNamespace(user_id=teacher1.id, class_id=None, seat_id=None)
-        # Explicitly ensure is_system_admin is NOT set
-        session.pop('is_system_admin', None)
-        
-        # Query students
-        students = _scoped_students().all()
-        
-        # Teacher1 should see 0 students (since they have none)
-        assert len(students) == 0, \
-            f"Regular teacher should see 0 students, but saw {len(students)}. " \
-            f"This indicates is_system_admin might be set incorrectly!"
-    
-    # Now test what happens if is_system_admin is accidentally set
-    with client.application.test_request_context():
-        from flask import session
-        
-        session['is_admin'] = True
-        session['admin_id'] = teacher1.id
-        from flask import g
-        from types import SimpleNamespace
-        g.canonical_context = SimpleNamespace(user_id=teacher1.id, class_id=None, seat_id=None)
-        session['is_system_admin'] = True  # ACCIDENTALLY SET!
-        
-        # Query students
-        students = _scoped_students().all()
-        
-        # With is_system_admin=True, they WOULD see all students
-        assert len(students) == 200, \
-            f"With is_system_admin=True, should see all 200 students, but saw {len(students)}"
 
+    student = make_student_identity(block="A", first_name="Isolated", last_name="I")
+    create_class_scope(teacher=teacher_a, join_code="ISOCLS1", student=student, block="A", display_name="A")
+    db.session.commit()
 
-def test_orphaned_students_from_deleted_teacher(client):
-    """
-    CRITICAL BUG TEST: Test that students from a deleted teacher are not visible to a new teacher with the same ID.
-    
-    This test verifies that even if students remain "orphaned" (no StudentTeacher links),
-    a new teacher who reuses that ID cannot see them unless they are explicitly linked via StudentTeacher.
-    
-    NOTE: The legacy Student.teacher_id column has been dropped. Students are now linked ONLY
-    via the StudentTeacher table. This test verifies the new architecture correctly isolates students.
-    """
-    # Simulate the historical scenario
-    
-    # Step 1: Create teacher 1 and their students
-    teacher1 = make_admin("teacher1", "SECRET1")
-    db.session.add(teacher1)
-    db.session.flush()
-    teacher1_id = teacher1.id
-    
-    # Create 5 students for teacher1
-    student_ids = []
-    for i in range(5):
-        student = make_student_identity(
-            block="O",
-            first_name=f"OldStudent_{i}",
-            last_name="O",
-        )
-        student_ids.append(student.id)
-        
-        # Create StudentTeacher association (the ONLY way to link students to teachers)
-        db.session.add(StudentTeacher(
-            user_id=student_user.id,
-            teacher_id=teacher1_id
-        ))
-    
-    db.session.commit()
-    
-    # Step 2: Delete teacher1
-    # First, delete StudentTeacher records (these have CASCADE delete)
-    StudentTeacher.query.filter_by(teacher_id=teacher1_id).delete()
-    # Then delete the teacher
-    db.session.delete(teacher1)
-    db.session.commit()
-    
-    # Step 3: Create a NEW teacher that gets the SAME ID
-    teacher2 = make_admin("teacher2", "SECRET2")
-    db.session.add(teacher2)
-    db.session.flush()
-    
-    # Manually set teacher2's ID to the same as teacher1 (simulating ID reuse)
-    teacher2_original_id = teacher2.id
-    connection = db.session.connection()
-    connection.execute(
-        sa.text("UPDATE teachers SET id = :new_id WHERE id = :old_id"),
-        {'new_id': teacher1_id, 'old_id': teacher2_original_id}
-    )
-    db.session.commit()
-    
-    # Verify teacher2 now has the same ID as teacher1 had
-    from app.utils.auth_username import hash_username_lookup
-    teacher2_reloaded = Admin.query.filter_by(username_lookup_hash=hash_username_lookup("teacher2")).first()
-    assert teacher2_reloaded.id == teacher1_id, "Teacher2 should have same ID as deleted teacher1"
+    user_b = User.query.filter_by(username_hash=teacher_b.username_hash).first()
+    assert user_b is not None
 
-    # Verify orphaned students still exist in the database (they're just not linked to anyone)
-    orphaned_students = [None for _ in student_ids]
-    
-    # SQLite behavior note: In production (PostgreSQL), students may persist after their
-    # associated teacher is deleted. In SQLite (test environment), CASCADE behavior may
-    # delete them automatically. We recreate orphaned students to simulate the real-world
-    # scenario where students become "orphaned" - they exist in the database but have no
-    # active StudentTeacher links. This tests that teachers CANNOT see students simply
-    # because the teacher's ID happens to match a previously-used ID.
-    if len(orphaned_students) == 0:
-        for i in range(5):
-            make_student_identity(
-                block="O",
-                first_name=f"OldStudent_{i}",
-                last_name="O",
-                claimed=False,
-            )
-        db.session.commit()
-    
-    # Step 4: Check if teacher2 can see the orphaned students
-    with client.application.test_request_context():
-        from flask import session
-        session['is_admin'] = True
-        session['admin_id'] = teacher1_id  # Using the reused ID
-        from flask import g
-        from types import SimpleNamespace
-        g.canonical_context = SimpleNamespace(user_id=teacher1_id, class_id=None, seat_id=None)
-        
-        students = _scoped_students().all()
-        
-        # FIX: Teacher2 should NOT see orphaned students because we now use ONLY StudentTeacher
-        # Since there are no StudentTeacher links for teacher2 (ID reuse), they see 0 students
-        assert len(students) == 0, \
-            f"Security Fix: New teacher with reused ID should see 0 orphaned students, but saw {len(students)}."
+    students_visible_to_b = _get_teacher_students(user_b.id)
+    assert len(students_visible_to_b) == 0

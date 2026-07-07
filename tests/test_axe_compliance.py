@@ -23,7 +23,7 @@ from wsgiref.simple_server import make_server, WSGIRequestHandler
 
 from app.extensions import db
 from app.models import (
-    Admin, StudentTeacher, ClassEconomy, ClassMembership,
+    Admin, ClassEconomy,
     Seat, IdentityProfile, RentSettings, User, TeacherOnboarding, ClassFeature,
 )
 from tests.helpers.class_scope import create_class_scope
@@ -364,8 +364,6 @@ def student_page(app, client, axe_live_server, browser, axe_script):
             teacher_user_id=teacher_user.id,
             student_user_id=user.id,
         )
-        db.session.add(StudentTeacher(user_id=user.id, teacher_id=teacher.id))
-
         teacher_user.last_active_class_id = class_row.class_id
         user.last_active_class_id = class_row.class_id
 

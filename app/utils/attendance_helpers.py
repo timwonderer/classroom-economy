@@ -38,4 +38,7 @@ def get_join_code_for_student_period(student_id, period, teacher_id=None):
         query = query.filter(Seat.class_id.in_(teacher_class_ids))
 
     seat = query.order_by(Seat.id.desc()).first()
-    return seat.join_code if seat else None
+    if not seat:
+        return None
+    class_row = ClassEconomy.query.filter_by(class_id=seat.class_id).first()
+    return class_row.join_code if class_row else None

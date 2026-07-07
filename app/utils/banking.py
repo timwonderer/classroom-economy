@@ -105,7 +105,7 @@ def settle_balances(seat_id: int, class_id: str) -> None:
             raise ValueError("settle_balances requires a seat bound to the provided class_id")
 
         scope_filter = transaction_scope_filter(Transaction, resolved_seat_id)
-        resolved_join_code = seat.join_code or class_row[1]
+        resolved_join_code = class_row[1]
         cache_was_created = False
         # 1. Lock (or Create) BalanceCache Row
         # ---------------------------------------------------------

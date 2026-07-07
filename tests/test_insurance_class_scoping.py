@@ -4,9 +4,6 @@ Tests for insurance multi-tenancy scoping by class/join_code.
 This test verifies that when a teacher switches between classes on the
 Insurance Management page, only the policies, enrollments, and claims
 for the selected class are displayed.
-
-Related issue: Insurance class selector was not filtering data properly,
-showing all classes' data regardless of selection.
 """
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
@@ -17,11 +14,10 @@ from app import db
 from app.models import (
     User,
     UserRole,
-    Admin, ClassEconomy, IdentityProfile, StudentBlock, StudentTeacher,
+    Admin, ClassEconomy, IdentityProfile,
     InsurancePolicy, InsurancePolicyBlock, InsuranceEnrollment, InsuranceClaim,
     Seat,
 )
-from app.hash_utils import hash_username
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.class_scope import make_student_identity
 
@@ -29,30 +25,9 @@ from tests.helpers.class_scope import make_student_identity
 @pytest.fixture
 def teacher_with_two_classes(client):
     """Create a teacher with two class periods, each with a different join_code."""
-    # Create teacher
     teacher = make_admin("multi-class-teacher", "test-secret")
     db.session.add(teacher)
     db.session.flush()
-
-    # Create Seat for Period A with join_code JOINA123
-    student_a = make_student_identity(block="A", first_name="Alice", last_name="A")
-    # Auto-injected Canonical User
-    student_a_user = User(username_hash=f"auto_{student_a.id}", username_lookup_hash=f"auto_l_{student_a.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_a_user)
-    db.session.flush()
-    tb_a = Seat(join_code="JOINA123", block="A", block_identifier="A", role="student")
-    db.session.add(tb_a)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb_a.id, profile_type='student_unclaimed', first_name="Placeholder", last_initial="P"))
-    db.session.add(tb_a)
-
-    # Create Seat for Period B with join_code JOINB456
-    tb_b = Seat(join_code="JOINB456", block="B", block_identifier="B", role="student")
-    db.session.add(tb_b)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb_b.id, profile_type='student_unclaimed', first_name="Placeholder", last_initial="P"))
-    db.session.add(tb_b)
-
     db.session.commit()
     return teacher
 
@@ -61,57 +36,40 @@ def teacher_with_two_classes(client):
 def students_in_two_classes(client, teacher_with_two_classes):
     """Create students in two different class periods."""
     teacher = teacher_with_two_classes
-    # Student in Period A
+
     student_a = make_student_identity(block="A", first_name="Alice", last_name="A")
-
-    # StudentTeacher relationship
-    st_a = StudentTeacher(user_id=student_a.user_id, teacher_id=teacher.id)
-    db.session.add(st_a)
-
-    # StudentBlock for Period A with join_code JOINA123
-    sb_a = StudentBlock(
-        user_id=student_a.user_id,
+    class_a = create_class_scope(
+        teacher=teacher,
         join_code="JOINA123",
-        period="A"
+        student=student_a,
+        block="A",
+        display_name="A",
     )
-    db.session.add(sb_a)
 
-    # Add transaction to set balance
-    from app.models import Transaction
-    db.session.add(Transaction(
-        user_id=student_a.user_id,join_code="JOINA123",
-        amount=100.0,
-        type="deposit",
-        description="Initial balance",
-        account_type="checking"
-    ))
-
-    # Student in Period B
     student_b = make_student_identity(block="B", first_name="Bob", last_name="B")
-
-    # StudentTeacher relationship
-    st_b = StudentTeacher(user_id=student_b.user_id, teacher_id=teacher.id)
-    db.session.add(st_b)
-
-    # StudentBlock for Period B with join_code JOINB456
-    sb_b = StudentBlock(
-        user_id=student_b.user_id,
+    class_b = create_class_scope(
+        teacher=teacher,
         join_code="JOINB456",
-        period="B"
+        student=student_b,
+        block="B",
+        display_name="B",
     )
-    db.session.add(sb_b)
 
-    # Add transaction to set balance
+    from app.models import Transaction
+    seat_a = Seat.query.filter_by(class_id=class_a.class_id, role="student").first()
+    seat_b = Seat.query.filter_by(class_id=class_b.class_id, role="student").first()
     db.session.add(Transaction(
-        user_id=student_b.user_id,join_code="JOINB456",
-        amount=200.0,
-        type="deposit",
-        description="Initial balance",
-        account_type="checking"
+        seat_id=seat_a.id, user_id=student_a.user_id, class_id=class_a.class_id,
+        join_code="JOINA123", amount=100.0, type="deposit",
+        description="Initial balance", account_type="checking",
     ))
-
+    db.session.add(Transaction(
+        seat_id=seat_b.id, user_id=student_b.user_id, class_id=class_b.class_id,
+        join_code="JOINB456", amount=200.0, type="deposit",
+        description="Initial balance", account_type="checking",
+    ))
     db.session.commit()
-    return {'student_a': student_a, 'student_b': student_b}
+    return {'student_a': student_a, 'student_b': student_b, 'class_a': class_a, 'class_b': class_b}
 
 
 @pytest.fixture
@@ -119,7 +77,6 @@ def policies_for_two_classes(client, teacher_with_two_classes):
     """Create insurance policies, one for each class period."""
     teacher = teacher_with_two_classes
 
-    # Policy for Period A only
     policy_a = InsurancePolicy(
         policy_code="POLICY-A-001",
         teacher_id=teacher.id,
@@ -132,12 +89,8 @@ def policies_for_two_classes(client, teacher_with_two_classes):
     )
     db.session.add(policy_a)
     db.session.flush()
+    db.session.add(InsurancePolicyBlock(policy_id=policy_a.id, block="A"))
 
-    # Set policy to be visible only in Period A
-    policy_block_a = InsurancePolicyBlock(policy_id=policy_a.id, block="A")
-    db.session.add(policy_block_a)
-
-    # Policy for Period B only
     policy_b = InsurancePolicy(
         policy_code="POLICY-B-001",
         teacher_id=teacher.id,
@@ -150,12 +103,8 @@ def policies_for_two_classes(client, teacher_with_two_classes):
     )
     db.session.add(policy_b)
     db.session.flush()
+    db.session.add(InsurancePolicyBlock(policy_id=policy_b.id, block="B"))
 
-    # Set policy to be visible only in Period B
-    policy_block_b = InsurancePolicyBlock(policy_id=policy_b.id, block="B")
-    db.session.add(policy_block_b)
-
-    # Policy for ALL classes (no InsurancePolicyBlock entries)
     policy_all = InsurancePolicy(
         policy_code="POLICY-ALL-001",
         teacher_id=teacher.id,
@@ -167,7 +116,6 @@ def policies_for_two_classes(client, teacher_with_two_classes):
         is_active=True
     )
     db.session.add(policy_all)
-
     db.session.commit()
     return {'policy_a': policy_a, 'policy_b': policy_b, 'policy_all': policy_all}
 
@@ -179,13 +127,9 @@ def test_insurance_policies_filtered_by_selected_block(
     teacher = teacher_with_two_classes
     policies = policies_for_two_classes
 
-    # Simulate the filtering logic from insurance_management route
-    import sqlalchemy as sa
     from sqlalchemy import or_
-
     selected_block = "A"
 
-    # This should return policy_a (visible in A) and policy_all (visible everywhere)
     filtered_policies = (
         InsurancePolicy.query
         .filter_by(teacher_id=teacher.id)
@@ -203,11 +147,8 @@ def test_insurance_policies_filtered_by_selected_block(
     )
 
     policy_ids = [p.id for p in filtered_policies]
-
-    # Should include policy_a (Period A) and policy_all (no restrictions)
     assert policies['policy_a'].id in policy_ids
     assert policies['policy_all'].id in policy_ids
-    # Should NOT include policy_b (Period B only)
     assert policies['policy_b'].id not in policy_ids
 
 
@@ -218,12 +159,9 @@ def test_insurance_policies_filtered_for_block_b(
     teacher = teacher_with_two_classes
     policies = policies_for_two_classes
 
-    import sqlalchemy as sa
     from sqlalchemy import or_
-
     selected_block = "B"
 
-    # This should return policy_b (visible in B) and policy_all (visible everywhere)
     filtered_policies = (
         InsurancePolicy.query
         .filter_by(teacher_id=teacher.id)
@@ -241,29 +179,28 @@ def test_insurance_policies_filtered_for_block_b(
     )
 
     policy_ids = [p.id for p in filtered_policies]
-
-    # Should include policy_b (Period B) and policy_all (no restrictions)
     assert policies['policy_b'].id in policy_ids
     assert policies['policy_all'].id in policy_ids
-    # Should NOT include policy_a (Period A only)
     assert policies['policy_a'].id not in policy_ids
 
 
-def test_student_insurance_enrollments_filtered_by_join_code(
+def test_student_insurance_enrollments_filtered_by_class_id(
     client, teacher_with_two_classes, students_in_two_classes, policies_for_two_classes
 ):
-    """Test that student enrollments are filtered by join_code."""
+    """Test that student enrollments are filtered by class_id."""
     students = students_in_two_classes
     policies = policies_for_two_classes
+    class_a = students['class_a']
+    class_b = students['class_b']
 
-    # Create enrollment for student A in Period A
-    seat_a = Seat.query.filter_by(user_id=students['student_a'].user_id).first()
-    seat_b = Seat.query.filter_by(user_id=students['student_b'].user_id).first()
+    seat_a = Seat.query.filter_by(class_id=class_a.class_id, role="student").first()
+    seat_b = Seat.query.filter_by(class_id=class_b.class_id, role="student").first()
     assert seat_a is not None
     assert seat_b is not None
+
     enrollment_a = InsuranceEnrollment(
         seat_id=seat_a.id,
-        class_id=seat_a.class_id,
+        class_id=class_a.class_id,
         policy_id=policies['policy_a'].id,
         join_code="JOINA123",
         status="active",
@@ -272,10 +209,9 @@ def test_student_insurance_enrollments_filtered_by_join_code(
     )
     db.session.add(enrollment_a)
 
-    # Create enrollment for student B in Period B
     enrollment_b = InsuranceEnrollment(
         seat_id=seat_b.id,
-        class_id=seat_b.class_id,
+        class_id=class_b.class_id,
         policy_id=policies['policy_b'].id,
         join_code="JOINB456",
         status="active",
@@ -285,50 +221,35 @@ def test_student_insurance_enrollments_filtered_by_join_code(
     db.session.add(enrollment_b)
     db.session.commit()
 
-    # Query enrollments for Period A only
     period_a_enrollments = (
         InsuranceEnrollment.query
-        .filter(InsuranceEnrollment.join_code == "JOINA123")
-        .filter(InsuranceEnrollment.status == "active")
+        .filter_by(class_id=class_a.class_id, status="active")
         .all()
     )
-
-    # Should only include enrollment_a
     assert len(period_a_enrollments) == 1
     assert period_a_enrollments[0].seat_id == seat_a.id
 
-    # Query enrollments for Period B only
     period_b_enrollments = (
         InsuranceEnrollment.query
-        .filter(InsuranceEnrollment.join_code == "JOINB456")
-        .filter(InsuranceEnrollment.status == "active")
+        .filter_by(class_id=class_b.class_id, status="active")
         .all()
     )
-
-    # Should only include enrollment_b
     assert len(period_b_enrollments) == 1
     assert period_b_enrollments[0].seat_id == seat_b.id
 
 
-def test_claims_filtered_by_join_code(
+def test_claims_filtered_by_class_id(
     client, teacher_with_two_classes, students_in_two_classes, policies_for_two_classes
 ):
-    """Test that insurance claims are filtered by join_code via canonical InsuranceEnrollment."""
+    """Test that insurance claims are filtered by class_id."""
     teacher = teacher_with_two_classes
     students = students_in_two_classes
     policies = policies_for_two_classes
+    class_a = students['class_a']
+    class_b = students['class_b']
 
-    from app.models import ClassEconomy
-    class_a = ClassEconomy.query.filter_by(join_code="JOINA123").first()
-    class_b = ClassEconomy.query.filter_by(join_code="JOINB456").first()
-    if class_a is None:
-        class_a = create_class_scope(teacher=teacher, join_code="JOINA123", student=students['student_a'], block="A")
-    if class_b is None:
-        class_b = create_class_scope(teacher=teacher, join_code="JOINB456", student=students['student_b'], block="B")
-    db.session.flush()
-
-    seat_a = Seat.query.filter_by(user_id=students['student_a'].user_id, class_id=class_a.class_id).first()
-    seat_b = Seat.query.filter_by(user_id=students['student_b'].user_id, class_id=class_b.class_id).first()
+    seat_a = Seat.query.filter_by(class_id=class_a.class_id, role="student").first()
+    seat_b = Seat.query.filter_by(class_id=class_b.class_id, role="student").first()
 
     enrollment_a = InsuranceEnrollment(
         seat_id=seat_a.id,
@@ -383,23 +304,11 @@ def test_claims_filtered_by_join_code(
     db.session.add(claim_b)
     db.session.commit()
 
-    period_a_claims = (
-        InsuranceClaim.query
-        .join(InsuranceEnrollment, InsuranceClaim.enrollment_id == InsuranceEnrollment.id)
-        .filter(InsuranceEnrollment.join_code == "JOINA123")
-        .all()
-    )
-
+    period_a_claims = InsuranceClaim.query.filter_by(class_id=class_a.class_id).all()
     assert len(period_a_claims) == 1
     assert period_a_claims[0].description == "Claim from Period A"
 
-    period_b_claims = (
-        InsuranceClaim.query
-        .join(InsuranceEnrollment, InsuranceClaim.enrollment_id == InsuranceEnrollment.id)
-        .filter(InsuranceEnrollment.join_code == "JOINB456")
-        .all()
-    )
-
+    period_b_claims = InsuranceClaim.query.filter_by(class_id=class_b.class_id).all()
     assert len(period_b_claims) == 1
     assert period_b_claims[0].description == "Claim from Period B"
 
@@ -407,24 +316,13 @@ def test_claims_filtered_by_join_code(
 def test_no_data_shown_for_class_without_insurance(
     client, teacher_with_two_classes, policies_for_two_classes
 ):
-    """Test that switching to a class with no insurance shows empty data."""
+    """Test that a class with no insurance shows only universal policies."""
     teacher = teacher_with_two_classes
-    salt = get_random_salt()
+    policies = policies_for_two_classes
 
-    # Add a third class period with no insurance policies
-    tb_c = Seat(join_code="JOINC789", block="C", block_identifier="C", role="student")
-    db.session.add(tb_c)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb_c.id, profile_type='student_unclaimed', first_name="Placeholder", last_initial="P"))
-    db.session.add(tb_c)
-    db.session.commit()
-
-    import sqlalchemy as sa
     from sqlalchemy import or_
-
     selected_block = "C"
 
-    # Query policies for Period C
     filtered_policies = (
         InsurancePolicy.query
         .filter_by(teacher_id=teacher.id)
@@ -442,17 +340,9 @@ def test_no_data_shown_for_class_without_insurance(
     )
 
     policy_titles = [p.title for p in filtered_policies]
-
-    # Should only include "Universal Coverage" (available to all classes)
-    # and NOT the period-specific policies
     assert "Universal Coverage" in policy_titles
     assert "Period A Coverage" not in policy_titles
     assert "Period B Coverage" not in policy_titles
 
-    # Query enrollments for Period C - should be empty
-    period_c_enrollments = (
-        InsuranceEnrollment.query
-        .filter(InsuranceEnrollment.join_code == "JOINC789")
-        .all()
-    )
+    period_c_enrollments = InsuranceEnrollment.query.filter_by(join_code="JOINC789").all()
     assert len(period_c_enrollments) == 0

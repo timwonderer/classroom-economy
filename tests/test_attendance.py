@@ -13,8 +13,8 @@ from app.models import AttendanceSession, ClassEconomy, IdentityProfile, SeatAtt
 from datetime import datetime, timedelta, timezone
 
 
-def _attach_student_to_class(student, join_code="ATTEND1", block="A"):
-    from app.models import Admin, IdentityProfile, StudentTeacher, User, Seat, UserRole
+def _attach_student_to_class(student, block="A"):
+    from app.models import Admin, IdentityProfile, User, Seat, UserRole
     from tests.helpers.class_scope import create_class_scope
     from app.hash_utils import hash_username_lookup
 
@@ -33,7 +33,6 @@ def _attach_student_to_class(student, join_code="ATTEND1", block="A"):
 
     class_economy = create_class_scope(
         teacher=teacher,
-        join_code=join_code,
         student=student,
         block=block,
         display_name=block,
@@ -41,8 +40,6 @@ def _attach_student_to_class(student, join_code="ATTEND1", block="A"):
     )
     db.session.flush()
 
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-    
     student_username = f"user_{join_code}_{student.id}"
     user = User(
         user_role=UserRole.STUDENT,
@@ -56,7 +53,6 @@ def _attach_student_to_class(student, join_code="ATTEND1", block="A"):
         Seat(
             user_id=user.id,
             class_id=class_economy.class_id,
-            join_code=join_code,
             block=block,
             block_identifier=block,
             role="student",
@@ -82,7 +78,7 @@ def test_get_last_payroll_time(client):
     # Create a student first
     student = make_student_identity(block="A", first_name="Test", last_name="S")
     db.session.commit()
-    join_code = _attach_student_to_class(student, join_code="PAYROLL1", block="A")
+    join_code = _attach_student_to_class(student, block="A")
     seat_id, class_id = _resolve_scope(student.id, join_code)
 
     # Test with a payroll transaction
@@ -94,9 +90,7 @@ def test_get_last_payroll_time(client):
         class_id=class_id,
         amount=10, 
         type="payroll", 
-        timestamp=now,
-        join_code=join_code
-    )
+        timestamp=now)
     db.session.add(tx)
     db.session.commit()
     
@@ -110,16 +104,14 @@ def test_get_last_payroll_time(client):
         class_id=class_id,
         amount=5, 
         type="manual_payment", 
-        timestamp=manual_time,
-        join_code=join_code
-    )
+        timestamp=manual_time)
     db.session.add(manual_tx)
     db.session.commit()
 
     assert get_last_payroll_time(seat_id=seat_id, class_id=class_id) == manual_time
 
     # Class-scoped anchors must ignore payroll/manual payment activity from other classes
-    other_join = _attach_student_to_class(student, join_code="OTHER", block="B")
+    other_join = _attach_student_to_class(student, block="B")
     other_seat_id, other_class_id = _resolve_scope(student.id, other_join)
     other_join_time = manual_time + timedelta(hours=1)
     other_join_tx = Transaction(
@@ -129,7 +121,6 @@ def test_get_last_payroll_time(client):
         amount=7,
         type="payroll",
         timestamp=other_join_time,
-        join_code=other_join,
     )
     db.session.add(other_join_tx)
     db.session.commit()
@@ -140,7 +131,7 @@ def test_get_last_payroll_time(client):
 def test_calculate_unpaid_attendance_seconds(client):
     student = make_student_identity(block="A", first_name="Test", last_name="S")
     db.session.commit()
-    join_code = _attach_student_to_class(student, join_code="ATTEND2", block="A")
+    join_code = _attach_student_to_class(student, block="A")
 
     now = datetime.now(timezone.utc)
     tap_in_time = now - timedelta(minutes=30)
@@ -168,7 +159,7 @@ def test_calculate_period_attendance(client):
     student = make_student_identity(block="A", first_name="Test", last_name="S")
     db.session.commit()
 
-    join_code = _attach_student_to_class(student, join_code="ATTEND6", block="A")
+    join_code = _attach_student_to_class(student, block="A")
     now = datetime.now(timezone.utc)
     today = now.date()
     tap_in_time = now - timedelta(minutes=20)
@@ -194,7 +185,7 @@ def test_calculate_period_attendance(client):
 def test_get_session_status(client):
     student = make_student_identity(block="A", first_name="Test", last_name="S")
     db.session.commit()
-    join_code = _attach_student_to_class(student, join_code="ATTEND3", block="A")
+    join_code = _attach_student_to_class(student, block="A")
 
     now = datetime.now(timezone.utc)
     tap_in_time = now - timedelta(minutes=5)
@@ -229,8 +220,8 @@ def test_get_session_status(client):
 def test_get_all_block_statuses(client):
     student = make_student_identity(block="A,B", first_name="Test", last_name="S")
     db.session.commit()
-    join_code_a = _attach_student_to_class(student, join_code="ATTEND4", block="A")
-    join_code_b = _attach_student_to_class(student, join_code="ATTEND5", block="B")
+    join_code_a = _attach_student_to_class(student, block="A")
+    join_code_b = _attach_student_to_class(student, block="B")
 
     now = datetime.now(timezone.utc)
     tap_in_time_a = now - timedelta(minutes=10)

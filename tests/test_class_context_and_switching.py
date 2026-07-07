@@ -41,9 +41,9 @@ def setup_multi_class_student(client):
     db.session.add_all([class_1a, class_2b, class_3c, class_unclaimed])
     db.session.flush()
 
-    seat1 = Seat(user_id=student_user.id, class_id=class_1a.class_id, join_code="TEACHER1A", block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-    seat2 = Seat(user_id=student_user.id, class_id=class_2b.class_id, join_code="TEACHER2B", block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
-    seat3 = Seat(user_id=student_user.id, class_id=class_3c.class_id, join_code="TEACHER3C", block="C", block_identifier="C", role="student", claimed_at=datetime.now(timezone.utc))
+    seat1 = Seat(user_id=student.user_id, class_id=class_1a.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    seat2 = Seat(user_id=student.user_id, class_id=class_2b.class_id, block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    seat3 = Seat(user_id=student.user_id, class_id=class_3c.class_id, block="C", block_identifier="C", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add_all([seat1, seat2, seat3])
     db.session.flush()
     profile.seat_id = seat1.id
@@ -80,7 +80,7 @@ def setup_single_class_student(client):
     db.session.add(class_single)
     db.session.flush()
 
-    seat = Seat(user_id=student_user.id, class_id=class_single.class_id, join_code="SINGLED", block="D", block_identifier="D", role="student", claimed_at=datetime.now(timezone.utc))
+    seat = Seat(user_id=student.user_id, class_id=class_single.class_id, block="D", block_identifier="D", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat)
     db.session.flush()
     profile.seat_id = seat.id
@@ -281,7 +281,7 @@ def test_switch_class_nonexistent_join_code(client, setup_multi_class_student):
 
 def test_switch_class_unclaimed_seat(client, setup_multi_class_student):
     student = setup_multi_class_student["student"]
-    unclaimed_seat = Seat(user_id=student_user.id, class_id=setup_multi_class_student["classes"]["UNCLAIMEDZ"].class_id, join_code="UNCLAIMEDZ", block="Z", block_identifier="Z", role="student")
+    unclaimed_seat = Seat(user_id=student.user_id, class_id=setup_multi_class_student["classes"]["UNCLAIMEDZ"].class_id, block="Z", block_identifier="Z", role="student")
     db.session.add(unclaimed_seat)
     db.session.commit()
     with client.session_transaction() as sess:

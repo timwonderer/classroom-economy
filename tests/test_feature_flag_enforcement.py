@@ -9,7 +9,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone
 from werkzeug.security import generate_password_hash
-from app.models import Admin, Transaction, ClassEconomy, ClassFeature, ClassMembership, StoreItem, Seat, User, UserRole, IdentityProfile
+from app.models import Admin, Transaction, ClassEconomy, ClassFeature, StoreItem, Seat, User, UserRole, IdentityProfile
 from tests.helpers.class_scope import make_student_identity
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
@@ -67,11 +67,6 @@ def setup_student_with_disabled_banking(client):
     student = make_student_identity(block="Period1", first_name="Bob", last_name="B")
     user = _bind_canonical_student(student)
     
-    # Link student to teacher
-    from app.models import StudentTeacher
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-    db.session.commit()
-
     join_code = "MATH1B"
     
     # Create ClassEconomy first for FK constraint
@@ -79,7 +74,6 @@ def setup_student_with_disabled_banking(client):
         join_code=join_code,
         user_id=teacher.id,
         display_name='Math Period 1B',
-        created_by_admin_id=teacher.id
     )
     db.session.add(economy)
     db.session.flush()
@@ -89,15 +83,14 @@ def setup_student_with_disabled_banking(client):
     student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    seat = Seat(user_id=student_user.id, class_id=economy.class_id, join_code=join_code, block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
+    seat = Seat(user_id=student_user.id, class_id=economy.class_id, block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Bob", last_initial="B"))
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Bob", last_name="B"))
     db.session.add(seat)
     student_seat = Seat(
         class_id=economy.class_id,
         role='student',
-        join_code=join_code,
         user_id=user.id,
         block="Period1",
         block_identifier="Period1",
@@ -194,11 +187,6 @@ def setup_student_with_enabled_banking(client):
     student = make_student_identity(block="Period2", first_name="Carol", last_name="C")
     user = _bind_canonical_student(student)
 
-    # Link student to teacher
-    from app.models import StudentTeacher
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-    db.session.commit()
-
     join_code = "MATH2C"
     
     # Create ClassEconomy first for FK constraint
@@ -206,7 +194,6 @@ def setup_student_with_enabled_banking(client):
         join_code=join_code,
         user_id=teacher.id,
         display_name='Math Period 2C',
-        created_by_admin_id=teacher.id
     )
     db.session.add(economy)
     db.session.flush()
@@ -216,15 +203,14 @@ def setup_student_with_enabled_banking(client):
     student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    seat = Seat(user_id=student_user.id, class_id=economy.class_id, join_code=join_code, block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
+    seat = Seat(user_id=student_user.id, class_id=economy.class_id, block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Carol", last_initial="C"))
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Carol", last_name="C"))
     db.session.add(seat)
     student_seat = Seat(
         class_id=economy.class_id,
         role='student',
-        join_code=join_code,
         user_id=user.id,
         block="Period2",
         block_identifier="Period2",
@@ -303,26 +289,23 @@ def test_admin_banking_rejects_disabled_class_scope(client):
         join_code=join_code,
         user_id=teacher.id,
         display_name='Banking Period A',
-        created_by_admin_id=teacher.id,
     )
     db.session.add(economy)
     db.session.flush()
-    db.session.add(ClassMembership(join_code=join_code, admin_id=teacher.id, role="admin"))
     teacher_seat = Seat(
         class_id=economy.class_id,
-        join_code=join_code,
         role="teacher",
         user_id=user.id,
     )
     db.session.add(teacher_seat)
 
-    _tb_seat = Seat(join_code=join_code, block="A", block_identifier="A", role="student")
+    _tb_seat = Seat(class_id=economy.class_id, block="A", block_identifier="A", role="student")
 
     db.session.add(_tb_seat)
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Dana", last_initial="D"))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Dana", last_name="D"))
 
     for row in ClassFeature.query.filter_by(class_id=economy.class_id, feature_name='banking').all():
         db.session.delete(row)
@@ -347,27 +330,19 @@ def _create_admin_feature_scope(teacher, *, join_code, block, feature_name, enab
         join_code=join_code,
         user_id=teacher.id,
         display_name=f'{feature_name.title()} Period {block}',
-        created_by_admin_id=teacher.id,
     )
     db.session.add(economy)
     db.session.flush()
 
-    _tb_seat = Seat(join_code=join_code, block=block, block_identifier=block, role="student")
+    _tb_seat = Seat(class_id=economy.class_id, block=block, block_identifier=block, role="student")
 
     db.session.add(_tb_seat)
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name=f"{feature_name.title()}Student", last_initial="T"))
-    db.session.add(ClassMembership(
-        class_id=economy.class_id,
-        join_code=join_code,
-        admin_id=teacher.id,
-        role="admin",
-    ))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name=f"{feature_name.title()}Student", last_name="T"))
     teacher_seat = Seat(
         class_id=economy.class_id,
-        join_code=join_code,
         role="teacher",
         user_id=teacher.user_id,
     )
@@ -505,15 +480,11 @@ def test_student_rent_rejects_disabled_feature_scope(client):
     student = make_student_identity(block="Period3", first_name="Riley", last_name="R")
     user = _bind_canonical_student(student)
 
-    from app.models import StudentTeacher
-    db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-
     join_code = "RENT03"
     economy = ClassEconomy(
         join_code=join_code,
         user_id=teacher.id,
         display_name='Rent Period 3',
-        created_by_admin_id=teacher.id,
     )
     db.session.add(economy)
     db.session.flush()
@@ -522,16 +493,15 @@ def test_student_rent_rejects_disabled_feature_scope(client):
     student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
     db.session.add(student_user)
     db.session.flush()
-    _tb_seat = Seat(user_id=student_user.id, join_code=join_code, block="Period3", block_identifier="Period3", role="student", claimed_at=datetime.now(timezone.utc))
+    _tb_seat = Seat(user_id=student_user.id, class_id=economy.class_id, block="Period3", block_identifier="Period3", role="student", claimed_at=datetime.now(timezone.utc))
 
     db.session.add(_tb_seat)
 
     db.session.flush()
 
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name="Riley", last_initial="R"))
+    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name="Riley", last_name="R"))
     student_seat = Seat(
         class_id=economy.class_id,
-        join_code=join_code,
         role='student',
         user_id=user.id,
         block='Period3',

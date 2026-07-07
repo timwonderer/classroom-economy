@@ -7,7 +7,6 @@ from app import db
 from app.models import (
     Admin,
     ClassEconomy,
-    ClassMembership,
     FeatureSettings,
     IdentityProfile,
     InsurancePolicy,
@@ -76,16 +75,10 @@ def _login_admin(client, admin_id, *, join_code=None, class_id=None):
 
 
 def _create_teacher_seat(admin_id, block='A', join_code='JOINPOLA', class_id=None):
-    identity = IdentityProfile(profile_type='student', first_name='Policy', last_initial='S')
+    identity = IdentityProfile(profile_type='student', first_name='Policy', last_name='S')
     db.session.add(identity)
     db.session.flush()
 
-    db.session.add(ClassMembership(
-        class_id=class_id,
-        join_code=join_code,
-        admin_id=admin_id,
-        role="admin",
-    ))
     db.session.add(Seat(
         class_id=class_id,
         join_code=join_code,
@@ -109,7 +102,6 @@ def _create_admin_with_block(block='A', join_code='JOINPOLA'):
     economy = ClassEconomy(
         join_code=join_code,
         user_id=admin.id,
-        created_by_admin_id=admin.id,
         display_name=f'Period {block}',
         section=block,
     )
@@ -146,7 +138,6 @@ def _create_insurance_policy(admin_id, title, premium, block='A', join_code=None
         db.session.add(ClassEconomy(
             join_code=join_code,
             user_id=admin_id,
-            created_by_admin_id=admin_id,
             display_name=f'Period {block}',
         ))
         db.session.flush()
@@ -442,7 +433,6 @@ def test_join_code_cycle_locks_rent_rate_after_first_payment(client):
     lock_class = ClassEconomy(
         join_code=join_code,
         user_id=admin.id,
-        created_by_admin_id=admin.id,
         display_name='Period A Lock',
     )
     db.session.add(lock_class)
@@ -665,7 +655,6 @@ def test_activate_due_rebalances_keeps_rent_mutation_in_settings_row_class(clien
     economy_b = ClassEconomy(
         join_code='JOINPOLB',
         user_id=admin.id,
-        created_by_admin_id=admin.id,
         display_name='Period B',
     )
     db.session.add(economy_b)

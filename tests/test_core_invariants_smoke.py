@@ -7,10 +7,10 @@ from werkzeug.security import generate_password_hash
 
 from app import db
 from app.hash_utils import get_random_salt, hash_username
-from app.models import Seat, IdentityProfile, Admin, ClassMembership, ClassFeature, InsuranceClaim, InsuranceEnrollment, InsurancePolicy, RentPayment, RentSettings, StoreItem, StudentTeacher, AttendanceSession, Transaction, TransactionStatus, ClassEconomy, User, UserRole
+from app.models import Seat, IdentityProfile, Admin, ClassFeature, InsuranceClaim, InsuranceEnrollment, InsurancePolicy, RentPayment, RentSettings, StoreItem, AttendanceSession, Transaction, TransactionStatus, ClassEconomy, User, UserRole
 from app.services import ledger_service, obligations_service
 from tests.helpers.admin_context import login_admin
-from tests.helpers.class_scope import create_class_scope, make_student_identity, make_student_seat, _ensure_user
+from tests.helpers.class_scope import create_class_scope, make_student_identity, _ensure_user
 from app.hash_utils import hash_username_lookup
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -35,11 +35,8 @@ def _create_student(first_name: str, block: str = "A"):
 
 
 def _link_student_to_teacher(student, admin: Admin, join_code: str, block: str = "A") -> None:
-    if not db.session.query(ClassMembership.id).filter_by(
-        join_code=join_code,
-        admin_id=admin.id,
-        role="admin",
-    ).first():
+    economy = ClassEconomy.query.filter_by(join_code=join_code).first()
+    if not economy:
         create_class_scope(
             teacher=admin,
             join_code=join_code,
@@ -48,23 +45,7 @@ def _link_student_to_teacher(student, admin: Admin, join_code: str, block: str =
             display_name=block,
         )
         db.session.flush()
-    elif not db.session.query(ClassMembership.id).filter_by(
-        join_code=join_code,
-        user_id=student.user_id,
-        role="student",
-    ).first():
-        db.session.add(ClassMembership(
-            join_code=join_code,
-            user_id=student.user_id,
-            role="student",
-        ))
-    db.session.add(StudentTeacher(user_id=student.user_id, teacher_id=admin.id))
-    class_row = db.session.query(ClassMembership.join_code).filter_by(
-        join_code=join_code,
-        admin_id=admin.id,
-        role="admin",
-    ).first()
-    if class_row:
+    if True:
         from app.models import ClassEconomy
         economy = ClassEconomy.query.filter_by(join_code=join_code).first()
         if economy:

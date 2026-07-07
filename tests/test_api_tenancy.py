@@ -14,11 +14,8 @@ from app.models import (
     Admin,
     ClassFeature,
     ClassEconomy,
-    ClassMembership,
     HallPassSettings,
     Seat,
-    StudentBlock,
-    StudentTeacher,
     AttendanceSession,
     IdentityProfile,
     User,
@@ -74,15 +71,8 @@ def _create_student(first_name: str, primary_teacher: Admin = None, linked_teach
     )
     db.session.add(seat)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name=first_name, last_initial="X"))
+    db.session.add(IdentityProfile(seat_id=seat.id, profile_type="student", first_name=first_name, last_name="X"))
 
-    if linked_teachers:
-        for teacher in linked_teachers:
-            db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=teacher.id))
-    elif primary_teacher:
-        # If no explicit links but has primary, create link
-        db.session.add(StudentTeacher(user_id=student_user.id, teacher_id=primary_teacher.id))
-    
     db.session.commit()
     return seat
 
@@ -103,12 +93,13 @@ def _login_admin(client, admin: Admin, secret: str, join_code: str = None):
             sess["current_session_nonce"] = user.current_session_nonce
         resolved_join_code = join_code
         if not resolved_join_code:
-            first_membership = (
-                ClassMembership.query.filter_by(admin_id=admin.id, role="admin")
-                .order_by(ClassMembership.id.asc())
+            class_row = (
+                ClassEconomy.query
+                .filter_by(user_id=teacher_user_id)
+                .order_by(ClassEconomy.join_code.asc())
                 .first()
             )
-            resolved_join_code = first_membership.join_code if first_membership and first_membership.join_code else None
+            resolved_join_code = class_row.join_code if class_row else None
         if resolved_join_code:
             class_row = ClassEconomy.query.filter_by(join_code=resolved_join_code, user_id=teacher_user_id).first()
             if class_row and class_row.class_id and user:
@@ -152,11 +143,7 @@ def _create_tap_event(student: Seat, teacher: Admin, join_code: str, status: str
 
 def _create_claimed_seat(teacher: Admin, student: Seat, join_code: str, block: str = "A"):
     """Create a claimed teacher block (seat) for join-code scoped tests."""
-    if not db.session.query(ClassMembership.id).filter_by(
-        join_code=join_code,
-        admin_id=teacher.id,
-        role="admin",
-    ).first():
+    if not ClassEconomy.query.filter_by(join_code=join_code, user_id=_get_teacher_user_id(teacher)).first():
         _create_class_scope(teacher, student, join_code)
 
     teacher_user_id = _get_teacher_user_id(teacher)
@@ -178,7 +165,6 @@ def _get_or_create_student_seat(student: Seat, class_id: str, join_code: str):
     seat = Seat(
         user_id=user.id,
         class_id=class_id,
-        join_code=join_code,
         role="student",
         block_identifier="A",
         block="A",
@@ -191,11 +177,7 @@ def _get_or_create_student_seat(student: Seat, class_id: str, join_code: str):
 
 def _create_class_scope(teacher: Admin, student: Seat, join_code: str):
     """Create the v2 class economy and memberships for a teacher/student pair."""
-    if not db.session.query(ClassMembership.id).filter_by(
-        join_code=join_code,
-        admin_id=teacher.id,
-        role="admin",
-    ).first():
+    if not ClassEconomy.query.filter_by(join_code=join_code, user_id=_get_teacher_user_id(teacher)).first():
         teacher_user = User.query.filter_by(username_hash=teacher.username_hash).first()
         student_user = User.query.filter_by(username_hash=student.username_hash).first()
         create_class_scope(
@@ -206,20 +188,6 @@ def _create_class_scope(teacher: Admin, student: Seat, join_code: str):
             student_user_id=student_user.id if student_user else None,
         )
         db.session.flush()
-
-    if not db.session.query(ClassMembership.id).filter_by(
-        join_code=join_code,
-        user_id=student_user.id,
-        role="student",
-    ).first():
-        teacher_user_id = _get_teacher_user_id(teacher)
-        class_row = ClassEconomy.query.filter_by(join_code=join_code, user_id=teacher_user_id).first()
-        db.session.add(ClassMembership(
-            join_code=join_code,
-            class_id=class_row.class_id if class_row else None,
-            user_id=student_user.id,
-            role="student",
-        ))
     db.session.commit()
 
 
@@ -493,142 +461,6 @@ def test_admin_delete_tap_entry_enforces_join_code_scope(client):
     assert tap_a.is_deleted is True
 
 
-def test_admin_student_block_settings_rejects_out_of_scope_join_code(client):
-    """Admin must not update a StudentBlock row bound to another join code."""
-    teacher_a, secret_a = _create_admin("teacher-a")
-    teacher_b, _ = _create_admin("teacher-b")
-
-    shared_student = _create_student(
-        "SharedBlock",
-        primary_teacher=teacher_a,
-        linked_teachers=[teacher_a, teacher_b],
-    )
-    _create_claimed_seat(teacher_a, shared_student, "JOIN_A", block="A")
-    _create_claimed_seat(teacher_b, shared_student, "JOIN_B", block="A")
-
-    block = StudentBlock(
-        user_id=shared_student_user.id,
-        period="A",
-        join_code="JOIN_B",
-        tap_enabled=True,
-    )
-    db.session.add(block)
-    db.session.commit()
-
-    _login_admin(client, teacher_a, secret_a, join_code="JOIN_A")
-    response = client.post(
-        "/api/admin/student-block-settings",
-        json={"student_id": shared_student.id, "period": "A", "tap_enabled": False},
-        headers={"X-CSRFToken": "test"},
-    )
-
-    assert response.status_code == 403
-    db.session.refresh(block)
-    assert block.tap_enabled is True
-
-
-def test_admin_student_block_settings_rejects_null_join_code_row(client):
-    """Admin update should reject StudentBlock rows without join-code scope in v2 mode."""
-    teacher_a, secret_a = _create_admin("teacher-a")
-    student = _create_student("LegacyBlock", primary_teacher=teacher_a)
-    _create_claimed_seat(teacher_a, student, "JOIN_A", block="A")
-
-    block = StudentBlock(
-        user_id=student_user.id,
-        period="A",
-        join_code=None,
-        tap_enabled=True,
-    )
-    db.session.add(block)
-    db.session.commit()
-
-    _login_admin(client, teacher_a, secret_a, join_code="JOIN_A")
-    response = client.post(
-        "/api/admin/student-block-settings",
-        json={"student_id": student.id, "period": "A", "tap_enabled": False},
-        headers={"X-CSRFToken": "test"},
-    )
-
-    assert response.status_code == 403
-    db.session.refresh(block)
-    assert block.tap_enabled is True
-    assert block.join_code is None
-
-
-def test_admin_block_tap_settings_get_ignores_out_of_scope_join_code_row(client):
-    """Block-level tap state should ignore StudentBlock rows from other join-code scopes."""
-    teacher_a, secret_a = _create_admin("teacher-a")
-    teacher_b, _ = _create_admin("teacher-b")
-
-    shared_student = _create_student(
-        "SharedTapState",
-        primary_teacher=teacher_a,
-        linked_teachers=[teacher_a, teacher_b],
-    )
-    _create_claimed_seat(teacher_a, shared_student, "JOIN_A", block="A")
-    _create_claimed_seat(teacher_b, shared_student, "JOIN_B", block="A")
-
-    # Out-of-scope row for teacher A should not drive block-level state.
-    db.session.add(
-        StudentBlock(
-            user_id=shared_student_user.id,
-            period="A",
-            join_code="JOIN_B",
-            tap_enabled=False,
-        )
-    )
-    db.session.commit()
-
-    _login_admin(client, teacher_a, secret_a, join_code="JOIN_A")
-    response = client.get("/api/admin/block-tap-settings?block=A")
-
-    assert response.status_code == 200
-    payload = response.get_json()
-    # Teacher A has no scoped disabled row; default remains enabled.
-    assert payload["tap_enabled"] is True
-
-
-def test_admin_block_tap_settings_post_preserves_out_of_scope_join_code_row(client):
-    """Bulk block tap updates must not mutate another join-code's StudentBlock row."""
-    teacher_a, secret_a = _create_admin("teacher-a")
-    teacher_b, _ = _create_admin("teacher-b")
-
-    shared_student = _create_student(
-        "SharedTapBulk",
-        primary_teacher=teacher_a,
-        linked_teachers=[teacher_a, teacher_b],
-    )
-    _create_claimed_seat(teacher_a, shared_student, "JOIN_A", block="A")
-    _create_claimed_seat(teacher_b, shared_student, "JOIN_B", block="A")
-
-    foreign_row = StudentBlock(
-        user_id=shared_student_user.id,
-        period="A",
-        join_code="JOIN_B",
-        tap_enabled=True,
-    )
-    db.session.add(foreign_row)
-    db.session.commit()
-
-    _login_admin(client, teacher_a, secret_a, join_code="JOIN_A")
-    response = client.post(
-        "/api/admin/block-tap-settings",
-        json={"block": "A", "tap_enabled": False},
-        headers={"X-CSRFToken": "test"},
-    )
-
-    assert response.status_code == 404
-    db.session.refresh(foreign_row)
-    assert foreign_row.tap_enabled is True
-
-    scoped_row = StudentBlock.query.filter_by(
-        user_id=shared_student_user.id,
-        period="A",
-        join_code="JOIN_A",
-    ).first()
-    assert scoped_row is None
-
-
 def test_hall_pass_available_types_accepts_class_id_without_teacher_id(client):
     teacher, _ = _create_admin("teacher-hall-types")
     student = _create_student("JoinCodePassTypes", primary_teacher=teacher)
@@ -687,7 +519,6 @@ def test_hall_pass_available_types_rejects_out_of_scope_join_code(client):
         join_code="OTHER999",
         user_id=teacher_user_id,
         status="active",
-        created_by_admin_id=teacher.id,
     )
     db.session.add(other_scope)
     db.session.commit()

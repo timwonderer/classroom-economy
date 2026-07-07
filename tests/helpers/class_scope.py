@@ -76,7 +76,6 @@ def create_class_scope(
         t_seat = Seat(
             user_id=resolved_teacher_user_id,
             class_id=class_row.class_id,
-            join_code=join_code,
             role="teacher",
         )
         db.session.add(t_seat)
@@ -93,7 +92,6 @@ def create_class_scope(
         s_seat = Seat(
             user_id=resolved_student_user_id,
             class_id=class_row.class_id,
-            join_code=join_code,
             block=block,
             block_identifier=block,
             role="student",
@@ -138,7 +136,6 @@ def make_student_identity(
     seat_data = dict(seat_kwargs or {})
     seat_data.setdefault("user_id", resolved_user_id)
     seat_data.setdefault("class_id", class_id)
-    seat_data.setdefault("join_code", join_code)
     seat_data.setdefault("block", block)
     seat_data.setdefault("block_identifier", block)
     seat_data.setdefault("role", role)
