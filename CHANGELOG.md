@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **Admin student-seat provisioning helper aligned to owner-user naming** — The admin helper that ensures the shadow student seat now uses owner-user naming, and the remaining internal callsites were rewired to the renamed helper. This keeps the admin class provisioning path consistent with the canonical ownership model.
 - **Transfer and admin-adjustment FEAT boundaries aligned to `user_id`** — The account-transfer FEAT and admin-adjustment FEAT now name the owner-user boundary explicitly where they already operate on canonical user ownership. The ledger calls still pass `teacher_id` into legacy-shaped service APIs, but the FEAT layer itself now speaks the same runtime language as the rest of the cleanup.
 - **Admin helper boundaries aligned to owner-user naming** — The top-of-file admin class-anchoring helpers now use `user_id` naming for class resolution and feature-settings lookup, matching the canonical owner-user boundary used elsewhere in the runtime.
 - **API helper boundaries aligned to owner-user naming** — `app/routes/api.py` now uses owner-user naming for the redemption audit and hall-pass helper boundaries while preserving the existing outward payload shapes. This is a runtime-only cleanup that keeps the canonical class-owner model moving through the remaining API surface.

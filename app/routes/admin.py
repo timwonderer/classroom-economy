@@ -1684,7 +1684,7 @@ def student_detail_url(actor_public_id: str) -> str:
     return detail_url or url_for("admin.students")
 
 
-def _ensure_teacher_student_seat(teacher_id, join_code, block):
+def _ensure_owner_user_student_seat(owner_user_id, join_code, block):
     """
     Ensure a teacher shadow student seat exists for the given class period.
 
@@ -1695,9 +1695,9 @@ def _ensure_teacher_student_seat(teacher_id, join_code, block):
     if not join_code:
         return
 
-    class_id = _resolve_class_id(teacher_id, join_code)
+    class_id = _resolve_class_id(owner_user_id, join_code)
     if not class_id:
-        class_id = _ensure_join_code_anchors(teacher_id, join_code, class_label=block)
+        class_id = _ensure_join_code_anchors(owner_user_id, join_code, class_label=block)
 
     from app.models import Seat, IdentityProfile
     from app.hash_utils import hash_username_lookup
@@ -1748,7 +1748,7 @@ def _ensure_teacher_student_seat(teacher_id, join_code, block):
         last_name=last_name,
     )
     db.session.add(profile)
-    current_app.logger.info(f"Created shadow seat for teacher {teacher_id}, join_code {join_code}")
+    current_app.logger.info(f"Created shadow seat for teacher {owner_user_id}, join_code {join_code}")
 
 
 def _get_table_names() -> set[str]:
@@ -1930,7 +1930,7 @@ def _resolve_student_add_class_context(admin_id: int | None, block: str) -> dict
         class_label=class_label,
         return_metadata=True,
     )
-    _ensure_teacher_student_seat(admin_id, join_code, block)
+    _ensure_owner_user_student_seat(admin_id, join_code, block)
     return {
         'join_code': join_code,
         'class_id': class_id,
@@ -4942,7 +4942,7 @@ def edit_student():
 
             # Ensure the teacher student seat exists for this new join code
             if join_code:
-                _ensure_teacher_student_seat(current_admin_id, join_code, block)
+                _ensure_owner_user_student_seat(current_admin_id, join_code, block)
             class_id = _ensure_join_code_anchors(current_admin_id, join_code, class_label=block)
 
         # Check if a Seat already exists for this student in this class
@@ -7151,16 +7151,16 @@ def reverse_cycle_penalties():
 # -------------------- INSURANCE MANAGEMENT --------------------
 
 
-def _get_tier_namespace_seed(teacher_id):
+def _get_tier_namespace_seed(user_id):
     """Return a stable seed for tenant-scoped tier IDs using the teacher's join code."""
     join_code_row = (
         db.session.query(ClassEconomy.join_code)
-        .filter_by(user_id=teacher_id)
+        .filter_by(user_id=user_id)
         .order_by(ClassEconomy.join_code)
         .first()
     )
 
-    return join_code_row[0] if join_code_row else f"teacher-{teacher_id}"
+    return join_code_row[0] if join_code_row else f"teacher-{user_id}"
 
 
 def _generate_tenant_scoped_tier_id(seed, sequence):
@@ -9802,7 +9802,7 @@ def upload_students():
                             )
 
                     # Ensure the teacher student seat exists for this new or existing join code
-                    _ensure_teacher_student_seat(teacher_id, join_codes_by_block[block], block)
+                    _ensure_owner_user_student_seat(teacher_id, join_codes_by_block[block], block)
 
                 if block not in class_ids_by_block:
                     class_id, class_created, class_row = _ensure_join_code_anchors(
