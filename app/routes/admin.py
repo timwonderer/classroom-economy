@@ -3050,7 +3050,7 @@ def give_bonus_all():
     for seat in seats:
         adjustments.append({
             'seat': seat,
-            'teacher_id': owner_user_id,
+            'user_id': owner_user_id,
             'amount': amount,
             'type': tx_type,
             'description': title,
@@ -8439,7 +8439,7 @@ def _run_payroll():
     """
     is_json = request.is_json or request.headers.get("X-Requested-With") == "XMLHttpRequest"
     try:
-        # Get current admin's teacher_id for proper transaction scoping
+        # Get the current owner user for proper transaction scoping
         current_admin_id = g.canonical_context.user_id
 
         if not current_admin_id:
@@ -8479,7 +8479,7 @@ def _run_payroll():
                 continue
             adjustments.append({
                 'seat': seat,
-                'teacher_id': current_admin_id,
+                'user_id': current_admin_id,
                 'amount': amount,
                 'description': "Payroll based on attendance",
                 'type': 'payroll',
@@ -9321,7 +9321,7 @@ def payroll_manual_payment():
                 flash('Please select at least one student to apply the payment.', 'warning')
                 return redirect(url_for('admin.payroll'))
 
-            # Get current admin ID for teacher_id
+            # Get current owner user for payroll settings
             selected_scope = _require_payroll_feature_scope_from_request()
             selected_join_code = selected_scope['join_code']
             selected_class_id = selected_scope['class_id']
@@ -9356,7 +9356,7 @@ def payroll_manual_payment():
                 if student:
                     adjustments.append({
                         'seat': student,
-                        'teacher_id': current_admin_id,
+                        'user_id': current_admin_id,
                         'amount': transaction_amount,
                         'description': f"Manual Payment: {description}",
                         'account_type': account_type,

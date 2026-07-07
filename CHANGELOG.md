@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **Admin payroll adjustments now use `user_id` payloads** — The admin payroll and manual payment helpers now pass `user_id` to the adjustment FEAT instead of `teacher_id`, matching the FEAT contract while leaving behavior unchanged.
 - **Admin bonus-all helper now uses canonical owner context** — The `give_bonus_all` route helper now pulls its owner boundary from `g.canonical_context.user_id` instead of relying on a stale local name, keeping the payroll/adjustment path aligned with the current admin context contract. This is a focused cleanup slice; behavior remains unchanged.
 - **Admin class-delete helper boundary renamed to `owner_user_id`** — The class-delete helper now uses owner-user naming for its boundary and announcement purge, matching the rest of the admin cleanup. This is a focused cleanup slice; behavior remains unchanged.
 - **Admin hard-delete account scope renamed to `owner_user_id`** — The admin account-deletion fan-out now names its owner boundary as `owner_user_id` and threads that naming through the class-deletion cascade. This is a focused cleanup slice; behavior remains unchanged.
