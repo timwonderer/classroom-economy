@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **System-admin delete-admin boundary aligned to `owner_user`** — The system-admin delete-admin flow now names its resolved canonical account as `owner_user`, matching the owner-user terminology used elsewhere in the cleanup.
 - **System-admin TOTP reset endpoint renamed** — The system-admin TOTP reset route helper is now named `reset_admin_totp`, matching the actual actor type that the route handles.
 - **System-admin issue-resolution boundary made consistent** — The system-admin issue-resolution flow now uses `sysadmin_user_id` consistently for its record-status bookkeeping. This is a small runtime cleanup that removes the last local variable mismatch in the flow.
 - **System-admin overview and issue-resolution boundaries aligned to canonical user naming** — The system-admin teacher-overview aggregation maps now use owner-user naming, and the issue-resolution flow now uses `sysadmin_user_id` internally. This keeps the system-admin surface moving toward the same canonical naming as the rest of the cleanup.

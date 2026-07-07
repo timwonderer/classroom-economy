@@ -963,19 +963,19 @@ def reset_admin_totp(admin_id):
 @feat_shell("FEAT-OPS-001")
 def delete_admin(admin_id):
     """
-    Delete an admin account and all students created under that teacher.
+    Delete an admin account and all students created under that owner user.
     This is a permanent action that cascades to all student data.
     """
     admin = db.get_or_404(Admin, admin_id)
 
     try:
-        teacher_user = _resolve_teacher_user(admin)
+        owner_user = _resolve_teacher_user(admin)
         deleted_student_count = 0
         deleted_class_count = 0
-        if teacher_user:
+        if owner_user:
             class_ids = [
                 class_id for (class_id,) in db.session.query(ClassEconomy.class_id)
-                .filter(ClassEconomy.user_id == teacher_user.id)
+                .filter(ClassEconomy.user_id == owner_user.id)
                 .all()
             ]
             deleted_class_count = len(class_ids)
@@ -988,10 +988,10 @@ def delete_admin(admin_id):
             for cid in class_ids:
                 collapse_universe(cid, reason="Teacher account deletion", actor_membership_id=None)
 
-            delete_recovery_rows_for_user(teacher_user.id)
-            delete_admin_credentials_for_user(teacher_user.id)
-            delete_admin_onboarding_for_user(teacher_user.id)
-            db.session.delete(teacher_user)
+            delete_recovery_rows_for_user(owner_user.id)
+            delete_admin_credentials_for_user(owner_user.id)
+            delete_admin_onboarding_for_user(owner_user.id)
+            db.session.delete(owner_user)
 
         admin_username = admin.get_sysadmin_display_name()
         db.session.delete(admin)
