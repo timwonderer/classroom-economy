@@ -188,10 +188,9 @@ def seed():
             db.session.add_all([student_happy, student_adv])
             db.session.flush()
 
-            # 4.5 Link Students to Teachers (Invariant requirement)
-            from app.models import StudentTeacher
+            # 4.5 Link Students to Teachers (compatibility shadow for legacy reads)
             link_happy = StudentTeacher(student_id=student_happy.id, teacher_id=teacher_happy.id)
-            link_adv = StudentTeacher(student_id=student_adv.id, teacher_id=teacher_happy.id) # Both in same class
+            link_adv = StudentTeacher(student_id=student_adv.id, teacher_id=teacher_happy.id)  # Both in same class
             db.session.add_all([link_happy, link_adv])
             db.session.flush()
 

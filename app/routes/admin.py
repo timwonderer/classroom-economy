@@ -12439,7 +12439,7 @@ def view_issue(issue_ref):
     if issue_id is None:
         abort(404)
 
-    # Get the issue and verify it belongs to this teacher
+    # Get the issue and verify it belongs to this owner/admin
     issue = Issue.query.filter_by(id=issue_id, user_id=admin_id).first_or_404()
 
     return render_template('admin_view_issue.html',
@@ -12455,7 +12455,7 @@ def view_issue(issue_ref):
 @admin_required
 def resolve_issue(issue_ref):
     """
-    Resolve an issue at the teacher level.
+    Resolve an issue at the owner/admin level.
     Can apply various resolution actions depending on issue type.
     """
     from app.models import Issue, Transaction
@@ -12467,11 +12467,11 @@ def resolve_issue(issue_ref):
     if issue_id is None:
         abort(404)
 
-    # Get the issue and verify it belongs to this teacher
+    # Get the issue and verify it belongs to this owner/admin
     issue = Issue.query.filter_by(id=issue_id, user_id=admin_id).first_or_404()
 
     action_type = request.form.get('action_type')
-    teacher_notes = request.form.get('teacher_notes', '').strip()
+    resolution_notes = request.form.get('teacher_notes', '').strip()
     allowed_statuses = {
         Issue.STATUS_OPEN,
         Issue.STATUS_TEACHER_REVIEW,
@@ -12544,18 +12544,18 @@ def resolve_issue(issue_ref):
             )
 
         elif action_type == 'manual_adjustment':
-            # Teacher handles manually (no automatic action)
+            # Owner/admin handles manually (no automatic action)
             issue.teacher_resolution = 'Manual Adjustment'
             record_resolution_action(
                 issue, 'manual_adjustment', 'teacher', admin_id,
-                action_description=teacher_notes
+                action_description=resolution_notes
             )
 
         elif action_type == 'deny_issue':
             # Deny the issue
             denial_reason = request.form.get('denial_reason', '').strip()
             issue.teacher_resolution = 'Denied'
-            teacher_notes = denial_reason  # Reassign to preserve denial reason
+            resolution_notes = denial_reason  # Reassign to preserve denial reason
             record_resolution_action(
                 issue, 'deny_issue', 'teacher', admin_id,
                 action_description=denial_reason
@@ -12564,14 +12564,14 @@ def resolve_issue(issue_ref):
             flash("Please select a valid resolution action.", "error")
             return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
-        # Move to teacher final review; closure is a separate explicit action.
-        update_issue_status(issue, Issue.STATUS_TEACHER_FINAL_REVIEW, 'teacher', admin_id, notes=teacher_notes)
+        # Move to owner/admin final review; closure is a separate explicit action.
+        update_issue_status(issue, Issue.STATUS_TEACHER_FINAL_REVIEW, 'teacher', admin_id, notes=resolution_notes)
         issue.teacher_resolved_at = utc_now()
-        issue.teacher_notes = teacher_notes
+        issue.teacher_notes = resolution_notes
 
         db.session.flush()
 
-        flash("Issue moved to teacher final review. Close it after confirming classroom state.", "success")
+        flash("Issue moved to final review. Close it after confirming classroom state.", "success")
         return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
     except Exception as e:
@@ -12586,7 +12586,7 @@ def resolve_issue(issue_ref):
 def escalate_issue(issue_ref):
     """
     Escalate an issue to sysadmin (developer).
-    Teacher marks the issue for developer investigation.
+    Owner/admin marks the issue for developer investigation.
     """
     from app.models import Issue
     from app.utils.issue_helpers import update_issue_status
@@ -12597,7 +12597,7 @@ def escalate_issue(issue_ref):
     if issue_id is None:
         abort(404)
 
-    # Get the issue and verify it belongs to this teacher
+    # Get the issue and verify it belongs to this owner/admin
     issue = Issue.query.filter_by(id=issue_id, user_id=admin_id).first_or_404()
 
     escalation_reason = request.form.get('escalation_reason', '').strip()
@@ -12611,7 +12611,7 @@ def escalate_issue(issue_ref):
     }
 
     if issue.status not in allowed_statuses:
-        flash("Only tickets under teacher review can be escalated.", "error")
+        flash("Only tickets under owner/admin review can be escalated.", "error")
         return redirect(url_for('admin.view_issue', issue_ref=make_opaque_ref('issue', issue.id)))
 
     if not escalation_reason:
@@ -12649,7 +12649,7 @@ def escalate_issue(issue_ref):
 @admin_bp.route('/issues/<issue_ref>/close', methods=['POST'])
 @admin_required
 def close_issue(issue_ref):
-    """Teacher-only closure after final review."""
+    """Owner/admin-only closure after final review."""
     from app.models import Issue
     from app.utils.issue_helpers import update_issue_status
 
