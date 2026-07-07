@@ -9,7 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
-- **Admin issue-resolution wording and seed-script compatibility shadow tightened** — The admin issue workflow now uses owner/admin wording in its local boundary names and messages without changing the FEAT/status contract, and `scripts/seed_canonical_v2.py` now keeps the StudentTeacher compatibility shadow explicit after the import cleanup. This is a focused cleanup slice; behavior remains unchanged.
+- **Admin issue-resolution wording and seed-script shadow rows removed** — The admin issue workflow now uses owner/admin wording in its local boundary names and messages without changing the FEAT/status contract, and `scripts/seed_canonical_v2.py` now seeds directly from `User`, `Seat`, and `IdentityProfile` instead of writing legacy shadow rows. This is a focused cleanup slice; behavior remains unchanged.
 - **System-admin announcement and escalated-issue labels moved further toward owner-admin naming** — The system-admin announcement display and form copy now use owner-admin language, and the escalated-issue docstrings were tightened to match the canonical owner-user framing. This is a small cleanup slice; behavior is unchanged.
 - **System-admin delete-admin reason string aligned to owner-user wording** — The delete-admin universe-collapse reason string now says owner-user instead of teacher, matching the canonical ownership language used elsewhere in the cleanup.
 - **System-admin bug-reward bookkeeping boundary made explicit** — The system-admin issue-resolution flow now names the issue owner explicitly as `issue_owner_user_id` before issuing the bug-reward transaction. This keeps the reward path aligned with the canonical owner-user naming.

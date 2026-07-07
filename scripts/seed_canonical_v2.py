@@ -1,6 +1,5 @@
 import random
 import uuid
-import os
 from datetime import datetime, timedelta
 from decimal import Decimal
 import sqlalchemy as sa
@@ -11,9 +10,9 @@ random.seed('CTH_CANONICAL_V2')
 from app import create_app, db
 from app.hash_utils import hash_username_lookup
 from app.models import (
-    User, Admin, ClassEconomy, IdentityProfile, Student, Seat, 
-    InsurancePolicy, Transaction, Issue, IssueCategory, 
-    AnalyticsSnapshot, TeacherBlock, StudentTeacher,
+    User, ClassEconomy, IdentityProfile, Seat,
+    InsurancePolicy, Transaction, Issue, IssueCategory,
+    AnalyticsSnapshot,
     TransactionStatus, BalanceCache, UserRole
 )
 from app.feats.base import FEATBypass
@@ -81,50 +80,19 @@ def seed():
 
             print("Seeding foundational entities...")
             
-            # 1. Legacy teacher compatibility shadows.
-            teacher_happy = Admin(
-                public_id="adm_happy_001",
-                teacher_public_id="HAPPY-TEACHER",
-                totp_secret="MFRGGZDFMZTWQ2LK",
-                has_assigned_students=True,
-                tos_accepted=True
-            )
-            teacher_adversarial = Admin(
-                public_id="adm_adv_001",
-                teacher_public_id="ADV-TEACHER",
-                totp_secret="MFRGGZDFMZTWQ2LK",
-                has_assigned_students=True,
-                tos_accepted=True
-            )
-            db.session.add_all([teacher_happy, teacher_adversarial])
-            db.session.flush()
-
-            # 2. Class universe.
-            economy = ClassEconomy(
-                class_id=str(uuid.uuid4()),
-                join_code="GOLDEN-V2",
-                join_code_token="GOLDEN-V2",
-                display_name="Canonical V2 Simulation",
-                section="Period 1",
-                teacher_id=teacher_happy.id,
-                class_timezone="UTC"
-            )
-            db.session.add(economy)
-            db.session.flush()
-
-            # 3. Canonical global users.
+            # 1. Teacher users.
             user_happy_teacher = User(
                 user_role=UserRole.TEACHER,
                 username_hash=hash_username_lookup("teacher_happy"),
                 username_lookup_hash=hash_username_lookup("teacher_happy"),
-                totp_secret_encrypted=teacher_happy.totp_secret,
+                totp_secret_encrypted="MFRGGZDFMZTWQ2LK",
                 has_completed_setup=True,
             )
             user_adversarial_teacher = User(
                 user_role=UserRole.TEACHER,
                 username_hash=hash_username_lookup("teacher_adversarial"),
                 username_lookup_hash=hash_username_lookup("teacher_adversarial"),
-                totp_secret_encrypted=teacher_adversarial.totp_secret,
+                totp_secret_encrypted="MFRGGZDFMZTWQ2LK",
                 has_completed_setup=True,
             )
             user_happy_student = User(
@@ -149,7 +117,21 @@ def seed():
             ])
             db.session.flush()
 
-            # 4. Display profiles and legacy student compatibility shadows.
+            # 2. Class universe.
+            economy = ClassEconomy(
+                class_id=str(uuid.uuid4()),
+                join_code="GOLDEN-V2",
+                join_code_token="GOLDEN-V2",
+                display_name="Canonical V2 Simulation",
+                section="Period 1",
+                user_id=user_happy_teacher.id,
+                created_by_user_id=user_happy_teacher.id,
+                class_timezone="UTC"
+            )
+            db.session.add(economy)
+            db.session.flush()
+
+            # 3. Display profiles.
             ip_teacher = IdentityProfile(
                 profile_type="teacher",
                 first_name="Happy",
@@ -165,36 +147,10 @@ def seed():
                 first_name="Adversarial",
                 last_name="A"
             )
-            ip_unclaimed = IdentityProfile(
-                profile_type="student",
-                first_name="Unclaimed",
-                last_name="S",
-            )
-            db.session.add_all([ip_teacher, ip_happy, ip_adv, ip_unclaimed])
-            db.session.flush()
-            
-            student_happy = Student(
-                identity_profile=ip_happy,
-                block="A",
-                class_id=economy.class_id,
-                salt=os.urandom(16)
-            )
-            student_adv = Student(
-                identity_profile=ip_adv,
-                block="A",
-                class_id=economy.class_id,
-                salt=os.urandom(16)
-            )
-            db.session.add_all([student_happy, student_adv])
+            db.session.add_all([ip_teacher, ip_happy, ip_adv])
             db.session.flush()
 
-            # 4.5 Link Students to Teachers (compatibility shadow for legacy reads)
-            link_happy = StudentTeacher(student_id=student_happy.id, teacher_id=teacher_happy.id)
-            link_adv = StudentTeacher(student_id=student_adv.id, teacher_id=teacher_happy.id)  # Both in same class
-            db.session.add_all([link_happy, link_adv])
-            db.session.flush()
-
-            # 5. Canonical class-local seats.
+            # 4. Canonical class-local seats.
             teacher_seat = Seat(
                 user_id=user_happy_teacher.id,
                 class_id=economy.class_id,
@@ -206,7 +162,6 @@ def seed():
             )
             seat_happy = Seat(
                 user_id=user_happy_student.id,
-                student_id=student_happy.id,
                 class_id=economy.class_id,
                 join_code=economy.join_code,
                 role="student",
@@ -216,7 +171,6 @@ def seed():
             )
             seat_adv = Seat(
                 user_id=user_adv_student.id,
-                student_id=student_adv.id,
                 class_id=economy.class_id,
                 join_code=economy.join_code,
                 role="student",
@@ -224,33 +178,22 @@ def seed():
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow()
             )
-            unclaimed_seat = Seat(
-                user_id=None,
-                class_id=economy.class_id,
-                join_code=economy.join_code,
-                role="student",
-                claim_first_name_hash=hash_username_lookup("unclaimed"),
-                claim_last_name_hash=hash_username_lookup("student"),
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
-            )
-            db.session.add_all([teacher_seat, seat_happy, seat_adv, unclaimed_seat])
+            db.session.add_all([teacher_seat, seat_happy, seat_adv])
             db.session.flush()
 
             ip_teacher.seat_id = teacher_seat.id
             ip_happy.seat_id = seat_happy.id
             ip_adv.seat_id = seat_adv.id
-            ip_unclaimed.seat_id = unclaimed_seat.id
             user_happy_teacher.last_active_seat_id = teacher_seat.id
             user_happy_student.last_active_seat_id = seat_happy.id
             user_adv_student.last_active_seat_id = seat_adv.id
             db.session.flush()
 
-            # 6. Insurance Policies
+            # 5. Insurance Policies
             policy_basic = InsurancePolicy(
                 policy_code="BASIC-001",
                 class_id=economy.class_id,
-                teacher_id=teacher_happy.id,
+                teacher_id=user_happy_teacher.id,
                 title="Basic Protection",
                 premium=Decimal("10.00"),
                 claim_type="legacy_monetary",
@@ -260,7 +203,7 @@ def seed():
             db.session.add(policy_basic)
             db.session.flush()
 
-            # 7. Ledger Mutations
+            # 6. Ledger Mutations
             print("Recording ledger transactions...")
             
             # Happy Student: Income and Savings
@@ -307,19 +250,20 @@ def seed():
                 type="Purchase"
             )
 
-            # 8. Issues & Resolution
+            # 7. Issues & Resolution
             print("Seeding issues...")
             cat = IssueCategory(name="Accounting", category_type="transaction")
             db.session.add(cat)
             db.session.flush()
             
             issue = Issue(
-                student_id=student_adv.id,
                 actor_public_id=seat_adv.public_id,
-                teacher_id=teacher_adversarial.id,
+                user_id=user_adversarial_teacher.id,
                 class_id=economy.class_id,
                 seat_id=seat_adv.id,
                 join_code=economy.join_code,
+                student_first_name="Adversarial",
+                student_last_initial="A",
                 category_id=cat.id,
                 issue_type="transaction",
                 student_explanation="Incorrect Balance: I think I'm missing $5",
@@ -328,10 +272,10 @@ def seed():
             db.session.add(issue)
             db.session.flush()
 
-            # 9. Analytics and legacy roster compatibility shadow.
-            print("Seeding analytics and legacy roster shadow...")
+            # 8. Analytics snapshot.
+            print("Seeding analytics snapshot...")
             snapshot = AnalyticsSnapshot(
-                teacher_id=teacher_happy.id,
+                teacher_id=user_happy_teacher.id,
                 class_id=economy.class_id,
                 join_code=economy.join_code,
                 window_type="week",
@@ -343,69 +287,6 @@ def seed():
                 is_complete=True
             )
             db.session.add(snapshot)
-            
-            block = TeacherBlock(
-                teacher_id=teacher_happy.id,
-                class_id=economy.class_id,
-                join_code=economy.join_code,
-                block="A",
-                class_label="Period 1",
-                first_name="Unclaimed",
-                last_initial="S",
-                identity_id=ip_unclaimed.id,
-                salt=os.urandom(16),
-                first_half_hash="dummy_hash_" + str(uuid.uuid4())
-            )
-            db.session.add(block)
-            db.session.flush()
-
-            # 10. Activity Logs (Taps, Hall Pass)
-            # Assuming we need to import these
-            from app.models import TapEvent, HallPassLog
-            print("Seeding activity logs...")
-            tap = TapEvent(
-                student_id=student_happy.id,
-                seat_id=seat_happy.id,
-                class_id=economy.class_id,
-                period="A",
-                status="active",
-                timestamp=datetime.utcnow()
-            )
-            db.session.add(tap)
-            
-            log = HallPassLog(
-                student_id=student_happy.id,
-                seat_id=seat_happy.id,
-                class_id=economy.class_id,
-                request_time=datetime.utcnow(),
-                reason="Restroom",
-                status="approved",
-                period="A"
-            )
-            db.session.add(log)
-
-            # 11. Rent & Insurance Activity
-            from app.models import RentPayment, StudentInsurance
-            print("Seeding rent and insurance...")
-            rent = RentPayment(
-                seat_id=seat_happy.id,
-                class_id=economy.class_id,
-                period="A",
-                amount_paid=Decimal("20.00"),
-                payment_date=datetime.utcnow(),
-                coverage_month=datetime.utcnow().month,
-                coverage_year=datetime.utcnow().year
-            )
-            db.session.add(rent)
-            
-            ins = StudentInsurance(
-                seat_id=seat_happy.id,
-                class_id=economy.class_id,
-                policy_id=policy_basic.id,
-                purchase_date=datetime.utcnow(),
-                status="active"
-            )
-            db.session.add(ins)
 
             db.session.commit()
 
