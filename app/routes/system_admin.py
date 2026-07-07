@@ -1989,7 +1989,7 @@ def resolve_escalated_issue(issue_ref):
             old_status,
             Issue.STATUS_DEV_RESOLVED,
             'sysadmin',
-            sysadmin_id,
+            sysadmin_user_id,
             notes=f"{resolution_note}{reward_note}",
         )
 

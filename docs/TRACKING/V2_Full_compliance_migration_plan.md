@@ -126,6 +126,7 @@ This file is the single active tracker for v2 migration execution. All prior tra
 - Session note 2026-07-06: renamed the admin public student-detail route local boundary to `owner_user_id` and threaded it through the class-scoped reads. Startup remained clean after the route slice.
 - Session note 2026-07-06: renamed the system-admin announcement create boundary to `sysadmin_user_id` so the announcement flow uses canonical user naming internally. Startup remained clean after the system-admin slice.
 - Session note 2026-07-06: renamed the system-admin teacher-overview aggregation maps to owner-user naming and aligned the issue-resolution sysadmin local to `sysadmin_user_id`. Startup remained clean after the system-admin slice.
+- Session note 2026-07-06: fixed the remaining `record_status_change(...)` call in the system-admin issue-resolution path to use `sysadmin_user_id` consistently. Startup remained clean after the system-admin consistency fix.
 - [ ] Wave 12 final schema/code/test validation gate (exact 44 tables, zero v1 runtime artifacts, clean suite, **zero `legacy_bypass` markers, zero dead-route xfails**)
 
 #### Deferred-but-tracked architecture items

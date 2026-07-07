@@ -9,6 +9,7 @@ and this project follows semantic versioning principles.
 ## [Unreleased]
 
 ### Changed
+- **System-admin issue-resolution boundary made consistent** — The system-admin issue-resolution flow now uses `sysadmin_user_id` consistently for its record-status bookkeeping. This is a small runtime cleanup that removes the last local variable mismatch in the flow.
 - **System-admin overview and issue-resolution boundaries aligned to canonical user naming** — The system-admin teacher-overview aggregation maps now use owner-user naming, and the issue-resolution flow now uses `sysadmin_user_id` internally. This keeps the system-admin surface moving toward the same canonical naming as the rest of the cleanup.
 - **System-admin announcement create boundary aligned to `sysadmin_user_id`** — The system-admin announcement create flow now uses canonical user naming internally for the system admin actor while leaving the audience semantics unchanged.
 - **Admin public student-detail route aligned to owner-user naming** — The public student-detail admin route now threads `owner_user_id` through its class-scoped reads instead of a teacher-shaped local name. Behavior is unchanged; the route now matches the canonical ownership language used elsewhere in the cleanup.
