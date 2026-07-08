@@ -237,6 +237,12 @@ class User(db.Model):
     def _validate_totp_secret_encrypted(self, _key, value):
         return normalize_totp_for_storage(value) if value else None
 
+    def get_display_username(self):
+        """Return the canonical public username for UI display."""
+        if getattr(self.user_role, "value", self.user_role) == UserRole.SYSADMIN.value:
+            return f"sysadmin_{self.id}"
+        return f"user_{self.id}"
+
 
 class IdentityProfile(db.Model):
     """Seat-bound display identity with no authentication or authority semantics."""
@@ -361,6 +367,27 @@ class Seat(db.Model):
     @property
     def display_last_initial(self):
         return self.identity_profile.last_initial if self.identity_profile else ""
+
+    @property
+    def full_name(self):
+        if self.identity_profile:
+            parts = [self.identity_profile.first_name, self.identity_profile.last_name]
+            return " ".join(part for part in parts if part)
+        return ""
+
+    @property
+    def recent_deposits(self):
+        if not hasattr(self, "transactions") or self.transactions is None:
+            return []
+        return (
+            self.transactions.filter(Transaction.amount > 0)
+            .order_by(Transaction.timestamp.desc())
+            .all()
+        )
+
+    @property
+    def is_rent_enabled(self):
+        return not self.has_received_rent_exemption
 
 
 @event.listens_for(Seat, "before_insert")

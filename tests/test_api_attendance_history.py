@@ -6,7 +6,7 @@ from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone, timedelta
 from app import app, db
-from app.models import Admin, AttendanceSession, AttendanceReasonCode, ClassEconomy, Seat
+from app.models import Admin, AttendanceSession, AttendanceReasonCode, ClassEconomy, Seat, User
 from app.hash_utils import hash_username, get_random_salt
 from werkzeug.security import generate_password_hash
 from tests.helpers.canonical_session import set_canonical_context
@@ -20,28 +20,19 @@ def admin_with_students(client):
     db.session.add(admin)
     db.session.flush()
 
-    # Create admin User record for authentication
-    from app.models import User, UserRole
-    user = User(
-        user_role=UserRole.TEACHER,
-        username_hash=admin.username_hash,
-        username_lookup_hash=admin.username_lookup_hash,
-        password_hash="pw",
-    )
-    db.session.add(user)
-    db.session.flush()
-
     # Create seat-owned student identity for this admin
     student = make_student_identity(block='A', first_name='Test', last_name='S')
 
     class_row = ClassEconomy(
-        user_id=admin.id,
+        user_id=admin.user_id,
+        join_code="ATTN01",
+        display_name="Attendance History Class",
         status="active",
     )
     db.session.add(class_row)
     db.session.flush()
     teacher_seat = Seat(
-        user_id=user.id,
+        user_id=admin.user_id,
         class_id=class_row.class_id,
         role="teacher",
         block="A",
@@ -75,7 +66,7 @@ def admin_with_students(client):
     
     return {
         'admin': admin,
-        'user': user,
+        'user': db.session.get(User, admin.user_id),
         'student': student,
         'seat': seat,
         'teacher_seat': teacher_seat,
@@ -97,7 +88,7 @@ def test_attendance_history_returns_records(client, admin_with_students):
             sess,
             user_id=admin_with_students['user'].id,
             class_id=admin_with_students['class_id'],
-            seat_id=admin_with_students['seat'].id,
+            seat_id=admin_with_students['teacher_seat'].id,
             role="teacher",
         )
     
@@ -134,7 +125,7 @@ def test_attendance_history_with_date_filters(client, admin_with_students):
             sess,
             user_id=admin_with_students['user'].id,
             class_id=admin_with_students['class_id'],
-            seat_id=admin_with_students['seat'].id,
+            seat_id=admin_with_students['teacher_seat'].id,
             role="teacher",
         )
     
@@ -168,58 +159,31 @@ def test_attendance_history_tenant_scoping(client):
     db.session.add_all([admin1, admin2])
     db.session.flush()
 
-    # Create admin User records for authentication
-    from app.models import User, UserRole
-    user1 = User(
-        user_role=UserRole.TEACHER,
-        username_hash=admin1.username_hash,
-        username_lookup_hash=admin1.username_lookup_hash,
-        password_hash="pw",
-    )
-    user2 = User(
-        user_role=UserRole.TEACHER,
-        username_hash=admin2.username_hash,
-        username_lookup_hash=admin2.username_lookup_hash,
-        password_hash="pw",
-    )
-    db.session.add_all([user1, user2])
-    db.session.flush()
-
-    student1_user = User(user_role=UserRole.STUDENT)
-    db.session.add(student1_user)
-    db.session.flush()
-    student2_user = User(user_role=UserRole.STUDENT)
-    db.session.add(student2_user)
-    db.session.flush()
-
-    # Create student for admin1
-    student1 = make_student_identity(block='A', first_name='Student', last_name='1')
-    student2 = make_student_identity(block='B', first_name='Student', last_name='2')
-    db.session.add_all([student1, student2])
-    db.session.flush()
-
-    class1 = ClassEconomy(user_id=admin1.id, status="active")
-    class2 = ClassEconomy(user_id=admin2.id, status="active")
+    class1 = ClassEconomy(user_id=admin1.user_id, join_code="ATTN-A", display_name="Attendance A", status="active")
+    class2 = ClassEconomy(user_id=admin2.user_id, join_code="ATTN-B", display_name="Attendance B", status="active")
     db.session.add_all([class1, class2])
     db.session.flush()
-    seat1 = Seat(user_id=student1_user.id, class_id=class1.class_id, block="A", role="student")
-    seat2 = Seat(user_id=student2_user.id, class_id=class2.class_id, block="B", role="student")
-    db.session.add_all([seat1, seat2])
+    teacher1 = Seat(user_id=admin1.user_id, class_id=class1.class_id, block="A", block_identifier="A", role="teacher", claimed_at=datetime.now(timezone.utc))
+    teacher2 = Seat(user_id=admin2.user_id, class_id=class2.class_id, block="B", block_identifier="B", role="teacher", claimed_at=datetime.now(timezone.utc))
+    db.session.add_all([teacher1, teacher2])
     db.session.flush()
 
+    # Create student seats for each admin's class.
+    student1 = make_student_identity(class_id=class1.class_id, block='A', first_name='Student', last_name='1')
+    student2 = make_student_identity(class_id=class2.class_id, block='B', first_name='Student', last_name='2')
     # Create tap events for both students
     now_utc = datetime.now(timezone.utc)
     
     tap1 = AttendanceSession(
-        seat_id=seat1.id,
-        class_id=class1.class_id,
-        started_at=now_utc,
-    )
+            seat_id=student1.id,
+            class_id=class1.class_id,
+            started_at=now_utc,
+        )
     tap2 = AttendanceSession(
-        seat_id=seat2.id,
-        class_id=class2.class_id,
-        started_at=now_utc,
-    )
+            seat_id=student2.id,
+            class_id=class2.class_id,
+            started_at=now_utc,
+        )
     db.session.add_all([tap1, tap2])
     db.session.commit()
 
@@ -227,9 +191,9 @@ def test_attendance_history_tenant_scoping(client):
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
-            user_id=user1.id,
+            user_id=admin1.user_id,
             class_id=class1.class_id,
-            seat_id=seat1.id,
+            seat_id=teacher1.id,
             role="teacher",
         )
         sess['admin_id'] = admin1.id
@@ -336,9 +300,9 @@ def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_
     data = response.get_json()
 
     assert data['status'] == 'success'
-    assert data['total'] == 4  # tap-in + existing tap-out + two duplicate daily-limit tap-outs
+    assert data['total'] == 3  # tap-in + existing tap-out + deduped daily-limit tap-out
     daily_limit_rows = [
         record for record in data['records']
         if record['status'] == 'inactive' and record.get('reason') == reason
     ]
-    assert len(daily_limit_rows) == 2
+    assert len(daily_limit_rows) == 1

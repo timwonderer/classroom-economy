@@ -7,7 +7,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone
 from app import db
-from app.models import Admin
+from app.models import Admin, ClassEconomy, Seat, User, UserRole
 from tests.helpers.canonical_session import set_canonical_context
 
 
@@ -90,15 +90,56 @@ def test_set_timezone_endpoint_exists(client):
         f"Expected redirect or auth error, got {response.status_code}"
 
 
-def test_timezone_sync_with_student_session(client, test_student):
+def test_timezone_sync_with_student_session(client):
     """Test timezone sync with authenticated student session."""
+    admin = make_admin("timezone_admin", "TZSECRET")
+    db.session.add(admin)
+    db.session.flush()
+    class_row = ClassEconomy(
+        user_id=admin.user_id,
+        join_code="TZ01",
+        display_name="Timezone Class",
+        status="active",
+    )
+    db.session.add(class_row)
+    db.session.flush()
+    teacher_seat = Seat(
+        user_id=admin.user_id,
+        class_id=class_row.class_id,
+        role="teacher",
+        block="A",
+        block_identifier="A",
+        claimed_at=datetime.now(timezone.utc),
+    )
+    db.session.add(teacher_seat)
+    db.session.flush()
+    student_user = db.session.query(User).filter(User.user_role == UserRole.STUDENT).first()
+    if student_user is None:
+        student_user = User(
+            user_role=UserRole.STUDENT,
+            username_hash="tz_student_hash",
+            username_lookup_hash="tz_student_lookup",
+        )
+        db.session.add(student_user)
+        db.session.flush()
+    student_seat = Seat(
+        user_id=student_user.id,
+        class_id=class_row.class_id,
+        role="student",
+        block="A",
+        block_identifier="A",
+        claimed_at=datetime.now(timezone.utc),
+    )
+    db.session.add(student_seat)
+    db.session.flush()
+
     # Login as student with proper datetime
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
-            user_id=test_student.user_id,
-            class_id=test_student.class_id,
-            seat_id=test_student.id,
+            user_id=student_seat.user_id,
+            class_id=class_row.class_id,
+            seat_id=student_seat.id,
             role="student",
         )
     

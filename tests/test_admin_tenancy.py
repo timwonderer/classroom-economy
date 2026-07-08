@@ -2,6 +2,7 @@ from tests.helpers.v2_fixtures import make_admin
 import pyotp
 from datetime import datetime, timezone, timedelta
 from itsdangerous import URLSafeTimedSerializer
+from types import SimpleNamespace
 
 from app import db
 from app.models import (
@@ -11,6 +12,7 @@ from app.models import (
 )
 from app.hash_utils import get_random_salt, hash_username
 from tests.helpers.class_scope import create_class_scope
+from tests.helpers.canonical_session import set_canonical_context
 
 
 def _create_admin(username: str) -> tuple:
@@ -22,15 +24,8 @@ def _create_admin(username: str) -> tuple:
     secret = pyotp.random_base32()
     admin = make_admin(username, secret)
     db.session.add(admin)
-    db.session.flush()
-    user = User(
-        user_role="teacher",
-        username_hash=admin.username_hash,
-        username_lookup_hash=admin.username_lookup_hash,
-    )
-    db.session.add(user)
-    db.session.flush()
     db.session.commit()
+    user = db.session.get(User, admin.user_id)
     return admin, secret, user
 
 
@@ -44,10 +39,16 @@ def _create_student(first_name: str, teacher_user: User) -> tuple:
     db.session.add(student_user)
     db.session.flush()
 
+    student = SimpleNamespace(
+        display_first_name=first_name,
+        display_last_name="Test",
+    )
+
     class_row = create_class_scope(
         teacher=None,
         teacher_user_id=teacher_user.id,
         join_code=f"T{teacher_user.id}S{student_user.id}",
+        student=student,
         student_user_id=student_user.id,
         block="A",
         display_name="A",
@@ -88,7 +89,14 @@ def _login_admin(client, user: User):
 
 
 def _build_student_detail_public_url(client, teacher_user: User, student_user: User) -> str:
-    selected_class_id = teacher_user.last_active_class_id
+    fresh_teacher_user = (
+        db.session.query(User)
+        .filter(User.id == teacher_user.id)
+        .populate_existing()
+        .one_or_none()
+    )
+    selected_class_id = fresh_teacher_user.last_active_class_id if fresh_teacher_user else teacher_user.last_active_class_id
+    owner_user_id = fresh_teacher_user.id if fresh_teacher_user else teacher_user.id
 
     seat_query = (
         Seat.query
@@ -97,7 +105,7 @@ def _build_student_detail_public_url(client, teacher_user: User, student_user: U
             Seat.user_id == student_user.id,
             Seat.role == "student",
             Seat.public_id.isnot(None),
-            ClassEconomy.user_id == teacher_user.id,
+            ClassEconomy.user_id == owner_user_id,
         )
     )
     seat = None
@@ -111,7 +119,7 @@ def _build_student_detail_public_url(client, teacher_user: User, student_user: U
         client.application.config["SECRET_KEY"], salt="cth-student-detail-nav-v1"
     )
     nav = serializer.dumps({
-        "seat_public_id": str(seat.public_id),
+        "actor_public_id": str(seat.public_id),
         "class_id": str(seat.class_id) if seat.class_id else None,
         "admin_id": int(teacher_user.id),
     })
@@ -170,6 +178,17 @@ def test_shared_student_accessible_to_multiple_teachers(client):
     db.session.commit()
 
     _login_admin(client, teacher_b_user)
+    teacher_b_class = ClassEconomy.query.filter_by(user_id=teacher_b_user.id).order_by(ClassEconomy.class_id.asc()).first()
+    teacher_b_seat = Seat.query.filter_by(class_id=teacher_b_class.class_id, role="teacher").first()
+    with client.session_transaction() as sess:
+        set_canonical_context(
+            sess,
+            user_id=teacher_b_user.id,
+            class_id=teacher_b_class.class_id,
+            seat_id=teacher_b_seat.id,
+            role="teacher",
+            join_code=teacher_b_class.join_code,
+        )
 
     detail_url = _build_student_detail_public_url(client, teacher_b_user, shared_student_user)
     detail_response = client.get(detail_url, follow_redirects=True)
@@ -241,7 +260,7 @@ def test_student_detail_recovers_from_stale_class_context(client):
         client.application.config["SECRET_KEY"], salt="cth-student-detail-nav-v1"
     )
     nav = serializer.dumps({
-        "seat_public_id": str(seat_a.public_id),
+        "actor_public_id": str(seat_a.public_id),
         "class_id": str(class_a.class_id),
         "admin_id": int(teacher_user.id),
     })

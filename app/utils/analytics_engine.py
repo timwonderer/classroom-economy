@@ -161,17 +161,12 @@ class AnalyticsEngine:
         """
         students = self._get_enrolled_students()
         total_students = len(students)
-        seat_id_by_student = self._get_seat_id_by_student([s.id for s in students])
-        if len(seat_id_by_student) != total_students:
-            raise ValueError("Missing canonical seat_id for one or more enrolled students.")
-        
         if total_students == 0:
             return 0.0, 0, 0
         
         # Count students with any activity (transactions or attendance)
-        active_student_ids = set()
-        
-        student_id_by_seat = {seat_id: student_id for student_id, seat_id in seat_id_by_student.items()}
+        enrolled_seat_ids = {seat.id for seat in students}
+        active_seat_ids = set()
         
         # Check for transactions in window (distinct seat IDs)
         transaction_seat_rows = (
@@ -186,9 +181,8 @@ class AnalyticsEngine:
             .all()
         )
         for (seat_id,) in transaction_seat_rows:
-            student_id = student_id_by_seat.get(seat_id)
-            if student_id:
-                active_student_ids.add(student_id)
+            if seat_id in enrolled_seat_ids:
+                active_seat_ids.add(seat_id)
         
         att_seat_rows = (
             AttendanceSession.query.with_entities(AttendanceSession.seat_id)
@@ -202,15 +196,10 @@ class AnalyticsEngine:
             .all()
         )
         for (seat_id,) in att_seat_rows:
-            student_id = student_id_by_seat.get(seat_id)
-            if student_id:
-                active_student_ids.add(student_id)
+            if seat_id in enrolled_seat_ids:
+                active_seat_ids.add(seat_id)
         
-        # Filter active IDs to only include enrolled students (excludes teachers/demos)
-        enrolled_student_ids = {s.id for s in students}
-        valid_active_student_ids = active_student_ids.intersection(enrolled_student_ids)
-
-        active_students = len(valid_active_student_ids)
+        active_students = len(active_seat_ids)
         participation_rate = (active_students / total_students) * 100
         
         return participation_rate, active_students, total_students
@@ -267,9 +256,6 @@ class AnalyticsEngine:
         """
         students = self._get_enrolled_students()
         total_students = len(students)
-        seat_id_by_student = self._get_seat_id_by_student([s.id for s in students])
-        if len(seat_id_by_student) != total_students:
-            raise ValueError("Missing canonical seat_id for one or more enrolled students.")
 
         if total_students == 0 or cwi == 0:
             return 0.0
@@ -281,13 +267,12 @@ class AnalyticsEngine:
         expected_balance = cwi * weeks
         
         # Count students within ±20% of expected
+        from app.services.ledger_service import get_available_balance
+
         within_band = 0
         
         for student in students:
-            current_balance = student.get_checking_balance(
-                class_id=self.class_id,
-                seat_id=seat_id_by_student[student.id],
-            )
+            current_balance = get_available_balance(student.id, self.class_id, 'checking')
 
             # Convert Decimal to float for arithmetic operations
             current_balance = float(current_balance) if current_balance is not None else 0.0
@@ -315,9 +300,6 @@ class AnalyticsEngine:
 
         students = self._get_enrolled_students()
         total_students = len(students)
-        seat_id_by_student = self._get_seat_id_by_student([s.id for s in students])
-        if len(seat_id_by_student) != total_students:
-            raise ValueError("Missing canonical seat_id for one or more enrolled students.")
         if total_students == 0:
             return 0.0
         
@@ -335,12 +317,10 @@ class AnalyticsEngine:
             self.policy_profile.get("ratios", {}).get("savings_weekly", {}).get("min", 0.10)
         )
         passing_students = 0
+        from app.services.ledger_service import get_available_balance
         
         for student in students:
-            balance = student.get_checking_balance(
-                class_id=self.class_id,
-                seat_id=seat_id_by_student[student.id],
-            )
+            balance = get_available_balance(student.id, self.class_id, 'checking')
 
             # Convert Decimal to float for arithmetic comparison
             balance = float(balance) if balance is not None else 0.0
@@ -567,11 +547,9 @@ class AnalyticsEngine:
         
         # Calculate average balance (for CWI comparison only, not for ranking)
         students = self._get_enrolled_students()
-        seat_id_by_student = self._get_seat_id_by_student([s.id for s in students])
-        if len(seat_id_by_student) != len(students):
-            raise ValueError("Missing canonical seat_id for one or more enrolled students.")
+        from app.services.ledger_service import get_available_balance
         total_balance = sum(
-            float(s.get_checking_balance(class_id=self.class_id, seat_id=seat_id_by_student[s.id]) or 0)
+            float(get_available_balance(s.id, self.class_id, 'checking') or 0)
             for s in students
         )
         avg_balance = total_balance / len(students) if students else 0.0
@@ -721,11 +699,9 @@ class AnalyticsEngine:
             Transaction.is_void.is_(False),
         ).count()
         students = self._get_enrolled_students()
-        seat_id_by_student = self._get_seat_id_by_student([s.id for s in students])
-        if len(seat_id_by_student) != len(students):
-            raise ValueError("Missing canonical seat_id for one or more enrolled students.")
+        from app.services.ledger_service import get_available_balance
         total_balance = sum(
-            float(s.get_checking_balance(class_id=self.class_id, seat_id=seat_id_by_student[s.id]) or 0)
+            float(get_available_balance(s.id, self.class_id, 'checking') or 0)
             for s in students
         )
         avg_balance = total_balance / len(students) if students else 0.0

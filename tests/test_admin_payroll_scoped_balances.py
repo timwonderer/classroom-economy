@@ -9,13 +9,19 @@ from tests.helpers.canonical_session import set_canonical_context
 
 
 def _bind_canonical_teacher(admin: Admin) -> User:
-    user = User(
-        user_role=UserRole.TEACHER,
-        username_hash=admin.username_hash,
-        username_lookup_hash=admin.username_lookup_hash,
-    )
-    db.session.add(user)
-    db.session.flush()
+    if getattr(admin, "user_id", None):
+        user = db.session.get(User, admin.user_id)
+        if user is not None:
+            return user
+    user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
+    if user is None:
+        user = User(
+            user_role=UserRole.TEACHER,
+            username_hash=admin.username_hash,
+            username_lookup_hash=admin.username_lookup_hash,
+        )
+        db.session.add(user)
+        db.session.flush()
     admin.user_id = user.id
     return user
 
@@ -54,8 +60,8 @@ def test_admin_payroll_displays_scoped_balances_only(client):
     class_a = create_class_scope(teacher=teacher_a, join_code="PAYA01", block="A", display_name="A")
     class_b = create_class_scope(teacher=teacher_b, join_code="PAYB01", block="A", display_name="A")
     db.session.flush()
-    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, role="student", claimed_at=datetime.now(timezone.utc))
-    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, role="student", claimed_at=datetime.now(timezone.utc))
+    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add_all([seat_a, seat_b])
     db.session.flush()
     profile.seat_id = seat_a.id

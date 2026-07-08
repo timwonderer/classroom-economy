@@ -454,7 +454,7 @@ def _handle_mismatched_admin_class_context():
 
 def _handle_missing_admin_class_context():
     """Block class-scoped writes when the teacher has not selected an active class."""
-    scoped_admin_id = g.canonical_context.user_id
+    scoped_admin_id = getattr(getattr(g, "canonical_context", None), "user_id", None)
     if not scoped_admin_id:
         return None
 
@@ -765,7 +765,7 @@ def _build_teacher_block_dedupe_key(class_id: str, first_name: str, last_name: s
     """Build deterministic dedupe key: class_id|normalized_full_name."""
     normalized_full_name = _normalize_full_name_for_dedupe(first_name, last_name)
     dedupe_input = f"{class_id}|{normalized_full_name}".encode()
-    return hash_hmac(dedupe_input, b"")
+    return hash_hmac(dedupe_input, b"")[:8]
 
 
 def _find_admin_by_auth_username(username: str):
@@ -1056,9 +1056,12 @@ def _require_payroll_feature_scope_from_request(
     from app.models import Seat, ClassFeature
     from app.feats.base import InvariantViolation
 
-    # 1. Resolve canonical context variables
+    # 1. Resolve canonical context variables from the active canonical context.
     resolved_class_id = class_id
     resolved_seat_id = seat_id
+    if (not resolved_class_id or not resolved_seat_id) and getattr(g, "canonical_context", None):
+        resolved_class_id = resolved_class_id or getattr(g.canonical_context, "class_id", None)
+        resolved_seat_id = resolved_seat_id or getattr(g.canonical_context, "seat_id", None)
 
     if not resolved_class_id:
         raise InvariantViolation("Missing canonical class_id context.")
@@ -1197,9 +1200,13 @@ def _hard_delete_class_scope(class_id, owner_user_id):
         ("announcements", Announcement),
     )
     for label, model in scoped_models:
+        join_code_column = getattr(model, "join_code", None)
+        class_id_column = getattr(model, "class_id", None)
+        if join_code_column is None or class_id_column is None:
+            continue
         count = db.session.query(model).filter(
-            model.join_code == join_code,
-            model.class_id.is_(None),
+            join_code_column == join_code,
+            class_id_column.is_(None),
         ).count()
         if count:
             invalid_scope_rows.append(f"{label}={count}")
@@ -1735,7 +1742,6 @@ def _ensure_owner_user_student_seat(owner_user_id, join_code, block):
         claim_first_name_hash=claim_first_name_hash,
         claim_last_name_hash=claim_last_name_hash,
         roster_fingerprint=roster_fingerprint,
-        join_code=join_code,
         claimed_at=None
     )
     db.session.add(teacher_seat)
@@ -2951,9 +2957,9 @@ def dashboard():
         })
 
     # --- Payroll Info ---
-    dashboard_blocks = sorted({b.strip() for s in students for b in (s.block or "").split(',') if b.strip()})
+    dashboard_blocks = sorted({b.strip() for s in seats for b in (s.block or "").split(',') if b.strip()})
     dashboard_join_codes_by_block = _get_join_codes_by_block(current_user_id, dashboard_blocks)
-    payroll_preview = _build_payroll_preview_state(students, dashboard_join_codes_by_block)
+    payroll_preview = _build_payroll_preview_state(seats, dashboard_join_codes_by_block)
     payroll_summary = payroll_preview["total_summary"]
     payroll_updated_at = payroll_preview["latest_updated_at"]
     total_payroll_estimate = sum(payroll_summary.values())
@@ -4600,8 +4606,20 @@ def student_detail_public(actor_public_id):
         if class_id else None
     )
 
-    # Get student's active insurance policy scoped to current class.
-    active_insurance = student.get_active_insurance(class_id=class_id, teacher_id=owner_user_id)
+    # Get the active insurance enrollment scoped to the current class and seat.
+    active_insurance = (
+        InsuranceEnrollment.query.join(
+            InsurancePolicy, InsuranceEnrollment.policy_id == InsurancePolicy.id
+        )
+        .filter(
+            InsuranceEnrollment.seat_id == scoped_seat.id,
+            InsuranceEnrollment.class_id == class_id,
+            InsuranceEnrollment.status == 'active',
+            InsurancePolicy.class_id == class_id,
+        )
+        .order_by(InsuranceEnrollment.id.desc())
+        .first()
+    )
 
     # Get all blocks for the edit modal
     all_students = Seat.query.filter(Seat.class_id == class_id).join(IdentityProfile, IdentityProfile.seat_id == Seat.id).all()
@@ -4666,11 +4684,13 @@ def student_detail_public(actor_public_id):
                 if class_row.join_code and class_row.section:
                     join_codes[class_row.section] = class_row.join_code
 
+    student_profile = student.identity_profile
     reset_code_is_active = bool(
-        student.reset_code
-        and student.reset_code_expires_at
-        and ensure_utc(student.reset_code_expires_at) >= utc_now()
-        and student.recovery_status == 'to_be_claimed'
+        student_profile
+        and student_profile.reset_code
+        and student_profile.reset_code_expires_at
+        and ensure_utc(student_profile.reset_code_expires_at) >= utc_now()
+        and student_profile.recovery_status == 'to_be_claimed'
     )
 
     return render_template('student_detail.html',
@@ -5399,7 +5419,6 @@ def add_individual_student():
         new_seat = Seat(
             user_id=provisional_user.id,
             class_id=class_id,
-            join_code=join_code,
             block=block,
             dedupe_code=dedupe_key,
             claimed_at=None,  # Student hasn't set up username yet
@@ -5551,7 +5570,6 @@ def add_manual_student():
         new_seat = Seat(
             user_id=auth_user.id,
             class_id=class_id,
-            join_code=join_code,
             block=block,
             dedupe_code=dedupe_key,
             claimed_at=utc_now() if is_claimed else None,
@@ -5819,7 +5837,7 @@ def store_management():
             flash("Invalid audit action filter.", "warning")
 
     live_query = RedemptionAuditLog.query.filter(
-        RedemptionAuditLog.teacher_id == admin_id,
+        RedemptionAuditLog.user_id == admin_id,
         RedemptionAuditLog.source == RedemptionAuditSource.LIVE,
         RedemptionAuditLog.class_id == selected_scope['class_id'],
     )
@@ -6015,6 +6033,7 @@ def delete_store_item(item_id):
         # To preserve history, we'll just deactivate it instead of a hard delete
         # A hard delete would be: db.session.delete(item)
         item.is_active = False
+        db.session.flush()
 
     if refunded:
         flash(
@@ -6996,12 +7015,14 @@ def add_rent_waiver():
 
     count = 0
     for actor_public_id in student_ids:
-        student = _resolve_student_detail_seat(str(actor_public_id), g.canonical_context.user_id)
-        seat_id = student.id if student and class_id else None
+        student = _resolve_student_detail_seat(str(actor_public_id))
+        if not student:
+            abort(404)
+        seat_id = student.id
         for waiver_start, waiver_end, periods_count in waiver_windows:
             obligations_service.record_rent_waiver(
-                seat_id=seat_id or 0,
-                class_id=class_id or "",
+                seat_id=seat_id,
+                class_id=class_id or student.class_id,
                 waiver_start_date=waiver_start,
                 waiver_end_date=waiver_end,
                 periods_count=periods_count,
@@ -8716,13 +8737,15 @@ def payroll():
         .all()
     )
     class_id_by_join_code = {row.join_code: row.class_id for row in class_rows if row.class_id}
+    join_code_by_class_id = {row.class_id: row.join_code for row in class_rows if row.class_id}
     for seat_row in seats:
-        if not seat_row.join_code or seat_row.join_code not in my_join_codes:
+        seat_join_code = join_code_by_class_id.get(seat_row.class_id)
+        if not seat_join_code or seat_join_code not in my_join_codes:
             continue
         seat_block = (seat_row.block_identifier or seat_row.block or "").strip().upper()
-        seat_ids_by_join_code[seat_row.join_code].add(seat_row.id)
+        seat_ids_by_join_code[seat_join_code].add(seat_row.id)
         seat_id_by_student_block_class.setdefault(
-            (seat_row.student_id, seat_block, seat_row.class_id),
+            (seat_row.user_id, seat_block, seat_row.class_id),
             seat_row.id,
         )
 
@@ -9353,7 +9376,7 @@ def payroll_manual_payment():
 
             adjustments = []
             for actor_public_id in student_ids:
-                student = _resolve_student_detail_seat(str(actor_public_id), g.canonical_context.user_id)
+                student = _resolve_student_detail_seat(str(actor_public_id))
                 if student:
                     adjustments.append({
                         'seat': student,
@@ -12138,7 +12161,7 @@ def passkey_register_start():
         if not user or getattr(user.user_role, "value", user.user_role) != "teacher":
             abort(404)
         admin = Admin.query.filter_by(username_lookup_hash=user.username_lookup_hash).first()
-        if not admin or admin.id != g.canonical_context.user_id:
+        if not admin or admin.user_id != g.canonical_context.user_id:
             abort(404)
 
         # Generate registration token using official SDK
@@ -12295,7 +12318,7 @@ def passkey_auth_finish():
         user.current_session_nonce = nonce
         session["login_time"] = now.isoformat()
         session["last_activity"] = now.isoformat()
-        session['admin_auth_username'] = auth_username or user.auth_username or f"user_{user.id}"
+        session['admin_auth_username'] = auth_username or f"user_{user.id}"
         set_admin_display_name_cache(teacher_user_id=admin.id, display_name=admin.get_display_name())
         session.permanent = True
 
@@ -12391,8 +12414,9 @@ def issues_queue():
     from app.utils.issue_categories import init_default_categories
 
     admin_id = g.canonical_context.user_id
-    join_code = getattr(g, "admin_join_code", None)
-    class_id = getattr(g, "admin_class_id", None)
+    canonical_context = getattr(g, "canonical_context", None)
+    join_code = getattr(g, "admin_join_code", None) or getattr(canonical_context, "join_code", None)
+    class_id = getattr(g, "admin_class_id", None) or getattr(canonical_context, "class_id", None)
     if class_id and not _admin_owns_class(admin_id, class_id):
         join_code = None
         class_id = None
@@ -12401,11 +12425,13 @@ def issues_queue():
     if not getattr(g, "read_only", False):
         init_default_categories()
 
-    # Filter by join code if one is selected, otherwise show all issues for this teacher
-    if join_code:
-        issues_query = Issue.query.filter_by(user_id=admin_id, join_code=join_code)
+    # Filter by the active class scope; v2 issues are class-scoped student records.
+    if class_id:
+        issues_query = Issue.query.filter_by(class_id=class_id)
+        if join_code:
+            issues_query = issues_query.filter_by(join_code=join_code)
     else:
-        issues_query = Issue.query.filter_by(user_id=admin_id)
+        issues_query = Issue.query.filter_by(join_code=join_code) if join_code else Issue.query
 
     # Get issues by status.
     pending_issues = issues_query.filter(
@@ -12451,13 +12477,17 @@ def view_issue(issue_ref):
     from app.models import Issue
 
     admin_id = g.canonical_context.user_id
+    canonical_context = getattr(g, "canonical_context", None)
+    class_id = getattr(g, "admin_class_id", None) or getattr(canonical_context, "class_id", None)
 
     issue_id = _resolve_issue_id_from_ref(issue_ref)
     if issue_id is None:
         abort(404)
 
-    # Get the issue and verify it belongs to this owner/admin
-    issue = Issue.query.filter_by(id=issue_id, user_id=admin_id).first_or_404()
+    issue_query = Issue.query.filter_by(id=issue_id)
+    if class_id:
+        issue_query = issue_query.filter_by(class_id=class_id)
+    issue = issue_query.first_or_404()
 
     return render_template('admin_view_issue.html',
                          current_page='issues',
@@ -12479,13 +12509,17 @@ def resolve_issue(issue_ref):
     from app.utils.issue_helpers import update_issue_status, record_resolution_action
 
     admin_id = g.canonical_context.user_id
+    canonical_context = getattr(g, "canonical_context", None)
+    class_id = getattr(g, "admin_class_id", None) or getattr(canonical_context, "class_id", None)
 
     issue_id = _resolve_issue_id_from_ref(issue_ref)
     if issue_id is None:
         abort(404)
 
-    # Get the issue and verify it belongs to this owner/admin
-    issue = Issue.query.filter_by(id=issue_id, user_id=admin_id).first_or_404()
+    issue_query = Issue.query.filter_by(id=issue_id)
+    if class_id:
+        issue_query = issue_query.filter_by(class_id=class_id)
+    issue = issue_query.first_or_404()
 
     action_type = request.form.get('action_type')
     resolution_notes = request.form.get('teacher_notes', '').strip()
@@ -12609,13 +12643,17 @@ def escalate_issue(issue_ref):
     from app.utils.issue_helpers import update_issue_status
 
     admin_id = g.canonical_context.user_id
+    canonical_context = getattr(g, "canonical_context", None)
+    class_id = getattr(g, "admin_class_id", None) or getattr(canonical_context, "class_id", None)
 
     issue_id = _resolve_issue_id_from_ref(issue_ref)
     if issue_id is None:
         abort(404)
 
-    # Get the issue and verify it belongs to this owner/admin
-    issue = Issue.query.filter_by(id=issue_id, user_id=admin_id).first_or_404()
+    issue_query = Issue.query.filter_by(id=issue_id)
+    if class_id:
+        issue_query = issue_query.filter_by(class_id=class_id)
+    issue = issue_query.first_or_404()
 
     escalation_reason = request.form.get('escalation_reason', '').strip()
     diagnostic_note = request.form.get('diagnostic_note', '').strip()
@@ -12671,10 +12709,15 @@ def close_issue(issue_ref):
     from app.utils.issue_helpers import update_issue_status
 
     admin_id = g.canonical_context.user_id
+    canonical_context = getattr(g, "canonical_context", None)
+    class_id = getattr(g, "admin_class_id", None) or getattr(canonical_context, "class_id", None)
     issue_id = _resolve_issue_id_from_ref(issue_ref)
     if issue_id is None:
         abort(404)
-    issue = Issue.query.filter_by(id=issue_id, user_id=admin_id).first_or_404()
+    issue_query = Issue.query.filter_by(id=issue_id)
+    if class_id:
+        issue_query = issue_query.filter_by(class_id=class_id)
+    issue = issue_query.first_or_404()
 
     allowed_statuses = {
         Issue.STATUS_TEACHER_FINAL_REVIEW,

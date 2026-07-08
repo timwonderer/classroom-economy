@@ -250,7 +250,7 @@ def test_protected_write_attaches_lineage_token(app):
         txn = create_pending_transaction(
             seat_id=seat.id,
             class_id=ce.class_id,
-            teacher_id=admin.id,
+            user_id=teacher_user.id,
             amount="25.00",
             account_type="checking",
             type="payroll",

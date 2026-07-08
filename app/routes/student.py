@@ -1015,7 +1015,7 @@ def dashboard():
     }
     owner_user_id = scope.user_id
     class_id = scope.class_id
-    active_insurance = student.get_active_insurance(class_id=join_code)
+    active_insurance = None
 
     rent_status = None
     rent_settings = get_rent_settings_for_context(context)
@@ -1113,7 +1113,7 @@ def dashboard():
 
     effective_class_id = class_id or context.class_id
     sessions_this_week = _AttSession.query.filter(
-        _AttSession.student_id == student.id,
+        _AttSession.seat_id == student.id,
         _AttSession.class_id == effective_class_id,
         _AttSession.started_at >= week_start,
         _AttSession.started_at < week_end,
@@ -1165,6 +1165,7 @@ def dashboard():
     # Include: class-specific, system-wide, all students, and teacher's all classes
     from app.models import Announcement
 
+    teacher_id = scope.user_id
     announcements = Announcement.query.filter(
         Announcement.is_active.is_(True),
         or_(
@@ -1242,6 +1243,7 @@ def payroll():
     if not class_id:
         flash("Class context unavailable. Please select a class to continue.", "error")
         return redirect(url_for('student.dashboard'))
+    effective_class_id = class_id or context.class_id
 
     current_block = seat.block.upper() if seat and seat.block else ""
     join_code = get_display_join_code(context.class_id)
@@ -1269,10 +1271,11 @@ def payroll():
         for blk, state in period_states.items()
     }
 
+    from app.models import AttendanceSession as _AttSession
+
     att_query = _AttSession.query.filter(
-        _AttSession.student_id == student.id,
+        _AttSession.seat_id == student.id,
         _AttSession.class_id == effective_class_id,
-        _AttSession.period == current_block,
         _AttSession.is_deleted.is_(False),
     )
     recent_sessions = att_query.order_by(_AttSession.started_at.desc()).limit(20).all()
@@ -1512,7 +1515,7 @@ def transfer():
                          checking_balance=checking_balance,
                          savings_balance=savings_balance,
                          forecast_interest=forecast_interest,
-                         scoped_total_earnings=student.get_total_earnings(join_code=join_code),
+                         scoped_total_earnings=_get_total_earnings_for_seat(student.id, join_code=join_code),
                          settings=settings,
                          calculation_type=calculation_type,
                          compound_frequency=compound_frequency,
@@ -2146,7 +2149,6 @@ def shop():
     class_id = get_current_class_id()
     _ = get_current_user()
     context = resolve_canonical_context()
-    student = db.session.get(Seat, context.seat_id) if context and getattr(context, "seat_id", None) else None
 
     # CRITICAL FIX v2: Get full class context
     context = resolve_canonical_context()
@@ -2247,7 +2249,7 @@ def shop():
 
     # Build free uses remaining map for rent-linked per-use items
     rent_free_uses = {}  # {store_item_id: uses_remaining or -1 for unlimited}
-    if student:
+    if seat:
         now_utc = utc_now()
         rent_linked_items_query = StorePurchase.query.filter(
             StorePurchase.seat_id == seat.id,
@@ -2338,7 +2340,7 @@ def shop():
                 'is_complete': bool(target > 0 and count >= target),
             }
 
-    return render_template('student_shop.html', student=student, items=items, student_items=student_items,
+    return render_template('student_shop.html', student=seat, items=items, student_items=student_items,
                          has_paid_rent=has_paid_rent, per_period_rent_item_ids=per_period_rent_item_ids,
                          rent_item_types_by_store_id=rent_item_types_by_store_id,
                          rent_free_uses=rent_free_uses,
@@ -3278,7 +3280,7 @@ def rent():
 
     student_blocks = [current_block] if current_block else []
     return render_template('student_rent.html',
-                          student=student,
+                          student=seat,
                           settings=settings,
                           student_blocks=student_blocks,
                           period_status=period_status,
@@ -3692,7 +3694,7 @@ def login():
             Seat.query
             .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
             .filter(
-                IdentityProfile.id == student.identity_id,
+                IdentityProfile.seat_id == student.id,
                 Seat.class_id == valid_persisted_selection["class_id"],
                 Seat.claimed_at.isnot(None),
             )
@@ -3856,7 +3858,7 @@ def switch_class(class_id):
 def switch_period(teacher_id):
     """Disabled switch-period route."""
     current_app.logger.warning(
-        "Disabled student switch-period route called.",
+        "Disabled student switch-period route called for teacher_id=%s",
         teacher_id,
     )
     flash("Switch using class context.", "warning")

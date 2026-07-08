@@ -466,7 +466,7 @@ def passkey_auth_finish():
         session["current_session_nonce"] = nonce
         user.current_session_nonce = nonce
         session["sysadmin_auth_username"] = (
-            session.get("passkey_sysadmin_auth_username") or user.auth_username or f"sysadmin_{user.id}"
+            session.get("passkey_sysadmin_auth_username") or f"sysadmin_{user.id}"
         )
         session['last_activity'] = now.isoformat()
         session['maintenance_global_bypass'] = True

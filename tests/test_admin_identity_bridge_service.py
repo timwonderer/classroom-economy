@@ -31,13 +31,8 @@ from tests.helpers.v2_fixtures import make_admin
 
 def _seed_teacher():
     teacher = make_admin("admin-identity-bridge", "test-secret")
-    user = User(
-        user_role=UserRole.TEACHER,
-        username_hash=teacher.username_hash,
-        username_lookup_hash=teacher.username_lookup_hash,
-        totp_secret_encrypted=teacher.totp_secret,
-    )
-    db.session.add_all([teacher, user])
+    user = db.session.query(User).filter_by(id=teacher.user_id).one()
+    db.session.add(teacher)
     db.session.flush()
     return teacher, user
 

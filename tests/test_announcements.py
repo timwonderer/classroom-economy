@@ -26,23 +26,22 @@ def test_teacher():
 def teacher_block(test_teacher):
     """Create a teacher block with join code."""
     # Create ClassEconomy first for FK constraint
-    if not db.session.get(ClassEconomy, 'TEST123'):
+    economy = ClassEconomy.query.filter_by(join_code='TEST123').first()
+    if not economy:
         economy = ClassEconomy(
+            join_code='TEST123',
             user_id=test_teacher.id,
             display_name='Test Announcements Class',
             status='active',
         )
         db.session.add(economy)
         db.session.flush()
-    
-    block = Seat(block='A', block_identifier='A', role="student")
-    
+
+    block = Seat(class_id=economy.class_id, user_id=test_teacher.user_id, block='A', block_identifier='A', role="teacher")
     db.session.add(block)
-    
     db.session.flush()
-    
-    db.session.add(IdentityProfile(seat_id=block.id, profile_type='student_unclaimed', first_name='encrypted_test_name', last_name='T'))
-    db.session.add(block)
+
+    db.session.add(IdentityProfile(seat_id=block.id, profile_type='teacher_primary', first_name='encrypted_test_name', last_name='T'))
     db.session.commit()
     return block
 
@@ -53,7 +52,10 @@ class TestAnnouncementModel:
     def test_announcement_creation(self, client, test_teacher, teacher_block):
         """Test creating an announcement."""
         announcement = Announcement(
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.user_id,
+            class_id=teacher_block.class_id,
+            join_code='TEST123',
+            audience_type='class',
             title='Test Announcement',
             message='This is a test message',
             priority='normal',
@@ -71,7 +73,9 @@ class TestAnnouncementModel:
     def test_announcement_defaults(self, client, test_teacher, teacher_block):
         """Test announcement model defaults."""
         announcement = Announcement(
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.user_id,
+            class_id=teacher_block.class_id,
+            join_code='TEST123',
             title='Test',
             message='Test message'
         )
@@ -87,7 +91,9 @@ class TestAnnouncementModel:
         """Test announcement expiration logic."""
         # Create expired announcement
         expired_announcement = Announcement(
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.user_id,
+            class_id=teacher_block.class_id,
+            join_code='TEST123',
             title='Expired',
             message='This is expired',
             expires_at=datetime.now(timezone.utc) - timedelta(days=1)
@@ -96,7 +102,9 @@ class TestAnnouncementModel:
 
         # Create active announcement
         active_announcement = Announcement(
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.user_id,
+            class_id=teacher_block.class_id,
+            join_code='TEST123',
             title='Active',
             message='This is active',
             expires_at=datetime.now(timezone.utc) + timedelta(days=1)
@@ -105,7 +113,9 @@ class TestAnnouncementModel:
 
         # Create announcement with no expiration
         no_expiry = Announcement(
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.user_id,
+            class_id=teacher_block.class_id,
+            join_code='TEST123',
             title='No Expiry',
             message='Never expires'
         )
@@ -120,7 +130,9 @@ class TestAnnouncementModel:
         """Test should_display method."""
         # Active and not expired
         visible = Announcement(
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.user_id,
+            class_id=teacher_block.class_id,
+            join_code='TEST123',
             title='Visible',
             message='Should be visible',
             is_active=True
@@ -129,7 +141,9 @@ class TestAnnouncementModel:
 
         # Inactive
         inactive = Announcement(
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.user_id,
+            class_id=teacher_block.class_id,
+            join_code='TEST123',
             title='Inactive',
             message='Should not be visible',
             is_active=False
@@ -138,7 +152,9 @@ class TestAnnouncementModel:
 
         # Expired
         expired = Announcement(
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.user_id,
+            class_id=teacher_block.class_id,
+            join_code='TEST123',
             title='Expired',
             message='Should not be visible',
             is_active=True,
@@ -159,7 +175,9 @@ class TestAnnouncementModel:
 
         for priority, expected_class, expected_icon in zip(priorities, expected_classes, expected_icons):
             announcement = Announcement(
-                teacher_id=test_teacher.id,
+                user_id=test_teacher.user_id,
+                class_id=teacher_block.class_id,
+                join_code='TEST123',
                 title=f'{priority} priority',
                 message='Test',
                 priority=priority
@@ -176,13 +194,15 @@ class TestAnnouncementMultiTenancy:
 
     def test_announcements_scoped_by_join_code(self, client, test_teacher):
         """Test that announcements are properly scoped by join_code."""
-        # Create ClassEconomies for FK constraints
+        # Create class rows for FK constraints and tenant separation.
         economy_a = ClassEconomy(
+            join_code='TESTA',
             user_id=test_teacher.id,
             display_name='Class A',
             status='active',
         )
         economy_b = ClassEconomy(
+            join_code='TESTB',
             user_id=test_teacher.id,
             display_name='Class B',
             status='active',
@@ -204,15 +224,19 @@ class TestAnnouncementMultiTenancy:
         db.session.add(block_b)
         db.session.commit()
 
-        # Create announcements for each block
+        # Create announcements for each class
         announcement_a = Announcement(
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.user_id,
+            class_id=economy_a.class_id,
+            join_code='TESTA',
             title='Announcement for Block A',
             message='Only Block A should see this',
             is_active=True
         )
         announcement_b = Announcement(
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.user_id,
+            class_id=economy_b.class_id,
+            join_code='TESTB',
             title='Announcement for Block B',
             message='Only Block B should see this',
             is_active=True
@@ -221,15 +245,9 @@ class TestAnnouncementMultiTenancy:
         db.session.add(announcement_b)
         db.session.commit()
 
-        # Query announcements for Block A
-        announcements_a = Announcement.query.filter_by(
-            is_active=True
-        ).all()
-
-        # Query announcements for Block B
-        announcements_b = Announcement.query.filter_by(
-            is_active=True
-        ).all()
+        # Query announcements per class
+        announcements_a = Announcement.query.filter_by(is_active=True, class_id=economy_a.class_id).all()
+        announcements_b = Announcement.query.filter_by(is_active=True, class_id=economy_b.class_id).all()
 
         # Verify proper scoping
         assert len(announcements_a) == 1
@@ -241,7 +259,9 @@ class TestAnnouncementMultiTenancy:
     def test_announcement_cascade_delete(self, client_with_fk, test_teacher, teacher_block):
         """Test that announcements are deleted when teacher is deleted."""
         announcement = Announcement(
-            teacher_id=test_teacher.id,
+            user_id=test_teacher.user_id,
+            class_id=teacher_block.class_id,
+            join_code='TEST123',
             title='Test Announcement',
             message='This should be deleted with teacher',
             is_active=True
@@ -251,8 +271,10 @@ class TestAnnouncementMultiTenancy:
 
         announcement_id = announcement.id
 
-        # Delete teacher
-        db.session.delete(test_teacher)
+        # Delete the canonical user row to exercise the FK cascade.
+        teacher_user = db.session.get(User, test_teacher.user_id)
+        assert teacher_user is not None
+        db.session.delete(teacher_user)
         db.session.commit()
 
         # Verify announcement was CASCADE-deleted at the database level

@@ -161,7 +161,7 @@ from datetime import datetime, timezone
 from tests.helpers.canonical_session import set_canonical_context
 from app.extensions import db
 from app.models import Admin, ClassEconomy, Seat, IdentityProfile, RentSettings, User, TeacherOnboarding
-from tests.helpers.class_scope import create_class_scope
+from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.v2_fixtures import make_admin
 from app.hash_utils import hash_username
 from app.utils.auth_username import build_hashed_username_fields
@@ -174,10 +174,6 @@ def auth_student_context(app, client):
     with app.app_context():
         teacher = make_admin("access_teacher_s", "secret")
         db.session.add(teacher)
-        db.session.flush()
-
-        profile = IdentityProfile(profile_type="student", first_name="Accessibility", last_name="S")
-        db.session.add(profile)
         db.session.flush()
 
         join_code = "ACCESST1"
@@ -202,15 +198,17 @@ def auth_student_context(app, client):
         db.session.add(student_user)
         db.session.flush()
 
-        # Link Seat to User
-        seat = Seat.query.filter_by(class_id=class_row.class_id, role="student").first()
-        if seat:
-            seat.user_id = student_user.id
-            seat.claimed_at = datetime.now(timezone.utc)
-            profile.seat_id = seat.id
-            db.session.flush()
-            student_user.last_active_seat_id = seat.id
-            db.session.flush()
+        seat = make_student_identity(
+            class_id=class_row.class_id,
+            user_id=student_user.id,
+            block="A",
+            claimed=True,
+            first_name="Accessibility",
+            last_name="S",
+        )
+        student_user.last_active_seat_id = seat.id
+        student_user.current_session_nonce = "accessibility-nonce"
+        db.session.flush()
         
         rent_settings = RentSettings(
             class_id=class_row.class_id,
@@ -228,15 +226,17 @@ def auth_student_context(app, client):
         student_id = student_user.id
         class_id = class_row.class_id
         user_id = student_user.id
-        seat_id = seat.id if seat else None
+        seat_id = seat.id
 
     # Log in student
     with client.session_transaction() as sess:
+        sess["current_session_nonce"] = "accessibility-nonce"
+        sess["login_time"] = datetime.now(timezone.utc).isoformat()
         set_canonical_context(
             sess,
             user_id=user_id,
             class_id=class_id,
-            seat_id=seat_id or 0,
+            seat_id=seat_id,
             role="student",
             join_code=join_code,
         )
@@ -274,16 +274,8 @@ def auth_teacher_context(app, client):
         db.session.add(onboarding)
         db.session.flush()
 
-        teacher_salt, teacher_username_hash, teacher_username_lookup_hash = build_hashed_username_fields("access_teacher_t")
-        user = User(
-            username_hash=teacher_username_hash,
-            username_lookup_hash=teacher_username_lookup_hash,
-            password_hash=generate_password_hash("secret"),
-            user_role="teacher",
-            has_completed_setup=True,
-            last_active_class_id=class_row.class_id,
-        )
-        db.session.add(user)
+        teacher.has_completed_setup = True
+        teacher.last_active_class_id = class_row.class_id
         from app.models import ClassFeature
         for feat in ClassFeature.feature_names():
             exists = ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feat).first()
@@ -293,7 +285,7 @@ def auth_teacher_context(app, client):
 
         teacher_id = teacher.id
         class_id = class_row.class_id
-        user_id = user.id
+        user_id = teacher.id
 
     # Log in teacher
     teacher_seat = Seat.query.filter_by(user_id=user_id, class_id=class_id, role="teacher").first()

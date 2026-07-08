@@ -11,30 +11,47 @@ def login_admin(
     class_id: str | None = None,
     seat_id: int | None = None,
 ) -> None:
-    # Ensure a User exists for this admin (required by canonical context)
+    from app.extensions import db
+    from app.models import Admin, ClassEconomy, Seat, User, UserRole
+
+    # Resolve the canonical teacher user if the caller only knows the legacy admin row.
     if user_id is None:
-        from app.extensions import db
-        from app.models import Admin, User, UserRole
         admin = db.session.get(Admin, admin_id)
         if admin and admin.username_lookup_hash:
             user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
-            if not user:
+            if user is None:
                 user = User(
-                    username_hash=admin.username_lookup_hash,
+                    username_hash=admin.username_hash or admin.username_lookup_hash,
                     username_lookup_hash=admin.username_lookup_hash,
                     user_role=UserRole.TEACHER,
+                    has_completed_setup=True,
                 )
                 db.session.add(user)
-                db.session.commit()
+                db.session.flush()
             user_id = user.id
+
+    if class_id is None and join_code is not None:
+        class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
+        if class_row is not None:
+            class_id = class_row.class_id
+            seat = None
+            if user_id is not None:
+                seat = Seat.query.filter(
+                    Seat.class_id == class_row.class_id,
+                    Seat.user_id == user_id,
+                ).order_by(Seat.id.asc()).first()
+            if seat is None:
+                seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").order_by(Seat.id.asc()).first()
+            if seat is not None:
+                seat_id = seat.id
+                user_id = seat.user_id
 
     with client.session_transaction() as sess:
         sess["is_admin"] = True
         sess["admin_id"] = admin_id
         if user_id is not None:
+            sess["user_id"] = user_id
             sess["current_session_nonce"] = secrets.token_urlsafe(32)
-            from app.extensions import db
-            from app.models import User
             user = db.session.get(User, user_id)
             if user:
                 user.current_session_nonce = sess["current_session_nonce"]
@@ -48,6 +65,7 @@ def login_admin(
                 role="teacher",
                 join_code=join_code,
             )
+            sess["user_id"] = user_id
             # Persist canonical pointers on the User model so context_resolver
             # can establish CanonicalContext from DB state.
             from app.extensions import db
@@ -59,3 +77,15 @@ def login_admin(
                 db.session.commit()
         elif join_code is not None:
             sess["current_join_code"] = join_code
+
+    if user_id is None:
+        admin = db.session.get(Admin, admin_id)
+        if admin and admin.username_lookup_hash:
+            user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
+            if user is not None:
+                nonce = secrets.token_urlsafe(32)
+                with client.session_transaction() as sess:
+                    sess["user_id"] = user.id
+                    sess["current_session_nonce"] = nonce
+                user.current_session_nonce = nonce
+                db.session.commit()

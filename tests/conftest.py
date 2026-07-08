@@ -225,7 +225,6 @@ def test_student():
     seat = Seat(
         user_id=user.id,
         class_id=None,
-        join_code="TESTSTUDENT",
         role="student",
     )
     db.session.add(seat)

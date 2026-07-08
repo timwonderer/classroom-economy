@@ -1806,7 +1806,7 @@ def attendance_history():
             period_by_seat_id = {}
             for record in records:
                 if record.seat_id and record.seat_id not in period_by_seat_id:
-                    period_by_seat_id[record.seat_id] = record.period
+                    period_by_seat_id[record.seat_id] = getattr(record, "block", None)
 
             for row in seat_rows:
                 student_name = " ".join(part for part in [row.first_name, row.last_name] if part).strip() or "Unknown"
@@ -1843,7 +1843,7 @@ def attendance_history():
                 "student_name": seat_info['name'],
                 "student_block": student_block,
                 "student_class_label": student_class_label,
-                "period": record.period,
+                "period": getattr(record, "block", None),
                 "status": record.status,
                 "reason": record.reason if record.reason else None,
                 "timestamp": timestamp_str
@@ -2207,7 +2207,7 @@ def delete_tap_entry(event_id):
         "Admin %s deleted tap entry %s for student %s",
         scoped_admin_id,
         event_id,
-        event.student_id,
+        event.seat_id,
     )
 
     return jsonify({

@@ -1,7 +1,7 @@
 import pyotp
 
 from app import db
-from app.models import Admin, ClassEconomy, User, UserReport, UserRole
+from app.models import Admin, ClassEconomy, Seat, User, UserReport, UserRole
 from app.utils.auth_username import build_hashed_username_fields
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -34,6 +34,15 @@ def _login_admin(client):
         section="A",
         status="active",
     ))
+    teacher_seat = Seat(
+        user_id=user.id,
+        class_id="help-support-class",
+        role="teacher",
+        block="A",
+        block_identifier="A",
+        claimed_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+    )
+    db.session.add(teacher_seat)
     db.session.commit()
     with client.session_transaction() as sess:
         sess["admin_id"] = admin.id
@@ -42,7 +51,7 @@ def _login_admin(client):
             sess,
             user_id=user.id,
             class_id="help-support-class",
-            seat_id=admin.user_id,
+            seat_id=teacher_seat.id,
             role="teacher",
             join_code="ELA123",
         )
@@ -80,4 +89,4 @@ def test_teacher_can_submit_class_scoped_support_ticket(client):
     assert report is not None
     assert report.title == "Roster sync issue"
     assert report.report_type == "comment"
-    assert report.description.startswith("SUPPORT_SCOPE|join_code=ELA123|class_label=ELA|category=general")
+    assert report.description.startswith("SUPPORT_SCOPE|class_id=help-support-class|join_code=ELA123|class_label=ELA|category=general")

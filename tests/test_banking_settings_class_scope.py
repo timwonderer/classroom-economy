@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from app.extensions import db
-from app.models import Admin, BankingSettings, Seat, User, UserRole
+from app.models import Admin, BankingSettings, ClassFeature, Seat, User, UserRole
 from app.utils.auth_username import build_hashed_username_fields
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
@@ -9,14 +9,20 @@ from tests.helpers.v2_fixtures import make_admin
 
 
 def _bind_canonical_teacher(admin: Admin, username: str) -> User:
+    if getattr(admin, "user_id", None):
+        user = db.session.get(User, admin.user_id)
+        if user is not None:
+            return user
     salt, username_hash, username_lookup_hash = build_hashed_username_fields(username)
-    user = User(
-        user_role=UserRole.TEACHER,
-        username_hash=username_hash,
-        username_lookup_hash=username_lookup_hash,
-    )
-    db.session.add(user)
-    db.session.flush()
+    user = User.query.filter_by(username_lookup_hash=username_lookup_hash).first()
+    if user is None:
+        user = User(
+            user_role=UserRole.TEACHER,
+            username_hash=username_hash,
+            username_lookup_hash=username_lookup_hash,
+        )
+        db.session.add(user)
+        db.session.flush()
     admin.user_id = user.id
     return user
 

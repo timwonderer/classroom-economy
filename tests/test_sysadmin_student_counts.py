@@ -5,12 +5,15 @@ Validates that system admins see accurate per-teacher student counts
 and that counts properly account for multi-teacher relationships.
 """
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
-from tests.helpers.class_scope import make_student_identity
+from datetime import datetime, timezone
+
 import pyotp
 
 from app import app, db
-from app.models import User, UserRole, Admin, SystemAdmin
+from app.models import User, UserRole, Admin, SystemAdmin, Seat, IdentityProfile
+from app.routes.system_admin import _teacher_student_counts
+from tests.helpers.class_scope import create_class_scope, make_student_identity
+from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 
 
 def _create_sysadmin(username: str = "sysadmin"):
@@ -202,16 +205,21 @@ def test_deleted_students_are_excluded_from_teacher_counts(client):
     sys_admin, sys_secret = _create_sysadmin()
     teacher, _ = _create_admin("teacher-delete-count")
 
-    _create_student("ActiveStudent", primary_teacher=teacher)
-    deleted_student = _create_student("DeletedStudent", primary_teacher=teacher)
-    db.session.delete(deleted_student)
+    class_row = create_class_scope(teacher=teacher, join_code="DELCOUNT", block="A")
+    active_student_seat = make_student_identity(
+        class_id=class_row.class_id,
+        block="A",
+        first_name="Active",
+        last_name="Student",
+    )
+    deleted_student_seat = make_student_identity(
+        class_id=class_row.class_id,
+        block="A",
+        first_name="Deleted",
+        last_name="Student",
+    )
+    db.session.delete(deleted_student_seat)
     db.session.commit()
 
-    assert teacher.get_student_count() == 1
-
-    _login_sysadmin(client, sys_admin, sys_secret)
-    response = client.get("/sysadmin/admins")
-    assert response.status_code == 200
-    html = response.data.decode()
-    assert "teacher-delete-count" in html
-    assert "1 student" in html or "1 students" in html
+    teacher_counts, _ = _teacher_student_counts([teacher.user_id])
+    assert teacher_counts[teacher.user_id] == 1

@@ -108,7 +108,6 @@ class ClassroomContext:
         seat = Seat(
             user_id=user.id,
             class_id=self.class_id,
-            join_code=self.join_code,
             role="student",
             claimed_at=datetime.now(timezone.utc),
         )
@@ -220,7 +219,6 @@ class ClassroomContextFactory:
         teacher_seat = Seat(
             user_id=teacher_user.id,
             class_id=class_id,
-            join_code=join_code,
             role="teacher",
         )
         self._db.session.add(teacher_seat)

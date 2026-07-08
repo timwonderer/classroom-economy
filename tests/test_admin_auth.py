@@ -10,13 +10,7 @@ from app.models import Admin, IdentityProfile, User, UserRole, Seat
 def test_admin_login_sets_session_identity(client):
     secret = pyotp.random_base32()
     admin = make_admin("teacher1", secret)
-    user = User(
-        user_role=UserRole.TEACHER,
-        username_hash=admin.username_hash,
-        username_lookup_hash=admin.username_lookup_hash,
-        totp_secret_encrypted=admin.totp_secret,
-    )
-    db.session.add_all([admin, user])
+    db.session.add(admin)
     db.session.commit()
 
     response = client.post(
@@ -27,7 +21,7 @@ def test_admin_login_sets_session_identity(client):
 
     assert response.status_code == 302
     with client.session_transaction() as sess:
-        assert sess.get("user_id") == user.id
+        assert sess.get("user_id") == admin.user_id
         assert sess.get("current_session_nonce") is not None
         assert "last_activity" in sess
 
@@ -36,8 +30,8 @@ def test_admin_login_sets_session_identity(client):
 
         session["is_admin"] = True
         session["admin_id"] = admin.id
-        session["user_id"] = user.id
-        assert get_current_user().id == user.id
+        session["user_id"] = admin.user_id
+        assert get_current_user().id == admin.user_id
 
 
 def test_admin_required_blocks_missing_identity(client):
@@ -49,6 +43,5 @@ def test_admin_required_blocks_missing_identity(client):
 
     assert response.status_code == 302
     assert "/admin/login" in response.headers.get("Location", "")
-
 
 

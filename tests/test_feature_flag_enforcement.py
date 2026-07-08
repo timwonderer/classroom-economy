@@ -17,23 +17,35 @@ from tests.helpers.admin_context import login_admin
 from tests.helpers.canonical_session import set_canonical_context
 
 def _bind_canonical_teacher(teacher):
-    user = User(
-        user_role=UserRole.TEACHER,
-        username_hash=teacher.username_hash,
-        username_lookup_hash=teacher.username_lookup_hash,
-        totp_secret_encrypted=teacher.totp_secret,
-    )
-    db.session.add(user)
-    db.session.flush()
+    if getattr(teacher, "user_id", None):
+        user = db.session.get(User, teacher.user_id)
+        if user is not None:
+            return user
+    user = User.query.filter_by(username_lookup_hash=teacher.username_lookup_hash).first()
+    if user is None:
+        user = User(
+            user_role=UserRole.TEACHER,
+            username_hash=teacher.username_hash,
+            username_lookup_hash=teacher.username_lookup_hash,
+            totp_secret_encrypted=teacher.totp_secret,
+        )
+        db.session.add(user)
+        db.session.flush()
     teacher.user_id = user.id
     return user
 
 
 def _bind_canonical_student(student):
+    user = User.query.filter_by(username_hash=getattr(student, "username_hash", None)).first()
+    if user is not None:
+        return user
+    resolved_hash = getattr(student, "username_hash", None)
+    resolved_lookup = getattr(student, "username_lookup_hash", None)
     user = User(
         user_role=UserRole.STUDENT,
-        username_hash=student.username_hash,
-        passphrase_hash=student.passphrase_hash,
+        username_hash=resolved_hash or f"student_{student.id}_hash",
+        username_lookup_hash=resolved_lookup or f"student_{student.id}_lookup",
+        passphrase_hash=getattr(student, "passphrase_hash", None),
     )
     db.session.add(user)
     db.session.flush()
@@ -217,6 +229,7 @@ def setup_student_with_enabled_banking(client):
         claimed_at=datetime.now(timezone.utc),
     )
     db.session.add(student_seat)
+    user.passphrase_hash = generate_password_hash('password')
     db.session.commit()
 
     # Add some money to checking account

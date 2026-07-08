@@ -27,7 +27,7 @@ def _ensure_user(user_id, role="teacher"):
 def create_class_scope(
     *,
     teacher,
-    join_code,
+    join_code=None,
     student=None,
     block="A",
     display_name=None,
@@ -56,11 +56,17 @@ def create_class_scope(
     # Prefer the teacher's canonical user_id over auto-creating a new User.
     if teacher_user_id is None and hasattr(teacher, 'user_id') and teacher.user_id is not None:
         teacher_user_id = teacher.user_id
+    if teacher_user_id is None and hasattr(teacher, "username_lookup_hash") and teacher.username_lookup_hash:
+        matched_user = User.query.filter_by(username_lookup_hash=teacher.username_lookup_hash).first()
+        if matched_user is not None:
+            teacher_user_id = matched_user.id
+    if teacher_user_id is None and hasattr(teacher, "user_id") and teacher.user_id is not None:
+        teacher_user_id = teacher.user_id
     resolved_teacher_user_id = _ensure_user(teacher_user_id, role="teacher")
-    resolved_teacher_admin_id = getattr(teacher, "id", None) or resolved_teacher_user_id
+    resolved_join_code = join_code or f"CLS{uuid4().hex[:8].upper()}"
     class_row = ClassEconomy(
         class_id=str(uuid4()),
-        join_code=join_code,
+        join_code=resolved_join_code,
         user_id=resolved_teacher_user_id,
         display_name=display_name,
         section=block,
@@ -83,6 +89,9 @@ def create_class_scope(
         )
         db.session.add(t_seat)
         db.session.flush()
+        if claimed:
+            t_seat.block = block
+            t_seat.block_identifier = block
         db.session.add(IdentityProfile(
             seat_id=t_seat.id,
             profile_type='teacher_primary',

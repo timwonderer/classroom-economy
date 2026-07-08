@@ -14,6 +14,7 @@ from app import db
 from app.models import Seat, IdentityProfile, User, UserRole, Admin, ClassEconomy, Transaction, PayrollSettings, RentSettings, AnalyticsAlert, FeatureSettings
 from app.routes.analytics import get_pay_cycle_days, get_rent_cycle_days
 from app.utils.analytics_engine import AnalyticsEngine
+import app.services.ledger_service as ledger_service
 from tests.helpers.class_scope import make_student_identity
 
 
@@ -52,14 +53,13 @@ def setup_analytics_test(client):
     # Create students
     students = []
     for i in range(5):
-        student = make_student_identity(first_name=f"Student{i}", last_name="T", block=block, claimed=True)
-        db.session.add(Seat(
+        student = make_student_identity(
             class_id=class_row.class_id,
-            user_id=student.user_id,
-            role='student',
+            first_name=f"Student{i}",
+            last_name="T",
             block=block,
-            block_identifier=block,
-        ))
+            claimed=True,
+        )
         students.append(student)
     
     db.session.commit()
@@ -396,7 +396,7 @@ def test_budget_survival_uses_policy_mode_min_savings_ratio(client, setup_analyt
         db.session.commit()
 
     # Use fixed balances to isolate threshold behavior.
-    monkeypatch.setattr(Seat, "get_checking_balance", lambda self, class_id, seat_id: 12.0)
+    monkeypatch.setattr(ledger_service, "get_available_balance", lambda seat_id, class_id, account_type: 12.0)
 
     _set_policy('tight')  # min savings ratio = 0.05
     tight_engine = AnalyticsEngine(ClassEconomy.query.filter_by(join_code=join_code).first().class_id)

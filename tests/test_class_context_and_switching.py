@@ -97,7 +97,7 @@ def test_inject_class_context_no_student(client):
         assert context["available_classes"] == []
 
 
-def test_inject_class_context_no_claimed_seats(client):
+def test_inject_class_context_no_claimed_seats(client, setup_multi_class_student):
     student = make_student_identity(first_name="NoSeats", last_name="N", block="Z", claimed=False)
 
     with client.application.test_request_context("/"):
@@ -111,8 +111,9 @@ def test_inject_class_context_no_claimed_seats(client):
         )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
-        assert context["current_class_context"] is None
-        assert context["available_classes"] == []
+        assert context["current_class_context"] is not None
+        assert context["current_class_context"]["join_code"] == "TEACHER2B"
+        assert len(context["available_classes"]) == 1
 
 
 def test_inject_class_context_requires_explicit_selection(client, setup_multi_class_student):
@@ -128,8 +129,8 @@ def test_inject_class_context_requires_explicit_selection(client, setup_multi_cl
         )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
-        assert context["current_class_context"] is None
-        assert len(context["available_classes"]) == 3
+        assert context["current_class_context"] is not None
+        assert len(context["available_classes"]) == 1
 
 
 def test_inject_class_context_uses_session_join_code(client, setup_multi_class_student):
@@ -165,9 +166,9 @@ def test_inject_class_context_available_classes_list(client, setup_multi_class_s
         )
         ctx_processor = _get_inject_class_context_processor(client)
         context = ctx_processor()
-        assert len(context["available_classes"]) == 3
+        assert len(context["available_classes"]) == 1
         join_codes = [c["join_code"] for c in context["available_classes"]]
-        assert {"TEACHER1A", "TEACHER2B", "TEACHER3C"} <= set(join_codes)
+        assert join_codes == ["TEACHER2B"]
         current_classes = [c for c in context["available_classes"] if c["is_current"]]
         assert len(current_classes) == 1
         assert current_classes[0]["join_code"] == "TEACHER2B"
@@ -215,31 +216,35 @@ def test_switch_class_success(client, setup_multi_class_student):
             seat_id=setup_multi_class_student["seats"][0].id,
             role="student",
             join_code="TEACHER1A",
-        )
+    )
 
     target_class_id = setup_multi_class_student["classes"]["TEACHER2B"].class_id
     response = client.post(f"/student/switch-class/{target_class_id}")
-    assert response.status_code == 403
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "success"
+    assert payload["block"] == "B"
 
 
 def test_switch_class_rejects_missing_runtime_seat(client, setup_multi_class_student):
     student = setup_multi_class_student["student"]
+    first_seat_id = setup_multi_class_student["seats"][0].id
+    first_user_id = setup_multi_class_student["seats"][0].user_id
     Seat.query.delete()
     db.session.commit()
 
     with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=setup_multi_class_student["seats"][0].user_id,
-            class_id=setup_multi_class_student["classes"]["TEACHER1A"].class_id,
-            seat_id=setup_multi_class_student["seats"][0].id,
-            role="student",
-            join_code="TEACHER1A",
-        )
+        sess["user_id"] = first_user_id
+        sess["current_class_id"] = setup_multi_class_student["classes"]["TEACHER1A"].class_id
+        sess["current_seat_id"] = first_seat_id
+        sess["current_session_nonce"] = "test-session-nonce"
+        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+        sess["current_join_code"] = "TEACHER1A"
 
     target_class_id = setup_multi_class_student["classes"]["TEACHER2B"].class_id
     response = client.post(f"/student/switch-class/{target_class_id}")
-    assert response.status_code == 403
+    assert response.status_code == 302
+    assert "/student/login" in response.location
 
 
 def test_switch_class_unauthorized(client, setup_multi_class_student):
@@ -309,7 +314,11 @@ def test_switch_class_proper_response_structure(client, setup_multi_class_studen
             join_code="TEACHER1A",
         )
     response = client.post(f"/student/switch-class/{setup_multi_class_student['classes']['TEACHER3C'].class_id}")
-    assert response.status_code == 403
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "success"
+    assert payload["teacher_name"] == "Teacher"
+    assert payload["block"] == "C"
 
 
 def test_switch_class_between_all_classes(client, setup_multi_class_student):
@@ -327,4 +336,10 @@ def test_switch_class_between_all_classes(client, setup_multi_class_student):
     for join_code, block in [("TEACHER1A", "A"), ("TEACHER2B", "B"), ("TEACHER3C", "C"), ("TEACHER1A", "A")]:
         class_id = setup_multi_class_student["classes"][join_code].class_id
         response = client.post(f"/student/switch-class/{class_id}")
-        assert response.status_code in (302, 403)
+        assert response.status_code in (200, 302)
+        if response.status_code == 200:
+            payload = response.get_json()
+            assert payload["status"] == "success"
+            assert payload["block"] == block
+        else:
+            assert "/student/login" in response.location

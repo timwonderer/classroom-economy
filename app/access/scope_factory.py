@@ -66,7 +66,7 @@ def resolve_student_class_switch_scope(*, actor, class_id: str) -> ResolvedStude
 
     seat = (
         Seat.query.filter_by(
-            user_id=actor.id,
+            user_id=actor.user_id,
             class_id=normalized_class_id,
         )
         .filter(Seat.claimed_at.isnot(None))

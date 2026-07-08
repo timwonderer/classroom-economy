@@ -1,7 +1,7 @@
 """Shared utility functions for canonical store collective-goal management."""
 
 from app.extensions import db
-from app.models import StoreItem, StorePurchase, Transaction
+from app.models import StoreItem, StorePurchase, Transaction, Seat
 from app.services import ledger_service
 from app.utils.time import utc_now
 
@@ -19,18 +19,18 @@ def refund_pending_collective_purchases(item, description_suffix="Goal Expired")
         purchase_tx = None
         if purchase.ledger_tx_id:
             purchase_tx = db.session.get(Transaction, purchase.ledger_tx_id)
-            if purchase_tx and (
-                purchase_tx.seat_id != purchase.seat_id
-                or purchase_tx.teacher_id != item.teacher_id
-            ):
-                purchase_tx = None
+        if purchase_tx and (
+            purchase_tx.seat_id != purchase.seat_id
+            or purchase_tx.class_id != item.class_id
+        ):
+            purchase_tx = None
 
         if purchase_tx is None and purchase.class_id:
             purchase_tx = (
                 Transaction.query
                 .filter_by(
                     seat_id=purchase.seat_id,
-                    teacher_id=item.teacher_id,
+                    class_id=item.class_id,
                     type='purchase',
                     reversal_transaction_id=None,
                 )
@@ -46,7 +46,7 @@ def refund_pending_collective_purchases(item, description_suffix="Goal Expired")
         refund_tx = ledger_service.create_pending_transaction(
             seat_id=purchase.seat_id,
             class_id=purchase.class_id,
-            teacher_id=item.teacher_id,
+            user_id=db.session.get(Seat, purchase.seat_id).user_id if purchase.seat_id else None,
             amount=refund_amount,
             account_type='checking',
             type='refund',
@@ -78,7 +78,7 @@ def process_expired_collective_goals(teacher_id, correlation_id=None, idempotenc
     ).exists()
 
     expired_items = StoreItem.query.filter(
-        StoreItem.teacher_id == teacher_id,
+        StoreItem.user_id == teacher_id,
         StoreItem.item_type == 'collective',
         StoreItem.is_active == True,
         StoreItem.collective_goal_expires_at.isnot(None),

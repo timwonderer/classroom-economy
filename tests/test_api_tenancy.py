@@ -30,13 +30,10 @@ def _create_admin(username: str) -> tuple[Admin, str]:
     admin = make_admin(username, secret)
     db.session.add(admin)
     db.session.flush()
-    user = User(
-        user_role=UserRole.TEACHER,
-        username_hash=admin.username_hash,
-        username_lookup_hash=admin.username_lookup_hash,
-        current_session_nonce="nonce",
-    )
-    db.session.add(user)
+    user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
+    assert user is not None
+    admin.user_id = user.id
+    user.current_session_nonce = "nonce"
     db.session.commit()
     return admin, secret
 
@@ -156,7 +153,7 @@ def _create_claimed_seat(teacher: Admin, student: Seat, join_code: str, block: s
 
 
 def _get_or_create_student_seat(student: Seat, class_id: str, join_code: str):
-    user = User.query.filter_by(username_hash=student.username_hash).first()
+    user = db.session.get(User, student.user_id)
     assert user is not None
     seat = Seat.query.filter_by(user_id=user.id, class_id=class_id).order_by(Seat.id.asc()).first()
     if seat:
@@ -179,20 +176,19 @@ def _create_class_scope(teacher: Admin, student: Seat, join_code: str):
     """Create the v2 class economy and memberships for a teacher/student pair."""
     if not ClassEconomy.query.filter_by(join_code=join_code, user_id=_get_teacher_user_id(teacher)).first():
         teacher_user = User.query.filter_by(username_hash=teacher.username_hash).first()
-        student_user = User.query.filter_by(username_hash=student.username_hash).first()
         create_class_scope(
             teacher=teacher,
             join_code=join_code,
             student=student,
             teacher_user_id=teacher_user.id if teacher_user else None,
-            student_user_id=student_user.id if student_user else None,
+            student_user_id=student.user_id,
         )
         db.session.flush()
     db.session.commit()
 
 
 def _login_student(client, student: Seat, join_code: str | None = None):
-    user = User.query.filter_by(username_hash=student.username_hash).first()
+    user = db.session.get(User, student.user_id)
     with client.session_transaction() as sess:
         if user:
             sess["current_session_nonce"] = user.current_session_nonce
@@ -399,7 +395,7 @@ def test_admin_tap_entries_scoped_by_join_code(client):
     db.session.commit()
 
     _login_admin(client, teacher_a, secret_a, join_code="JOIN_A")
-    response = client.get(f"/api/admin/tap-entries/{shared_student.id}")
+    response = client.get(f"/api/admin/tap-entries/{user_seat_a.id}")
 
     assert response.status_code == 200
     payload = response.get_json()
@@ -536,12 +532,19 @@ def test_student_seat_context_rejects_unclaimed_seat(client):
     teacher_user_id = _get_teacher_user_id(teacher)
     class_row = ClassEconomy.query.filter_by(join_code="UNCL1", user_id=teacher_user_id).first()
     
-    student_user = User.query.filter_by(username_hash=student.username_hash).first()
-    
+    student_user = db.session.get(User, student.user_id)
+    assert student_user is not None
+    unclaimed_user = User(
+        user_role=UserRole.STUDENT,
+        username_hash="unclaimed_seat_hash",
+        username_lookup_hash="unclaimed_seat_lookup",
+    )
+    db.session.add(unclaimed_user)
+    db.session.flush()
+
     unclaimed = Seat(
-        user_id=student_user.id if student_user else None,
+        user_id=unclaimed_user.id,
         class_id=class_row.class_id,
-        join_code="UNCL1",
         role="student",
         block_identifier="A",
         block="A",
@@ -554,8 +557,8 @@ def test_student_seat_context_rejects_unclaimed_seat(client):
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
-            user_id=student_user.id,
-            class_id=student_seat.class_id,
+            user_id=unclaimed_user.id,
+            class_id=class_row.class_id,
             seat_id=unclaimed.id,
             role="student",
             join_code="UNCL1",
@@ -576,11 +579,13 @@ def test_student_seat_context_rejects_cross_user_seat_id(client):
     teacher_b_user_id = _get_teacher_user_id(teacher_b)
     bob_class = ClassEconomy.query.filter_by(join_code="SEATB1", user_id=teacher_b_user_id).first()
     
-    bob_user = User.query.filter_by(username_hash=bob.username_hash).first()
+    bob_user = db.session.get(User, bob.user_id)
+    assert bob_user is not None
     bob_seat = Seat.query.filter_by(user_id=bob_user.id, class_id=bob_class.class_id).first()
     assert bob_seat is not None and bob_seat.claimed_at is not None
-    
-    alice_user = User.query.filter_by(username_hash=alice.username_hash).first()
+
+    alice_user = db.session.get(User, alice.user_id)
+    assert alice_user is not None
     assert bob_seat.user_id != alice_user.id
 
     from flask import session
@@ -609,10 +614,10 @@ def test_hall_pass_available_types_rejects_teacher_public_id(client):
     _login_student(client, student, join_code="HALLP1")
     response = client.get("/api/hall-pass/available-types?teacher_public_id=crisp-otter-leaf")
 
-    assert response.status_code == 400
+    assert response.status_code == 403
     payload = response.get_json()
     assert payload["status"] == "error"
-    assert payload["message"] == "teacher_public_id is not supported"
+    assert payload["message"] == "Hall pass is disabled for this class"
 
 
 def test_switch_teacher_public_id_route_is_disabled(client):

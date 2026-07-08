@@ -5,6 +5,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone
+import uuid
 from app import db
 from app.models import Admin, AttendanceSession, ClassEconomy, Seat, User, UserRole, IdentityProfile
 from app.hash_utils import hash_username, get_random_salt
@@ -12,16 +13,8 @@ from tests.helpers.canonical_session import set_canonical_context
 
 
 def _create_user_for_admin(admin):
-    """Create a User record linked to an admin."""
-    user = User(
-        user_role="teacher",
-        username_hash=admin.username_hash,
-        username_lookup_hash=admin.username_lookup_hash,
-    )
-    db.session.add(user)
-    db.session.flush()
-    admin.user_id = user.id
-    return user
+    """Return the canonical User record already linked to an admin."""
+    return db.session.get(User, admin.user_id)
 
 @pytest.fixture
 def admin_with_data(client):
@@ -35,9 +28,14 @@ def admin_with_data(client):
     # Create class economy
     class_row = ClassEconomy(
         user_id=admin.id,
-        status="active",
+        join_code=f"ATTEND-{uuid.uuid4().hex[:8].upper()}",
+        display_name="Attendance Class",
+        class_timezone="UTC",
     )
     db.session.add(class_row)
+    db.session.flush()
+    teacher_seat = Seat(user_id=user.id, class_id=class_row.class_id, role="teacher")
+    db.session.add(teacher_seat)
     db.session.flush()
     # Create students with blocks
     seat1 = make_student_identity(block='PERIOD1', first_name='Test', last_name='T', class_id=class_row.class_id)
@@ -113,6 +111,17 @@ def test_attendance_log_page_with_no_data(client):
     db.session.add(admin)
     db.session.flush()
     user = _create_user_for_admin(admin)
+    class_row = ClassEconomy(
+        user_id=admin.id,
+        join_code=f"ATTEND-{uuid.uuid4().hex[:8].upper()}",
+        display_name="Attendance Empty Class",
+        class_timezone="UTC",
+    )
+    db.session.add(class_row)
+    db.session.flush()
+    teacher_seat = Seat(user_id=user.id, class_id=class_row.class_id, role="teacher")
+    db.session.add(teacher_seat)
+    db.session.flush()
     db.session.commit()
 
     # Log in as the admin
@@ -120,6 +129,13 @@ def test_attendance_log_page_with_no_data(client):
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
         sess['user_id'] = user.id
+        set_canonical_context(
+            sess,
+            user_id=user.id,
+            class_id=class_row.class_id,
+            seat_id=teacher_seat.id,
+            role="teacher",
+        )
 
     # Access the attendance log page
     response = client.get('/admin/attendance-log')
@@ -140,12 +156,25 @@ def test_attendance_log_tenant_scoping(client):
     db.session.add_all([admin1, admin2])
     db.session.flush()
     user1 = _create_user_for_admin(admin1)
-    _create_user_for_admin(admin2)
 
     # Create class economies
-    class1 = ClassEconomy(user_id=admin1.id, status="active")
-    class2 = ClassEconomy(user_id=admin2.id, status="active")
+    class1 = ClassEconomy(
+        user_id=admin1.id,
+        join_code=f"ATTEND-{uuid.uuid4().hex[:8].upper()}",
+        display_name="Attendance Tenant 1",
+        class_timezone="UTC",
+    )
+    class2 = ClassEconomy(
+        user_id=admin2.id,
+        join_code=f"ATTEND-{uuid.uuid4().hex[:8].upper()}",
+        display_name="Attendance Tenant 2",
+        class_timezone="UTC",
+    )
     db.session.add_all([class1, class2])
+    db.session.flush()
+    teacher1 = Seat(user_id=user1.id, class_id=class1.class_id, role="teacher")
+    teacher2 = Seat(user_id=admin2.user_id, class_id=class2.class_id, role="teacher")
+    db.session.add_all([teacher1, teacher2])
     db.session.flush()
     # Create students for each admin
     student1 = make_student_identity(block='ADM1PER', first_name='Student1', last_name='S')
@@ -184,6 +213,13 @@ def test_attendance_log_tenant_scoping(client):
         sess['admin_id'] = admin1.id
         sess['user_id'] = user1.id
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+        set_canonical_context(
+            sess,
+            user_id=user1.id,
+            class_id=class1.class_id,
+            seat_id=teacher1.id,
+            role="teacher",
+        )
 
     # Access the attendance log page
     response = client.get('/admin/attendance-log')
@@ -200,12 +236,12 @@ def test_attendance_log_tenant_scoping(client):
             sess,
             user_id=user1.id,
             class_id=class1.class_id,
-            seat_id=Seat.query.filter_by(class_id=class1.class_id, role="teacher").first().id,
+            seat_id=teacher1.id,
             role="teacher",
         )
     api_response = client.get('/api/attendance/history')
     assert api_response.status_code == 200
     data = api_response.get_json()
-    returned_periods = {r['period'] for r in data['records']}
+    returned_periods = {r['student_block'] for r in data['records']}
     assert 'ADM1PER' in returned_periods, "Admin1 should see their own period"
     assert 'ADM2PER' not in returned_periods, "Admin1 should not see admin2's period"
