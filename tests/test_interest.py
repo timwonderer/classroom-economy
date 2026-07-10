@@ -49,11 +49,8 @@ def test_apply_savings_interest_with_naive_datetimes(client, test_student):
 
 
 def test_dashboard_renders_recent_deposit(client, test_student):
-    from app.models import Admin
-
-    # Create a teacher and link the student
-    teacher = make_admin("testteacher", "SECRET123")
-    db.session.add(teacher)
+        # Create a teacher and link the student
+    teacher = make_admin("testteacher")
     db.session.flush()
 
     # Create join code for the student

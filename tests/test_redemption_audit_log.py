@@ -7,14 +7,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.security import generate_password_hash
 
 from app.extensions import db
-from app.models import Seat, IdentityProfile, User, UserRole, Admin, ClassEconomy, RedemptionAuditLog, StoreItem, StudentItem, Transaction
+from app.models import Seat, IdentityProfile, User, UserRole, ClassEconomy, RedemptionAuditLog, StoreItem, StudentItem, Transaction
 from tests.helpers.canonical_session import set_canonical_context
 
 
 @pytest.fixture
 def teacher_admin(client):
-    admin = make_admin("audit_teacher", "secret")
-    db.session.add(admin)
+    admin = make_admin("audit_teacher")
     db.session.commit()
     return admin
 

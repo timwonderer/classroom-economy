@@ -100,7 +100,7 @@ def test_switch_class_route_uses_access_scope_boundary():
 def test_switch_teacher_role_specific_public_id_route_is_disabled():
     source = inspect.getsource(student_routes.switch_teacher)
     assert "abort(404)" in source
-    assert "Admin.query" not in source
+    assert ".query" not in source
 
 
 def test_admin_void_route_is_not_direct_ledger_authority():
@@ -259,8 +259,7 @@ def test_insurance_claim_feat_enforces_access_policy():
 
 
 def test_dashboard_read_is_interest_mutation_free(client):
-    teacher = make_admin("dash_guard_teacher", "secret")
-    db.session.add(teacher)
+    teacher = make_admin("dash_guard_teacher")
     db.session.flush()
 
     profile_read = IdentityProfile(profile_type='student', first_name='Read', last_name='P')
@@ -280,8 +279,6 @@ def test_dashboard_read_is_interest_mutation_free(client):
         teacher=teacher,
         block="A",
         display_name="A",
-        create_claimed_teacher_block=True,
-        teacher_block_claimed=True,
     )
     seat = Seat(
         user_id=student_user.id,
@@ -320,8 +317,7 @@ def test_dashboard_read_is_interest_mutation_free(client):
 
 
 def test_dashboard_access_policy_fail_closed_invalid_join_code(client):
-    teacher = make_admin("dash_scope_teacher", "secret")
-    db.session.add(teacher)
+    teacher = make_admin("dash_scope_teacher")
     db.session.flush()
 
     profile_scope = IdentityProfile(profile_type='student', first_name='Scope', last_name='Q')
@@ -340,15 +336,11 @@ def test_dashboard_access_policy_fail_closed_invalid_join_code(client):
         teacher=teacher,
         block="A",
         display_name="A",
-        create_claimed_teacher_block=True,
-        teacher_block_claimed=True,
     )
     class_b = create_class_scope(
         teacher=teacher,
         block="B",
         display_name="B",
-        create_claimed_teacher_block=True,
-        teacher_block_claimed=True,
     )
     seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, block="A", role="student", claimed_at=datetime.now(timezone.utc))
     seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, block="B", role="student", claimed_at=datetime.now(timezone.utc))

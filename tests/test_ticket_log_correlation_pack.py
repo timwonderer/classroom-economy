@@ -1,48 +1,38 @@
 from datetime import datetime, timedelta, timezone
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_admin
 from app import db
-from app.models import Seat, IdentityProfile, User, UserRole, Admin, ActorRequestTrace, ErrorEvent, IssueCategory, ClassEconomy
+from app.models import Seat, User, UserRole, ActorRequestTrace, ErrorEvent, IssueCategory, ClassEconomy
 from app.utils.issue_helpers import create_issue
 from app.utils.time import utc_now
-from tests.helpers.class_scope import make_student_identity
+from tests.helpers.class_scope import make_student_identity, create_class_scope
 
 
 def _create_student_issue_context():
     admin = make_admin("teacher", "base32secret3232")
-    db.session.add(admin)
     db.session.flush()
 
-    teacher_user = User(
-        username_hash=f"tlcp_{admin.id}_{User.query.count()}",
-        username_lookup_hash=f"tlcpl_{admin.id}",
-        user_role=UserRole.TEACHER,
-    )
-    db.session.add(teacher_user)
+    class_row = create_class_scope(teacher_user=admin, join_code="TLCP-JOIN")
     db.session.flush()
 
-    join_code = ClassEconomy(join_code="TLCP-JOIN", user_id=teacher_user.id)
-    db.session.add(join_code)
-    db.session.flush()
-
-    seat = make_student_identity(first_name="Student", last_name="S", block="A", join_code=join_code.join_code, class_id=join_code.class_id)
+    seat = make_student_identity(class_id=class_row.class_id, first_name="Student", last_name="S")
     actor_public_id = seat.public_id
 
     category = IssueCategory(name="General TLCP", category_type="general", is_active=True)
     db.session.add(category)
     db.session.flush()
 
-    return admin, seat, join_code, category, actor_public_id
+    return admin, seat, class_row, category, actor_public_id
 
 
 def test_create_issue_attaches_correlation_pack_with_trace_and_error(app):
-    admin, student, join_code, category, actor_public_id = _create_student_issue_context()
+    admin, student, join_code_row, category, actor_public_id = _create_student_issue_context()
 
     db.session.add(
         ActorRequestTrace(
             actor_type="student",
             actor_public_id=actor_public_id,
-            class_id=join_code.class_id,
+            class_id=join_code_row.class_id,
             request_id="req-test-1",
             method="POST",
             endpoint="/store/buy",
@@ -55,7 +45,7 @@ def test_create_issue_attaches_correlation_pack_with_trace_and_error(app):
             request_id="req-test-1",
             actor_type="student",
             actor_public_id=actor_public_id,
-            class_id=join_code.class_id,
+            class_id=join_code_row.class_id,
             endpoint="/store/buy",
             method="POST",
             error_class="RuntimeError",
@@ -70,7 +60,7 @@ def test_create_issue_attaches_correlation_pack_with_trace_and_error(app):
         issue = create_issue(
             student=student,
             teacher_id=admin.id,
-            join_code=join_code.join_code,
+            join_code=join_code_row.join_code,
             category_id=category.id,
             explanation="Something broke",
             expected_outcome="It should work",
@@ -86,14 +76,14 @@ def test_create_issue_attaches_correlation_pack_with_trace_and_error(app):
 
 
 def test_create_issue_can_skip_recent_error_refs(app):
-    admin, student, join_code, category, actor_public_id = _create_student_issue_context()
+    admin, student, join_code_row, category, actor_public_id = _create_student_issue_context()
 
     db.session.add(
         ErrorEvent(
             request_id="req-test-2",
             actor_type="student",
             actor_public_id=actor_public_id,
-            class_id=join_code.class_id,
+            class_id=join_code_row.class_id,
             endpoint="/store/buy",
             method="POST",
             error_class="RuntimeError",
@@ -108,7 +98,7 @@ def test_create_issue_can_skip_recent_error_refs(app):
         issue = create_issue(
             student=student,
             teacher_id=admin.id,
-            join_code=join_code.join_code,
+            join_code=join_code_row.join_code,
             category_id=category.id,
             explanation="Something broke",
             include_recent_error=False,
@@ -124,7 +114,12 @@ def test_authenticated_request_writes_trace_row(app, client):
 
     from app.services.tlcp import persist_request_trace
 
-    student = make_student_identity(first_name="Trace", last_name="S", block="A")
+    admin = make_admin("tlcp_teacher", "base32secret9999")
+    db.session.flush()
+    class_row = create_class_scope(teacher_user=admin, join_code="TLCP-TRC")
+    db.session.flush()
+    student = make_student_identity(class_id=class_row.class_id, first_name="Trace", last_name="S")
+    db.session.flush()
 
     request_id = uuid.uuid4().hex
     context = {

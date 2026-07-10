@@ -6,10 +6,10 @@ when a transaction has a NULL amount value.
 """
 from decimal import Decimal
 from unittest.mock import PropertyMock, patch
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_admin
 from tests.helpers.class_scope import make_student_identity
 from app import db
-from app.models import User, UserRole, Transaction, Admin, ClassEconomy
+from app.models import Transaction, ClassEconomy
 import sqlalchemy as sa
 
 def test_get_total_earnings_defensive_checks(client, app):
@@ -21,8 +21,7 @@ def test_get_total_earnings_defensive_checks(client, app):
     with app.app_context():
         # Create a teacher
         teacher = make_admin("test_teacher", "test_secret")
-        db.session.add(teacher)
-        db.session.commit()
+        db.session.flush()
         
         join_code = "TEST123"
         
@@ -37,7 +36,7 @@ def test_get_total_earnings_defensive_checks(client, app):
         db.session.flush()
         
         # Create a student
-        student = make_student_identity(block="Period 1", first_name="TestStudent", last_name="A")
+        student = make_student_identity(class_id=economy.class_id, first_name="TestStudent", last_name="A")
         db.session.commit()
         
         # Create a normal transaction with a valid amount
@@ -82,8 +81,7 @@ def test_get_total_earnings_with_negative_amounts(client, app):
     with app.app_context():
         # Create a teacher
         teacher = make_admin("test_teacher2", "test_secret")
-        db.session.add(teacher)
-        db.session.commit()
+        db.session.flush()
         
         join_code = "TEST456"
         
@@ -98,7 +96,7 @@ def test_get_total_earnings_with_negative_amounts(client, app):
         db.session.flush()
         
         # Create a student
-        student = make_student_identity(block="Period 2", first_name="TestStudent2", last_name="B")
+        student = make_student_identity(class_id=economy.class_id, first_name="TestStudent2", last_name="B")
         db.session.commit()
         
         # Create positive transactions (earnings)
@@ -144,8 +142,7 @@ def test_get_total_earnings_with_zero_amount(client, app):
     with app.app_context():
         # Create a teacher
         teacher = make_admin("test_teacher3", "test_secret")
-        db.session.add(teacher)
-        db.session.commit()
+        db.session.flush()
         
         join_code = "TEST789"
         
@@ -160,7 +157,7 @@ def test_get_total_earnings_with_zero_amount(client, app):
         db.session.flush()
         
         # Create a student
-        student = make_student_identity(block="Period 3", first_name="TestStudent3", last_name="C")
+        student = make_student_identity(class_id=economy.class_id, first_name="TestStudent3", last_name="C")
         db.session.commit()
         
         # Create a transaction with zero amount

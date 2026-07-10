@@ -11,7 +11,6 @@ from datetime import datetime, timezone
 from app import app, db
 from app.models import (
     UserRole,
-    Admin,
     ClassFeature,
     ClassEconomy,
     HallPassSettings,
@@ -24,26 +23,20 @@ from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
 
 
-def _create_admin(username: str) -> tuple[Admin, str]:
+def _create_admin(username: str) -> tuple[User, str]:
     """Create a teacher admin for testing."""
     secret = pyotp.random_base32()
-    admin = make_admin(username, secret)
-    db.session.add(admin)
-    db.session.flush()
-    user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
-    assert user is not None
-    admin.user_id = user.id
-    user.current_session_nonce = "nonce"
+    admin = make_admin(username)
+    admin.current_session_nonce = "nonce"
     db.session.commit()
     return admin, secret
 
 
-def _get_teacher_user_id(teacher: Admin) -> int:
-    user = User.query.filter_by(username_hash=teacher.username_hash).first()
-    return user.id if user else teacher.id
+def _get_teacher_user_id(teacher: User) -> int:
+    return teacher.id
 
 
-def _create_student(first_name: str, primary_teacher: Admin = None, linked_teachers: list[Admin] = None):
+def _create_student(first_name: str, primary_teacher: User = None, linked_teachers: list[User] = None):
     """
     Create a canonical student identity for testing.
     
@@ -74,50 +67,39 @@ def _create_student(first_name: str, primary_teacher: Admin = None, linked_teach
     return seat
 
 
-def _login_admin(client, admin: Admin, secret: str, join_code: str = None):
+def _login_admin(client, admin: User, secret: str, join_code: str = None):
     """Login as admin."""
-    response = client.post(
-        "/admin/login",
-        data={"username": "teacher1", "totp_code": pyotp.TOTP(secret).now()},
-        follow_redirects=False,
-    )
-    user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
-    teacher_user_id = _get_teacher_user_id(admin)
+    teacher_user_id = admin.id
+    resolved_join_code = join_code
+    if not resolved_join_code:
+        class_row = (
+            ClassEconomy.query
+            .filter_by(user_id=teacher_user_id)
+            .order_by(ClassEconomy.join_code.asc())
+            .first()
+        )
+        resolved_join_code = class_row.join_code if class_row else None
     with client.session_transaction() as sess:
         sess["is_admin"] = True
         sess["admin_id"] = admin.id
-        if user:
-            sess["current_session_nonce"] = user.current_session_nonce
-        resolved_join_code = join_code
-        if not resolved_join_code:
-            class_row = (
-                ClassEconomy.query
-                .filter_by(user_id=teacher_user_id)
-                .order_by(ClassEconomy.join_code.asc())
-                .first()
-            )
-            resolved_join_code = class_row.join_code if class_row else None
+        sess["current_session_nonce"] = admin.current_session_nonce
         if resolved_join_code:
             class_row = ClassEconomy.query.filter_by(join_code=resolved_join_code, user_id=teacher_user_id).first()
-            if class_row and class_row.class_id and user:
-                from tests.helpers.canonical_session import set_canonical_context
+            if class_row and class_row.class_id:
                 teacher_seat = Seat.query.filter_by(user_id=teacher_user_id, class_id=class_row.class_id, role="teacher").first()
                 if teacher_seat:
                     set_canonical_context(
                         sess,
-                        user_id=user.id,
+                        user_id=admin.id,
                         class_id=class_row.class_id,
                         seat_id=teacher_seat.id,
                         role="teacher",
                         join_code=resolved_join_code,
                     )
-                    user.last_active_class_id = class_row.class_id
-                    db.session.commit()
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
-    return response
 
 
-def _create_tap_event(student: Seat, teacher: Admin, join_code: str, status: str = "active", period: str = "1"):
+def _create_tap_event(student: Seat, teacher: User, join_code: str, status: str = "active", period: str = "1"):
     """Create a canonical v2 attendance session for testing."""
     _create_class_scope(teacher, student, join_code)
     teacher_user_id = _get_teacher_user_id(teacher)
@@ -138,7 +120,7 @@ def _create_tap_event(student: Seat, teacher: Admin, join_code: str, status: str
     return tap
 
 
-def _create_claimed_seat(teacher: Admin, student: Seat, join_code: str, block: str = "A"):
+def _create_claimed_seat(teacher: User, student: Seat, join_code: str, block: str = "A"):
     """Create a claimed teacher block (seat) for join-code scoped tests."""
     if not ClassEconomy.query.filter_by(join_code=join_code, user_id=_get_teacher_user_id(teacher)).first():
         _create_class_scope(teacher, student, join_code)
@@ -172,16 +154,12 @@ def _get_or_create_student_seat(student: Seat, class_id: str, join_code: str):
     return seat
 
 
-def _create_class_scope(teacher: Admin, student: Seat, join_code: str):
+def _create_class_scope(teacher: User, student: Seat, join_code: str):
     """Create the v2 class economy and memberships for a teacher/student pair."""
-    if not ClassEconomy.query.filter_by(join_code=join_code, user_id=_get_teacher_user_id(teacher)).first():
-        teacher_user = User.query.filter_by(username_hash=teacher.username_hash).first()
+    if not ClassEconomy.query.filter_by(join_code=join_code, user_id=teacher.id).first():
         create_class_scope(
-            teacher=teacher,
+            teacher_user=teacher,
             join_code=join_code,
-            student=student,
-            teacher_user_id=teacher_user.id if teacher_user else None,
-            student_user_id=student.user_id,
         )
         db.session.flush()
     db.session.commit()
@@ -337,8 +315,7 @@ def test_attendance_history_api_system_admin_sees_all(client):
     
     # Create system admin
     sys_secret = pyotp.random_base32()
-    sys_admin = make_sysadmin("sysadmin", sys_secret)
-    db.session.add(sys_admin)
+    sys_admin = make_sysadmin("sysadmin")
     db.session.commit()
     
     # Create teachers and students

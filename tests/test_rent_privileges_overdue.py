@@ -1,16 +1,11 @@
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
-from werkzeug.security import generate_password_hash
-
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
-from tests.helpers.class_scope import make_student_identity
+from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.class_scope import make_student_identity, create_class_scope
 from app import db
-from app.hash_utils import get_random_salt, hash_username
 from app.models import (
     User,
-    UserRole,
-    Admin,
     Seat,
     RentSettings,
     RentItem,
@@ -19,42 +14,34 @@ from app.models import (
     Transaction,
 )
 from app.routes.student import _calculate_rent_coverage_due_date
-from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
 
 
-def _ensure_class_scope(teacher: Admin, student, join_code: str, block: str = "A") -> None:
+def _ensure_class_scope(teacher: User, student, join_code: str) -> "ClassEconomy":
     from app.models import ClassEconomy
     economy = ClassEconomy.query.filter_by(join_code=join_code).first()
     if not economy:
-        create_class_scope(
-            teacher=teacher,
-            student=student,
-            block=block,
-            display_name=block,
-            create_claimed_teacher_block=True,
-            teacher_block_claimed=True,
-            create_seat=True,
-        )
+        economy = create_class_scope(teacher_user=teacher, join_code=join_code)
         db.session.flush()
+    return economy
 
 
 def test_overdue_rent_payment_restores_privileges(client):
     teacher = make_admin("rent_teacher_overdue", "secret123")
-    db.session.add(teacher)
-    db.session.commit()
-
-    student = make_student_identity(block="A", first_name="Rent", last_name="P")
+    db.session.flush()
     db.session.commit()
 
     join_code = "JOINA"
-    _ensure_class_scope(teacher, student, join_code, block="A")
-    seat = Seat.query.filter_by(user_id=student.user_id).first()
+    economy = _ensure_class_scope(teacher, None, join_code)
+    db.session.flush()
+    student = make_student_identity(class_id=economy.class_id, first_name="Rent", last_name="P", claimed=True)
+    db.session.commit()
+    seat = Seat.query.filter_by(user_id=student.user_id, class_id=economy.class_id, role="student").first()
     assert seat is not None
 
     now = datetime.now(timezone.utc)
-    rent_settings = RentSettings(block="A",
-        is_enabled=True,
+    rent_settings = RentSettings(
+        class_id=economy.class_id,
         rent_amount=Decimal("50.00"),
         first_rent_due_date=now - timedelta(days=5),
         grace_period_days=3,
@@ -142,20 +129,20 @@ def test_overdue_rent_payment_restores_privileges(client):
 
 def test_voided_payment_does_not_restore_privileges(client):
     teacher = make_admin("rent_teacher_voided", "secret123")
-    db.session.add(teacher)
-    db.session.commit()
-
-    student = make_student_identity(block="A", first_name="Void", last_name="P")
+    db.session.flush()
     db.session.commit()
 
     join_code = "JOINV"
-    _ensure_class_scope(teacher, student, join_code, block="A")
-    seat = Seat.query.filter_by(user_id=student.user_id).first()
+    economy = _ensure_class_scope(teacher, None, join_code)
+    db.session.flush()
+    student = make_student_identity(class_id=economy.class_id, first_name="Void", last_name="P", claimed=True)
+    db.session.commit()
+    seat = Seat.query.filter_by(user_id=student.user_id, class_id=economy.class_id, role="student").first()
     assert seat is not None
 
     now = datetime.now(timezone.utc)
-    rent_settings = RentSettings(block="A",
-        is_enabled=True,
+    rent_settings = RentSettings(
+        class_id=economy.class_id,
         rent_amount=Decimal("50.00"),
         first_rent_due_date=now - timedelta(days=5),
         grace_period_days=3,
@@ -271,20 +258,20 @@ def test_voided_payment_does_not_restore_privileges(client):
 def test_overdue_rent_payment_with_timestamp_drift_restores_privileges(client):
     """A modest transaction/payment timestamp drift should still count as valid payment."""
     teacher = make_admin("rent_teacher_drift", "secret123")
-    db.session.add(teacher)
-    db.session.commit()
-
-    student = make_student_identity(block="A", first_name="Drift", last_name="P")
+    db.session.flush()
     db.session.commit()
 
     join_code = "JOIND"
-    _ensure_class_scope(teacher, student, join_code, block="A")
-    seat = Seat.query.filter_by(user_id=student.user_id).first()
+    economy = _ensure_class_scope(teacher, None, join_code)
+    db.session.flush()
+    student = make_student_identity(class_id=economy.class_id, first_name="Drift", last_name="P", claimed=True)
+    db.session.commit()
+    seat = Seat.query.filter_by(user_id=student.user_id, class_id=economy.class_id, role="student").first()
     assert seat is not None
 
     now = datetime.now(timezone.utc)
-    rent_settings = RentSettings(block="A",
-        is_enabled=True,
+    rent_settings = RentSettings(
+        class_id=economy.class_id,
         rent_amount=Decimal("50.00"),
         first_rent_due_date=now - timedelta(days=5),
         grace_period_days=3,

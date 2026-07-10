@@ -11,7 +11,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timedelta, timezone
 from app import db
-from app.models import Seat, IdentityProfile, User, UserRole, Admin, ClassEconomy, Transaction, PayrollSettings, RentSettings, AnalyticsAlert, FeatureSettings
+from app.models import Seat, IdentityProfile, User, UserRole, ClassEconomy, Transaction, PayrollSettings, RentSettings, AnalyticsAlert, FeatureSettings
 from app.routes.analytics import get_pay_cycle_days, get_rent_cycle_days
 from app.utils.analytics_engine import AnalyticsEngine
 import app.services.ledger_service as ledger_service
@@ -23,7 +23,6 @@ def setup_analytics_test(client):
     """Create test data for analytics testing."""
     # Create admin/teacher
     admin = make_admin("analyticstest", "TESTSECRET123456")
-    db.session.add(admin)
     db.session.flush()
     
     # Create join code
@@ -57,7 +56,6 @@ def setup_analytics_test(client):
             class_id=class_row.class_id,
             first_name=f"Student{i}",
             last_name="T",
-            block=block,
             claimed=True,
         )
         students.append(student)
@@ -318,7 +316,13 @@ def test_trend_calculation(client, setup_analytics_test):
 def test_enrolled_students_require_class_membership(client, setup_analytics_test):
     """Analytics enrollment is class-membership authoritative."""
     admin, join_code, block, students, payroll = setup_analytics_test
-    null_student = make_student_identity(first_name="Null", last_name="N", block=block, claimed=False)
+    from tests.helpers.v2_fixtures import make_teacher as _make_teacher
+    _other_teacher = _make_teacher("null_analytics_teacher")
+    db.session.flush()
+    from tests.helpers.class_scope import create_class_scope as _ccs
+    _other_class = _ccs(teacher_user=_other_teacher, join_code="NULLCLS1")
+    db.session.flush()
+    null_student = make_student_identity(class_id=_other_class.class_id, first_name="Null", last_name="N", claimed=False)
     db.session.commit()
 
     engine = AnalyticsEngine(ClassEconomy.query.filter_by(join_code=join_code).first().class_id)

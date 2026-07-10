@@ -7,14 +7,13 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone, timedelta
 from app import db
-from app.models import User, UserRole, Admin
+from app.models import User, UserRole
 from tests.helpers.canonical_session import set_canonical_context
 
 @pytest.fixture
 def admin_user(client):
     """Create an admin for testing."""
-    admin = make_admin("testadmin_tz", "TESTSECRET123456")
-    db.session.add(admin)
+    admin = make_admin("testadmin_tz")
     db.session.commit()
     return admin
 

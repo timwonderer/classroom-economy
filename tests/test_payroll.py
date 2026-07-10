@@ -13,9 +13,9 @@ FLOAT_TOLERANCE = 0.0001
 @pytest.fixture
 def test_teacher(client):
     """Fixture to create a test teacher for payroll tests."""
-    from app.models import Admin, Seat, IdentityProfile
-    teacher = make_admin("test_teacher", "s")
-    db.session.add(teacher)
+    from app.models import Seat, IdentityProfile
+    teacher = make_admin("test_teacher")
+    db.session.flush()
     db.session.commit()
     return teacher
 
@@ -38,36 +38,16 @@ def test_calculate_payroll(client):
     from tests.helpers.class_scope import create_class_scope
 
     # Create Teacher
-    teacher = make_admin("prof_payroll", "s")
-    db.session.add(teacher)
-    db.session.commit()
-
-    # Create a student
-    student = make_student_identity(block="A", first_name='Test', last_name='S')
-    db.session.commit()
-
-    class_economy = create_class_scope(
-        teacher=teacher,
-        student=student,
-        block="A",
-        display_name="A",
-    )
-
-    # CRITICAL: Link student to claimed seat scope for payroll.
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
+    teacher = make_admin("prof_payroll")
     db.session.flush()
-    tb = Seat(user_id=student_user.id, class_id=class_economy.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(tb)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="Test", last_name="S"))
-    db.session.add(tb)
     db.session.commit()
 
-    from app.models import Seat
-    seat = Seat.query.filter_by(user_id=student_user.id, class_id=class_economy.class_id).first()
+    class_economy = create_class_scope(teacher_user=teacher, display_name="A")
+    student = make_student_identity(class_id=class_economy.class_id, first_name='Test', last_name='S', claimed=True)
+    db.session.flush()
+    seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_economy.class_id, role="student").first()
     assert seat is not None
+    db.session.commit()
 
     # Create attendance session to simulate attendance.
     now = datetime.now(timezone.utc)
@@ -99,8 +79,8 @@ def test_calculate_payroll(client):
     # NOTE: student2 intentionally has no StudentTeacher link and no TeacherBlock
     # to verify proper skipping behavior in calculate_payroll. Students without
     # these associations should be skipped during payroll processing.
-    student2 = make_student_identity(block="B", first_name='Test2', last_name='S')
-    db.session.commit()
+    # student2 has no attendance - payroll for empty seat_ids returns empty
+    # (no student2 needed)
 
     payroll_summary2 = calculate_payroll_breakdown(class_economy.class_id, [], last_payroll_time)
     assert seat.id not in payroll_summary2
@@ -108,7 +88,7 @@ def test_calculate_payroll(client):
     # Manual payments after the last payroll should clear projected pay for that student
     manual_time = now - timedelta(minutes=5)
     manual_tx = Transaction(
-        user_id=student_user.id,
+        user_id=student.user_id,
         amount=3,
         type="manual_payment",
         timestamp=manual_time,
@@ -123,54 +103,30 @@ def test_calculate_payroll(client):
 
 
 def test_calculate_payroll_ignores_other_class_manual_payment_anchor(client):
-    from app.models import AttendanceSession, Admin, User, UserRole, IdentityProfile, Seat
+    from app.models import AttendanceSession, User, UserRole, IdentityProfile, Seat
     from tests.helpers.class_scope import create_class_scope
 
-    teacher = make_admin("prof_multiclass", "s")
-    db.session.add(teacher)
+    teacher = make_admin("prof_multiclass")
+    db.session.flush()
     db.session.commit()
 
-    student = make_student_identity(block="A,B", first_name="Multi", last_name="S")
-    db.session.flush()
-    class_a = create_class_scope(
-        teacher=teacher,
-        student=student,
-        block="A",
-        display_name="A",
-    )
-    class_b = create_class_scope(
-        teacher=teacher,
-        student=student,
-        block="B",
-        display_name="B",
-    )
+    class_a = create_class_scope(teacher_user=teacher, display_name="A")
+    class_b = create_class_scope(teacher_user=teacher, display_name="B")
     db.session.flush()
 
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
+    student = make_student_identity(class_id=class_a.class_id, first_name="Multi", last_name="S", claimed=True)
     db.session.flush()
-    tb_a = Seat(user_id=student_user.id, class_id=class_a.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-
-    db.session.add(tb_a)
-
+    # Manually add seat for class_b
+    from app.models import IdentityProfile as _IP
+    seat_b_row = Seat(user_id=student.user_id, class_id=class_b.class_id, block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(seat_b_row)
     db.session.flush()
-
-    db.session.add(IdentityProfile(seat_id=tb_a.id, profile_type='student_claimed', first_name="Multi", last_name="S"))
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    tb_b = Seat(user_id=student_user.id, class_id=class_b.class_id, block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(tb_b)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb_b.id, profile_type='student_claimed', first_name="Multi", last_name="S"))
-    db.session.add_all([tb_a, tb_b])
+    db.session.add(_IP(seat_id=seat_b_row.id, profile_type='student_claimed', first_name="Multi", last_name="S", class_id=class_b.class_id))
     db.session.flush()
 
     from app.models import Seat
-    seat_a = Seat.query.filter_by(user_id=student_user.id, class_id=class_a.class_id).first()
-    seat_b = Seat.query.filter_by(user_id=student_user.id, class_id=class_b.class_id).first()
+    seat_a = Seat.query.filter_by(user_id=student.user_id, class_id=class_a.class_id, role="student").first()
+    seat_b = Seat.query.filter_by(user_id=student.user_id, class_id=class_b.class_id, role="student").first()
     assert seat_a is not None
     assert seat_b is not None
 
@@ -402,40 +358,22 @@ def test_get_pay_rate_for_block_requires_class_scope(client):
 def test_get_cached_payroll_with_meta(client):
     """Test the caching logic for payroll."""
     from app.payroll import get_cached_payroll_with_meta
-    from app.models import Admin, Seat, IdentityProfile, AttendanceSession, PayrollCache, User, UserRole
+    from app.models import Seat, IdentityProfile, AttendanceSession, PayrollCache, User, UserRole
     from tests.helpers.class_scope import create_class_scope
     from datetime import datetime, timedelta, timezone
 
     # Setup Teacher
-    teacher = make_admin("prof_cache", "s")
-    db.session.add(teacher)
+    teacher = make_admin("prof_cache")
+    db.session.flush()
     db.session.commit()
 
-    # Setup seat-scoped student identity
-    student = make_student_identity(block="A", first_name="CacheUser", last_name="T")
+    class_economy = create_class_scope(teacher_user=teacher, display_name="A")
+    student = make_student_identity(class_id=class_economy.class_id, first_name="CacheUser", last_name="T", claimed=True)
     db.session.flush()
-    class_economy = create_class_scope(
-        teacher=teacher,
-        student=student,
-        block="A",
-        display_name="A",
-    )
-    db.session.commit()
-
-    # Link
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    tb = Seat(user_id=student_user.id, class_id=class_economy.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(tb)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=tb.id, profile_type='student_claimed', first_name="CacheUser", last_name="T"))
-    db.session.add(tb)
     db.session.commit()
 
     from app.models import Seat
-    seat = Seat.query.filter_by(user_id=student_user.id, class_id=class_economy.class_id).first()
+    seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_economy.class_id, role="student").first()
     assert seat is not None
 
     # Add attendance session (1 hour at default rate).

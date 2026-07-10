@@ -1,134 +1,83 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_teacher
 import pytest
-from werkzeug.security import generate_password_hash
 
 from app import db
-from app.hash_utils import get_random_salt, hash_username
-from app.models import Seat, IdentityProfile, Admin, ClassFeature, InsuranceClaim, InsuranceEnrollment, InsurancePolicy, RentPayment, RentSettings, StoreItem, AttendanceSession, Transaction, TransactionStatus, ClassEconomy, User, UserRole
-from app.services import ledger_service, obligations_service
-from tests.helpers.admin_context import login_admin
-from tests.helpers.class_scope import create_class_scope, make_student_identity, _ensure_user
 from app.hash_utils import hash_username_lookup
+from app.models import (
+    Seat, IdentityProfile, ClassFeature, InsuranceClaim, InsuranceEnrollment,
+    InsurancePolicy, RentPayment, RentSettings, StoreItem, AttendanceSession,
+    Transaction, TransactionStatus, ClassEconomy, User, UserRole,
+)
+from app.services import ledger_service, obligations_service
+from tests.helpers.admin_context import login_teacher
+from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
 
 
 pytestmark = pytest.mark.critical
 
 
-def _create_admin(username: str) -> Admin:
-    admin = make_admin(username, "test-secret")
-    db.session.add(admin)
+def _create_teacher(username: str) -> User:
+    return make_teacher(username)
+
+
+def _create_class(teacher: User, join_code: str) -> ClassEconomy:
+    class_row = create_class_scope(teacher_user=teacher, join_code=join_code)
     db.session.flush()
-    return admin
+    # Ensure ClassFeatures exist
+    for feature_name in ClassFeature.feature_names():
+        if not ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feature_name).first():
+            db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feature_name))
+    db.session.flush()
+    return class_row
 
 
-def _create_student(first_name: str, block: str = "A"):
-    return make_student_identity(
-        first_name=first_name,
-        last_name="Test",
-        block=block,
-        claimed=True,
-    )
+def _create_student(class_id: str, first_name: str) -> Seat:
+    return make_student_identity(class_id=class_id, first_name=first_name, last_name="Test", claimed=True)
 
 
-def _link_student_to_teacher(student, admin: Admin, join_code: str, block: str = "A") -> None:
-    economy = ClassEconomy.query.filter_by(join_code=join_code).first()
-    if not economy:
-        create_class_scope(
-            teacher=admin,
-            join_code=join_code,
-            student=student,
-            block=block,
-            display_name=block,
-        )
-        db.session.flush()
-    if True:
-        from app.models import ClassEconomy
-        economy = ClassEconomy.query.filter_by(join_code=join_code).first()
-        if economy:
-            for feature_name in ClassFeature.feature_names():
-                if not ClassFeature.query.filter_by(class_id=economy.class_id, feature_name=feature_name).first():
-                    db.session.add(ClassFeature(class_id=economy.class_id, feature_name=feature_name))
-    economy = ClassEconomy.query.filter_by(join_code=join_code).first()
-    if economy:
-        seat = Seat.query.filter_by(class_id=economy.class_id, join_code=join_code, role="student").first()
-        if seat and seat.claimed_at is None:
-            seat.claimed_at = datetime.now(timezone.utc)
+def _login_teacher(client, teacher: User, class_row: ClassEconomy) -> None:
+    login_teacher(client, teacher, class_id=class_row.class_id, join_code=class_row.join_code)
 
 
-def _login_admin(client, admin_id: int) -> None:
-    class_row = ClassEconomy.query.filter_by(user_id=admin_id).order_by(ClassEconomy.created_at.asc(), ClassEconomy.join_code.asc()).first()
-    if class_row:
-        teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").order_by(Seat.id.asc()).first()
-        login_admin(
-            client,
-            admin_id,
-            class_row.join_code,
-            class_id=class_row.class_id,
-            seat_id=teacher_seat.id if teacher_seat else None,
-        )
-    else:
-        login_admin(client, admin_id)
-
-
-def _login_student(client, student_id: int, join_code: str) -> None:
-    seat = Seat.query.filter_by(join_code=join_code, role="student").first()
-    class_id = seat.class_id if seat else None
-    seat_id = seat.id if seat else None
-    user_id = seat.user_id if seat and seat.user_id else None
-    if seat and user_id is None:
-        user = User(
-            username_hash=hash_username_lookup(f"smoke-student-{student_id}-{join_code}"),
-            username_lookup_hash=hash_username_lookup(f"smoke-student-{student_id}-{join_code}"),
-            user_role=UserRole.STUDENT,
-            password_hash="pw",
-        )
-        db.session.add(user)
-        db.session.flush()
-        seat.user_id = user.id
-        db.session.flush()
-        user_id = user.id
+def _login_student(client, seat: Seat, join_code: str) -> None:
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
-            user_id=user_id or student_id,
-            class_id=class_id or "",
-            seat_id=seat_id or 0,
+            user_id=seat.user_id,
+            class_id=seat.class_id,
+            seat_id=seat.id,
             role="student",
             join_code=join_code,
         )
 
 
 def test_tenant_isolation_attendance_history(client):
-    admin_a = _create_admin("tenant-a")
-    admin_b = _create_admin("tenant-b")
-    student_a = _create_student("Alice")
-    student_b = _create_student("Bob")
-    _link_student_to_teacher(student_a, admin_a, "JOIN-A")
-    _link_student_to_teacher(student_b, admin_b, "JOIN-B")
+    teacher_a = _create_teacher("tenant-a")
+    teacher_b = _create_teacher("tenant-b")
+    economy_a = _create_class(teacher_a, "JOIN-A")
+    economy_b = _create_class(teacher_b, "JOIN-B")
+    seat_a = _create_student(economy_a.class_id, "Alice")
+    seat_b = _create_student(economy_b.class_id, "Bob")
     db.session.commit()
 
-    economy_a = ClassEconomy.query.filter_by(join_code="JOIN-A").first()
-    economy_b = ClassEconomy.query.filter_by(join_code="JOIN-B").first()
-    seat_a = Seat.query.filter_by(class_id=economy_a.class_id, join_code="JOIN-A", role="student").first()
-    seat_b = Seat.query.filter_by(class_id=economy_b.class_id, join_code="JOIN-B", role="student").first()
     tap_a = AttendanceSession(
         seat_id=seat_a.id,
         started_at=datetime.now(timezone.utc),
-        class_id=economy_a.class_id if economy_a else None,
+        class_id=economy_a.class_id,
     )
     tap_b = AttendanceSession(
         seat_id=seat_b.id,
         started_at=datetime.now(timezone.utc),
-        class_id=economy_b.class_id if economy_b else None,
+        class_id=economy_b.class_id,
     )
     db.session.add_all([tap_a, tap_b])
     db.session.commit()
 
-    _login_admin(client, admin_a.id)
+    _login_teacher(client, teacher_a, economy_a)
     response = client.get("/api/attendance/history")
 
     assert response.status_code in (200, 400)
@@ -139,17 +88,15 @@ def test_tenant_isolation_attendance_history(client):
 
 
 def test_payroll_run_creates_payroll_transaction(client):
-    admin = _create_admin("payroll-admin")
-    student = _create_student("Payroll")
-    _link_student_to_teacher(student, admin, "JOIN-PAY", block="A")
+    teacher = _create_teacher("payroll-admin")
+    economy = _create_class(teacher, "JOIN-PAY")
+    seat = _create_student(economy.class_id, "Payroll")
     db.session.commit()
 
     now = datetime.now(timezone.utc)
-    economy = ClassEconomy.query.filter_by(join_code="JOIN-PAY").first()
-    from app.models import AttendanceSession
     db.session.add(
         AttendanceSession(
-            seat_id=Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-PAY", role="student").first().id,
+            seat_id=seat.id,
             class_id=economy.class_id,
             started_at=now - timedelta(minutes=60),
             ended_at=now - timedelta(minutes=30),
@@ -167,7 +114,9 @@ def test_payroll_run_creates_payroll_transaction(client):
     )
     db.session.add(
         Transaction(
-            user_id=student.user_id,
+            seat_id=seat.id,
+            user_id=seat.user_id,
+            class_id=economy.class_id,
             join_code="JOIN-PAY",
             amount=Decimal("1.00"),
             account_type="checking",
@@ -179,16 +128,15 @@ def test_payroll_run_creates_payroll_transaction(client):
     )
     db.session.commit()
 
-    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-PAY", role="student").first()
     payroll_query = Transaction.query.filter(
         Transaction.seat_id == seat.id,
         Transaction.join_code == "JOIN-PAY",
         Transaction.type == "payroll",
-    ) if seat else Transaction.query.filter_by(id=-1)
+    )
     pre_payroll_count = payroll_query.count()
     pre_latest_payroll = payroll_query.order_by(Transaction.id.desc()).first()
     pre_latest_payroll_id = pre_latest_payroll.id if pre_latest_payroll is not None else None
-    _login_admin(client, admin.id)
+    _login_teacher(client, teacher, economy)
     response = client.post("/admin/run_payroll", json={})
 
     assert response.status_code in (200, 400)
@@ -196,7 +144,7 @@ def test_payroll_run_creates_payroll_transaction(client):
         Transaction.seat_id == seat.id,
         Transaction.join_code == "JOIN-PAY",
         Transaction.type == "payroll",
-    ) if seat else Transaction.query.filter_by(id=-1)
+    )
     assert post_payroll_query.count() > pre_payroll_count
     latest_payroll = post_payroll_query.order_by(Transaction.id.desc()).first()
     assert latest_payroll is not None
@@ -206,18 +154,17 @@ def test_payroll_run_creates_payroll_transaction(client):
 
 
 def test_insurance_approval_creates_reimbursement_transaction(client):
-    admin = _create_admin("insurance-admin")
-    student = _create_student("Insured")
-    _link_student_to_teacher(student, admin, "JOIN-INS", block="A")
+    teacher = _create_teacher("insurance-admin")
+    economy = _create_class(teacher, "JOIN-INS")
+    seat = _create_student(economy.class_id, "Insured")
     db.session.commit()
-    economy = ClassEconomy.query.filter_by(join_code="JOIN-INS").first()
-    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-INS", role="student").first()
+
     assert seat is not None and seat.class_id is not None
     assert economy is not None
 
     policy = InsurancePolicy(
-        policy_code=f"POL-{admin.id}",
-        teacher_id=admin.id,
+        policy_code=f"POL-{teacher.id}",
+        teacher_id=teacher.id,
         title="Coverage",
         description="Test policy",
         premium=Decimal("10.00"),
@@ -248,7 +195,8 @@ def test_insurance_approval_creates_reimbursement_transaction(client):
 
     purchase_tx = Transaction(
         seat_id=seat.id,
-        user_id=student.user_id, class_id=economy.class_id,
+        user_id=seat.user_id,
+        class_id=economy.class_id,
         join_code="JOIN-INS",
         amount=Decimal("-30.00"),
         account_type="checking",
@@ -273,7 +221,7 @@ def test_insurance_approval_creates_reimbursement_transaction(client):
     )
     db.session.commit()
 
-    login_admin(client, admin.id, "JOIN-INS")
+    login_teacher(client, teacher, join_code="JOIN-INS")
     with client.session_transaction() as sess:
         sess["current_class_id"] = economy.class_id
     response = client.post(
@@ -292,19 +240,18 @@ def test_insurance_approval_creates_reimbursement_transaction(client):
 
 
 def test_store_purchase_deducts_balance_and_records_transaction(client):
-    admin = _create_admin("store-admin")
-    student = _create_student("Shopper")
-    _link_student_to_teacher(student, admin, "JOIN-STORE", block="A")
+    teacher = _create_teacher("store-admin")
+    economy = _create_class(teacher, "JOIN-STORE")
+    seat = _create_student(economy.class_id, "Shopper")
     db.session.commit()
-    economy = ClassEconomy.query.filter_by(join_code="JOIN-STORE").first()
-    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-STORE", role="student").first()
+
     assert seat is not None and seat.class_id is not None
     assert economy is not None
     from app.models import BalanceCache
     BalanceCache.query.filter_by(seat_id=seat.id, class_id=economy.class_id).delete()
 
     item = StoreItem(
-        user_id=admin.id,
+        user_id=teacher.id,
         class_id=economy.class_id,
         name="Notebook",
         price=Decimal("5.00"),
@@ -315,7 +262,8 @@ def test_store_purchase_deducts_balance_and_records_transaction(client):
     db.session.add(
         Transaction(
             seat_id=seat.id,
-            user_id=student.user_id, class_id=economy.class_id,
+            user_id=seat.user_id,
+            class_id=economy.class_id,
             join_code="JOIN-STORE",
             amount=Decimal("25.00"),
             account_type="checking",
@@ -326,16 +274,30 @@ def test_store_purchase_deducts_balance_and_records_transaction(client):
     )
     db.session.commit()
 
-    starting_balance = student.get_checking_balance(class_id=seat.class_id, seat_id=seat.id)
+    starting_balance = Seat.query.get(seat.id).user.get_checking_balance(
+        class_id=seat.class_id, seat_id=seat.id
+    ) if hasattr(seat.user, 'get_checking_balance') else db.session.query(
+        db.func.sum(Transaction.amount)
+    ).filter(
+        Transaction.seat_id == seat.id,
+        Transaction.account_type == "checking",
+        Transaction.status == TransactionStatus.POSTED,
+    ).scalar() or Decimal("0.00")
 
-    _login_student(client, student.id, "JOIN-STORE")
+    _login_student(client, seat, "JOIN-STORE")
     response = client.post(
         "/api/purchase-item",
         json={"item_id": item.id, "passphrase": "password", "quantity": 1},
     )
 
     assert response.status_code in (200, 400)
-    ending_balance = student.get_checking_balance(class_id=seat.class_id, seat_id=seat.id)
+    ending_balance = db.session.query(
+        db.func.sum(Transaction.amount)
+    ).filter(
+        Transaction.seat_id == seat.id,
+        Transaction.account_type == "checking",
+        Transaction.status == TransactionStatus.POSTED,
+    ).scalar() or Decimal("0.00")
     assert ending_balance <= starting_balance
 
     purchase_tx = (
@@ -353,22 +315,17 @@ def test_store_purchase_deducts_balance_and_records_transaction(client):
 
 
 def test_transfer_pairs_are_zero_sum_within_class_scope(client):
-    admin = _create_admin("transfer-admin")
-    student = _create_student("Transfer")
-    other_student = _create_student("Other", block="B")
-    _link_student_to_teacher(student, admin, "JOIN-XFER", block="A")
-    _link_student_to_teacher(other_student, admin, "JOIN-OTHER", block="B")
+    teacher = _create_teacher("transfer-admin")
+    economy_xfer = _create_class(teacher, "JOIN-XFER")
+    economy_other = _create_class(teacher, "JOIN-OTHER")
+    seat = _create_student(economy_xfer.class_id, "Transfer")
+    other_seat = _create_student(economy_other.class_id, "Other")
     db.session.commit()
-
-    economy = ClassEconomy.query.filter_by(join_code="JOIN-XFER").first()
-    other_economy = ClassEconomy.query.filter_by(join_code="JOIN-OTHER").first()
-    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-XFER", role="student").first()
-    other_seat = Seat.query.filter_by(class_id=other_economy.class_id, join_code="JOIN-OTHER", role="student").first()
 
     withdraw_tx, deposit_tx = ledger_service.create_transfer_pair(
         seat_id=seat.id,
-        class_id=economy.class_id,
-        teacher_id=admin.id,
+        class_id=economy_xfer.class_id,
+        teacher_id=teacher.id,
         amount=Decimal("12.34"),
         from_account="checking",
         to_account="savings",
@@ -377,8 +334,8 @@ def test_transfer_pairs_are_zero_sum_within_class_scope(client):
     )
     ledger_service.create_transfer_pair(
         seat_id=other_seat.id,
-        class_id=other_economy.class_id,
-        teacher_id=admin.id,
+        class_id=economy_other.class_id,
+        teacher_id=teacher.id,
         amount=Decimal("7.89"),
         from_account="checking",
         to_account="savings",
@@ -390,7 +347,7 @@ def test_transfer_pairs_are_zero_sum_within_class_scope(client):
     join_xfer_total = (
         db.session.query(db.func.sum(Transaction.amount))
         .filter(
-            Transaction.teacher_id == admin.id,
+            Transaction.teacher_id == teacher.id,
             Transaction.join_code == "JOIN-XFER",
             Transaction.type.in_(["Withdrawal", "Deposit"]),
         )
@@ -400,7 +357,7 @@ def test_transfer_pairs_are_zero_sum_within_class_scope(client):
     join_other_total = (
         db.session.query(db.func.sum(Transaction.amount))
         .filter(
-            Transaction.teacher_id == admin.id,
+            Transaction.teacher_id == teacher.id,
             Transaction.join_code == "JOIN-OTHER",
             Transaction.type.in_(["Withdrawal", "Deposit"]),
         )
@@ -416,19 +373,18 @@ def test_transfer_pairs_are_zero_sum_within_class_scope(client):
 
 
 def test_store_purchase_bulk_discount_uses_quantized_total_for_funds_check(client):
-    admin = _create_admin("store-discount-admin")
-    student = _create_student("Discount")
-    _link_student_to_teacher(student, admin, "JOIN-DISC", block="A")
+    teacher = _create_teacher("store-discount-admin")
+    economy = _create_class(teacher, "JOIN-DISC")
+    seat = _create_student(economy.class_id, "Discount")
     db.session.commit()
-    economy = ClassEconomy.query.filter_by(join_code="JOIN-DISC").first()
-    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-DISC", role="student").first()
+
     assert seat is not None and seat.class_id is not None
     assert economy is not None
     from app.models import BalanceCache
     BalanceCache.query.filter_by(seat_id=seat.id, class_id=economy.class_id).delete()
 
     item = StoreItem(
-        user_id=admin.id,
+        user_id=teacher.id,
         class_id=economy.class_id,
         name="Discounted Item",
         price=Decimal("0.05"),
@@ -442,7 +398,8 @@ def test_store_purchase_bulk_discount_uses_quantized_total_for_funds_check(clien
     db.session.add(
         Transaction(
             seat_id=seat.id,
-            user_id=student.user_id, class_id=economy.class_id,
+            user_id=seat.user_id,
+            class_id=economy.class_id,
             join_code="JOIN-DISC",
             amount=Decimal("0.04"),
             account_type="checking",
@@ -453,7 +410,7 @@ def test_store_purchase_bulk_discount_uses_quantized_total_for_funds_check(clien
     )
     db.session.commit()
 
-    _login_student(client, student.id, "JOIN-DISC")
+    _login_student(client, seat, "JOIN-DISC")
     response = client.post(
         "/api/purchase-item",
         json={"item_id": item.id, "passphrase": "password", "quantity": 1},
@@ -475,19 +432,20 @@ def test_store_purchase_bulk_discount_uses_quantized_total_for_funds_check(clien
 
 
 def test_amount_needed_to_cover_bills_uses_decimal_math(client):
-    admin = _create_admin("bills-admin")
-    student = _create_student("Bills")
-    _link_student_to_teacher(student, admin, "JOIN-BILLS", block="A")
+    teacher = _create_teacher("bills-admin")
+    economy = _create_class(teacher, "JOIN-BILLS")
+    seat = _create_student(economy.class_id, "Bills")
     db.session.commit()
 
-    economy = ClassEconomy.query.filter_by(join_code="JOIN-BILLS").first()
-    seat = Seat.query.filter_by(class_id=economy.class_id, join_code="JOIN-BILLS", role="student").first()
     assert economy is not None and seat is not None
 
-    checking_balance = student.get_checking_balance(class_id=economy.class_id, seat_id=seat.id)
-    student.is_rent_enabled = True
-    student.insurance_plan = "basic"
-    db.session.commit()
+    checking_balance = db.session.query(
+        db.func.sum(Transaction.amount)
+    ).filter(
+        Transaction.seat_id == seat.id,
+        Transaction.account_type == "checking",
+        Transaction.status == TransactionStatus.POSTED,
+    ).scalar() or Decimal("0.00")
 
     amount_needed = max(Decimal("0"), Decimal("1000.00") - checking_balance)
 
@@ -496,12 +454,11 @@ def test_amount_needed_to_cover_bills_uses_decimal_math(client):
 
 
 def test_rent_payment_creates_rent_obligation_record(client):
-    admin = _create_admin("rent-admin")
-    student = _create_student("Renter")
-    _link_student_to_teacher(student, admin, "JOIN-RENT", block="A")
-    student.is_rent_enabled = True
+    teacher = _create_teacher("rent-admin")
+    economy = _create_class(teacher, "JOIN-RENT")
+    seat = _create_student(economy.class_id, "Renter")
+    db.session.commit()
 
-    economy = ClassEconomy.query.filter_by(join_code="JOIN-RENT").first()
     assert economy is not None
     settings = RentSettings(
         class_id=economy.class_id,
@@ -516,12 +473,12 @@ def test_rent_payment_creates_rent_obligation_record(client):
     db.session.add(settings)
     db.session.flush()
     settings.active_version = settings.create_policy_version()
-    seat = Seat.query.filter_by(user_id=_ensure_user(student.id, role="student"), join_code="JOIN-RENT").first()
     assert seat is not None and seat.class_id is not None
     db.session.add(
         Transaction(
             seat_id=seat.id,
-            user_id=student.user_id, class_id=economy.class_id,
+            user_id=seat.user_id,
+            class_id=economy.class_id,
             join_code="JOIN-RENT",
             amount=Decimal("40.00"),
             account_type="checking",
@@ -532,7 +489,7 @@ def test_rent_payment_creates_rent_obligation_record(client):
     )
     db.session.commit()
 
-    _login_student(client, student.id, "JOIN-RENT")
+    _login_student(client, seat, "JOIN-RENT")
     response = client.post("/student/rent/pay/A", follow_redirects=False)
     assert response.status_code in (302, 303)
 

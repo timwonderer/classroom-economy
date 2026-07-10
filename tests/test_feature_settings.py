@@ -1,7 +1,7 @@
 """
 Tests for feature settings and teacher onboarding functionality.
 """
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_admin
 import os
 import pytest
 import pyotp
@@ -9,9 +9,9 @@ from flask import g, session
 from types import SimpleNamespace
 
 from app import app, db
-from app.models import Admin, ClassEconomy, ClassFeature, FeatureSettings, Seat, TeacherOnboarding, User, UserRole
+from app.models import ClassEconomy, ClassFeature, FeatureSettings, Seat, TeacherOnboarding, User, UserRole
 from app.routes.admin import get_admin_feature_join_code_options, is_admin_feature_enabled
-from tests.helpers.admin_context import login_admin
+from tests.helpers.admin_context import login_teacher
 from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.class_scope import create_class_scope
 from app.utils.economy_policy import (
@@ -20,42 +20,15 @@ from app.utils.economy_policy import (
 )
 
 
-def _create_class_scope(admin, block='A', join_code='JOIN_A'):
-    economy = ClassEconomy(
-        join_code=join_code,
-        user_id=admin.user_id,
-        created_by_user_id=admin.user_id,
-        display_name=f'Period {block}',
-    )
-    db.session.add(economy)
-    db.session.flush()
-    db.session.add(Seat(
-        class_id=economy.class_id,
-        block=block,
-        block_identifier=block,
-        role='student',
-    ))
-    db.session.flush()
-    return economy
+def _create_class_scope(teacher, block='A', join_code='JOIN_A'):
+    from tests.helpers.class_scope import create_class_scope as _create
+    return _create(teacher_user=teacher, join_code=join_code, display_name=f'Period {block}', section=block)
 
 
 @pytest.fixture
 def test_admin():
     """Create a test admin for feature settings tests."""
-    import pyotp
-    admin = make_admin('test_teacher', pyotp.random_base32(),
-    )
-    db.session.add(admin)
-    db.session.flush()
-    user = User(
-        user_role=UserRole.TEACHER,
-        username_hash=admin.username_hash,
-        username_lookup_hash=admin.username_lookup_hash,
-        totp_secret_encrypted=admin.totp_secret,
-    )
-    db.session.add(user)
-    db.session.flush()
-    admin.user_id = user.id
+    admin = make_admin('test_teacher')
     db.session.commit()
     return admin
 
@@ -197,7 +170,7 @@ class TestClassFeatures:
 
         teacher_seat = Seat(
             class_id=economy_b.class_id,
-            user_id=test_admin.user_id,
+            user_id=test_admin.id,
             role='teacher',
             block='B',
             block_identifier='B',
@@ -207,14 +180,14 @@ class TestClassFeatures:
 
         with app.test_request_context('/admin/insurance'):
             g.canonical_context = SimpleNamespace(
-                user_id=test_admin.user_id,
+                user_id=test_admin.id,
                 class_id=economy_b.class_id,
                 seat_id=teacher_seat.id,
                 actor_role="teacher",
             )
             set_canonical_context(
                 session,
-                user_id=test_admin.user_id,
+                user_id=test_admin.id,
                 class_id=economy_b.class_id,
                 seat_id=teacher_seat.id,
                 role="teacher",
@@ -233,7 +206,7 @@ class TestTeacherOnboarding:
 
     def test_onboarding_model_defaults(self, client, test_admin):
         """Test that TeacherOnboarding has correct defaults."""
-        onboarding = TeacherOnboarding(user_id=test_admin.user_id)
+        onboarding = TeacherOnboarding(user_id=test_admin.id)
         db.session.add(onboarding)
         db.session.commit()
 
@@ -245,7 +218,7 @@ class TestTeacherOnboarding:
 
     def test_mark_step_completed(self, client, test_admin):
         """Test marking steps as completed."""
-        onboarding = TeacherOnboarding(user_id=test_admin.user_id)
+        onboarding = TeacherOnboarding(user_id=test_admin.id)
         db.session.add(onboarding)
         db.session.commit()
 
@@ -259,7 +232,7 @@ class TestTeacherOnboarding:
 
     def test_complete_onboarding(self, client, test_admin):
         """Test completing onboarding."""
-        onboarding = TeacherOnboarding(user_id=test_admin.user_id)
+        onboarding = TeacherOnboarding(user_id=test_admin.id)
         db.session.add(onboarding)
         db.session.commit()
 
@@ -271,7 +244,7 @@ class TestTeacherOnboarding:
 
     def test_skip_onboarding(self, client, test_admin):
         """Test skipping onboarding."""
-        onboarding = TeacherOnboarding(user_id=test_admin.user_id)
+        onboarding = TeacherOnboarding(user_id=test_admin.id)
         db.session.add(onboarding)
         db.session.commit()
 
@@ -283,7 +256,7 @@ class TestTeacherOnboarding:
 
     def test_needs_onboarding_property(self, client, test_admin):
         """Test the needs_onboarding property."""
-        onboarding = TeacherOnboarding(user_id=test_admin.user_id)
+        onboarding = TeacherOnboarding(user_id=test_admin.id)
         db.session.add(onboarding)
         db.session.commit()
 
@@ -297,12 +270,12 @@ class TestTeacherOnboarding:
 
     def test_unique_teacher_onboarding(self, client, test_admin):
         """Test that each teacher can only have one onboarding record."""
-        onboarding1 = TeacherOnboarding(user_id=test_admin.user_id)
+        onboarding1 = TeacherOnboarding(user_id=test_admin.id)
         db.session.add(onboarding1)
         db.session.commit()
 
         # Try to add another onboarding for the same teacher
-        onboarding2 = TeacherOnboarding(user_id=test_admin.user_id)
+        onboarding2 = TeacherOnboarding(user_id=test_admin.id)
         db.session.add(onboarding2)
 
         with pytest.raises(Exception):  # Should raise IntegrityError
@@ -322,21 +295,12 @@ class TestFeatureSettingsRoutes:
     def test_feature_settings_page_accessible_when_logged_in(self, client, test_admin):
         """Test that feature settings page is accessible when logged in."""
         economy = create_class_scope(
-            teacher=test_admin,
+        teacher_user=test_admin,
             join_code="FEATSET1",
             display_name="Feature Settings",
         )
         db.session.commit()
-        teacher_seat = Seat.query.filter_by(class_id=economy.class_id, role="teacher").first()
-        assert teacher_seat is not None
-        login_admin(
-            client,
-            test_admin.id,
-            user_id=test_admin.user_id,
-            class_id=economy.class_id,
-            seat_id=teacher_seat.id,
-            join_code=economy.join_code,
-        )
+        login_teacher(client, test_admin, class_id=economy.class_id, join_code=economy.join_code)
 
         response = client.get('/admin/feature-settings')
         assert response.status_code == 200
@@ -353,26 +317,17 @@ class TestOnboardingRoutes:
     def test_onboarding_skip(self, client, test_admin):
         """Test skipping onboarding via API."""
         # Create onboarding record
-        onboarding = TeacherOnboarding(user_id=test_admin.user_id)
+        onboarding = TeacherOnboarding(user_id=test_admin.id)
         db.session.add(onboarding)
         db.session.commit()
 
         economy = create_class_scope(
-            teacher=test_admin,
+        teacher_user=test_admin,
             join_code="ONBRD01",
             display_name="Onboarding",
         )
         db.session.commit()
-        teacher_seat = Seat.query.filter_by(class_id=economy.class_id, role="teacher").first()
-        assert teacher_seat is not None
-        login_admin(
-            client,
-            test_admin.id,
-            user_id=test_admin.user_id,
-            class_id=economy.class_id,
-            seat_id=teacher_seat.id,
-            join_code=economy.join_code,
-        )
+        login_teacher(client, test_admin, class_id=economy.class_id, join_code=economy.join_code)
 
         response = client.post('/admin/onboarding/skip',
                                content_type='application/json')
@@ -383,7 +338,7 @@ class TestOnboardingRoutes:
 
         # Verify onboarding was skipped
         onboarding = TeacherOnboarding.query.filter_by(
-            user_id=test_admin.user_id
+            user_id=test_admin.id
         ).first()
         assert onboarding.is_skipped is True
 
@@ -391,28 +346,12 @@ class TestOnboardingRoutes:
 class TestTeacherDeletionCascade:
     """Tests for CASCADE deletion when a teacher is deleted."""
 
-    @staticmethod
-    def _attach_teacher_user(admin):
-        user = User(
-            user_role=UserRole.TEACHER,
-            username_hash=admin.username_hash,
-            username_lookup_hash=admin.username_lookup_hash,
-            totp_secret_encrypted=admin.totp_secret,
-        )
-        db.session.add(user)
-        db.session.flush()
-        admin.user_id = user.id
-        db.session.commit()
-        return user
-
     def test_class_features_cascade_on_teacher_delete(self, client_with_fk):
         """Class features are removed when their teacher-owned class is deleted."""
-        # Create a teacher
-        admin = make_admin('cascade_test_teacher', pyotp.random_base32(),
-        )
-        db.session.add(admin)
-        teacher_user = self._attach_teacher_user(admin)
-        teacher_id = teacher_user.id
+        admin = make_admin('cascade_test_teacher')
+        db.session.flush()
+        teacher_user = admin
+        teacher_id = admin.id
 
         economy_a = _create_class_scope(admin, block='A', join_code='TESTA1')
         economy_b = _create_class_scope(admin, block='B', join_code='TESTB1')
@@ -432,12 +371,10 @@ class TestTeacherDeletionCascade:
 
     def test_teacher_onboarding_cascade_on_teacher_delete(self, client_with_fk):
         """Test that TeacherOnboarding is CASCADE deleted when teacher is deleted."""
-        # Create a teacher
-        admin = make_admin('onboarding_cascade_test', pyotp.random_base32(),
-        )
-        db.session.add(admin)
-        teacher_user = self._attach_teacher_user(admin)
-        teacher_id = teacher_user.id
+        admin = make_admin('onboarding_cascade_test')
+        db.session.flush()
+        teacher_user = admin
+        teacher_id = admin.id
 
         # Create onboarding record for the teacher
         onboarding = TeacherOnboarding(user_id=teacher_id)
@@ -458,12 +395,10 @@ class TestTeacherDeletionCascade:
         """Test that class-scoped seats are removed when the teacher's classes are deleted."""
         from app.models import ClassEconomy
 
-        # Create a teacher
-        admin = make_admin('blocks_cascade_test', pyotp.random_base32(),
-        )
-        db.session.add(admin)
-        teacher_user = self._attach_teacher_user(admin)
-        teacher_id = teacher_user.id
+        admin = make_admin('blocks_cascade_test')
+        db.session.flush()
+        teacher_user = admin
+        teacher_id = admin.id
 
         # Ensure ClassEconomy exists for FK constraints
         if not ClassEconomy.query.filter_by(class_id='TEST123').first():

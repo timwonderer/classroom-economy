@@ -4,7 +4,7 @@ import pytest
 from flask import session
 
 from app.extensions import db
-from app.models import ClassEconomy, IdentityProfile, Seat, User, UserRole
+from app.models import ClassEconomy, Seat, User, UserRole
 from tests.helpers.class_scope import make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -25,15 +25,6 @@ def setup_multi_class_student(client):
     db.session.add_all([teacher1, teacher2, teacher3])
     db.session.flush()
 
-    profile = IdentityProfile(profile_type="student", first_name="MultiClass", last_name="S")
-    db.session.add(profile)
-    db.session.flush()
-    student_user = User(user_role=UserRole.STUDENT, username_hash="student_user_hash", username_lookup_hash="student_user_lookup")
-    db.session.add(student_user)
-    db.session.flush()
-
-    student = make_student_identity(first_name="MultiClass", last_name="S", block="A", claimed=True)
-
     class_1a = ClassEconomy(join_code="TEACHER1A", user_id=teacher1.id, display_name="Class 1A")
     class_2b = ClassEconomy(join_code="TEACHER2B", user_id=teacher2.id, display_name="Class 2B")
     class_3c = ClassEconomy(join_code="TEACHER3C", user_id=teacher3.id, display_name="Class 3C")
@@ -41,12 +32,15 @@ def setup_multi_class_student(client):
     db.session.add_all([class_1a, class_2b, class_3c, class_unclaimed])
     db.session.flush()
 
-    seat1 = Seat(user_id=student.user_id, class_id=class_1a.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
+    # Create canonical student in class_1a; then manually add seats for other classes
+    student = make_student_identity(class_id=class_1a.class_id, first_name="MultiClass", last_name="S", claimed=True)
+    db.session.flush()
+
+    seat1 = Seat.query.filter_by(user_id=student.user_id, class_id=class_1a.class_id, role="student").first()
     seat2 = Seat(user_id=student.user_id, class_id=class_2b.class_id, block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
     seat3 = Seat(user_id=student.user_id, class_id=class_3c.class_id, block="C", block_identifier="C", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add_all([seat1, seat2, seat3])
+    db.session.add_all([seat2, seat3])
     db.session.flush()
-    profile.seat_id = seat1.id
     db.session.commit()
 
     return {
@@ -67,23 +61,14 @@ def setup_single_class_student(client):
     db.session.add(teacher)
     db.session.flush()
 
-    profile = IdentityProfile(profile_type="student", first_name="SingleClass", last_name="X")
-    db.session.add(profile)
-    db.session.flush()
-    student_user = User(user_role=UserRole.STUDENT, username_hash="single_student_user_hash", username_lookup_hash="single_student_user_lookup")
-    db.session.add(student_user)
-    db.session.flush()
-
-    student = make_student_identity(first_name="SingleClass", last_name="X", block="D", claimed=True)
-
     class_single = ClassEconomy(join_code="SINGLED", user_id=teacher.id, display_name="Single D")
     db.session.add(class_single)
     db.session.flush()
 
-    seat = Seat(user_id=student.user_id, class_id=class_single.class_id, block="D", block_identifier="D", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(seat)
+    student = make_student_identity(class_id=class_single.class_id, first_name="SingleClass", last_name="X", claimed=True)
     db.session.flush()
-    profile.seat_id = seat.id
+
+    seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_single.class_id, role="student").first()
     db.session.commit()
 
     return {"student": student, "seat": seat}
@@ -98,7 +83,7 @@ def test_inject_class_context_no_student(client):
 
 
 def test_inject_class_context_no_claimed_seats(client, setup_multi_class_student):
-    student = make_student_identity(first_name="NoSeats", last_name="N", block="Z", claimed=False)
+    # Use existing multi-class student setup (student variable not used directly in test)
 
     with client.application.test_request_context("/"):
         set_canonical_context(

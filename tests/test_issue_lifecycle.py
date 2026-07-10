@@ -1,54 +1,45 @@
 from datetime import datetime, timezone
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.class_scope import create_class_scope, make_student_identity
+from tests.helpers.admin_context import login_teacher
 from app.extensions import db
-from app.models import User, UserRole, Admin, Issue, IssueCategory, Seat, ClassEconomy
+from app.models import User, UserRole, Issue, IssueCategory, Seat, ClassEconomy
 from app.utils.opaque_refs import make_opaque_ref
-from tests.helpers.class_scope import make_student_identity
 
 
 def test_teacher_must_close_issue_after_final_review(client):
-    teacher = make_admin("teacher_issue_lifecycle", "secret")
-    db.session.add(teacher)
+    teacher = make_admin("teacher_issue_lifecycle")
     db.session.flush()
-    class_row = ClassEconomy(
-        join_code="JOINLIFE1",
-        user_id=teacher.id,
-        section="A",
-        display_name="A",
-    )
-    db.session.add(class_row)
+    class_row = create_class_scope(teacher_user=teacher, join_code="JOINLIFE1")
     db.session.flush()
-    student = make_student_identity(block="A", first_name="Casey", last_name="Lopez", join_code="JOINLIFE1", class_id=class_row.class_id)
+    student = make_student_identity(first_name="Casey", last_name="Lopez", class_id=class_row.class_id)
     category = IssueCategory(
         name="Lifecycle Category",
         category_type="general",
         is_active=True,
     )
-    db.session.add_all([student, category])
+    db.session.add(category)
     db.session.flush()
-    seat = db.session.get(Seat, student.id)
 
     issue = Issue(
         user_id=student.user_id,
-        actor_public_id="seat-public-issue-1",
-        teacher_id=teacher.id,
+        actor_public_id=student.public_id,
         class_id=class_row.class_id,
-        seat_id=seat.id,
+        seat_id=student.id,
         join_code="JOINLIFE1",
         class_label="Block A",
         category_id=category.id,
         issue_type="general",
+        student_first_name="Casey",
+        student_last_initial="L",
         student_explanation="Balance looked incorrect after store purchase.",
         status=Issue.STATUS_TEACHER_REVIEW,
     )
     db.session.add(issue)
     db.session.commit()
 
-    with client.session_transaction() as sess:
-        sess["is_admin"] = True
-        sess["admin_id"] = teacher.id
-        sess["last_activity"] = datetime.now(timezone.utc).isoformat()
+    login_teacher(client, teacher, join_code="JOINLIFE1")
 
     issue_ref = make_opaque_ref("issue", issue.id)
     resolve_resp = client.post(

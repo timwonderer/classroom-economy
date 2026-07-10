@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import User, UserRole, Admin, IdentityProfile, Seat, Transaction, TransactionStatus
+from app.models import User, Seat, Transaction, TransactionStatus
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
 from tests.helpers.class_scope import make_student_identity
@@ -31,13 +31,18 @@ def _build_multi_class_student():
     db.session.add(teacher)
     db.session.flush()
 
-    profile = IdentityProfile(profile_type="student", first_name="Scope", last_name="T")
-    db.session.add(profile)
+    class_a = create_class_scope(teacher_user=teacher, join_code="STUDSC1", display_name="A")
+    class_b = create_class_scope(teacher_user=teacher, join_code="STUDSC2", display_name="B")
     db.session.flush()
-    student = make_student_identity(first_name="Scope", last_name="T", block="A, B", claimed=True, profile_type="student_claimed")
 
-    class_a = create_class_scope(teacher=teacher, join_code="STUDSC1", student=student, block="A", display_name="A")
-    class_b = create_class_scope(teacher=teacher, join_code="STUDSC2", student=student, block="B", display_name="B")
+    student = make_student_identity(class_id=class_a.class_id, first_name="Scope", last_name="T", claimed=True)
+    db.session.flush()
+    # Add student to class_b as well
+    from app.models import IdentityProfile
+    seat_b_extra = Seat(user_id=student.user_id, class_id=class_b.class_id, block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(seat_b_extra)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat_b_extra.id, profile_type="student_claimed", first_name="Scope", last_name="T", class_id=class_b.class_id))
     seat_a = Seat.query.filter_by(class_id=class_a.class_id, user_id=student.user_id).first()
     seat_b = Seat.query.filter_by(class_id=class_b.class_id, user_id=student.user_id).first()
     db.session.add_all([

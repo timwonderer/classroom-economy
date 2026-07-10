@@ -6,11 +6,11 @@ End-to-end test for the account recovery flow:
   4. Existing teacher-managed identity is preserved
   5. Economic data is preserved
 """
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_admin
 import pytest
 from werkzeug.security import generate_password_hash
 from app import db
-from app.models import User, UserRole, Admin, Transaction, Seat, IdentityProfile, ClassEconomy
+from app.models import User, UserRole, Transaction, Seat, IdentityProfile, ClassEconomy
 from app.hash_utils import hash_username, hash_username_lookup, get_random_salt
 from app.utils.name_utils import hash_last_name_parts
 from app.utils.claim_credentials import compute_primary_claim_hash
@@ -22,22 +22,11 @@ from tests.helpers.class_scope import make_student_identity
 def test_data(app):
     """Setup: Admin, Class, Student with completed setup and a balance."""
     with app.app_context():
-        admin = make_admin('admin_flow2', 'dummy_secret')
-        db.session.add(admin)
+        from tests.helpers.class_scope import create_class_scope
+        teacher_user = make_admin('admin_flow2')
         db.session.flush()
 
-        from app.models import User, UserRole
-        from uuid import uuid4
-        teacher_user = User(
-            username_hash=f"flow2_{uuid4().hex[:10]}",
-            username_lookup_hash=f"flow2l_{uuid4().hex[:10]}",
-            user_role=UserRole.TEACHER,
-        )
-        db.session.add(teacher_user)
-        db.session.flush()
-
-        class_row = ClassEconomy(join_code='FLOW2A', user_id=teacher_user.id, display_name='Flow Reset Class')
-        db.session.add(class_row)
+        class_row = create_class_scope(teacher_user=teacher_user, join_code='FLOW2A', display_name='Flow Reset Class')
         db.session.flush()
 
         salt = get_random_salt()
@@ -51,7 +40,7 @@ def test_data(app):
         p_hash = generate_password_hash('1234')
         pp_hash = generate_password_hash('old-passphrase-word')
 
-        student = make_student_identity(first_name='Flow', last_name='T', block='A', join_code='FLOW2A', class_id=class_row.class_id)
+        student = make_student_identity(first_name='Flow', last_name='T', class_id=class_row.class_id)
         student.pin_hash = p_hash
         student.passphrase_hash = pp_hash
         student.has_completed_setup = True
@@ -72,7 +61,7 @@ def test_data(app):
         db.session.commit()
 
         return {
-            'admin_id': admin.id,
+            'admin_id': teacher_user.id,
             'student_id': student.id,
             'join_code': 'FLOW2A',
             'seat_id': seat.id,

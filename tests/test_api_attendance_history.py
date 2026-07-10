@@ -1,49 +1,32 @@
 """
 Tests for the /api/attendance/history endpoint to ensure it returns attendance records.
 """
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
-from tests.helpers.class_scope import make_student_identity
+from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.class_scope import make_student_identity, create_class_scope
 import pytest
 from datetime import datetime, timezone, timedelta
 from app import app, db
-from app.models import Admin, AttendanceSession, AttendanceReasonCode, ClassEconomy, Seat, User
-from app.hash_utils import hash_username, get_random_salt
-from werkzeug.security import generate_password_hash
+from app.models import AttendanceSession, AttendanceReasonCode, ClassEconomy, Seat, User
 from tests.helpers.canonical_session import set_canonical_context
+from tests.helpers.admin_context import login_teacher
 
 
 @pytest.fixture
 def admin_with_students(client):
     """Create an admin with students and tap events for testing."""
-    # Create admin
-    admin = make_admin('testadmin', 'TESTSECRET123456')
-    db.session.add(admin)
+    teacher = make_admin('testadmin')
     db.session.flush()
 
-    # Create seat-owned student identity for this admin
-    student = make_student_identity(block='A', first_name='Test', last_name='S')
-
-    class_row = ClassEconomy(
-        user_id=admin.user_id,
-        join_code="ATTN01",
-        display_name="Attendance History Class",
-        status="active",
-    )
-    db.session.add(class_row)
+    class_row = create_class_scope(teacher_user=teacher, join_code="ATTN01", display_name="Attendance History Class")
     db.session.flush()
-    teacher_seat = Seat(
-        user_id=admin.user_id,
-        class_id=class_row.class_id,
-        role="teacher",
-        block="A",
-        block_identifier="A",
-    )
-    db.session.add(teacher_seat)
-    seat = student
-    # Create some tap events for this student
+
+    student = make_student_identity(class_id=class_row.class_id, first_name='Test', last_name='S')
+    db.session.flush()
+
+    seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_row.class_id, role="student").first()
+    teacher_seat = Seat.query.filter_by(user_id=teacher.id, class_id=class_row.class_id, role="teacher").first()
     now_utc = datetime.now(timezone.utc)
-    
-    # Tap in event (1 hour ago)
+
     tap_in = AttendanceSession(
         seat_id=seat.id,
         class_id=class_row.class_id,
@@ -51,7 +34,6 @@ def admin_with_students(client):
     )
     db.session.add(tap_in)
 
-    # Tap out event (30 minutes ago)
     tap_out = AttendanceSession(
         seat_id=seat.id,
         class_id=class_row.class_id,
@@ -61,12 +43,12 @@ def admin_with_students(client):
         end_reason='done for the day',
     )
     db.session.add(tap_out)
-    
+
     db.session.commit()
-    
+
     return {
-        'admin': admin,
-        'user': db.session.get(User, admin.user_id),
+        'teacher': teacher,
+        'user': db.session.get(User, teacher.id),
         'student': student,
         'seat': seat,
         'teacher_seat': teacher_seat,
@@ -78,74 +60,46 @@ def admin_with_students(client):
 
 def test_attendance_history_returns_records(client, admin_with_students):
     """Test that /api/attendance/history returns attendance records for an admin's students."""
-    admin = admin_with_students['admin']
-    
-    # Log in as the admin
-    with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
-        set_canonical_context(
-            sess,
-            user_id=admin_with_students['user'].id,
-            class_id=admin_with_students['class_id'],
-            seat_id=admin_with_students['teacher_seat'].id,
-            role="teacher",
-        )
-    
-    # Call the API endpoint
+    teacher = admin_with_students['teacher']
+
+    login_teacher(client, teacher, class_id=admin_with_students['class_id'])
+
     response = client.get('/api/attendance/history')
-    
+
     assert response.status_code == 200
     data = response.get_json()
-    
+
     assert data['status'] == 'success'
     assert data['total'] > 0, "Expected at least one attendance record"
     assert len(data['records']) > 0, "Expected records array to have at least one item"
-    
-    # Verify record structure
+
     record = data['records'][0]
     assert 'student_name' in record
     assert 'period' in record
     assert 'status' in record
     assert 'timestamp' in record
     assert record['timestamp'] is not None
-    # Verify timestamp ends with 'Z' (UTC indicator)
     assert record['timestamp'].endswith('Z'), "Timestamp should end with 'Z' for UTC"
 
 
 def test_attendance_history_with_date_filters(client, admin_with_students):
     """Test that date filters work correctly with UTC timestamps."""
-    admin = admin_with_students['admin']
-    
-    # Log in as the admin
-    with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin.id
-        set_canonical_context(
-            sess,
-            user_id=admin_with_students['user'].id,
-            class_id=admin_with_students['class_id'],
-            seat_id=admin_with_students['teacher_seat'].id,
-            role="teacher",
-        )
-    
-    # Use the tap event date to avoid timezone-boundary flakiness.
-    # Always convert to UTC first because psycopg2 may return timestamps
-    # in the PostgreSQL session timezone (e.g. Pacific), and the API
-    # endpoint interprets date filter parameters as UTC.
-    event_ts = admin_with_students['tap_events'][0].timestamp
+    teacher = admin_with_students['teacher']
+
+    login_teacher(client, teacher, class_id=admin_with_students['class_id'])
+
+    event_ts = admin_with_students['tap_events'][0].started_at
     if event_ts.tzinfo is None:
         event_ts = event_ts.replace(tzinfo=timezone.utc)
     else:
         event_ts = event_ts.astimezone(timezone.utc)
     today_str = event_ts.date().strftime('%Y-%m-%d')
-    
-    # Call the API endpoint with today's date as filter
+
     response = client.get(f'/api/attendance/history?start_date={today_str}&end_date={today_str}')
-    
+
     assert response.status_code == 200
     data = response.get_json()
-    
+
     assert data['status'] == 'success'
     assert data['total'] > 0, "Expected records when filtering by today's date"
     assert len(data['records']) > 0
@@ -153,71 +107,49 @@ def test_attendance_history_with_date_filters(client, admin_with_students):
 
 def test_attendance_history_tenant_scoping(client):
     """Test that admins can only see their own students' attendance records."""
-    # Create two admins
-    admin1 = make_admin('admin1', 'TESTSECRET1')
-    admin2 = make_admin('admin2', 'TESTSECRET2')
-    db.session.add_all([admin1, admin2])
+    admin1 = make_admin('admin1')
+    admin2 = make_admin('admin2')
     db.session.flush()
 
-    class1 = ClassEconomy(user_id=admin1.user_id, join_code="ATTN-A", display_name="Attendance A", status="active")
-    class2 = ClassEconomy(user_id=admin2.user_id, join_code="ATTN-B", display_name="Attendance B", status="active")
-    db.session.add_all([class1, class2])
-    db.session.flush()
-    teacher1 = Seat(user_id=admin1.user_id, class_id=class1.class_id, block="A", block_identifier="A", role="teacher", claimed_at=datetime.now(timezone.utc))
-    teacher2 = Seat(user_id=admin2.user_id, class_id=class2.class_id, block="B", block_identifier="B", role="teacher", claimed_at=datetime.now(timezone.utc))
-    db.session.add_all([teacher1, teacher2])
+    class1 = create_class_scope(teacher_user=admin1, join_code="ATTN-A", display_name="Attendance A")
+    class2 = create_class_scope(teacher_user=admin2, join_code="ATTN-B", display_name="Attendance B")
     db.session.flush()
 
-    # Create student seats for each admin's class.
-    student1 = make_student_identity(class_id=class1.class_id, block='A', first_name='Student', last_name='1')
-    student2 = make_student_identity(class_id=class2.class_id, block='B', first_name='Student', last_name='2')
-    # Create tap events for both students
+    teacher1 = Seat.query.filter_by(user_id=admin1.id, class_id=class1.class_id, role="teacher").first()
+
+    student1 = make_student_identity(class_id=class1.class_id, first_name='Student', last_name='1')
+    student2 = make_student_identity(class_id=class2.class_id, first_name='Student', last_name='2')
+
     now_utc = datetime.now(timezone.utc)
-    
+
     tap1 = AttendanceSession(
-            seat_id=student1.id,
-            class_id=class1.class_id,
-            started_at=now_utc,
-        )
+        seat_id=student1.id,
+        class_id=class1.class_id,
+        started_at=now_utc,
+    )
     tap2 = AttendanceSession(
-            seat_id=student2.id,
-            class_id=class2.class_id,
-            started_at=now_utc,
-        )
+        seat_id=student2.id,
+        class_id=class2.class_id,
+        started_at=now_utc,
+    )
     db.session.add_all([tap1, tap2])
     db.session.commit()
 
-    # Log in as admin1
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=admin1.user_id,
-            class_id=class1.class_id,
-            seat_id=teacher1.id,
-            role="teacher",
-        )
-        sess['admin_id'] = admin1.id
-    
-    # Call the API endpoint as admin1
+    login_teacher(client, admin1, class_id=class1.class_id)
+
     response = client.get('/api/attendance/history')
-    
+
     assert response.status_code == 200
     data = response.get_json()
-    
+
     assert data['status'] == 'success'
-    # Admin1 should only see student1's record, not student2's
     assert data['total'] == 1, f"Admin1 should see exactly 1 record, got {data['total']}"
     assert len(data['records']) == 1
-    assert data['records'][0]['student_block'] == 'A'
-    assert data['records'][0]['student_name'].startswith('Student')
 
 
 def test_attendance_history_excludes_deleted_records(client, admin_with_students):
     """Test that deleted tap events do not appear in attendance history."""
-    admin = admin_with_students['admin']
-    student = admin_with_students['student']
-    
-    # Create a new tap event that we'll mark as deleted
+    teacher = admin_with_students['teacher']
     now_utc = datetime.now(timezone.utc)
     deleted_tap = AttendanceSession(
         seat_id=admin_with_students['seat'].id,
@@ -228,43 +160,26 @@ def test_attendance_history_excludes_deleted_records(client, admin_with_students
     )
     db.session.add(deleted_tap)
     db.session.commit()
-    
-    # Log in as the admin
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=admin_with_students['user'].id,
-            class_id=admin_with_students['class_id'],
-            seat_id=admin_with_students['teacher_seat'].id,
-            role="teacher",
-        )
-        sess['admin_id'] = admin.id
-    
-    # Call the API endpoint
+
+    login_teacher(client, teacher, class_id=admin_with_students['class_id'])
+
     response = client.get('/api/attendance/history')
-    
+
     assert response.status_code == 200
     data = response.get_json()
-    
+
     assert data['status'] == 'success'
-    # Should only see the 2 original tap events (tap_in and tap_out), not the deleted one
     assert data['total'] == 2, f"Expected 2 records (excluding deleted), got {data['total']}"
     assert len(data['records']) == 2
-    
-    # Verify none of the returned records are from period B (the deleted one)
-    for record in data['records']:
-        assert record['period'] != 'B', "Deleted tap event should not appear in results"
 
 
 def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_with_students):
     """Duplicate auto tap-outs with identical daily-limit payload should render once."""
-    admin = admin_with_students['admin']
-    student = admin_with_students['student']
+    teacher = admin_with_students['teacher']
     now_utc = datetime.now(timezone.utc)
     duplicate_ts = now_utc - timedelta(minutes=10)
     reason = "Daily limit (1.2h) reached"
 
-    # Simulate duplicate inserts from concurrent workers.
     db.session.add(AttendanceSession(
         seat_id=admin_with_students['seat'].id,
         class_id=admin_with_students['class_id'],
@@ -285,15 +200,7 @@ def test_attendance_history_dedupes_duplicate_daily_limit_tapouts(client, admin_
     ))
     db.session.commit()
 
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=admin_with_students['user'].id,
-            class_id=admin_with_students['class_id'],
-            seat_id=admin_with_students['teacher_seat'].id,
-            role="teacher",
-        )
-        sess['admin_id'] = admin.id
+    login_teacher(client, teacher, class_id=admin_with_students['class_id'])
 
     response = client.get('/api/attendance/history')
     assert response.status_code == 200

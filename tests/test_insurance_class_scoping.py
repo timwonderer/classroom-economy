@@ -12,9 +12,7 @@ from datetime import datetime, timedelta, timezone
 
 from app import db
 from app.models import (
-    User,
-    UserRole,
-    Admin, ClassEconomy, IdentityProfile,
+    ClassEconomy,
     InsurancePolicy, InsurancePolicyBlock, InsuranceEnrollment, InsuranceClaim,
     Seat,
 )
@@ -37,23 +35,11 @@ def students_in_two_classes(client, teacher_with_two_classes):
     """Create students in two different class periods."""
     teacher = teacher_with_two_classes
 
-    student_a = make_student_identity(block="A", first_name="Alice", last_name="A")
-    class_a = create_class_scope(
-        teacher=teacher,
-        join_code="JOINA123",
-        student=student_a,
-        block="A",
-        display_name="A",
-    )
+    class_a = create_class_scope(teacher_user=teacher, join_code="JOINA123", display_name="A")
+    student_a = make_student_identity(class_id=class_a.class_id, first_name="Alice", last_name="A")
 
-    student_b = make_student_identity(block="B", first_name="Bob", last_name="B")
-    class_b = create_class_scope(
-        teacher=teacher,
-        join_code="JOINB456",
-        student=student_b,
-        block="B",
-        display_name="B",
-    )
+    class_b = create_class_scope(teacher_user=teacher, join_code="JOINB456", display_name="B")
+    student_b = make_student_identity(class_id=class_b.class_id, first_name="Bob", last_name="B")
 
     from app.models import Transaction
     seat_a = Seat.query.filter_by(class_id=class_a.class_id, role="student").first()

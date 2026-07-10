@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 import pytest
 
 from app.extensions import db
-from app.models import ClassEconomy, Seat, IdentityProfile, User, UserRole, TapEvent
+from app.models import ClassEconomy, Seat, User, UserRole, TapEvent
 from tests.helpers.class_scope import make_student_identity
 
 
@@ -21,25 +21,21 @@ def _setup_scoped_student(with_seat: bool = True):
     db.session.add(cls)
     db.session.flush()
 
-    profile = IdentityProfile(profile_type="student", first_name="Tap", last_name="I")
-    db.session.add(profile)
-    db.session.flush()
-    student = make_student_identity(first_name="Tap", last_name="I", block="A", claimed=True)
-    student_user = User(username_hash=f"tap_{student.id}", username_lookup_hash=f"tap_lookup_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
+    student = make_student_identity(class_id=cls.class_id, first_name="Tap", last_name="I", claimed=True)
 
     seat = None
     if with_seat:
-        seat = Seat(
-            user_id=student_user.id,
-            class_id=cls.class_id,
-            join_code=cls.join_code,
-            role="student",
-            block_identifier="A",
-            block="A",
-        )
-        db.session.add(seat)
+        seat = Seat.query.filter_by(user_id=student.user_id, class_id=cls.class_id, role="student").first()
+        if not seat:
+            seat = Seat(
+                user_id=student.user_id,
+                class_id=cls.class_id,
+                join_code=cls.join_code,
+                role="student",
+                block_identifier="A",
+                block="A",
+            )
+            db.session.add(seat)
     student_id = student.id
     class_id = cls.class_id
     db.session.flush()

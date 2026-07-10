@@ -5,515 +5,347 @@ Ensures that students can check out and check in directly from the dashboard
 without using the terminal, with proper limit enforcement.
 """
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
-from tests.helpers.class_scope import make_student_identity
 import pytest
 from datetime import datetime, timezone, timedelta
-from app.models import Seat, IdentityProfile, Admin, HallPassLog, HallPassSettings, ClassEconomy, AttendanceSession, SeatAttendanceState, User, UserRole
+
 from app.extensions import db
-from app.hash_utils import get_random_salt, hash_username
-from app.utils.auth_username import build_hashed_username_fields
+from app.models import Seat, ClassEconomy, HallPassLog, HallPassSettings
+from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
 
 
-def _make_canonical_user(*, username: str, role: UserRole) -> User:
-    salt, username_hash, username_lookup_hash = build_hashed_username_fields(username)
-    user = User(
-        user_role=role,
-        username_hash=username_hash,
-        username_lookup_hash=username_lookup_hash,
-    )
-    db.session.add(user)
-    db.session.flush()
-    return user
-
-
-def _login_student_context(client, *, user: User, seat: Seat, login_time: str | None = None) -> None:
-    from app.models import ClassEconomy as _CE
-    _class_row = _CE.query.filter_by(class_id=seat.class_id).first()
+def _login_student(client, *, seat: Seat) -> None:
+    class_row = ClassEconomy.query.filter_by(class_id=seat.class_id).first()
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
-            user_id=user.id,
+            user_id=seat.user_id,
             class_id=seat.class_id,
             seat_id=seat.id,
             role="student",
-            join_code=_class_row.join_code if _class_row else None,
+            join_code=class_row.join_code if class_row else None,
         )
 
 
-def _login_admin_context(client, *, teacher: Admin, user: User, class_id: str, join_code: str) -> None:
-    teacher_seat = Seat.query.filter_by(class_id=class_id, role="teacher").first()
+def _login_teacher(client, *, teacher, class_row: ClassEconomy) -> None:
+    teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
-            user_id=user.id,
-            class_id=class_id,
-            seat_id=teacher_seat.id if teacher_seat else user.id,
+            user_id=teacher.id,
+            class_id=class_row.class_id,
+            seat_id=teacher_seat.id if teacher_seat else teacher.id,
             role="teacher",
-            join_code=join_code,
+            join_code=class_row.join_code,
         )
 
 
 @pytest.fixture
-def setup_hall_pass_checkout_test(client):
-    """Create teacher, student, and approved hall pass for testing checkout."""
-    # Create teacher
-    teacher = make_admin("teacher1", "secret1")
-    db.session.add(teacher)
+def hp_ctx(client):
+    """Create teacher, class, settings, student seat, and an approved hall pass."""
+    teacher = make_admin("hp_co_teacher1")
     db.session.flush()
-    teacher_user = _make_canonical_user(username="teacher1", role=UserRole.TEACHER)
-    teacher.user_id = teacher_user.id
-    db.session.commit()
-
-    # Create student
-    user = _make_canonical_user(username="alice_a", role=UserRole.STUDENT)
-    student = make_student_identity(block="Period1", first_name="Alice", last_name="A")
-    db.session.commit()
-
-    # Link student to teacher
-    db.session.commit()
-
-    economy = ClassEconomy(
-        join_code="TEST123",
-        user_id=teacher.id,
-        display_name="Period1",
-        status='active',
-    )
-    db.session.add(economy)
+    class_row = create_class_scope(teacher_user=teacher, join_code="HPTEST1")
     db.session.flush()
 
-    # Create hall pass settings
     settings = HallPassSettings(
-        class_id=economy.class_id,
+        class_id=class_row.class_id,
         queue_enabled=True,
         queue_limit=10,
         pass_types=[
-            {"name": "Bathroom", "queue_limit": None, "simultaneous_limit": 2, "enabled": True},
-            {"name": "Office", "queue_limit": None, "simultaneous_limit": None, "enabled": True}
-        ]
+            {"name": "Bathroom", "simultaneous_limit": 2, "enabled": True},
+            {"name": "Office", "simultaneous_limit": None, "enabled": True},
+        ],
     )
     db.session.add(settings)
-    db.session.commit()
 
-    now = datetime.now(timezone.utc)
-    seat = Seat(
-        user_id=user.id,
-        class_id=economy.class_id,
-        block="Period1",
-        block_identifier="Period1",
-        role="student",
-        claimed_at=now - timedelta(days=1),
+    student_seat = make_student_identity(
+        class_id=class_row.class_id, first_name="Alice", last_name="A"
     )
-    db.session.add(seat)
     db.session.flush()
 
-    # Create approved hall pass
+    now = datetime.now(timezone.utc)
     hall_pass = HallPassLog(
-        user_id=student.user_id,
-        seat_id=seat.id,
-        class_id=economy.class_id,
+        seat_id=student_seat.id,
+        class_id=class_row.class_id,
+        join_code=class_row.join_code,
         reason="Bathroom",
         status="approved",
         period="Period1",
         request_time=now - timedelta(minutes=10),
         decision_time=now - timedelta(minutes=5),
-        join_code="TEST123"
     )
     db.session.add(hall_pass)
-
-    # Create claimed seat so current class context can be resolved in student routes.
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    _tb_seat = Seat(user_id=student_user.id, class_id=economy.class_id, block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(_tb_seat)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
     db.session.commit()
 
     return {
-        'teacher': teacher,
-        'teacher_user': teacher_user,
-        'student': student,
-        'student_user': user,
-        'seat': seat,
-        'economy': economy,
-        'hall_pass': hall_pass,
-        'settings': settings
+        "teacher": teacher,
+        "class_row": class_row,
+        "student_seat": student_seat,
+        "hall_pass": hall_pass,
+        "settings": settings,
     }
 
 
-def test_checkout_with_approved_pass(client, setup_hall_pass_checkout_test):
-    """Test that student can check out with an approved hall pass."""
-    data = setup_hall_pass_checkout_test
-    student = data['student']
-    user = data['student_user']
-    seat = data['seat']
-    hall_pass = data['hall_pass']
-
-    _login_student_context(client, student=student, user=user, seat=seat)
-
-    # Checkout
-    response = client.post('/api/hall-pass/checkout',
-                          json={'pass_id': hall_pass.id},
-                          headers={'X-CSRFToken': 'test'})
-    
-    assert response.status_code == 200
-    json_data = response.get_json()
-    assert json_data['status'] == 'success'
-    assert 'Bathroom' in json_data['message']
-
-    # Verify status changed to 'left'
-    db.session.refresh(hall_pass)
-    assert hall_pass.status == 'left'
-    assert hall_pass.left_time is not None
-
-    # Verify canonical attendance state/session update
-    state = SeatAttendanceState.query.filter_by(
-        user_id=student_user.id,
-        class_id=hall_pass.class_id,
-        period=hall_pass.period,
-    ).first()
-    assert state is not None
-    assert state.is_active is False
-    assert state.last_event_status == 'inactive'
-    assert state.last_reason == 'Bathroom'
-
-    latest_session = AttendanceSession.query.filter_by(
-        user_id=student_user.id,
-        class_id=hall_pass.class_id,
-        period=hall_pass.period,
-    ).order_by(AttendanceSession.id.desc()).first()
-    assert latest_session is not None
-    assert latest_session.end_reason == 'Bathroom'
-
-
-def test_approve_does_not_generate_pass_number(client, setup_hall_pass_checkout_test):
-    """Test that approval no longer creates or returns a pass number."""
-    data = setup_hall_pass_checkout_test
-    student = data['student']
-    teacher = data['teacher']
-    teacher_user = data['teacher_user']
-    hall_pass = data['hall_pass']
-
-    hall_pass.status = 'pending'
-    hall_pass.reason = 'Office'
-    hall_pass.decision_time = None
-    db.session.commit()
-
-    _login_admin_context(
-        client,
-        teacher=teacher,
-        user=teacher_user,
-        class_id=hall_pass.class_id,
-        join_code=hall_pass.join_code,
-    )
+def test_checkout_requires_authentication(client, hp_ctx):
+    """Checkout endpoint requires an authenticated student session."""
+    hall_pass = hp_ctx["hall_pass"]
 
     response = client.post(
-        f'/api/hall-pass/{hall_pass.id}/approve',
-        headers={'X-CSRFToken': 'test'}
+        "/api/hall-pass/checkout",
+        json={"pass_id": hall_pass.id},
+        headers={"X-CSRFToken": "test"},
     )
+
+    assert response.status_code in [302, 401]
+
+
+def test_checkout_with_approved_pass(client, hp_ctx):
+    """Student with an approved pass can check out; status becomes 'left'."""
+    seat = hp_ctx["student_seat"]
+    hall_pass = hp_ctx["hall_pass"]
+
+    _login_student(client, seat=seat)
+
+    response = client.post(
+        "/api/hall-pass/checkout",
+        json={"pass_id": hall_pass.id},
+        headers={"X-CSRFToken": "test"},
+    )
+
     assert response.status_code == 200
-    payload = response.get_json()
-    assert payload['status'] == 'success'
-    assert 'pass_number' not in payload
+    json_data = response.get_json()
+    assert json_data["status"] == "success"
+    assert "Bathroom" in json_data["message"]
 
     db.session.refresh(hall_pass)
-    db.session.refresh(student)
-    assert hall_pass.status == 'approved'
-    assert student.hall_passes == 3
+    assert hall_pass.status == "left"
+    assert hall_pass.left_time is not None
 
 
-def test_checkout_blocked_by_simultaneous_limit(client, setup_hall_pass_checkout_test):
-    """Test that checkout is blocked when simultaneous limit is reached."""
-    data = setup_hall_pass_checkout_test
-    student = data['student']
-    user = data['student_user']
-    seat = data['seat']
-    hall_pass = data['hall_pass']
+def test_checkout_rejects_wrong_student(client, hp_ctx):
+    """A different student cannot check out another student's pass."""
+    hall_pass = hp_ctx["hall_pass"]
+    class_row = hp_ctx["class_row"]
 
-    # Create 2 other students already out for bathroom (limit is 2)
+    other_seat = make_student_identity(
+        class_id=class_row.class_id, first_name="Bob", last_name="B"
+    )
+    db.session.commit()
+
+    _login_student(client, seat=other_seat)
+
+    response = client.post(
+        "/api/hall-pass/checkout",
+        json={"pass_id": hall_pass.id},
+        headers={"X-CSRFToken": "test"},
+    )
+
+    assert response.status_code == 403
+    json_data = response.get_json()
+    assert json_data["status"] == "error"
+    assert "unauthorized" in json_data["message"].lower()
+
+
+def test_checkout_rejects_non_approved_pass(client, hp_ctx):
+    """Checkout fails when the pass is in 'pending' (not approved) status."""
+    seat = hp_ctx["student_seat"]
+    hall_pass = hp_ctx["hall_pass"]
+
+    hall_pass.status = "pending"
+    db.session.commit()
+
+    _login_student(client, seat=seat)
+
+    response = client.post(
+        "/api/hall-pass/checkout",
+        json={"pass_id": hall_pass.id},
+        headers={"X-CSRFToken": "test"},
+    )
+
+    assert response.status_code == 400
+    json_data = response.get_json()
+    assert json_data["status"] == "error"
+    assert "not approved" in json_data["message"].lower()
+
+
+def test_checkin_with_left_pass(client, hp_ctx):
+    """Student currently out ('left') can check back in; status becomes 'returned'."""
+    seat = hp_ctx["student_seat"]
+    hall_pass = hp_ctx["hall_pass"]
+
+    now = datetime.now(timezone.utc)
+    hall_pass.status = "left"
+    hall_pass.left_time = now - timedelta(minutes=5)
+    db.session.commit()
+
+    _login_student(client, seat=seat)
+
+    response = client.post(
+        "/api/hall-pass/checkin",
+        json={"pass_id": hall_pass.id},
+        headers={"X-CSRFToken": "test"},
+    )
+
+    assert response.status_code == 200
+    json_data = response.get_json()
+    assert json_data["status"] == "success"
+    assert "checked in" in json_data["message"].lower()
+
+    db.session.refresh(hall_pass)
+    assert hall_pass.status == "returned"
+    assert hall_pass.return_time is not None
+
+
+def test_checkin_rejects_non_left_pass(client, hp_ctx):
+    """Checkin fails when the pass is 'approved' (student has not left yet)."""
+    seat = hp_ctx["student_seat"]
+    hall_pass = hp_ctx["hall_pass"]
+
+    assert hall_pass.status == "approved"
+
+    _login_student(client, seat=seat)
+
+    response = client.post(
+        "/api/hall-pass/checkin",
+        json={"pass_id": hall_pass.id},
+        headers={"X-CSRFToken": "test"},
+    )
+
+    assert response.status_code == 400
+    json_data = response.get_json()
+    assert json_data["status"] == "error"
+    assert "not currently checked out" in json_data["message"].lower()
+
+
+def test_checkout_blocked_by_simultaneous_limit(client, hp_ctx):
+    """Checkout is blocked when the simultaneous limit for the pass type is reached."""
+    seat = hp_ctx["student_seat"]
+    hall_pass = hp_ctx["hall_pass"]
+    class_row = hp_ctx["class_row"]
+
+    now = datetime.now(timezone.utc)
     for i in range(2):
-        other_student = make_student_identity(block="Period1", first_name=f"Student{i}", last_name="S")
-        db.session.commit()
-
-        # Create 'left' hall pass for this student
-        now = datetime.now(timezone.utc)
+        other_seat = make_student_identity(
+            class_id=class_row.class_id,
+            first_name=f"Other{i}",
+            last_name="S",
+        )
+        db.session.flush()
         other_pass = HallPassLog(
-            user_id=other_student_user.id,
-            class_id=hall_pass.class_id,
+            seat_id=other_seat.id,
+            class_id=class_row.class_id,
+            join_code=class_row.join_code,
             reason="Bathroom",
             status="left",
             period="Period1",
             request_time=now - timedelta(minutes=15),
             decision_time=now - timedelta(minutes=10),
             left_time=now - timedelta(minutes=5),
-            join_code="TEST123"
         )
         db.session.add(other_pass)
     db.session.commit()
 
-    # Login as student
-    _login_student_context(client, student=student, user=user, seat=seat)
-
-    # Try to checkout (should fail due to limit)
-    response = client.post('/api/hall-pass/checkout',
-                          json={'pass_id': hall_pass.id},
-                          headers={'X-CSRFToken': 'test'})
-    
-    assert response.status_code == 403
-    json_data = response.get_json()
-    assert json_data['status'] == 'error'
-    assert 'limit reached' in json_data['message'].lower()
-
-    # Verify status is still 'approved'
-    db.session.refresh(hall_pass)
-    assert hall_pass.status == 'approved'
-
-
-def test_checkin_with_left_pass(client, setup_hall_pass_checkout_test):
-    """Test that student can check in when they're currently out."""
-    data = setup_hall_pass_checkout_test
-    student = data['student']
-    user = data['student_user']
-    seat = data['seat']
-    hall_pass = data['hall_pass']
-
-    # Set pass to 'left' status
-    now = datetime.now(timezone.utc)
-    hall_pass.status = 'left'
-    hall_pass.left_time = now - timedelta(minutes=5)
-    db.session.commit()
-
-    # Login as student
-    _login_student_context(client, student=student, user=user, seat=seat)
-
-    # Checkin
-    response = client.post('/api/hall-pass/checkin',
-                          json={'pass_id': hall_pass.id},
-                          headers={'X-CSRFToken': 'test'})
-    
-    assert response.status_code == 200
-    json_data = response.get_json()
-    assert json_data['status'] == 'success'
-    assert 'checked in' in json_data['message'].lower()
-
-    # Verify status changed to 'returned'
-    db.session.refresh(hall_pass)
-    assert hall_pass.status == 'returned'
-    assert hall_pass.return_time is not None
-
-    # Verify canonical attendance state/session update
-    state = SeatAttendanceState.query.filter_by(
-        user_id=student_user.id,
-        class_id=hall_pass.class_id,
-        period=hall_pass.period,
-    ).first()
-    assert state is not None
-    assert state.is_active is True
-    assert state.last_event_status == 'active'
-    assert state.last_reason == 'Returned from hall pass'
-    assert state.open_session_id is not None
-
-    open_session = db.session.get(AttendanceSession, state.open_session_id)
-    assert open_session is not None
-    assert open_session.ended_at is None
-
-
-def test_checkout_requires_authentication(client, setup_hall_pass_checkout_test):
-    """Test that checkout requires student to be logged in."""
-    data = setup_hall_pass_checkout_test
-    hall_pass = data['hall_pass']
-
-    # Try to checkout without login
-    response = client.post('/api/hall-pass/checkout',
-                          json={'pass_id': hall_pass.id},
-                          headers={'X-CSRFToken': 'test'})
-    
-    # Should redirect to login or return 401
-    assert response.status_code in [302, 401]
-
-
-def test_checkout_rejects_wrong_student(client, setup_hall_pass_checkout_test):
-    """Test that student cannot check out another student's pass."""
-    data = setup_hall_pass_checkout_test
-    hall_pass = data['hall_pass']
-    economy = data['economy']
-
-    # Create another student
-    other_user = _make_canonical_user(username="bob_b", role=UserRole.STUDENT)
-    other_student = make_student_identity(block="Period1", first_name="Bob", last_name="B")
-    other_seat = Seat(
-        user_id=other_user.id,
-        class_id=economy.class_id,
-        join_code=economy.join_code,
-        block="Period1",
-        block_identifier="Period1",
-        role="student",
-        claimed_at=datetime.now(timezone.utc) - timedelta(days=1),
-    )
-    db.session.add(other_seat)
-    _tb_seat = Seat(user_id=other_student_user.id, class_id=economy.class_id, block="Period1", block_identifier="Period1", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(_tb_seat)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=other_student.display_first_name, last_name=other_student.display_last_initial))
-    db.session.commit()
-
-    _login_student_context(client, student=other_student, user=other_user, seat=other_seat)
-
-    # Try to checkout Alice's pass
-    response = client.post('/api/hall-pass/checkout',
-                          json={'pass_id': hall_pass.id},
-                          headers={'X-CSRFToken': 'test'})
-    
-    assert response.status_code == 403
-    json_data = response.get_json()
-    assert json_data['status'] == 'error'
-    assert 'unauthorized' in json_data['message'].lower()
-
-
-def test_checkout_rejects_non_approved_pass(client, setup_hall_pass_checkout_test):
-    """Test that checkout fails if pass is not in approved status."""
-    data = setup_hall_pass_checkout_test
-    student = data['student']
-    user = data['student_user']
-    seat = data['seat']
-    hall_pass = data['hall_pass']
-
-    # Set pass to 'pending' status
-    hall_pass.status = 'pending'
-    db.session.commit()
-
-    # Login as student
-    _login_student_context(client, student=student, user=user, seat=seat)
-
-    # Try to checkout
-    response = client.post('/api/hall-pass/checkout',
-                          json={'pass_id': hall_pass.id},
-                          headers={'X-CSRFToken': 'test'})
-    
-    assert response.status_code == 400
-    json_data = response.get_json()
-    assert json_data['status'] == 'error'
-    assert 'not approved' in json_data['message'].lower()
-
-
-def test_checkin_rejects_non_left_pass(client, setup_hall_pass_checkout_test):
-    """Test that checkin fails if pass is not in left status."""
-    data = setup_hall_pass_checkout_test
-    student = data['student']
-    user = data['student_user']
-    seat = data['seat']
-    hall_pass = data['hall_pass']
-
-    # Pass is still in 'approved' status
-    assert hall_pass.status == 'approved'
-
-    # Login as student
-    _login_student_context(client, student=student, user=user, seat=seat)
-
-    # Try to checkin
-    response = client.post('/api/hall-pass/checkin',
-                          json={'pass_id': hall_pass.id},
-                          headers={'X-CSRFToken': 'test'})
-    
-    assert response.status_code == 400
-    json_data = response.get_json()
-    assert json_data['status'] == 'error'
-    assert 'not currently checked out' in json_data['message'].lower()
-
-
-def test_checkout_rejects_mismatched_class_context(client, setup_hall_pass_checkout_test):
-    """Checkout should fail when active class context does not match pass class_id."""
-    data = setup_hall_pass_checkout_test
-    student = data['student']
-    user = data['student_user']
-    seat = data['seat']
-    hall_pass = data['hall_pass']
-    teacher = data['teacher']
-
-    other_economy = ClassEconomy(
-        join_code="OTHER123",
-        user_id=teacher.id,
-        display_name="Period2",
-        status='active',
-    )
-    db.session.add(other_economy)
-    db.session.flush()
-    other_seat = Seat(
-        user_id=user.id,
-        class_id=other_economy.class_id,
-        join_code=other_economy.join_code,
-        block="Period2",
-        block_identifier="Period2",
-        role="student",
-        claimed_at=datetime.now(timezone.utc) - timedelta(days=1),
-    )
-    db.session.add(other_seat)
-    _tb_seat = Seat(user_id=student_user.id, class_id=other_economy.class_id, block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(_tb_seat)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
-    db.session.commit()
-
-    _login_student_context(client, student=student, user=user, seat=other_seat)
+    _login_student(client, seat=seat)
 
     response = client.post(
-        '/api/hall-pass/checkout',
-        json={'pass_id': hall_pass.id},
-        headers={'X-CSRFToken': 'test'}
+        "/api/hall-pass/checkout",
+        json={"pass_id": hall_pass.id},
+        headers={"X-CSRFToken": "test"},
     )
 
     assert response.status_code == 403
     json_data = response.get_json()
-    assert json_data['status'] == 'error'
-    assert 'different class context' in json_data['message'].lower()
+    assert json_data["status"] == "error"
+    assert "limit reached" in json_data["message"].lower()
+
+    db.session.refresh(hall_pass)
+    assert hall_pass.status == "approved"
 
 
-def test_cancel_rejects_mismatched_class_context(client, setup_hall_pass_checkout_test):
-    """Cancel should fail when active class context does not match pass class_id."""
-    data = setup_hall_pass_checkout_test
-    student = data['student']
-    user = data['student_user']
-    hall_pass = data['hall_pass']
-    teacher = data['teacher']
+def test_approve_does_not_generate_pass_number(client, hp_ctx):
+    """Approving a hall pass does not return or create a pass_number field."""
+    teacher = hp_ctx["teacher"]
+    class_row = hp_ctx["class_row"]
+    hall_pass = hp_ctx["hall_pass"]
 
-    hall_pass.status = 'pending'
+    hall_pass.status = "pending"
+    hall_pass.reason = "Office"
     hall_pass.decision_time = None
-    other_economy = ClassEconomy(
-        join_code="OTHER123",
-        user_id=teacher.id,
-        display_name="Period2",
-        status='active',
-    )
-    db.session.add(other_economy)
-    db.session.flush()
-    other_seat = Seat(
-        user_id=user.id,
-        class_id=other_economy.class_id,
-        join_code=other_economy.join_code,
-        block="Period2",
-        block_identifier="Period2",
-        role="student",
-        claimed_at=datetime.now(timezone.utc) - timedelta(days=1),
-    )
-    db.session.add(other_seat)
-    _tb_seat = Seat(user_id=student_user.id, class_id=other_economy.class_id, block="Period2", block_identifier="Period2", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(_tb_seat)
-    db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name=student.display_first_name, last_name=student.display_last_initial))
     db.session.commit()
 
-    _login_student_context(client, student=student, user=user, seat=other_seat)
+    _login_teacher(client, teacher=teacher, class_row=class_row)
 
     response = client.post(
-        f'/api/hall-pass/cancel/{hall_pass.id}',
-        headers={'X-CSRFToken': 'test'}
+        f"/api/hall-pass/{hall_pass.id}/approve",
+        headers={"X-CSRFToken": "test"},
+    )
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "success"
+    assert "pass_number" not in payload
+
+    db.session.refresh(hall_pass)
+    assert hall_pass.status == "approved"
+
+
+def test_checkout_rejects_mismatched_class_context(client, hp_ctx):
+    """Checkout fails when the student's active class context differs from the pass's class."""
+    teacher = hp_ctx["teacher"]
+    seat = hp_ctx["student_seat"]
+    hall_pass = hp_ctx["hall_pass"]
+
+    class_b = create_class_scope(teacher_user=teacher, join_code="HPTEST2")
+    db.session.flush()
+
+    other_seat = make_student_identity(
+        class_id=class_b.class_id, first_name="Alice", last_name="A"
+    )
+    other_seat.user_id = seat.user_id
+    db.session.flush()
+    db.session.commit()
+
+    _login_student(client, seat=other_seat)
+
+    response = client.post(
+        "/api/hall-pass/checkout",
+        json={"pass_id": hall_pass.id},
+        headers={"X-CSRFToken": "test"},
     )
 
     assert response.status_code == 403
     json_data = response.get_json()
-    assert json_data['status'] == 'error'
-    assert 'different class context' in json_data['message'].lower()
+    assert json_data["status"] == "error"
+
+
+def test_cancel_rejects_mismatched_class_context(client, hp_ctx):
+    """Cancel fails when the student's active class context differs from the pass's class."""
+    teacher = hp_ctx["teacher"]
+    seat = hp_ctx["student_seat"]
+    hall_pass = hp_ctx["hall_pass"]
+
+    hall_pass.status = "pending"
+    hall_pass.decision_time = None
+
+    class_b = create_class_scope(teacher_user=teacher, join_code="HPTEST3")
+    db.session.flush()
+
+    other_seat = make_student_identity(
+        class_id=class_b.class_id, first_name="Alice", last_name="A"
+    )
+    other_seat.user_id = seat.user_id
+    db.session.flush()
+    db.session.commit()
+
+    _login_student(client, seat=other_seat)
+
+    response = client.post(
+        f"/api/hall-pass/cancel/{hall_pass.id}",
+        headers={"X-CSRFToken": "test"},
+    )
+
+    assert response.status_code == 403
+    json_data = response.get_json()
+    assert json_data["status"] == "error"

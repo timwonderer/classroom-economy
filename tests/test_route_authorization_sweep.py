@@ -1,63 +1,50 @@
 
 from datetime import datetime, timezone, timedelta
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
-from tests.helpers.class_scope import make_student_identity
+from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.class_scope import make_student_identity, create_class_scope
 import pytest
 from app.extensions import db
-from app.models import User, UserRole, Admin, ClassEconomy, Transaction, TransactionStatus, StoreItem, StudentItem, IssueCategory, Issue, Seat, ClassFeature, IdentityProfile
+from app.models import User, UserRole, ClassEconomy, Transaction, TransactionStatus, StoreItem, StudentItem, IssueCategory, Issue, Seat, ClassFeature, IdentityProfile
 from tests.helpers.canonical_session import set_canonical_context
 
 def _login_admin(client, admin_id):
     with client.session_transaction() as sess:
-        sess["admin_id"] = admin_id
-        sess["is_admin"] = True
+        sess["user_id"] = admin_id
         sess["last_activity"] = datetime.now(timezone.utc).isoformat()
 
-def _login_student(client, student_id):
+def _login_student(client, student_user_id, class_id, seat_id):
     with client.session_transaction() as sess:
-        seat = Seat.query.filter_by(user_id=student_id).order_by(Seat.id.asc()).first()
-        if seat:
-            set_canonical_context(
-                sess,
-                user_id=student_id,
-                class_id=seat.class_id,
-                seat_id=seat.id,
-                role="student",
-            )
+        set_canonical_context(
+            sess,
+            user_id=student_user_id,
+            class_id=class_id,
+            seat_id=seat_id,
+            role="student",
+        )
 
 def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_class(client):
     """Verification display should require one class-bound teacher seat public ID."""
     admin = make_admin("hall_pass_admin", "secret")
     other_admin = make_admin("hall_pass_other", "secret")
-    db.session.add(admin)
-    db.session.add(other_admin)
     db.session.flush()
 
-    student_a = make_student_identity(block="A", first_name="Alpha", last_name="A")
-    student_b = make_student_identity(block="B", first_name="Bravo", last_name="B")
+    class_a = create_class_scope(teacher_user=admin, join_code="HPCLSA")
+    class_b = create_class_scope(teacher_user=admin, join_code="HPCLSB")
+    class_other = create_class_scope(teacher_user=other_admin, join_code="HPCLSO")
+    db.session.flush()
 
-    class_a = ClassEconomy(user_id=admin.id, status="active")
-    class_b = ClassEconomy(user_id=admin.id, status="active")
-    class_other = ClassEconomy(user_id=other_admin.id, status="active")
-    db.session.add_all([class_a, class_b, class_other])
+    student_a_seat = make_student_identity(class_id=class_a.class_id, first_name="Alpha", last_name="A")
+    student_b_seat = make_student_identity(class_id=class_other.class_id, first_name="Bravo", last_name="B")
     db.session.flush()
-    # Auto-injected Canonical User
-    student_a_user = User(username_hash=f"auto_{student_a.id}", username_lookup_hash=f"auto_l_{student_a.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_a_user)
-    db.session.flush()
-    teacher_seat_a = Seat(class_id=class_a.class_id, role="teacher")
-    teacher_seat_b = Seat(class_id=class_b.class_id, role="teacher")
-    db.session.add_all([
-        teacher_seat_a,
-        teacher_seat_b,
-        Seat(class_id=class_other.class_id, role="teacher"),
-    ])
+
+    teacher_seat_a = Seat.query.filter_by(class_id=class_a.class_id, role="teacher").first()
+    teacher_seat_b = Seat.query.filter_by(class_id=class_b.class_id, role="teacher").first()
 
     from app.models import HallPassLog
     now = datetime.now(timezone.utc)
     db.session.add_all([
         HallPassLog(
-            user_id=student_a_user.id,
+            user_id=student_a_seat.user_id,
             reason="Restroom",
             status="left",
             period="A",
@@ -66,7 +53,7 @@ def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_clas
             request_time=now,
         ),
         HallPassLog(
-            user_id=student_a_user.id,
+            user_id=student_a_seat.user_id,
             reason="Nurse",
             status="returned",
             period="B",
@@ -76,7 +63,7 @@ def test_hall_pass_active_requires_teacher_seat_public_id_and_scopes_to_one_clas
             request_time=now - timedelta(minutes=3),
         ),
         HallPassLog(
-            user_id=student_b_user.id,
+            user_id=student_b_seat.user_id,
             reason="Office",
             status="left",
             period="A",
@@ -114,30 +101,21 @@ def test_approve_redemption_requires_membership(client):
     """Test that redemption approval requires admin membership in the class."""
     admin_owner = make_admin("owner_admin", "secret")
     admin_intruder = make_admin("intruder_admin", "secret")
-    db.session.add_all([admin_owner, admin_intruder])
     db.session.flush()
 
-    student = make_student_identity(block="A", first_name="Redeem", last_name="S")
+    class_row = create_class_scope(teacher_user=admin_owner, join_code="REDEEM1")
+    db.session.flush()
 
-    db.session.add(ClassEconomy(user_id=admin_owner.id, status="active"))
+    student_seat = make_student_identity(class_id=class_row.class_id, first_name="Redeem", last_name="S")
     db.session.flush()
-    class_row = ClassEconomy.query.filter_by(join_code="REDEEM1").first()
-    # Intruder has NO membership
-    
-    # Create Item and StudentItem
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    seat = Seat(user_id=student_user.id, class_id=class_row.class_id, block="A", role="student")
-    db.session.add(seat)
-    db.session.flush()
+
+    seat = Seat.query.filter_by(user_id=student_seat.user_id, class_id=class_row.class_id, role="student").first()
     item = StoreItem(name="Prize", price=10, user_id=admin_owner.id, class_id=class_row.class_id, is_active=True)
     db.session.add(item)
     db.session.flush()
-    
-    student_item = StudentItem(correlation_id='corr_test', 
-        user_id=student_user.id,
+
+    student_item = StudentItem(correlation_id='corr_test',
+        user_id=student_seat.user_id,
         seat_id=seat.id,
         class_id=class_row.class_id,
         store_item_id=item.id,
@@ -159,44 +137,28 @@ def test_approve_redemption_requires_membership(client):
 
 def test_file_claim_scoped_to_class(client):
     """Test that insurance claims are scoped to the class of the policy."""
-    # Setup: Admin with 2 classes, seat-scoped student in both.
     admin = make_admin("claim_admin", "secret")
-    db.session.add(admin)
-    db.session.flush()
-    
-    student = make_student_identity(block="A", first_name="Claimer", last_name="S")
-
-    # Class A and Class B
-    db.session.add_all([
-        ClassEconomy(user_id=admin.id, status="active"),
-        ClassEconomy(user_id=admin.id, status="active"),
-    ])
     db.session.flush()
 
-    class_a = ClassEconomy.query.filter_by(join_code="CLAIM_A").first()
-    class_b = ClassEconomy.query.filter_by(join_code="CLAIM_B").first()
+    class_a = create_class_scope(teacher_user=admin, join_code="CLAIM_A")
+    class_b = create_class_scope(teacher_user=admin, join_code="CLAIM_B")
+    db.session.flush()
+
+    student_seat_a = make_student_identity(class_id=class_a.class_id, first_name="Claimer", last_name="S", claimed=True)
+    db.session.flush()
+    seat_b = Seat(user_id=student_seat_a.user_id, class_id=class_b.class_id, block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
+    db.session.add(seat_b)
+    db.session.flush()
+    db.session.add(IdentityProfile(seat_id=seat_b.id, profile_type='student_claimed', first_name="Claimer", last_name="S", class_id=class_b.class_id))
+    db.session.flush()
+
     db.session.add_all([
         ClassFeature(class_id=class_a.class_id, feature_name="insurance"),
         ClassFeature(class_id=class_b.class_id, feature_name="insurance"),
     ])
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    seat_a = Seat(user_id=student_user.id, class_id=class_a.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    seat_b = Seat(user_id=student_user.id, class_id=class_b.class_id, block="B", block_identifier="B", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add_all([seat_a, seat_b])
-    db.session.flush()
-    db.session.add_all([
-        IdentityProfile(seat_id=seat_a.id, profile_type='student_claimed', first_name="Claimer", last_name="S"),
-        IdentityProfile(seat_id=seat_b.id, profile_type='student_claimed', first_name="Claimer", last_name="S"),
-    ])
 
-    # Policy in Class A
+    seat_a = Seat.query.filter_by(user_id=student_seat_a.user_id, class_id=class_a.class_id, role="student").first()
+
     from app.models import InsurancePolicy, InsuranceEnrollment
     policy_a = InsurancePolicy(
         teacher_id=admin.id,
@@ -205,27 +167,22 @@ def test_file_claim_scoped_to_class(client):
         tier_level=1,
         title="Policy A",
         premium=10,
-        # deductible=0,
-        # coverage_percent=100,
         claim_type="transaction_monetary",
         is_active=True
     )
     db.session.add(policy_a)
     db.session.flush()
 
-    seat = Seat.query.filter_by(user_id=student_user.id, class_id=class_a.class_id).first()
-    assert seat is not None
     enrollment = InsuranceEnrollment(
         policy_id=policy_a.id,
-        seat_id=seat.id,
-        class_id=seat.class_id,
+        seat_id=seat_a.id,
+        class_id=seat_a.class_id,
         status="active",
         coverage_start_date=datetime.now(timezone.utc) - timedelta(days=1))
     db.session.add(enrollment)
 
-    # Transaction in Class B (should NOT be claimable under Policy A)
     tx_b = Transaction(
-        user_id=student_user.id,
+        user_id=student_seat_a.user_id,
         seat_id=seat_b.id,
         class_id=class_b.class_id,
         amount=-50,
@@ -234,9 +191,8 @@ def test_file_claim_scoped_to_class(client):
         description="Fine in Class B",
         timestamp=datetime.now(timezone.utc)
     )
-    # Transaction in Class A (Valid)
     tx_a = Transaction(
-        user_id=student_user.id,
+        user_id=student_seat_a.user_id,
         seat_id=seat_a.id,
         class_id=class_a.class_id,
         amount=-50,
@@ -248,21 +204,8 @@ def test_file_claim_scoped_to_class(client):
     db.session.add_all([tx_b, tx_a])
     db.session.commit()
 
-    _login_student(client, student.id)
-    # Set class context so get_current_class_context() resolves correctly
-    class_seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_a.class_id).first()
-    assert class_seat is not None
-    with client.session_transaction() as sess:
-        set_canonical_context(
-            sess,
-            user_id=student.user_id,
-            class_id=class_a.class_id,
-            seat_id=class_seat.id,
-            role="student",
-        )
-    
-    # 1. Try to claim Class B transaction on Policy A
-    # The form submission takes transaction_id
+    _login_student(client, student_seat_a.user_id, class_a.class_id, seat_a.id)
+
     response = client.post(
         f"/student/insurance/claim/{policy_a.id}",
         data={
@@ -273,12 +216,9 @@ def test_file_claim_scoped_to_class(client):
         },
         follow_redirects=True
     )
-    # Should fail: cross-class transaction is filtered out by strict scoping,
-    # so form validation rejects it OR the route explicitly blocks it.
-    assert response.status_code == 200  # Re-renders form (no redirect to success)
+    assert response.status_code == 200
     assert b"Claim submitted successfully" not in response.data
 
-    # 2. Claim Class A transaction (same class as policy) should not hit cross-class rejection
     response = client.post(
         f"/student/insurance/claim/{policy_a.id}",
         data={

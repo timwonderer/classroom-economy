@@ -1,12 +1,12 @@
 from decimal import Decimal
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
-from tests.helpers.class_scope import make_student_identity
+from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.class_scope import make_student_identity, create_class_scope
 import pytest
 from sqlalchemy.exc import IntegrityError
 
 from app.extensions import db
-from app.models import User, UserRole, Admin, IdentityProfile, Transaction
+from app.models import Transaction
 import app.utils.transaction_idempotency as transaction_idempotency
 from app.utils.transaction_idempotency import (
     IDEMPOTENT_TRANSACTION_TYPES,
@@ -18,8 +18,8 @@ from app.utils.transaction_idempotency import (
 
 def test_idempotent_transaction_types_are_explicit():
     expected = frozenset({
-        "insurance_reimbursement", 
-        "purchase", 
+        "insurance_reimbursement",
+        "purchase",
         "refund",
         "overdraft_fee",
         "payroll",
@@ -30,8 +30,9 @@ def test_idempotent_transaction_types_are_explicit():
 
 def test_create_idempotent_transaction_reuses_existing_row_on_retry(client):
     teacher = make_admin("idempotent-teacher", "secret")
-    student = make_student_identity(block="A", first_name="Retry", last_name="R")
-    db.session.add(teacher)
+    db.session.flush()
+    class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP123")
+    student = make_student_identity(class_id=class_row.class_id, first_name="Retry", last_name="R")
     db.session.commit()
 
     idempotency_key = insurance_reimbursement_key(123)
@@ -64,13 +65,14 @@ def test_create_idempotent_transaction_reuses_existing_row_on_retry(client):
 
 def test_create_idempotent_transaction_recovers_from_integrity_race(client, monkeypatch):
     teacher = make_admin("idempotent-race-teacher", "secret")
-    student = make_student_identity(block="A", first_name="Race", last_name="R")
-    db.session.add(teacher)
+    db.session.flush()
+    class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP456")
+    student = make_student_identity(class_id=class_row.class_id, first_name="Race", last_name="R")
     db.session.commit()
 
     idempotency_key = insurance_reimbursement_key(456)
     winning_tx = Transaction(
-        user_id=student.user_id,join_code="IDEMP456",
+        user_id=student.user_id, join_code="IDEMP456",
         amount=Decimal("11.00"),
         account_type="checking",
         type="insurance_reimbursement",
@@ -114,8 +116,9 @@ def test_create_idempotent_transaction_recovers_from_integrity_race(client, monk
 
 def test_create_idempotent_transaction_rejects_non_idempotent_types(client):
     teacher = make_admin("idempotent-invalid-teacher", "secret")
-    student = make_student_identity(block="A", first_name="Nope", last_name="N")
-    db.session.add(teacher)
+    db.session.flush()
+    class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP789")
+    student = make_student_identity(class_id=class_row.class_id, first_name="Nope", last_name="N")
     db.session.commit()
 
     with pytest.raises(ValueError):
@@ -134,8 +137,9 @@ def test_create_idempotent_transaction_rejects_non_idempotent_types(client):
 @pytest.mark.parametrize("bad_key", [None, "", "   "])
 def test_create_idempotent_transaction_rejects_empty_keys(client, bad_key):
     teacher = make_admin("idempotent-empty-key-teacher", "secret")
-    student = make_student_identity(block="A", first_name="Empty", last_name="E")
-    db.session.add(teacher)
+    db.session.flush()
+    class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP000")
+    student = make_student_identity(class_id=class_row.class_id, first_name="Empty", last_name="E")
     db.session.commit()
 
     with pytest.raises(ValueError):
@@ -153,8 +157,9 @@ def test_create_idempotent_transaction_rejects_empty_keys(client, bad_key):
 
 def test_create_idempotent_transaction_rejects_oversize_keys(client):
     teacher = make_admin("idempotent-long-key-teacher", "secret")
-    student = make_student_identity(block="A", first_name="Long", last_name="L")
-    db.session.add(teacher)
+    db.session.flush()
+    class_row = create_class_scope(teacher_user=teacher, join_code="IDEMP001")
+    student = make_student_identity(class_id=class_row.class_id, first_name="Long", last_name="L")
     db.session.commit()
 
     with pytest.raises(ValueError):

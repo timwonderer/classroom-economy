@@ -6,38 +6,26 @@ import json
 import secrets
 from datetime import datetime, timezone
 from app import db
-from app.models import Admin, TeacherOnboarding
+from app.models import TeacherOnboarding
 
 def login_admin(client, username='admin'):
     from app.utils.auth_username import hash_username_lookup
-    admin = Admin.query.filter_by(username_lookup_hash=hash_username_lookup(username)).first()
+    from app.models import User, UserRole
+    admin = User.query.filter_by(username_lookup_hash=hash_username_lookup(username)).first()
     if not admin:
-        import pyotp
-        totp_secret = pyotp.random_base32()
-        admin = make_admin(username, totp_secret)
-        db.session.add(admin)
+        admin = make_admin(username)
         db.session.commit()
 
-    # Ensure a User exists for this admin (required by canonical context)
-    from app.models import User, UserRole
-    user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
-    if not user:
-        user = User(
-            username_hash=admin.username_lookup_hash,
-            username_lookup_hash=admin.username_lookup_hash,
-            user_role=UserRole.TEACHER,
-        )
-        db.session.add(user)
-        db.session.commit()
+    nonce = secrets.token_urlsafe(32)
+    admin.current_session_nonce = nonce
+    db.session.commit()
 
     # Simulate login by setting session
     with client.session_transaction() as sess:
         sess['is_admin'] = True
         sess['admin_id'] = admin.id
-        sess['user_id'] = user.id
-        sess['current_session_nonce'] = secrets.token_urlsafe(32)
-        user.current_session_nonce = sess['current_session_nonce']
-        db.session.commit()
+        sess['user_id'] = admin.id
+        sess['current_session_nonce'] = nonce
         sess['last_activity'] = datetime.now(timezone.utc).isoformat()
         sess['_fresh'] = True
 

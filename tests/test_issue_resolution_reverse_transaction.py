@@ -3,7 +3,7 @@ from decimal import Decimal
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import User, UserRole, Admin, ClassEconomy, IdentityProfile, Issue, IssueCategory, Seat, Transaction, TransactionStatus
+from app.models import User, UserRole, ClassEconomy, IdentityProfile, Issue, IssueCategory, Seat, Transaction, TransactionStatus
 
 
 def _login_admin(client, admin_id):
@@ -14,8 +14,7 @@ def _login_admin(client, admin_id):
 
 
 def _build_issue_context():
-    teacher = make_admin("teacher_issue_reverse", "secret")
-    db.session.add(teacher)
+    teacher = make_admin("teacher_issue_reverse")
     db.session.flush()
 
     student_user = User(

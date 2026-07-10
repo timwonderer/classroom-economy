@@ -1,6 +1,6 @@
 import pytest
 from app.extensions import db
-from app.models import User, UserRole
+from app.models import User, UserRole, ClassEconomy
 from app.feats.base import FEATContextError, requires_feat_context, is_feat_active
 from tests.helpers.class_scope import make_student_identity
 
@@ -9,12 +9,12 @@ def test_commit_fails_outside_feat_context(app):
     CONFIRM: No mutation until a FEAT context is established.
     This is the core architectural safeguard.
     """
-    stu = make_student_identity(block="A", first_name="Illegal", last_name="M")
-    db.session.add(stu)
-    
+    user = User(user_role=UserRole.STUDENT, username_hash="test_feat_commit_guard_unique")
+    db.session.add(user)
+
     with pytest.raises(FEATContextError) as excinfo:
         db.session.commit()
-    
+
     assert "MANDATORY FEAT CONSTITUTIONAL VIOLATION (COMMIT)" in str(excinfo.value)
     db.session.rollback()
 
@@ -22,12 +22,12 @@ def test_flush_fails_outside_feat_context(app):
     """
     CONFIRM: No SQL emission (flush) until a FEAT context is established.
     """
-    stu = make_student_identity(block="A", first_name="IllegalFlush", last_name="M")
-    db.session.add(stu)
-    
+    user = User(user_role=UserRole.STUDENT, username_hash="test_feat_flush_guard_unique")
+    db.session.add(user)
+
     with pytest.raises(FEATContextError) as excinfo:
         db.session.flush()
-    
+
     assert "MANDATORY FEAT CONSTITUTIONAL VIOLATION (FLUSH)" in str(excinfo.value)
     db.session.rollback()
 
@@ -35,10 +35,20 @@ def test_commit_succeeds_inside_feat_context(app):
     """
     CONFIRM: Mutations are permitted in FEAT context without direct commit.
     """
+    teacher = User(user_role=UserRole.TEACHER, username_hash="feat_test_teacher_unique")
+    db.session.add(teacher)
+    # Need a FEAT context just to flush the teacher
+    from app.feats.base import FEATContext
+    with FEATContext("FEAT-SETUP"):
+        db.session.flush()
+    class_row = ClassEconomy(user_id=teacher.id, join_code="FEAT-TEST-CLS")
+    db.session.add(class_row)
+    with FEATContext("FEAT-SETUP2"):
+        db.session.flush()
+
     @requires_feat_context("FEAT-TEST-001")
     def legal_mutation():
-        stu = make_student_identity(block="A", first_name="Legal", last_name="M")
-        db.session.add(stu)
+        stu = make_student_identity(class_id=class_row.class_id, first_name="Legal", last_name="M")
         db.session.flush()
         return stu
 

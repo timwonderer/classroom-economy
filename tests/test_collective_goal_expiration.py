@@ -16,9 +16,9 @@ from decimal import Decimal
 
 from werkzeug.security import generate_password_hash
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_admin
 from app.extensions import db
-from app.models import User, UserRole, Admin, StoreItem, StorePurchase, Transaction, Seat, IdentityProfile, ClassEconomy, ClassFeature
+from app.models import User, UserRole, StoreItem, StorePurchase, Transaction, Seat, IdentityProfile, ClassEconomy, ClassFeature
 from app.utils.store import process_expired_collective_goals, refund_pending_collective_purchases
 from tests.helpers.admin_context import login_admin
 from tests.helpers.class_scope import create_class_scope
@@ -38,14 +38,14 @@ def _login_student(client, student_id, join_code):
             )
 
 
-def _login_admin(client, admin_id, join_code=None):
-    login_admin(client, admin_id, join_code)
+def _login_admin(client, teacher, join_code=None):
+    login_admin(client, teacher, join_code=join_code)
 
 
 def _create_teacher(username):
     """Create an Admin (teacher) and flush to get an id."""
-    teacher = make_admin(username, 'secret')
-    db.session.add(teacher)
+    teacher = make_admin(username)
+
     db.session.flush()
     return teacher
 
@@ -64,9 +64,8 @@ def _create_student(teacher, first_name, join_code, block='A'):
     db.session.add(student_user)
     db.session.flush()
     class_row = create_class_scope(
-        teacher=teacher,
+        teacher_user=teacher,
         join_code=join_code,
-        block=block,
         display_name=block,
     )
     seat = Seat(
@@ -577,7 +576,7 @@ def test_delete_active_collective_item_refunds_pending(client):
     db.session.add(si)
     db.session.commit()
 
-    _login_admin(client, teacher.id, 'JOINDEL')
+    _login_admin(client, teacher, 'JOINDEL')
     resp = client.post(f'/admin/store/delete/{item.id}')
     # Redirect expected after delete
     assert resp.status_code in (200, 302)
@@ -615,7 +614,7 @@ def test_delete_inactive_collective_item_does_not_refund(client):
     db.session.add(si)
     db.session.commit()
 
-    _login_admin(client, teacher.id, 'JOINDELINACT')
+    _login_admin(client, teacher, 'JOINDELINACT')
     resp = client.post(f'/admin/store/delete/{item.id}')
     assert resp.status_code in (200, 302)
 

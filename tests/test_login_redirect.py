@@ -10,7 +10,6 @@ def test_student_login_next_redirect(client):
     salt = get_random_salt()
     username = "stu1"
     admin = make_admin("login_redirect_teacher", pyotp.random_base32())
-    db.session.add(admin)
     db.session.flush()
     class_row = ClassEconomy(join_code="LOGIN-REDIRECT", user_id=admin.id, display_name="Login")
     profile = IdentityProfile(profile_type="student", first_name="Stu", last_name="S")
@@ -29,7 +28,6 @@ def test_student_login_next_redirect(client):
     seat = Seat(
         user_id=user.id,
         class_id=class_row.class_id,
-        join_code=class_row.join_code,
         role="student",
         claimed_at=utc_now(),
     )

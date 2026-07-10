@@ -5,28 +5,15 @@ import pytest
 import pyotp
 import bcrypt
 from datetime import datetime, timezone, timedelta
-from app.models import Admin, IdentityProfile, Seat, RecoveryRequest, StudentRecoveryCode, ClassEconomy, User, UserRole
+from app.models import IdentityProfile, Seat, RecoveryRequest, StudentRecoveryCode, ClassEconomy, User, UserRole
 from app.extensions import db
 from app.hash_utils import hash_username_lookup, get_random_salt, hash_hmac
 
 # Helper to create teacher
 def create_teacher(username="teacher1"):
-    salt = get_random_salt()
-    teacher = make_admin(username, pyotp.random_base32(),
-        salt=salt,
-        has_assigned_students=True
-    )
-    db.session.add(teacher)
+    teacher = make_admin(username)
     db.session.flush()
-    user = User(
-        user_role=UserRole.TEACHER,
-        username_hash=teacher.username_hash,
-        username_lookup_hash=teacher.username_lookup_hash,
-        totp_secret_encrypted=teacher.totp_secret,
-    )
-    db.session.add(user)
-    db.session.flush()
-    teacher._canonical_user_id_for_test = user.id
+    teacher._canonical_user_id_for_test = teacher.id
     return teacher
 
 # Helper to create student
@@ -40,8 +27,6 @@ def create_student(teacher, username="student1", block="A"):
 
     student = make_student_identity(
         class_id=class_row.class_id,
-        join_code=join_code,
-        block=block,
         first_name="Test",
         last_name="S",
         claimed=True,

@@ -1,60 +1,18 @@
-import pyotp
-
 from app import db
-from app.models import Admin, ClassEconomy, Seat, User, UserReport, UserRole
-from app.utils.auth_username import build_hashed_username_fields
+from app.models import ClassEconomy, Seat, UserReport
 from tests.helpers.canonical_session import set_canonical_context
+from tests.helpers.v2_fixtures import make_teacher
+from tests.helpers.class_scope import create_class_scope
+from tests.helpers.admin_context import login_teacher
 
 
 def _login_admin(client):
-    auth_username = "teacher_help"
-    salt, username_hash, username_lookup_hash = build_hashed_username_fields(auth_username)
-    admin = Admin(
-        username_hash=username_hash,
-        username_lookup_hash=username_lookup_hash,
-        salt=salt,
-        totp_secret=pyotp.random_base32(),
-    )
-    db.session.add(admin)
+    teacher = make_teacher("teacher_help")
     db.session.flush()
-    user = User(
-        user_role=UserRole.TEACHER,
-        username_hash=username_hash,
-        username_lookup_hash=username_lookup_hash,
-    )
-    db.session.add(user)
-    db.session.flush()
-    admin.user_id = user.id
-
-    db.session.add(ClassEconomy(
-        class_id="help-support-class",
-        user_id=admin.id,
-        join_code="ELA123",
-        display_name="ELA",
-        section="A",
-        status="active",
-    ))
-    teacher_seat = Seat(
-        user_id=user.id,
-        class_id="help-support-class",
-        role="teacher",
-        block="A",
-        block_identifier="A",
-        claimed_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
-    )
-    db.session.add(teacher_seat)
+    class_row = create_class_scope(teacher_user=teacher, join_code="ELA123", display_name="ELA", section="A")
     db.session.commit()
-    with client.session_transaction() as sess:
-        sess["admin_id"] = admin.id
-        sess["is_admin"] = True
-        set_canonical_context(
-            sess,
-            user_id=user.id,
-            class_id="help-support-class",
-            seat_id=teacher_seat.id,
-            role="teacher",
-            join_code="ELA123",
-        )
+    login_teacher(client, teacher, class_id=class_row.class_id, join_code="ELA123")
+    return teacher, class_row
 
 
 def test_help_support_page_renders(client):
@@ -67,7 +25,7 @@ def test_help_support_page_renders(client):
 
 
 def test_teacher_can_submit_class_scoped_support_ticket(client):
-    _login_admin(client)
+    teacher, class_row = _login_admin(client)
 
     response = client.post(
         "/admin/help-support",
@@ -89,4 +47,4 @@ def test_teacher_can_submit_class_scoped_support_ticket(client):
     assert report is not None
     assert report.title == "Roster sync issue"
     assert report.report_type == "comment"
-    assert report.description.startswith("SUPPORT_SCOPE|class_id=help-support-class|join_code=ELA123|class_label=ELA|category=general")
+    assert report.description.startswith(f"SUPPORT_SCOPE|class_id={class_row.class_id}|join_code=ELA123|class_label=ELA|category=general")

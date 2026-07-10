@@ -4,7 +4,7 @@ import os
 
 from werkzeug.security import generate_password_hash
 
-from app.models import User, UserRole, Admin, RentSettings, Seat, IdentityProfile
+from app.models import User, UserRole, RentSettings, Seat, IdentityProfile
 from app.extensions import db
 from app.hash_utils import get_random_salt, hash_username
 from tests.helpers.canonical_session import set_canonical_context
@@ -13,8 +13,7 @@ from tests.helpers.canonical_session import set_canonical_context
 def test_dashboard_handles_rent_with_multi_block_student(client):
     """Dashboard should render when rent is enabled for a multi-block student."""
 
-    teacher = make_admin("rent_teacher", "rentsecret")
-    db.session.add(teacher)
+    teacher = make_admin("rent_teacher")
     db.session.commit()
 
     student_user = User(

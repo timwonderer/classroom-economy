@@ -33,16 +33,13 @@ def _make_env(client):
     tag = f"obl-{_counter}"
 
     admin = make_admin(f"{tag}-teacher", "secret")
-    db.session.add(admin)
     db.session.flush()
 
-    student = make_student_identity(first_name="Canonical", last_name="T", block="A")
     class_row = create_class_scope(
-        teacher=admin,
+        teacher_user=admin,
         join_code=f"OBL-{_counter}",
-        student=student,
-        create_seat=True,
     )
+    student = make_student_identity(class_id=class_row.class_id, first_name="Canonical", last_name="T")
     db.session.flush()
 
     teacher_seat = Seat.query.filter_by(class_id=class_row.class_id, role="teacher").first()
@@ -52,8 +49,6 @@ def _make_env(client):
 
     rent_settings = RentSettings(
         class_id=class_row.class_id,
-        block="A",
-        is_enabled=True,
         rent_amount=Decimal("25.00"),
     )
     db.session.add(rent_settings)

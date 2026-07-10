@@ -19,7 +19,6 @@ import pytest
 from app.extensions import db
 from app.feats.base import FEATBypass
 from app.models import (
-    Admin,
     ClassEconomy,
     IdentityProfile,
     RedemptionAuditAction,
@@ -60,7 +59,7 @@ def _seed_redemption_scenario(*, username: str, join_code: str, item_price: Deci
         )
         db.session.add_all([admin, user])
         db.session.flush()
-        admin.user_id = user.id
+        admin.id = user.id
 
         profile = IdentityProfile(profile_type="student", first_name="X", last_name="S")
         db.session.add(profile)
@@ -311,7 +310,7 @@ def test_approve_redemption_rejects_intruder_admin_with_403(client):
 
     # Build a separate canonical admin who has NO membership in owner's class
     with FEATBypass():
-        intruder_admin = make_admin("intruder_isolation", "secret")
+        intruder_admin = make_admin("intruder_isolation")
         salt, uh, ulh = build_hashed_username_fields("intruder_isolation")
         intruder_user = User(
             username_hash=uh,
@@ -322,7 +321,7 @@ def test_approve_redemption_rejects_intruder_admin_with_403(client):
         )
         db.session.add_all([intruder_admin, intruder_user])
         db.session.flush()
-        intruder_admin.user_id = intruder_user.id
+        intruder_admin.id = intruder_user.id
         db.session.flush()
         # Snapshot IDs before commit (post-commit attribute access requires a live tx).
         intruder_admin_id = intruder_admin.id

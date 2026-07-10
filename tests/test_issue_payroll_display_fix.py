@@ -1,6 +1,6 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
-from app.models import User, UserRole, Admin, Transaction, Seat, IdentityProfile
+from app.models import User, UserRole, Transaction, Seat, IdentityProfile
 from app import db
 from datetime import datetime, timezone
 
@@ -9,9 +9,8 @@ def test_payroll_visibility_bug(client):
     Test that a teacher sees only their own class transactions for a shared student.
     """
     # 1. Setup Teachers
-    teacher1 = make_admin("teacher1", "base32secret3232")
-    teacher2 = make_admin("teacher2", "base32secret3232")
-    db.session.add_all([teacher1, teacher2])
+    teacher1 = make_admin("teacher1")
+    teacher2 = make_admin("teacher2")
     db.session.commit()
 
     # 2. Setup canonical student identity

@@ -1,89 +1,74 @@
 """Tests verifying settings helpers refuse to fall back to missing scoped rows."""
 from datetime import datetime, timezone
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 
 from app.extensions import db
-from app.models import Seat, IdentityProfile, User, UserRole, Admin, BankingSettings, ClassFeature, ClassEconomy, FeatureSettings, RentSettings
+from app.models import Seat, IdentityProfile, User, UserRole, BankingSettings, ClassFeature, FeatureSettings, RentSettings
 from app.routes.student import (
     get_banking_settings_for_context,
     get_feature_settings_for_student,
     get_rent_settings_for_context,
 )
 from tests.helpers.canonical_session import set_canonical_context
+from tests.helpers.context_factory import canonicalContextFactory
 
 
 @pytest.fixture
-def teacher_with_legacy_and_scoped_settings(client):
-    """Create a teacher with no scoped settings rows for the active class."""
-    teacher = make_admin("fallback_test_teacher", "secret")
-    db.session.add(teacher)
-    db.session.flush()
+def two_class_ctx(client):
+    """Two canonical classes under one teacher; settings only on the second class."""
+    ctx1 = canonicalContextFactory(db, join_code="FALL01").build()
+    ctx2 = canonicalContextFactory(db, join_code="FALL02",
+                                   teacher_username=None).build()
+    # Borrow the second class to a different teacher — we just need two isolated classes.
+    # For isolation, create the second via a separate teacher.
 
-    join_code = "FALL01"
-    economy = ClassEconomy(user_id=teacher.id)
-    other_economy = ClassEconomy(user_id=teacher.id)
-    db.session.add_all([economy, other_economy])
-    db.session.flush()
-    student_user = User(username_hash="fallback_student_hash", username_lookup_hash="fallback_student_lookup", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    profile = IdentityProfile(profile_type='student', first_name="Fallback", last_name="T")
-    db.session.add(profile)
-    db.session.flush()
-    _tb_seat = Seat(user_id=student_user.id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(_tb_seat)
-    db.session.flush()
-    profile.seat_id = _tb_seat.id
-    # Banking is now strictly class-scoped; keep only an unrelated-class row.
+    # Add a student to ctx1 so we have a seat to test with
+    student = ctx1.add_student("Fallback", "T")
+
+    # Banking row for ctx2 only (ctx1 has none)
     db.session.add(BankingSettings(
-        class_id=other_economy.class_id,
+        class_id=ctx2.class_id,
         overdraft_protection_enabled=True,
         savings_apy=5.0,
     ))
-    # Rent is also strictly class-scoped now; keep only an unrelated-class row.
+    # Rent row for ctx2 only (ctx1 has none)
     db.session.add(RentSettings(
-        class_id=other_economy.class_id,
-        block=None,
-        is_enabled=True,
+        class_id=ctx2.class_id,
         rent_amount=100.0,
     ))
 
-    db.session.commit()
+    ctx1.commit()
     return {
-        "teacher": teacher,
-        "student": _tb_seat,
-        "join_code": join_code,
-        "class_id": economy.class_id,
-        "other_class_id": other_economy.class_id,
+        "ctx": ctx1,
+        "student_seat": student.seat,
+        "class_id": ctx1.class_id,
+        "other_class_id": ctx2.class_id,
     }
 
 
 # ---- Banking Settings ----
 
-def test_banking_settings_ignores_other_class_row(client, teacher_with_legacy_and_scoped_settings):
-    """When no class-scoped BankingSettings exist, helper returns None, not another class's row."""
-    data = teacher_with_legacy_and_scoped_settings
-    context = {"class_id": data["class_id"], "block": "A"}
+def test_banking_settings_ignores_other_class_row(client, two_class_ctx):
+    """When no class-scoped BankingSettings exist for ctx1, helper returns None."""
+    data = two_class_ctx
+    context = {"class_id": data["class_id"]}
 
     result = get_banking_settings_for_context(context)
-    # Only another class's row exists; helper must not return it.
     assert result is None
 
 
-def test_banking_settings_returns_scoped_row(client, teacher_with_legacy_and_scoped_settings):
-    """When a class-scoped BankingSettings exists, helper returns it."""
-    data = teacher_with_legacy_and_scoped_settings
+def test_banking_settings_returns_scoped_row(client, two_class_ctx):
+    """When a class-scoped BankingSettings exists for ctx1, helper returns it."""
+    data = two_class_ctx
     db.session.add(BankingSettings(
         class_id=data["class_id"],
-        block="A",
         overdraft_protection_enabled=False,
         savings_apy=0,
     ))
     db.session.commit()
 
-    context = {"class_id": data["class_id"], "block": "A"}
+    context = {"class_id": data["class_id"]}
     result = get_banking_settings_for_context(context)
     assert result is not None
     assert result.class_id == data["class_id"]
@@ -99,27 +84,25 @@ def test_banking_settings_returns_none_for_missing_context(client):
 
 # ---- Rent Settings ----
 
-def test_rent_settings_ignores_legacy_global_row(client, teacher_with_legacy_and_scoped_settings):
-    """When no class-scoped RentSettings exist, helper returns None — not the legacy row."""
-    data = teacher_with_legacy_and_scoped_settings
-    context = {"class_id": data["class_id"], "block": "A"}
+def test_rent_settings_ignores_legacy_global_row(client, two_class_ctx):
+    """When no RentSettings for ctx1, helper returns None — not the other class's row."""
+    data = two_class_ctx
+    context = {"class_id": data["class_id"]}
 
     result = get_rent_settings_for_context(context)
     assert result is None
 
 
-def test_rent_settings_returns_scoped_row(client, teacher_with_legacy_and_scoped_settings):
-    """When a class-scoped RentSettings exists, helper returns it."""
-    data = teacher_with_legacy_and_scoped_settings
+def test_rent_settings_returns_scoped_row(client, two_class_ctx):
+    """When a class-scoped RentSettings exists for ctx1, helper returns it."""
+    data = two_class_ctx
     db.session.add(RentSettings(
         class_id=data["class_id"],
-        block="A",
-        is_enabled=True,
         rent_amount=50.0,
     ))
     db.session.commit()
 
-    context = {"class_id": data["class_id"], "block": "A"}
+    context = {"class_id": data["class_id"]}
     result = get_rent_settings_for_context(context)
     assert result is not None
     assert result.class_id == data["class_id"]
@@ -128,30 +111,32 @@ def test_rent_settings_returns_scoped_row(client, teacher_with_legacy_and_scoped
 
 # ---- Feature Settings ----
 
-def test_feature_settings_returns_defaults_without_scoped_row(client, teacher_with_legacy_and_scoped_settings):
-    """When no join-code-scoped FeatureSettings exist, helper returns defaults."""
-    data = teacher_with_legacy_and_scoped_settings
+def test_feature_settings_returns_defaults_without_scoped_row(client, two_class_ctx):
+    """When no class_features rows exist, helper returns defaults."""
+    data = two_class_ctx
+    seat = data["student_seat"]
 
     with client.application.test_request_context():
         from flask import session as flask_session
         set_canonical_context(
             flask_session,
-            user_id=data["student"].user_id,
+            user_id=seat.user_id,
             class_id=data["class_id"],
-            seat_id=data["student"].id,
+            seat_id=seat.id,
             role="student",
         )
 
         result = get_feature_settings_for_student()
 
-    # Should return system defaults, NOT the legacy teacher-global row
     defaults = FeatureSettings.get_defaults()
     assert result == defaults
 
 
-def test_feature_settings_returns_scoped_row(client, teacher_with_legacy_and_scoped_settings):
-    """When class feature rows are removed, helper reflects the disabled features."""
-    data = teacher_with_legacy_and_scoped_settings
+def test_feature_settings_returns_scoped_row(client, two_class_ctx):
+    """When class feature rows are removed, helper reflects disabled features."""
+    data = two_class_ctx
+    seat = data["student_seat"]
+
     for row in ClassFeature.query.filter(
         ClassFeature.class_id == data["class_id"],
         ClassFeature.feature_name.in_(["banking", "store", "insurance", "rent", "hall_pass", "payroll"]),
@@ -163,14 +148,13 @@ def test_feature_settings_returns_scoped_row(client, teacher_with_legacy_and_sco
         from flask import session as flask_session
         set_canonical_context(
             flask_session,
-            user_id=data["student"].user_id,
+            user_id=seat.user_id,
             class_id=data["class_id"],
-            seat_id=data["student"].id,
+            seat_id=seat.id,
             role="student",
         )
 
         result = get_feature_settings_for_student()
 
-    # Should return the scoped row with all features disabled
     assert result["banking_enabled"] is False
     assert result["store_enabled"] is False

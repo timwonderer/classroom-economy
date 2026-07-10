@@ -7,7 +7,6 @@ from app.services import obligations_service
 from app.models import (
     User,
     UserRole,
-    Admin,
     ClassEconomy,
     InsurancePolicy,
     InsuranceClaim,
@@ -41,8 +40,7 @@ def _create_policy(admin_id: int, *, title: str = "Snapshot Coverage", max_claim
 
 
 def test_insurance_policy_version_increments_on_edit(client):
-    admin = make_admin("policy-version-admin", "secret")
-    db.session.add(admin)
+    admin = make_admin("policy-version-admin")
     db.session.commit()
 
     policy = _create_policy(admin.id)
@@ -56,19 +54,16 @@ def test_insurance_policy_version_increments_on_edit(client):
 
 
 def test_student_insurance_keeps_frozen_snapshot_after_policy_edit(client, test_student):
-    admin = make_admin("snapshot-admin", "secret")
-    db.session.add(admin)
+    admin = make_admin("snapshot-admin")
     db.session.commit()
 
     policy = _create_policy(admin.id, title="Original Policy", max_claim_amount=Decimal("42.00"))
 
     class_row = create_class_scope(
-        teacher=admin,
+        teacher_user=admin,
         student=test_student,
         block="A",
         display_name="A",
-        create_claimed_teacher_block=True,
-        teacher_block_claimed=False,
     )
     seat = Seat.query.filter_by(class_id=class_row.class_id, role="student").first()
     assert seat is not None
@@ -103,12 +98,12 @@ def test_student_insurance_keeps_frozen_snapshot_after_policy_edit(client, test_
 
 
 def test_admin_claim_approval_uses_frozen_claim_cap(client, test_student):
-    admin = make_admin("snapshot-claim-admin", "secret")
-    db.session.add(admin)
+    admin = make_admin("snapshot-claim-admin")
     db.session.flush()
 
     db.session.commit()
-    class_row = create_class_scope(teacher=admin, student=test_student, block="A")
+    class_row = create_class_scope(
+        teacher_user=admin, student=test_student, block="A")
     db.session.commit()
 
     policy = _create_policy(admin.id, title="Claim Cap Policy", max_claim_amount=Decimal("100.00"))

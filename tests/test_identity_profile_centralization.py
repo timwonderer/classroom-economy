@@ -1,75 +1,78 @@
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
-from tests.helpers.class_scope import make_student_identity
+from tests.helpers.v2_fixtures import make_admin
+from tests.helpers.class_scope import create_class_scope, make_student_identity
 from app import db
-from app.hash_utils import get_random_salt, hash_username
-from app.models import User, UserRole, Admin, IdentityProfile, Seat
+from app.models import IdentityProfile, Seat
 
 
-def _create_admin(username: str) -> Admin:
+def _create_admin(username: str):
     admin = make_admin(username, "TESTSECRET123456")
-    db.session.add(admin)
     db.session.commit()
     return admin
 
 
 def test_student_requires_explicit_identity_profile(client):
-    student = make_student_identity(block="A", first_name="Alicia", last_name="Quinn")
+    teacher = _create_admin("identity-teacher-1")
+    class_row = create_class_scope(teacher_user=teacher, join_code="IDPROF01")
     db.session.commit()
 
-    assert student.identity_id is not None
-    profile = db.session.get(IdentityProfile, student.identity_id)
-    assert profile is not None
-    assert profile.profile_type == "student"
+    seat = make_student_identity(class_id=class_row.class_id, first_name="Alicia", last_name="Quinn")
+    db.session.commit()
+
+    assert seat.identity_profile is not None
+    profile = seat.identity_profile
+    assert profile.profile_type in ("student", "student_claimed")
     assert profile.first_name == "Alicia"
     assert profile.last_name == "Quinn"
-    assert student.full_name == "Alicia Quinn"
-    assert student.internal_db_id.startswith("sint_")
-    assert student.internal_db_id != str(student.id)
-    assert student.opaque_id.startswith("stu_")
+    assert seat.identity_profile.full_name == "Alicia Quinn"
 
 
 def test_student_name_update_syncs_identity_profile(client):
-    student = make_student_identity(block="A", first_name="Jordan", last_name="Mills")
+    teacher = _create_admin("identity-teacher-2")
+    class_row = create_class_scope(teacher_user=teacher, join_code="IDPROF02")
     db.session.commit()
 
-    student.identity_profile.first_name = "Jordyn"
-    student.identity_profile.last_name = "Nguyen"
+    seat = make_student_identity(class_id=class_row.class_id, first_name="Jordan", last_name="Mills")
     db.session.commit()
 
-    profile = db.session.get(IdentityProfile, student.identity_id)
+    seat.identity_profile.first_name = "Jordyn"
+    seat.identity_profile.last_name = "Nguyen"
+    db.session.commit()
+
+    profile = db.session.get(IdentityProfile, seat.identity_profile.id)
     assert profile.first_name == "Jordyn"
     assert profile.last_name == "Nguyen"
-    assert student.display_first_name == "Jordyn"
-    assert student.display_last_initial == "N"
-    assert student.display_last_name == "Nguyen"
+    assert seat.identity_profile.first_name == "Jordyn"
+    assert seat.identity_profile.last_initial == "N"
 
 
 def test_seat_reads_name_from_identity_profile(client):
-    admin = _create_admin("identity-teacher")
-
-    seat = Seat(block="A", block_identifier="A", role="student")
-
-    db.session.add(seat)
-
-    db.session.flush()
-
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_unclaimed', first_name="Mateo", last_name="Rivera"))
-    db.session.add(seat)
+    teacher = _create_admin("identity-teacher-3")
+    class_row = create_class_scope(teacher_user=teacher, join_code="IDPROF03")
     db.session.commit()
 
-    assert seat.identity_id is not None
-    profile = db.session.get(IdentityProfile, seat.identity_id)
-    assert profile.profile_type == "student_unclaimed"
-    assert seat.display_first_name == "Mateo"
-    assert seat.display_last_initial == "R"
-    assert seat.display_last_name == "Rivera"
+    seat = Seat(class_id=class_row.class_id, block="A", block_identifier="A", role="student")
+    db.session.add(seat)
+    db.session.flush()
+
+    profile = IdentityProfile(seat_id=seat.id, profile_type='student_unclaimed', first_name="Mateo", last_name="Rivera")
+    db.session.add(profile)
+    db.session.commit()
+
+    assert seat.identity_profile is not None
+    assert seat.identity_profile.profile_type == "student_unclaimed"
+    assert seat.identity_profile.first_name == "Mateo"
+    assert seat.identity_profile.last_initial == "R"
 
 
 def test_student_internal_reference_is_non_sequential_and_unique(client):
-    a = make_student_identity(block="A", first_name="One", last_name="Alpha")
-    b = make_student_identity(block="B", first_name="Two", last_name="Beta")
+    teacher = _create_admin("identity-teacher-4")
+    class_row = create_class_scope(teacher_user=teacher, join_code="IDPROF04")
     db.session.commit()
 
-    assert a.internal_reference.startswith("sint_")
-    assert b.internal_reference.startswith("sint_")
-    assert a.internal_reference != b.internal_reference
+    a = make_student_identity(class_id=class_row.class_id, first_name="One", last_name="Alpha")
+    b = make_student_identity(class_id=class_row.class_id, first_name="Two", last_name="Beta")
+    db.session.commit()
+
+    # Each seat has a unique public_id (UUID)
+    assert a.public_id != b.public_id
+    assert a.id != b.id

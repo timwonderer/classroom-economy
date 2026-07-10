@@ -14,7 +14,7 @@ import os
 from werkzeug.security import generate_password_hash
 
 from app import db
-from app.models import User, UserRole, Admin, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus, Seat, IdentityProfile
+from app.models import User, UserRole, RentSettings, RentItem, ClassEconomy, Transaction, TransactionStatus, Seat, IdentityProfile
 from tests.helpers.class_scope import make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -22,16 +22,8 @@ from tests.helpers.canonical_session import set_canonical_context
 @pytest.fixture
 def setup_rent_with_items(client):
     """Create teacher, student, rent settings, and rent items."""
-    teacher = make_admin("test_teacher", "secret123")
-    db.session.add(teacher)
-    db.session.commit()
-
-    student_seat = make_student_identity(
-        join_code="TESTA",
-        block="A",
-        first_name="Test",
-        last_name="S",
-    )
+    teacher = make_admin("test_teacher")
+    db.session.flush()
     db.session.commit()
 
     economy = ClassEconomy(
@@ -43,7 +35,12 @@ def setup_rent_with_items(client):
     db.session.add(economy)
     db.session.flush()
 
-    student_seat.class_id = economy.class_id
+    student_seat = make_student_identity(
+        class_id=economy.class_id,
+        first_name="Test",
+        last_name="S",
+        claimed=True,
+    )
     db.session.commit()
 
     # Create rent settings (join-code scoped)

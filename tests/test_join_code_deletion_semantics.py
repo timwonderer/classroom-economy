@@ -3,27 +3,26 @@ import pyotp
 from datetime import datetime, timezone
 
 from app import db
-from app.models import Seat, User, UserRole, Admin, Transaction, StoreItem, StoreItemBlock, StudentItem, IssueCategory, Issue
+from app.models import Seat, User, UserRole, Transaction, StoreItem, StoreItemBlock, StudentItem, IssueCategory, Issue
 from app.hash_utils import get_random_salt, hash_hmac
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.class_scope import make_student_identity
 
 
-def _create_admin(username: str) -> tuple[Admin, str]:
+def _create_admin(username: str) -> tuple[str]:
     secret = pyotp.random_base32()
     admin = make_admin(username, secret)
-    db.session.add(admin)
     db.session.commit()
     return admin, secret
 
 
-def _create_student(teacher: Admin, first_name: str, block: str, join_code: str):
+def _create_student(teacher: User, first_name: str, block: str, join_code: str):
     seat = make_student_identity(first_name=first_name, last_name=first_name[0].upper(), block=block, join_code=join_code)
     db.session.commit()
     return seat
 
 
-def _login_admin(client, admin: Admin, secret: str):
+def _login_admin(client, admin: User, secret: str):
     response = client.post(
         "/admin/login",
         data={"username": "teacher1", "totp_code": pyotp.TOTP(secret).now()},

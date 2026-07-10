@@ -24,15 +24,14 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import pytest
 from datetime import datetime, timezone
 from app import db
-from app.models import Admin, PayrollSettings
+from app.models import PayrollSettings
 from app.utils.economy_balance import EconomyBalanceChecker
 
 
 @pytest.fixture
 def admin_with_exact_payroll(client):
     """Create admin with exact user payroll settings."""
-    admin = make_admin("testrentcalc", "TESTSECRET123456")
-    db.session.add(admin)
+    admin = make_admin("testrentcalc")
     db.session.flush()
 
     # User's exact settings
@@ -191,8 +190,7 @@ def test_multi_block_validation_uses_correct_cwi(client):
     This test creates two blocks with very different CWI values to make the bug obvious.
     """
     # Create admin with two blocks
-    admin = make_admin("multiblockteacher", "TESTSECRET789")
-    db.session.add(admin)
+    admin = make_admin("multiblockteacher")
     db.session.flush()
 
     # Block A: User's exact settings (CWI = $281.25)

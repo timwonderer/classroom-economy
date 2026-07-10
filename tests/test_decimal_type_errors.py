@@ -16,7 +16,7 @@ from decimal import Decimal
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from app.models import (
-    Admin, Transaction, RentSettings, RentPayment, BankingSettings, Seat, User, UserRole, _quantize_currency
+    Transaction, RentSettings, RentPayment, BankingSettings, Seat, User, UserRole, _quantize_currency
 )
 from app.extensions import db
 from tests.helpers.class_scope import create_class_scope
@@ -38,16 +38,13 @@ class TestDecimalTypeErrors:
         TypeError when rent_settings.rent_amount (Decimal) is added to late_fee (float 0.0).
         """
         # Create teacher
-        teacher = make_admin('teacher_rent_decimal', 'test_secret')
-        db.session.add(teacher)
+        teacher = make_admin('teacher_rent_decimal')
         db.session.flush()
         # Build the canonical v2 class fixture; it returns the class_id we scope against.
         class_scope = create_class_scope(
             teacher=teacher,
             block='A',
             display_name='A',
-            create_claimed_teacher_block=True,
-            teacher_block_claimed=False,
         )
 
         # Create rent settings
@@ -96,8 +93,7 @@ class TestDecimalTypeErrors:
         decimal.InvalidOperation when comparing Decimal to integer 0 in certain contexts.
         """
         # Create teacher
-        teacher = make_admin('teacher_earnings_decimal', 'test_secret')
-        db.session.add(teacher)
+        teacher = make_admin('teacher_earnings_decimal')
         db.session.flush()
 
         # Create student
@@ -113,8 +109,6 @@ class TestDecimalTypeErrors:
             student=student,
             block='A',
             display_name='A',
-            create_claimed_teacher_block=True,
-            teacher_block_claimed=False,
         )
 
         seat = Seat.query.filter_by(class_id=class_scope.class_id, role="student").first()
@@ -232,16 +226,13 @@ class TestDecimalTypeErrors:
         at student.py line 1107
         """
         # Create teacher
-        teacher = make_admin('teacher_regression', 'test_secret')
-        db.session.add(teacher)
+        teacher = make_admin('teacher_regression')
         db.session.flush()
         # Build the canonical v2 class fixture; it returns the class_id we scope against.
         class_scope = create_class_scope(
             teacher=teacher,
             block='A',
             display_name='A',
-            create_claimed_teacher_block=True,
-            teacher_block_claimed=False,
         )
 
         # Create rent settings (rent_amount is Decimal from db)
@@ -291,8 +282,7 @@ class TestDecimalTypeErrors:
         from unittest.mock import patch
         
         # Create teacher
-        teacher = make_admin('teacher_interest_test', 'test_secret')
-        db.session.add(teacher)
+        teacher = make_admin('teacher_interest_test')
         db.session.flush()
 
         join_code = 'INTEREST_TEST'
@@ -309,8 +299,6 @@ class TestDecimalTypeErrors:
             student=student,
             block='A',
             display_name='Interest Test Class',
-            create_claimed_teacher_block=True,
-            teacher_block_claimed=False,
         )
 
         seat = Seat.query.filter_by(class_id=class_scope.class_id, role='student').first()
@@ -381,13 +369,12 @@ class TestDecimalTypeErrors:
         Fix: Use Decimal('0.00') as the fallback when scalar() returns None.
         """
         from app.models import (
-            Admin, InsurancePolicy, InsuranceEnrollment,
+            InsurancePolicy, InsuranceEnrollment,
         )
         from tests.helpers.class_scope import create_class_scope
 
         # Create teacher
-        teacher = make_admin('teacher_claim_cap', 'test_secret')
-        db.session.add(teacher)
+        teacher = make_admin('teacher_claim_cap')
         db.session.flush()
 
         # Create student
@@ -419,9 +406,6 @@ class TestDecimalTypeErrors:
             student=student,
             block='A',
             display_name='A',
-            create_claimed_teacher_block=True,
-            teacher_block_claimed=True,
-            create_seat=True,
         )
         db.session.flush()
 

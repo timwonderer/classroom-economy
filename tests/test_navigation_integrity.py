@@ -29,7 +29,6 @@ def integrity_tester(client):
 def test_teacher_navigation_integrity(client, integrity_tester):
     """Test full teacher navigation tree for 500s and mutations."""
     admin = make_admin("nav_teacher", "secret")
-    db.session.add(admin)
     db.session.commit()
 
     onboarding = TeacherOnboarding(
@@ -40,22 +39,11 @@ def test_teacher_navigation_integrity(client, integrity_tester):
     db.session.add(onboarding)
     
     class_row = create_class_scope(
-        teacher=admin,
-        student=None,
-        block="A",
-        create_student_membership=False,
-        create_seat=False
+        teacher_user=admin,
     )
-    student = make_student_identity(block="A", first_name="Nav", last_name="T")
-    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
-    if not student_user:
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-        db.session.add(student_user)
-        db.session.flush()
-    _tb_seat = Seat(user_id=student_user.id, class_id=class_row.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(_tb_seat)
+    student = make_student_identity(class_id=class_row.class_id, first_name="Nav", last_name="T", claimed=True)
     db.session.flush()
-    db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name="Nav", last_name="T"))
+    _tb_seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_row.class_id, role="student").first()
     replace_enabled_class_features(
         class_row.class_id,
         {"insurance", "banking", "rent", "hall_pass", "store"},
@@ -65,9 +53,9 @@ def test_teacher_navigation_integrity(client, integrity_tester):
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
-            user_id=admin.user_id or admin.id,
+            user_id=admin.id,
             class_id=class_row.class_id,
-            seat_id=Seat.query.filter_by(class_id=class_row.class_id, user_id=student_user.id).first().id,
+            seat_id=_tb_seat.id,
             role="teacher",
         )
         sess['admin_id'] = admin.id
@@ -78,37 +66,19 @@ def test_teacher_navigation_integrity(client, integrity_tester):
 def test_student_navigation_integrity(client, integrity_tester):
     """Test full student navigation tree for 500s and mutations."""
     teacher = make_admin("nav_teacher2", "secret")
-    db.session.add(teacher)
+    db.session.flush()
     db.session.commit()
 
-    class_row = create_class_scope(
-        teacher=teacher,
-        student=None,
-        block="A",
-        create_student_membership=False,
-        create_seat=False
-    )
-    
-    student = make_student_identity(block="A", first_name="Nav", last_name="S")
-    student_user = User.query.filter_by(username_hash=f"auto_{student.id}").first()
-    if not student_user:
-        student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-        db.session.add(student_user)
-        db.session.flush()
-    seat = Seat(user_id=student_user.id, class_id=class_row.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
-
-    db.session.add(seat)
-
+    class_row = create_class_scope(teacher_user=teacher)
+    student = make_student_identity(class_id=class_row.class_id, first_name="Nav", last_name="S", claimed=True)
     db.session.flush()
-
-    db.session.add(IdentityProfile(seat_id=seat.id, profile_type='student_claimed', first_name="Nav", last_name="S"))
-    db.session.add(seat)
+    seat = Seat.query.filter_by(user_id=student.user_id, class_id=class_row.class_id, role="student").first()
     db.session.commit()
 
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
-            user_id=student_user.id,
+            user_id=student.user_id,
             class_id=seat.class_id,
             seat_id=seat.id,
             role="student",
@@ -120,7 +90,6 @@ def test_student_navigation_integrity(client, integrity_tester):
 def test_sysadmin_navigation_integrity(client, integrity_tester):
     """Test sysadmin navigation tree."""
     sysadmin = make_sysadmin("nav_sysadmin", "secret")
-    db.session.add(sysadmin)
     db.session.commit()
 
     with client.session_transaction() as sess:

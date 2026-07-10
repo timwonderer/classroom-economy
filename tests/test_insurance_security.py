@@ -8,7 +8,6 @@ from app import db
 from app.models import (
     User,
     UserRole,
-    Admin,
     ClassEconomy,
     InsuranceEnrollment,
     InsurancePolicy,
@@ -26,8 +25,7 @@ from tests.helpers.class_scope import create_class_scope
 
 @pytest.fixture
 def admin_user():
-    admin = make_admin("teacher-insurance", "totp-secret")
-    db.session.add(admin)
+    admin = make_admin("teacher-insurance")
     db.session.commit()
     return admin
 
@@ -97,7 +95,8 @@ def _build_claim(enrollment, policy, student_id, transaction):
 
 
 def _ensure_admin_class_scope(admin, student, join_code="JOIN-INS-SEC", block="A"):
-    class_row = create_class_scope(teacher=admin, join_code=join_code, student=student, block=block)
+    class_row = create_class_scope(
+        teacher_user=admin, join_code=join_code, student=student, block=block)
     db.session.commit()
     return class_row
 

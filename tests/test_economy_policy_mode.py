@@ -5,7 +5,6 @@ from decimal import Decimal
 
 from app import db
 from app.models import (
-    Admin,
     ClassEconomy,
     FeatureSettings,
     IdentityProfile,
@@ -40,38 +39,21 @@ from app.utils.economy_rebalance import (
 )
 
 
-def _login_admin(client, admin_id, *, join_code=None, class_id=None):
-    resolved_join_code = join_code
+def _login_admin(client, teacher_id, *, join_code=None, class_id=None):
+    from tests.helpers.admin_context import login_teacher
+    teacher = db.session.get(User, teacher_id)
+    if teacher is None:
+        return
     resolved_class_id = class_id
-    if not resolved_join_code:
-        class_row = ClassEconomy.query.filter_by(user_id=admin_id).first()
-        if class_row:
-            resolved_join_code = class_row.join_code
-            resolved_class_id = class_row.class_id
-    if not resolved_class_id and resolved_join_code:
-        class_row = ClassEconomy.query.with_entities(ClassEconomy.class_id).filter_by(
-            join_code=resolved_join_code,
-            teacher_id=admin_id,
-        ).first()
-        resolved_class_id = class_row[0] if class_row and class_row[0] else None
-
-    admin = Admin.query.get(admin_id)
-    user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first() if admin else None
-    seat = Seat.query.filter_by(class_id=resolved_class_id, role="teacher").first() if resolved_class_id else None
-
-    with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = admin_id
-        if user:
-            sess['user_id'] = user.id
-        if seat:
-            sess['current_seat_id'] = seat.id
-        sess['is_system_admin'] = False
-        if resolved_join_code:
-            sess['current_join_code'] = resolved_join_code
-        if resolved_class_id:
-            sess['current_class_id'] = resolved_class_id
-        sess['last_activity'] = datetime.now(timezone.utc).isoformat()
+    if not resolved_class_id and join_code:
+        row = ClassEconomy.query.filter_by(join_code=join_code).first()
+        if row:
+            resolved_class_id = row.class_id
+    if not resolved_class_id:
+        row = ClassEconomy.query.filter_by(user_id=teacher_id).first()
+        if row:
+            resolved_class_id = row.class_id
+    login_teacher(client, teacher, class_id=resolved_class_id, join_code=join_code)
 
 
 def _create_teacher_seat(admin_id, block='A', join_code='JOINPOLA', class_id=None):
@@ -89,26 +71,18 @@ def _create_teacher_seat(admin_id, block='A', join_code='JOINPOLA', class_id=Non
 
 
 def _create_admin_with_block(block='A', join_code='JOINPOLA'):
-    admin = make_admin(f"policyadmin_{block.lower()}_{join_code.lower()}", "TESTSECRET123456")
-    user = User(
-        user_role=UserRole.TEACHER,
-        username_hash=admin.username_hash,
-        username_lookup_hash=admin.username_lookup_hash,
-        totp_secret_encrypted=admin.totp_secret,
-    )
-    db.session.add_all([admin, user])
+    from tests.helpers.class_scope import create_class_scope
+    teacher = make_admin(f"policyadmin_{block.lower()}_{join_code.lower()}")
     db.session.flush()
 
-    economy = ClassEconomy(
+    economy = create_class_scope(
+        teacher_user=teacher,
         join_code=join_code,
-        user_id=admin.id,
         display_name=f'Period {block}',
         section=block,
     )
-    db.session.add(economy)
     db.session.flush()
-
-    _create_teacher_seat(admin.id, block=block, join_code=join_code, class_id=economy.class_id)
+    admin = teacher
 
     payroll_settings = PayrollSettings(
         class_id=economy.class_id,
@@ -439,7 +413,7 @@ def test_join_code_cycle_locks_rent_rate_after_first_payment(client):
     db.session.flush()
     coverage_due_date = datetime(2026, 3, 1, 0, 0, tzinfo=timezone.utc)
 
-    seat = make_student_identity(first_name="Rate", last_name="L", block="A", join_code=join_code, class_id=lock_class.class_id)
+    seat = make_student_identity(first_name="Rate", last_name="L", class_id=lock_class.class_id)
 
     payment_date = datetime(2026, 3, 5, 8, 0, tzinfo=timezone.utc)
     db.session.add(RentPayment(

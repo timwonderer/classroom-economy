@@ -14,7 +14,7 @@ from decimal import Decimal
 from os import urandom
 import secrets
 from app import db
-from app.models import Admin, ClassEconomy, EconomySnapshot, PayrollSettings, Seat, IdentityProfile, User, UserRole
+from app.models import ClassEconomy, EconomySnapshot, PayrollSettings, Seat, IdentityProfile, User, UserRole
 from app.utils.economy_balance import EconomyBalanceChecker, WarningLevel
 from app.routes import admin as admin_routes
 from tests.helpers.class_scope import create_class_scope
@@ -24,8 +24,7 @@ from tests.helpers.class_scope import create_class_scope
 def admin_with_payroll(client):
     """Create an admin with payroll settings for testing."""
     # Create admin
-    admin = make_admin("testeconomyadmin", "TESTSECRET123456")
-    db.session.add(admin)
+    admin = make_admin("testeconomyadmin")
     db.session.flush()
 
     teacher_user = User(
@@ -33,16 +32,11 @@ def admin_with_payroll(client):
         username_lookup_hash=admin.username_lookup_hash,
         user_role=UserRole.TEACHER,
     )
-    db.session.add(teacher_user)
     db.session.flush()
 
     class_scope = create_class_scope(
-        teacher=admin,
-        block="A",
+        teacher_user=admin,
         display_name="A",
-        create_claimed_teacher_block=True,
-        teacher_block_claimed=False,
-        teacher_user_id=teacher_user.id,
     )
     db.session.flush()
 
@@ -357,8 +351,7 @@ def test_serialize_economy_analysis_payload_coerces_decimal_values(app):
 def test_different_expected_hours_per_block(client):
     """Test that different blocks can have different expected_weekly_hours."""
     # Create admin
-    admin = make_admin("testmultiblock", "TESTSECRET123456")
-    db.session.add(admin)
+    admin = make_admin("testmultiblock")
     db.session.flush()
 
     teacher_user = User(
@@ -366,25 +359,16 @@ def test_different_expected_hours_per_block(client):
         username_lookup_hash=admin.username_lookup_hash,
         user_role=UserRole.TEACHER,
     )
-    db.session.add(teacher_user)
     db.session.flush()
 
     # Create payroll settings for different blocks with different hours
     class_a = create_class_scope(
-        teacher=admin,
-        block="A",
+        teacher_user=admin,
         display_name="A",
-        create_claimed_teacher_block=True,
-        teacher_block_claimed=False,
-        teacher_user_id=teacher_user.id,
     )
     class_b = create_class_scope(
-        teacher=admin,
-        block="B",
+        teacher_user=admin,
         display_name="B",
-        create_claimed_teacher_block=True,
-        teacher_block_claimed=False,
-        teacher_user_id=teacher_user.id,
     )
 
     payroll_a = PayrollSettings(
@@ -870,7 +854,7 @@ def test_validate_insurance_with_period_cap_monthly_frequency(logged_in_admin_cl
 
 def test_check_insurance_balance_uses_frequency_premium_for_limits():
     """Ensure coverage and period caps are evaluated against stored premium frequency."""
-    checker = EconomyBalanceChecker(teacher_id=1)
+    checker = EconomyBalanceChecker(user_id=1)
 
     class FakePolicy:
         def __init__(self):
@@ -908,8 +892,7 @@ def test_analyze_endpoint_error_does_not_leak_exception_details(client):
     the error message returned to the client is generic and doesn't expose internal
     implementation details, exception types, or stack traces.
     """
-    admin = make_admin("testadmin_error", "TESTSECRET123456")
-    db.session.add(admin)
+    admin = make_admin("testadmin_error")
     db.session.flush()
 
     from app.models import User, UserRole
@@ -924,11 +907,8 @@ def test_analyze_endpoint_error_does_not_leak_exception_details(client):
         db.session.flush()
 
     class_scope = create_class_scope(
-        teacher=admin,
-        block="A",
+        teacher_user=admin,
         display_name="Error Test",
-        create_claimed_teacher_block=True,
-        teacher_user_id=user.id,
     )
     db.session.commit()
 
@@ -965,8 +945,7 @@ def test_analyze_endpoint_error_does_not_leak_exception_details(client):
 
 def test_analyze_block_ignores_teacher_global_payroll_settings(client):
     """Block-scoped analyze requests must not fall back to teacher-global payroll settings."""
-    admin = make_admin("globalfallbackanalyze", "TESTSECRET123456")
-    db.session.add(admin)
+    admin = make_admin("globalfallbackanalyze")
     db.session.flush()
 
     from app.models import User, UserRole
@@ -981,11 +960,8 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client):
         db.session.flush()
 
     class_scope = create_class_scope(
-        teacher=admin,
-        block="A",
+        teacher_user=admin,
         display_name="Scope A",
-        create_claimed_teacher_block=True,
-        teacher_user_id=user.id,
     )
     db.session.flush()
 
@@ -1015,8 +991,7 @@ def test_analyze_block_ignores_teacher_global_payroll_settings(client):
 
 def test_validate_block_ignores_teacher_global_payroll_settings(client):
     """Block-scoped validate requests must not fall back to teacher-global payroll settings."""
-    admin = make_admin("globalfallbackvalidate", "TESTSECRET123456")
-    db.session.add(admin)
+    admin = make_admin("globalfallbackvalidate")
     db.session.flush()
 
     from app.models import User, UserRole
@@ -1031,10 +1006,9 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client):
         db.session.flush()
 
     class_scope = create_class_scope(
-        teacher=admin,
+        teacher_user=admin,
         block="A",
         display_name="Scope V",
-        create_claimed_teacher_block=True,
         teacher_user_id=user.id,
     )
     db.session.flush()
@@ -1065,8 +1039,7 @@ def test_validate_block_ignores_teacher_global_payroll_settings(client):
 
 def test_analyze_block_prefers_join_code_scoped_payroll_settings(client):
     """Join-code-scoped payroll settings should take precedence over legacy block-only rows."""
-    admin = make_admin("joincodescopewins", "TESTSECRET123456")
-    db.session.add(admin)
+    admin = make_admin("joincodescopewins")
     db.session.flush()
 
     teacher_user = User(
@@ -1074,18 +1047,13 @@ def test_analyze_block_prefers_join_code_scoped_payroll_settings(client):
         username_lookup_hash=admin.username_lookup_hash,
         user_role=UserRole.TEACHER,
     )
-    db.session.add(teacher_user)
     db.session.flush()
 
     class_scope = create_class_scope(
-        teacher=admin,
-        block="A",
+        teacher_user=admin,
         display_name="A",
-        create_claimed_teacher_block=True,
-        teacher_block_claimed=False,
-        teacher_user_id=teacher_user.id,
     )
-    _tb_seat = Seat(block="A", block_identifier="A", role="student")
+    _tb_seat = Seat(class_id=class_scope.class_id, block="A", block_identifier="A", role="student")
     db.session.add(_tb_seat)
     db.session.flush()
     db.session.add(IdentityProfile(seat_id=_tb_seat.id, profile_type='student_unclaimed', first_name="Scoped", last_name="Jones"))

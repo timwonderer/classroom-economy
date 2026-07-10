@@ -2,7 +2,7 @@ from datetime import timedelta
 from decimal import Decimal
 
 from app import db
-from app.models import User, UserRole, Admin, ClassEconomy, RentPayment, RentSettings, Seat, IdentityProfile
+from app.models import User, UserRole, ClassEconomy, RentPayment, RentSettings, Seat, IdentityProfile
 from app.scheduled_tasks import run_rent_cycle_for_class
 from app.utils.time import utc_now
 from tests.helpers.v2_fixtures import make_admin
@@ -33,8 +33,7 @@ def _make_student() -> Seat:
 
 def test_rent_cycle_idempotency_same_cycle(monkeypatch, app):
     with app.app_context():
-        admin: Admin = make_admin("rent_cycle_teacher", "secret")
-        db.session.add(admin)
+        admin = make_admin("rent_cycle_teacher")
         db.session.flush()
 
         class_row = ClassEconomy(

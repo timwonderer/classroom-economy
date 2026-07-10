@@ -23,7 +23,7 @@ from wsgiref.simple_server import make_server, WSGIRequestHandler
 
 from app.extensions import db
 from app.models import (
-    Admin, ClassEconomy,
+    ClassEconomy,
     Seat, IdentityProfile, RentSettings, User, TeacherOnboarding, ClassFeature,
 )
 from tests.helpers.class_scope import create_class_scope
@@ -241,29 +241,14 @@ def teacher_page(app, client, axe_live_server, browser, axe_script):
     Yields (page, live_server_url, axe_script).
     """
     with app.app_context():
-        teacher = make_admin("axe_teacher_t", "secret")
-        db.session.add(teacher)
-        db.session.flush()
-
-        _, teacher_username_hash, teacher_username_lookup_hash = build_hashed_username_fields("axe_teacher_t")
-        user = User(
-            username_hash=teacher_username_hash,
-            username_lookup_hash=teacher_username_lookup_hash,
-            password_hash=generate_password_hash("secret"),
-            user_role="teacher",
-            has_completed_setup=True,
-        )
-        db.session.add(user)
+        user = make_admin("axe_teacher_t")
         db.session.flush()
 
         join_code = "AXET01"
         class_row = create_class_scope(
-            teacher=teacher,
+            teacher_user=user,
             join_code=join_code,
-            block="A",
             display_name="Axe Test Period",
-            create_seat=False,
-            teacher_user_id=user.id,
         )
 
         user.last_active_class_id = class_row.class_id
@@ -280,14 +265,13 @@ def teacher_page(app, client, axe_live_server, browser, axe_script):
                 db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feat))
         db.session.commit()
 
-        teacher_id = teacher.id
         class_id = class_row.class_id
         user_id = user.id
 
     # Set session on test client
     with client.session_transaction() as sess:
         sess["is_admin"] = True
-        sess["admin_id"] = teacher_id
+        sess["admin_id"] = user_id
         sess["user_id"] = user_id
         sess["current_join_code"] = join_code
         sess["current_class_id"] = str(class_id)
@@ -311,19 +295,8 @@ def student_page(app, client, axe_live_server, browser, axe_script):
     Yields (page, live_server_url, axe_script).
     """
     with app.app_context():
-        teacher = make_admin("axe_teacher_s", "secret")
-        db.session.add(teacher)
+        teacher_user = make_admin("axe_teacher_s")
         db.session.flush()
-
-        _, teacher_username_hash, teacher_username_lookup_hash = build_hashed_username_fields("axe_teacher_s")
-        teacher_user = User(
-            username_hash=teacher_username_hash,
-            username_lookup_hash=teacher_username_lookup_hash,
-            password_hash=generate_password_hash("secret"),
-            user_role="teacher",
-            has_completed_setup=True,
-        )
-        db.session.add(teacher_user)
 
         _, student_username_hash, student_username_lookup_hash = build_hashed_username_fields("axe_student")
         user = User(
@@ -339,10 +312,16 @@ def student_page(app, client, axe_live_server, browser, axe_script):
         profile = IdentityProfile(profile_type="student", first_name="AxeTest", last_name="S")
         db.session.add(profile)
         db.session.flush()
+
+        join_code = "AXES01"
+        class_row = create_class_scope(
+            teacher_user=teacher_user,
+            join_code=join_code,
+            display_name="Axe Student Period",
+        )
         seat = Seat(
             user_id=user.id,
-            class_id=None,
-            join_code="AXES01",
+            class_id=class_row.class_id,
             block="A",
             block_identifier="A",
             role="student",
@@ -351,19 +330,6 @@ def student_page(app, client, axe_live_server, browser, axe_script):
         db.session.add(seat)
         db.session.flush()
         profile.seat_id = seat.id
-
-        join_code = "AXES01"
-        class_row = create_class_scope(
-            teacher=teacher,
-            join_code=join_code,
-            block="A",
-            display_name="Axe Student Period",
-            create_claimed_teacher_block=True,
-            teacher_block_claimed=True,
-            create_seat=True,
-            teacher_user_id=teacher_user.id,
-            student_user_id=user.id,
-        )
         teacher_user.last_active_class_id = class_row.class_id
         user.last_active_class_id = class_row.class_id
 
@@ -374,13 +340,13 @@ def student_page(app, client, axe_live_server, browser, axe_script):
             user.last_active_seat_id = seat.id
             db.session.flush()
 
-        db.session.add(RentSettings(class_id=class_row.class_id, block="A", is_enabled=True))
+        db.session.add(RentSettings(class_id=class_row.class_id))
         for feat in ClassFeature.feature_names():
             if not ClassFeature.query.filter_by(class_id=class_row.class_id, feature_name=feat).first():
                 db.session.add(ClassFeature(class_id=class_row.class_id, feature_name=feat))
         db.session.commit()
 
-        student_id = student.id
+        student_id = seat.id if seat else None
         class_id = class_row.class_id
         user_id = user.id
         seat_id = seat.id if seat else None

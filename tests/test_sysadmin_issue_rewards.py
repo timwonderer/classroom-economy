@@ -5,7 +5,6 @@ from app.extensions import db
 from app.models import (
     User,
     UserRole,
-    Admin,
     ClassEconomy,
     Issue,
     IssueCategory,
@@ -20,11 +19,10 @@ from tests.helpers.class_scope import make_student_identity
 
 
 def test_sysadmin_resolve_issue_issues_bug_reward_transaction(client):
-    teacher = make_admin("teacher_issue_reward", "secret")
-    db.session.add(teacher)
+    teacher = make_admin("teacher_issue_reward")
     db.session.flush()
 
-    sysadmin = make_sysadmin("sysadmin_issue_reward", "secret")
+    sysadmin = make_sysadmin("sysadmin_issue_reward")
     category = IssueCategory(
         name="Bug Report Category",
         category_type="general",

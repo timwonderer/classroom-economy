@@ -7,7 +7,7 @@ from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 import uuid
 
 from app.extensions import db
-from app.models import User, UserRole, Admin, StoreItem, StoreItemBlock, StudentItem, Transaction, Seat, IdentityProfile
+from app.models import User, UserRole, StoreItem, StoreItemBlock, StudentItem, Transaction, Seat, IdentityProfile
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.canonical_session import set_canonical_context
 
@@ -33,18 +33,18 @@ def _login_admin(client, admin_id):
 
 
 def _create_student(teacher, first_name, join_code, block='A'):
-    student = make_student_identity(block=block, first_name=first_name, last_name='S', join_code=join_code)
-    student.passphrase_hash = generate_password_hash('password')
-    create_class_scope(
-        teacher=teacher,
-        join_code=join_code,
-        student=student,
-        block=block,
-        display_name=block,
-    )
+    from app.models import ClassEconomy as _CE
+    class_row = _CE.query.filter_by(join_code=join_code).first()
+    if class_row is None:
+        class_row = create_class_scope(
+            teacher_user=teacher,
+            join_code=join_code,
+            display_name=block,
+        )
+    student = make_student_identity(class_id=class_row.class_id, first_name=first_name, last_name='S')
     db.session.flush()
     db.session.add(Transaction(
-        user_id=student.user_id,join_code=join_code,
+        user_id=student.user_id, join_code=join_code,
         amount=Decimal('100.00'),
         account_type='checking',
         type='deposit',
@@ -54,8 +54,7 @@ def _create_student(teacher, first_name, join_code, block='A'):
 
 
 def test_student_shop_collective_progress_counts_current_class_only(client):
-    teacher = make_admin('teacher_collective_shop', 'secret')
-    db.session.add(teacher)
+    teacher = make_admin('teacher_collective_shop')
     db.session.flush()
 
     student_a1 = _create_student(teacher, 'Alice', 'JOINA123', block='A')
@@ -79,12 +78,12 @@ def test_student_shop_collective_progress_counts_current_class_only(client):
 
     # One purchaser in class A and one purchaser in class B.
     db.session.add_all([
-        StudentItem(correlation_id='corr_test', user_id=student_a1_user.id, store_item_id=item.id, join_code='JOINA123', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
-        StudentItem(correlation_id='corr_test', user_id=student_b1_user.id, store_item_id=item.id, join_code='JOINB456', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
+        StudentItem(correlation_id='corr_test', seat_id=student_a1.id, store_item_id=item.id, join_code='JOINA123', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
+        StudentItem(correlation_id='corr_test', seat_id=student_b1.id, store_item_id=item.id, join_code='JOINB456', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
     ])
     db.session.commit()
 
-    _login_student(client, student_a2.id, 'JOINA123')
+    _login_student(client, student_a2.user_id, 'JOINA123')
     resp = client.get('/student/shop')
     assert resp.status_code == 200
     # Must show progress for class A only, not include class B purchases.
@@ -92,8 +91,7 @@ def test_student_shop_collective_progress_counts_current_class_only(client):
 
 
 def test_student_shop_filters_items_by_store_item_block_visibility(client):
-    teacher = make_admin('teacher_block_visibility_shop', 'secret')
-    db.session.add(teacher)
+    teacher = make_admin('teacher_block_visibility_shop')
     db.session.flush()
 
     student_a = _create_student(teacher, 'Alex', 'JOINA111', block='A')
@@ -130,7 +128,7 @@ def test_student_shop_filters_items_by_store_item_block_visibility(client):
     ])
     db.session.commit()
 
-    _login_student(client, student_a.id, 'JOINA111')
+    _login_student(client, student_a.user_id, 'JOINA111')
     resp = client.get('/student/shop')
     assert resp.status_code == 200
     # Unscoped items (join_code=None) must NOT appear in student shop
@@ -140,8 +138,7 @@ def test_student_shop_filters_items_by_store_item_block_visibility(client):
 
 
 def test_purchase_item_rejects_items_not_visible_to_current_block(client):
-    teacher = make_admin('teacher_block_visibility_purchase', 'secret')
-    db.session.add(teacher)
+    teacher = make_admin('teacher_block_visibility_purchase')
     db.session.flush()
 
     student_a = _create_student(teacher, 'Casey', 'JOINA333', block='A')
@@ -158,7 +155,7 @@ def test_purchase_item_rejects_items_not_visible_to_current_block(client):
     db.session.add(StoreItemBlock(store_item_id=d_only_item.id, block='D'))
     db.session.commit()
 
-    _login_student(client, student_a.id, 'JOINA333')
+    _login_student(client, student_a.user_id, 'JOINA333')
     resp = client.post('/api/purchase-item', json={
         'item_id': d_only_item.id,
         'passphrase': 'password',
@@ -166,7 +163,7 @@ def test_purchase_item_rejects_items_not_visible_to_current_block(client):
     })
     assert resp.status_code == 404
     assert StudentItem.query.filter_by(
-        user_id=student_a_user.id,
+        seat_id=student_a.id,
         store_item_id=d_only_item.id,
         join_code='JOINA333',
     ).count() == 0
@@ -175,8 +172,7 @@ def test_purchase_item_rejects_items_not_visible_to_current_block(client):
 def test_purchase_item_allows_unscoped_item_without_block_visibility(client):
     """QUERY INVERSION v2: Items with join_code must be scoped to a class.
     Items that previously had join_code=None are now class-scoped."""
-    teacher = make_admin('teacher_unscoped_purchase', 'secret')
-    db.session.add(teacher)
+    teacher = make_admin('teacher_unscoped_purchase')
     db.session.flush()
 
     student_a = _create_student(teacher, 'Devon', 'JOINA444', block='A')
@@ -193,7 +189,7 @@ def test_purchase_item_allows_unscoped_item_without_block_visibility(client):
     db.session.add(scoped_item)
     db.session.commit()
 
-    _login_student(client, student_a.id, 'JOINA444')
+    _login_student(client, student_a.user_id, 'JOINA444')
     resp = client.post('/api/purchase-item', json={
         'item_id': scoped_item.id,
         'passphrase': 'password',
@@ -201,15 +197,14 @@ def test_purchase_item_allows_unscoped_item_without_block_visibility(client):
     })
     assert resp.status_code == 200
     assert StudentItem.query.filter_by(
-        user_id=student_a_user.id,
+        seat_id=student_a.id,
         store_item_id=scoped_item.id,
         join_code='JOINA444',
     ).count() == 1
 
 
 def test_collective_unlock_scoped_to_join_code_and_goal_type(client):
-    teacher = make_admin('teacher_collective_unlock', 'secret')
-    db.session.add(teacher)
+    teacher = make_admin('teacher_collective_unlock')
     db.session.flush()
 
     student_a1 = _create_student(teacher, 'Alex', 'JOINA777', block='A')
@@ -233,12 +228,12 @@ def test_collective_unlock_scoped_to_join_code_and_goal_type(client):
 
     # Existing purchase in class A and class B.
     db.session.add_all([
-        StudentItem(correlation_id='corr_test', user_id=student_a1_user.id, store_item_id=item.id, join_code='JOINA777', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
-        StudentItem(correlation_id='corr_test', user_id=student_b1_user.id, store_item_id=item.id, join_code='JOINB999', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
+        StudentItem(correlation_id='corr_test', seat_id=student_a1.id, store_item_id=item.id, join_code='JOINA777', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
+        StudentItem(correlation_id='corr_test', seat_id=student_b1.id, store_item_id=item.id, join_code='JOINB999', status='pending', collective_goal_instance_code=item.collective_goal_instance_code),
     ])
     db.session.commit()
 
-    _login_student(client, student_a2.id, 'JOINA777')
+    _login_student(client, student_a2.user_id, 'JOINA777')
     purchase_resp = client.post('/api/purchase-item', json={
         'item_id': item.id,
         'passphrase': 'password',
@@ -260,8 +255,7 @@ def test_collective_unlock_scoped_to_join_code_and_goal_type(client):
 
 
 def test_admin_store_shows_collective_progress(client):
-    teacher = make_admin('teacher_collective_admin', 'secret')
-    db.session.add(teacher)
+    teacher = make_admin('teacher_collective_admin')
     db.session.flush()
 
     student_a1 = _create_student(teacher, 'Ana', 'JOINADMINA', block='A')
@@ -271,7 +265,7 @@ def test_admin_store_shows_collective_progress(client):
     item = StoreItem(
         user_id=teacher.id,
         join_code='JOINADMINA',
-        name='Admin Progress Item',
+        name=' Progress Item',
         price=Decimal('5.00'),
         item_type='collective',
         collective_goal_type='fixed',
@@ -281,7 +275,7 @@ def test_admin_store_shows_collective_progress(client):
     )
     db.session.add(item)
     db.session.flush()
-    db.session.add(StudentItem(correlation_id='corr_test', user_id=student_a1_user.id, store_item_id=item.id, join_code='JOINADMINA', status='pending', collective_goal_instance_code=item.collective_goal_instance_code))
+    db.session.add(StudentItem(correlation_id='corr_test', seat_id=student_a1.id, store_item_id=item.id, join_code='JOINADMINA', status='pending', collective_goal_instance_code=item.collective_goal_instance_code))
     db.session.commit()
 
     _login_admin(client, teacher.id)
@@ -293,8 +287,7 @@ def test_admin_store_shows_collective_progress(client):
 
 def test_whole_class_collective_prevents_duplicate_purchase(client):
     """Test that students can only purchase a whole_class collective item once."""
-    teacher = make_admin('teacher_whole_class', 'secret')
-    db.session.add(teacher)
+    teacher = make_admin('teacher_whole_class')
     db.session.flush()
 
     student_a1 = _create_student(teacher, 'Dana', 'JOINWHOLE', block='A')
@@ -314,8 +307,8 @@ def test_whole_class_collective_prevents_duplicate_purchase(client):
     db.session.add(item)
     db.session.commit()
 
-    _login_student(client, student_a1.id, 'JOINWHOLE')
-    
+    _login_student(client, student_a1.user_id, 'JOINWHOLE')
+
     # First purchase should succeed
     resp1 = client.post('/api/purchase-item', json={
         'item_id': item.id,
@@ -337,8 +330,7 @@ def test_whole_class_collective_prevents_duplicate_purchase(client):
 
 def test_whole_class_collective_goal_uses_correct_class_size(client):
     """Test that whole_class collective goals use actual student count, not seat count."""
-    teacher = make_admin('teacher_class_size', 'secret')
-    db.session.add(teacher)
+    teacher = make_admin('teacher_class_size')
     db.session.flush()
 
     # Create 2 students for the class
@@ -360,20 +352,20 @@ def test_whole_class_collective_goal_uses_correct_class_size(client):
     db.session.commit()
 
     # First student purchases
-    _login_student(client, student_a1.id, 'JOINSIZE')
+    _login_student(client, student_a1.user_id, 'JOINSIZE')
     resp1 = client.post('/api/purchase-item', json={
         'item_id': item.id,
         'passphrase': 'password',
         'quantity': 1,
     })
     assert resp1.status_code == 200
-    
+
     # Check that the goal shows 1/2
     resp_shop1 = client.get('/student/shop')
     assert b'1/2' in resp_shop1.data
-    
+
     # Second student purchases - goal should be reached (2/2)
-    _login_student(client, student_a2.id, 'JOINSIZE')
+    _login_student(client, student_a2.user_id, 'JOINSIZE')
     resp2 = client.post('/api/purchase-item', json={
         'item_id': item.id,
         'passphrase': 'password',
@@ -389,8 +381,7 @@ def test_whole_class_collective_goal_uses_correct_class_size(client):
 
 def test_collective_progress_with_correct_roster_count_admin(client):
     """Test that admin view shows correct class size based on actual students."""
-    teacher = make_admin('teacher_admin_size', 'secret')
-    db.session.add(teacher)
+    teacher = make_admin('teacher_admin_size')
     db.session.flush()
 
     # Create 3 students
@@ -402,7 +393,7 @@ def test_collective_progress_with_correct_roster_count_admin(client):
     item = StoreItem(
         user_id=teacher.id,
         join_code='JOINADMIN',
-        name='Admin Whole Class Item',
+        name=' Whole Class Item',
         price=Decimal('5.00'),
         item_type='collective',
         collective_goal_type='whole_class',
@@ -413,7 +404,7 @@ def test_collective_progress_with_correct_roster_count_admin(client):
     db.session.flush()
     
     # One student purchases
-    db.session.add(StudentItem(correlation_id='corr_test', user_id=student_a1_user.id, store_item_id=item.id, join_code='JOINADMIN', status='pending', collective_goal_instance_code=item.collective_goal_instance_code))
+    db.session.add(StudentItem(correlation_id='corr_test', seat_id=student_a1.id, store_item_id=item.id, join_code='JOINADMIN', status='pending', collective_goal_instance_code=item.collective_goal_instance_code))
     db.session.commit()
 
     _login_admin(client, teacher.id)
@@ -425,8 +416,7 @@ def test_collective_progress_with_correct_roster_count_admin(client):
 
 def test_fixed_collective_allows_multiple_purchases(client):
     """Test that fixed collective goals still allow multiple purchases from same student."""
-    teacher = make_admin('teacher_fixed_multi', 'secret')
-    db.session.add(teacher)
+    teacher = make_admin('teacher_fixed_multi')
     db.session.flush()
 
     student_a1 = _create_student(teacher, 'Kelly', 'JOINFIXED', block='A')
@@ -446,7 +436,7 @@ def test_fixed_collective_allows_multiple_purchases(client):
     db.session.add(item)
     db.session.commit()
 
-    _login_student(client, student_a1.id, 'JOINFIXED')
+    _login_student(client, student_a1.user_id, 'JOINFIXED')
     
     # First purchase should succeed
     resp1 = client.post('/api/purchase-item', json={
@@ -471,8 +461,7 @@ def test_fixed_collective_allows_multiple_purchases(client):
 
 def test_whole_class_goal_with_duplicate_seats_shows_correct_roster(client):
     """Test that duplicate TeacherBlock entries don't inflate class size."""
-    teacher = make_admin('teacher_dup_seats', 'secret')
-    db.session.add(teacher)
+    teacher = make_admin('teacher_dup_seats')
     db.session.flush()
 
     # Create 2 students
@@ -506,12 +495,12 @@ def test_whole_class_goal_with_duplicate_seats_shows_correct_roster(client):
     db.session.commit()
 
     # Despite 3 TeacherBlock entries, class size should be 2 (unique students)
-    _login_student(client, student_a1.id, 'JOINDUP')
+    _login_student(client, student_a1.user_id, 'JOINDUP')
     resp_shop = client.get('/student/shop')
     # Should show 0/2, not 0/3
     assert b'0/2' in resp_shop.data or b'Whole Class Goal' in resp_shop.data
     
-    # Admin view should also show correct count
+    #  view should also show correct count
     _login_admin(client, teacher.id)
     resp_admin = client.get('/admin/store')
     assert b'0/2' in resp_admin.data
@@ -519,8 +508,7 @@ def test_whole_class_goal_with_duplicate_seats_shows_correct_roster(client):
 
 def test_whole_class_collective_allows_purchase_per_class_for_same_teacher(client):
     """Students in different classes (join_codes) with the same teacher can each purchase once."""
-    teacher = make_admin('teacher_whole_class_multi', 'secret')
-    db.session.add(teacher)
+    teacher = make_admin('teacher_whole_class_multi')
     db.session.flush()
 
     # Create student in two different classes (join_codes) for the same teacher
@@ -552,7 +540,7 @@ def test_whole_class_collective_allows_purchase_per_class_for_same_teacher(clien
     db.session.commit()
 
     # Student in first class purchases successfully
-    _login_student(client, student_class1.id, 'JOINMULTI1')
+    _login_student(client, student_class1.user_id, 'JOINMULTI1')
     resp1 = client.post('/api/purchase-item', json={
         'item_id': item_class1.id,
         'passphrase': 'password',
@@ -561,7 +549,7 @@ def test_whole_class_collective_allows_purchase_per_class_for_same_teacher(clien
     assert resp1.status_code == 200
 
     # Student in second class (different join_code) should also be able to purchase
-    _login_student(client, student_class2.id, 'JOINMULTI2')
+    _login_student(client, student_class2.user_id, 'JOINMULTI2')
     resp2 = client.post('/api/purchase-item', json={
         'item_id': item_class2.id,
         'passphrase': 'password',

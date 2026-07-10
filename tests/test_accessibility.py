@@ -160,7 +160,7 @@ def test_docs_page_accessibility(client):
 from datetime import datetime, timezone
 from tests.helpers.canonical_session import set_canonical_context
 from app.extensions import db
-from app.models import Admin, ClassEconomy, Seat, IdentityProfile, RentSettings, User, TeacherOnboarding
+from app.models import ClassEconomy, Seat, IdentityProfile, RentSettings, User, TeacherOnboarding
 from tests.helpers.class_scope import create_class_scope, make_student_identity
 from tests.helpers.v2_fixtures import make_admin
 from app.hash_utils import hash_username
@@ -172,8 +172,7 @@ from werkzeug.security import generate_password_hash
 def auth_student_context(app, client):
     """Sets up a V2 student and class context, and logs them in."""
     with app.app_context():
-        teacher = make_admin("access_teacher_s", "secret")
-        db.session.add(teacher)
+        teacher = make_admin("access_teacher_s")
         db.session.flush()
 
         join_code = "ACCESST1"
@@ -182,9 +181,6 @@ def auth_student_context(app, client):
             join_code=join_code,
             block="A",
             display_name="A Period",
-            create_claimed_teacher_block=True,
-            teacher_block_claimed=True,
-            create_seat=True,
         )
         student_user = User(
             username_hash="access_student_hash",
@@ -252,8 +248,7 @@ def auth_student_context(app, client):
 def auth_teacher_context(app, client):
     """Sets up a V2 teacher and logs them in."""
     with app.app_context():
-        teacher = make_admin("access_teacher_t", "secret")
-        db.session.add(teacher)
+        teacher = make_admin("access_teacher_t")
         db.session.flush()
 
         join_code = "ACCESST2"
@@ -262,7 +257,6 @@ def auth_teacher_context(app, client):
             join_code=join_code,
             block="A",
             display_name="A Period",
-            create_seat=False,
         )
 
         # Mark onboarding as completed for this teacher

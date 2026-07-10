@@ -40,7 +40,6 @@ class StudentSeed:
 
 def _make_admin(suffix):
     admin = make_admin(f"admin_arw_{suffix}", "TESTSECRET123456")
-    db.session.add(admin)
     db.session.flush()
     return admin
 
@@ -68,8 +67,6 @@ def _make_teacher_block(admin_id, block, join_code):
 def _make_rent_settings(block, first_due, class_id=None, frequency_type="weekly"):
     settings = RentSettings(
         class_id=class_id,
-        block=block,
-        is_enabled=True,
         rent_amount=Decimal("50.00"),
         frequency_type=frequency_type,
         grace_period_days=3,
@@ -110,8 +107,8 @@ def _link_student(student, admin):
     db.session.flush()
 
 
-def _login_admin(client, admin_id, join_code):
-    login_admin(client, admin_id, join_code)
+def _login_admin(client, admin: User, join_code):
+    login_admin(client, admin, join_code=join_code)
     with client.session_transaction() as sess:
         sess['is_system_admin'] = False
 
@@ -127,15 +124,12 @@ def test_past_due_scope_creates_one_waiver_per_date(client, app):
         _link_student((student_user, student_seed_seat), admin)
         student_seat = make_student_identity(
             class_id=tb.class_id,
-            join_code=join_code,
-            block="A",
-            user_id=student_user.id,
             first_name="Test",
             last_name="W",
         )
         db.session.commit()
 
-        _login_admin(client, admin.id, join_code)
+        _login_admin(client, admin, join_code)
 
         date1 = datetime(2026, 1, 5, tzinfo=timezone.utc).isoformat()
         date2 = datetime(2026, 1, 12, tzinfo=timezone.utc).isoformat()
@@ -174,15 +168,12 @@ def test_current_scope_creates_waiver_for_current_period(client, app):
         _link_student((student_user, student_seed_seat), admin)
         student_seat = make_student_identity(
             class_id=tb.class_id,
-            join_code=join_code,
-            block="A",
-            user_id=student_user.id,
             first_name="Test",
             last_name="W",
         )
         db.session.commit()
 
-        _login_admin(client, admin.id, join_code)
+        _login_admin(client, admin, join_code)
 
         resp = client.post(
             '/admin/rent-waiver/add',
@@ -215,15 +206,12 @@ def test_future_scope_creates_waiver_spanning_n_periods(client, app):
         _link_student(student, admin)
         student_seat = make_student_identity(
             class_id=tb.class_id,
-            join_code=join_code,
-            block="A",
-            user_id=student.user_id,
             first_name="Test",
             last_name="W",
         )
         db.session.commit()
 
-        _login_admin(client, admin.id, join_code)
+        _login_admin(client, admin, join_code)
 
         resp = client.post(
             '/admin/rent-waiver/add',
@@ -256,15 +244,12 @@ def test_invalid_future_periods_count_flashes_error(client, app):
         _link_student(student, admin)
         student_seat = make_student_identity(
             class_id=tb.class_id,
-            join_code=join_code,
-            block="A",
-            user_id=student.user_id,
             first_name="Test",
             last_name="W",
         )
         db.session.commit()
 
-        _login_admin(client, admin.id, join_code)
+        _login_admin(client, admin, join_code)
 
         resp = client.post(
             '/admin/rent-waiver/add',
@@ -291,15 +276,12 @@ def test_missing_join_code_flashes_error(client, app):
         _link_student(student.user, admin)
         student_seat = make_student_identity(
             class_id=tb.class_id,
-            join_code="ARW_NOJC",
-            block="A",
-            user_id=student.user.id,
             first_name="Test",
             last_name="W",
         )
         db.session.commit()
 
-        _login_admin(client, admin.id, "ARW_NOJC")
+        _login_admin(client, admin, "ARW_NOJC")
 
         resp = client.post(
             '/admin/rent-waiver/add',
@@ -327,15 +309,12 @@ def test_invalid_past_due_dates_skipped_count_reflects_actual(client, app):
         _link_student(student, admin)
         student_seat = make_student_identity(
             class_id=tb.class_id,
-            join_code=join_code,
-            block="A",
-            user_id=student.user_id,
             first_name="Test",
             last_name="W",
         )
         db.session.commit()
 
-        _login_admin(client, admin.id, join_code)
+        _login_admin(client, admin, join_code)
 
         valid_date = datetime(2026, 1, 5, tzinfo=timezone.utc).isoformat()
 
@@ -371,9 +350,6 @@ def test_add_rent_waiver_logs_analytics_event(client, app, monkeypatch):
         _link_student(student, admin)
         student_seat = make_student_identity(
             class_id=tb.class_id,
-            join_code=join_code,
-            block="A",
-            user_id=student.user_id,
             first_name="Test",
             last_name="W",
         )
@@ -381,7 +357,7 @@ def test_add_rent_waiver_logs_analytics_event(client, app, monkeypatch):
 
         fixed_now = datetime(2026, 2, 1, tzinfo=timezone.utc)
         monkeypatch.setattr('app.routes.admin.utc_now', lambda: fixed_now)
-        _login_admin(client, admin.id, join_code)
+        _login_admin(client, admin, join_code)
 
         resp = client.post(
             '/admin/rent-waiver/add',
@@ -409,9 +385,6 @@ def test_remove_rent_waiver_logs_analytics_event(client, app):
         _link_student(student, admin)
         seat = make_student_identity(
             class_id=tb.class_id,
-            join_code=join_code,
-            block="A",
-            user_id=student.user_id,
             first_name="Test",
             last_name="W",
         )
@@ -426,7 +399,7 @@ def test_remove_rent_waiver_logs_analytics_event(client, app):
         waiver_id = waiver.id
         db.session.commit()
 
-        _login_admin(client, admin.id, join_code)
+        _login_admin(client, admin, join_code)
 
         resp = client.post(f'/admin/rent-waiver/{waiver_id}/remove')
         assert resp.status_code == 302

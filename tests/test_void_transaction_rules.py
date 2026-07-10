@@ -5,7 +5,7 @@ from werkzeug.security import generate_password_hash
 
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app.extensions import db
-from app.models import Seat, IdentityProfile, User, UserRole, Admin, InsurancePolicy, RentPayment, StoreItem, InsuranceEnrollment, StorePurchase, Transaction, ClassEconomy
+from app.models import Seat, IdentityProfile, User, UserRole, InsurancePolicy, RentPayment, StoreItem, InsuranceEnrollment, StorePurchase, Transaction, ClassEconomy
 
 
 def _login_admin(client, admin_id):
@@ -26,42 +26,25 @@ def _login_student(client, student_user, join_code):
 
 
 def _build_teacher_student(join_code='VOID123'):
-    teacher = make_admin(f"teacher_{join_code}", "secret")
-    db.session.add(teacher)
+    from tests.helpers.class_scope import create_class_scope, make_student_identity
+    teacher_user = make_admin(f"teacher_{join_code}")
+    teacher_user.current_session_nonce = 'testnonce'
     db.session.flush()
 
-    teacher_user = User(username_hash=f"auto_t_{join_code}", username_lookup_hash=f"auto_tl_{join_code}", user_role=UserRole.TEACHER)
-    teacher_user.passphrase_hash = generate_password_hash('password'); teacher_user.current_session_nonce = 'testnonce'
-    db.session.add(teacher_user)
+    economy = create_class_scope(teacher_user=teacher_user, join_code=join_code)
     db.session.flush()
 
-    economy = ClassEconomy(user_id=teacher_user.id)
-    db.session.add(economy)
-    db.session.flush()
-    teacher_seat = Seat(user_id=teacher_user.id, class_id=economy.class_id, block='A', role="teacher", claimed_at=datetime.now(timezone.utc))
-    db.session.add(teacher_seat)
+    student_seat = make_student_identity(class_id=economy.class_id, first_name='Void', last_name='T', claimed=True)
     db.session.flush()
 
+    student_user = db.session.get(User, student_seat.user_id)
+    student_user.passphrase_hash = generate_password_hash('password')
+    student_user.current_session_nonce = 'testnonce'
+    student_user.last_active_class_id = student_seat.class_id
+    student_user.last_active_seat_id = student_seat.id
     teacher_user.last_active_class_id = economy.class_id
-    teacher_user.last_active_seat_id = teacher_seat.id
-    db.session.flush()
-
-    student_user = User(username_hash=f"auto_{join_code}", username_lookup_hash=f"auto_l_{join_code}", user_role=UserRole.STUDENT)
-    student_user.passphrase_hash = generate_password_hash('password'); student_user.current_session_nonce = 'testnonce'
-    db.session.add(student_user)
-    db.session.flush()
-
-    _tb_seat = Seat(user_id=student_user.id, class_id=economy.class_id, block='A', role="student", claimed_at=datetime.now(timezone.utc))
-    db.session.add(_tb_seat)
-    db.session.flush()
-    
-    profile = IdentityProfile(seat_id=_tb_seat.id, profile_type='student_claimed', first_name='Void', last_name='T')
-    db.session.add(profile)
-
-    student_user.last_active_class_id = _tb_seat.class_id
-    student_user.last_active_seat_id = _tb_seat.id
     db.session.commit()
-    
+
     return teacher_user, student_user
 
 

@@ -11,14 +11,12 @@ Validates the privacy-respecting single-student verification per spec v1.0:
 - Rate limiting not tested here (requires integration harness)
 """
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_admin
 import pytest
-import unicodedata
 from datetime import datetime, timezone, timedelta
 
 from app.extensions import db
-from app.models import User, UserRole, Admin, HallPassLog, Seat, ClassEconomy
-from app.hash_utils import get_random_salt, hash_username
+from app.models import User, HallPassLog
 from tests.helpers.class_scope import make_student_identity
 
 
@@ -29,36 +27,41 @@ from tests.helpers.class_scope import make_student_identity
 @pytest.fixture
 def hp_teacher(client):
     """Create a teacher with a hall pass verify token."""
-    teacher = make_admin("hpteacher", "hpsecret1")
-    teacher.hall_pass_verify_token = Admin.generate_verify_token()
-    db.session.add(teacher)
+    teacher = make_admin("hpteacher")
+    teacher.hall_pass_verify_token = User.generate_verify_token()
     db.session.commit()
     return teacher
 
 
 @pytest.fixture
-def hp_student(client, hp_teacher):
-    """Create a student with a TeacherBlock link."""
-    class_row = ClassEconomy(
+def hp_class(client, hp_teacher):
+    """Create a class for hp_teacher."""
+    from tests.helpers.class_scope import create_class_scope
+    class_row = create_class_scope(
+        teacher_user=hp_teacher,
         join_code="jc_chem3",
-        user_id=hp_teacher.id,
-        section="Period3",
         display_name="Period3",
+        section="Period3",
     )
-    db.session.add(class_row)
-    db.session.flush()
-    student = make_student_identity(first_name="Maria", last_name="Garcia", block="Period3", class_id=class_row.class_id, join_code="jc_chem3")
+    db.session.commit()
+    return class_row
+
+
+@pytest.fixture
+def hp_student(client, hp_teacher, hp_class):
+    """Create a student in hp_class."""
+    student = make_student_identity(class_id=hp_class.class_id, first_name="Maria", last_name="Garcia")
     db.session.commit()
     return student
 
 
 @pytest.fixture
-def hp_pass_today(client, hp_student):
+def hp_pass_today(client, hp_student, hp_class):
     """Create a 'left' hall pass for today for Maria G."""
     now = datetime.now(timezone.utc)
     log = HallPassLog(
-        user_id=hp_student.user_id,
-        class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
+        seat_id=hp_student.id,
+        class_id=hp_class.class_id,
         reason="Bathroom",
         status="left",
         join_code="jc_chem3",
@@ -99,9 +102,8 @@ def test_get_verify_page_invalid_token(client):
 
 def test_get_verify_page_rejects_null_token_teacher(client):
     """Teacher records with null token must not be publicly reachable."""
-    teacher = make_admin("nulltoken_teacher", "hpsecret_null")
+    teacher = make_admin("nulltoken_teacher")
     teacher.hall_pass_verify_token = None
-    db.session.add(teacher)
     db.session.commit()
 
     # URL token 'None' must not resolve to the null token row.
@@ -163,8 +165,8 @@ def test_post_verify_match_returned(client, hp_teacher, hp_student):
     """POST matching a student who has returned shows returned status."""
     now = datetime.now(timezone.utc)
     log = HallPassLog(
-        user_id=hp_student_user.id,
-        class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
+        seat_id=hp_student.id,
+        class_id=hp_student.class_id,
         reason="Office",
         status="returned",
         join_code="jc_chem3",
@@ -193,12 +195,12 @@ def test_post_verify_match_returned(client, hp_teacher, hp_student):
 
 def test_post_verify_ambiguous(client, hp_teacher, hp_student):
     """POST matching multiple students returns ambiguous response."""
-    student2 = make_student_identity(first_name="Maria", last_name="Garcia", block="Period3", class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id, join_code="jc_chem3")
+    student2 = make_student_identity(class_id=hp_student.class_id, first_name="Maria", last_name="Garcia")
     now = datetime.now(timezone.utc)
     for s in [hp_student, student2]:
         db.session.add(HallPassLog(
-            user_id=s.user_id,
-            class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
+            seat_id=s.id,
+            class_id=hp_student.class_id,
             reason="Bathroom",
             status="left",
             join_code="jc_chem3",
@@ -261,8 +263,8 @@ def test_post_verify_old_pass_not_shown(client, hp_teacher, hp_student):
     """Passes from yesterday are not returned by today-scoped query."""
     yesterday = datetime.now(timezone.utc) - timedelta(days=1)
     old_log = HallPassLog(
-        user_id=hp_student.user_id,
-        class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
+        seat_id=hp_student.id,
+        class_id=hp_student.class_id,
         reason="Bathroom",
         status="left",
         join_code="jc_chem3",
@@ -293,10 +295,10 @@ def test_post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_
 
     # Insert many newer non-matching records for the same class/day.
     for i in range(25):
-        other = make_student_identity(first_name=f"Other{i}", last_name="Zimmer", block="Period3", class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id, join_code="jc_chem3")
+        other = make_student_identity(class_id=hp_student.class_id, first_name=f"Other{i}", last_name="Zimmer")
         db.session.add(HallPassLog(
-            user_id=other.user_id,
-            class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
+            seat_id=other.id,
+            class_id=hp_student.class_id,
             reason="Office",
             status="left",
             join_code="jc_chem3",
@@ -308,8 +310,8 @@ def test_post_verify_finds_match_beyond_first_20_records(client, hp_teacher, hp_
 
     # Add the target match as an older same-day record.
     db.session.add(HallPassLog(
-        user_id=hp_student.user_id,
-        class_id=ClassEconomy.query.filter_by(join_code="jc_chem3").first().class_id,
+        seat_id=hp_student.id,
+        class_id=hp_student.class_id,
         reason="Bathroom",
         status="left",
         join_code="jc_chem3",
@@ -376,13 +378,12 @@ def test_rotate_token_requires_auth(client, hp_teacher):
     assert resp.status_code in [302, 401, 403]
 
 
-def test_rotate_token_invalidates_old_token(client, hp_teacher):
+def test_rotate_token_invalidates_old_token(client, hp_teacher, hp_class):
     """After rotation, old token returns unavailable."""
+    from tests.helpers.admin_context import login_teacher
     old_token = hp_teacher.hall_pass_verify_token
 
-    with client.session_transaction() as sess:
-        sess['is_admin'] = True
-        sess['admin_id'] = hp_teacher.id
+    login_teacher(client, hp_teacher, class_id=hp_class.class_id)
 
     resp = client.post("/api/hall-pass/verify-token/rotate")
     assert resp.status_code == 200

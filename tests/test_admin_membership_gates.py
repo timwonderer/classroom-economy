@@ -2,10 +2,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
+from tests.helpers.v2_fixtures import make_teacher as make_admin
 from app.extensions import db
 from app.models import (
-    Admin,
     ClassEconomy,
     IdentityProfile,
     Issue,
@@ -18,71 +17,45 @@ from app.models import (
 )
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
+from tests.helpers.admin_context import login_teacher
 
 
-def _bind_canonical_teacher(admin: Admin) -> User:
-    if getattr(admin, "user_id", None):
-        user = db.session.get(User, admin.user_id)
-        if user is not None:
-            return user
-    user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
-    if user is None:
-        user = User(
-            user_role=UserRole.TEACHER,
-            username_hash=admin.username_hash,
-            username_lookup_hash=admin.username_lookup_hash,
-        )
-        db.session.add(user)
-        db.session.flush()
-    admin.user_id = user.id
-    return user
+def _bind_canonical_teacher(admin):
+    """No-op shim: admin is already a User in V2."""
+    return admin
 
 
-def _login_admin(client, admin_id, *, user_id: int | None = None, class_id: str | None = None, seat_id: int | None = None):
-    if user_id is None:
-        admin = db.session.get(Admin, admin_id)
-        if admin and admin.username_lookup_hash:
-            user = User.query.filter_by(username_lookup_hash=admin.username_lookup_hash).first()
-            if user is not None:
-                user_id = user.id
-    if user_id is not None and class_id is None:
-        owned_classes = ClassEconomy.query.filter_by(user_id=user_id).order_by(ClassEconomy.class_id.asc()).all()
+def _login_admin(client, admin_or_id, *, user_id: int | None = None, class_id: str | None = None, seat_id: int | None = None):
+    # admin_or_id may be a User object or int (legacy)
+    if isinstance(admin_or_id, int):
+        admin = db.session.get(User, admin_or_id)
+    else:
+        admin = admin_or_id
+    if admin is None:
+        return
+    resolved_class_id = class_id
+    resolved_seat_id = seat_id
+    if resolved_class_id is None:
+        owned_classes = ClassEconomy.query.filter_by(user_id=admin.id).order_by(ClassEconomy.class_id.asc()).all()
         if len(owned_classes) == 1:
-            class_id = owned_classes[0].class_id
-            teacher_seat = Seat.query.filter_by(class_id=class_id, role="teacher", user_id=user_id).first()
+            resolved_class_id = owned_classes[0].class_id
+            teacher_seat = Seat.query.filter_by(class_id=resolved_class_id, role="teacher", user_id=admin.id).first()
             if teacher_seat is not None:
-                seat_id = teacher_seat.id
-    with client.session_transaction() as sess:
-        sess["admin_id"] = admin_id
-        sess["is_admin"] = True
-        if user_id is not None:
-            sess["user_id"] = user_id
-        if user_id is not None and class_id is not None and seat_id is not None:
-            set_canonical_context(
-                sess,
-                user_id=user_id,
-                class_id=class_id,
-                seat_id=seat_id,
-                role="teacher",
-            )
-        elif user_id is not None and class_id is not None:
-            sess["user_id"] = user_id
-            sess["current_class_id"] = class_id
+                resolved_seat_id = teacher_seat.id
+    login_teacher(client, admin, class_id=resolved_class_id, seat_id=resolved_seat_id)
 
 
 def test_set_current_class_requires_membership_even_if_teacherblock_exists(client):
     admin_a = make_admin("gate_admin_a", "secret-a")
     admin_b = make_admin("gate_admin_b", "secret-b")
-    db.session.add_all([admin_a, admin_b])
     db.session.flush()
 
-    owned_class = create_class_scope(teacher=admin_a, join_code="OWNG001")
+    owned_class = create_class_scope(
+        teacher_user=admin_a, join_code="OWNG001")
 
     create_class_scope(
-        teacher=admin_b,
-        join_code="GATE001",
-        teacher_block_teacher=admin_a,
-        teacher_block_claimed=False,
+        teacher_user=admin_b,
+        join_code="GATE001"
     )
     db.session.commit()
 
@@ -100,16 +73,14 @@ def test_set_current_class_requires_membership_even_if_teacherblock_exists(clien
 def test_delete_join_code_requires_membership_even_if_teacherblock_exists(client):
     admin_a = make_admin("delete_gate_a", "secret-a")
     admin_b = make_admin("delete_gate_b", "secret-b")
-    db.session.add_all([admin_a, admin_b])
     db.session.flush()
 
-    owned_class = create_class_scope(teacher=admin_a, join_code="OWND001")
+    owned_class = create_class_scope(
+        teacher_user=admin_a, join_code="OWND001")
 
     create_class_scope(
-        teacher=admin_b,
-        join_code="DELG001",
-        teacher_block_teacher=admin_a,
-        teacher_block_claimed=False,
+        teacher_user=admin_b,
+        join_code="DELG001"
     )
     db.session.commit()
 
@@ -124,11 +95,11 @@ def test_delete_join_code_requires_membership_even_if_teacherblock_exists(client
 
 def test_delete_join_code_requires_confirmation(client):
     admin = make_admin("confirm_admin", "secret")
-    db.session.add(admin)
     db.session.flush()
     user = _bind_canonical_teacher(admin)
 
-    class_row = create_class_scope(teacher=admin, join_code="CONF001")
+    class_row = create_class_scope(
+        teacher_user=admin, join_code="CONF001")
     db.session.commit()
 
     _login_admin(client, admin.id, user_id=user.id, class_id=class_row.class_id)
@@ -159,12 +130,13 @@ def test_delete_join_code_requires_confirmation(client):
 
 def test_issues_queue_respects_current_join_code_membership_scope(client):
     admin = make_admin("issues_gate_admin", "secret")
-    db.session.add(admin)
     db.session.flush()
     user = _bind_canonical_teacher(admin)
 
-    class_a = create_class_scope(teacher=admin, join_code="ISSGA1")
-    class_b = create_class_scope(teacher=admin, join_code="ISSGB1")
+    class_a = create_class_scope(
+        teacher_user=admin, join_code="ISSGA1")
+    class_b = create_class_scope(
+        teacher_user=admin, join_code="ISSGB1")
     profile = IdentityProfile(profile_type="student", first_name="Gate", last_name="Stone")
     db.session.add(profile)
     student_user = User(username_hash="gate_student_hash", username_lookup_hash="gate_student_lookup", user_role=UserRole.STUDENT)
@@ -234,10 +206,10 @@ def test_issues_queue_respects_current_join_code_membership_scope(client):
 
 def test_add_individual_student_requires_current_class_context(client):
     admin = make_admin("student_guard_admin", "secret")
-    db.session.add(admin)
     db.session.flush()
 
-    create_class_scope(teacher=admin, join_code="STUG001")
+    create_class_scope(
+        teacher_user=admin, join_code="STUG001")
     db.session.commit()
 
     _login_admin(client, admin.id)
@@ -261,15 +233,11 @@ def test_add_individual_student_requires_current_class_context(client):
 
 def test_add_individual_student_creates_single_student_seat_for_new_student(client):
     admin = make_admin("student_single_tb_admin", "secret")
-    db.session.add(admin)
     db.session.flush()
 
     create_class_scope(
-        teacher=admin,
-        join_code="SING001",
-        block="A",
-        teacher_block_teacher=admin,
-        teacher_block_claimed=False,
+        teacher_user=admin,
+        join_code="SING001"
     )
     db.session.commit()
 
@@ -279,7 +247,7 @@ def test_add_individual_student_creates_single_student_seat_for_new_student(clie
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
-            user_id=admin.user_id,
+            user_id=admin.id,
             class_id=class_row_sing.class_id,
             seat_id=teacher_seat_sing.id,
             role="teacher",
@@ -314,15 +282,11 @@ def test_add_individual_student_creates_single_student_seat_for_new_student(clie
 
 def test_add_manual_student_creates_single_student_seat_for_new_student(client):
     admin = make_admin("manual_single_tb_admin", "secret")
-    db.session.add(admin)
     db.session.flush()
 
     create_class_scope(
-        teacher=admin,
-        join_code="MANU001",
-        block="B",
-        teacher_block_teacher=admin,
-        teacher_block_claimed=False,
+        teacher_user=admin,
+        join_code="MANU001"
     )
     db.session.commit()
 
@@ -332,7 +296,7 @@ def test_add_manual_student_creates_single_student_seat_for_new_student(client):
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
-            user_id=admin.user_id,
+            user_id=admin.id,
             class_id=class_row_manu.class_id,
             seat_id=teacher_seat_manu.id,
             role="teacher",
@@ -370,22 +334,15 @@ def test_add_manual_student_creates_single_student_seat_for_new_student(client):
 
 def test_add_individual_student_uses_selected_class_join_code_when_block_has_other_scope(client):
     admin = make_admin("student_scope_admin", "secret")
-    db.session.add(admin)
     db.session.flush()
 
     create_class_scope(
-        teacher=admin,
-        join_code="OLDA001",
-        block="A",
-        teacher_block_teacher=admin,
-        teacher_block_claimed=False,
+        teacher_user=admin,
+        join_code="OLDA001"
     )
     create_class_scope(
-        teacher=admin,
-        join_code="NEWA001",
-        block="A",
-        teacher_block_teacher=admin,
-        teacher_block_claimed=False,
+        teacher_user=admin,
+        join_code="NEWA001"
     )
     db.session.commit()
 
@@ -395,7 +352,7 @@ def test_add_individual_student_uses_selected_class_join_code_when_block_has_oth
     with client.session_transaction() as sess:
         set_canonical_context(
             sess,
-            user_id=admin.user_id,
+            user_id=admin.id,
             class_id=class_row_new.class_id,
             seat_id=teacher_seat_new.id,
             role="teacher",
@@ -429,16 +386,12 @@ def test_add_individual_student_uses_selected_class_join_code_when_block_has_oth
 
 def test_admin_students_surfaces_teacher_shadow_claim_dob(client):
     admin = make_admin("teacher_shadow_info_admin", "secret")
-    db.session.add(admin)
     db.session.flush()
     user = _bind_canonical_teacher(admin)
 
     class_row = create_class_scope(
-        teacher=admin,
-        join_code="SHADOW1",
-        block="B",
-        teacher_block_teacher=admin,
-        teacher_block_claimed=False,
+        teacher_user=admin,
+        join_code="SHADOW1"
     )
     db.session.commit()
 
@@ -476,10 +429,10 @@ def test_admin_students_surfaces_teacher_shadow_claim_dob(client):
 
 def test_store_create_requires_current_class_context(client):
     admin = make_admin("store_guard_admin", "secret")
-    db.session.add(admin)
     db.session.flush()
 
-    create_class_scope(teacher=admin, join_code="STOG001")
+    create_class_scope(
+        teacher_user=admin, join_code="STOG001")
     db.session.commit()
 
     _login_admin(client, admin.id)
@@ -497,11 +450,11 @@ def test_store_create_requires_current_class_context(client):
 
 def test_payroll_settings_requires_current_class_context(client):
     admin = make_admin("payroll_guard_admin", "secret")
-    db.session.add(admin)
     db.session.flush()
     user = _bind_canonical_teacher(admin)
 
-    create_class_scope(teacher=admin, join_code="PAYG001")
+    create_class_scope(
+        teacher_user=admin, join_code="PAYG001")
     db.session.commit()
 
     _login_admin(client, admin.id, user_id=user.id)
@@ -520,7 +473,6 @@ def test_payroll_settings_requires_current_class_context(client):
 
 def test_payroll_settings_uses_feature_scope_blocks_not_student_block_text(client):
     admin = make_admin("payroll_scope_admin", "secret")
-    db.session.add(admin)
     db.session.flush()
     user = _bind_canonical_teacher(admin)
 
@@ -532,11 +484,8 @@ def test_payroll_settings_uses_feature_scope_blocks_not_student_block_text(clien
     db.session.flush()
 
     class_row = create_class_scope(
-        teacher=admin,
-        join_code="PAYS002",
-        block="B",
-        create_claimed_teacher_block=True,
-        teacher_block_claimed=True,
+        teacher_user=admin,
+        join_code="PAYS002"
     )
     student_seat = Seat(user_id=student_user.id, class_id=class_row.class_id, block="A", block_identifier="A", role="student", claimed_at=datetime.now(timezone.utc))
     db.session.add(student_seat)
@@ -570,10 +519,10 @@ def test_payroll_settings_uses_feature_scope_blocks_not_student_block_text(clien
 
 def test_class_scoped_write_rejects_stale_session_join_code(client):
     admin = make_admin("stale_guard_admin", "secret")
-    db.session.add(admin)
     db.session.flush()
 
-    create_class_scope(teacher=admin, join_code="LIVE001")
+    create_class_scope(
+        teacher_user=admin, join_code="LIVE001")
     db.session.commit()
 
     _login_admin(client, admin.id)
@@ -599,11 +548,12 @@ def test_class_scoped_write_rejects_stale_session_join_code(client):
 
 def test_store_query_scope_does_not_implicitly_switch_session_context(client):
     admin = make_admin("query_scope_admin", "secret")
-    db.session.add(admin)
     db.session.flush()
 
-    create_class_scope(teacher=admin, join_code="STOREA1", block="A", create_claimed_teacher_block=True)
-    create_class_scope(teacher=admin, join_code="STOREB2", block="B", create_claimed_teacher_block=True)
+    create_class_scope(
+        teacher_user=admin, join_code="STOREA1")
+    create_class_scope(
+        teacher_user=admin, join_code="STOREB2")
     db.session.commit()
 
     _login_admin(client, admin.id)
@@ -616,12 +566,13 @@ def test_store_query_scope_does_not_implicitly_switch_session_context(client):
 
 def test_class_scoped_post_rejects_request_join_code_mismatch(client):
     admin = make_admin("mismatch_guard_admin", "secret")
-    db.session.add(admin)
     db.session.flush()
     user = _bind_canonical_teacher(admin)
 
-    class_a = create_class_scope(teacher=admin, join_code="PAYA01", block="A", create_claimed_teacher_block=True)
-    create_class_scope(teacher=admin, join_code="PAYB02", block="B", create_claimed_teacher_block=True)
+    class_a = create_class_scope(
+        teacher_user=admin, join_code="PAYA01")
+    create_class_scope(
+        teacher_user=admin, join_code="PAYB02")
     db.session.commit()
 
     teacher_seat = Seat.query.filter_by(class_id=class_a.class_id, role="teacher").first()

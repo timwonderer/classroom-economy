@@ -4,13 +4,12 @@ from datetime import datetime, timezone
 
 from app import db
 from app.auth import get_current_user
-from app.models import Admin, IdentityProfile, User, UserRole, Seat
+from app.models import IdentityProfile, User, UserRole, Seat
 
 
 def test_admin_login_sets_session_identity(client):
     secret = pyotp.random_base32()
     admin = make_admin("teacher1", secret)
-    db.session.add(admin)
     db.session.commit()
 
     response = client.post(
@@ -21,7 +20,7 @@ def test_admin_login_sets_session_identity(client):
 
     assert response.status_code == 302
     with client.session_transaction() as sess:
-        assert sess.get("user_id") == admin.user_id
+        assert sess.get("user_id") == admin.id
         assert sess.get("current_session_nonce") is not None
         assert "last_activity" in sess
 
@@ -29,9 +28,8 @@ def test_admin_login_sets_session_identity(client):
         from flask import session
 
         session["is_admin"] = True
-        session["admin_id"] = admin.id
-        session["user_id"] = admin.user_id
-        assert get_current_user().id == admin.user_id
+        session["user_id"] = admin.id
+        assert get_current_user().id == admin.id
 
 
 def test_admin_required_blocks_missing_identity(client):

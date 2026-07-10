@@ -12,7 +12,6 @@ from tests.helpers.class_scope import make_student_identity
 
 def test_resolve_actor_context_student_session(app):
     admin = make_admin("tlcp_student_admin", "secret-admin")
-    db.session.add(admin)
     db.session.flush()
     teacher_user = User(
         user_role=UserRole.TEACHER,
@@ -65,7 +64,6 @@ def test_resolve_actor_context_student_session(app):
 
 def test_resolve_actor_context_admin_session(app):
     admin = make_admin("tlcp_admin_actor", "secret-admin-actor")
-    db.session.add(admin)
     db.session.flush()
     user = User(
         user_role=UserRole.TEACHER,

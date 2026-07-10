@@ -27,8 +27,7 @@ from tests.helpers.canonical_session import set_canonical_context
 def test_migrated_teacher_login_sets_canonical_user_id(client):
     secret = pyotp.random_base32()
     admin = make_admin("canonical_teacher", secret)
-    db.session.add(admin)
-    user = db.session.get(User, admin.user_id)
+    user = db.session.get(User, admin.id)
     user.current_session_nonce = "nonce"
     db.session.commit()
 
@@ -74,8 +73,7 @@ def test_teacher_login_verifies_canonical_totp_not_shadow_totp(client):
     shadow_secret = pyotp.random_base32()
     canonical_secret = pyotp.random_base32()
     admin = make_admin("canonical_totp_teacher", shadow_secret)
-    db.session.add(admin)
-    user = db.session.get(User, admin.user_id)
+    user = db.session.get(User, admin.id)
     user.totp_secret_encrypted = canonical_secret
     db.session.commit()
 
@@ -103,8 +101,7 @@ def test_system_admin_login_verifies_canonical_totp(client):
     shadow_secret = pyotp.random_base32()
     canonical_secret = pyotp.random_base32()
     admin = make_sysadmin("canonical_sysadmin", shadow_secret)
-    db.session.add(admin)
-    user = db.session.get(User, admin.user_id)
+    user = db.session.get(User, admin.id)
     user.totp_secret_encrypted = canonical_secret
     db.session.commit()
 
@@ -124,9 +121,8 @@ def test_student_login_verifies_user_pin_and_resolves_shadow_through_claimed_sea
     monkeypatch.setattr("app.routes.student.verify_turnstile_token", lambda *_args, **_kwargs: True)
 
     admin = make_admin("student_login_teacher", pyotp.random_base32())
-    db.session.add(admin)
     db.session.flush()
-    teacher_user = db.session.get(User, admin.user_id)
+    teacher_user = db.session.get(User, admin.id)
     class_row = ClassEconomy(
         user_id=teacher_user.id,
         join_code="CANONICAL-LOGIN",
@@ -138,7 +134,7 @@ def test_student_login_verifies_user_pin_and_resolves_shadow_through_claimed_sea
     db.session.flush()
 
     username = "canonical_student"
-    student = make_student_identity(block="A", first_name="Canonical", last_name="S")
+    student = make_student_identity(class_id=class_row.class_id, first_name="Canonical", last_name="S")
     user = User(
         user_role=UserRole.STUDENT,
         username_hash=hash_username_lookup(username),
@@ -147,7 +143,7 @@ def test_student_login_verifies_user_pin_and_resolves_shadow_through_claimed_sea
         has_completed_setup=True,
         last_active_class_id=class_row.class_id,
     )
-    db.session.add_all([student, user])
+    db.session.add(user)
     db.session.flush()
     seat = Seat(
         user_id=user.id,
@@ -176,9 +172,8 @@ def test_student_login_missing_last_active_class_shows_selector(client, monkeypa
     monkeypatch.setattr("app.routes.student.verify_turnstile_token", lambda *_args, **_kwargs: True)
 
     admin = make_admin("student_selector_teacher", pyotp.random_base32())
-    db.session.add(admin)
     db.session.flush()
-    teacher_user = db.session.get(User, admin.user_id)
+    teacher_user = db.session.get(User, admin.id)
     class_row = ClassEconomy(
         user_id=teacher_user.id,
         join_code="SELECTOR-LOGIN",
@@ -190,7 +185,7 @@ def test_student_login_missing_last_active_class_shows_selector(client, monkeypa
     db.session.flush()
 
     username = "selector_student"
-    student = make_student_identity(block="A", first_name="Select", last_name="A")
+    student = make_student_identity(class_id=class_row.class_id, first_name="Select", last_name="A")
     user = User(
         user_role=UserRole.STUDENT,
         username_hash=hash_username_lookup(username),
@@ -199,7 +194,7 @@ def test_student_login_missing_last_active_class_shows_selector(client, monkeypa
         has_completed_setup=True,
         last_active_class_id=None,
     )
-    db.session.add_all([student, user])
+    db.session.add(user)
     db.session.flush()
     seat = Seat(
         user_id=user.id,
@@ -226,9 +221,8 @@ def test_student_login_no_valid_class_seats_hard_fails(client, monkeypatch):
     monkeypatch.setattr("app.routes.student.verify_turnstile_token", lambda *_args, **_kwargs: True)
 
     admin = make_admin("student_hard_fail_teacher", pyotp.random_base32())
-    db.session.add(admin)
     db.session.flush()
-    teacher_user = db.session.get(User, admin.user_id)
+    teacher_user = db.session.get(User, admin.id)
     class_row = ClassEconomy(
         user_id=teacher_user.id,
         join_code="HARDFAIL-LOGIN",
@@ -240,7 +234,7 @@ def test_student_login_no_valid_class_seats_hard_fails(client, monkeypatch):
     db.session.flush()
 
     username = "hardfail_student"
-    student = make_student_identity(block="A", first_name="Hard", last_name="F")
+    student = make_student_identity(class_id=class_row.class_id, first_name="Hard", last_name="F")
     user = User(
         user_role=UserRole.STUDENT,
         username_hash=hash_username_lookup(username),
@@ -249,7 +243,7 @@ def test_student_login_no_valid_class_seats_hard_fails(client, monkeypatch):
         has_completed_setup=True,
         last_active_class_id=None,
     )
-    db.session.add_all([student, user])
+    db.session.add(user)
     db.session.flush()
     seat = Seat(
         user_id=user.id,
@@ -283,8 +277,7 @@ def test_admin_passkey_register_uses_canonical_user_external_id(client, monkeypa
     monkeypatch.setattr("app.routes.admin.get_public_api_key", lambda: "public-key")
 
     admin = make_admin("passkey_teacher", pyotp.random_base32())
-    db.session.add(admin)
-    user = db.session.get(User, admin.user_id)
+    user = db.session.get(User, admin.id)
     class_row = ClassEconomy(user_id=user.id, join_code="PASSKEY1", display_name="Passkey", class_timezone="UTC")
     db.session.add(class_row)
     db.session.flush()
@@ -329,8 +322,7 @@ def test_admin_passkey_finish_rejects_legacy_external_principal(client, monkeypa
 
 def test_admin_passkey_finish_sets_canonical_user_session(client, monkeypatch):
     admin = make_admin("passkey_finish_teacher", pyotp.random_base32())
-    db.session.add(admin)
-    user = db.session.get(User, admin.user_id)
+    user = db.session.get(User, admin.id)
     class_row = ClassEconomy(user_id=user.id, join_code="PASSKEY2", display_name="Passkey2", class_timezone="UTC")
     db.session.add(class_row)
     db.session.flush()
@@ -351,8 +343,7 @@ def test_admin_passkey_finish_sets_canonical_user_session(client, monkeypatch):
 
 def test_system_admin_passkey_finish_sets_canonical_user_session(client, monkeypatch):
     admin = make_sysadmin("passkey_finish_sysadmin", pyotp.random_base32())
-    db.session.add(admin)
-    user = db.session.get(User, admin.user_id)
+    user = db.session.get(User, admin.id)
     class_row = ClassEconomy(user_id=user.id, join_code="SPASS1", display_name="SysPasskey", class_timezone="UTC")
     db.session.add(class_row)
     db.session.flush()

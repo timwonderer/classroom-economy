@@ -26,7 +26,7 @@ def test_payroll_scope_missing_seat_id_raises_invariant(client):
     db.session.flush()
 
     class_scope = create_class_scope(
-        teacher=teacher,
+        teacher_user=teacher,
         join_code="NOSEAT1",
         display_name="No Seat Class",
     )
@@ -58,7 +58,7 @@ def test_payroll_scope_seat_not_found_raises_invariant(client):
     db.session.flush()
 
     class_scope = create_class_scope(
-        teacher=teacher,
+        teacher_user=teacher,
         join_code="INVALID1",
         display_name="Invalid Seat Class",
     )
@@ -87,8 +87,10 @@ def test_payroll_scope_seat_class_mismatch_raises_invariant(client):
     db.session.add(teacher)
     db.session.flush()
 
-    class_a = create_class_scope(teacher=teacher, join_code="MISMATCA", display_name="Class A")
-    class_b = create_class_scope(teacher=teacher, join_code="MISMATCB", display_name="Class B")
+    class_a = create_class_scope(
+        teacher_user=teacher, join_code="MISMATCA", display_name="Class A")
+    class_b = create_class_scope(
+        teacher_user=teacher, join_code="MISMATCB", display_name="Class B")
     db.session.commit()
 
     seat_a = Seat.query.filter_by(role='teacher', class_id=class_a.class_id).first()
@@ -117,7 +119,8 @@ def test_payroll_scope_student_seat_insufficient_authority(client):
     db.session.add(teacher)
     db.session.flush()
 
-    class_scope = create_class_scope(teacher=teacher, join_code="STUDSEAT1", display_name="Class A")
+    class_scope = create_class_scope(
+        teacher_user=teacher, join_code="STUDSEAT1", display_name="Class A")
 
     student_seat = Seat(
         class_id=class_scope.class_id,
@@ -149,8 +152,10 @@ def test_payroll_scope_resolves_active_teacher_seat(client):
     db.session.add(teacher)
     db.session.flush()
 
-    class_a = create_class_scope(teacher=teacher, join_code="SEATRESA1", display_name="Class A")
-    class_b = create_class_scope(teacher=teacher, join_code="SEATRESB1", display_name="Class B")
+    class_a = create_class_scope(
+        teacher_user=teacher, join_code="SEATRESA1", display_name="Class A")
+    class_b = create_class_scope(
+        teacher_user=teacher, join_code="SEATRESB1", display_name="Class B")
 
     db.session.commit()
 

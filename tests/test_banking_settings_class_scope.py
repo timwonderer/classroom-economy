@@ -1,69 +1,22 @@
 from datetime import datetime, timezone
 
 from app.extensions import db
-from app.models import Admin, BankingSettings, ClassFeature, Seat, User, UserRole
-from app.utils.auth_username import build_hashed_username_fields
+from app.models import BankingSettings, ClassFeature, Seat, User
 from tests.helpers.class_scope import create_class_scope
 from tests.helpers.canonical_session import set_canonical_context
-from tests.helpers.v2_fixtures import make_admin
-
-
-def _bind_canonical_teacher(admin: Admin, username: str) -> User:
-    if getattr(admin, "user_id", None):
-        user = db.session.get(User, admin.user_id)
-        if user is not None:
-            return user
-    salt, username_hash, username_lookup_hash = build_hashed_username_fields(username)
-    user = User.query.filter_by(username_lookup_hash=username_lookup_hash).first()
-    if user is None:
-        user = User(
-            user_role=UserRole.TEACHER,
-            username_hash=username_hash,
-            username_lookup_hash=username_lookup_hash,
-        )
-        db.session.add(user)
-        db.session.flush()
-    admin.user_id = user.id
-    return user
-
-
-def _login_canonical_admin(client, admin: Admin, user: User, *, class_id: str, join_code: str) -> None:
-    teacher_seat = Seat.query.filter_by(class_id=class_id, role="teacher").first()
-    with client.session_transaction() as sess:
-        sess["is_admin"] = True
-        sess["admin_id"] = admin.id
-        set_canonical_context(
-            sess,
-            user_id=user.id,
-            class_id=class_id,
-            seat_id=teacher_seat.id if teacher_seat else user.id,
-            role="teacher",
-            join_code=join_code,
-        )
+from tests.helpers.v2_fixtures import make_teacher
+from tests.helpers.admin_context import login_teacher
 
 
 def test_banking_settings_update_persists_class_scoped_row(client):
-    admin = make_admin("bank_scope_admin", "secret")
-    db.session.add(admin)
+    teacher = make_teacher("bank_scope_admin")
     db.session.flush()
 
-    user = _bind_canonical_teacher(admin, "bank_scope_admin")
-    class_row = create_class_scope(
-        teacher=admin,
-        join_code="BANK001",
-        block="B",
-        create_claimed_teacher_block=True,
-    )
+    class_row = create_class_scope(teacher_user=teacher, join_code="BANK001")
     db.session.add(ClassFeature(class_id=class_row.class_id, feature_name="banking"))
     db.session.commit()
 
-    _login_canonical_admin(
-        client,
-        admin,
-        user,
-        class_id=class_row.class_id,
-        join_code=class_row.join_code,
-    )
+    login_teacher(client, teacher, join_code="BANK001", class_id=class_row.class_id)
 
     response = client.post(
         "/admin/banking/settings",

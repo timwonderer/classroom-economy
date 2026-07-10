@@ -1,45 +1,35 @@
 
 from decimal import Decimal
-from tests.helpers.v2_fixtures import make_admin, make_sysadmin
-from tests.helpers.class_scope import make_student_identity
+from tests.helpers.v2_fixtures import make_admin
+
 import importlib.util
 from pathlib import Path
 import pytest
-from app.models import BalanceCache, User, UserRole, Admin, ClassEconomy, Seat, IdentityProfile, Transaction, TransactionStatus
+from app.models import BalanceCache, ClassEconomy, Seat, Transaction, TransactionStatus
 from app.extensions import db
 from app.utils.banking import settle_balances, settle_pending_transaction_contexts
 from app.services.ledger_service import get_available_balances
 
 
-def _attach_seat(student, teacher, join_code, block="A"):
-    economy = ClassEconomy(
-        user_id=teacher.id,
-        join_code=join_code,
-        display_name=f"Banking {join_code}",
-        class_timezone="UTC",
-    )
-    db.session.add(economy)
+def _create_class_and_student(teacher, join_code):
+    """Create class economy and canonical student. Returns (economy, seat, student_user)."""
+    from tests.helpers.class_scope import create_class_scope, make_student_identity
+    class_row = create_class_scope(teacher_user=teacher, join_code=join_code)
+    student_seat = make_student_identity(class_id=class_row.class_id, first_name="Test", last_name="S")
     db.session.flush()
-    # Auto-injected Canonical User
-    student_user = User(username_hash=f"auto_{student.id}", username_lookup_hash=f"auto_l_{student.id}", user_role=UserRole.STUDENT)
-    db.session.add(student_user)
-    db.session.flush()
-    seat = Seat(user_id=student_user.id, class_id=economy.class_id, block=block, role="student")
-    db.session.add(seat)
-    db.session.commit()
-    return economy, seat, student_user
+    from app.models import User as _User, Seat as _Seat
+    student_user = db.session.get(_User, student_seat.user_id)
+    seat = _Seat.query.filter_by(user_id=student_user.id, class_id=class_row.class_id, role="student").first()
+    return class_row, seat, student_user
 
 
 def test_ledger_flow(client):
     """Test full flow: Create PENDING -> Settle -> Verify Cache."""
     # Setup
-    student = make_student_identity(block="A", first_name="Test", last_name="S")
-    teacher = make_admin("teacher", "secret")
-    db.session.add(teacher)
-    db.session.commit()
-    
+    teacher = make_admin("teacher")
+    db.session.flush()
     join_code = "MATH101"
-    economy, seat, student_user = _attach_seat(student, teacher, join_code)
+    economy, seat, student_user = _create_class_and_student(teacher, join_code)
     class_id, seat_id = economy.class_id, seat.id
 
     # 1. Create Transaction (PENDING)
@@ -79,13 +69,10 @@ def test_ledger_flow(client):
 
 def test_void_pending(client):
     """Test voiding a PENDING transaction (no reversal)."""
-    student = make_student_identity(block="B", first_name="Test2", last_name="B")
-    teacher = make_admin("teacher2", "secret")
-    db.session.add(teacher)
-    db.session.commit()
-    
+    teacher = make_admin("teacher2")
+    db.session.flush()
     join_code = "SCI202"
-    economy, seat, student_user = _attach_seat(student, teacher, join_code, block="B")
+    economy, seat, student_user = _create_class_and_student(teacher, join_code)
     class_id, seat_id = economy.class_id, seat.id
     
     # 1. Create PENDING
@@ -130,13 +117,10 @@ def test_void_pending(client):
 
 def test_void_posted_with_reversal(client):
     """Test voiding a POSTED transaction (creates reversal)."""
-    student = make_student_identity(block="C", first_name="Test3", last_name="C")
-    teacher = make_admin("teacher3", "secret")
-    db.session.add(teacher)
-    db.session.commit()
-    
+    teacher = make_admin("teacher3")
+    db.session.flush()
     join_code = "ENG303"
-    economy, seat, student_user = _attach_seat(student, teacher, join_code, block="C")
+    economy, seat, student_user = _create_class_and_student(teacher, join_code)
     class_id, seat_id = economy.class_id, seat.id
     
     # 1. Create PENDING then Settle -> POSTED
@@ -192,13 +176,10 @@ def test_void_posted_with_reversal(client):
 
 
 def test_settlement_sweep_processes_each_pending_context_once(client):
-    teacher = make_admin("teacher-sweep", "secret")
-    student_one = make_student_identity(block="A", first_name="Sweep", last_name="A")
-    student_two = make_student_identity(block="B", first_name="Sweep", last_name="B")
-    db.session.add(teacher)
-    db.session.commit()
-    student_one_economy, student_one_seat, student_one_user = _attach_seat(student_one, teacher, "SWEEP-A", block="A")
-    student_two_economy, student_two_seat, student_two_user = _attach_seat(student_two, teacher, "SWEEP-B", block="B")
+    teacher = make_admin("teacher-sweep")
+    db.session.flush()
+    student_one_economy, student_one_seat, student_one_user = _create_class_and_student(teacher, "SWEEP-A")
+    student_two_economy, student_two_seat, student_two_user = _create_class_and_student(teacher, "SWEEP-B")
     class_id_one, _seat_id_one = student_one_economy.class_id, student_one_seat.id
     class_id_two, _seat_id_two = student_two_economy.class_id, student_two_seat.id
 

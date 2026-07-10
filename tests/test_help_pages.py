@@ -1,13 +1,12 @@
 from tests.helpers.v2_fixtures import make_admin, make_sysadmin
 from app import db
-from app.models import User, UserRole, Admin
+from app.models import User, UserRole
 from datetime import datetime, timezone
 from tests.helpers.canonical_session import set_canonical_context
 
 def test_admin_help_page(client):
     # Create admin
-    admin = make_admin('admin', 'base32secret3232')
-    db.session.add(admin)
+    admin = make_admin('admin')
     db.session.commit()
 
     # Login as admin with all required session keys
