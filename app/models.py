@@ -197,15 +197,16 @@ class User(db.Model):
     )
     username_hash = db.Column(db.String(64), unique=True, nullable=False, index=True)
     username_lookup_hash = db.Column(db.String(64), unique=True, nullable=True, index=True)
-    password_hash = db.Column(db.Text, nullable=True)
     totp_secret_encrypted = db.Column(db.String(200), nullable=True)
     pin_hash = db.Column(db.Text, nullable=True)
     passphrase_hash = db.Column(db.Text, nullable=True)
     current_session_started_at = db.Column(db.DateTime(timezone=True), nullable=True)
     current_session_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
     current_session_nonce = db.Column(db.String(128), nullable=True, index=True)
-    money_action_cooldown_until = db.Column(db.DateTime(timezone=True), nullable=True)
-    has_completed_setup = db.Column(db.Boolean, nullable=False, default=False, server_default=sa.text('false'))
+    # Student recovery fields (per DOM-IDEN-002 §V)
+    reset_code = db.Column(db.String(8), nullable=True)
+    reset_code_generated_at = db.Column(db.DateTime(timezone=True), nullable=True)
+    reset_code_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
     last_active_seat_id = db.Column(
         db.Integer,
         db.ForeignKey('seats.id', ondelete='SET NULL', use_alter=True, name='fk_users_last_active_seat_id_seats'),
@@ -222,6 +223,16 @@ class User(db.Model):
     )
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
+
+    # Hall pass public verification token (256-bit, capability-based, rotatable)
+    # Used for /verify/hallpass/<token> — not derived from teacher identity
+    hall_pass_verify_token = db.Column(db.String(64), unique=True, nullable=True, index=True)
+
+    @staticmethod
+    def generate_verify_token() -> str:
+        """Generate a new 256-bit random hall pass verification token."""
+        import secrets
+        return secrets.token_hex(32)
 
     seats = db.relationship(
         'Seat',
@@ -257,14 +268,18 @@ class IdentityProfile(db.Model):
         unique=True,
         index=True,
     )
+    class_id = db.Column(
+        db.String(36),
+        db.ForeignKey('classes.class_id', ondelete='CASCADE'),
+        nullable=True,
+        index=True,
+    )
     # Transitional discriminator until every profile is bound to a seat.
     profile_type = db.Column(db.String(32), nullable=False, index=True)
     first_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
     last_name = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=False)
     notes = db.Column(PIIEncryptedType(key_env_var='ENCRYPTION_KEY'), nullable=True)
-    reset_code = db.Column(db.String(8), nullable=True, unique=True)
-    reset_code_expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
-    recovery_status = db.Column(db.String(20), default='active', nullable=False)
+    # No recovery artifacts on IdentityProfile (DOM-IDEN-001, INV-ARC-019 §X)
     created_at = db.Column(db.DateTime(timezone=True), default=utc_now, nullable=False)
     updated_at = db.Column(db.DateTime(timezone=True), default=utc_now, onupdate=utc_now, nullable=False)
 
@@ -340,7 +355,6 @@ class Seat(db.Model):
     claim_last_name_hash = db.Column(db.String(128), nullable=True, index=True)
     claimed_at = db.Column(db.DateTime(timezone=True), nullable=True)
     has_received_rent_exemption = db.Column(db.Boolean, nullable=False, default=False)
-    hall_passes = db.Column(db.Integer, nullable=False, default=3)
 
     block = db.Column(db.String(10), nullable=True)
 
@@ -359,21 +373,6 @@ class Seat(db.Model):
     __table_args__ = (
         db.UniqueConstraint('user_id', 'class_id', name='uq_seats_user_class'),
     )
-
-    @property
-    def display_first_name(self):
-        return self.identity_profile.first_name if self.identity_profile else ""
-
-    @property
-    def display_last_initial(self):
-        return self.identity_profile.last_initial if self.identity_profile else ""
-
-    @property
-    def full_name(self):
-        if self.identity_profile:
-            parts = [self.identity_profile.first_name, self.identity_profile.last_name]
-            return " ".join(part for part in parts if part)
-        return ""
 
     @property
     def recent_deposits(self):
@@ -1284,11 +1283,7 @@ class RedemptionEvent(db.Model):
 class RentSettings(db.Model):
     __tablename__ = 'rent_settings'
     id = db.Column(db.Integer, primary_key=True)
-    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, index=True)
-    block = db.Column(db.String(10), nullable=True)  # NULL = global default, otherwise period/block identifier
-
-    # Main toggle
-    is_enabled = db.Column(db.Boolean, default=True)
+    class_id = db.Column(db.String(36), db.ForeignKey('classes.class_id', ondelete='CASCADE'), nullable=False, unique=True, index=True)
 
     # Rent amount and frequency
     rent_amount = db.Column(db.Numeric(precision=12, scale=2), default=Decimal('50.00'))

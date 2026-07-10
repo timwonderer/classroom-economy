@@ -159,6 +159,7 @@ from app.attendance import (
 from app.utils.attendance_helpers import get_join_code_for_student_period
 from app.services.balance_service import get_batch_balances_by_class_seat
 from app.services import access_policy_service, ledger_service, obligations_service
+from app.services.entitlement_service import adjust_hall_passes, get_hall_pass_balance, grant_hall_passes
 from app.services import operational_event_service
 from app.services.ledger_service import get_available_balances
 from app.services.admin_identity_service import (
@@ -2002,8 +2003,9 @@ def _link_student_to_admin(
 
     if not existing_seat:
         from app.hash_utils import hash_username_lookup as _h
-        seat_first_name = student.display_first_name or ""
-        seat_last_name = student.display_last_name or ""
+        _student_ip = getattr(student, 'identity_profile', None)
+        seat_first_name = (_student_ip.first_name if _student_ip else "") or ""
+        seat_last_name = (_student_ip.last_name if _student_ip else "") or ""
         new_seat = Seat(
             class_id=target_class_id,
             student_id=student.id,
@@ -2024,7 +2026,7 @@ def _link_student_to_admin(
             seat_id=new_seat.id,
             profile_type='student',
             first_name=seat_first_name,
-            last_name=student.display_last_name,
+            last_name=seat_last_name,
         )
         db.session.add(profile)
         current_app.logger.info(
@@ -2359,14 +2361,7 @@ def _resolve_rent_settings_for_block(admin_id, block_name):
     class_row = ClassEconomy.query.filter_by(join_code=join_code).first()
     if not class_row:
         return None
-    return (
-        RentSettings.query.filter(
-            RentSettings.class_id == class_row.class_id,
-            RentSettings.is_enabled.is_(True),
-        )
-        .order_by(desc(RentSettings.block.isnot(None)))
-        .first()
-    )
+    return RentSettings.query.filter_by(class_id=class_row.class_id).first()
 
 
 def _resolve_banking_settings_for_block(admin_id, block_name):
@@ -2563,7 +2558,7 @@ def _build_rebalance_preview(admin_id, selected_block, checker, cwi, rent_settin
     preview_items = []
     recommendations = get_price_recommendation_context(checker.policy_mode, cwi) or {}
 
-    if rent_settings and rent_settings.is_enabled:
+    if rent_settings:
         recommended_amount = convert_weekly_amount_to_frequency(
             Decimal(str(recommendations['rent_weekly']['recommended'])),
             rent_settings.frequency_type,
@@ -2949,7 +2944,7 @@ def dashboard():
     for log, seat in raw_logs:
         recent_logs.append({
             'seat_id': log.seat_id,
-            'student_name': f"{seat.display_first_name} {seat.display_last_initial}".strip() if seat else 'Unknown',
+            'student_name': (seat.identity_profile.full_name if seat and seat.identity_profile else 'Unknown'),
             'period': log.period,
             'timestamp': log.timestamp,
             'reason': log.reason,
@@ -3190,6 +3185,8 @@ def username_migration():
             user.username_lookup_hash = username_lookup_hash
         if not admin.hall_pass_verify_token:
             admin.hall_pass_verify_token = Admin.generate_verify_token()
+        if user and not user.hall_pass_verify_token:
+            user.hall_pass_verify_token = User.generate_verify_token()
         db.session.flush()
 
         session["admin_auth_username"] = chosen_username
@@ -3372,7 +3369,7 @@ def signup():
             username_hash=username_hash,
             username_lookup_hash=username_lookup_hash,
             totp_secret_encrypted=encrypted_totp_secret,
-            has_completed_setup=True,
+            hall_pass_verify_token=User.generate_verify_token(),
         )
         # Close any read-only transaction opened during validation before FEAT entry.
         db.session.rollback()
@@ -3966,7 +3963,6 @@ def _build_rent_privileges_by_block(current_admin, blocks, join_codes_by_block, 
         db.session.query(
             RentSettings.id,
             RentSettings.class_id,
-            RentSettings.is_enabled,
             RentSettings.first_rent_due_date,
             RentSettings.frequency_type,
             RentSettings.custom_frequency_value,
@@ -3974,17 +3970,13 @@ def _build_rent_privileges_by_block(current_admin, blocks, join_codes_by_block, 
             RentSettings.due_day_of_month,
             RentSettings.grace_period_days,
         )
-        .filter(
-            RentSettings.class_id.in_([c.class_id for c in target_classes]),
-            RentSettings.is_enabled == True
-        )
+        .filter(RentSettings.class_id.in_([c.class_id for c in target_classes]))
         .all()
     )
     all_rent_settings = [
         SimpleNamespace(
             id=row.id,
             class_id=row.class_id,
-            is_enabled=row.is_enabled,
             first_rent_due_date=row.first_rent_due_date,
             frequency_type=row.frequency_type,
             custom_frequency_value=row.custom_frequency_value,
@@ -4165,8 +4157,8 @@ def _get_rent_privileges_for_student(student, class_id, join_code):
     if not current_block:
         return rent_privileges
 
-    rent_settings = RentSettings.query.filter_by(class_id=class_id, block=current_block).first()
-    if not rent_settings or not rent_settings.is_enabled:
+    rent_settings = RentSettings.query.filter_by(class_id=class_id).first()
+    if not rent_settings:
         return rent_privileges
 
     # Use a timezone-aware UTC datetime to match how expiry dates are stored.
@@ -4316,7 +4308,7 @@ def students():
             .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
             .filter(Seat.id.in_(active_seat_ids))
             .all(),
-            key=lambda seat: (((seat.block or "").lower()), (seat.display_first_name or "").lower(), seat.id),
+            key=lambda seat: (((seat.block or "").lower()), (seat.identity_profile.first_name if seat.identity_profile else "").lower(), seat.id),
         )
         if active_seat_ids else []
     )
@@ -4684,13 +4676,12 @@ def student_detail_public(actor_public_id):
                 if class_row.join_code and class_row.section:
                     join_codes[class_row.section] = class_row.join_code
 
-    student_profile = student.identity_profile
+    _student_user = db.session.get(User, student.user_id) if student.user_id else None
     reset_code_is_active = bool(
-        student_profile
-        and student_profile.reset_code
-        and student_profile.reset_code_expires_at
-        and ensure_utc(student_profile.reset_code_expires_at) >= utc_now()
-        and student_profile.recovery_status == 'to_be_claimed'
+        _student_user
+        and _student_user.reset_code
+        and _student_user.reset_code_expires_at
+        and ensure_utc(_student_user.reset_code_expires_at) >= utc_now()
     )
 
     return render_template('student_detail.html',
@@ -4723,9 +4714,9 @@ def set_hall_passes(seat_id):
     new_balance = request.form.get('hall_passes', type=int)
 
     if new_balance is not None and new_balance >= 0:
-        student.hall_passes = new_balance
-        db.session.flush()
-        flash(f"Successfully updated {student.full_name}'s hall pass balance to {new_balance}.", "success")
+        current = get_hall_pass_balance(student.id, student.class_id)
+        adjust_hall_passes(student, new_balance - current, trigger_id=f"admin_set_{student.id}")
+        flash(f"Successfully updated {(student.identity_profile.full_name if student.identity_profile else str(student.id))}'s hall pass balance to {new_balance}.", "success")
     else:
         flash("Invalid hall pass balance provided.", "error")
 
@@ -4862,8 +4853,9 @@ def edit_student():
             # If 'start_fresh', do nothing - student starts with $0 in that period
 
     # Check if name changed (keep seat identity fields in sync).
-    current_first_name = student.display_first_name or ""
-    current_last_name = student.display_last_name or ""
+    _student_ip = student.identity_profile if hasattr(student, 'identity_profile') else None
+    current_first_name = (_student_ip.first_name if _student_ip else "") or ""
+    current_last_name = (_student_ip.last_name if _student_ip else "") or ""
     name_changed = (
         new_first_name != current_first_name
         or last_name_input != current_last_name
@@ -4875,21 +4867,25 @@ def edit_student():
         student.identity_profile.first_name = new_first_name
         student.identity_profile.last_name = last_name_input or new_last_initial
 
-    # Handle account reset — generate recovery code per recovery spec
+    # Handle account reset — generate recovery code per DOM-IDEN-002 §IX
     reset_login = request.form.get('reset_login') == 'on'
     if reset_login:
         import secrets as _secrets
-        code = _secrets.token_hex(4).upper()  # 8-char mixed alphanumeric
-        student.reset_code = code
-        student.reset_code_expires_at = utc_now() + timedelta(minutes=10)
-        student.recovery_status = 'to_be_claimed'
+        _ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+        code = ''.join(_secrets.choice(_ALPHABET) for _ in range(8))
+        _reset_user = db.session.get(User, student.user_id) if student.user_id else None
+        if _reset_user:
+            _now = utc_now()
+            _reset_user.reset_code = code
+            _reset_user.reset_code_generated_at = _now
+            _reset_user.reset_code_expires_at = _now + timedelta(minutes=10)
 
-        current_app.logger.info(
-            f"Reset code generated for student {student.id} by admin {current_admin_id}"
-        )
+            current_app.logger.info(
+                f"Reset code generated for seat {student.id} (user {_reset_user.id}) by admin {current_admin_id}"
+            )
 
-        flash(f"Reset code generated for {student.full_name}: {code} — Expires in 10 minutes. "
-              f"Give this code to the student along with their join code.", "warning")
+            flash(f"Reset code generated for {(student.identity_profile.full_name if student.identity_profile else str(student.id))}: {code} — Expires in 10 minutes. "
+                  f"Give this code to the student.", "warning")
 
     if name_changed:
         # Sync name onto IdentityProfile rows linked to Seats for this student in this teacher's classes.
@@ -4987,7 +4983,7 @@ def edit_student():
         db.session.flush()
 
         # Build flash message with balance transfer info
-        message = f"Successfully updated {student.full_name}'s information."
+        message = f"Successfully updated {(student.identity_profile.full_name if student.identity_profile else str(student.id))}'s information."
         if transferred_blocks:
             blocks_str = ', '.join(transferred_blocks)
             message += f" Balance transferred to: {blocks_str}."
@@ -5037,7 +5033,7 @@ def delete_student():
         abort(404)
     if not ClassEconomy.query.filter_by(class_id=student.class_id, user_id=g.canonical_context.user_id).first():
         abort(404)
-    student_name = student.full_name
+    student_name = student.identity_profile.full_name if student.identity_profile else str(student.id)
 
     # Prevent deletion of teacher student accounts
     if student.is_teacher:
@@ -5257,7 +5253,7 @@ def delete_pending_student():
         student_name = (
             seat_entry.identity_profile.full_name
             if seat_entry.identity_profile
-            else (seat_entry.display_first_name or 'Unknown')
+            else 'Unknown'
         )
 
         # Delete the Seat entry (this is the only record for unclaimed seats)
@@ -5396,36 +5392,28 @@ def add_individual_student():
             flash(f"Student {first_name} {last_name} is already in your class.", "info")
             return redirect(url_for('admin.students'))
 
+        # Seat only — no User until student completes claim (DOM-IDEN-002 §VIII).
         profile = IdentityProfile(
             profile_type='student',
             first_name=first_name,
             last_name=last_name,
             notes=additional_notes or None,
         )
-        provisional_user = User(
-            username_hash=hash_username_lookup(f"{class_id}:{dedupe_key}:{secrets.token_hex(8)}"),
-            username_lookup_hash=hash_username_lookup(f"{class_id}:{dedupe_key}:{secrets.token_hex(8)}:lookup"),
-            password_hash=None,
-            pin_hash=None,
-            passphrase_hash=None,
-            has_completed_setup=False,
-        )
-        db.session.add(provisional_user)
-        db.session.flush()
 
         # Ensure ClassEconomy record exists before creating Seat
         _ensure_join_code_anchors(current_admin_id, join_code)
 
         new_seat = Seat(
-            user_id=provisional_user.id,
+            user_id=None,
             class_id=class_id,
             block=block,
             dedupe_code=dedupe_key,
-            claimed_at=None,  # Student hasn't set up username yet
-            hall_passes=3,
+            claimed_at=None,
         )
         db.session.add(new_seat)
         db.session.flush()
+
+        grant_hall_passes(new_seat, 3, trigger_id=f"student_init_{new_seat.id}")
 
         profile.seat_id = new_seat.id
 
@@ -5505,12 +5493,14 @@ def add_manual_student():
             return redirect(url_for('admin.students'))
 
         # Check for duplicates globally.
-        potential_duplicates = [
-            existing_seat for existing_seat in Seat.query.filter(
-                Seat.display_first_name == first_name,
-                Seat.display_last_initial == last_initial,
-            ).all()
-        ]
+        potential_duplicates = (
+            Seat.query
+            .join(IdentityProfile, IdentityProfile.seat_id == Seat.id)
+            .filter(
+                IdentityProfile.first_name == first_name,
+            )
+            .all()
+        )
 
         for existing_student in potential_duplicates:
             # Verify credential matches.
@@ -5545,39 +5535,29 @@ def add_manual_student():
                         _queue_pending_class_timezone_confirmation(class_context.get('class_row'))
                 return redirect(url_for('admin.students'))
 
+        # Seat only — no User until student completes claim (DOM-IDEN-002 §VIII).
         profile = IdentityProfile(
             profile_type='student',
             first_name=first_name,
             last_name=last_name,
         )
-        auth_user = User(
-            username_hash=hash_username_lookup(username) if username else hash_username_lookup(f"{class_id}:{dedupe_key}:{secrets.token_hex(8)}"),
-            username_lookup_hash=hash_username_lookup(username) if username else hash_username_lookup(f"{class_id}:{dedupe_key}:{secrets.token_hex(8)}:lookup"),
-            password_hash=generate_password_hash(pin) if pin else None,
-            pin_hash=None,
-            passphrase_hash=generate_password_hash(passphrase) if passphrase else None,
-            has_completed_setup=setup_complete or bool(username),
-        )
-        db.session.add(auth_user)
-        db.session.flush()
 
         # Ensure ClassEconomy record exists before creating Seat
         _ensure_join_code_anchors(current_admin_id, join_code)
 
-        # Student is claimed if they have a username set
-        is_claimed = bool(username)
-
         new_seat = Seat(
-            user_id=auth_user.id,
+            user_id=None,
             class_id=class_id,
             block=block,
             dedupe_code=dedupe_key,
-            claimed_at=utc_now() if is_claimed else None,
-            hall_passes=hall_passes,
+            claimed_at=None,
             has_received_rent_exemption=not rent_enabled,
         )
         db.session.add(new_seat)
         db.session.flush()
+
+        if hall_passes > 0:
+            grant_hall_passes(new_seat, hall_passes, trigger_id=f"student_init_{new_seat.id}")
 
         profile.seat_id = new_seat.id
 
@@ -6299,10 +6279,10 @@ def rent_settings():
     teacher_blocks = [option['block'] for option in feature_options]
     settings_block = selected_scope['block']
 
-    # Get or create rent settings for this class
+    # Get or create rent settings for this class (class_id is the canonical scope; block column removed)
     settings = None
     if settings_block:
-        settings = RentSettings.query.filter_by(class_id=selected_scope['class_id'], block=settings_block).first()
+        settings = RentSettings.query.filter_by(class_id=selected_scope['class_id']).first()
 
     if request.method == 'POST':
         apply_to_all = request.form.get('apply_to_all') == 'true'
@@ -6341,16 +6321,10 @@ def rent_settings():
             for block in blocks_to_update:
                 scope_for_block = require_admin_feature_scope('rent', admin_id=admin_id, requested_block=block, allow_default=False)
                 # Get or create settings for this class
-                block_settings = RentSettings.query.filter_by(class_id=scope_for_block['class_id'], block=block).first()
+                block_settings = RentSettings.query.filter_by(class_id=scope_for_block['class_id']).first()
                 if not block_settings:
-                    block_settings = RentSettings(
-                        class_id=scope_for_block['class_id'],
-                        block=block,
-                    )
+                    block_settings = RentSettings(class_id=scope_for_block['class_id'])
                     db.session.add(block_settings)
-
-                # Main toggle
-                block_settings.is_enabled = request.form.get('is_enabled') == 'on'
 
                 # Rent amount and frequency
                 from app.models import _quantize_currency
@@ -6472,7 +6446,7 @@ def rent_settings():
         for block in blocks_to_update:
                 # Re-fetch settings for this block to ensure we have the object attached to session
                 scope_for_block = require_admin_feature_scope('rent', admin_id=admin_id, requested_block=block, allow_default=False)
-                block_settings = RentSettings.query.filter_by(class_id=scope_for_block['class_id'], block=block).first()
+                block_settings = RentSettings.query.filter_by(class_id=scope_for_block['class_id']).first()
                 if not block_settings:
                     continue
 
@@ -6628,7 +6602,7 @@ def rent_settings():
 
     # Calculate payroll warning
     payroll_warning = None
-    if settings and settings.is_enabled and settings.rent_amount > Decimal('0') and payroll_settings:
+    if settings and settings.rent_amount > Decimal('0') and payroll_settings:
         # Calculate rent per month based on frequency
         rent_per_month = settings.rent_amount
         thirty_days = Decimal('30')
@@ -6677,7 +6651,7 @@ def rent_settings():
     current_period_end = None
     next_due_date = None
 
-    if settings and settings.is_enabled:
+    if settings:
         now_utc = utc_now()
         from app.routes.student import (
             _build_rent_coverage_context,
@@ -6731,8 +6705,8 @@ def rent_settings():
             if not student_ids:
                 continue
 
-            block_settings = RentSettings.query.filter_by(class_id=class_id, block=block_name).first()
-            if not block_settings or not block_settings.is_enabled:
+            block_settings = RentSettings.query.filter_by(class_id=class_id).first()
+            if not block_settings:
                 continue
 
             coverage_due_date = _calculate_rent_coverage_due_date(block_settings, now_utc)
@@ -6746,7 +6720,7 @@ def rent_settings():
                 seat for seat in seats
                 if seat.class_id == class_id and seat.is_rent_enabled
             ]
-            class_students.sort(key=lambda seat: ((seat.display_first_name or "").lower(), seat.id))
+            class_students.sort(key=lambda seat: ((seat.identity_profile.first_name if seat.identity_profile else "").lower(), seat.id))
             class_seat_ids = [seat.id for seat in class_students]
             coverage_context_cache = {}
 
@@ -6844,7 +6818,7 @@ def rent_settings():
     student_past_due_json = {}
     current_coverage_due_date = None
     upcoming_coverage_due_date = None
-    if settings and settings.is_enabled:
+    if settings:
         now_for_waiver = utc_now()
         from app.routes.student import (
             _calculate_rent_coverage_due_date as _crd,
@@ -6868,7 +6842,7 @@ def rent_settings():
 
     # Determine period label based on frequency type
     period_label = "Month"  # Default
-    if settings and settings.is_enabled:
+    if settings:
         if settings.frequency_type == 'daily':
             period_label = "Day"
         elif settings.frequency_type == 'weekly':
@@ -6959,8 +6933,8 @@ def add_rent_waiver():
     admin_id = g.canonical_context.user_id
     class_id = (getattr(getattr(g, "canonical_context", None), "class_id", None) or '').strip()
     settings = (
-        RentSettings.query.filter_by(class_id=class_id, block=settings_block).first()
-        if class_id and settings_block
+        RentSettings.query.filter_by(class_id=class_id).first()
+        if class_id
         else None
     )
     if not settings:
@@ -7083,7 +7057,7 @@ def reverse_cycle_penalties():
         class_id=class_row_for_rent.class_id,
         block=block,
     ).first()
-    if not rent_settings or not rent_settings.is_enabled:
+    if not rent_settings:
         flash("Rent system is not enabled for this class.", "info")
         return redirect(url_for('admin.rent_settings', settings_block=settings_block or block))
 
@@ -7856,8 +7830,9 @@ def process_claim(claim_id):
                     approved_amount=approved_amount,
                 )
             if requires_payout:
-                student_name = enrollment.seat.display_first_name if enrollment.seat else "the student"
-                student_initial = enrollment.seat.display_last_initial if enrollment.seat else ""
+                _enr_ip = enrollment.seat.identity_profile if enrollment.seat else None
+                student_name = _enr_ip.first_name if _enr_ip else "the student"
+                student_initial = _enr_ip.last_initial if _enr_ip else ""
                 student_display = f"{student_name} {student_initial}.".strip()
                 flash(f"Monetary claim approved! ${approved_amount:.2f} deposited to {student_display}'s checking account.", "success")
         except IntegrityError as exc:
@@ -8003,12 +7978,11 @@ def hall_pass():
     periods = [class_row.section] if class_row and class_row.section else []
 
     # Lazily generate the hall pass verification token if needed
-    teacher_id = admin_id
-    teacher = db.session.get(Admin, teacher_id)
+    canonical_teacher_user = db.session.get(User, g.canonical_context.user_id) if hasattr(g, 'canonical_context') else None
 
     verify_url = None
-    if teacher and teacher.hall_pass_verify_token:
-        verify_url = f"/verify/hallpass/{teacher.hall_pass_verify_token}"
+    if canonical_teacher_user and canonical_teacher_user.hall_pass_verify_token:
+        verify_url = f"/verify/hallpass/{canonical_teacher_user.hall_pass_verify_token}"
 
     return render_template(
         'admin_hall_pass.html',
@@ -8416,7 +8390,7 @@ def payroll_history():
             'block': student_block,
             'class_label': class_labels_by_block.get(student_block, student_block) if student_block != 'Unknown' else 'Unknown',
             'actor_public_id': seat.public_id if seat else None,
-            'student_name': seat.full_name if seat else 'Unknown',
+            'student_name': (seat.identity_profile.full_name if seat and seat.identity_profile else 'Unknown'),
             'join_code': join_codes_by_block.get(student_block, ''),
             'amount': tx.amount,
             'notes': tx.description,
@@ -8790,7 +8764,7 @@ def payroll():
 
         student_stats.append({
             'student_id': student.id,
-            'student_name': student.full_name,
+            'student_name': (student.identity_profile.full_name if student.identity_profile else str(student.id)),
             'block': student.block,
             'class_label': class_labels_by_block.get(student.block, student.block) if student.block else 'Unknown',
             'unpaid_minutes': int(unpaid_minutes),
@@ -8841,7 +8815,7 @@ def payroll():
             'class_label': class_labels_by_block.get(student_block, student_block) if student_block != 'Unknown' else 'Unknown',
             'actor_public_id': seat.public_id if seat else None,
             'student': student,
-            'student_name': student.full_name if student else 'Unknown',
+            'student_name': (student.identity_profile.full_name if student and student.identity_profile else 'Unknown'),
             'join_code': join_codes_by_block.get(student_block, ''),
             'amount': tx.amount,
             'notes': tx.description or '',
@@ -10065,7 +10039,11 @@ def export_students():
         Seat.role == 'student',
         Seat.claimed_at.isnot(None),
     ).all()
-    seats.sort(key=lambda seat: ((seat.display_first_name or "").lower(), (seat.display_last_name or "").lower(), seat.id))
+    seats.sort(key=lambda seat: (
+        (seat.identity_profile.first_name if seat.identity_profile else "").lower(),
+        (seat.identity_profile.last_name if seat.identity_profile else "").lower(),
+        seat.id,
+    ))
     teacher_id = admin_id
     seat_ids = [seat.id for seat in seats]
     scoped_class_ids = []
@@ -10149,15 +10127,15 @@ def export_students():
             total_earnings = scoped_balances.get('earnings', Decimal('0.00'))
 
         writer.writerow([
-            _sanitize_csv_field(seat.display_first_name),
-            _sanitize_csv_field(seat.display_last_name or ''),
+            _sanitize_csv_field(seat.identity_profile.first_name if seat.identity_profile else ''),
+            _sanitize_csv_field(seat.identity_profile.last_name if seat.identity_profile else ''),
             _sanitize_csv_field(export_block),
             f"{checking_balance:.2f}",
             f"{savings_balance:.2f}",
             f"{total_earnings:.2f}",
             _sanitize_csv_field(insurance_name),
             'Yes' if seat.is_rent_enabled else 'No',
-            'Yes' if seat.has_completed_setup else 'No'
+            'Yes' if (seat.user and seat.user.pin_hash is not None) else 'No'
         ])
 
     # Prepare response
@@ -10477,17 +10455,21 @@ def bulk_update_hall_passes():
                 continue
 
             # Update hall passes based on operation type
+            current = get_hall_pass_balance(student.id, student.class_id)
             if update_type == 'set':
-                student.hall_passes = value
+                delta = value - current
             elif update_type == 'add':
-                student.hall_passes = (student.hall_passes or 0) + value
-            elif update_type == 'subtract':
-                student.hall_passes = max(0, (student.hall_passes or 0) - value)
+                delta = value
+            else:  # subtract
+                delta = -min(value, current)
 
-            updated.append(student.full_name)
+            if delta != 0:
+                adjust_hall_passes(student, delta, trigger_id=f"admin_bulk_{student.id}")
 
+            updated.append(student.identity_profile.full_name if student.identity_profile else str(student.id))
+            new_value = get_hall_pass_balance(student.id, student.class_id)
             current_app.logger.info(
-                f"Admin updated hall passes for student {student.id} ({student.full_name}): {update_type} {value}, new value: {student.hall_passes}"
+                f"Admin updated hall passes for student {student.id} ({student.identity_profile.full_name if student.identity_profile else 'unknown'}): {update_type} {value}, new value: {new_value}"
             )
 
         # Commit all updates
@@ -10603,7 +10585,8 @@ def banking():
             Seat.claimed_at.isnot(None),
         ).all()
         for seat in all_students:
-            if student_q.lower() in seat.full_name.lower() and seat.user_id:
+            _ip = seat.identity_profile
+            if student_q.lower() in (_ip.full_name if _ip else "").lower() and seat.user_id:
                 matching_student_ids.append(seat.user_id)
 
         # If there are any matches (by ID or name), filter the query
@@ -10649,13 +10632,14 @@ def banking():
 
     # Build transaction list for template
     transactions = []
-    for tx, student, seat in recent_transactions:
+    for tx, seat in recent_transactions:
+        _ip = seat.identity_profile if seat else None
         transactions.append({
             'id': tx.id,
             'timestamp': tx.timestamp,
             'actor_public_id': seat.public_id if seat else None,
-            'student_name': student.full_name,
-            'student_block': student.block,
+            'student_name': (_ip.full_name if _ip else str(seat.id if seat else "")),
+            'student_block': seat.block if seat else None,
             'amount': tx.amount,
             'account_type': tx.account_type,
             'description': tx.description,
@@ -11957,20 +11941,12 @@ def api_economy_analyze():
                 return jsonify({'status': 'error', 'message': 'Class scope is unavailable for the selected block.'}), 404
 
         if scoped_class_id:
-            rent_settings = (
-                RentSettings.query.filter_by(
-                    class_id=scoped_class_id,
-                    block=block,
-                    is_enabled=True,
-                ).first()
-            )
+            rent_settings = RentSettings.query.filter_by(class_id=scoped_class_id).first()
         else:
             rent_settings = (
                 RentSettings.query.filter(
                     RentSettings.class_id.in_(sa.select(class_ids_query.subquery())),
-                    RentSettings.is_enabled.is_(True),
                 )
-                .order_by(desc(RentSettings.block.isnot(None)))
                 .first()
             )
 

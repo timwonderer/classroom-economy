@@ -2,7 +2,7 @@
 
 | Reference Number | Version | Effective Date | Supersedes | Authority Level |
 |------------------|---------|----------------|------------|-----------------|
-| DOM-IDEN-002 | 2.0 | 2026-06-29 | 1.0 (Student Account Recovery) | Constitutional |
+| DOM-IDEN-002 | 2.1 | 2026-07-10 | 2.0 | Constitutional |
 
 ---
 
@@ -60,13 +60,15 @@ Tier 1 — Constitutional. This document defines structural enforcement mechanis
 
 ### Owned Tables
 
-This document does not own any tables exclusively. The `user_recovery_tokens` table is a shared recovery capability table owned by `users` (per INV-ARC-019 §XI). This document governs the student-specific recovery workflow that produces and consumes `user_recovery_tokens` rows where the referenced `user_id` belongs to a student principal.
-
-Short-lived teacher-visible reset codes may be stored in bridge-period compatibility fields during migration, but those fields are not credential authority.
+This document does not own any tables exclusively but rather defines how student identity is handled within Classroom Token Hub. 
 
 ### Schema Contract
 
-Student-specific fields on `users`: `pin_hash`, `passphrase_hash`, `money_action_cooldown_until`.
+
+
+Student-specific fields on `users`: `pin_hash`, `passphrase_hash`, `reset_code`, `reset_code_generated_at`, and `reset_code_expires_at`. 
+
+
 
 Student-specific fields on `seats`: `roster_fingerprint`, `dedupe_code`, claim first-name/last-name lookup hashes, `claimed_at`.
 
@@ -101,9 +103,12 @@ Student-specific fields:
 
 - `pin_hash` — hashed PIN used for login
 - `passphrase_hash` — hashed passphrase used to gate financial actions
-- `money_action_cooldown_until` — cooldown timestamp for financial action rate limiting
+- `recovery_code` - 8-digit alphanumeric code randomly generated and stored on the corresponding student user row for student to reclaim their account
+- `recovery_code_issued_at` - timestamp of when the recovery code was issued. Stored as UTC but rendered to canonical class timezone.
+- `recovery_code_expires_at` - set to 10 minutes after `recovery_code_issued_at`. Stored as UTC but rendered to canonical class timezone.
 
-Teacher-specific fields (`totp_secret_encrypted`, passkey metadata) SHALL be `NULL` for student rows.
+
+Teacher-specific fields (`totp_secret_encrypted`) SHALL be `NULL` for student rows.
 
 Student-specific rules:
 
@@ -215,14 +220,18 @@ No intermediate states, soft deletes, archived identities, or dormant participan
 
 ## IX. Student Account Recovery
 
-Recovery restores credential access to an existing student `users` identity and its claimed class-local seat. Per DOM-IDEN-005 §IX, recovery restores authentication capability without altering participation, ownership, or identity bindings.
+> [!IMPORTANT]
+>
+> Student account recovery operates solely on `users` table, which represents the authenticated principal on Classroom Token Hub. does not require class context, participation state, or personally identifiable information (PII). Any implementation of additional look up is prohibited by this document.
+
+Recovery restores credential access to an existing student `users` identity and therefore `seats` bound to the `users` identity. Per DOM-IDEN-005 §IX, recovery restores authentication capability without altering participation, ownership, or identity bindings.
 
 ### Core Invariants
 
-1. **No DOB.** No date of birth, DOB sum, or any birth-date-derived value is collected, stored, or used at any point in student recovery.
+1. **No new PII or external identity linkage.** Recovery methods SHALL NOT require additional information not already collected by the platform.
 2. **Ledger immutability.** Recovery SHALL NOT modify, delete, merge, or rewrite historical economic records.
 3. **Credential restoration only.** Recovery replaces credential access on the same `users` record. It does not create a new user, create a new seat, merge two records, or transfer economic state. Per DOM-IDEN-005 §IX, recovery SHALL NOT modify participation, ownership, or identity bindings.
-4. **Single active code.** Only one active reset code per student identity at any time.
+4. **Single active code.** Only one active reset code per student identity at any time. New code generation will overwrite the existing code.
 5. **Teacher-initiated.** Students cannot self-initiate recovery. A teacher must generate the reset code.
 
 ### What Is Recoverable
@@ -248,27 +257,27 @@ Records that are NOT touched during recovery:
 
 A teacher with an active administrative seat in the student's class initiates a recovery reset for a claimed student seat. The system:
 
-- Transitions the recovery capability state to `to_be_claimed`
-- Invalidates any existing reset code
+- Resolve the selected student Seat to its bound User, then issue a new recovery capability on the corresponding users row.
 - Generates a new 8-character random alphanumeric reset code
-- Sets `reset_code_expires_at = now + 10 minutes`
-- Logs the reset event
+- Fill in `reset_code` field with generated code. Overwrites any existing reset code
+- Sets `reset_code_generated_at = now`
+- Sets `reset_code_expires_at = reset_code_generated_at + 10 minutes`
+
 
 The code is displayed to the teacher and communicated verbally to the student. The teacher may redisplay the code until it expires or recovery completes.
 
 > [!NOTE]
 >
-> Reset codes are short-lived (10-minute TTL), teacher-visible, and communicated in person. Plaintext storage is acceptable for this handoff artifact. Durable recovery capability belongs in `user_recovery_tokens`.
+> Reset codes are short-lived (10-minute TTL), teacher-visible, and communicated in person. Plaintext storage is acceptable for this handoff artifact. 
 
-**Step 2 — Student submits join code + reset code**
+**Step 2 — Student submits reset code**
 
-Student submits `join_code` and reset code. Backend validates:
+Student submits reset code. Backend validates:
 
-- Reset code matches
+- The submitted reset code matches the active recovery code on exactly one `users` row.
 - Code has not been used
 - Code has not expired (`now < reset_code_expires_at`)
-- Recovery capability state is `to_be_claimed`
-- `join_code` matches the identity's class scope
+
 
 On failure: return a generic failure message. Do not reveal whether a specific identity exists.
 
@@ -287,23 +296,10 @@ No identity verification fields (name, DOB, or any PII) are re-entered. All thre
 On successful credential setup:
 
 - Clear reset code and expiration
-- Transition recovery capability state to `active`
 - Regenerate `current_session_nonce`
 - Replace `users.username_hash`, `users.username_lookup_hash`, `users.pin_hash`, and `users.passphrase_hash` atomically
-- Mark any canonical recovery token as `used_at`
 - Log successful reclaim event
 
-### Recovery Capability State
-
-The following states describe the recovery capability lifecycle for a student identity. These are recovery-token capability states per INV-ARC-019 §XI, not membership or participation states.
-
-States: `active` | `to_be_claimed`
-
-| From | To | Trigger |
-|------|----|---------|
-| `active` | `to_be_claimed` | Teacher initiates reset |
-| `to_be_claimed` | `active` | Successful reclaim |
-| `to_be_claimed` | `active` | Reset code expiration (auto-clear) |
 
 ### Recovery Security Constraints
 
@@ -336,7 +332,6 @@ The student recovery system SHALL NOT:
 | Username | `username_hash` / `username_lookup_hash` |
 | Primary auth factor | PIN (`pin_hash`) |
 | Financial action gate | Passphrase (`passphrase_hash`) |
-| DOB | **Not stored** |
 | Recovery | Teacher-initiated reset code → credential re-establishment |
 | Session | Nonce + fixed-window expiry |
 

@@ -73,7 +73,8 @@ from app.services.ledger_service import (
     apply_monthly_savings_interest as post_monthly_savings_interest,
     get_available_balances,
 )
-from app.services import access_policy_service, identity_service, store_service
+from app.services import access_policy_service, store_service
+from app.services.entitlement_service import reconcile_rent_hall_pass_top_off as _reconcile_rent_hall_pass_top_off
 from app.services.recovery_service import (
     dismiss_recovery_code as dismiss_recovery_code_row,
     get_pending_recovery_code_for_student,
@@ -263,22 +264,6 @@ def _get_canonical_student_from_context() -> Seat | None:
     return db.session.get(Seat, context.seat_id)
 
 
-def _get_or_create_setup_user_for_student(student: Seat | None) -> User | None:
-    if not student:
-        return None
-
-    user = _find_linked_user_for_student(student)
-    if user:
-        return user
-
-    user = User(
-        user_role=UserRole.STUDENT,
-        username_hash=hash_username_lookup(f"pending_{student.id}_{secrets.token_urlsafe(8)}"),
-        password_hash=generate_password_hash(secrets.token_urlsafe(24)),
-    )
-    db.session.add(user)
-    db.session.flush()
-    return user
 
 
 def _get_total_earnings_for_seat(seat_id: int | None, *, class_id: str | None = None, join_code: str | None = None) -> float:
@@ -303,14 +288,23 @@ def _get_total_earnings_for_seat(seat_id: int | None, *, class_id: str | None = 
 
 
 def _get_claimed_setup_state():
+    """
+    Returns (seat, user) for the active setup or recovery flow.
+
+    During new claim: seat is the unclaimed Seat, user is None (no User created yet).
+    During recovery: seat is already bound; user is the existing User with cleared credentials.
+    """
     seat_id = session.get('onboarding_seat_ref')
-    user_ref = session.get('onboarding_user_ref')
-
     seat = db.session.get(Seat, seat_id) if seat_id else None
-    user = db.session.get(User, user_ref) if user_ref else None
 
-    if seat and not user and seat.user_id:
-        user = db.session.get(User, seat.user_id)
+    # For recovery the User exists on the seat; for new claim seat.user_id is NULL.
+    user = None
+    if seat and seat.user_id:
+        user_ref = session.get('onboarding_user_ref')
+        if user_ref:
+            user = db.session.get(User, user_ref)
+        if not user:
+            user = db.session.get(User, seat.user_id)
 
     return seat, user
 
@@ -353,20 +347,7 @@ def get_rent_settings_for_context(context):
     if not class_id:
         return None
 
-    base_query = RentSettings.query.filter(
-        RentSettings.class_id == class_id,
-    )
-    if current_block:
-        scoped = base_query.filter(func.upper(RentSettings.block) == current_block).first()
-        if scoped:
-            return scoped
-
-    if not current_block:
-        scoped = base_query.filter(RentSettings.block.is_not(None)).first()
-        if scoped:
-            return scoped
-
-    return base_query.filter(RentSettings.block.is_(None)).first()
+    return RentSettings.query.filter_by(class_id=class_id).first()
 
 
 def _support_actor_public_id(class_context):
@@ -466,7 +447,7 @@ def is_feature_enabled(feature_name):
     if feature_name == 'rent':
         rent_settings = get_rent_settings_for_context(resolve_canonical_context())
         if rent_settings:
-            return bool(rent_settings.is_enabled)
+            return True
 
     context = resolve_canonical_context()
     if not context:
@@ -529,12 +510,12 @@ def claim_account():
         class_id = class_row.class_id
         teacher_id = class_row.user_id
 
-        # Find all unclaimed seats with this class_id
+        # Find all unclaimed seats with this class_id (unclaimed = user_id IS NULL, DOM-IDEN-002 §VIII)
         unclaimed_seats = (
             Seat.query
             .filter(
                 Seat.class_id == class_id,
-                Seat.claimed_at.is_(None)
+                Seat.user_id.is_(None),
             )
             .all()
         )
@@ -589,16 +570,11 @@ def claim_account():
         )
 
 
-        # Link seat to student
-        matched_seat.claimed_at = utc_now()
-        linked_user = _get_or_create_setup_user_for_student(matched_seat)
-        if linked_user:
-            matched_seat.user_id = linked_user.id
-        db.session.flush()
-
-        # Start setup flow
+        # Store seat reference in session — no DB writes until setup_pin_passphrase completes.
+        # User creation and seat binding happen atomically at the end of the setup flow
+        # (DOM-IDEN-002 §VIII, seat.user_id stays NULL until claim is fully complete).
         session['onboarding_seat_ref'] = matched_seat.id
-        session['onboarding_user_ref'] = linked_user.id if linked_user else None
+        session.pop('onboarding_user_ref', None)
         session.pop('generated_username', None)
         session.pop('theme_prompt', None)
         session.pop('theme_slug', None)
@@ -617,7 +593,7 @@ def create_username():
     if not seat:
         flash("Please claim your account first.", "setup")
         return redirect(url_for('student.claim_account'))
-    if seat.identity_profile and seat.identity_profile.recovery_status == 'active' and user and user.has_completed_setup:
+    if user and user.pin_hash is not None and (user.reset_code is None or not user.reset_code_expires_at or ensure_utc(user.reset_code_expires_at) < utc_now()):
         flash("Invalid or already setup account.", "setup")
         return redirect(url_for('student.login'))
     # Assign a random theme prompt if not yet in session
@@ -639,37 +615,14 @@ def create_username():
         # Username generation uses a transient backend-generated 4-digit
         # segment so setup never derives usernames from DOB or stable IDs.
         numeric_segment = random.randint(1000, 9999)
-        last_name_initial = (seat.display_last_initial or "")[:1].upper()
-        initials = f"{seat.display_first_name[0].upper()}{last_name_initial}"
+        _ip = seat.identity_profile
+        last_name_initial = ((_ip.last_initial if _ip else "") or "")[:1].upper()
+        _first = (_ip.first_name if _ip else "") or ""
+        initials = f"{_first[0].upper() if _first else 'X'}{last_name_initial}"
         username = f"{adjective}{write_in_word}{numeric_segment}{initials}"
         # Save username plaintext in session for display
+        # Store username in session only — no DB writes until setup_pin_passphrase.
         session['generated_username'] = username
-        user = user or _find_linked_user_for_student(seat)
-        if not user:
-            user = User(
-                user_role=UserRole.STUDENT,
-                username_hash=hash_username_lookup(username),
-                password_hash=generate_password_hash(secrets.token_urlsafe(24)),
-            )
-            db.session.add(user)
-            db.session.flush()
-        else:
-            user.username_hash = hash_username_lookup(username)
-        user.user_role = UserRole.STUDENT
-        user.username_lookup_hash = hash_username_lookup(username)
-
-        if seat and seat.user_id != user.id:
-            seat.user_id = user.id
-            seat.claimed_at = seat.claimed_at or utc_now()
-
-        try:
-            db.session.flush()
-        except IntegrityError:
-            db.session.rollback()
-            flash("That username is unavailable. Please try another word.", "setup")
-            return redirect(url_for('student.create_username'))
-        session['onboarding_user_ref'] = user.id
-        # Clear theme prompt from session
         session.pop('theme_prompt', None)
         session.pop('theme_slug', None)
         return redirect(url_for('student.setup_pin_passphrase'))
@@ -686,7 +639,7 @@ def setup_pin_passphrase():
     if not seat or not username:
         flash("Please complete previous steps.", "setup")
         return redirect(url_for('student.claim_account'))
-    if user and user.has_completed_setup:
+    if user and user.pin_hash is not None and (user.reset_code is None or not user.reset_code_expires_at or ensure_utc(user.reset_code_expires_at) < utc_now()):
         flash("Invalid or already setup account.", "setup")
         return redirect(url_for('student.login'))
     form = StudentPinPassphraseForm()
@@ -696,22 +649,36 @@ def setup_pin_passphrase():
         if not pin or not passphrase:
             flash("PIN and passphrase are required.", "setup")
             return redirect(url_for('student.setup_pin_passphrase'))
-        # Save credentials (store passphrase as hash)
+        # Atomically write credentials and bind seat (DOM-IDEN-002 §VIII).
+        now = utc_now()
         if user:
-            user.password_hash = generate_password_hash(passphrase)
+            # Recovery path: User already exists, update credentials in place.
+            user.username_lookup_hash = hash_username_lookup(username)
+            user.username_hash = hash_username_lookup(username)
             user.pin_hash = generate_password_hash(pin)
             user.passphrase_hash = generate_password_hash(passphrase)
-            user.has_completed_setup = True
-        if seat and user and seat.user_id != user.id:
+            user.reset_code = None
+            user.reset_code_generated_at = None
+            user.reset_code_expires_at = None
+        else:
+            # New claim path: create User and bind seat atomically.
+            user = User(
+                user_role=UserRole.STUDENT,
+                username_hash=hash_username_lookup(username),
+                username_lookup_hash=hash_username_lookup(username),
+                pin_hash=generate_password_hash(pin),
+                passphrase_hash=generate_password_hash(passphrase),
+            )
+            db.session.add(user)
+            try:
+                db.session.flush()
+            except IntegrityError:
+                db.session.rollback()
+                flash("That username is already taken. Please go back and choose another word.", "setup")
+                return redirect(url_for('student.create_username'))
+        if seat:
             seat.user_id = user.id
-        if seat and not seat.claimed_at:
-            seat.claimed_at = utc_now()
-        identity = seat.identity_profile if seat else None
-        if identity and identity.recovery_status == 'to_be_claimed':
-            # Complete recovery only after credentials are successfully re-established.
-            identity.reset_code = None
-            identity.reset_code_expires_at = None
-            identity.recovery_status = 'active'
+            seat.claimed_at = seat.claimed_at or now
 
         db.session.flush()
         # Clear session onboarding keys
@@ -871,10 +838,9 @@ def add_class():
             flash(f"You are already enrolled in Block {new_block_check}.", "warning")
             return redirect(_get_return_target())
 
+        # Bind this new seat to the authenticated user (student already has a User row).
+        matched_seat.user_id = student.user_id
         matched_seat.claimed_at = utc_now()
-        linked_user = _get_or_create_setup_user_for_student(student)
-        if linked_user:
-            matched_seat.user_id = linked_user.id
         # Update student's block to include the new block if not already there
         current_blocks = [b.strip().upper() for b in student.block.split(',') if b.strip()]
         new_block = matched_seat.block.strip().upper()
@@ -985,7 +951,7 @@ def dashboard():
     hours, remainder = divmod(total_unpaid_seconds, 3600)
     minutes, seconds = divmod(remainder, 60)
     total_unpaid_elapsed = f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
-    student_name = student.full_name
+    student_name = (student.identity_profile.full_name if student.identity_profile else str(student.id))
 
     # Compute most recent deposit and insurance paid flag
     recent_deposit = student.recent_deposits[0] if student.recent_deposits else None
@@ -1019,7 +985,7 @@ def dashboard():
 
     rent_status = None
     rent_settings = get_rent_settings_for_context(context)
-    if rent_settings and rent_settings.is_enabled and student.is_rent_enabled:
+    if rent_settings and student.is_rent_enabled:
         now = utc_now()
         timeline = _calculate_rent_timeline(rent_settings, now)
         due_date = timeline['due_date']
@@ -2201,7 +2167,7 @@ def shop():
     if teacher_id and class_id and current_block:
         seat_id = student.identity_profile.seat_id if student and student.identity_profile else None
         rent_settings = get_rent_settings_for_context(context)
-        if rent_settings and rent_settings.is_enabled:
+        if rent_settings:
             now = utc_now()
 
             # Calculate current coverage period (pre-paid system)
@@ -3073,7 +3039,7 @@ def _ensure_rent_hall_pass_top_off(student, context, settings=None, now=None):
         return 0, 0, False
 
     settings = settings or get_rent_settings_for_context(context)
-    if not settings or not settings.is_enabled:
+    if not settings:
         return 0, 0, False
 
     now = now or utc_now()
@@ -3094,7 +3060,7 @@ def _ensure_rent_hall_pass_top_off(student, context, settings=None, now=None):
 
     total_grant = store_service.get_rent_hall_pass_grant_total(settings.id)
     target_rent_passes = total_grant if is_paid else 0
-    return identity_service.reconcile_rent_hall_pass_top_off(
+    return _reconcile_rent_hall_pass_top_off(
         seat=seat,
         target_rent_passes=target_rent_passes,
     )
@@ -3131,7 +3097,7 @@ def rent():
     current_block = (getattr(seat, "block", None) or "").strip().upper()
     settings = get_rent_settings_for_context(context)
 
-    if not settings or not settings.is_enabled:
+    if not settings:
         flash("Rent system is currently disabled.", "info")
         return redirect(url_for('student.dashboard'))
 
@@ -3324,12 +3290,12 @@ def rent_pay(period):
 
     settings = get_rent_settings_for_context(context)
 
-    if not settings or not settings.is_enabled:
+    if not settings:
         current_app.logger.info("rent_pay exit: rent settings missing or disabled")
         flash("Rent system is currently disabled.", "error")
         return redirect(url_for('student.dashboard'))
 
-    if not student.is_rent_enabled:
+    if not seat.is_rent_enabled:
         current_app.logger.info("rent_pay exit: student rent disabled")
         flash("Rent is not enabled for your account.", "error")
         return redirect(url_for('student.dashboard'))
@@ -3340,12 +3306,10 @@ def rent_pay(period):
     if not current_block:
         current_block = period
     current_app.logger.info(
-        "rent_pay state: seat_id=%s class_id=%s current_block=%s settings_block=%s enabled=%s",
+        "rent_pay state: seat_id=%s class_id=%s current_block=%s",
         seat_id,
         class_id,
         current_block,
-        getattr(settings, "block", None),
-        getattr(settings, "is_enabled", None),
     )
     if period != current_block:
         current_app.logger.info(
@@ -3873,7 +3837,8 @@ def switch_period(teacher_id):
 def setup_complete():
     """Setup completion confirmation page."""
     student = _get_canonical_student_from_context()
-    return render_template('student_setup_complete.html', student_name=student.display_first_name)
+    _ip = student.identity_profile if hasattr(student, 'identity_profile') else None
+    return render_template('student_setup_complete.html', student_name=(_ip.first_name if _ip else ""))
 
 
 # -------------------- HELP AND SUPPORT - ISSUE RESOLUTION SYSTEM --------------------

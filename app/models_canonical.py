@@ -32,15 +32,16 @@ class User(Base, TimestampMixin):
     )
     username_hash = sa.Column(sa.String(64), unique=True, nullable=False, index=True)
     username_lookup_hash = sa.Column(sa.String(64), unique=True, nullable=True, index=True)
-    password_hash = sa.Column(sa.Text, nullable=True)
     totp_secret_encrypted = sa.Column(sa.String(200), nullable=True)
     pin_hash = sa.Column(sa.Text, nullable=True)
     passphrase_hash = sa.Column(sa.Text, nullable=True)
     current_session_started_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
     current_session_expires_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
     current_session_nonce = sa.Column(sa.String(128), nullable=True, index=True)
-    money_action_cooldown_until = sa.Column(sa.DateTime(timezone=True), nullable=True)
-    has_completed_setup = sa.Column(sa.Boolean, nullable=False, server_default=sa.text("false"))
+    # Student recovery fields (DOM-IDEN-002 §V)
+    reset_code = sa.Column(sa.String(8), nullable=True)
+    reset_code_generated_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
+    reset_code_expires_at = sa.Column(sa.DateTime(timezone=True), nullable=True)
     last_active_seat_id = sa.Column(
         sa.Integer,
         sa.ForeignKey("seats.id", ondelete="SET NULL", use_alter=True, name="fk_users_last_active_seat_id_seats"),

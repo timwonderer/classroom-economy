@@ -156,8 +156,7 @@ The following are invalid v2 residue, not supported identity alternatives:
 - `Student.opaque_reference`
 - separate TLCP actor identity families
 
-`Student.internal_reference` is separate internal-locator residue. The canonical
-internal actor key is `seats.id`.
+`Student.internal_reference` is separate internal-locator residue. The canonical internal reference MAY be a combination of `users_id`, `class_id`, or `seats_id`
 
 Named cleanup debt:
 
@@ -196,13 +195,11 @@ Every capability design must answer two questions explicitly:
 
 Settled ownership:
 
-- recovery capability is owned by `users` and implemented by `user_recovery_tokens`
-- passkey capability is owned by `users`; compatibility credential metadata tables
-  must key ownership by `user_id`
+- Student recovery capability is owned and executed by `users` 
+- passkey capability is owned by `users` and executed by `passkey_credentials` (jointly used by teacher and sysadmin). Ownership is keyed by users_id
 - roster claim verification is owned by `seats`
 
-Ownership of `hall_pass_verify_token` remains under investigation. Its current
-teacher-table ownership is not accepted as the final v2 design.
+Ownership of `hall_pass_verify_token` SHALL be owned by `users` where `user_role = teacher`. The `hall_pass_verify_token` is a form of capability token that authorize the holder to access hall pass verification feature.
 
 ## XII. Roster Provisioning and Seat Claim
 

@@ -35,7 +35,6 @@
         </a>
         <h2 class="mb-0">
             <span class="material-symbols-outlined me-2">account_circle</span>{{ student.full_name }}
-            <span class="badge bg-primary">Block {{ student.block|upper }}</span>
             {% if student.is_teacher_shadow %}
             <span class="badge ms-1" style="background-color:#6d28d9;" title="This is your teacher shadow account">
                 <span class="material-symbols-outlined align-middle" style="font-size:0.9rem">manage_accounts</span>
@@ -189,15 +188,6 @@
                             <tr>
                                 <td class="fw-bold">Name:</td>
                                 <td>{{ student.full_name }}</td>
-                            </tr>
-                            <tr>
-                                <td class="fw-bold">Block(s):</td>
-                                <td>
-                                    {% set blocks = student.block.split(',') %}
-                                    {% for block in blocks %}
-                                    <span class="badge bg-primary me-1">{{ block.strip()|upper }}</span>
-                                    {% endfor %}
-                                </td>
                             </tr>
                             <tr>
                                 <td class="fw-bold">Setup Status:</td>
@@ -522,10 +512,8 @@
                 <p class="text-muted mb-3">Enable or disable tap in/out for each period. When disabled, the student
                     cannot tap in or out for that period.</p>
                 <div class="row">
-                    {% set blocks = student.block.split(',') %}
-                    {% for block in blocks %}
-                    {% set period = block.strip().upper() %}
-                    {% set settings = student_blocks_settings.get(period, {'tap_enabled': True}) %}
+                    {% if student_blocks_settings %}
+                    {% for period, settings in student_blocks_settings.items() %}
                     <div class="col-md-4 mb-3">
                         <div class="card">
                             <div class="card-body">
@@ -545,6 +533,11 @@
                         </div>
                     </div>
                     {% endfor %}
+                    {% else %}
+                    <div class="col-12">
+                        <p class="text-muted">No period tap settings available.</p>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -822,33 +815,6 @@
                     </div>
 
                     <!-- Block Assignment -->
-                    <div class="card border-info mb-3">
-                        <div class="card-header bg-info-subtle">
-                            <h6 class="mb-0 text-info"><span
-                                    class="material-symbols-outlined me-2">calendar_view_week</span>Block Assignment
-                            </h6>
-                        </div>
-                        <div class="card-body">
-                            <p class="text-muted small mb-2">Select all blocks this student attends (can select
-                                multiple):</p>
-                            <div class="row">
-                                {% for block in blocks %}
-                                <div class="col-6 col-md-4 mb-2">
-                                    <div class="form-check">
-                                        <input class="form-check-input block-checkbox" type="checkbox" name="blocks"
-                                            value="{{ block }}" id="edit_block_{{ block }}" {% if block.upper() in
-                                            student.block.upper().split(',') %}checked{% endif %}>
-                                        <label class="form-check-label" for="edit_block_{{ block }}">
-                                            Block {{ block|upper }}
-                                        </label>
-                                    </div>
-                                </div>
-                                {% endfor %}
-                            </div>
-                            <div class="form-text">At least one block must be selected</div>
-                        </div>
-                    </div>
-
                     <!-- Account Recovery -->
                     <div class="card border-warning mb-3">
                         <div class="card-header bg-warning-subtle">
